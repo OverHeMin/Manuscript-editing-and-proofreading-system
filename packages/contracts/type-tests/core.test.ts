@@ -1,13 +1,37 @@
 import type {
+  DocumentAsset,
   DocumentAssetStatus,
   DocumentAssetType,
+  DocumentAssetId,
+  EvidenceLevel,
+  KnowledgeItemRouting,
+  KnowledgeKind,
+  KnowledgeItem,
   KnowledgeItemStatus,
+  KnowledgeSourceType,
+  ManuscriptModule,
   LearningCandidateStatus,
   LearningCandidateType,
+  LearningCandidate,
+  Manuscript,
+  ManuscriptId,
   ManuscriptStatus,
   ManuscriptType,
+  ModelCostProfile,
+  ModelProvider,
+  ModelRegistryId,
+  ModelRegistryEntry,
+  ModelRateLimit,
+  ModelRouteRequest,
+  ModuleTemplateId,
+  ModuleType,
   ModuleTemplateStatus,
+  ModuleTemplate,
+  TemplateFamily,
   TemplateKnowledgeBindingPurpose,
+  TemplateFamilyId,
+  TemplateFamilyStatus,
+  UserId,
 } from "../src/index.js";
 
 type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <
@@ -16,6 +40,10 @@ type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <
   ? true
   : false;
 type Assert<T extends true> = T;
+type IsAssignable<A, B> = A extends B ? true : false;
+type IsAny<T> = 0 extends 1 & T ? true : false;
+type NotAny<T> = IsAny<T> extends true ? false : true;
+type HasKey<T, K extends PropertyKey> = K extends keyof T ? true : false;
 
 // Manuscript
 type _ManuscriptStatus = Assert<
@@ -49,6 +77,28 @@ type _ManuscriptType = Assert<
   >
 >;
 
+type ExpectedManuscript = {
+  id: ManuscriptId;
+  title: string;
+  manuscript_type: ManuscriptType;
+  status: ManuscriptStatus;
+  created_by: UserId;
+  current_screening_asset_id?: DocumentAssetId;
+  current_editing_asset_id?: DocumentAssetId;
+  current_proofreading_asset_id?: DocumentAssetId;
+  current_template_family_id?: TemplateFamilyId;
+};
+
+type _ManuscriptNotAny = Assert<NotAny<Manuscript>>;
+type _ManuscriptHasId = Assert<HasKey<Manuscript, "id">>;
+type _ManuscriptHasStatus = Assert<HasKey<Manuscript, "status">>;
+type _ManuscriptShapeForward = Assert<IsAssignable<Manuscript, ExpectedManuscript>>;
+type _ManuscriptShapeBackward = Assert<
+  IsAssignable<ExpectedManuscript, Manuscript>
+>;
+type _ManuscriptStatusNotAny = Assert<NotAny<Manuscript["status"]>>;
+type _ManuscriptTypeNotAny = Assert<NotAny<Manuscript["manuscript_type"]>>;
+
 // Assets
 type _DocumentAssetStatus = Assert<
   IsEqual<DocumentAssetStatus, "created" | "active" | "superseded" | "archived">
@@ -69,6 +119,32 @@ type _DocumentAssetType = Assert<
   >
 >;
 
+type ExpectedDocumentAsset = {
+  id: DocumentAssetId;
+  manuscript_id: ManuscriptId;
+  asset_type: DocumentAssetType;
+  status: DocumentAssetStatus;
+  storage_key: string;
+  mime_type: string;
+  parent_asset_id?: DocumentAssetId;
+  source_module: ManuscriptModule;
+  source_job_id?: string;
+  created_by: UserId;
+  version_no: number;
+  is_current: boolean;
+};
+
+type _DocumentAssetNotAny = Assert<NotAny<DocumentAsset>>;
+type _DocumentAssetHasStorageKey = Assert<HasKey<DocumentAsset, "storage_key">>;
+type _DocumentAssetShapeForward = Assert<
+  IsAssignable<DocumentAsset, ExpectedDocumentAsset>
+>;
+type _DocumentAssetShapeBackward = Assert<
+  IsAssignable<ExpectedDocumentAsset, DocumentAsset>
+>;
+type _DocumentAssetTypeNotAny = Assert<NotAny<DocumentAsset["asset_type"]>>;
+type _DocumentAssetStatusNotAny = Assert<NotAny<DocumentAsset["status"]>>;
+
 // Knowledge
 type _KnowledgeItemStatus = Assert<
   IsEqual<
@@ -81,6 +157,34 @@ type _KnowledgeItemStatus = Assert<
     | "archived"
   >
 >;
+
+type ExpectedKnowledgeItem = {
+  id: string;
+  title: string;
+  canonical_text: string;
+  summary?: string;
+  knowledge_kind: KnowledgeKind;
+  status: KnowledgeItemStatus;
+  routing: KnowledgeItemRouting;
+  evidence_level?: EvidenceLevel;
+  source_type?: KnowledgeSourceType;
+  source_link?: string;
+  effective_at?: string;
+  expires_at?: string;
+  aliases?: string[];
+  template_bindings?: string[];
+};
+
+type _KnowledgeItemNotAny = Assert<NotAny<KnowledgeItem>>;
+type _KnowledgeItemHasRouting = Assert<HasKey<KnowledgeItem, "routing">>;
+type _KnowledgeItemShapeForward = Assert<
+  IsAssignable<KnowledgeItem, ExpectedKnowledgeItem>
+>;
+type _KnowledgeItemShapeBackward = Assert<
+  IsAssignable<ExpectedKnowledgeItem, KnowledgeItem>
+>;
+type _KnowledgeKindNotAny = Assert<NotAny<KnowledgeItem["knowledge_kind"]>>;
+type _KnowledgeStatusNotAny = Assert<NotAny<KnowledgeItem["status"]>>;
 
 // Learning
 type _LearningCandidateType = Assert<
@@ -101,6 +205,31 @@ type _LearningCandidateStatus = Assert<
   >
 >;
 
+type ExpectedLearningCandidate = {
+  id: string;
+  type: LearningCandidateType;
+  status: LearningCandidateStatus;
+  module: ManuscriptModule;
+  manuscript_type: ManuscriptType;
+  human_final_asset_id?: DocumentAssetId;
+  annotated_asset_id?: DocumentAssetId;
+  snapshot_asset_id?: DocumentAssetId;
+  title?: string;
+  proposal_text?: string;
+  created_at?: string;
+};
+
+type _LearningCandidateNotAny = Assert<NotAny<LearningCandidate>>;
+type _LearningCandidateHasType = Assert<HasKey<LearningCandidate, "type">>;
+type _LearningCandidateShapeForward = Assert<
+  IsAssignable<LearningCandidate, ExpectedLearningCandidate>
+>;
+type _LearningCandidateShapeBackward = Assert<
+  IsAssignable<ExpectedLearningCandidate, LearningCandidate>
+>;
+type _LearningCandidateTypeNotAny = Assert<NotAny<LearningCandidate["type"]>>;
+type _LearningCandidateStatusNotAny = Assert<NotAny<LearningCandidate["status"]>>;
+
 // Templates
 type _ModuleTemplateStatus = Assert<
   IsEqual<ModuleTemplateStatus, "draft" | "published" | "archived">
@@ -113,3 +242,83 @@ type _TemplateKnowledgeBindingPurpose = Assert<
   >
 >;
 
+type ExpectedTemplateFamily = {
+  id: TemplateFamilyId;
+  manuscript_type: ManuscriptType;
+  name: string;
+  status: TemplateFamilyStatus;
+};
+
+type _TemplateFamilyNotAny = Assert<NotAny<TemplateFamily>>;
+type _TemplateFamilyShapeForward = Assert<
+  IsAssignable<TemplateFamily, ExpectedTemplateFamily>
+>;
+type _TemplateFamilyShapeBackward = Assert<
+  IsAssignable<ExpectedTemplateFamily, TemplateFamily>
+>;
+type _TemplateFamilyStatusNotAny = Assert<NotAny<TemplateFamily["status"]>>;
+
+type ExpectedModuleTemplate = {
+  id: ModuleTemplateId;
+  template_family_id: TemplateFamilyId;
+  module: ModuleType;
+  manuscript_type: ManuscriptType;
+  version_no: number;
+  status: ModuleTemplateStatus;
+  prompt: string;
+  checklist?: string[];
+  section_requirements?: string[];
+};
+
+type _ModuleTemplateNotAny = Assert<NotAny<ModuleTemplate>>;
+type _ModuleTemplateHasPrompt = Assert<HasKey<ModuleTemplate, "prompt">>;
+type _ModuleTemplateShapeForward = Assert<
+  IsAssignable<ModuleTemplate, ExpectedModuleTemplate>
+>;
+type _ModuleTemplateShapeBackward = Assert<
+  IsAssignable<ExpectedModuleTemplate, ModuleTemplate>
+>;
+type _ModuleTemplateStatusNotAny = Assert<NotAny<ModuleTemplate["status"]>>;
+
+// Model routing (explicit assertions)
+type ExpectedModelRegistryEntry = {
+  id: ModelRegistryId;
+  provider: ModelProvider;
+  model_name: string;
+  model_version?: string;
+  allowed_modules: ModuleType[];
+  is_prod_allowed: boolean;
+  cost_profile?: ModelCostProfile;
+  rate_limit?: ModelRateLimit;
+  fallback_model_id?: ModelRegistryId;
+};
+
+type _ModelRegistryEntryNotAny = Assert<NotAny<ModelRegistryEntry>>;
+type _ModelRegistryEntryHasProvider = Assert<HasKey<ModelRegistryEntry, "provider">>;
+type _ModelRegistryEntryShapeForward = Assert<
+  IsAssignable<ModelRegistryEntry, ExpectedModelRegistryEntry>
+>;
+type _ModelRegistryEntryShapeBackward = Assert<
+  IsAssignable<ExpectedModelRegistryEntry, ModelRegistryEntry>
+>;
+type _ModelRegistryProviderNotAny = Assert<NotAny<ModelRegistryEntry["provider"]>>;
+type _ModelRegistryAllowedModulesNotAny = Assert<NotAny<
+  ModelRegistryEntry["allowed_modules"]
+>>;
+
+type ExpectedModelRouteRequest = {
+  module: ModuleType;
+  module_template_id?: ModuleTemplateId;
+  task_override_model_id?: ModelRegistryId;
+  task_override_allow_list?: ModelRegistryId[];
+};
+
+type _ModelRouteRequestNotAny = Assert<NotAny<ModelRouteRequest>>;
+type _ModelRouteRequestHasModule = Assert<HasKey<ModelRouteRequest, "module">>;
+type _ModelRouteRequestShapeForward = Assert<
+  IsAssignable<ModelRouteRequest, ExpectedModelRouteRequest>
+>;
+type _ModelRouteRequestShapeBackward = Assert<
+  IsAssignable<ExpectedModelRouteRequest, ModelRouteRequest>
+>;
+type _ModelRouteModuleNotAny = Assert<NotAny<ModelRouteRequest["module"]>>;
