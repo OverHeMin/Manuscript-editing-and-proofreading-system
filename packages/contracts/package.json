@@ -1,10 +1,14 @@
 {
-  "name": "@medsys/contracts",
+  "name": "@medical/contracts",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "lint": "echo \"contracts lint\"",
-    "typecheck": "echo \"contracts typecheck\"",
-    "test": "echo \"contracts test\""
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
   }
 }
