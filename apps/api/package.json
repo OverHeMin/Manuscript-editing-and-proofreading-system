@@ -1,0 +1,10 @@
+{
+  "name": "@medsys/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "lint": "echo \"api lint\"",
+    "typecheck": "echo \"api typecheck\"",
+    "test": "echo \"api test\""
+  }
+}
