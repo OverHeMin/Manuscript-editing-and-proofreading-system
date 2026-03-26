@@ -8,4 +8,8 @@ export interface DocumentAssetRepository {
     manuscriptId: string,
     assetType: DocumentAssetType,
   ): Promise<DocumentAssetRecord[]>;
+  reserveNextVersionNumber(
+    manuscriptId: string,
+    assetType: DocumentAssetType,
+  ): Promise<number>;
 }

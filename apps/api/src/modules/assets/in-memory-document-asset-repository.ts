@@ -57,4 +57,33 @@ export class InMemoryDocumentAssetRepository implements DocumentAssetRepository 
       .sort(compareAssets)
       .map(cloneRecord);
   }
+
+  async reserveNextVersionNumber(
+    manuscriptId: string,
+    assetType: DocumentAssetType,
+  ): Promise<number> {
+    const matchingAssets = await this.listByManuscriptIdAndType(
+      manuscriptId,
+      assetType,
+    );
+    const highestVersion = matchingAssets.reduce(
+      (currentHighest, asset) => Math.max(currentHighest, asset.version_no),
+      0,
+    );
+
+    return highestVersion + 1;
+  }
+
+  snapshotState(): Map<string, DocumentAssetRecord> {
+    return new Map(
+      [...this.records.entries()].map(([id, record]) => [id, cloneRecord(record)]),
+    );
+  }
+
+  restoreState(snapshot: Map<string, DocumentAssetRecord>): void {
+    this.records.clear();
+    for (const [id, record] of snapshot.entries()) {
+      this.records.set(id, cloneRecord(record));
+    }
+  }
 }

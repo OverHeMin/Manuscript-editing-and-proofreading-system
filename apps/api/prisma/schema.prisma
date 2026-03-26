@@ -205,6 +205,7 @@ model DocumentAsset {
   createdBy                     String              @map("created_by") @db.Text
   versionNo                     Int                 @map("version_no")
   isCurrent                     Boolean             @default(false) @map("is_current")
+  fileName                      String?             @map("file_name") @db.Text
   createdAt                     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                     DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
   manuscript                    Manuscript          @relation(fields: [manuscriptId], references: [id], onDelete: Cascade)

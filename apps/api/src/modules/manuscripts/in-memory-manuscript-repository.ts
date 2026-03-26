@@ -17,4 +17,17 @@ export class InMemoryManuscriptRepository implements ManuscriptRepository {
 
     return record ? cloneRecord(record) : undefined;
   }
+
+  snapshotState(): Map<string, ManuscriptRecord> {
+    return new Map(
+      [...this.records.entries()].map(([id, record]) => [id, cloneRecord(record)]),
+    );
+  }
+
+  restoreState(snapshot: Map<string, ManuscriptRecord>): void {
+    this.records.clear();
+    for (const [id, record] of snapshot.entries()) {
+      this.records.set(id, cloneRecord(record));
+    }
+  }
 }

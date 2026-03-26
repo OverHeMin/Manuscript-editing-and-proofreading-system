@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { ManuscriptRecord } from "../manuscripts/manuscript-record.ts";
+import {
+  createWriteTransactionManager,
+  type WriteTransactionManager,
+} from "../shared/write-transaction-manager.ts";
 import type {
   DocumentAssetRecord,
   DocumentAssetType,
@@ -22,6 +26,7 @@ export interface CreateDocumentAssetInput {
 export interface DocumentAssetServiceOptions {
   assetRepository: DocumentAssetRepository;
   manuscriptRepository: ManuscriptRepository;
+  transactionManager?: WriteTransactionManager;
   createId?: () => string;
   now?: () => Date;
 }
@@ -30,6 +35,22 @@ export class ManuscriptNotFoundError extends Error {
   constructor(manuscriptId: string) {
     super(`Manuscript ${manuscriptId} was not found.`);
     this.name = "ManuscriptNotFoundError";
+  }
+}
+
+export class ParentAssetNotFoundError extends Error {
+  constructor(parentAssetId: string) {
+    super(`Parent asset ${parentAssetId} was not found.`);
+    this.name = "ParentAssetNotFoundError";
+  }
+}
+
+export class ParentAssetManuscriptMismatchError extends Error {
+  constructor(parentAssetId: string, manuscriptId: string) {
+    super(
+      `Parent asset ${parentAssetId} does not belong to manuscript ${manuscriptId}.`,
+    );
+    this.name = "ParentAssetManuscriptMismatchError";
   }
 }
 
@@ -62,68 +83,97 @@ function pointerFieldForAssetType(
 export class DocumentAssetService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly manuscriptRepository: ManuscriptRepository;
+  private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
   private readonly now: () => Date;
 
   constructor(options: DocumentAssetServiceOptions) {
     this.assetRepository = options.assetRepository;
     this.manuscriptRepository = options.manuscriptRepository;
+    this.transactionManager =
+      options.transactionManager ??
+      createWriteTransactionManager({
+        manuscriptRepository: this.manuscriptRepository,
+        assetRepository: this.assetRepository,
+      });
     this.createId = options.createId ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
   }
 
   async createAsset(input: CreateDocumentAssetInput): Promise<DocumentAssetRecord> {
-    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+    return this.transactionManager.withTransaction(
+      async ({ manuscriptRepository, assetRepository }) => {
+        const manuscript = await manuscriptRepository.findById(input.manuscriptId);
 
-    if (!manuscript) {
-      throw new ManuscriptNotFoundError(input.manuscriptId);
-    }
+        if (!manuscript) {
+          throw new ManuscriptNotFoundError(input.manuscriptId);
+        }
 
-    const existingAssets = await this.assetRepository.listByManuscriptIdAndType(
-      input.manuscriptId,
-      input.assetType,
+        if (input.parentAssetId) {
+          const parentAsset = await assetRepository.findById(input.parentAssetId);
+
+          if (!parentAsset) {
+            throw new ParentAssetNotFoundError(input.parentAssetId);
+          }
+
+          if (parentAsset.manuscript_id !== input.manuscriptId) {
+            throw new ParentAssetManuscriptMismatchError(
+              input.parentAssetId,
+              input.manuscriptId,
+            );
+          }
+        }
+
+        const existingAssets = await assetRepository.listByManuscriptIdAndType(
+          input.manuscriptId,
+          input.assetType,
+        );
+        const timestamp = this.now().toISOString();
+
+        for (const asset of existingAssets.filter((record) => record.is_current)) {
+          await assetRepository.save({
+            ...asset,
+            is_current: false,
+            status: asset.status === "archived" ? "archived" : "superseded",
+            updated_at: timestamp,
+          });
+        }
+
+        const asset: DocumentAssetRecord = {
+          id: this.createId(),
+          manuscript_id: input.manuscriptId,
+          asset_type: input.assetType,
+          status: "active",
+          storage_key: input.storageKey,
+          mime_type: input.mimeType,
+          parent_asset_id: input.parentAssetId,
+          source_module: input.sourceModule,
+          source_job_id: input.sourceJobId,
+          created_by: input.createdBy,
+          version_no: await assetRepository.reserveNextVersionNumber(
+            input.manuscriptId,
+            input.assetType,
+          ),
+          is_current: true,
+          file_name: input.fileName,
+          created_at: timestamp,
+          updated_at: timestamp,
+        };
+
+        await assetRepository.save(asset);
+
+        const pointerField = pointerFieldForAssetType(input.assetType);
+        if (pointerField) {
+          await manuscriptRepository.save({
+            ...manuscript,
+            [pointerField]: asset.id,
+            updated_at: timestamp,
+          });
+        }
+
+        return asset;
+      },
     );
-
-    for (const asset of existingAssets.filter((record) => record.is_current)) {
-      await this.assetRepository.save({
-        ...asset,
-        is_current: false,
-        status: asset.status === "archived" ? "archived" : "superseded",
-        updated_at: this.now().toISOString(),
-      });
-    }
-
-    const timestamp = this.now().toISOString();
-    const asset: DocumentAssetRecord = {
-      id: this.createId(),
-      manuscript_id: input.manuscriptId,
-      asset_type: input.assetType,
-      status: "active",
-      storage_key: input.storageKey,
-      mime_type: input.mimeType,
-      parent_asset_id: input.parentAssetId,
-      source_module: input.sourceModule,
-      source_job_id: input.sourceJobId,
-      created_by: input.createdBy,
-      version_no: existingAssets.length + 1,
-      is_current: true,
-      file_name: input.fileName,
-      created_at: timestamp,
-      updated_at: timestamp,
-    };
-
-    await this.assetRepository.save(asset);
-
-    const pointerField = pointerFieldForAssetType(input.assetType);
-    if (pointerField) {
-      await this.manuscriptRepository.save({
-        ...manuscript,
-        [pointerField]: asset.id,
-        updated_at: timestamp,
-      });
-    }
-
-    return asset;
   }
 
   listAssets(manuscriptId: string): Promise<DocumentAssetRecord[]> {

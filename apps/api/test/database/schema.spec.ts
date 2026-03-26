@@ -19,6 +19,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "asset_type",
     "status",
     "storage_key",
+    "file_name",
     "source_job_id",
     "is_current",
   ],
@@ -181,8 +182,12 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
           version: "0002_model_registry_version_guard.sql",
           checksum: getMigrationChecksum("0002_model_registry_version_guard.sql"),
         },
+        {
+          version: "0003_document_assets_file_name.sql",
+          checksum: getMigrationChecksum("0003_document_assets_file_name.sql"),
+        },
       ],
-      "Expected migration bookkeeping for both applied database migrations.",
+      "Expected migration bookkeeping for all applied database migrations.",
     );
   });
 });

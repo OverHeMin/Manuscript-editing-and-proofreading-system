@@ -20,4 +20,17 @@ export class InMemoryJobRepository implements JobRepository {
 
     return record ? cloneRecord(record) : undefined;
   }
+
+  snapshotState(): Map<string, JobRecord> {
+    return new Map(
+      [...this.records.entries()].map(([id, record]) => [id, cloneRecord(record)]),
+    );
+  }
+
+  restoreState(snapshot: Map<string, JobRecord>): void {
+    this.records.clear();
+    for (const [id, record] of snapshot.entries()) {
+      this.records.set(id, cloneRecord(record));
+    }
+  }
 }

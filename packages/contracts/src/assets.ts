@@ -46,4 +46,5 @@ export interface DocumentAsset {
   created_by: UserId;
   version_no: number;
   is_current: boolean;
+  file_name?: string;
 }
