@@ -17,6 +17,8 @@ function createLifecycleHarness() {
     "job-1",
     "asset-2",
     "asset-3",
+    "asset-4",
+    "asset-5",
   ];
 
   const nextId = () => {
@@ -218,5 +220,63 @@ test("writing new derived assets updates the manuscript current asset pointers w
         is_current: true,
       },
     ],
+  );
+});
+
+test("proofreading draft assets do not advance the formal proofreading pointer until a final proofreading asset exists", async () => {
+  const { api, assetService } = createLifecycleHarness();
+
+  const uploadResponse = await api.upload({
+    title: "Oncology Proofreading 2026",
+    manuscriptType: "review",
+    createdBy: "user-3",
+    fileName: "oncology-proofreading.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/oncology-proofreading.docx",
+  });
+
+  const draftProofreadingAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "proofreading_draft_report",
+    storageKey: "proofreading/oncology-draft-review.md",
+    mimeType: "text/markdown",
+    createdBy: "user-3",
+    fileName: "oncology-draft-review.md",
+    sourceModule: "proofreading",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+
+  let manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(draftProofreadingAsset.id, "asset-2");
+  assert.equal(
+    manuscriptResponse.body.current_proofreading_asset_id,
+    undefined,
+  );
+
+  const finalProofreadingAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "final_proof_issue_report",
+    storageKey: "proofreading/oncology-final-issues.md",
+    mimeType: "text/markdown",
+    createdBy: "user-3",
+    fileName: "oncology-final-issues.md",
+    parentAssetId: draftProofreadingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+
+  manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(finalProofreadingAsset.id, "asset-3");
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.current_proofreading_asset_id,
+    "asset-3",
   );
 });

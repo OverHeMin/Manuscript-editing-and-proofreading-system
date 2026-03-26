@@ -50,7 +50,6 @@ function pointerFieldForAssetType(
   }
 
   if (
-    assetType === "proofreading_draft_report" ||
     assetType === "final_proof_issue_report" ||
     assetType === "final_proof_annotated_docx"
   ) {
