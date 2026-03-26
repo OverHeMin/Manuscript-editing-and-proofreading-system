@@ -1,10 +1,23 @@
 {
-  "name": "@medsys/api",
+  "name": "@medical/api",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "lint": "echo \"api lint\"",
-    "typecheck": "echo \"api typecheck\"",
-    "test": "echo \"api test\""
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx ./test/run-tests.ts",
+    "db:migrate": "tsx ./src/database/scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.6.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/pg": "^8.15.5",
+    "prisma": "^6.6.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
   }
 }
