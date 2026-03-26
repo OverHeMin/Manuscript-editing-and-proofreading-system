@@ -13,6 +13,7 @@ import type {
   LearningCandidateStatus,
   LearningCandidateType,
   LearningCandidate,
+  LearningRun,
   Manuscript,
   ManuscriptId,
   ManuscriptStatus,
@@ -23,10 +24,13 @@ import type {
   ModelRegistryEntry,
   ModelRateLimit,
   ModelRouteRequest,
+  ResolvedModel,
+  ModelSelectionLayer,
   ModuleTemplateId,
   ModuleType,
   ModuleTemplateStatus,
   ModuleTemplate,
+  TemplateKnowledgeBinding,
   TemplateFamily,
   TemplateKnowledgeBindingPurpose,
   TemplateFamilyId,
@@ -112,7 +116,8 @@ type _DocumentAssetType = Assert<
     | "screening_report"
     | "edited_docx"
     | "proofreading_draft_report"
-    | "proofread_annotated_docx"
+    | "final_proof_issue_report"
+    | "final_proof_annotated_docx"
     | "pdf_consistency_report"
     | "human_final_docx"
     | "learning_snapshot_attachment"
@@ -185,6 +190,9 @@ type _KnowledgeItemShapeBackward = Assert<
 >;
 type _KnowledgeKindNotAny = Assert<NotAny<KnowledgeItem["knowledge_kind"]>>;
 type _KnowledgeStatusNotAny = Assert<NotAny<KnowledgeItem["status"]>>;
+type _KnowledgeRoutingManuscriptTypes = Assert<
+  IsEqual<KnowledgeItemRouting["manuscript_types"], ManuscriptType[] | "any">
+>;
 
 // Learning
 type _LearningCandidateType = Assert<
@@ -229,6 +237,16 @@ type _LearningCandidateShapeBackward = Assert<
 >;
 type _LearningCandidateTypeNotAny = Assert<NotAny<LearningCandidate["type"]>>;
 type _LearningCandidateStatusNotAny = Assert<NotAny<LearningCandidate["status"]>>;
+
+type ExpectedLearningRun = {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+};
+
+type _LearningRunNotAny = Assert<NotAny<LearningRun>>;
+type _LearningRunShapeForward = Assert<IsAssignable<LearningRun, ExpectedLearningRun>>;
+type _LearningRunShapeBackward = Assert<IsAssignable<ExpectedLearningRun, LearningRun>>;
 
 // Templates
 type _ModuleTemplateStatus = Assert<
@@ -280,6 +298,24 @@ type _ModuleTemplateShapeBackward = Assert<
 >;
 type _ModuleTemplateStatusNotAny = Assert<NotAny<ModuleTemplate["status"]>>;
 
+type ExpectedTemplateKnowledgeBinding = {
+  id: string;
+  template_family_id: TemplateFamilyId;
+  module_template_id?: ModuleTemplateId;
+  section_key?: string;
+  knowledge_item_id: string;
+  purpose: TemplateKnowledgeBindingPurpose;
+  created_at?: string;
+};
+
+type _TemplateKnowledgeBindingNotAny = Assert<NotAny<TemplateKnowledgeBinding>>;
+type _TemplateKnowledgeBindingShapeForward = Assert<
+  IsAssignable<TemplateKnowledgeBinding, ExpectedTemplateKnowledgeBinding>
+>;
+type _TemplateKnowledgeBindingShapeBackward = Assert<
+  IsAssignable<ExpectedTemplateKnowledgeBinding, TemplateKnowledgeBinding>
+>;
+
 // Model routing (explicit assertions)
 type ExpectedModelRegistryEntry = {
   id: ModelRegistryId;
@@ -322,3 +358,13 @@ type _ModelRouteRequestShapeBackward = Assert<
   IsAssignable<ExpectedModelRouteRequest, ModelRouteRequest>
 >;
 type _ModelRouteModuleNotAny = Assert<NotAny<ModelRouteRequest["module"]>>;
+
+type ExpectedResolvedModel = {
+  layer: ModelSelectionLayer;
+  model: ModelRegistryEntry;
+  fallback?: ModelRegistryEntry;
+};
+
+type _ResolvedModelNotAny = Assert<NotAny<ResolvedModel>>;
+type _ResolvedModelShapeForward = Assert<IsAssignable<ResolvedModel, ExpectedResolvedModel>>;
+type _ResolvedModelShapeBackward = Assert<IsAssignable<ExpectedResolvedModel, ResolvedModel>>;

@@ -33,7 +33,8 @@ export type KnowledgeSourceType =
 export interface KnowledgeItemRouting {
   // "Precise retrieval" routing fields per docs/superpowers/specs/04-knowledge-learning-and-retrieval.md
   module_scope: ManuscriptModule | "any";
-  manuscript_types: ManuscriptType[];
+  // Allow truly generic knowledge without forcing an explicit enumeration.
+  manuscript_types: ManuscriptType[] | "any";
   sections?: string[];
   risk_tags?: string[];
   discipline_tags?: string[];
@@ -63,4 +64,3 @@ export interface KnowledgeItem {
   // Links to templates are modeled separately; keep an escape hatch for projection views.
   template_bindings?: string[];
 }
-

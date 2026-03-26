@@ -6,14 +6,15 @@ export type DocumentAssetStatus =
   | "superseded"
   | "archived";
 
-// Suggested asset types per docs/superpowers/specs/2026-03-25-medical-manuscript-system-v1-design.md
+// Asset types per docs/superpowers/specs/02-document-pipeline-and-asset-truth.md
 export type DocumentAssetType =
   | "original"
   | "normalized_docx"
   | "screening_report"
   | "edited_docx"
   | "proofreading_draft_report"
-  | "proofread_annotated_docx"
+  | "final_proof_issue_report"
+  | "final_proof_annotated_docx"
   | "pdf_consistency_report"
   | "human_final_docx"
   | "learning_snapshot_attachment";
@@ -46,4 +47,3 @@ export interface DocumentAsset {
   version_no: number;
   is_current: boolean;
 }
-
