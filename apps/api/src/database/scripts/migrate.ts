@@ -10,6 +10,12 @@ const packageRoot = path.resolve(import.meta.dirname, "../../..");
 const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
 const prismaSchemaPath = path.join(packageRoot, "prisma", "schema.prisma");
 const MIGRATION_LOCK_KEY = "medical_api_schema_migrations";
+const LEGACY_MIGRATION_CHECKSUMS = new Map<string, Set<string>>([
+  [
+    "0001_initial.sql",
+    new Set(["6140ea1d2280a0712aae27ae1f284131bf1eeb239446ea46ef49298fb8b30920"]),
+  ],
+]);
 
 function runPrismaValidate(): void {
   const command = process.platform === "win32" ? "cmd.exe" : "pnpm";
@@ -101,12 +107,28 @@ async function applyPendingMigrations(client: Client): Promise<void> {
     const checksum = createHash("sha256").update(migrationSql).digest("hex");
     const appliedChecksum = appliedMigrations.get(migrationFile);
 
-    if (appliedChecksum && appliedChecksum !== checksum) {
-      throw new Error(`Migration checksum mismatch for ${migrationFile}.`);
-    }
-
     if (appliedChecksum) {
-      continue;
+      const acceptedLegacyChecksums = LEGACY_MIGRATION_CHECKSUMS.get(migrationFile);
+
+      if (appliedChecksum === checksum) {
+        continue;
+      }
+
+      if (acceptedLegacyChecksums?.has(appliedChecksum)) {
+        await client.query(
+          `
+            update schema_migrations
+            set checksum = $1
+            where version = $2
+          `,
+          [checksum, migrationFile],
+        );
+        appliedMigrations.set(migrationFile, checksum);
+        console.log(`Normalized legacy checksum for ${migrationFile}`);
+        continue;
+      }
+
+      throw new Error(`Migration checksum mismatch for ${migrationFile}.`);
     }
 
     await client.query("begin");

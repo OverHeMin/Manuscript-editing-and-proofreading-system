@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withTestClient } from "./support/postgres.ts";
-import { getInitialMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
+import { Client } from "pg";
+import { withTemporaryDatabase, withTestClient } from "./support/postgres.ts";
+import { getMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
 
 const expectedTableColumns: Record<string, string[]> = {
   manuscripts: [
@@ -78,7 +79,7 @@ const expectedRoleKeys = [
   "user",
 ];
 
-test("database schema exposes the required core tables and columns", async () => {
+test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
     const tablesResult = await client.query<{
       table_name: string;
@@ -126,7 +127,7 @@ test("database schema exposes the required core tables and columns", async () =>
   });
 });
 
-test("database schema creates the required lookup indexes", async () => {
+test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
     const indexesResult = await client.query<{ indexname: string }>(
       `
@@ -147,7 +148,7 @@ test("database schema creates the required lookup indexes", async () => {
   });
 });
 
-test("migration seeds system roles and records migration bookkeeping", async () => {
+test("migration seeds system roles and records migration bookkeeping", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
     const rolesResult = await client.query<{ key: string }>(
       `
@@ -160,7 +161,7 @@ test("migration seeds system roles and records migration bookkeeping", async () 
       `
         select version, checksum
         from schema_migrations
-        where version = '0001_initial.sql'
+        order by version
       `,
     );
 
@@ -169,96 +170,116 @@ test("migration seeds system roles and records migration bookkeeping", async () 
       expectedRoleKeys,
       "System roles should be present after migration and seeding.",
     );
-    assert.equal(migrationResult.rowCount, 1, "Expected 0001_initial.sql in schema_migrations.");
-    assert.equal(
-      migrationResult.rows[0]?.checksum,
-      getInitialMigrationChecksum(),
-      "Expected stored migration checksum to match the SQL file.",
+    assert.deepEqual(
+      migrationResult.rows,
+      [
+        {
+          version: "0001_initial.sql",
+          checksum: getMigrationChecksum("0001_initial.sql"),
+        },
+        {
+          version: "0002_model_registry_version_guard.sql",
+          checksum: getMigrationChecksum("0002_model_registry_version_guard.sql"),
+        },
+      ],
+      "Expected migration bookkeeping for both applied database migrations.",
     );
   });
 });
 
-test("model_registry rejects duplicate unversioned models", async () => {
+test("model_registry rejects duplicate unversioned models", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
+    const modelName = `gpt-unversioned-regression-${process.pid}`;
+
     await client.query(
       `
         delete from model_registry
-        where model_name = 'gpt-unversioned-regression'
+        where model_name = $1
       `,
-    );
-
-    await client.query(
-      `
-        insert into model_registry (
-          provider,
-          model_name,
-          allowed_modules,
-          is_prod_allowed
-        )
-        values (
-          'openai',
-          'gpt-unversioned-regression',
-          array['screening']::module_type[],
-          false
-        )
-      `,
-    );
-
-    await assert.rejects(
-      () =>
-        client.query(
-          `
-            insert into model_registry (
-              provider,
-              model_name,
-              allowed_modules,
-              is_prod_allowed
-            )
-            values (
-              'openai',
-              'gpt-unversioned-regression',
-              array['screening']::module_type[],
-              true
-            )
-          `,
-        ),
-      (error: unknown) => {
-        assert.equal((error as { code?: string }).code, "23505");
-        return true;
-      },
-      "Expected duplicate logical unversioned models to be rejected.",
-    );
-  });
-});
-
-test("migrate detects checksum mismatches before applying anything new", async () => {
-  await withTestClient(async (client) => {
-    const originalChecksum = getInitialMigrationChecksum();
-
-    await client.query(
-      `
-        update schema_migrations
-        set checksum = 'tampered-checksum'
-        where version = '0001_initial.sql'
-      `,
+      [modelName],
     );
 
     try {
-      const result = runMigrateProcess();
-      assert.notEqual(result.status, 0, "Expected migrate to fail on checksum mismatch.");
-      assert.match(
-        `${result.stdout}\n${result.stderr}`,
-        /Migration checksum mismatch for 0001_initial\.sql/,
+      await client.query(
+        `
+          insert into model_registry (
+            provider,
+            model_name,
+            allowed_modules,
+            is_prod_allowed
+          )
+          values (
+            'openai',
+            $1,
+            array['screening']::module_type[],
+            false
+          )
+        `,
+        [modelName],
+      );
+
+      await assert.rejects(
+        () =>
+          client.query(
+            `
+              insert into model_registry (
+                provider,
+                model_name,
+                allowed_modules,
+                is_prod_allowed
+              )
+              values (
+                'openai',
+                $1,
+                array['screening']::module_type[],
+                true
+              )
+            `,
+            [modelName],
+          ),
+        (error: unknown) => {
+          assert.equal((error as { code?: string }).code, "23505");
+          return true;
+        },
+        "Expected duplicate logical unversioned models to be rejected.",
       );
     } finally {
       await client.query(
         `
-          update schema_migrations
-          set checksum = $1
-          where version = '0001_initial.sql'
+          delete from model_registry
+          where model_name = $1
         `,
-        [originalChecksum],
+        [modelName],
       );
     }
+  });
+});
+
+test("migrate detects checksum mismatches before applying anything new", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = 'tampered-checksum'
+          where version = '0001_initial.sql'
+        `,
+      );
+    } finally {
+      await client.end();
+    }
+
+    const result = runMigrateProcess(databaseUrl);
+    assert.notEqual(result.status, 0, "Expected migrate to fail on checksum mismatch.");
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /Migration checksum mismatch for 0001_initial\.sql/,
+    );
   });
 });

@@ -5,13 +5,6 @@ import { spawnSync } from "node:child_process";
 import { getDatabaseUrl } from "../../../src/database/config.ts";
 
 const packageRoot = path.resolve(import.meta.dirname, "../../..");
-const migrationFilePath = path.join(
-  packageRoot,
-  "src",
-  "database",
-  "migrations",
-  "0001_initial.sql",
-);
 const migrationScriptPath = path.join(
   packageRoot,
   "src",
@@ -20,12 +13,19 @@ const migrationScriptPath = path.join(
   "migrate.ts",
 );
 
-export function getInitialMigrationChecksum(): string {
+export function getMigrationChecksum(fileName: string): string {
+  const migrationFilePath = path.join(
+    packageRoot,
+    "src",
+    "database",
+    "migrations",
+    fileName,
+  );
   const migrationSql = readFileSync(migrationFilePath, "utf8");
   return createHash("sha256").update(migrationSql).digest("hex");
 }
 
-export function runMigrateProcess(): {
+export function runMigrateProcess(databaseUrl = getDatabaseUrl()): {
   status: number | null;
   stdout: string;
   stderr: string;
@@ -38,7 +38,7 @@ export function runMigrateProcess(): {
       encoding: "utf8",
       env: {
         ...process.env,
-        DATABASE_URL: getDatabaseUrl(),
+        DATABASE_URL: databaseUrl,
       },
     },
   );

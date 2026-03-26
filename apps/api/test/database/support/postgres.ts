@@ -1,4 +1,5 @@
 import process from "node:process";
+import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { getAdminDatabaseUrl, getDatabaseName, getDatabaseUrl } from "../../../src/database/config.ts";
 
@@ -75,5 +76,55 @@ export async function withTestClient<T>(
     return await run(client);
   } finally {
     await client.end();
+  }
+}
+
+function buildDatabaseUrl(databaseName: string): string {
+  const url = new URL(getDatabaseUrl());
+  url.pathname = `/${databaseName}`;
+  return url.toString();
+}
+
+async function dropDatabase(adminClient: Client, databaseName: string): Promise<void> {
+  const identifier = `"${databaseName.replaceAll('"', "\"\"")}"`;
+  await adminClient.query(
+    `
+      select pg_terminate_backend(pid)
+      from pg_stat_activity
+      where datname = $1
+        and pid <> pg_backend_pid()
+    `,
+    [databaseName],
+  );
+  await adminClient.query(`drop database if exists ${identifier}`);
+}
+
+export async function withTemporaryDatabase<T>(
+  run: (databaseUrl: string) => Promise<T>,
+): Promise<T> {
+  const databaseName = `${getDatabaseName()}_${process.pid}_${randomUUID().replaceAll("-", "")}`;
+  const databaseUrl = buildDatabaseUrl(databaseName);
+  const adminClient = new Client({ connectionString: getAdminDatabaseUrl() });
+  const identifier = `"${databaseName.replaceAll('"', "\"\"")}"`;
+
+  await adminClient.connect();
+
+  try {
+    await adminClient.query(`create database ${identifier}`);
+  } finally {
+    await adminClient.end();
+  }
+
+  try {
+    return await run(databaseUrl);
+  } finally {
+    const cleanupClient = new Client({ connectionString: getAdminDatabaseUrl() });
+    await cleanupClient.connect();
+
+    try {
+      await dropDatabase(cleanupClient, databaseName);
+    } finally {
+      await cleanupClient.end();
+    }
   }
 }
