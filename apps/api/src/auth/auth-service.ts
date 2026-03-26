@@ -1,6 +1,7 @@
 import type { AuditService } from "../audit/audit-service.ts";
 import type { PublicUser, UserRecord } from "../users/user.ts";
 import type { UserRepository } from "../users/user-repository.ts";
+import type { LoginAttemptStore } from "./login-attempt-store.ts";
 import type { AuthProviderName } from "./provider.ts";
 import type { PasswordHasher } from "./password-hasher.ts";
 import {
@@ -12,11 +13,6 @@ import {
 
 function normalizeUsername(username: string): string {
   return username.trim().toLowerCase();
-}
-
-interface LoginState {
-  failures: number;
-  lockedUntil?: number;
 }
 
 export interface LoginInput {
@@ -38,6 +34,7 @@ export interface AuthServiceOptions {
   userRepository: UserRepository;
   passwordHasher: PasswordHasher;
   auditService: AuditService;
+  loginAttemptStore: LoginAttemptStore;
   loginFailureLimit?: number;
   lockoutWindowMs?: number;
   sessionTtlMs?: number;
@@ -63,17 +60,18 @@ export class AuthService {
   private readonly userRepository: UserRepository;
   private readonly passwordHasher: PasswordHasher;
   private readonly auditService: AuditService;
+  private readonly loginAttemptStore: LoginAttemptStore;
   private readonly loginFailureLimit: number;
   private readonly lockoutWindowMs: number;
   private readonly sessionTtlMs: number;
   private readonly refreshIntervalMs: number;
   private readonly now: () => Date;
-  private readonly loginStates = new Map<string, LoginState>();
 
   constructor(options: AuthServiceOptions) {
     this.userRepository = options.userRepository;
     this.passwordHasher = options.passwordHasher;
     this.auditService = options.auditService;
+    this.loginAttemptStore = options.loginAttemptStore;
     this.loginFailureLimit = options.loginFailureLimit ?? DEFAULT_LOGIN_FAILURE_LIMIT;
     this.lockoutWindowMs = options.lockoutWindowMs ?? DEFAULT_LOCKOUT_WINDOW_MS;
     this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
@@ -82,12 +80,12 @@ export class AuthService {
     this.now = options.now ?? (() => new Date());
   }
 
-  async login(input: LoginInput): Promise<AuthSession> {
+  async login(input: LoginInput, provider: AuthProviderName): Promise<AuthSession> {
     const username = normalizeUsername(input.username);
-    const currentTime = this.now().getTime();
-    const currentState = this.getLoginState(username, currentTime);
+    const currentTime = this.now();
+    const currentState = await this.loginAttemptStore.get(username, currentTime);
 
-    if (currentState.lockedUntil && currentState.lockedUntil > currentTime) {
+    if (currentState.lockedUntil && currentState.lockedUntil > currentTime.getTime()) {
       throw new AccountLockedError();
     }
 
@@ -97,13 +95,18 @@ export class AuthService {
       : false;
 
     if (!user || !passwordMatches) {
-      this.recordFailure(username, currentState, currentTime);
+      await this.loginAttemptStore.recordFailure({
+        username,
+        attemptedAt: currentTime,
+        failureLimit: this.loginFailureLimit,
+        lockoutWindowMs: this.lockoutWindowMs,
+      });
       throw new InvalidCredentialsError();
     }
 
-    this.loginStates.delete(username);
+    await this.loginAttemptStore.clear(username, currentTime);
 
-    const session = this.buildSession(user);
+    const session = this.buildSession(user, provider);
     await this.auditService.record({
       actorId: user.id,
       roleKey: user.role,
@@ -112,7 +115,7 @@ export class AuthService {
       targetId: user.id,
       occurredAt: session.issuedAt,
       metadata: {
-        authProvider: "local",
+        authProvider: provider,
         username: user.username,
       },
       ipAddress: input.ipAddress,
@@ -122,11 +125,11 @@ export class AuthService {
     return session;
   }
 
-  private buildSession(user: UserRecord): AuthSession {
+  private buildSession(user: UserRecord, provider: AuthProviderName): AuthSession {
     const issuedAt = this.now();
 
     return {
-      provider: "local",
+      provider,
       user: {
         id: user.id,
         username: user.username,
@@ -137,31 +140,5 @@ export class AuthService {
       expiresAt: new Date(issuedAt.getTime() + this.sessionTtlMs).toISOString(),
       refreshAt: new Date(issuedAt.getTime() + this.refreshIntervalMs).toISOString(),
     };
-  }
-
-  private getLoginState(username: string, currentTime: number): LoginState {
-    const state = this.loginStates.get(username);
-
-    if (!state) {
-      return { failures: 0 };
-    }
-
-    if (state.lockedUntil && state.lockedUntil <= currentTime) {
-      this.loginStates.delete(username);
-      return { failures: 0 };
-    }
-
-    return state;
-  }
-
-  private recordFailure(username: string, state: LoginState, currentTime: number): void {
-    const nextFailures = state.failures + 1;
-    this.loginStates.set(username, {
-      failures: nextFailures,
-      lockedUntil:
-        nextFailures >= this.loginFailureLimit
-          ? currentTime + this.lockoutWindowMs
-          : state.lockedUntil,
-    });
   }
 }

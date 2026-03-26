@@ -12,6 +12,6 @@ export class LocalAuthenticationProvider implements AuthenticationProvider {
   constructor(private readonly authService: AuthService) {}
 
   authenticate(input: LoginInput): Promise<AuthSession> {
-    return this.authService.login(input);
+    return this.authService.login(input, this.name);
   }
 }
