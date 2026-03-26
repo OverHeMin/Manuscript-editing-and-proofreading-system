@@ -95,9 +95,10 @@ export class AuthService {
       : false;
 
     if (!user || !passwordMatches) {
+      const failureRecordedAt = this.now();
       await this.loginAttemptStore.recordFailure({
         username,
-        attemptedAt: currentTime,
+        recordedAt: failureRecordedAt,
         failureLimit: this.loginFailureLimit,
         lockoutWindowMs: this.lockoutWindowMs,
       });

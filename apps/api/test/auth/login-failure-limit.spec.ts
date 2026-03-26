@@ -105,6 +105,53 @@ class BarrierPasswordHasher implements PasswordHasher {
   }
 }
 
+class DeferredPasswordHasher implements PasswordHasher {
+  private readonly releases: Array<() => void> = [];
+  private readonly waiters: Promise<void>[] = [];
+  private verifyCount = 0;
+
+  constructor(
+    private readonly baseHasher: PasswordHasher,
+    private readonly deferredVerifyIndexes: number[],
+  ) {}
+
+  hash(password: string): Promise<string> {
+    return this.baseHasher.hash(password);
+  }
+
+  async verify(password: string, digest: string): Promise<boolean> {
+    this.verifyCount += 1;
+
+    if (this.deferredVerifyIndexes.includes(this.verifyCount)) {
+      const waiter = new Promise<void>((resolve) => {
+        this.releases.push(resolve);
+      });
+      this.waiters.push(waiter);
+      await waiter;
+    }
+
+    return this.baseHasher.verify(password, digest);
+  }
+
+  async waitForDeferredCount(expectedCount: number): Promise<void> {
+    while (this.waiters.length < expectedCount) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+  }
+
+  releaseNext(): void {
+    const release = this.releases.shift();
+
+    if (!release) {
+      throw new Error("No deferred verification is waiting for release.");
+    }
+
+    release();
+  }
+}
+
 test("concurrent failed logins accumulate and trigger lockout", async () => {
   const baseHasher = new BcryptPasswordHasher({ rounds: 4 });
   const userRepository = new InMemoryUserRepository();
@@ -154,6 +201,66 @@ test("concurrent failed logins accumulate and trigger lockout", async () => {
       authService.login({
         username: "proofreader.chen",
         password: "Correct-Password-456",
+      }, "local"),
+    AccountLockedError,
+  );
+});
+
+test("an older slow failure cannot shorten a newer lockout window", async () => {
+  const baseHasher = new BcryptPasswordHasher({ rounds: 4 });
+  const userRepository = new InMemoryUserRepository();
+  const auditService = new InMemoryAuditService();
+  const loginAttemptStore = new InMemoryLoginAttemptStore();
+  const passwordHasher = new DeferredPasswordHasher(baseHasher, [1]);
+
+  await userRepository.save({
+    id: "user-3",
+    username: "editor.zhao",
+    displayName: "Zhao Editor",
+    role: "editor",
+    passwordHash: await baseHasher.hash("Correct-Password-789"),
+  });
+
+  let now = new Date("2026-03-26T10:00:00.000Z").getTime();
+  const authService = new AuthService({
+    userRepository,
+    passwordHasher,
+    auditService,
+    loginAttemptStore,
+    loginFailureLimit: 1,
+    lockoutWindowMs: 60_000,
+    now: () => new Date(now),
+  });
+
+  const olderSlowFailure = authService.login({
+    username: "editor.zhao",
+    password: "Wrong-Password-789",
+  }, "local");
+
+  await passwordHasher.waitForDeferredCount(1);
+
+  now += 10_000;
+
+  await assert.rejects(
+    () =>
+      authService.login({
+        username: "editor.zhao",
+        password: "Wrong-Password-789",
+      }, "local"),
+    InvalidCredentialsError,
+  );
+
+  passwordHasher.releaseNext();
+
+  await assert.rejects(() => olderSlowFailure, InvalidCredentialsError);
+
+  now = new Date("2026-03-26T10:01:05.000Z").getTime();
+
+  await assert.rejects(
+    () =>
+      authService.login({
+        username: "editor.zhao",
+        password: "Correct-Password-789",
       }, "local"),
     AccountLockedError,
   );

@@ -10,7 +10,7 @@ export interface LoginAttemptState {
 
 export interface RecordLoginFailureInput {
   username: string;
-  attemptedAt: Date;
+  recordedAt: Date;
   failureLimit: number;
   lockoutWindowMs: number;
 }
@@ -35,14 +35,15 @@ export class InMemoryLoginAttemptStore implements LoginAttemptStore {
 
   async recordFailure(input: RecordLoginFailureInput): Promise<LoginAttemptState> {
     return this.withSerializedAccess(input.username, () => {
-      const currentState = this.readState(input.username, input.attemptedAt);
+      const currentState = this.readState(input.username, input.recordedAt);
       const nextFailures = currentState.failures + 1;
+      const nextLockedUntil =
+        nextFailures >= input.failureLimit
+          ? input.recordedAt.getTime() + input.lockoutWindowMs
+          : currentState.lockedUntil;
       const nextState: LoginAttemptStateRecord = {
         failures: nextFailures,
-        lockedUntil:
-          nextFailures >= input.failureLimit
-            ? input.attemptedAt.getTime() + input.lockoutWindowMs
-            : currentState.lockedUntil,
+        lockedUntil: Math.max(currentState.lockedUntil ?? 0, nextLockedUntil ?? 0) || undefined,
       };
 
       this.states.set(normalizeUsername(input.username), nextState);
