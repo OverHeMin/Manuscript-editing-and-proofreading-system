@@ -10,7 +10,9 @@ test("role-based permission guard allows only the expected workbench-sensitive a
 
   assert.equal(guard.can("admin", "permissions.manage"), true);
   assert.equal(guard.can("knowledge_reviewer", "knowledge.review"), true);
+  assert.equal(guard.can("admin", "templates.publish"), true);
   assert.equal(guard.can("editor", "workbench.editing"), true);
+  assert.equal(guard.can("editor", "templates.publish"), false);
   assert.equal(guard.can("editor", "permissions.manage"), false);
 
   assert.throws(

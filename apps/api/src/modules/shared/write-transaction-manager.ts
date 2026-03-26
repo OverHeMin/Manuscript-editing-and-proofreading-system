@@ -12,76 +12,75 @@ export interface WriteTransactionContext {
   jobRepository?: JobRepository;
 }
 
-export interface WriteTransactionManager {
+export interface SnapshotCapableRepository<TSnapshot = unknown> {
+  snapshotState(): TSnapshot;
+  restoreState(snapshot: TSnapshot): void;
+}
+
+export interface WriteTransactionManager<TContext = WriteTransactionContext> {
   withTransaction<TResult>(
-    work: (context: WriteTransactionContext) => Promise<TResult>,
+    work: (context: TContext) => Promise<TResult>,
   ): Promise<TResult>;
 }
 
-class DirectWriteTransactionManager implements WriteTransactionManager {
-  constructor(private readonly context: WriteTransactionContext) {}
+class DirectWriteTransactionManager<TContext>
+  implements WriteTransactionManager<TContext>
+{
+  constructor(private readonly context: TContext) {}
 
   withTransaction<TResult>(
-    work: (context: WriteTransactionContext) => Promise<TResult>,
+    work: (context: TContext) => Promise<TResult>,
   ): Promise<TResult> {
     return work(this.context);
   }
 }
 
-const inMemoryTransactionQueues = new WeakMap<
-  InMemoryManuscriptRepository,
-  Promise<void>
->();
-const inMemoryTransactionScope = new AsyncLocalStorage<
-  Set<InMemoryManuscriptRepository>
->();
+const inMemoryTransactionQueues = new WeakMap<object, Promise<void>>();
+const inMemoryTransactionScope = new AsyncLocalStorage<Set<object>>();
 
-class InMemoryWriteTransactionManager implements WriteTransactionManager {
+class InMemoryWriteTransactionManager<TContext>
+  implements WriteTransactionManager<TContext>
+{
   constructor(
-    private readonly context: {
-      manuscriptRepository: InMemoryManuscriptRepository;
-      assetRepository: InMemoryDocumentAssetRepository;
-      jobRepository?: InMemoryJobRepository;
+    private readonly options: {
+      queueKey: object;
+      context: TContext;
+      repositories: SnapshotCapableRepository[];
     },
   ) {}
 
   async withTransaction<TResult>(
-    work: (context: WriteTransactionContext) => Promise<TResult>,
+    work: (context: TContext) => Promise<TResult>,
   ): Promise<TResult> {
     const activeRepositories = inMemoryTransactionScope.getStore();
-    if (activeRepositories?.has(this.context.manuscriptRepository)) {
-      return work(this.context);
+    if (activeRepositories?.has(this.options.queueKey)) {
+      return work(this.options.context);
     }
 
     const previous =
-      inMemoryTransactionQueues.get(this.context.manuscriptRepository) ??
-      Promise.resolve();
+      inMemoryTransactionQueues.get(this.options.queueKey) ?? Promise.resolve();
     let releaseQueue!: () => void;
     const currentQueue = new Promise<void>((resolve) => {
       releaseQueue = resolve;
     });
-    inMemoryTransactionQueues.set(
-      this.context.manuscriptRepository,
-      currentQueue,
-    );
+    inMemoryTransactionQueues.set(this.options.queueKey, currentQueue);
 
     await previous;
 
-    const manuscriptSnapshot = this.context.manuscriptRepository.snapshotState();
-    const assetSnapshot = this.context.assetRepository.snapshotState();
-    const jobSnapshot = this.context.jobRepository?.snapshotState();
+    const snapshots = this.options.repositories.map((repository) => ({
+      repository,
+      snapshot: repository.snapshotState(),
+    }));
     const nextScope = new Set(activeRepositories ?? []);
-    nextScope.add(this.context.manuscriptRepository);
+    nextScope.add(this.options.queueKey);
 
     try {
       return await inMemoryTransactionScope.run(nextScope, () =>
-        work(this.context),
+        work(this.options.context),
       );
     } catch (error) {
-      this.context.manuscriptRepository.restoreState(manuscriptSnapshot);
-      this.context.assetRepository.restoreState(assetSnapshot);
-      if (jobSnapshot && this.context.jobRepository) {
-        this.context.jobRepository.restoreState(jobSnapshot);
+      for (const { repository, snapshot } of snapshots.reverse()) {
+        repository.restoreState(snapshot);
       }
       throw error;
     } finally {
@@ -123,11 +122,29 @@ export function createWriteTransactionManager(
     const jobRepository = context.jobRepository;
 
     return new InMemoryWriteTransactionManager({
-      manuscriptRepository,
-      assetRepository,
-      jobRepository,
+      queueKey: manuscriptRepository,
+      context,
+      repositories: [
+        manuscriptRepository,
+        assetRepository,
+        ...(jobRepository ? [jobRepository] : []),
+      ],
     });
   }
 
+  return new DirectWriteTransactionManager(context);
+}
+
+export function createScopedWriteTransactionManager<TContext>(options: {
+  queueKey: object;
+  context: TContext;
+  repositories: SnapshotCapableRepository[];
+}): WriteTransactionManager<TContext> {
+  return new InMemoryWriteTransactionManager(options);
+}
+
+export function createDirectWriteTransactionManager<TContext>(
+  context: TContext,
+): WriteTransactionManager<TContext> {
   return new DirectWriteTransactionManager(context);
 }

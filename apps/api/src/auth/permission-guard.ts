@@ -5,6 +5,7 @@ export const PERMISSIONS = [
   "workbench.editing",
   "workbench.proofreading",
   "knowledge.review",
+  "templates.publish",
   "permissions.manage",
   "manuscripts.submit",
 ] as const;
