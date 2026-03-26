@@ -9,6 +9,7 @@ import { seedRoles } from "../seeds/roles.seed.ts";
 const packageRoot = path.resolve(import.meta.dirname, "../../..");
 const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
 const prismaSchemaPath = path.join(packageRoot, "prisma", "schema.prisma");
+const MIGRATION_LOCK_KEY = "medical_api_schema_migrations";
 
 function runPrismaValidate(): void {
   const command = process.platform === "win32" ? "cmd.exe" : "pnpm";
@@ -79,6 +80,14 @@ async function ensureMigrationTable(client: Client): Promise<void> {
   `);
 }
 
+async function acquireMigrationLock(client: Client): Promise<void> {
+  await client.query("select pg_advisory_lock(hashtext($1))", [MIGRATION_LOCK_KEY]);
+}
+
+async function releaseMigrationLock(client: Client): Promise<void> {
+  await client.query("select pg_advisory_unlock(hashtext($1))", [MIGRATION_LOCK_KEY]);
+}
+
 async function applyPendingMigrations(client: Client): Promise<void> {
   const appliedResult = await client.query<{ version: string; checksum: string }>(
     "select version, checksum from schema_migrations",
@@ -128,10 +137,12 @@ async function main(): Promise<void> {
   await client.connect();
 
   try {
+    await acquireMigrationLock(client);
     await ensureMigrationTable(client);
     await applyPendingMigrations(client);
     await seedRoles(client);
   } finally {
+    await releaseMigrationLock(client).catch(() => undefined);
     await client.end();
   }
 }

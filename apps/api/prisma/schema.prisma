@@ -327,7 +327,7 @@ model ModelRegistry {
   id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   provider        ModelProvider
   modelName       String          @map("model_name") @db.Text
-  modelVersion    String?         @map("model_version") @db.Text
+  modelVersion    String          @default("") @map("model_version") @db.Text
   allowedModules  ModuleType[]    @default([]) @map("allowed_modules")
   isProdAllowed   Boolean         @default(false) @map("is_prod_allowed")
   costProfile     Json?           @map("cost_profile")

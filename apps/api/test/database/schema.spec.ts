@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { withTestClient } from "./support/postgres.ts";
+import { getInitialMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
 
 const expectedTableColumns: Record<string, string[]> = {
   manuscripts: [
@@ -66,6 +67,15 @@ const expectedIndexes = [
   "knowledge_items_manuscript_types_gin_idx",
   "knowledge_items_risk_tags_gin_idx",
   "module_templates_manuscript_type_module_idx",
+];
+
+const expectedRoleKeys = [
+  "admin",
+  "editor",
+  "knowledge_reviewer",
+  "proofreader",
+  "screener",
+  "user",
 ];
 
 test("database schema exposes the required core tables and columns", async () => {
@@ -134,5 +144,121 @@ test("database schema creates the required lookup indexes", async () => {
       [],
       `Missing lookup indexes: ${missingIndexes.join(", ") || "none"}`,
     );
+  });
+});
+
+test("migration seeds system roles and records migration bookkeeping", async () => {
+  await withTestClient(async (client) => {
+    const rolesResult = await client.query<{ key: string }>(
+      `
+        select key
+        from roles
+        order by key
+      `,
+    );
+    const migrationResult = await client.query<{ version: string; checksum: string }>(
+      `
+        select version, checksum
+        from schema_migrations
+        where version = '0001_initial.sql'
+      `,
+    );
+
+    assert.deepEqual(
+      rolesResult.rows.map((row) => row.key),
+      expectedRoleKeys,
+      "System roles should be present after migration and seeding.",
+    );
+    assert.equal(migrationResult.rowCount, 1, "Expected 0001_initial.sql in schema_migrations.");
+    assert.equal(
+      migrationResult.rows[0]?.checksum,
+      getInitialMigrationChecksum(),
+      "Expected stored migration checksum to match the SQL file.",
+    );
+  });
+});
+
+test("model_registry rejects duplicate unversioned models", async () => {
+  await withTestClient(async (client) => {
+    await client.query(
+      `
+        delete from model_registry
+        where model_name = 'gpt-unversioned-regression'
+      `,
+    );
+
+    await client.query(
+      `
+        insert into model_registry (
+          provider,
+          model_name,
+          allowed_modules,
+          is_prod_allowed
+        )
+        values (
+          'openai',
+          'gpt-unversioned-regression',
+          array['screening']::module_type[],
+          false
+        )
+      `,
+    );
+
+    await assert.rejects(
+      () =>
+        client.query(
+          `
+            insert into model_registry (
+              provider,
+              model_name,
+              allowed_modules,
+              is_prod_allowed
+            )
+            values (
+              'openai',
+              'gpt-unversioned-regression',
+              array['screening']::module_type[],
+              true
+            )
+          `,
+        ),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, "23505");
+        return true;
+      },
+      "Expected duplicate logical unversioned models to be rejected.",
+    );
+  });
+});
+
+test("migrate detects checksum mismatches before applying anything new", async () => {
+  await withTestClient(async (client) => {
+    const originalChecksum = getInitialMigrationChecksum();
+
+    await client.query(
+      `
+        update schema_migrations
+        set checksum = 'tampered-checksum'
+        where version = '0001_initial.sql'
+      `,
+    );
+
+    try {
+      const result = runMigrateProcess();
+      assert.notEqual(result.status, 0, "Expected migrate to fail on checksum mismatch.");
+      assert.match(
+        `${result.stdout}\n${result.stderr}`,
+        /Migration checksum mismatch for 0001_initial\.sql/,
+      );
+    } finally {
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = $1
+          where version = '0001_initial.sql'
+        `,
+        [originalChecksum],
+      );
+    }
   });
 });

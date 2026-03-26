@@ -265,17 +265,27 @@ create table if not exists document_assets (
     unique (manuscript_id, asset_type, version_no)
 );
 
-alter table manuscripts
-  add constraint manuscripts_current_screening_asset_id_fkey
-  foreign key (current_screening_asset_id) references document_assets(id) on delete set null;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'manuscripts_current_screening_asset_id_fkey') then
+    alter table manuscripts
+      add constraint manuscripts_current_screening_asset_id_fkey
+      foreign key (current_screening_asset_id) references document_assets(id) on delete set null;
+  end if;
 
-alter table manuscripts
-  add constraint manuscripts_current_editing_asset_id_fkey
-  foreign key (current_editing_asset_id) references document_assets(id) on delete set null;
+  if not exists (select 1 from pg_constraint where conname = 'manuscripts_current_editing_asset_id_fkey') then
+    alter table manuscripts
+      add constraint manuscripts_current_editing_asset_id_fkey
+      foreign key (current_editing_asset_id) references document_assets(id) on delete set null;
+  end if;
 
-alter table manuscripts
-  add constraint manuscripts_current_proofreading_asset_id_fkey
-  foreign key (current_proofreading_asset_id) references document_assets(id) on delete set null;
+  if not exists (select 1 from pg_constraint where conname = 'manuscripts_current_proofreading_asset_id_fkey') then
+    alter table manuscripts
+      add constraint manuscripts_current_proofreading_asset_id_fkey
+      foreign key (current_proofreading_asset_id) references document_assets(id) on delete set null;
+  end if;
+end
+$$;
 
 create table if not exists module_templates (
   id uuid primary key default gen_random_uuid(),
@@ -343,7 +353,7 @@ create table if not exists model_registry (
   id uuid primary key default gen_random_uuid(),
   provider model_provider not null,
   model_name text not null,
-  model_version text,
+  model_version text not null default '',
   allowed_modules module_type[] not null default '{}'::module_type[],
   is_prod_allowed boolean not null default false,
   cost_profile jsonb,
@@ -366,7 +376,7 @@ create table if not exists audit_logs (
   target_id text,
   manuscript_id uuid,
   job_id uuid,
-  metadata jsonb not null default '{}'::jsonb,
+  metadata jsonb,
   ip_address inet,
   user_agent text,
   created_at timestamptz not null default now(),
