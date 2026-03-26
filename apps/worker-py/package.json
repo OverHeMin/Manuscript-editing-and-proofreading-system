@@ -1,0 +1,10 @@
+{
+  "name": "@medical/worker-py",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "lint": "python -m compileall src",
+    "typecheck": "python -m compileall src",
+    "test": "python -m pytest tests/document_pipeline/test_normalize.py -v"
+  }
+}

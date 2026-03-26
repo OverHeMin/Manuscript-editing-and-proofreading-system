@@ -2,3 +2,5 @@
 worktrees/
 node_modules/
 **/node_modules/
+.pytest_cache/
+**/__pycache__/
