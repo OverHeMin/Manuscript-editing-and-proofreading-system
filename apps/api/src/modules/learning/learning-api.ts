@@ -1,0 +1,59 @@
+import type { RoleKey } from "../../users/roles.ts";
+import { LearningService } from "./learning-service.ts";
+import type {
+  CreateLearningCandidateInput,
+  CreateReviewedCaseSnapshotInput,
+} from "./learning-service.ts";
+import type {
+  LearningCandidateRecord,
+  ReviewedCaseSnapshotRecord,
+} from "./learning-record.ts";
+
+interface RouteResponse<T> {
+  status: number;
+  body: T;
+}
+
+export interface CreateLearningApiOptions {
+  learningService: LearningService;
+}
+
+export function createLearningApi(options: CreateLearningApiOptions) {
+  const { learningService } = options;
+
+  return {
+    async createReviewedCaseSnapshot(
+      input: CreateReviewedCaseSnapshotInput,
+    ): Promise<RouteResponse<ReviewedCaseSnapshotRecord>> {
+      return {
+        status: 201,
+        body: await learningService.createReviewedCaseSnapshot(input),
+      };
+    },
+
+    async createLearningCandidate(
+      input: CreateLearningCandidateInput,
+    ): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await learningService.createLearningCandidate(input),
+      };
+    },
+
+    async approveLearningCandidate({
+      candidateId,
+      actorRole,
+    }: {
+      candidateId: string;
+      actorRole: RoleKey;
+    }): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 200,
+        body: await learningService.approveLearningCandidate(
+          candidateId,
+          actorRole,
+        ),
+      };
+    },
+  };
+}

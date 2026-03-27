@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { ManuscriptRecord } from "../manuscripts/manuscript-record.ts";
 import {
+  createDirectWriteTransactionManager,
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
@@ -178,5 +179,24 @@ export class DocumentAssetService {
 
   listAssets(manuscriptId: string): Promise<DocumentAssetRecord[]> {
     return this.assetRepository.listByManuscriptId(manuscriptId);
+  }
+
+  createScoped(options: {
+    assetRepository: DocumentAssetRepository;
+    manuscriptRepository: ManuscriptRepository;
+    transactionManager?: WriteTransactionManager;
+  }): DocumentAssetService {
+    return new DocumentAssetService({
+      assetRepository: options.assetRepository,
+      manuscriptRepository: options.manuscriptRepository,
+      transactionManager:
+        options.transactionManager ??
+        createDirectWriteTransactionManager({
+          assetRepository: options.assetRepository,
+          manuscriptRepository: options.manuscriptRepository,
+        }),
+      createId: this.createId,
+      now: this.now,
+    });
   }
 }

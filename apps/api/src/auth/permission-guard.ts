@@ -5,6 +5,7 @@ export const PERMISSIONS = [
   "workbench.editing",
   "workbench.proofreading",
   "knowledge.review",
+  "learning.review",
   "templates.publish",
   "permissions.manage",
   "manuscripts.submit",
@@ -12,12 +13,16 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+const ADMIN_PERMISSIONS = PERMISSIONS.filter(
+  (permission) => permission !== "learning.review",
+);
+
 const PERMISSIONS_BY_ROLE: Record<RoleKey, readonly Permission[]> = {
-  admin: PERMISSIONS,
+  admin: ADMIN_PERMISSIONS,
   screener: ["workbench.screening"],
   editor: ["workbench.editing"],
   proofreader: ["workbench.proofreading"],
-  knowledge_reviewer: ["knowledge.review"],
+  knowledge_reviewer: ["knowledge.review", "learning.review"],
   user: ["manuscripts.submit"],
 };
 
