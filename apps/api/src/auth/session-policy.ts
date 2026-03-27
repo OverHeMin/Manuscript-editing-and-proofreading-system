@@ -1,0 +1,4 @@
+export const DEFAULT_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+export const DEFAULT_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+export const DEFAULT_LOGIN_FAILURE_LIMIT = 5;
+export const DEFAULT_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;

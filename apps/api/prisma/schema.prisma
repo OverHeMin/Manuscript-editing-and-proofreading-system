@@ -1,0 +1,364 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ManuscriptStatus {
+  draft
+  uploaded
+  processing
+  awaiting_review
+  completed
+  archived
+}
+
+enum ManuscriptType {
+  clinical_study
+  review
+  systematic_review
+  meta_analysis
+  case_report
+  guideline_interpretation
+  expert_consensus
+  diagnostic_study
+  basic_research
+  nursing_study
+  methodology_paper
+  brief_report
+  other
+}
+
+enum DocumentAssetStatus {
+  created
+  active
+  superseded
+  archived
+}
+
+enum DocumentAssetType {
+  original
+  normalized_docx
+  screening_report
+  edited_docx
+  proofreading_draft_report
+  final_proof_issue_report
+  final_proof_annotated_docx
+  pdf_consistency_report
+  human_final_docx
+  learning_snapshot_attachment
+}
+
+enum ManuscriptModule {
+  upload
+  screening
+  editing
+  proofreading
+  pdf_consistency
+  learning
+  manual
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum TemplateFamilyStatus {
+  draft
+  active
+  archived
+}
+
+enum ModuleType {
+  screening
+  editing
+  proofreading
+}
+
+enum ModuleTemplateStatus {
+  draft
+  published
+  archived
+}
+
+enum KnowledgeItemStatus {
+  draft
+  pending_review
+  approved
+  deprecated
+  superseded
+  archived
+}
+
+enum KnowledgeKind {
+  rule
+  case_pattern
+  checklist
+  prompt_snippet
+  reference
+  other
+}
+
+enum EvidenceLevel {
+  low
+  medium
+  high
+  expert_opinion
+  unknown
+}
+
+enum KnowledgeSourceType {
+  paper
+  guideline
+  book
+  website
+  internal_case
+  other
+}
+
+enum ManuscriptModuleScope {
+  any
+  upload
+  screening
+  editing
+  proofreading
+  pdf_consistency
+  learning
+  manual
+}
+
+enum LearningCandidateType {
+  rule_candidate
+  case_pattern_candidate
+  template_update_candidate
+  prompt_optimization_candidate
+  checklist_update_candidate
+}
+
+enum LearningCandidateStatus {
+  draft
+  pending_review
+  approved
+  rejected
+  archived
+}
+
+enum ModelProvider {
+  openai
+  anthropic
+  google
+  azure_openai
+  local
+  other
+}
+
+model Role {
+  key         String   @id @db.Text
+  description String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  auditLogs   AuditLog[]
+
+  @@map("roles")
+}
+
+model Manuscript {
+  id                         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                      String           @db.Text
+  manuscriptType             ManuscriptType   @map("manuscript_type")
+  status                     ManuscriptStatus @default(draft)
+  createdBy                  String           @map("created_by") @db.Text
+  currentScreeningAssetId    String?          @map("current_screening_asset_id") @db.Uuid
+  currentEditingAssetId      String?          @map("current_editing_asset_id") @db.Uuid
+  currentProofreadingAssetId String?          @map("current_proofreading_asset_id") @db.Uuid
+  currentTemplateFamilyId    String?          @map("current_template_family_id") @db.Uuid
+  createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  currentScreeningAsset      DocumentAsset?   @relation("CurrentScreeningAsset", fields: [currentScreeningAssetId], references: [id], onDelete: SetNull)
+  currentEditingAsset        DocumentAsset?   @relation("CurrentEditingAsset", fields: [currentEditingAssetId], references: [id], onDelete: SetNull)
+  currentProofreadingAsset   DocumentAsset?   @relation("CurrentProofreadingAsset", fields: [currentProofreadingAssetId], references: [id], onDelete: SetNull)
+  currentTemplateFamily      TemplateFamily?  @relation(fields: [currentTemplateFamilyId], references: [id], onDelete: SetNull)
+  documentAssets             DocumentAsset[]
+  jobs                       Job[]
+  auditLogs                  AuditLog[]
+
+  @@index([status], map: "manuscripts_status_idx")
+  @@map("manuscripts")
+}
+
+model DocumentAsset {
+  id                            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manuscriptId                  String              @map("manuscript_id") @db.Uuid
+  assetType                     DocumentAssetType   @map("asset_type")
+  status                        DocumentAssetStatus @default(created)
+  storageKey                    String              @map("storage_key") @db.Text
+  mimeType                      String              @map("mime_type") @db.Text
+  parentAssetId                 String?             @map("parent_asset_id") @db.Uuid
+  sourceModule                  ManuscriptModule    @map("source_module")
+  sourceJobId                   String?             @map("source_job_id") @db.Uuid
+  createdBy                     String              @map("created_by") @db.Text
+  versionNo                     Int                 @map("version_no")
+  isCurrent                     Boolean             @default(false) @map("is_current")
+  fileName                      String?             @map("file_name") @db.Text
+  createdAt                     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
+  manuscript                    Manuscript          @relation(fields: [manuscriptId], references: [id], onDelete: Cascade)
+  parentAsset                   DocumentAsset?      @relation("DocumentAssetLineage", fields: [parentAssetId], references: [id], onDelete: SetNull)
+  childAssets                   DocumentAsset[]     @relation("DocumentAssetLineage")
+  sourceJob                     Job?                @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
+  currentForScreening           Manuscript[]        @relation("CurrentScreeningAsset")
+  currentForEditing             Manuscript[]        @relation("CurrentEditingAsset")
+  currentForProofreading        Manuscript[]        @relation("CurrentProofreadingAsset")
+  learningCandidatesAsHumanFinal LearningCandidate[] @relation("HumanFinalAsset")
+  learningCandidatesAsAnnotated LearningCandidate[] @relation("AnnotatedAsset")
+  learningCandidatesAsSnapshot  LearningCandidate[] @relation("SnapshotAsset")
+
+  @@unique([manuscriptId, assetType, versionNo], map: "document_assets_manuscript_id_asset_type_version_no_key")
+  @@index([manuscriptId], map: "document_assets_manuscript_id_idx")
+  @@map("document_assets")
+}
+
+model Job {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manuscriptId  String?          @map("manuscript_id") @db.Uuid
+  module        ManuscriptModule
+  jobType       String           @map("job_type") @db.Text
+  status        JobStatus        @default(queued)
+  requestedBy   String           @map("requested_by") @db.Text
+  payload       Json?
+  attemptCount  Int              @default(0) @map("attempt_count")
+  startedAt     DateTime?        @map("started_at") @db.Timestamptz(6)
+  finishedAt    DateTime?        @map("finished_at") @db.Timestamptz(6)
+  errorMessage  String?          @map("error_message") @db.Text
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  manuscript    Manuscript?      @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  documentAssets DocumentAsset[]
+  auditLogs     AuditLog[]
+
+  @@map("jobs")
+}
+
+model TemplateFamily {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manuscriptType  ManuscriptType       @map("manuscript_type")
+  name            String               @db.Text
+  status          TemplateFamilyStatus @default(draft)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  moduleTemplates ModuleTemplate[]
+  manuscripts     Manuscript[]
+
+  @@unique([manuscriptType, name], map: "template_families_manuscript_type_name_key")
+  @@map("template_families")
+}
+
+model ModuleTemplate {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateFamilyId    String               @map("template_family_id") @db.Uuid
+  module              ModuleType
+  manuscriptType      ManuscriptType       @map("manuscript_type")
+  versionNo           Int                  @map("version_no")
+  status              ModuleTemplateStatus @default(draft)
+  prompt              String               @db.Text
+  checklist           String[]             @default([])
+  sectionRequirements String[]             @default([]) @map("section_requirements")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  templateFamily      TemplateFamily       @relation(fields: [templateFamilyId], references: [id], onDelete: Cascade)
+
+  @@unique([templateFamilyId, module, versionNo], map: "module_templates_template_family_id_module_version_no_key")
+  @@index([manuscriptType, module], map: "module_templates_manuscript_type_module_idx")
+  @@map("module_templates")
+}
+
+model KnowledgeItem {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String                @db.Text
+  canonicalText    String                @map("canonical_text") @db.Text
+  summary          String?               @db.Text
+  knowledgeKind    KnowledgeKind         @map("knowledge_kind")
+  status           KnowledgeItemStatus   @default(draft)
+  moduleScope      ManuscriptModuleScope @map("module_scope")
+  manuscriptTypes  ManuscriptType[]      @default([]) @map("manuscript_types")
+  sections         String[]              @default([])
+  riskTags         String[]              @default([]) @map("risk_tags")
+  disciplineTags   String[]              @default([]) @map("discipline_tags")
+  evidenceLevel    EvidenceLevel?        @map("evidence_level")
+  sourceType       KnowledgeSourceType?  @map("source_type")
+  sourceLink       String?               @map("source_link") @db.Text
+  effectiveAt      DateTime?             @map("effective_at") @db.Timestamptz(6)
+  expiresAt        DateTime?             @map("expires_at") @db.Timestamptz(6)
+  aliases          String[]              @default([])
+  templateBindings String[]              @default([]) @map("template_bindings")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, moduleScope], map: "knowledge_items_status_module_scope_idx")
+  @@map("knowledge_items")
+}
+
+model LearningCandidate {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type              LearningCandidateType
+  status            LearningCandidateStatus @default(draft)
+  module            ManuscriptModule
+  manuscriptType    ManuscriptType          @map("manuscript_type")
+  humanFinalAssetId String?                 @map("human_final_asset_id") @db.Uuid
+  annotatedAssetId  String?                 @map("annotated_asset_id") @db.Uuid
+  snapshotAssetId   String?                 @map("snapshot_asset_id") @db.Uuid
+  title             String?                 @db.Text
+  proposalText      String?                 @map("proposal_text") @db.Text
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  humanFinalAsset   DocumentAsset?          @relation("HumanFinalAsset", fields: [humanFinalAssetId], references: [id], onDelete: SetNull)
+  annotatedAsset    DocumentAsset?          @relation("AnnotatedAsset", fields: [annotatedAssetId], references: [id], onDelete: SetNull)
+  snapshotAsset     DocumentAsset?          @relation("SnapshotAsset", fields: [snapshotAssetId], references: [id], onDelete: SetNull)
+
+  @@map("learning_candidates")
+}
+
+model ModelRegistry {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider        ModelProvider
+  modelName       String          @map("model_name") @db.Text
+  modelVersion    String          @default("") @map("model_version") @db.Text
+  allowedModules  ModuleType[]    @default([]) @map("allowed_modules")
+  isProdAllowed   Boolean         @default(false) @map("is_prod_allowed")
+  costProfile     Json?           @map("cost_profile")
+  rateLimit       Json?           @map("rate_limit")
+  fallbackModelId String?         @map("fallback_model_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  fallbackModel   ModelRegistry?  @relation("ModelRegistryFallback", fields: [fallbackModelId], references: [id], onDelete: SetNull)
+  fallbackFor     ModelRegistry[] @relation("ModelRegistryFallback")
+
+  @@unique([provider, modelName, modelVersion], map: "model_registry_provider_model_name_model_version_key")
+  @@map("model_registry")
+}
+
+model AuditLog {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId      String?     @map("actor_id") @db.Text
+  roleKey      String?     @map("role_key") @db.Text
+  action       String      @db.Text
+  targetTable  String?     @map("target_table") @db.Text
+  targetId     String?     @map("target_id") @db.Text
+  manuscriptId String?     @map("manuscript_id") @db.Uuid
+  jobId        String?     @map("job_id") @db.Uuid
+  metadata     Json?
+  ipAddress    String?     @map("ip_address") @db.Inet
+  userAgent    String?     @map("user_agent") @db.Text
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  role         Role?       @relation(fields: [roleKey], references: [key], onDelete: SetNull)
+  manuscript   Manuscript? @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  job          Job?        @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
