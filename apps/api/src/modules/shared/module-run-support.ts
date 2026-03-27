@@ -43,6 +43,10 @@ export interface ModuleExecutionResult<TJob, TAsset> {
   template_id: string;
   knowledge_item_ids: string[];
   model_id: string;
+  execution_profile_id?: string;
+  prompt_template_id?: string;
+  skill_package_ids?: string[];
+  snapshot_id?: string;
 }
 
 export class ModuleTemplateFamilyNotConfiguredError extends Error {

@@ -6,17 +6,20 @@ import type { DocumentAssetRepository } from "../assets/document-asset-repositor
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
+import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
+import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
 import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import {
-  prepareModuleExecution,
   type ModuleExecutionResult,
 } from "../shared/module-run-support.ts";
+import { resolveGovernedModuleContext } from "../shared/governed-module-context-resolver.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 
 export interface RunEditingInput {
@@ -32,7 +35,10 @@ export interface EditingServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
   moduleTemplateRepository: ModuleTemplateRepository;
+  promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
+  executionGovernanceService: ExecutionGovernanceService;
+  executionTrackingService: ExecutionTrackingService;
   jobRepository: JobRepository;
   documentAssetService: DocumentAssetService;
   aiGatewayService: AiGatewayService;
@@ -51,7 +57,10 @@ export class EditingService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly jobRepository: JobRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
+  private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
+  private readonly executionGovernanceService: ExecutionGovernanceService;
+  private readonly executionTrackingService: ExecutionTrackingService;
   private readonly documentAssetService: DocumentAssetService;
   private readonly aiGatewayService: AiGatewayService;
   private readonly permissionGuard: PermissionGuard;
@@ -63,7 +72,10 @@ export class EditingService {
     this.manuscriptRepository = options.manuscriptRepository;
     this.jobRepository = options.jobRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
+    this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
+    this.executionGovernanceService = options.executionGovernanceService;
+    this.executionTrackingService = options.executionTrackingService;
     this.documentAssetService = options.documentAssetService;
     this.aiGatewayService = options.aiGatewayService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
@@ -89,7 +101,7 @@ export class EditingService {
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
-      const prepared = await prepareModuleExecution({
+      const governedContext = await resolveGovernedModuleContext({
         manuscriptId: input.manuscriptId,
         module: "editing",
         jobId,
@@ -97,6 +109,8 @@ export class EditingService {
         actorRole: input.actorRole,
         manuscriptRepository: this.manuscriptRepository,
         moduleTemplateRepository: this.moduleTemplateRepository,
+        executionGovernanceService: this.executionGovernanceService,
+        promptSkillRegistryRepository: this.promptSkillRegistryRepository,
         knowledgeRepository: this.knowledgeRepository,
         aiGatewayService: this.aiGatewayService,
       });
@@ -109,9 +123,14 @@ export class EditingService {
         status: "queued",
         requested_by: input.requestedBy,
         payload: {
-          templateId: prepared.template.id,
-          knowledgeItemIds: prepared.knowledgeItems.map((record) => record.id),
-          modelId: prepared.modelSelection.model.id,
+          templateId: governedContext.moduleTemplate.id,
+          executionProfileId: governedContext.executionProfile.id,
+          promptTemplateId: governedContext.promptTemplate.id,
+          skillPackageIds: governedContext.skillPackages.map((record) => record.id),
+          knowledgeItemIds: governedContext.knowledgeSelections.map(
+            (selection) => selection.knowledgeItem.id,
+          ),
+          modelId: governedContext.modelSelection.model.id,
           parentAssetId: input.parentAssetId,
         },
         attempt_count: 0,
@@ -134,12 +153,37 @@ export class EditingService {
         sourceModule: "editing",
         sourceJobId: jobId,
       });
+      const snapshot = await this.executionTrackingService.recordSnapshot({
+        manuscriptId: input.manuscriptId,
+        module: "editing",
+        jobId,
+        executionProfileId: governedContext.executionProfile.id,
+        moduleTemplateId: governedContext.moduleTemplate.id,
+        moduleTemplateVersionNo: governedContext.moduleTemplate.version_no,
+        promptTemplateId: governedContext.promptTemplate.id,
+        promptTemplateVersion: governedContext.promptTemplate.version,
+        skillPackageIds: governedContext.skillPackages.map((record) => record.id),
+        skillPackageVersions: governedContext.skillPackages.map(
+          (record) => record.version,
+        ),
+        modelId: governedContext.modelSelection.model.id,
+        modelVersion: governedContext.modelSelection.model.model_version,
+        createdAssetIds: [asset.id],
+        knowledgeHits: governedContext.knowledgeSelections.map((selection) => ({
+          knowledgeItemId: selection.knowledgeItem.id,
+          matchSourceId: selection.matchSourceId,
+          bindingRuleId: selection.bindingRuleId,
+          matchSource: selection.matchSource,
+          matchReasons: selection.matchReasons,
+        })),
+      });
 
       const completedJob: JobRecord = {
         ...queuedJob,
         status: "completed",
         payload: {
           ...queuedJob.payload,
+          snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "edited_docx",
         },
@@ -153,9 +197,15 @@ export class EditingService {
       return {
         job: completedJob,
         asset,
-        template_id: prepared.template.id,
-        knowledge_item_ids: prepared.knowledgeItems.map((record) => record.id),
-        model_id: prepared.modelSelection.model.id,
+        template_id: governedContext.moduleTemplate.id,
+        execution_profile_id: governedContext.executionProfile.id,
+        prompt_template_id: governedContext.promptTemplate.id,
+        skill_package_ids: governedContext.skillPackages.map((record) => record.id),
+        snapshot_id: snapshot.id,
+        knowledge_item_ids: governedContext.knowledgeSelections.map(
+          (selection) => selection.knowledgeItem.id,
+        ),
+        model_id: governedContext.modelSelection.model.id,
       };
     });
   }
