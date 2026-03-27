@@ -81,6 +81,13 @@ export class InMemoryPromptSkillRegistryRepository
       .map(cloneSkillPackage);
   }
 
+  async listSkillPackagesByName(name: string): Promise<SkillPackageRecord[]> {
+    return [...this.skillPackages.values()]
+      .filter((record) => record.name === name)
+      .sort(compareSkillPackages)
+      .map(cloneSkillPackage);
+  }
+
   async savePromptTemplate(record: PromptTemplateRecord): Promise<void> {
     this.promptTemplates.set(record.id, clonePromptTemplate(record));
   }
@@ -94,6 +101,16 @@ export class InMemoryPromptSkillRegistryRepository
 
   async listPromptTemplates(): Promise<PromptTemplateRecord[]> {
     return [...this.promptTemplates.values()]
+      .sort(comparePromptTemplates)
+      .map(clonePromptTemplate);
+  }
+
+  async listPromptTemplatesByNameAndModule(
+    name: string,
+    module: PromptTemplateRecord["module"],
+  ): Promise<PromptTemplateRecord[]> {
+    return [...this.promptTemplates.values()]
+      .filter((record) => record.name === name && record.module === module)
       .sort(comparePromptTemplates)
       .map(clonePromptTemplate);
   }

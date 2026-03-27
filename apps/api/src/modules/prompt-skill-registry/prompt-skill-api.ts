@@ -44,6 +44,22 @@ export function createPromptSkillRegistryApi(
       };
     },
 
+    async publishSkillPackage({
+      actorRole,
+      skillPackageId,
+    }: {
+      actorRole: RoleKey;
+      skillPackageId: string;
+    }): Promise<RouteResponse<SkillPackageRecord>> {
+      return {
+        status: 200,
+        body: await promptSkillRegistryService.publishSkillPackage(
+          actorRole,
+          skillPackageId,
+        ),
+      };
+    },
+
     async createPromptTemplate({
       actorRole,
       input,
@@ -64,6 +80,22 @@ export function createPromptSkillRegistryApi(
       return {
         status: 200,
         body: await promptSkillRegistryService.listPromptTemplates(),
+      };
+    },
+
+    async publishPromptTemplate({
+      actorRole,
+      promptTemplateId,
+    }: {
+      actorRole: RoleKey;
+      promptTemplateId: string;
+    }): Promise<RouteResponse<PromptTemplateRecord>> {
+      return {
+        status: 200,
+        body: await promptSkillRegistryService.publishPromptTemplate(
+          actorRole,
+          promptTemplateId,
+        ),
       };
     },
   };
