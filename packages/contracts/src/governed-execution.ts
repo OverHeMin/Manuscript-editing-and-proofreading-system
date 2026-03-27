@@ -39,9 +39,14 @@ export interface ModuleExecutionProfile {
   module: ModuleType;
   manuscript_type: ManuscriptType;
   template_family_id: TemplateFamilyId;
+  // IDs always point to immutable version records; the explicit version fields
+  // preserve human-readable provenance without a second lookup.
   module_template_id: ModuleTemplateId;
+  module_template_version_no: number;
   prompt_template_id: PromptTemplate["id"];
+  prompt_template_version: PromptTemplate["version"];
   skill_package_ids: SkillPackage["id"][];
+  skill_package_versions: SkillPackage["version"][];
   knowledge_binding_mode: KnowledgeBindingMode;
   status: ExecutionProfileStatus;
   version: number;
@@ -69,9 +74,13 @@ export interface ModuleExecutionSnapshot {
   job_id: string;
   execution_profile_id: ModuleExecutionProfileId;
   module_template_id: ModuleTemplateId;
+  module_template_version_no: number;
   prompt_template_id: PromptTemplate["id"];
+  prompt_template_version: PromptTemplate["version"];
   skill_package_ids: SkillPackage["id"][];
+  skill_package_versions: SkillPackage["version"][];
   model_id: string;
+  model_version?: string;
   knowledge_item_ids: KnowledgeItemId[];
   created_asset_ids: DocumentAssetId[];
   draft_snapshot_id?: ModuleExecutionSnapshotId;
@@ -82,6 +91,7 @@ export interface KnowledgeHitLog {
   id: KnowledgeHitLogId;
   snapshot_id: ModuleExecutionSnapshotId;
   knowledge_item_id: KnowledgeItemId;
+  match_source_id?: string;
   binding_rule_id?: KnowledgeBindingRuleId;
   match_source: KnowledgeHitMatchSource;
   match_reasons: string[];
