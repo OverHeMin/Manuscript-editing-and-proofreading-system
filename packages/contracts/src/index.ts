@@ -6,4 +6,5 @@ export * from "./learning.js";
 export * from "./model-routing.js";
 export * from "./document-pipeline.js";
 export * from "./agent-tooling.js";
+export * from "./governed-execution.js";
 

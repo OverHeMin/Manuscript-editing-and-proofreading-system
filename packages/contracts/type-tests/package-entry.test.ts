@@ -1,6 +1,8 @@
 import type {
   DocumentAssetType,
+  HumanFeedbackRecord,
   KnowledgeItemRouting,
+  ModuleExecutionProfile,
   LearningRun,
   ManuscriptType,
   ResolvedModel,
@@ -20,6 +22,8 @@ type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <
 type _LearningRunNotAny = Assert<NotAny<LearningRun>>;
 type _TemplateKnowledgeBindingNotAny = Assert<NotAny<TemplateKnowledgeBinding>>;
 type _ResolvedModelNotAny = Assert<NotAny<ResolvedModel>>;
+type _ModuleExecutionProfileNotAny = Assert<NotAny<ModuleExecutionProfile>>;
+type _HumanFeedbackRecordNotAny = Assert<NotAny<HumanFeedbackRecord>>;
 
 // Spot-check a couple of tricky unions via the package entry.
 type _DocumentAssetTypeHasFinalProofOutputs = Assert<
