@@ -30,6 +30,13 @@ export interface PreparedModuleExecution {
   modelSelection: ResolvedModelSelection;
 }
 
+export interface DynamicKnowledgeSelection {
+  knowledgeItem: KnowledgeRecord;
+  matchSource: "template_binding" | "dynamic_routing";
+  matchSourceId?: string;
+  matchReasons: string[];
+}
+
 export interface ModuleExecutionResult<TJob, TAsset> {
   job: TJob;
   asset: TAsset;
@@ -61,6 +68,59 @@ export class ModuleManuscriptNotFoundError extends Error {
   }
 }
 
+export function selectApprovedDynamicKnowledge(
+  input: {
+    manuscript: ManuscriptRecord;
+    module: TemplateModule;
+    template: ModuleTemplateRecord;
+    knowledgeItems: KnowledgeRecord[];
+  },
+): DynamicKnowledgeSelection[] {
+  return input.knowledgeItems
+    .filter((record) => record.status === "approved")
+    .filter(
+      (record) =>
+        record.routing.module_scope === "any" ||
+        record.routing.module_scope === input.module,
+    )
+    .filter(
+      (record) =>
+        record.routing.manuscript_types === "any" ||
+        record.routing.manuscript_types.includes(input.manuscript.manuscript_type),
+    )
+    .filter(
+      (record) =>
+        !record.template_bindings ||
+        record.template_bindings.length === 0 ||
+        record.template_bindings.includes(input.template.id),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((knowledgeItem) => {
+      const usesTemplateBinding =
+        !!knowledgeItem.template_bindings &&
+        knowledgeItem.template_bindings.length > 0 &&
+        knowledgeItem.template_bindings.includes(input.template.id);
+
+      return {
+        knowledgeItem,
+        matchSource: usesTemplateBinding ? "template_binding" : "dynamic_routing",
+        matchSourceId: usesTemplateBinding ? `template:${input.template.id}` : undefined,
+        matchReasons: [
+          ...(knowledgeItem.routing.module_scope === input.module ? ["module"] : []),
+          ...(
+            knowledgeItem.routing.manuscript_types !== "any" &&
+            knowledgeItem.routing.manuscript_types.includes(
+              input.manuscript.manuscript_type,
+            )
+              ? ["manuscript_type"]
+              : []
+          ),
+          ...(usesTemplateBinding ? ["template_binding"] : ["dynamic_routing"]),
+        ],
+      };
+    });
+}
+
 export async function prepareModuleExecution(
   input: PrepareModuleExecutionInput,
 ): Promise<PreparedModuleExecution> {
@@ -90,25 +150,12 @@ export async function prepareModuleExecution(
     );
   }
 
-  const knowledgeItems = (await input.knowledgeRepository.list())
-    .filter((record) => record.status === "approved")
-    .filter(
-      (record) =>
-        record.routing.module_scope === "any" ||
-        record.routing.module_scope === input.module,
-    )
-    .filter(
-      (record) =>
-        record.routing.manuscript_types === "any" ||
-        record.routing.manuscript_types.includes(manuscript.manuscript_type),
-    )
-    .filter(
-      (record) =>
-        !record.template_bindings ||
-        record.template_bindings.length === 0 ||
-        record.template_bindings.includes(template.id),
-    )
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const knowledgeItems = selectApprovedDynamicKnowledge({
+    manuscript,
+    module: input.module,
+    template,
+    knowledgeItems: await input.knowledgeRepository.list(),
+  }).map((selection) => selection.knowledgeItem);
 
   const modelSelection = await input.aiGatewayService.resolveModelSelection({
     module: input.module,
