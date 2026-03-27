@@ -489,6 +489,12 @@ pnpm monorepo
 - `doc -> docx`
 - 文档解析
 - 类型识别
+- `Agent Runtime Registry` 最小骨架
+- `Tool / MCP Gateway` 最小骨架
+- `Prompt / Skill Registry` 最小骨架
+- `Agent Tooling Admin` 管理员专用入口骨架
+- `Sandbox Profile / Evaluation Suite` 最小骨架
+- 知识工作台与 Agent 层接口预留
 
 ### Phase 3
 
@@ -512,3 +518,4 @@ pnpm monorepo
 - 规则引擎
 - 审计
 - 测试与内测
+- benchmark / canary / 安全审计 / 故障复盘能力补齐

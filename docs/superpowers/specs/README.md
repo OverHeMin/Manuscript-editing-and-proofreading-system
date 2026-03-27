@@ -15,6 +15,7 @@
 - [08-security-auth-and-compliance.md](C:\医学稿件处理系统V1\docs\superpowers\specs\08-security-auth-and-compliance.md)
 - [09-platform-ops-migration-and-maintenance.md](C:\医学稿件处理系统V1\docs\superpowers\specs\09-platform-ops-migration-and-maintenance.md)
 - [10-integrations-flags-and-extensibility.md](C:\医学稿件处理系统V1\docs\superpowers\specs\10-integrations-flags-and-extensibility.md)
+- [11-agent-runtime-and-portable-skills.md](C:\医学稿件处理系统V1\docs\superpowers\specs\11-agent-runtime-and-portable-skills.md)
 
 ## 说明
 

@@ -519,10 +519,65 @@ V1 只支持这条最窄但高价值的链：
 - `OCRmyPDF + PaddleOCR + GROBID`
 - 负责抽取与结构识别
 
-### 11.3 结论
+`Evaluation Workbench`
+
+- 模板评测集维护
+- 模型对比
+- Prompt / Skill 回归验证
+
+`Observability / Incident Desk`
+
+- 运行日志
+- 指标与告警
+- 故障复盘
+
+`Release Guard`
+
+- smoke test
+- benchmark 基线对比
+- canary 上线巡检
+- 发布证据归档
+
+### 11.3 管理员专用 Agent 能力层
+
+系统应把当前协作中最有价值的能力产品化为后台治理层：
+
+`superpowers`
+
+- 沉淀为方案与治理层
+- 管理 spec、plan、决策日志、验收标准、评测集与发布门槛
+
+`gstack`
+
+- 沉淀为验证与发布保障层
+- 管理浏览器 QA、视觉验证、benchmark、canary、上线前后核验
+
+`subagent`
+
+- 沉淀为受控执行编排层
+- 仅在 plan 已批准时执行边界内任务、批量任务、离线实验与评测任务
+
+`skills`
+
+- 沉淀为可版本化能力包
+- 统一纳入 `Prompt / Skill Registry`
+- 允许按类别管理文档处理、知识导入、QA、安全、发布、恢复等能力
+
+### 11.4 暴露边界
+
+这套 Agent 能力层固定为：
+
+- 只给 `admin` 与维护者使用
+- 这里的“维护者”指部署与代码维护身份，不新增应用内业务角色
+- 不开放给 `screener`、`editor`、`proofreader`、`knowledge_reviewer`
+- 业务用户只接触正式业务模块，不直接接触 Runtime、实验台、Skill Registry 与发布控制台
+- 后续若要局部下放，也必须通过受限入口，而不是开放完整控制台
+
+### 11.5 结论
 
 - 作为总控分工，`gstack + superpowers + subagent` 已经够用，也是更稳的安排
 - 真正需要补的是功能服务层，不是新的同级决策角色
+- 额外需要补的是管理员专用治理与验证能力层，而不是让业务角色直接操作复杂 Agent 工具
 
 ## 12. GitHub 工具与平台接入建议
 
@@ -544,13 +599,36 @@ V1 只支持这条最窄但高价值的链：
 - `python-mammoth`
 - `GROBID`
 
-### 12.3 Phase 2+ 再引入
+### 12.3 建议一并纳入规划的能力型工具 / 技能
+
+以下内容即使不在 V1 全量落地，也建议在方案中明确预留能力位：
+
+- `browse / playwright` 类能力：浏览器自动化验证、截图取证、流程回归
+- `benchmark / canary` 类能力：性能基线、上线后巡检、异常发现
+- `review / investigate / qa` 类能力：问题排查、回归验证、质量把关
+- `cso / security-best-practices / threat-model` 类能力：安全审计、权限风险检查、合规补强
+- `guard / careful / freeze` 类能力：高风险操作防护、范围冻结、最小变更控制
+- `medical-docx-pipeline` 类能力：Word 主链路、批注输出、格式校验
+- `medical-knowledge-ingest` 类能力：医学知识导入、审核、绑定与治理
+- `medical-manuscript-domain` 类能力：稿件类型判断、模块风险守卫、领域规则对齐
+
+这些能力应进入 `Agent Tooling Admin` 与 `Prompt / Skill Registry` 的体系化治理，不应继续散落为个人环境能力。
+
+### 12.4 Phase 2+ 再引入
 
 - `unstructured`
 - `Qdrant`
 - `Meilisearch`
 - `Open XML SDK`
 - `docx4j`
+
+### 12.5 外部 Agent 工具集成原则
+
+- `deepagents`、`Yuxi`、`self-improving-agent`、`agency-agents` 等项目可借鉴或接入，但不应以个人电脑本地 Skill 目录或 CLI 环境作为系统运行依赖
+- 系统应通过 `Agent Runtime Adapter`、`Tool / MCP Gateway`、`Prompt / Skill Registry` 统一接入外部 Agent 能力
+- `autoresearch` 类项目仅用于离线实验，不进入生产稿件主链路
+- `superpowers / gstack / subagent / skills` 也应作为系统资产化能力层规划在内
+- 详细设计见 `docs/superpowers/specs/11-agent-runtime-and-portable-skills.md`
 
 ## 13. Spec 目录结构建议
 
@@ -1898,6 +1976,22 @@ V1 主交付仍是 Web。
 - LLM provider
 - 对象存储
 - Redis
+
+### 38.4 外部 Agent 项目分类
+
+建议将外部 Agent 项目进一步分成：
+
+- 可集成为系统能力的运行时参考
+- 可转化为系统资产的 Prompt / Skill 参考
+- 仅用于离线实验的研究型项目
+
+其中：
+
+- `deepagents` 适合作为运行时参考
+- `Yuxi` 适合作为知识库工作台与 Agent 运营后台参考
+- `self-improving-agent` 适合作为学习治理参考
+- `agency-agents` 适合作为角色卡与 Skill 包参考
+- `autoresearch` 只适合作为离线实验室参考
 
 ## 39. 测试、评测与验收体系
 
