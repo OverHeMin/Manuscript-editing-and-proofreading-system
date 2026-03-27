@@ -1,7 +1,19 @@
 import type {
   DocumentNormalizationExecutionViewModel,
   DocumentPreviewViewModel,
+  DocumentPreviewSessionViewModel,
 } from "./types.ts";
+
+export interface DocumentPreviewHttpClient {
+  request<TResponse>(input: {
+    method: "GET" | "POST";
+    url: string;
+    body?: unknown;
+  }): Promise<{
+    status: number;
+    body: TResponse;
+  }>;
+}
 
 export function mapNormalizationPlanToPreview(
   result: DocumentNormalizationExecutionViewModel,
@@ -20,4 +32,27 @@ export function mapNormalizationPlanToPreview(
       result.normalized_asset?.storage_key ?? result.plan.derived_asset.storage_key,
     warnings: [...result.preview.warnings],
   };
+}
+
+export function createPreviewSession(
+  client: DocumentPreviewHttpClient,
+  input: {
+    manuscriptId: string;
+    assetId: string;
+    actorRole: string;
+    previewStatus?: "ready" | "pending_normalization";
+    comments?: Array<{
+      id: string;
+      author?: string;
+      body: string;
+      anchor_text?: string;
+      created_at?: string;
+    }>;
+  },
+) {
+  return client.request<DocumentPreviewSessionViewModel>({
+    method: "POST",
+    url: "/api/v1/document-pipeline/preview-session",
+    body: input,
+  });
 }

@@ -7,6 +7,11 @@ import {
   DocumentIntakeService,
   type DocumentIntakeResult,
 } from "./document-intake-service.ts";
+import {
+  DocumentPreviewService,
+  type CreateDocumentPreviewSessionInput,
+} from "./document-preview-service.ts";
+import type { OnlyOfficeViewSession } from "./onlyoffice-session-service.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -16,6 +21,7 @@ interface RouteResponse<T> {
 export interface CreateDocumentPipelineApiOptions {
   workflowService: DocumentNormalizationWorkflowService;
   intakeService?: DocumentIntakeService;
+  previewService?: DocumentPreviewService;
 }
 
 export function createDocumentPipelineApi(
@@ -24,6 +30,7 @@ export function createDocumentPipelineApi(
   const { workflowService } = options;
   const intakeService =
     options.intakeService ?? new DocumentIntakeService({ workflowService });
+  const previewService = options.previewService;
 
   return {
     async intakeUploadedManuscript(
@@ -45,6 +52,19 @@ export function createDocumentPipelineApi(
       return {
         status: result.normalized_asset ? 201 : 202,
         body: result,
+      };
+    },
+
+    async createPreviewSession(
+      input: CreateDocumentPreviewSessionInput,
+    ): Promise<RouteResponse<OnlyOfficeViewSession>> {
+      if (!previewService) {
+        throw new Error("Document preview service is not configured.");
+      }
+
+      return {
+        status: 200,
+        body: await previewService.createPreviewSession(input),
       };
     },
   };
