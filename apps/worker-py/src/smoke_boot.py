@@ -27,6 +27,7 @@ def main() -> None:
     assert_tcp_reachable("Postgres", require_env("DATABASE_URL"))
     assert_tcp_reachable("Redis", require_env("REDIS_URL"))
     assert_tcp_reachable("Object storage", require_env("OBJECT_STORAGE_ENDPOINT"))
+    require_optional_value("LIBREOFFICE_BINARY")
 
     _ = build_normalization_job(
         {
@@ -71,6 +72,12 @@ def require_env(name: str) -> str:
         raise RuntimeError(f"Missing required environment variable: {name}")
 
     return value
+
+
+def require_optional_value(name: str) -> None:
+    value = os.environ.get(name)
+    if value is not None and not value.strip():
+        raise RuntimeError(f"Environment variable {name} must not be empty when set")
 
 
 def assert_tcp_reachable(label: str, endpoint: str) -> None:
