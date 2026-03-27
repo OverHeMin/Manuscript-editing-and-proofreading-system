@@ -9,10 +9,8 @@ export type ToolGatewayScope =
   | "assets"
   | "knowledge"
   | "templates"
-  | "audit"
-  | "learning"
-  | "model_routing";
-export type SkillPackageScope = "admin_only" | "experiment_only";
+  | "audit";
+export type SkillPackageScope = "admin_only";
 export type RegistryAssetStatus = "draft" | "published" | "archived";
 
 export interface AgentRuntime {
@@ -30,11 +28,10 @@ export interface ToolGatewayTool {
   name: string;
   scope: ToolGatewayScope;
   access_mode: ToolGatewayAccessMode;
-  description?: string;
   admin_only: true;
 }
 
-export interface PromptTemplateAsset {
+export interface PromptTemplate {
   id: string;
   name: string;
   version: string;
@@ -51,6 +48,5 @@ export interface SkillPackage {
   scope: SkillPackageScope;
   status: RegistryAssetStatus;
   applies_to_modules: ModuleType[];
-  manuscript_types?: ManuscriptType[] | "any";
   dependency_tools?: string[];
 }
