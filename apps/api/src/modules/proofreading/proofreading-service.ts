@@ -6,7 +6,10 @@ import type { DocumentAssetRepository } from "../assets/document-asset-repositor
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
-import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
+import type {
+  ExecutionTrackingService,
+  RecordKnowledgeHitInput,
+} from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
@@ -383,13 +386,7 @@ interface ResolvedProofreadingGovernedContext {
   promptTemplateVersion: string;
   skillPackageIds: string[];
   skillPackageVersions: string[];
-  knowledgeHits: Array<{
-    knowledgeItemId: string;
-    matchSourceId?: string;
-    bindingRuleId?: string;
-    matchSource: "binding_rule" | "template_binding" | "dynamic_routing";
-    matchReasons: string[];
-  }>;
+  knowledgeHits: RecordKnowledgeHitInput[];
   modelId: string;
   modelVersion?: string;
   draftSnapshotId?: string;
