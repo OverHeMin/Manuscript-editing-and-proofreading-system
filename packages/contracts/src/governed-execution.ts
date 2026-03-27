@@ -34,19 +34,34 @@ export type HumanFeedbackType =
   | "manual_correction"
   | "manual_rejection";
 
+export interface ModuleTemplateVersionRef {
+  id: ModuleTemplateId;
+  version_no: number;
+}
+
+export interface PromptTemplateVersionRef {
+  id: PromptTemplate["id"];
+  version: PromptTemplate["version"];
+}
+
+export interface SkillPackageVersionRef {
+  id: SkillPackage["id"];
+  version: SkillPackage["version"];
+}
+
+export interface ModelVersionRef {
+  id: string;
+  version?: string;
+}
+
 export interface ModuleExecutionProfile {
   id: ModuleExecutionProfileId;
   module: ModuleType;
   manuscript_type: ManuscriptType;
   template_family_id: TemplateFamilyId;
-  // IDs always point to immutable version records; the explicit version fields
-  // preserve human-readable provenance without a second lookup.
-  module_template_id: ModuleTemplateId;
-  module_template_version_no: number;
-  prompt_template_id: PromptTemplate["id"];
-  prompt_template_version: PromptTemplate["version"];
-  skill_package_ids: SkillPackage["id"][];
-  skill_package_versions: SkillPackage["version"][];
+  module_template: ModuleTemplateVersionRef;
+  prompt_template: PromptTemplateVersionRef;
+  skill_packages: SkillPackageVersionRef[];
   knowledge_binding_mode: KnowledgeBindingMode;
   status: ExecutionProfileStatus;
   version: number;
@@ -73,32 +88,61 @@ export interface ModuleExecutionSnapshot {
   module: ModuleType;
   job_id: string;
   execution_profile_id: ModuleExecutionProfileId;
-  module_template_id: ModuleTemplateId;
-  module_template_version_no: number;
-  prompt_template_id: PromptTemplate["id"];
-  prompt_template_version: PromptTemplate["version"];
-  skill_package_ids: SkillPackage["id"][];
-  skill_package_versions: SkillPackage["version"][];
-  model_id: string;
-  model_version?: string;
+  module_template: ModuleTemplateVersionRef;
+  prompt_template: PromptTemplateVersionRef;
+  skill_packages: SkillPackageVersionRef[];
+  model: ModelVersionRef;
   knowledge_item_ids: KnowledgeItemId[];
   created_asset_ids: DocumentAssetId[];
   draft_snapshot_id?: ModuleExecutionSnapshotId;
   created_at: string;
 }
 
-export interface KnowledgeHitLog {
+export type KnowledgeHitSourceRef =
+  | {
+      type: "binding_rule";
+      id: KnowledgeBindingRuleId;
+    }
+  | {
+      type: "template_binding";
+      id: string;
+    }
+  | {
+      type: "dynamic_routing";
+      id?: string;
+    }
+  | {
+      type: "draft_snapshot_reuse";
+      id: ModuleExecutionSnapshotId;
+    };
+
+interface KnowledgeHitLogBase {
   id: KnowledgeHitLogId;
   snapshot_id: ModuleExecutionSnapshotId;
   knowledge_item_id: KnowledgeItemId;
-  match_source_id?: string;
-  binding_rule_id?: KnowledgeBindingRuleId;
-  match_source: KnowledgeHitMatchSource;
   match_reasons: string[];
   score?: number;
   section?: string;
   created_at: string;
 }
+
+export type KnowledgeHitLog =
+  | (KnowledgeHitLogBase & {
+      match_source: "binding_rule";
+      source: Extract<KnowledgeHitSourceRef, { type: "binding_rule" }>;
+    })
+  | (KnowledgeHitLogBase & {
+      match_source: "template_binding";
+      source: Extract<KnowledgeHitSourceRef, { type: "template_binding" }>;
+    })
+  | (KnowledgeHitLogBase & {
+      match_source: "dynamic_routing";
+      source: Extract<KnowledgeHitSourceRef, { type: "dynamic_routing" }>;
+    })
+  | (KnowledgeHitLogBase & {
+      match_source: "draft_snapshot_reuse";
+      source: Extract<KnowledgeHitSourceRef, { type: "draft_snapshot_reuse" }>;
+    });
 
 export interface HumanFeedbackRecord {
   id: HumanFeedbackRecordId;
