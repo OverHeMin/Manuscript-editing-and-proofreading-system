@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "echo \"api lint\"",
+    "lint": "pnpm run typecheck",
+    "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",
     "db:migrate": "tsx ./src/database/scripts/migrate.ts"

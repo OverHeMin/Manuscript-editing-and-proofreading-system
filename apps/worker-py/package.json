@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "lint": "python -m compileall src",
+    "smoke:boot": "python -m src.smoke_boot",
     "typecheck": "python -m compileall src",
-    "test": "python -m pytest tests/document_pipeline/test_normalize.py -v"
+    "test": "python -m pytest tests -v"
   }
 }
