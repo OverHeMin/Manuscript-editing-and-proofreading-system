@@ -11,6 +11,11 @@ import {
   DocumentPreviewService,
   type CreateDocumentPreviewSessionInput,
 } from "./document-preview-service.ts";
+import {
+  DocumentExportService,
+  type DocumentExportResult,
+  type ExportCurrentDocumentAssetInput,
+} from "./document-export-service.ts";
 import type { OnlyOfficeViewSession } from "./onlyoffice-session-service.ts";
 
 interface RouteResponse<T> {
@@ -22,6 +27,7 @@ export interface CreateDocumentPipelineApiOptions {
   workflowService: DocumentNormalizationWorkflowService;
   intakeService?: DocumentIntakeService;
   previewService?: DocumentPreviewService;
+  exportService?: DocumentExportService;
 }
 
 export function createDocumentPipelineApi(
@@ -31,6 +37,7 @@ export function createDocumentPipelineApi(
   const intakeService =
     options.intakeService ?? new DocumentIntakeService({ workflowService });
   const previewService = options.previewService;
+  const exportService = options.exportService;
 
   return {
     async intakeUploadedManuscript(
@@ -65,6 +72,19 @@ export function createDocumentPipelineApi(
       return {
         status: 200,
         body: await previewService.createPreviewSession(input),
+      };
+    },
+
+    async exportCurrentAsset(
+      input: ExportCurrentDocumentAssetInput,
+    ): Promise<RouteResponse<DocumentExportResult>> {
+      if (!exportService) {
+        throw new Error("Document export service is not configured.");
+      }
+
+      return {
+        status: 200,
+        body: await exportService.exportCurrentAsset(input),
       };
     },
   };

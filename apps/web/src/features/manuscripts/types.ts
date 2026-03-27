@@ -81,6 +81,16 @@ export interface DocumentAssetViewModel {
   updated_at: string;
 }
 
+export interface DocumentAssetExportViewModel {
+  manuscript_id: string;
+  asset: DocumentAssetViewModel;
+  download: {
+    storage_key: string;
+    file_name?: string;
+    mime_type: string;
+  };
+}
+
 export interface JobViewModel {
   id: string;
   manuscript_id?: string;
