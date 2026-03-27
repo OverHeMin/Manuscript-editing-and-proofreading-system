@@ -21,7 +21,7 @@ export interface AgentRuntime {
   adapter: AgentRuntimeAdapter;
   status: AgentRuntimeStatus;
   sandbox_profile_id?: string;
-  allowed_modules: ModuleType[];
+  allowed_modules: string[];
   admin_only: true;
 }
 
