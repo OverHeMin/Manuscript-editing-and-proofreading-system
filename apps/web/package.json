@@ -2,9 +2,14 @@
   "name": "@medsys/web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "lint": "echo \"web lint\"",
-    "typecheck": "echo \"web typecheck\"",
-    "test": "echo \"web test\""
+    "lint": "pnpm run typecheck",
+    "smoke:boot": "node ./scripts/smoke-boot.mjs",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "node ./scripts/smoke-boot.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
