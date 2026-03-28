@@ -36,6 +36,22 @@ export function createAgentRuntimeApi(options: CreateAgentRuntimeApiOptions) {
       };
     },
 
+    async listRuntimesByModule({
+      module,
+      activeOnly,
+    }: {
+      module: AgentRuntimeRecord["allowed_modules"][number];
+      activeOnly?: boolean;
+    }): Promise<RouteResponse<AgentRuntimeRecord[]>> {
+      return {
+        status: 200,
+        body: await agentRuntimeService.listRuntimesByModule(
+          module,
+          activeOnly,
+        ),
+      };
+    },
+
     async getRuntime({
       runtimeId,
     }: {
@@ -57,6 +73,19 @@ export function createAgentRuntimeApi(options: CreateAgentRuntimeApiOptions) {
       return {
         status: 200,
         body: await agentRuntimeService.archiveRuntime(runtimeId, actorRole),
+      };
+    },
+
+    async publishRuntime({
+      actorRole,
+      runtimeId,
+    }: {
+      actorRole: RoleKey;
+      runtimeId: string;
+    }): Promise<RouteResponse<AgentRuntimeRecord>> {
+      return {
+        status: 200,
+        body: await agentRuntimeService.publishRuntime(runtimeId, actorRole),
       };
     },
   };

@@ -6,9 +6,14 @@ import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in
 import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
 
 function createToolGatewayHarness() {
+  const ids = ["tool-1", "tool-2", "tool-3"];
   const service = new ToolGatewayService({
     repository: new InMemoryToolGatewayRepository(),
-    createId: () => "tool-1",
+    createId: () => {
+      const value = ids.shift();
+      assert.ok(value, "Expected a tool gateway id to be available.");
+      return value;
+    },
   });
   const api = createToolGatewayApi({
     toolGatewayService: service,
@@ -45,4 +50,45 @@ test("tool gateway stores admin-approved read/write policies and defaults to rea
   assert.equal(created.status, 201);
   assert.equal(created.body.access_mode, "read");
   assert.equal(created.body.admin_only, true);
+});
+
+test("tool gateway supports phase 4 verification scopes and can filter tools by scope", async () => {
+  const { api } = createToolGatewayHarness();
+
+  await api.createTool({
+    actorRole: "admin",
+    input: {
+      name: "gstack.browser-qa",
+      scope: "browser_qa",
+    },
+  });
+  await api.createTool({
+    actorRole: "admin",
+    input: {
+      name: "gstack.benchmark",
+      scope: "benchmark",
+      accessMode: "write",
+    },
+  });
+  await api.createTool({
+    actorRole: "admin",
+    input: {
+      name: "gstack.deploy-verify",
+      scope: "deploy_verification",
+    },
+  });
+
+  const browserTools = await api.listToolsByScope({
+    scope: "browser_qa",
+  });
+  const releaseTools = await api.listToolsByScope({
+    scope: "deploy_verification",
+  });
+
+  assert.deepEqual(browserTools.body.map((record) => record.name), [
+    "gstack.browser-qa",
+  ]);
+  assert.deepEqual(releaseTools.body.map((record) => record.name), [
+    "gstack.deploy-verify",
+  ]);
 });

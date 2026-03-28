@@ -35,4 +35,13 @@ export class InMemoryToolGatewayRepository implements ToolGatewayRepository {
   async list(): Promise<ToolGatewayToolRecord[]> {
     return [...this.records.values()].sort(compareRecords).map(cloneRecord);
   }
+
+  async listByScope(
+    scope: ToolGatewayToolRecord["scope"],
+  ): Promise<ToolGatewayToolRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.scope === scope)
+      .sort(compareRecords)
+      .map(cloneRecord);
+  }
 }

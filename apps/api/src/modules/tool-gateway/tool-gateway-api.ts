@@ -39,6 +39,17 @@ export function createToolGatewayApi(options: CreateToolGatewayApiOptions) {
       };
     },
 
+    async listToolsByScope({
+      scope,
+    }: {
+      scope: ToolGatewayToolRecord["scope"];
+    }): Promise<RouteResponse<ToolGatewayToolRecord[]>> {
+      return {
+        status: 200,
+        body: await toolGatewayService.listToolsByScope(scope),
+      };
+    },
+
     async getTool({
       toolId,
     }: {

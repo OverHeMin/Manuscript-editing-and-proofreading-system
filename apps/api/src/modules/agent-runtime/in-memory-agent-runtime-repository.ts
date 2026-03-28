@@ -38,4 +38,15 @@ export class InMemoryAgentRuntimeRepository implements AgentRuntimeRepository {
   async list(): Promise<AgentRuntimeRecord[]> {
     return [...this.records.values()].sort(compareRecords).map(cloneRecord);
   }
+
+  async listByModule(
+    module: AgentRuntimeRecord["allowed_modules"][number],
+    activeOnly = false,
+  ): Promise<AgentRuntimeRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.allowed_modules.includes(module))
+      .filter((record) => !activeOnly || record.status === "active")
+      .sort(compareRecords)
+      .map(cloneRecord);
+  }
 }

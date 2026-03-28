@@ -61,6 +61,12 @@ export class ToolGatewayService {
     return this.repository.list();
   }
 
+  listToolsByScope(
+    scope: ToolGatewayToolRecord["scope"],
+  ): Promise<ToolGatewayToolRecord[]> {
+    return this.repository.listByScope(scope);
+  }
+
   async getTool(toolId: string): Promise<ToolGatewayToolRecord> {
     return this.requireTool(toolId);
   }
