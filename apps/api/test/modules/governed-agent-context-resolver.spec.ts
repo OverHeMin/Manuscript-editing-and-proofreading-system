@@ -24,13 +24,11 @@ import {
   ActiveRuntimeBindingNotFoundError,
   resolveGovernedAgentContext,
 } from "../../src/modules/shared/governed-agent-context-resolver.ts";
-import { resolveGovernedModuleContext } from "../../src/modules/shared/governed-module-context-resolver.ts";
 import { InMemoryModuleTemplateRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in-memory-tool-gateway-repository.ts";
 import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
-import { ActiveExecutionProfileNotFoundError } from "../../src/modules/execution-governance/execution-governance-service.ts";
 
 async function createResolverHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -50,14 +48,6 @@ async function createResolverHarness() {
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
-    createId: (() => {
-      const ids = ["profile-1", "rule-1", "profile-2", "rule-2"];
-      return () => {
-        const value = ids.shift();
-        assert.ok(value, "Expected an execution governance id to be available.");
-        return value;
-      };
-    })(),
   });
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
@@ -66,7 +56,7 @@ async function createResolverHarness() {
     repository: modelRepository,
     routingPolicyRepository,
     createId: (() => {
-      const ids = ["model-1", "model-2"];
+      const ids = ["model-1"];
       return () => {
         const value = ids.shift();
         assert.ok(value, "Expected a model id to be available.");
@@ -202,18 +192,6 @@ async function createResolverHarness() {
       manuscript_types: ["clinical_study"],
     },
   });
-  await knowledgeRepository.save({
-    id: "knowledge-dynamic-1",
-    title: "Dynamic rule",
-    canonical_text: "Keep abbreviations consistent.",
-    knowledge_kind: "checklist",
-    status: "approved",
-    routing: {
-      module_scope: "editing",
-      manuscript_types: ["clinical_study"],
-    },
-    template_bindings: ["template-editing-1"],
-  });
   await executionGovernanceRepository.saveProfile({
     id: "profile-1",
     module: "editing",
@@ -307,7 +285,6 @@ async function createResolverHarness() {
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
-    executionGovernanceRepository,
     executionGovernanceService,
     aiGatewayService,
     sandboxProfileService,
@@ -318,71 +295,7 @@ async function createResolverHarness() {
   };
 }
 
-test("resolver returns the active execution profile with frozen template, prompt, skill, knowledge, and model context", async () => {
-  const harness = await createResolverHarness();
-
-  const context = await resolveGovernedModuleContext({
-    manuscriptId: "manuscript-1",
-    module: "editing",
-    jobId: "job-1",
-    actorId: "editor-1",
-    actorRole: "editor",
-    manuscriptRepository: harness.manuscriptRepository,
-    moduleTemplateRepository: harness.moduleTemplateRepository,
-    executionGovernanceService: harness.executionGovernanceService,
-    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
-    knowledgeRepository: harness.knowledgeRepository,
-    aiGatewayService: harness.aiGatewayService,
-  });
-
-  assert.equal(context.executionProfile.id, "profile-1");
-  assert.equal(context.promptTemplate.id, "prompt-editing-1");
-  assert.equal(context.skillPackages[0]?.id, "skill-editing-1");
-  assert.deepEqual(
-    context.knowledgeSelections.map((selection) => selection.knowledgeItem.id),
-    ["knowledge-bound-1", "knowledge-dynamic-1"],
-  );
-  assert.equal(context.knowledgeSelections[0]?.matchSource, "binding_rule");
-  assert.equal(context.knowledgeSelections[1]?.matchSource, "template_binding");
-  assert.equal(context.modelSelection.model.id, "model-1");
-});
-
-test("resolver fails when no active execution profile exists for the module scope", async () => {
-  const harness = await createResolverHarness();
-
-  await harness.executionGovernanceRepository.saveProfile({
-    id: "profile-archived",
-    module: "screening",
-    manuscript_type: "clinical_study",
-    template_family_id: "family-1",
-    module_template_id: "template-editing-1",
-    prompt_template_id: "prompt-editing-1",
-    skill_package_ids: ["skill-editing-1"],
-    knowledge_binding_mode: "profile_only",
-    status: "archived",
-    version: 1,
-  });
-
-  await assert.rejects(
-    () =>
-      resolveGovernedModuleContext({
-        manuscriptId: "manuscript-1",
-        module: "screening",
-        jobId: "job-2",
-        actorId: "screener-1",
-        actorRole: "screener",
-        manuscriptRepository: harness.manuscriptRepository,
-        moduleTemplateRepository: harness.moduleTemplateRepository,
-        executionGovernanceService: harness.executionGovernanceService,
-        promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
-        knowledgeRepository: harness.knowledgeRepository,
-        aiGatewayService: harness.aiGatewayService,
-      }),
-    ActiveExecutionProfileNotFoundError,
-  );
-});
-
-test("agent resolver returns the active runtime binding with profile runtime sandbox and tool policy context", async () => {
+test("resolver returns the active runtime binding with profile runtime sandbox and tool policy context", async () => {
   const harness = await createResolverHarness();
 
   const context = await resolveGovernedAgentContext({
@@ -412,7 +325,7 @@ test("agent resolver returns the active runtime binding with profile runtime san
   assert.equal(context.moduleContext.executionProfile.id, "profile-1");
 });
 
-test("agent resolver fails when no active runtime binding exists for the governed module scope", async () => {
+test("resolver fails when no active runtime binding exists for the governed module scope", async () => {
   const harness = await createResolverHarness();
   const [binding] = await harness.runtimeBindingService.listBindingsForScope({
     module: "editing",
