@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type {
+  CreateGovernedLearningCandidateInput,
+} from "../learning/learning-service.ts";
+import type {
+  LearningCandidateRecord,
+  LearningCandidateType,
+} from "../learning/learning-record.ts";
 import type { ReviewedCaseSnapshotRepository } from "../learning/learning-repository.ts";
 import type { ToolGatewayRepository } from "../tool-gateway/tool-gateway-repository.ts";
 import {
@@ -118,13 +125,31 @@ export interface FinalizeEvaluationRunResult {
   recommendation: EvaluationPromotionRecommendationRecord;
 }
 
+export interface CreateLearningCandidateFromEvaluationInput {
+  runId: string;
+  evidencePackId: string;
+  reviewedCaseSnapshotId: string;
+  candidateType: LearningCandidateType;
+  title?: string;
+  proposalText?: string;
+  createdBy: string;
+  sourceAssetId: string;
+}
+
 interface VerificationOpsWriteContext {
   repository: VerificationOpsRepository;
+}
+
+export interface VerificationOpsLearningService {
+  createGovernedLearningCandidate(
+    input: CreateGovernedLearningCandidateInput,
+  ): Promise<LearningCandidateRecord>;
 }
 
 export interface VerificationOpsServiceOptions {
   repository: VerificationOpsRepository;
   reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
+  learningService?: VerificationOpsLearningService;
   toolGatewayRepository: ToolGatewayRepository;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<VerificationOpsWriteContext>;
@@ -209,9 +234,53 @@ export class ReleaseCheckProfileDependencyError extends Error {
   }
 }
 
+export class EvaluationEvidencePackNotFoundError extends Error {
+  constructor(evidencePackId: string) {
+    super(`Evaluation evidence pack ${evidencePackId} was not found.`);
+    this.name = "EvaluationEvidencePackNotFoundError";
+  }
+}
+
+export class EvaluationEvidencePackRunMismatchError extends Error {
+  constructor(evidencePackId: string, runId: string) {
+    super(
+      `Evaluation evidence pack ${evidencePackId} does not belong to run ${runId}.`,
+    );
+    this.name = "EvaluationEvidencePackRunMismatchError";
+  }
+}
+
+export class EvaluationLearningCandidateTypeError extends Error {
+  constructor(candidateType: string) {
+    super(
+      `Evaluation learning handoff does not support candidate type ${candidateType}.`,
+    );
+    this.name = "EvaluationLearningCandidateTypeError";
+  }
+}
+
+export class EvaluationLearningSnapshotNotInRunError extends Error {
+  constructor(runId: string, snapshotId: string) {
+    super(
+      `Reviewed case snapshot ${snapshotId} was not part of evaluation run ${runId}.`,
+    );
+    this.name = "EvaluationLearningSnapshotNotInRunError";
+  }
+}
+
+export class VerificationOpsLearningServiceRequiredError extends Error {
+  constructor() {
+    super(
+      "Learning service is required for evaluation-to-learning handoff operations.",
+    );
+    this.name = "VerificationOpsLearningServiceRequiredError";
+  }
+}
+
 export class VerificationOpsService {
   private readonly repository: VerificationOpsRepository;
   private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
+  private readonly learningService?: VerificationOpsLearningService;
   private readonly toolGatewayRepository: ToolGatewayRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<VerificationOpsWriteContext>;
@@ -221,6 +290,7 @@ export class VerificationOpsService {
   constructor(options: VerificationOpsServiceOptions) {
     this.repository = options.repository;
     this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
+    this.learningService = options.learningService;
     this.toolGatewayRepository = options.toolGatewayRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -698,6 +768,67 @@ export class VerificationOpsService {
     };
   }
 
+  async createLearningCandidateFromEvaluation(
+    actorRole: RoleKey,
+    input: CreateLearningCandidateFromEvaluationInput,
+  ): Promise<LearningCandidateRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    if (!this.learningService) {
+      throw new VerificationOpsLearningServiceRequiredError();
+    }
+
+    assertSupportedEvaluationCandidateType(input.candidateType);
+
+    const run = await this.requireEvaluationRun(input.runId);
+    const evidencePack = await this.requireEvaluationEvidencePack(
+      input.evidencePackId,
+    );
+    if (evidencePack.experiment_run_id !== run.id) {
+      throw new EvaluationEvidencePackRunMismatchError(
+        input.evidencePackId,
+        run.id,
+      );
+    }
+
+    if (!run.sample_set_id) {
+      throw new EvaluationLearningSnapshotNotInRunError(
+        run.id,
+        input.reviewedCaseSnapshotId,
+      );
+    }
+
+    const sampleItems = await this.repository.listEvaluationSampleSetItemsBySampleSetId(
+      run.sample_set_id,
+    );
+    const isSnapshotInRun = sampleItems.some(
+      (item) =>
+        item.reviewed_case_snapshot_id === input.reviewedCaseSnapshotId,
+    );
+    if (!isSnapshotInRun) {
+      throw new EvaluationLearningSnapshotNotInRunError(
+        run.id,
+        input.reviewedCaseSnapshotId,
+      );
+    }
+
+    return this.learningService.createGovernedLearningCandidate({
+      snapshotId: input.reviewedCaseSnapshotId,
+      type: input.candidateType,
+      title: input.title,
+      proposalText: input.proposalText,
+      requestedBy: input.createdBy,
+      deidentificationPassed: true,
+      governedSource: {
+        sourceKind: "evaluation_experiment",
+        reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+        evaluationRunId: run.id,
+        evidencePackId: evidencePack.id,
+        sourceAssetId: input.sourceAssetId,
+      },
+    });
+  }
+
   private async assertToolsExist(toolIds: string[]): Promise<void> {
     for (const toolId of toolIds) {
       const tool = await this.toolGatewayRepository.findById(toolId);
@@ -762,6 +893,19 @@ export class VerificationOpsService {
     return record;
   }
 
+  private async requireEvaluationEvidencePack(
+    evidencePackId: string,
+  ): Promise<EvaluationEvidencePackRecord> {
+    const record = await this.repository.findEvaluationEvidencePackById(
+      evidencePackId,
+    );
+    if (!record) {
+      throw new EvaluationEvidencePackNotFoundError(evidencePackId);
+    }
+
+    return record;
+  }
+
   private async requireEvaluationSampleSet(
     sampleSetId: string,
   ): Promise<EvaluationSampleSetRecord> {
@@ -809,6 +953,19 @@ function flattenOptionalTags(
 ): string[] | undefined {
   const allTags = items.flatMap((item) => item.risk_tags ?? []);
   return allTags.length > 0 ? dedupePreserveOrder(allTags) : undefined;
+}
+
+function assertSupportedEvaluationCandidateType(
+  candidateType: LearningCandidateType,
+): void {
+  const supportedTypes = new Set<LearningCandidateType>([
+    "prompt_optimization_candidate",
+    "skill_update_candidate",
+    "template_update_candidate",
+  ]);
+  if (!supportedTypes.has(candidateType)) {
+    throw new EvaluationLearningCandidateTypeError(candidateType);
+  }
 }
 
 export {

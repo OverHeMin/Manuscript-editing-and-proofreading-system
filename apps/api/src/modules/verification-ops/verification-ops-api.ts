@@ -1,4 +1,5 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type { LearningCandidateRecord } from "../learning/learning-record.ts";
 import type {
   EvaluationRunRecord,
   EvaluationRunItemRecord,
@@ -11,6 +12,7 @@ import type {
 } from "./verification-ops-record.ts";
 import type {
   CompleteEvaluationRunInput,
+  CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
   CreateEvaluationSampleSetInput,
   CreateEvaluationSuiteInput,
@@ -274,6 +276,22 @@ export function createVerificationOpsApi(
       return {
         status: 200,
         body: await verificationOpsService.finalizeEvaluationRun(actorRole, runId),
+      };
+    },
+
+    async createLearningCandidateFromEvaluation({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: CreateLearningCandidateFromEvaluationInput;
+    }): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.createLearningCandidateFromEvaluation(
+          actorRole,
+          input,
+        ),
       };
     },
 

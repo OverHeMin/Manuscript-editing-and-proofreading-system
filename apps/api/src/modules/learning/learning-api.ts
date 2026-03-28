@@ -1,6 +1,7 @@
 import type { RoleKey } from "../../users/roles.ts";
 import { LearningService } from "./learning-service.ts";
 import type {
+  CreateGovernedLearningCandidateInput,
   CreateLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
 } from "./learning-service.ts";
@@ -37,6 +38,15 @@ export function createLearningApi(options: CreateLearningApiOptions) {
       return {
         status: 201,
         body: await learningService.createLearningCandidate(input),
+      };
+    },
+
+    async createGovernedLearningCandidate(
+      input: CreateGovernedLearningCandidateInput,
+    ): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await learningService.createGovernedLearningCandidate(input),
       };
     },
 

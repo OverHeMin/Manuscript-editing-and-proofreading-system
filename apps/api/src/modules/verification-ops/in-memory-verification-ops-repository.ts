@@ -299,6 +299,13 @@ export class InMemoryVerificationOpsRepository
     this.evidencePacks.set(record.id, cloneEvaluationEvidencePack(record));
   }
 
+  async findEvaluationEvidencePackById(
+    id: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined> {
+    const record = this.evidencePacks.get(id);
+    return record ? cloneEvaluationEvidencePack(record) : undefined;
+  }
+
   async saveEvaluationPromotionRecommendation(
     record: EvaluationPromotionRecommendationRecord,
   ): Promise<void> {

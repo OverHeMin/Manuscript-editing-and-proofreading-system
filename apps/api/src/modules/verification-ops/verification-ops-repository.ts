@@ -54,6 +54,9 @@ export interface VerificationOpsRepository {
   listEvaluationRunItemsByRunId(runId: string): Promise<EvaluationRunItemRecord[]>;
 
   saveEvaluationEvidencePack(record: EvaluationEvidencePackRecord): Promise<void>;
+  findEvaluationEvidencePackById(
+    id: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined>;
   saveEvaluationPromotionRecommendation(
     record: EvaluationPromotionRecommendationRecord,
   ): Promise<void>;

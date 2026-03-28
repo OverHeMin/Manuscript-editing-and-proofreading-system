@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
+import { InMemoryReviewedCaseSnapshotRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import {
+  FeedbackGovernanceReviewedSnapshotNotFoundError,
   FeedbackSourceAssetNotFoundError,
   HumanFeedbackRecordNotFoundError,
   HumanFeedbackSnapshotMismatchError,
@@ -15,10 +17,13 @@ function createFeedbackGovernanceHarness() {
   const repository = new InMemoryFeedbackGovernanceRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
+  const reviewedCaseSnapshotRepository =
+    new InMemoryReviewedCaseSnapshotRepository();
   const service = new FeedbackGovernanceService({
     repository,
     executionTrackingRepository,
     assetRepository,
+    reviewedCaseSnapshotRepository,
     createId: (() => {
       const ids = ["feedback-1", "link-1", "feedback-2", "link-2"];
       return () => {
@@ -34,6 +39,7 @@ function createFeedbackGovernanceHarness() {
     repository,
     executionTrackingRepository,
     assetRepository,
+    reviewedCaseSnapshotRepository,
     service,
   };
 }
@@ -185,4 +191,51 @@ test("human feedback remains manuscript-scoped and cannot be linked across snaps
       }),
     HumanFeedbackSnapshotMismatchError,
   );
+});
+
+test("experiment provenance links keep source lineage without requiring human feedback", async () => {
+  const { service, assetRepository, reviewedCaseSnapshotRepository } =
+    createFeedbackGovernanceHarness();
+
+  await assert.rejects(
+    () =>
+      service.linkLearningCandidateSource({
+        sourceKind: "evaluation_experiment",
+        learningCandidateId: "candidate-3",
+        reviewedCaseSnapshotId: "missing-reviewed-snapshot",
+        evaluationRunId: "evaluation-run-1",
+        evidencePackId: "evidence-pack-1",
+        sourceAssetId: "asset-1",
+      }),
+    FeedbackGovernanceReviewedSnapshotNotFoundError,
+  );
+
+  await reviewedCaseSnapshotRepository.save({
+    id: "reviewed-snapshot-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    manuscript_type: "case_report",
+    human_final_asset_id: "human-final-1",
+    deidentification_passed: true,
+    snapshot_asset_id: "snapshot-asset-1",
+    created_by: "proofreader-1",
+    created_at: "2026-03-28T10:57:00.000Z",
+  });
+  await seedAsset(assetRepository);
+
+  const link = await service.linkLearningCandidateSource({
+    sourceKind: "evaluation_experiment",
+    learningCandidateId: "candidate-3",
+    reviewedCaseSnapshotId: "reviewed-snapshot-1",
+    evaluationRunId: "evaluation-run-1",
+    evidencePackId: "evidence-pack-1",
+    sourceAssetId: "asset-1",
+  });
+
+  assert.equal(link.source_kind, "evaluation_experiment");
+  assert.equal(link.snapshot_kind, "reviewed_case_snapshot");
+  assert.equal(link.snapshot_id, "reviewed-snapshot-1");
+  assert.equal(link.feedback_record_id, undefined);
+  assert.equal(link.evaluation_run_id, "evaluation-run-1");
+  assert.equal(link.evidence_pack_id, "evidence-pack-1");
 });
