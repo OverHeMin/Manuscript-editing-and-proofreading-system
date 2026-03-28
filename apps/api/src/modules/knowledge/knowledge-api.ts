@@ -4,7 +4,10 @@ import type {
   CreateKnowledgeDraftInput,
   UpdateKnowledgeDraftInput,
 } from "./knowledge-service.ts";
-import type { KnowledgeRecord } from "./knowledge-record.ts";
+import type {
+  KnowledgeRecord,
+  KnowledgeReviewActionRecord,
+} from "./knowledge-record.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -42,13 +45,30 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
     async approve({
       knowledgeItemId,
       actorRole,
+      reviewNote,
     }: {
       knowledgeItemId: string;
       actorRole: RoleKey;
+      reviewNote?: string;
     }): Promise<RouteResponse<KnowledgeRecord>> {
       return {
         status: 200,
-        body: await knowledgeService.approve(knowledgeItemId, actorRole),
+        body: await knowledgeService.approve(knowledgeItemId, actorRole, reviewNote),
+      };
+    },
+
+    async reject({
+      knowledgeItemId,
+      actorRole,
+      reviewNote,
+    }: {
+      knowledgeItemId: string;
+      actorRole: RoleKey;
+      reviewNote?: string;
+    }): Promise<RouteResponse<KnowledgeRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.reject(knowledgeItemId, actorRole, reviewNote),
       };
     },
 
@@ -69,6 +89,24 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       return {
         status: 200,
         body: await knowledgeService.listKnowledgeItems(),
+      };
+    },
+
+    async listPendingReviewItems(): Promise<RouteResponse<KnowledgeRecord[]>> {
+      return {
+        status: 200,
+        body: await knowledgeService.listPendingReviewItems(),
+      };
+    },
+
+    async listReviewActions({
+      knowledgeItemId,
+    }: {
+      knowledgeItemId: string;
+    }): Promise<RouteResponse<KnowledgeReviewActionRecord[]>> {
+      return {
+        status: 200,
+        body: await knowledgeService.listReviewActions(knowledgeItemId),
       };
     },
 

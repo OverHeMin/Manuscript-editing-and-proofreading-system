@@ -16,7 +16,10 @@ import type {
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
-import type { KnowledgeRecord } from "./knowledge-record.ts";
+import type {
+  KnowledgeRecord,
+  KnowledgeReviewActionRecord,
+} from "./knowledge-record.ts";
 
 export interface CreateKnowledgeDraftInput {
   title: string;
@@ -188,6 +191,7 @@ export class KnowledgeService {
   async approve(
     knowledgeItemId: string,
     actorRole: RoleKey,
+    reviewNote?: string,
   ): Promise<KnowledgeRecord> {
     this.permissionGuard.assert(actorRole, "knowledge.review");
 
@@ -217,6 +221,51 @@ export class KnowledgeService {
           knowledge_item_id: knowledgeItemId,
           action: "approved",
           actor_role: actorRole,
+          review_note: reviewNote,
+          created_at: this.now().toISOString(),
+        });
+
+        return updatedRecord;
+      },
+    );
+  }
+
+  async reject(
+    knowledgeItemId: string,
+    actorRole: RoleKey,
+    reviewNote?: string,
+  ): Promise<KnowledgeRecord> {
+    this.permissionGuard.assert(actorRole, "knowledge.review");
+
+    return this.transactionManager.withTransaction(
+      async ({ repository, reviewActionRepository }) => {
+        const knowledgeItem = await this.requireKnowledgeItem(
+          knowledgeItemId,
+          repository,
+        );
+
+        if (knowledgeItem.status !== "pending_review") {
+          throw new KnowledgeStatusTransitionError(
+            knowledgeItemId,
+            knowledgeItem.status,
+            "draft",
+          );
+        }
+
+        // Rejection sends the item back to the editable lane without erasing
+        // prior review history, so the next submission stays auditable.
+        const updatedRecord: KnowledgeRecord = {
+          ...knowledgeItem,
+          status: "draft",
+        };
+
+        await repository.save(updatedRecord);
+        await reviewActionRepository.save({
+          id: this.createId(),
+          knowledge_item_id: knowledgeItemId,
+          action: "rejected",
+          actor_role: actorRole,
+          review_note: reviewNote,
           created_at: this.now().toISOString(),
         });
 
@@ -277,6 +326,17 @@ export class KnowledgeService {
 
   listKnowledgeItems(): Promise<KnowledgeRecord[]> {
     return this.repository.list();
+  }
+
+  listPendingReviewItems(): Promise<KnowledgeRecord[]> {
+    return this.repository.listByStatus("pending_review");
+  }
+
+  async listReviewActions(
+    knowledgeItemId: string,
+  ): Promise<KnowledgeReviewActionRecord[]> {
+    await this.requireKnowledgeItem(knowledgeItemId);
+    return this.reviewActionRepository.listByKnowledgeItemId(knowledgeItemId);
   }
 
   private async requireKnowledgeItem(
