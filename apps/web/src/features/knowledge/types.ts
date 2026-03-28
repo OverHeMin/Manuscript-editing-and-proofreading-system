@@ -48,6 +48,23 @@ export interface KnowledgeItemViewModel {
   template_bindings?: string[];
 }
 
+export type KnowledgeReviewQueueItemViewModel = KnowledgeItemViewModel;
+
+export interface KnowledgeReviewActionViewModel {
+  id: string;
+  knowledge_item_id: string;
+  action: "submitted_for_review" | "approved" | "rejected";
+  actor_role:
+    | "admin"
+    | "screener"
+    | "editor"
+    | "proofreader"
+    | "knowledge_reviewer"
+    | "user";
+  review_note?: string;
+  created_at: string;
+}
+
 export interface CreateKnowledgeDraftInput {
   title: string;
   canonicalText: string;
