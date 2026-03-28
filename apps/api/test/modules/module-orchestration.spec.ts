@@ -4,6 +4,12 @@ import { InMemoryAuditService } from "../../src/audit/audit-service.ts";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import { DocumentAssetService } from "../../src/modules/assets/document-asset-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
+import { InMemoryAgentExecutionRepository } from "../../src/modules/agent-execution/in-memory-agent-execution-repository.ts";
+import { AgentExecutionService } from "../../src/modules/agent-execution/agent-execution-service.ts";
+import { InMemoryAgentProfileRepository } from "../../src/modules/agent-profiles/in-memory-agent-profile-repository.ts";
+import { AgentProfileService } from "../../src/modules/agent-profiles/agent-profile-service.ts";
+import { InMemoryAgentRuntimeRepository } from "../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
+import { AgentRuntimeService } from "../../src/modules/agent-runtime/agent-runtime-service.ts";
 import { createScreeningApi } from "../../src/modules/screening/screening-api.ts";
 import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
 import { createEditingApi } from "../../src/modules/editing/editing-api.ts";
@@ -25,10 +31,18 @@ import {
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
 import { ModelRegistryService } from "../../src/modules/model-registry/model-registry-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
+import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
+import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
+import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
+import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
 import {
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
 } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in-memory-tool-gateway-repository.ts";
+import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
+import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
+import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
 
 function createModuleHarness() {
@@ -41,6 +55,14 @@ function createModuleHarness() {
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const sandboxProfileRepository = new InMemorySandboxProfileRepository();
+  const agentProfileRepository = new InMemoryAgentProfileRepository();
+  const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
+  const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
+  const toolGatewayRepository = new InMemoryToolGatewayRepository();
+  const toolPermissionPolicyRepository =
+    new InMemoryToolPermissionPolicyRepository();
+  const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
   const auditService = new InMemoryAuditService();
@@ -57,6 +79,33 @@ function createModuleHarness() {
   const screeningJobIds = ["job-screening-1"];
   const editingJobIds = ["job-editing-1"];
   const proofreadingJobIds = ["job-proofreading-1", "job-proofreading-2"];
+  const sandboxIds = [
+    "sandbox-screening-1",
+    "sandbox-editing-1",
+    "sandbox-proofreading-1",
+  ];
+  const agentProfileIds = [
+    "agent-profile-screening-1",
+    "agent-profile-editing-1",
+    "agent-profile-proofreading-1",
+  ];
+  const runtimeIds = [
+    "runtime-screening-1",
+    "runtime-editing-1",
+    "runtime-proofreading-1",
+  ];
+  const toolIds = ["tool-screening-1", "tool-editing-1", "tool-proofreading-1"];
+  const toolPolicyIds = [
+    "policy-screening-1",
+    "policy-editing-1",
+    "policy-proofreading-1",
+  ];
+  const runtimeBindingIds = [
+    "binding-screening-1",
+    "binding-editing-1",
+    "binding-proofreading-1",
+  ];
+  const agentExecutionIds = ["execution-log-1", "execution-log-2"];
   const trackingIds = [
     "snapshot-1",
     "hit-1",
@@ -101,6 +150,41 @@ function createModuleHarness() {
     createId: () => nextValue(trackingIds, "execution tracking"),
     now: () => new Date("2026-03-27T09:00:00.000Z"),
   });
+  const sandboxProfileService = new SandboxProfileService({
+    repository: sandboxProfileRepository,
+    createId: () => nextValue(sandboxIds, "sandbox profile"),
+  });
+  const agentProfileService = new AgentProfileService({
+    repository: agentProfileRepository,
+    createId: () => nextValue(agentProfileIds, "agent profile"),
+  });
+  const agentRuntimeService = new AgentRuntimeService({
+    repository: agentRuntimeRepository,
+    createId: () => nextValue(runtimeIds, "agent runtime"),
+  });
+  const toolGatewayService = new ToolGatewayService({
+    repository: toolGatewayRepository,
+    createId: () => nextValue(toolIds, "tool"),
+  });
+  const toolPermissionPolicyService = new ToolPermissionPolicyService({
+    repository: toolPermissionPolicyRepository,
+    toolGatewayRepository,
+    createId: () => nextValue(toolPolicyIds, "tool permission policy"),
+  });
+  const runtimeBindingService = new RuntimeBindingService({
+    repository: runtimeBindingRepository,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
+    createId: () => nextValue(runtimeBindingIds, "runtime binding"),
+  });
+  const agentExecutionService = new AgentExecutionService({
+    repository: agentExecutionRepository,
+    createId: () => nextValue(agentExecutionIds, "agent execution"),
+    now: () => new Date("2026-03-27T09:00:00.000Z"),
+  });
 
   const screeningApi = createScreeningApi({
     screeningService: new ScreeningService({
@@ -114,6 +198,12 @@ function createModuleHarness() {
       jobRepository,
       documentAssetService,
       aiGatewayService,
+      sandboxProfileService,
+      agentProfileService,
+      agentRuntimeService,
+      runtimeBindingService,
+      toolPermissionPolicyService,
+      agentExecutionService,
       createId: () => nextValue(screeningJobIds, "screening job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -130,6 +220,12 @@ function createModuleHarness() {
       jobRepository,
       documentAssetService,
       aiGatewayService,
+      sandboxProfileService,
+      agentProfileService,
+      agentRuntimeService,
+      runtimeBindingService,
+      toolPermissionPolicyService,
+      agentExecutionService,
       createId: () => nextValue(editingJobIds, "editing job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -146,6 +242,12 @@ function createModuleHarness() {
       jobRepository,
       documentAssetService,
       aiGatewayService,
+      sandboxProfileService,
+      agentProfileService,
+      agentRuntimeService,
+      runtimeBindingService,
+      toolPermissionPolicyService,
+      agentExecutionService,
       createId: () => nextValue(proofreadingJobIds, "proofreading job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -161,6 +263,13 @@ function createModuleHarness() {
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     executionTrackingRepository,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    toolGatewayService,
+    toolPermissionPolicyService,
+    runtimeBindingService,
+    agentExecutionRepository,
     documentAssetService,
     modelRegistryService,
     screeningApi,
@@ -426,6 +535,220 @@ async function seedWorkflowContext() {
     },
   });
 
+  const screeningTool = await harness.toolGatewayService.createTool("admin", {
+    name: "screening.knowledge.search",
+    scope: "knowledge",
+  });
+  const editingTool = await harness.toolGatewayService.createTool("admin", {
+    name: "editing.knowledge.search",
+    scope: "knowledge",
+  });
+  const proofreadingTool = await harness.toolGatewayService.createTool("admin", {
+    name: "proofreading.knowledge.search",
+    scope: "knowledge",
+  });
+
+  const screeningPolicy = await harness.toolPermissionPolicyService.createPolicy(
+    "admin",
+    {
+      name: "Screening Policy",
+      allowedToolIds: [screeningTool.id],
+      highRiskToolIds: [],
+    },
+  );
+  await harness.toolPermissionPolicyService.activatePolicy(
+    screeningPolicy.id,
+    "admin",
+  );
+  const editingPolicy = await harness.toolPermissionPolicyService.createPolicy(
+    "admin",
+    {
+      name: "Editing Policy",
+      allowedToolIds: [editingTool.id],
+      highRiskToolIds: [],
+    },
+  );
+  await harness.toolPermissionPolicyService.activatePolicy(
+    editingPolicy.id,
+    "admin",
+  );
+  const proofreadingPolicy =
+    await harness.toolPermissionPolicyService.createPolicy("admin", {
+      name: "Proofreading Policy",
+      allowedToolIds: [proofreadingTool.id],
+      highRiskToolIds: [],
+    });
+  await harness.toolPermissionPolicyService.activatePolicy(
+    proofreadingPolicy.id,
+    "admin",
+  );
+
+  const screeningSandbox = await harness.sandboxProfileService.createProfile(
+    "admin",
+    {
+      name: "Screening Sandbox",
+      sandboxMode: "workspace_write",
+      networkAccess: false,
+      approvalRequired: true,
+      allowedToolIds: [screeningTool.id],
+    },
+  );
+  await harness.sandboxProfileService.activateProfile(
+    screeningSandbox.id,
+    "admin",
+  );
+  const editingSandbox = await harness.sandboxProfileService.createProfile(
+    "admin",
+    {
+      name: "Editing Sandbox",
+      sandboxMode: "workspace_write",
+      networkAccess: false,
+      approvalRequired: true,
+      allowedToolIds: [editingTool.id],
+    },
+  );
+  await harness.sandboxProfileService.activateProfile(editingSandbox.id, "admin");
+  const proofreadingSandbox =
+    await harness.sandboxProfileService.createProfile("admin", {
+      name: "Proofreading Sandbox",
+      sandboxMode: "workspace_write",
+      networkAccess: false,
+      approvalRequired: true,
+      allowedToolIds: [proofreadingTool.id],
+    });
+  await harness.sandboxProfileService.activateProfile(
+    proofreadingSandbox.id,
+    "admin",
+  );
+
+  const screeningRuntime = await harness.agentRuntimeService.createRuntime(
+    "admin",
+    {
+      name: "Screening Runtime",
+      adapter: "deepagents",
+      sandboxProfileId: screeningSandbox.id,
+      allowedModules: ["screening"],
+      runtimeSlot: "screening",
+    },
+  );
+  await harness.agentRuntimeService.publishRuntime(screeningRuntime.id, "admin");
+  const editingRuntime = await harness.agentRuntimeService.createRuntime(
+    "admin",
+    {
+      name: "Editing Runtime",
+      adapter: "deepagents",
+      sandboxProfileId: editingSandbox.id,
+      allowedModules: ["editing"],
+      runtimeSlot: "editing",
+    },
+  );
+  await harness.agentRuntimeService.publishRuntime(editingRuntime.id, "admin");
+  const proofreadingRuntime =
+    await harness.agentRuntimeService.createRuntime("admin", {
+      name: "Proofreading Runtime",
+      adapter: "deepagents",
+      sandboxProfileId: proofreadingSandbox.id,
+      allowedModules: ["proofreading"],
+      runtimeSlot: "proofreading",
+    });
+  await harness.agentRuntimeService.publishRuntime(
+    proofreadingRuntime.id,
+    "admin",
+  );
+
+  const screeningAgentProfile = await harness.agentProfileService.createProfile(
+    "admin",
+    {
+      name: "Screening Executor",
+      roleKey: "subagent",
+      moduleScope: ["screening"],
+      manuscriptTypes: ["clinical_study"],
+    },
+  );
+  await harness.agentProfileService.publishProfile(
+    screeningAgentProfile.id,
+    "admin",
+  );
+  const editingAgentProfile = await harness.agentProfileService.createProfile(
+    "admin",
+    {
+      name: "Editing Executor",
+      roleKey: "subagent",
+      moduleScope: ["editing"],
+      manuscriptTypes: ["clinical_study"],
+    },
+  );
+  await harness.agentProfileService.publishProfile(
+    editingAgentProfile.id,
+    "admin",
+  );
+  const proofreadingAgentProfile =
+    await harness.agentProfileService.createProfile("admin", {
+      name: "Proofreading Executor",
+      roleKey: "subagent",
+      moduleScope: ["proofreading"],
+      manuscriptTypes: ["clinical_study"],
+    });
+  await harness.agentProfileService.publishProfile(
+    proofreadingAgentProfile.id,
+    "admin",
+  );
+
+  const screeningBinding = await harness.runtimeBindingService.createBinding(
+    "admin",
+    {
+      module: "screening",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: screeningRuntime.id,
+      sandboxProfileId: screeningSandbox.id,
+      agentProfileId: screeningAgentProfile.id,
+      toolPermissionPolicyId: screeningPolicy.id,
+      promptTemplateId: "prompt-screening-1",
+      skillPackageIds: ["skill-screening-1"],
+      executionProfileId: "profile-screening-1",
+    },
+  );
+  await harness.runtimeBindingService.activateBinding(
+    screeningBinding.id,
+    "admin",
+  );
+  const editingBinding = await harness.runtimeBindingService.createBinding(
+    "admin",
+    {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: editingRuntime.id,
+      sandboxProfileId: editingSandbox.id,
+      agentProfileId: editingAgentProfile.id,
+      toolPermissionPolicyId: editingPolicy.id,
+      promptTemplateId: "prompt-editing-1",
+      skillPackageIds: ["skill-editing-1"],
+      executionProfileId: "profile-editing-1",
+    },
+  );
+  await harness.runtimeBindingService.activateBinding(editingBinding.id, "admin");
+  const proofreadingBinding = await harness.runtimeBindingService.createBinding(
+    "admin",
+    {
+      module: "proofreading",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: proofreadingRuntime.id,
+      sandboxProfileId: proofreadingSandbox.id,
+      agentProfileId: proofreadingAgentProfile.id,
+      toolPermissionPolicyId: proofreadingPolicy.id,
+      promptTemplateId: "prompt-proofreading-1",
+      skillPackageIds: ["skill-proofreading-1"],
+      executionProfileId: "profile-proofreading-1",
+    },
+  );
+  await harness.runtimeBindingService.activateBinding(
+    proofreadingBinding.id,
+    "admin",
+  );
+
   const originalAsset = await harness.documentAssetService.createAsset({
     manuscriptId: "manuscript-1",
     assetType: "original",
@@ -444,7 +767,12 @@ async function seedWorkflowContext() {
 }
 
 test("screening produces a final report asset with routed template, knowledge, and model context", async () => {
-  const { screeningApi, manuscriptRepository, originalAsset } =
+  const {
+    screeningApi,
+    manuscriptRepository,
+    agentExecutionRepository,
+    originalAsset,
+  } =
     await seedWorkflowContext();
 
   const response = await screeningApi.runScreening({
@@ -466,7 +794,17 @@ test("screening produces a final report asset with routed template, knowledge, a
   assert.equal(response.body.snapshot_id, "snapshot-1");
   assert.deepEqual(response.body.knowledge_item_ids, ["knowledge-screening-1"]);
   assert.equal(response.body.model_id, "model-2");
+  assert.equal(response.body.agent_runtime_id, "runtime-screening-1");
+  assert.equal(
+    response.body.agent_profile_id,
+    "agent-profile-screening-1",
+  );
+  assert.equal(response.body.agent_execution_log_id, "execution-log-1");
   assert.equal(response.body.job.module, "screening");
+  const executionLog = await agentExecutionRepository.findById(
+    response.body.agent_execution_log_id,
+  );
+  assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_screening_asset_id,
@@ -516,7 +854,12 @@ test("module services enforce workbench permissions per module", async () => {
 });
 
 test("editing produces a final docx asset with routed template, knowledge, and model context", async () => {
-  const { editingApi, manuscriptRepository, originalAsset } =
+  const {
+    editingApi,
+    manuscriptRepository,
+    agentExecutionRepository,
+    originalAsset,
+  } =
     await seedWorkflowContext();
 
   const response = await editingApi.runEditing({
@@ -538,7 +881,14 @@ test("editing produces a final docx asset with routed template, knowledge, and m
   assert.equal(response.body.snapshot_id, "snapshot-1");
   assert.deepEqual(response.body.knowledge_item_ids, ["knowledge-editing-1"]);
   assert.equal(response.body.model_id, "model-3");
+  assert.equal(response.body.agent_runtime_id, "runtime-editing-1");
+  assert.equal(response.body.agent_profile_id, "agent-profile-editing-1");
+  assert.equal(response.body.agent_execution_log_id, "execution-log-1");
   assert.equal(response.body.job.module, "editing");
+  const executionLog = await agentExecutionRepository.findById(
+    response.body.agent_execution_log_id,
+  );
+  assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))?.current_editing_asset_id,
     response.body.asset.id,
@@ -552,6 +902,7 @@ test("proofreading produces a draft first and only advances the final pointer af
     moduleTemplateRepository,
     knowledgeRepository,
     modelRegistryService,
+    agentExecutionRepository,
     executionTrackingRepository,
     originalAsset,
   } =
@@ -575,6 +926,15 @@ test("proofreading produces a draft first and only advances the final pointer af
   assert.equal(draftResponse.body.snapshot_id, "snapshot-1");
   assert.deepEqual(draftResponse.body.knowledge_item_ids, ["knowledge-proof-1"]);
   assert.equal(draftResponse.body.model_id, "model-4");
+  assert.equal(
+    draftResponse.body.agent_runtime_id,
+    "runtime-proofreading-1",
+  );
+  assert.equal(
+    draftResponse.body.agent_profile_id,
+    "agent-profile-proofreading-1",
+  );
+  assert.equal(draftResponse.body.agent_execution_log_id, "execution-log-1");
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_proofreading_asset_id,
@@ -635,10 +995,23 @@ test("proofreading produces a draft first and only advances the final pointer af
   assert.equal(finalResponse.body.snapshot_id, "snapshot-2");
   assert.deepEqual(finalResponse.body.knowledge_item_ids, ["knowledge-proof-1"]);
   assert.equal(finalResponse.body.model_id, "model-4");
+  assert.equal(finalResponse.body.agent_runtime_id, "runtime-proofreading-1");
+  assert.equal(
+    finalResponse.body.agent_profile_id,
+    "agent-profile-proofreading-1",
+  );
+  assert.equal(
+    finalResponse.body.agent_execution_log_id,
+    draftResponse.body.agent_execution_log_id,
+  );
   const finalSnapshot = await executionTrackingRepository.findSnapshotById(
     finalResponse.body.snapshot_id,
   );
   assert.equal(finalSnapshot?.draft_snapshot_id, draftResponse.body.snapshot_id);
+  const executionLog = await agentExecutionRepository.findById(
+    draftResponse.body.agent_execution_log_id,
+  );
+  assert.equal(executionLog?.execution_snapshot_id, draftResponse.body.snapshot_id);
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_proofreading_asset_id,
