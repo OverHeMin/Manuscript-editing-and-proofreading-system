@@ -9,6 +9,7 @@ import {
   type KnowledgeReviewQueueItemViewModel,
 } from "../knowledge/index.ts";
 import {
+  applyKnowledgeReviewSuccess,
   createKnowledgeReviewFilterState,
   createKnowledgeReviewWorkbenchState,
   receiveKnowledgeReviewQueueRefresh,
@@ -50,7 +51,8 @@ export type KnowledgeReviewItemActionResult =
       status: "success";
       reviewNote: "";
       desk: KnowledgeReviewDeskLoadResult;
-      history: KnowledgeReviewHistoryLoadResult;
+      history: KnowledgeReviewHistoryLoadResult | null;
+      historyKnowledgeItemId: string | null;
     }
   | {
       status: "error";
@@ -166,20 +168,27 @@ async function runKnowledgeReviewAction(
 ): Promise<KnowledgeReviewItemActionResult> {
   try {
     await action(client, input);
-    const [desk, history] = await Promise.all([
-      loadKnowledgeReviewDesk(client, {
-        state: input.state,
-      }),
-      loadKnowledgeReviewHistory(client, {
-        knowledgeItemId: input.knowledgeItemId,
-      }),
-    ]);
+    const postSuccessState =
+      input.state == null
+        ? undefined
+        : applyKnowledgeReviewSuccess(input.state, input.knowledgeItemId);
+    const desk = await loadKnowledgeReviewDesk(client, {
+      state: postSuccessState,
+    });
+    const historyKnowledgeItemId = desk.selectedItem?.id ?? null;
+    const history =
+      historyKnowledgeItemId == null
+        ? null
+        : await loadKnowledgeReviewHistory(client, {
+            knowledgeItemId: historyKnowledgeItemId,
+          });
 
     return {
       status: "success",
       reviewNote: "",
       desk,
       history,
+      historyKnowledgeItemId,
     };
   } catch (error) {
     return {

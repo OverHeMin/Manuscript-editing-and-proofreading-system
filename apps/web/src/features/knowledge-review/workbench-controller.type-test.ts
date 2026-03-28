@@ -4,7 +4,9 @@ import type {
   KnowledgeReviewQueueItemViewModel,
 } from "../knowledge/index.ts";
 import {
+  applyKnowledgeReviewSuccess,
   approveKnowledgeReviewItem,
+  createKnowledgeReviewWorkbenchState,
   createKnowledgeReviewWorkbenchController,
   loadKnowledgeReviewDesk,
   loadKnowledgeReviewHistory,
@@ -40,6 +42,20 @@ const historyItemCheck: KnowledgeReviewActionViewModel = {
   created_at: "2026-03-29T00:00:00.000Z",
 };
 
+const followupQueueItemCheck: KnowledgeReviewQueueItemViewModel = {
+  ...queueItemCheck,
+  id: "knowledge-queue-2",
+  title: "Method section language consistency guardrail",
+};
+
+const successFlowSeedStateCheck = applyKnowledgeReviewSuccess(
+  createKnowledgeReviewWorkbenchState({
+    queue: [queueItemCheck, followupQueueItemCheck],
+    activeItemId: queueItemCheck.id,
+  }),
+  queueItemCheck.id,
+);
+
 const knowledgeWorkbenchController = createKnowledgeReviewWorkbenchController(browserClient);
 
 const deskLoadResultCheck: Promise<KnowledgeReviewDeskLoadResult> = loadKnowledgeReviewDesk(
@@ -55,13 +71,53 @@ const approveResultCheck: Promise<KnowledgeReviewItemActionResult> =
     knowledgeItemId: queueItemCheck.id,
     actorRole: "knowledge_reviewer",
     reviewNote: "Looks good to publish.",
+    state: successFlowSeedStateCheck,
   });
 const rejectResultCheck: Promise<KnowledgeReviewItemActionResult> =
   rejectKnowledgeReviewItem(browserClient, {
     knowledgeItemId: queueItemCheck.id,
     actorRole: "knowledge_reviewer",
     reviewNote: "Need direct citation for the recommendation.",
+    state: successFlowSeedStateCheck,
   });
+
+const successResultShapeCheck: KnowledgeReviewItemActionResult = {
+  status: "success",
+  reviewNote: "",
+  desk: {
+    queue: [followupQueueItemCheck],
+    visibleQueue: [followupQueueItemCheck],
+    selectedItem: followupQueueItemCheck,
+    state: successFlowSeedStateCheck,
+  },
+  history: {
+    knowledgeItemId: followupQueueItemCheck.id,
+    actions: [historyItemCheck],
+  },
+  historyKnowledgeItemId: followupQueueItemCheck.id,
+};
+
+const emptyDeskSuccessResultShapeCheck: KnowledgeReviewItemActionResult = {
+  status: "success",
+  reviewNote: "",
+  desk: {
+    queue: [],
+    visibleQueue: [],
+    selectedItem: null,
+    state: createKnowledgeReviewWorkbenchState({
+      queue: [],
+      activeItemId: null,
+    }),
+  },
+  history: null,
+  historyKnowledgeItemId: null,
+};
+
+const failedActionResultShapeCheck: KnowledgeReviewItemActionResult = {
+  status: "error",
+  reviewNote: "keep note for retry",
+  error: new Error("network failed"),
+};
 
 void knowledgeWorkbenchController.loadDesk({});
 void knowledgeWorkbenchController.loadHistory({
@@ -87,4 +143,8 @@ export {
   knowledgeWorkbenchController,
   queueItemCheck,
   rejectResultCheck,
+  successFlowSeedStateCheck,
+  successResultShapeCheck,
+  emptyDeskSuccessResultShapeCheck,
+  failedActionResultShapeCheck,
 };

@@ -43,6 +43,7 @@ export function createBrowserHttpClient(
       const requestBody = input.body == null ? undefined : JSON.stringify(input.body);
       const response = await fetchImpl(requestUrl, {
         method: input.method,
+        credentials: "include",
         headers: {
           Accept: "application/json",
           ...(requestBody == null ? {} : { "Content-Type": "application/json" }),
@@ -101,11 +102,24 @@ function isAbsoluteUrl(value: string): boolean {
 
 async function parseResponseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-
-  if (contentType.includes("application/json")) {
-    return response.json();
+  const text = await response.text();
+  if (text.trim().length === 0) {
+    return null;
   }
 
-  const text = await response.text();
-  return text.length === 0 ? null : text;
+  const shouldParseJson =
+    contentType.includes("application/json") || /^[\[{]/.test(text.trimStart());
+  if (!shouldParseJson) {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return {
+      rawBody: text,
+      parseError: "invalid_json",
+      parseErrorMessage: error instanceof Error ? error.message : "Unknown parse error",
+    };
+  }
 }
