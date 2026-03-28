@@ -6,6 +6,7 @@ import type {
   TemplateFamilyId,
   UserId,
 } from "./manuscript.js";
+import type { LearningCandidateId } from "./learning.js";
 import type { ModuleType } from "./templates.js";
 
 export type AgentRuntimeAdapter = "internal_prompt" | "deepagents";
@@ -111,6 +112,7 @@ export interface PromptTemplate {
   status: PromptTemplateStatus;
   rollback_version?: string;
   rollback_target_version?: string;
+  source_learning_candidate_id?: LearningCandidateId;
   created_at?: string;
   updated_at?: string;
 }
@@ -125,6 +127,7 @@ export interface SkillPackage {
   status: SkillPackageStatus;
   dependency_tools?: string[];
   admin_only: true;
+  source_learning_candidate_id?: LearningCandidateId;
   created_at?: string;
   updated_at?: string;
 }

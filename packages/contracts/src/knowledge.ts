@@ -1,5 +1,6 @@
 import type { ManuscriptType } from "./manuscript.js";
 import type { ManuscriptModule } from "./assets.js";
+import type { LearningCandidateId } from "./learning.js";
 
 export type KnowledgeItemId = string;
 
@@ -63,4 +64,5 @@ export interface KnowledgeItem {
 
   // Links to templates are modeled separately; keep an escape hatch for projection views.
   template_bindings?: string[];
+  source_learning_candidate_id?: LearningCandidateId;
 }
