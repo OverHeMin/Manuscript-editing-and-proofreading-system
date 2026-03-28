@@ -1,5 +1,6 @@
 import type {
   EvaluationRunRecord,
+  EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
   EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
@@ -45,4 +46,8 @@ export interface VerificationOpsRepository {
   saveEvaluationRun(record: EvaluationRunRecord): Promise<void>;
   findEvaluationRunById(id: string): Promise<EvaluationRunRecord | undefined>;
   listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]>;
+
+  saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void>;
+  findEvaluationRunItemById(id: string): Promise<EvaluationRunItemRecord | undefined>;
+  listEvaluationRunItemsByRunId(runId: string): Promise<EvaluationRunItemRecord[]>;
 }

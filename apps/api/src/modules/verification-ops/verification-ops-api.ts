@@ -1,6 +1,7 @@
 import type { RoleKey } from "../../users/roles.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
   EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
@@ -15,6 +16,7 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
   VerificationOpsService,
 } from "./verification-ops-service.ts";
@@ -245,6 +247,22 @@ export function createVerificationOpsApi(
       };
     },
 
+    async recordEvaluationRunItemResult({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: RecordEvaluationRunItemResultInput;
+    }): Promise<RouteResponse<EvaluationRunItemRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.recordEvaluationRunItemResult(
+          actorRole,
+          input,
+        ),
+      };
+    },
+
     async listEvaluationRunsBySuiteId({
       suiteId,
     }: {
@@ -253,6 +271,17 @@ export function createVerificationOpsApi(
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationRunsBySuiteId(suiteId),
+      };
+    },
+
+    async listEvaluationRunItemsByRunId({
+      runId,
+    }: {
+      runId: string;
+    }): Promise<RouteResponse<EvaluationRunItemRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationRunItemsByRunId(runId),
       };
     },
   };

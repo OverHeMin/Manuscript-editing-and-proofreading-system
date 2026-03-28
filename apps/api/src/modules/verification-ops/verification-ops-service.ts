@@ -12,13 +12,20 @@ import {
   InMemoryVerificationOpsRepository,
 } from "./in-memory-verification-ops-repository.ts";
 import {
+  freezeExperimentBindings,
+  type FrozenExperimentBindingInput,
+} from "./experiment-binding-guard.ts";
+import {
   requireEligibleReviewedCaseSnapshot,
 } from "./sample-set-source-guard.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationRunItemFailureKind,
+  EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
   EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
+  FrozenExperimentBindingRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
@@ -51,6 +58,20 @@ export interface CreateEvaluationSuiteInput {
   suiteType: EvaluationSuiteRecord["suite_type"];
   verificationCheckProfileIds: string[];
   moduleScope: EvaluationSuiteRecord["module_scope"];
+  requiresProductionBaseline?: boolean;
+  supportsAbComparison?: boolean;
+  hardGatePolicy?: {
+    mustUseDeidentifiedSamples: boolean;
+    requiresParsableOutput: boolean;
+  };
+  scoreWeights?: {
+    structure: number;
+    terminology: number;
+    knowledgeCoverage: number;
+    riskDetection: number;
+    humanEditBurden: number;
+    costAndLatency: number;
+  };
 }
 
 export interface RecordVerificationEvidenceInput {
@@ -63,6 +84,9 @@ export interface RecordVerificationEvidenceInput {
 
 export interface CreateEvaluationRunInput {
   suiteId: string;
+  sampleSetId?: string;
+  baselineBinding?: FrozenExperimentBindingInput;
+  candidateBinding?: FrozenExperimentBindingInput;
   releaseCheckProfileId?: string;
 }
 
@@ -70,6 +94,17 @@ export interface CompleteEvaluationRunInput {
   runId: string;
   status: Extract<EvaluationRunRecord["status"], "passed" | "failed">;
   evidenceIds: string[];
+}
+
+export interface RecordEvaluationRunItemResultInput {
+  runItemId: string;
+  resultAssetId?: string;
+  hardGatePassed?: boolean;
+  weightedScore?: number;
+  failureKind?: EvaluationRunItemFailureKind;
+  failureReason?: string;
+  diffSummary?: string;
+  requiresHumanReview?: boolean;
 }
 
 interface VerificationOpsWriteContext {
@@ -118,6 +153,13 @@ export class EvaluationRunNotFoundError extends Error {
   constructor(runId: string) {
     super(`Evaluation run ${runId} was not found.`);
     this.name = "EvaluationRunNotFoundError";
+  }
+}
+
+export class EvaluationRunItemNotFoundError extends Error {
+  constructor(runItemId: string) {
+    super(`Evaluation run item ${runItemId} was not found.`);
+    this.name = "EvaluationRunItemNotFoundError";
   }
 }
 
@@ -373,6 +415,22 @@ export class VerificationOpsService {
       ),
       module_scope:
         input.moduleScope === "any" ? "any" : [...new Set(input.moduleScope)],
+      requires_production_baseline: input.requiresProductionBaseline ?? false,
+      supports_ab_comparison: input.supportsAbComparison ?? false,
+      hard_gate_policy: {
+        must_use_deidentified_samples:
+          input.hardGatePolicy?.mustUseDeidentifiedSamples ?? false,
+        requires_parsable_output:
+          input.hardGatePolicy?.requiresParsableOutput ?? false,
+      },
+      score_weights: {
+        structure: input.scoreWeights?.structure ?? 0,
+        terminology: input.scoreWeights?.terminology ?? 0,
+        knowledge_coverage: input.scoreWeights?.knowledgeCoverage ?? 0,
+        risk_detection: input.scoreWeights?.riskDetection ?? 0,
+        human_edit_burden: input.scoreWeights?.humanEditBurden ?? 0,
+        cost_and_latency: input.scoreWeights?.costAndLatency ?? 0,
+      },
       admin_only: true,
     };
 
@@ -399,6 +457,8 @@ export class VerificationOpsService {
       verification_check_profile_ids: [...existing.verification_check_profile_ids],
       module_scope:
         existing.module_scope === "any" ? "any" : [...existing.module_scope],
+      hard_gate_policy: { ...existing.hard_gate_policy },
+      score_weights: { ...existing.score_weights },
     };
     await this.repository.saveEvaluationSuite(active);
     return active;
@@ -458,16 +518,53 @@ export class VerificationOpsService {
       }
     }
 
+    let sampleSetId: string | undefined;
+    let baselineBinding: FrozenExperimentBindingRecord | undefined;
+    let candidateBinding: FrozenExperimentBindingRecord | undefined;
+    let runItemCount = 0;
+    let sampleItems: EvaluationSampleSetItemRecord[] = [];
+
+    if (input.sampleSetId) {
+      const sampleSet = await this.requireEvaluationSampleSet(input.sampleSetId);
+      sampleSetId = sampleSet.id;
+      sampleItems = await this.repository.listEvaluationSampleSetItemsBySampleSetId(
+        sampleSet.id,
+      );
+      runItemCount = sampleItems.length;
+
+      const frozenBindings = freezeExperimentBindings({
+        suite,
+        baselineBinding: input.baselineBinding,
+        candidateBinding: input.candidateBinding,
+      });
+      baselineBinding = frozenBindings.baselineBinding;
+      candidateBinding = frozenBindings.candidateBinding;
+    }
+
     const record: EvaluationRunRecord = {
       id: this.createId(),
       suite_id: input.suiteId,
+      sample_set_id: sampleSetId,
+      baseline_binding: baselineBinding,
+      candidate_binding: candidateBinding,
       release_check_profile_id: input.releaseCheckProfileId,
+      run_item_count: runItemCount,
       status: "queued",
       evidence_ids: [],
       started_at: this.now().toISOString(),
       finished_at: undefined,
     };
     await this.repository.saveEvaluationRun(record);
+
+    for (const sampleItem of sampleItems) {
+      await this.repository.saveEvaluationRunItem({
+        id: this.createId(),
+        evaluation_run_id: record.id,
+        sample_set_item_id: sampleItem.id,
+        lane: candidateBinding?.lane ?? "candidate",
+      });
+    }
+
     return record;
   }
 
@@ -506,6 +603,42 @@ export class VerificationOpsService {
 
   listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]> {
     return this.repository.listEvaluationRunsBySuiteId(suiteId);
+  }
+
+  async recordEvaluationRunItemResult(
+    actorRole: RoleKey,
+    input: RecordEvaluationRunItemResultInput,
+  ): Promise<EvaluationRunItemRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const existing = await repository.findEvaluationRunItemById(input.runItemId);
+      if (!existing) {
+        throw new EvaluationRunItemNotFoundError(input.runItemId);
+      }
+
+      const updated: EvaluationRunItemRecord = {
+        ...existing,
+        result_asset_id: input.resultAssetId ?? existing.result_asset_id,
+        hard_gate_passed: input.hardGatePassed ?? existing.hard_gate_passed,
+        weighted_score: input.weightedScore ?? existing.weighted_score,
+        failure_kind: input.failureKind ?? existing.failure_kind,
+        failure_reason: input.failureReason ?? existing.failure_reason,
+        diff_summary: input.diffSummary ?? existing.diff_summary,
+        requires_human_review:
+          input.requiresHumanReview ?? existing.requires_human_review,
+      };
+
+      await repository.saveEvaluationRunItem(updated);
+      return updated;
+    });
+  }
+
+  async listEvaluationRunItemsByRunId(
+    runId: string,
+  ): Promise<EvaluationRunItemRecord[]> {
+    await this.requireEvaluationRun(runId);
+    return this.repository.listEvaluationRunItemsByRunId(runId);
   }
 
   private async assertToolsExist(toolIds: string[]): Promise<void> {
@@ -558,6 +691,15 @@ export class VerificationOpsService {
     const record = await this.repository.findEvaluationSuiteById(suiteId);
     if (!record) {
       throw new EvaluationSuiteNotFoundError(suiteId);
+    }
+
+    return record;
+  }
+
+  private async requireEvaluationRun(runId: string): Promise<EvaluationRunRecord> {
+    const record = await this.repository.findEvaluationRunById(runId);
+    if (!record) {
+      throw new EvaluationRunNotFoundError(runId);
     }
 
     return record;
@@ -617,3 +759,5 @@ export {
   EvaluationSampleSetSourceSnapshotNotFoundError,
   ReviewedCaseSnapshotRepositoryRequiredError,
 } from "./sample-set-source-guard.ts";
+
+export { EvaluationExperimentBindingError } from "./experiment-binding-guard.ts";

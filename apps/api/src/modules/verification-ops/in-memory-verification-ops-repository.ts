@@ -1,8 +1,10 @@
 import type { SnapshotCapableRepository } from "../shared/write-transaction-manager.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
   EvaluationSampleSetRecord,
+  FrozenExperimentBindingRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -61,6 +63,8 @@ function cloneEvaluationSuite(
     ...record,
     verification_check_profile_ids: [...record.verification_check_profile_ids],
     module_scope: record.module_scope === "any" ? "any" : [...record.module_scope],
+    hard_gate_policy: { ...record.hard_gate_policy },
+    score_weights: { ...record.score_weights },
   };
 }
 
@@ -72,10 +76,33 @@ function cloneVerificationEvidence(
   };
 }
 
+function cloneFrozenExperimentBinding(
+  record: FrozenExperimentBindingRecord,
+): FrozenExperimentBindingRecord {
+  return {
+    ...record,
+    skill_package_ids: [...record.skill_package_ids],
+  };
+}
+
 function cloneEvaluationRun(record: EvaluationRunRecord): EvaluationRunRecord {
   return {
     ...record,
+    baseline_binding: record.baseline_binding
+      ? cloneFrozenExperimentBinding(record.baseline_binding)
+      : undefined,
+    candidate_binding: record.candidate_binding
+      ? cloneFrozenExperimentBinding(record.candidate_binding)
+      : undefined,
     evidence_ids: [...record.evidence_ids],
+  };
+}
+
+function cloneEvaluationRunItem(
+  record: EvaluationRunItemRecord,
+): EvaluationRunItemRecord {
+  return {
+    ...record,
   };
 }
 
@@ -94,6 +121,7 @@ export class InMemoryVerificationOpsRepository
       suites: Map<string, EvaluationSuiteRecord>;
       evidence: Map<string, VerificationEvidenceRecord>;
       runs: Map<string, EvaluationRunRecord>;
+      runItems: Map<string, EvaluationRunItemRecord>;
     }>
 {
   private readonly sampleSets = new Map<string, EvaluationSampleSetRecord>();
@@ -103,6 +131,7 @@ export class InMemoryVerificationOpsRepository
   private readonly suites = new Map<string, EvaluationSuiteRecord>();
   private readonly evidence = new Map<string, VerificationEvidenceRecord>();
   private readonly runs = new Map<string, EvaluationRunRecord>();
+  private readonly runItems = new Map<string, EvaluationRunItemRecord>();
 
   async saveEvaluationSampleSet(record: EvaluationSampleSetRecord): Promise<void> {
     this.sampleSets.set(record.id, cloneEvaluationSampleSet(record));
@@ -218,6 +247,26 @@ export class InMemoryVerificationOpsRepository
       .map(cloneEvaluationRun);
   }
 
+  async saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void> {
+    this.runItems.set(record.id, cloneEvaluationRunItem(record));
+  }
+
+  async findEvaluationRunItemById(
+    id: string,
+  ): Promise<EvaluationRunItemRecord | undefined> {
+    const record = this.runItems.get(id);
+    return record ? cloneEvaluationRunItem(record) : undefined;
+  }
+
+  async listEvaluationRunItemsByRunId(
+    runId: string,
+  ): Promise<EvaluationRunItemRecord[]> {
+    return [...this.runItems.values()]
+      .filter((record) => record.evaluation_run_id === runId)
+      .sort(compareById)
+      .map(cloneEvaluationRunItem);
+  }
+
   snapshotState(): {
     sampleSets: Map<string, EvaluationSampleSetRecord>;
     sampleSetItems: Map<string, EvaluationSampleSetItemRecord>;
@@ -226,6 +275,7 @@ export class InMemoryVerificationOpsRepository
     suites: Map<string, EvaluationSuiteRecord>;
     evidence: Map<string, VerificationEvidenceRecord>;
     runs: Map<string, EvaluationRunRecord>;
+    runItems: Map<string, EvaluationRunItemRecord>;
   } {
     return {
       sampleSets: new Map(
@@ -267,6 +317,12 @@ export class InMemoryVerificationOpsRepository
       runs: new Map(
         [...this.runs.entries()].map(([id, record]) => [id, cloneEvaluationRun(record)]),
       ),
+      runItems: new Map(
+        [...this.runItems.entries()].map(([id, record]) => [
+          id,
+          cloneEvaluationRunItem(record),
+        ]),
+      ),
     };
   }
 
@@ -278,6 +334,7 @@ export class InMemoryVerificationOpsRepository
     suites: Map<string, EvaluationSuiteRecord>;
     evidence: Map<string, VerificationEvidenceRecord>;
     runs: Map<string, EvaluationRunRecord>;
+    runItems: Map<string, EvaluationRunItemRecord>;
   }): void {
     this.sampleSets.clear();
     for (const [id, record] of snapshot.sampleSets.entries()) {
@@ -312,6 +369,11 @@ export class InMemoryVerificationOpsRepository
     this.runs.clear();
     for (const [id, record] of snapshot.runs.entries()) {
       this.runs.set(id, cloneEvaluationRun(record));
+    }
+
+    this.runItems.clear();
+    for (const [id, record] of snapshot.runItems.entries()) {
+      this.runItems.set(id, cloneEvaluationRunItem(record));
     }
   }
 }
