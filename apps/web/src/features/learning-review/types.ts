@@ -1,11 +1,13 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { LearningWritebackViewModel } from "../learning-governance/types.ts";
 
 export type LearningCandidateType =
   | "rule_candidate"
   | "case_pattern_candidate"
   | "template_update_candidate"
   | "prompt_optimization_candidate"
-  | "checklist_update_candidate";
+  | "checklist_update_candidate"
+  | "skill_update_candidate";
 
 export type LearningCandidateStatus =
   | "draft"
@@ -41,6 +43,8 @@ export interface LearningCandidateViewModel {
   created_by: string;
   created_at: string;
   updated_at: string;
+  // Admin workbench can render approval state and governed writebacks from one payload.
+  writeback_summaries?: LearningWritebackViewModel[];
 }
 
 export interface CreateReviewedCaseSnapshotInput {
