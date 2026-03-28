@@ -103,6 +103,24 @@ const trulyEmptyState = isKnowledgeReviewQueueTrulyEmpty(
     queue: [],
   }),
 );
+const staleVisibleAfterRefreshState = receiveKnowledgeReviewQueueRefresh(
+  createKnowledgeReviewWorkbenchState({
+    queue: [secondQueueItem],
+    filters: {
+      searchText: "privacy",
+    },
+  }),
+  {
+    queue: [firstQueueItem],
+  },
+);
+const filterEmptyDerivedFromRefreshPayload = isKnowledgeReviewFilterResultEmpty(
+  staleVisibleAfterRefreshState,
+);
+const refreshPayloadVisibleQueue = applyKnowledgeReviewFilters(
+  staleVisibleAfterRefreshState.refreshPayloadQueue ?? [],
+  staleVisibleAfterRefreshState.filters,
+);
 
 export {
   activeItemAfterRefresh,
@@ -110,9 +128,12 @@ export {
   afterReviewSuccess,
   expectedNextByPreRemovalOrder,
   filteredEmptyState,
+  filterEmptyDerivedFromRefreshPayload,
   filteredQueueWithSearch,
+  refreshPayloadVisibleQueue,
   resolvedView,
   state,
+  staleVisibleAfterRefreshState,
   trulyEmptyState,
   withRefreshPayload,
 };

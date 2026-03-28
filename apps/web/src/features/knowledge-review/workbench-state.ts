@@ -233,7 +233,12 @@ export function isKnowledgeReviewQueueTrulyEmpty(state: KnowledgeReviewWorkbench
 export function isKnowledgeReviewFilterResultEmpty(
   state: KnowledgeReviewWorkbenchState,
 ): boolean {
-  return resolveKnowledgeReviewQueueSource(state).length > 0 && state.visibleQueue.length === 0;
+  const queueSource = resolveKnowledgeReviewQueueSource(state);
+  if (queueSource.length === 0) {
+    return false;
+  }
+
+  return applyKnowledgeReviewFilters(queueSource, state.filters).length === 0;
 }
 
 export function isKnowledgeReviewWorkbenchEmpty(state: KnowledgeReviewWorkbenchState): boolean {
