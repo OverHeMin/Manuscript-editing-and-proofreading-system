@@ -174,32 +174,46 @@ export function resolveKnowledgeReviewActiveItem(
 }
 
 export function resolveNextActiveItemAfterReviewSuccess(
-  visibleQueue: readonly KnowledgeReviewQueueItemViewModel[],
+  previousVisibleQueue: readonly KnowledgeReviewQueueItemViewModel[],
+  nextVisibleQueue: readonly KnowledgeReviewQueueItemViewModel[],
   reviewedItemId: string,
 ): string | null {
-  if (visibleQueue.length === 0) {
+  if (nextVisibleQueue.length === 0) {
     return null;
   }
 
-  const currentIndex = visibleQueue.findIndex((item) => item.id === reviewedItemId);
+  const currentIndex = previousVisibleQueue.findIndex((item) => item.id === reviewedItemId);
   if (currentIndex < 0) {
-    return visibleQueue[0]?.id ?? null;
+    return nextVisibleQueue[0]?.id ?? null;
   }
 
   // Business-critical reviewer behavior: keep flow continuous by preferring the next row.
-  const nextItem = visibleQueue[currentIndex + 1] ?? visibleQueue[currentIndex - 1];
-  return nextItem?.id ?? null;
+  const candidateIds = [
+    previousVisibleQueue[currentIndex + 1]?.id,
+    previousVisibleQueue[currentIndex - 1]?.id,
+  ];
+  const nextVisibleIds = new Set(nextVisibleQueue.map((item) => item.id));
+  const nextId = candidateIds.find((candidateId) =>
+    candidateId == null ? false : nextVisibleIds.has(candidateId),
+  );
+
+  return nextId ?? nextVisibleQueue[0]?.id ?? null;
 }
 
 export function applyKnowledgeReviewSuccess(
   state: KnowledgeReviewWorkbenchState,
   reviewedItemId: string,
 ): KnowledgeReviewWorkbenchState {
+  const previousVisibleQueue = state.visibleQueue;
   const queue = state.queue.filter((item) => item.id !== reviewedItemId);
   const refreshPayloadQueue =
     state.refreshPayloadQueue?.filter((item) => item.id !== reviewedItemId) ?? null;
   const visibleQueue = applyKnowledgeReviewFilters(queue, state.filters);
-  const activeItemId = resolveNextActiveItemAfterReviewSuccess(visibleQueue, reviewedItemId);
+  const activeItemId = resolveNextActiveItemAfterReviewSuccess(
+    previousVisibleQueue,
+    visibleQueue,
+    reviewedItemId,
+  );
   const selectedItem = resolveKnowledgeReviewActiveItem(visibleQueue, activeItemId);
 
   return {
@@ -212,8 +226,24 @@ export function applyKnowledgeReviewSuccess(
   };
 }
 
+export function isKnowledgeReviewQueueTrulyEmpty(state: KnowledgeReviewWorkbenchState): boolean {
+  return resolveKnowledgeReviewQueueSource(state).length === 0;
+}
+
+export function isKnowledgeReviewFilterResultEmpty(
+  state: KnowledgeReviewWorkbenchState,
+): boolean {
+  return resolveKnowledgeReviewQueueSource(state).length > 0 && state.visibleQueue.length === 0;
+}
+
 export function isKnowledgeReviewWorkbenchEmpty(state: KnowledgeReviewWorkbenchState): boolean {
-  return state.visibleQueue.length === 0 && state.refreshPayloadQueue == null;
+  return isKnowledgeReviewQueueTrulyEmpty(state);
+}
+
+function resolveKnowledgeReviewQueueSource(
+  state: Pick<KnowledgeReviewWorkbenchState, "queue" | "refreshPayloadQueue">,
+): readonly KnowledgeReviewQueueItemViewModel[] {
+  return state.refreshPayloadQueue ?? state.queue;
 }
 
 function matchesModuleScope(
