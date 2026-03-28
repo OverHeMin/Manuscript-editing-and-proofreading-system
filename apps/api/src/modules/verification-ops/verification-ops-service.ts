@@ -12,6 +12,9 @@ import {
   InMemoryVerificationOpsRepository,
 } from "./in-memory-verification-ops-repository.ts";
 import {
+  summarizeEvaluationRun,
+} from "./evidence-pack-builder.ts";
+import {
   freezeExperimentBindings,
   type FrozenExperimentBindingInput,
 } from "./experiment-binding-guard.ts";
@@ -19,6 +22,8 @@ import {
   requireEligibleReviewedCaseSnapshot,
 } from "./sample-set-source-guard.ts";
 import type {
+  EvaluationEvidencePackRecord,
+  EvaluationPromotionRecommendationRecord,
   EvaluationRunRecord,
   EvaluationRunItemFailureKind,
   EvaluationRunItemRecord,
@@ -105,6 +110,12 @@ export interface RecordEvaluationRunItemResultInput {
   failureReason?: string;
   diffSummary?: string;
   requiresHumanReview?: boolean;
+}
+
+export interface FinalizeEvaluationRunResult {
+  run: EvaluationRunRecord;
+  evidence_pack: EvaluationEvidencePackRecord;
+  recommendation: EvaluationPromotionRecommendationRecord;
 }
 
 interface VerificationOpsWriteContext {
@@ -639,6 +650,52 @@ export class VerificationOpsService {
   ): Promise<EvaluationRunItemRecord[]> {
     await this.requireEvaluationRun(runId);
     return this.repository.listEvaluationRunItemsByRunId(runId);
+  }
+
+  async finalizeEvaluationRun(
+    actorRole: RoleKey,
+    runId: string,
+  ): Promise<FinalizeEvaluationRunResult> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const run = await this.requireEvaluationRun(runId);
+    const suite = await this.requireEvaluationSuite(run.suite_id);
+    const runItems = await this.repository.listEvaluationRunItemsByRunId(runId);
+    const summary = summarizeEvaluationRun({
+      run,
+      suite,
+      runItems,
+    });
+    const timestamp = this.now().toISOString();
+
+    const evidencePack: EvaluationEvidencePackRecord = {
+      id: this.createId(),
+      experiment_run_id: run.id,
+      summary_status: summary.summaryStatus,
+      score_summary: summary.scoreSummary,
+      regression_summary: summary.regressionSummary,
+      failure_summary: summary.failureSummary,
+      cost_summary: summary.costSummary,
+      latency_summary: summary.latencySummary,
+      created_at: timestamp,
+    };
+    await this.repository.saveEvaluationEvidencePack(evidencePack);
+
+    const recommendation: EvaluationPromotionRecommendationRecord = {
+      id: this.createId(),
+      experiment_run_id: run.id,
+      evidence_pack_id: evidencePack.id,
+      status: summary.recommendationStatus,
+      decision_reason: summary.decisionReason,
+      created_at: timestamp,
+    };
+    await this.repository.saveEvaluationPromotionRecommendation(recommendation);
+
+    return {
+      run,
+      evidence_pack: evidencePack,
+      recommendation,
+    };
   }
 
   private async assertToolsExist(toolIds: string[]): Promise<void> {

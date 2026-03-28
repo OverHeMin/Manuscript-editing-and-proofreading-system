@@ -1,4 +1,6 @@
 import type {
+  EvaluationEvidencePackRecord,
+  EvaluationPromotionRecommendationRecord,
   EvaluationRunRecord,
   EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
@@ -50,4 +52,9 @@ export interface VerificationOpsRepository {
   saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void>;
   findEvaluationRunItemById(id: string): Promise<EvaluationRunItemRecord | undefined>;
   listEvaluationRunItemsByRunId(runId: string): Promise<EvaluationRunItemRecord[]>;
+
+  saveEvaluationEvidencePack(record: EvaluationEvidencePackRecord): Promise<void>;
+  saveEvaluationPromotionRecommendation(
+    record: EvaluationPromotionRecommendationRecord,
+  ): Promise<void>;
 }

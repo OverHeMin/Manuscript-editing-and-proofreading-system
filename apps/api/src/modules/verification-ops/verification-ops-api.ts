@@ -16,6 +16,7 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  FinalizeEvaluationRunResult,
   RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
   VerificationOpsService,
@@ -260,6 +261,19 @@ export function createVerificationOpsApi(
           actorRole,
           input,
         ),
+      };
+    },
+
+    async finalizeEvaluationRun({
+      actorRole,
+      runId,
+    }: {
+      actorRole: RoleKey;
+      runId: string;
+    }): Promise<RouteResponse<FinalizeEvaluationRunResult>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.finalizeEvaluationRun(actorRole, runId),
       };
     },
 

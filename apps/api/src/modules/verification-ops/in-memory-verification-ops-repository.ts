@@ -1,5 +1,7 @@
 import type { SnapshotCapableRepository } from "../shared/write-transaction-manager.ts";
 import type {
+  EvaluationEvidencePackRecord,
+  EvaluationPromotionRecommendationRecord,
   EvaluationRunRecord,
   EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
@@ -76,6 +78,25 @@ function cloneVerificationEvidence(
   };
 }
 
+function cloneEvaluationEvidencePack(
+  record: EvaluationEvidencePackRecord,
+): EvaluationEvidencePackRecord {
+  return {
+    ...record,
+  };
+}
+
+function cloneEvaluationPromotionRecommendation(
+  record: EvaluationPromotionRecommendationRecord,
+): EvaluationPromotionRecommendationRecord {
+  return {
+    ...record,
+    learning_candidate_ids: record.learning_candidate_ids
+      ? [...record.learning_candidate_ids]
+      : undefined,
+  };
+}
+
 function cloneFrozenExperimentBinding(
   record: FrozenExperimentBindingRecord,
 ): FrozenExperimentBindingRecord {
@@ -122,6 +143,8 @@ export class InMemoryVerificationOpsRepository
       evidence: Map<string, VerificationEvidenceRecord>;
       runs: Map<string, EvaluationRunRecord>;
       runItems: Map<string, EvaluationRunItemRecord>;
+      evidencePacks: Map<string, EvaluationEvidencePackRecord>;
+      recommendations: Map<string, EvaluationPromotionRecommendationRecord>;
     }>
 {
   private readonly sampleSets = new Map<string, EvaluationSampleSetRecord>();
@@ -132,6 +155,9 @@ export class InMemoryVerificationOpsRepository
   private readonly evidence = new Map<string, VerificationEvidenceRecord>();
   private readonly runs = new Map<string, EvaluationRunRecord>();
   private readonly runItems = new Map<string, EvaluationRunItemRecord>();
+  private readonly evidencePacks = new Map<string, EvaluationEvidencePackRecord>();
+  private readonly recommendations =
+    new Map<string, EvaluationPromotionRecommendationRecord>();
 
   async saveEvaluationSampleSet(record: EvaluationSampleSetRecord): Promise<void> {
     this.sampleSets.set(record.id, cloneEvaluationSampleSet(record));
@@ -267,6 +293,21 @@ export class InMemoryVerificationOpsRepository
       .map(cloneEvaluationRunItem);
   }
 
+  async saveEvaluationEvidencePack(
+    record: EvaluationEvidencePackRecord,
+  ): Promise<void> {
+    this.evidencePacks.set(record.id, cloneEvaluationEvidencePack(record));
+  }
+
+  async saveEvaluationPromotionRecommendation(
+    record: EvaluationPromotionRecommendationRecord,
+  ): Promise<void> {
+    this.recommendations.set(
+      record.id,
+      cloneEvaluationPromotionRecommendation(record),
+    );
+  }
+
   snapshotState(): {
     sampleSets: Map<string, EvaluationSampleSetRecord>;
     sampleSetItems: Map<string, EvaluationSampleSetItemRecord>;
@@ -276,6 +317,8 @@ export class InMemoryVerificationOpsRepository
     evidence: Map<string, VerificationEvidenceRecord>;
     runs: Map<string, EvaluationRunRecord>;
     runItems: Map<string, EvaluationRunItemRecord>;
+    evidencePacks: Map<string, EvaluationEvidencePackRecord>;
+    recommendations: Map<string, EvaluationPromotionRecommendationRecord>;
   } {
     return {
       sampleSets: new Map(
@@ -323,6 +366,18 @@ export class InMemoryVerificationOpsRepository
           cloneEvaluationRunItem(record),
         ]),
       ),
+      evidencePacks: new Map(
+        [...this.evidencePacks.entries()].map(([id, record]) => [
+          id,
+          cloneEvaluationEvidencePack(record),
+        ]),
+      ),
+      recommendations: new Map(
+        [...this.recommendations.entries()].map(([id, record]) => [
+          id,
+          cloneEvaluationPromotionRecommendation(record),
+        ]),
+      ),
     };
   }
 
@@ -335,6 +390,8 @@ export class InMemoryVerificationOpsRepository
     evidence: Map<string, VerificationEvidenceRecord>;
     runs: Map<string, EvaluationRunRecord>;
     runItems: Map<string, EvaluationRunItemRecord>;
+    evidencePacks: Map<string, EvaluationEvidencePackRecord>;
+    recommendations: Map<string, EvaluationPromotionRecommendationRecord>;
   }): void {
     this.sampleSets.clear();
     for (const [id, record] of snapshot.sampleSets.entries()) {
@@ -374,6 +431,19 @@ export class InMemoryVerificationOpsRepository
     this.runItems.clear();
     for (const [id, record] of snapshot.runItems.entries()) {
       this.runItems.set(id, cloneEvaluationRunItem(record));
+    }
+
+    this.evidencePacks.clear();
+    for (const [id, record] of snapshot.evidencePacks.entries()) {
+      this.evidencePacks.set(id, cloneEvaluationEvidencePack(record));
+    }
+
+    this.recommendations.clear();
+    for (const [id, record] of snapshot.recommendations.entries()) {
+      this.recommendations.set(
+        id,
+        cloneEvaluationPromotionRecommendation(record),
+      );
     }
   }
 }

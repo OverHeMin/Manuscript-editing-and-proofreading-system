@@ -12,6 +12,10 @@ export type VerificationEvidenceKind = "url" | "artifact";
 export type EvaluationRunStatus = "queued" | "running" | "passed" | "failed";
 export type EvaluationSampleSetSourceKind = "reviewed_case_snapshot";
 export type FrozenExperimentLane = "baseline" | "candidate";
+export type EvaluationDecisionStatus =
+  | "recommended"
+  | "needs_review"
+  | "rejected";
 export type EvaluationRunItemFailureKind =
   | "governance_failed"
   | "runtime_failed"
@@ -138,4 +142,26 @@ export interface EvaluationRunItemRecord {
   failure_reason?: string;
   diff_summary?: string;
   requires_human_review?: boolean;
+}
+
+export interface EvaluationEvidencePackRecord {
+  id: string;
+  experiment_run_id: string;
+  summary_status: EvaluationDecisionStatus;
+  score_summary?: string;
+  regression_summary?: string;
+  failure_summary?: string;
+  cost_summary?: string;
+  latency_summary?: string;
+  created_at: string;
+}
+
+export interface EvaluationPromotionRecommendationRecord {
+  id: string;
+  experiment_run_id: string;
+  evidence_pack_id: string;
+  status: EvaluationDecisionStatus;
+  decision_reason?: string;
+  learning_candidate_ids?: string[];
+  created_at: string;
 }
