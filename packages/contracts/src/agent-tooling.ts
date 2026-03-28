@@ -1,4 +1,10 @@
-import type { ManuscriptType } from "./manuscript.js";
+import type {
+  DocumentAssetId,
+  ManuscriptId,
+  ManuscriptType,
+  TemplateFamilyId,
+  UserId,
+} from "./manuscript.js";
 import type { ModuleType } from "./templates.js";
 
 export type AgentRuntimeAdapter = "internal_prompt" | "deepagents";
@@ -12,14 +18,46 @@ export type ToolGatewayScope =
   | "audit";
 export type SkillPackageScope = "admin_only";
 export type RegistryAssetStatus = "draft" | "published" | "archived";
+export type SandboxProfileStatus = "draft" | "active" | "archived";
+export type SandboxMode = "read_only" | "workspace_write" | "full_access";
+export type AgentRoleKey = "superpowers" | "gstack" | "subagent";
+export type RuntimeBindingStatus = "draft" | "active" | "archived";
+export type ToolPermissionPolicyStatus = "draft" | "active" | "archived";
+export type AgentExecutionStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+export type VerificationCheckType =
+  | "browser_qa"
+  | "benchmark"
+  | "deploy_verification";
+export type VerificationEvidenceKind = "url" | "artifact";
+export type EvaluationSuiteStatus = "draft" | "active" | "archived";
+export type EvaluationSuiteType = "regression" | "release_gate";
+export type EvaluationRunStatus = "queued" | "running" | "passed" | "failed";
+
+export type AgentRuntimeId = string;
+export type SandboxProfileId = string;
+export type AgentProfileId = string;
+export type RuntimeBindingId = string;
+export type ToolPermissionPolicyId = string;
+export type AgentExecutionLogId = string;
+export type VerificationCheckProfileId = string;
+export type ReleaseCheckProfileId = string;
+export type EvaluationSuiteId = string;
+export type EvaluationRunId = string;
+export type VerificationEvidenceId = string;
 
 export interface AgentRuntime {
-  id: string;
+  id: AgentRuntimeId;
   name: string;
   adapter: AgentRuntimeAdapter;
   status: AgentRuntimeStatus;
-  sandbox_profile_id?: string;
-  allowed_modules: string[];
+  sandbox_profile_id?: SandboxProfileId;
+  allowed_modules: ModuleType[];
+  version?: number;
+  runtime_slot?: string;
   admin_only: true;
 }
 
@@ -28,6 +66,28 @@ export interface ToolGatewayTool {
   name: string;
   scope: ToolGatewayScope;
   access_mode: ToolGatewayAccessMode;
+  admin_only: true;
+}
+
+export interface SandboxProfile {
+  id: SandboxProfileId;
+  name: string;
+  status: SandboxProfileStatus;
+  sandbox_mode: SandboxMode;
+  network_access: boolean;
+  approval_required: boolean;
+  allowed_tool_ids?: ToolGatewayTool["id"][];
+  admin_only: true;
+}
+
+export interface AgentProfile {
+  id: AgentProfileId;
+  name: string;
+  role_key: AgentRoleKey;
+  status: RegistryAssetStatus;
+  module_scope: ModuleType[] | "any";
+  manuscript_types: ManuscriptType[] | "any";
+  description?: string;
   admin_only: true;
 }
 
@@ -49,4 +109,97 @@ export interface SkillPackage {
   status: RegistryAssetStatus;
   applies_to_modules: ModuleType[];
   dependency_tools?: string[];
+}
+
+export interface ToolPermissionPolicy {
+  id: ToolPermissionPolicyId;
+  name: string;
+  status: ToolPermissionPolicyStatus;
+  default_mode: ToolGatewayAccessMode;
+  allowed_tool_ids: ToolGatewayTool["id"][];
+  high_risk_tool_ids?: ToolGatewayTool["id"][];
+  write_requires_confirmation: boolean;
+  admin_only: true;
+}
+
+export interface RuntimeBinding {
+  id: RuntimeBindingId;
+  module: ModuleType;
+  manuscript_type: ManuscriptType;
+  template_family_id: TemplateFamilyId;
+  runtime_id: AgentRuntimeId;
+  sandbox_profile_id: SandboxProfileId;
+  agent_profile_id: AgentProfileId;
+  tool_permission_policy_id: ToolPermissionPolicyId;
+  prompt_template_id: PromptTemplate["id"];
+  skill_package_ids: SkillPackage["id"][];
+  execution_profile_id?: string;
+  status: RuntimeBindingStatus;
+  version: number;
+}
+
+export interface VerificationCheckProfile {
+  id: VerificationCheckProfileId;
+  name: string;
+  check_type: VerificationCheckType;
+  status: RegistryAssetStatus;
+  tool_ids?: ToolGatewayTool["id"][];
+  admin_only: true;
+}
+
+export interface ReleaseCheckProfile {
+  id: ReleaseCheckProfileId;
+  name: string;
+  check_type: VerificationCheckType;
+  status: RegistryAssetStatus;
+  verification_check_profile_ids: VerificationCheckProfileId[];
+  admin_only: true;
+}
+
+export interface EvaluationSuite {
+  id: EvaluationSuiteId;
+  name: string;
+  suite_type: EvaluationSuiteType;
+  status: EvaluationSuiteStatus;
+  verification_check_profile_ids: VerificationCheckProfileId[];
+  module_scope: ModuleType[] | "any";
+  admin_only: true;
+}
+
+export interface VerificationEvidence {
+  id: VerificationEvidenceId;
+  kind: VerificationEvidenceKind;
+  label: string;
+  uri?: string;
+  artifact_asset_id?: DocumentAssetId;
+  check_profile_id?: VerificationCheckProfileId;
+  created_at: string;
+}
+
+export interface EvaluationRun {
+  id: EvaluationRunId;
+  suite_id: EvaluationSuiteId;
+  release_check_profile_id?: ReleaseCheckProfileId;
+  status: EvaluationRunStatus;
+  evidence_ids: VerificationEvidenceId[];
+  started_at: string;
+  finished_at?: string;
+}
+
+export interface AgentExecutionLog {
+  id: AgentExecutionLogId;
+  manuscript_id: ManuscriptId;
+  module: ModuleType;
+  triggered_by: UserId;
+  runtime_id: AgentRuntimeId;
+  sandbox_profile_id: SandboxProfileId;
+  agent_profile_id: AgentProfileId;
+  runtime_binding_id: RuntimeBindingId;
+  tool_permission_policy_id: ToolPermissionPolicyId;
+  execution_snapshot_id?: string;
+  knowledge_item_ids: string[];
+  verification_evidence_ids: VerificationEvidenceId[];
+  status: AgentExecutionStatus;
+  started_at: string;
+  finished_at?: string;
 }
