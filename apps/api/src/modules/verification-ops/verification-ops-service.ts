@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { ReviewedCaseSnapshotRepository } from "../learning/learning-repository.ts";
 import type { ToolGatewayRepository } from "../tool-gateway/tool-gateway-repository.ts";
 import {
   createDirectWriteTransactionManager,
@@ -10,8 +11,13 @@ import {
 import {
   InMemoryVerificationOpsRepository,
 } from "./in-memory-verification-ops-repository.ts";
+import {
+  requireEligibleReviewedCaseSnapshot,
+} from "./sample-set-source-guard.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationSampleSetItemRecord,
+  EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -23,6 +29,15 @@ export interface CreateVerificationCheckProfileInput {
   name: string;
   checkType: VerificationCheckProfileRecord["check_type"];
   toolIds?: string[];
+}
+
+export interface CreateEvaluationSampleSetInput {
+  name: string;
+  module: EvaluationSampleSetRecord["module"];
+  sampleItemInputs: Array<{
+    reviewedCaseSnapshotId: string;
+    riskTags?: string[];
+  }>;
 }
 
 export interface CreateReleaseCheckProfileInput {
@@ -63,6 +78,7 @@ interface VerificationOpsWriteContext {
 
 export interface VerificationOpsServiceOptions {
   repository: VerificationOpsRepository;
+  reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   toolGatewayRepository: ToolGatewayRepository;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<VerificationOpsWriteContext>;
@@ -88,6 +104,13 @@ export class EvaluationSuiteNotFoundError extends Error {
   constructor(suiteId: string) {
     super(`Evaluation suite ${suiteId} was not found.`);
     this.name = "EvaluationSuiteNotFoundError";
+  }
+}
+
+export class EvaluationSampleSetNotFoundError extends Error {
+  constructor(sampleSetId: string) {
+    super(`Evaluation sample set ${sampleSetId} was not found.`);
+    this.name = "EvaluationSampleSetNotFoundError";
   }
 }
 
@@ -135,6 +158,7 @@ export class ReleaseCheckProfileDependencyError extends Error {
 
 export class VerificationOpsService {
   private readonly repository: VerificationOpsRepository;
+  private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   private readonly toolGatewayRepository: ToolGatewayRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<VerificationOpsWriteContext>;
@@ -143,6 +167,7 @@ export class VerificationOpsService {
 
   constructor(options: VerificationOpsServiceOptions) {
     this.repository = options.repository;
+    this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
     this.toolGatewayRepository = options.toolGatewayRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -152,6 +177,95 @@ export class VerificationOpsService {
       });
     this.createId = options.createId ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
+  }
+
+  async createEvaluationSampleSet(
+    actorRole: RoleKey,
+    input: CreateEvaluationSampleSetInput,
+  ): Promise<EvaluationSampleSetRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const sampleSetId = this.createId();
+      const sampleItems: EvaluationSampleSetItemRecord[] = [];
+
+      for (const itemInput of input.sampleItemInputs) {
+        const snapshot = await requireEligibleReviewedCaseSnapshot(
+          this.reviewedCaseSnapshotRepository,
+          itemInput.reviewedCaseSnapshotId,
+          input.module,
+        );
+
+        sampleItems.push({
+          id: this.createId(),
+          sample_set_id: sampleSetId,
+          manuscript_id: snapshot.manuscript_id,
+          snapshot_asset_id: snapshot.snapshot_asset_id,
+          reviewed_case_snapshot_id: snapshot.id,
+          module: snapshot.module,
+          manuscript_type: snapshot.manuscript_type,
+          risk_tags: itemInput.riskTags
+            ? dedupePreserveOrder(itemInput.riskTags)
+            : undefined,
+        });
+      }
+
+      const sampleSet: EvaluationSampleSetRecord = {
+        id: sampleSetId,
+        name: input.name,
+        module: input.module,
+        manuscript_types: dedupePreserveOrder(
+          sampleItems.map((item) => item.manuscript_type),
+        ),
+        risk_tags: flattenOptionalTags(sampleItems),
+        sample_count: sampleItems.length,
+        source_policy: {
+          source_kind: "reviewed_case_snapshot",
+          requires_deidentification_pass: true,
+          requires_human_final_asset: true,
+        },
+        status: "draft",
+        admin_only: true,
+      };
+
+      await repository.saveEvaluationSampleSet(sampleSet);
+      for (const item of sampleItems) {
+        await repository.saveEvaluationSampleSetItem(item);
+      }
+
+      return sampleSet;
+    });
+  }
+
+  async publishEvaluationSampleSet(
+    sampleSetId: string,
+    actorRole: RoleKey,
+  ): Promise<EvaluationSampleSetRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const existing = await this.requireEvaluationSampleSet(sampleSetId);
+    // Published sample sets become frozen experiment inputs; any future change
+    // should fork a new draft instead of mutating this governed asset in place.
+    const published: EvaluationSampleSetRecord = {
+      ...existing,
+      manuscript_types: [...existing.manuscript_types],
+      risk_tags: existing.risk_tags ? [...existing.risk_tags] : undefined,
+      source_policy: { ...existing.source_policy },
+      status: "published",
+    };
+    await this.repository.saveEvaluationSampleSet(published);
+    return published;
+  }
+
+  listEvaluationSampleSets(): Promise<EvaluationSampleSetRecord[]> {
+    return this.repository.listEvaluationSampleSets();
+  }
+
+  async listEvaluationSampleSetItemsBySampleSetId(
+    sampleSetId: string,
+  ): Promise<EvaluationSampleSetItemRecord[]> {
+    await this.requireEvaluationSampleSet(sampleSetId);
+    return this.repository.listEvaluationSampleSetItemsBySampleSetId(sampleSetId);
   }
 
   async createVerificationCheckProfile(
@@ -448,6 +562,17 @@ export class VerificationOpsService {
 
     return record;
   }
+
+  private async requireEvaluationSampleSet(
+    sampleSetId: string,
+  ): Promise<EvaluationSampleSetRecord> {
+    const record = await this.repository.findEvaluationSampleSetById(sampleSetId);
+    if (!record) {
+      throw new EvaluationSampleSetNotFoundError(sampleSetId);
+    }
+
+    return record;
+  }
 }
 
 function createVerificationOpsTransactionManager(
@@ -464,9 +589,9 @@ function createVerificationOpsTransactionManager(
   return createDirectWriteTransactionManager(context);
 }
 
-function dedupePreserveOrder(values: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
+function dedupePreserveOrder<T extends string>(values: T[]): T[] {
+  const seen = new Set<T>();
+  const result: T[] = [];
 
   for (const value of values) {
     if (seen.has(value)) {
@@ -479,3 +604,16 @@ function dedupePreserveOrder(values: string[]): string[] {
 
   return result;
 }
+
+function flattenOptionalTags(
+  items: Array<{ risk_tags?: string[] }>,
+): string[] | undefined {
+  const allTags = items.flatMap((item) => item.risk_tags ?? []);
+  return allTags.length > 0 ? dedupePreserveOrder(allTags) : undefined;
+}
+
+export {
+  EvaluationSampleSetSourceEligibilityError,
+  EvaluationSampleSetSourceSnapshotNotFoundError,
+  ReviewedCaseSnapshotRepositoryRequiredError,
+} from "./sample-set-source-guard.ts";

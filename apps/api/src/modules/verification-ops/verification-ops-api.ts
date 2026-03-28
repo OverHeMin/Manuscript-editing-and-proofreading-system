@@ -1,6 +1,8 @@
 import type { RoleKey } from "../../users/roles.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationSampleSetItemRecord,
+  EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -9,6 +11,7 @@ import type {
 import type {
   CompleteEvaluationRunInput,
   CreateEvaluationRunInput,
+  CreateEvaluationSampleSetInput,
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
@@ -31,6 +34,57 @@ export function createVerificationOpsApi(
   const { verificationOpsService } = options;
 
   return {
+    async createEvaluationSampleSet({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: CreateEvaluationSampleSetInput;
+    }): Promise<RouteResponse<EvaluationSampleSetRecord>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.createEvaluationSampleSet(actorRole, input),
+      };
+    },
+
+    async publishEvaluationSampleSet({
+      actorRole,
+      sampleSetId,
+    }: {
+      actorRole: RoleKey;
+      sampleSetId: string;
+    }): Promise<RouteResponse<EvaluationSampleSetRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.publishEvaluationSampleSet(
+          sampleSetId,
+          actorRole,
+        ),
+      };
+    },
+
+    async listEvaluationSampleSets(): Promise<
+      RouteResponse<EvaluationSampleSetRecord[]>
+    > {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSampleSets(),
+      };
+    },
+
+    async listEvaluationSampleSetItems({
+      sampleSetId,
+    }: {
+      sampleSetId: string;
+    }): Promise<RouteResponse<EvaluationSampleSetItemRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSampleSetItemsBySampleSetId(
+          sampleSetId,
+        ),
+      };
+    },
+
     async createVerificationCheckProfile({
       actorRole,
       input,

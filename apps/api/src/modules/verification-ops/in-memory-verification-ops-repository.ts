@@ -1,12 +1,40 @@
 import type { SnapshotCapableRepository } from "../shared/write-transaction-manager.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationSampleSetItemRecord,
+  EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
 import type { VerificationOpsRepository } from "./verification-ops-repository.ts";
+
+function cloneSampleSetSourcePolicy(
+  record: EvaluationSampleSetRecord["source_policy"],
+): EvaluationSampleSetRecord["source_policy"] {
+  return { ...record };
+}
+
+function cloneEvaluationSampleSet(
+  record: EvaluationSampleSetRecord,
+): EvaluationSampleSetRecord {
+  return {
+    ...record,
+    manuscript_types: [...record.manuscript_types],
+    risk_tags: record.risk_tags ? [...record.risk_tags] : undefined,
+    source_policy: cloneSampleSetSourcePolicy(record.source_policy),
+  };
+}
+
+function cloneEvaluationSampleSetItem(
+  record: EvaluationSampleSetItemRecord,
+): EvaluationSampleSetItemRecord {
+  return {
+    ...record,
+    risk_tags: record.risk_tags ? [...record.risk_tags] : undefined,
+  };
+}
 
 function cloneCheckProfile(
   record: VerificationCheckProfileRecord,
@@ -59,6 +87,8 @@ export class InMemoryVerificationOpsRepository
   implements
     VerificationOpsRepository,
     SnapshotCapableRepository<{
+      sampleSets: Map<string, EvaluationSampleSetRecord>;
+      sampleSetItems: Map<string, EvaluationSampleSetItemRecord>;
       checkProfiles: Map<string, VerificationCheckProfileRecord>;
       releaseProfiles: Map<string, ReleaseCheckProfileRecord>;
       suites: Map<string, EvaluationSuiteRecord>;
@@ -66,11 +96,45 @@ export class InMemoryVerificationOpsRepository
       runs: Map<string, EvaluationRunRecord>;
     }>
 {
+  private readonly sampleSets = new Map<string, EvaluationSampleSetRecord>();
+  private readonly sampleSetItems = new Map<string, EvaluationSampleSetItemRecord>();
   private readonly checkProfiles = new Map<string, VerificationCheckProfileRecord>();
   private readonly releaseProfiles = new Map<string, ReleaseCheckProfileRecord>();
   private readonly suites = new Map<string, EvaluationSuiteRecord>();
   private readonly evidence = new Map<string, VerificationEvidenceRecord>();
   private readonly runs = new Map<string, EvaluationRunRecord>();
+
+  async saveEvaluationSampleSet(record: EvaluationSampleSetRecord): Promise<void> {
+    this.sampleSets.set(record.id, cloneEvaluationSampleSet(record));
+  }
+
+  async findEvaluationSampleSetById(
+    id: string,
+  ): Promise<EvaluationSampleSetRecord | undefined> {
+    const record = this.sampleSets.get(id);
+    return record ? cloneEvaluationSampleSet(record) : undefined;
+  }
+
+  async listEvaluationSampleSets(): Promise<EvaluationSampleSetRecord[]> {
+    return [...this.sampleSets.values()]
+      .sort(compareById)
+      .map(cloneEvaluationSampleSet);
+  }
+
+  async saveEvaluationSampleSetItem(
+    record: EvaluationSampleSetItemRecord,
+  ): Promise<void> {
+    this.sampleSetItems.set(record.id, cloneEvaluationSampleSetItem(record));
+  }
+
+  async listEvaluationSampleSetItemsBySampleSetId(
+    sampleSetId: string,
+  ): Promise<EvaluationSampleSetItemRecord[]> {
+    return [...this.sampleSetItems.values()]
+      .filter((record) => record.sample_set_id === sampleSetId)
+      .sort(compareById)
+      .map(cloneEvaluationSampleSetItem);
+  }
 
   async saveVerificationCheckProfile(
     record: VerificationCheckProfileRecord,
@@ -155,6 +219,8 @@ export class InMemoryVerificationOpsRepository
   }
 
   snapshotState(): {
+    sampleSets: Map<string, EvaluationSampleSetRecord>;
+    sampleSetItems: Map<string, EvaluationSampleSetItemRecord>;
     checkProfiles: Map<string, VerificationCheckProfileRecord>;
     releaseProfiles: Map<string, ReleaseCheckProfileRecord>;
     suites: Map<string, EvaluationSuiteRecord>;
@@ -162,6 +228,18 @@ export class InMemoryVerificationOpsRepository
     runs: Map<string, EvaluationRunRecord>;
   } {
     return {
+      sampleSets: new Map(
+        [...this.sampleSets.entries()].map(([id, record]) => [
+          id,
+          cloneEvaluationSampleSet(record),
+        ]),
+      ),
+      sampleSetItems: new Map(
+        [...this.sampleSetItems.entries()].map(([id, record]) => [
+          id,
+          cloneEvaluationSampleSetItem(record),
+        ]),
+      ),
       checkProfiles: new Map(
         [...this.checkProfiles.entries()].map(([id, record]) => [
           id,
@@ -193,12 +271,24 @@ export class InMemoryVerificationOpsRepository
   }
 
   restoreState(snapshot: {
+    sampleSets: Map<string, EvaluationSampleSetRecord>;
+    sampleSetItems: Map<string, EvaluationSampleSetItemRecord>;
     checkProfiles: Map<string, VerificationCheckProfileRecord>;
     releaseProfiles: Map<string, ReleaseCheckProfileRecord>;
     suites: Map<string, EvaluationSuiteRecord>;
     evidence: Map<string, VerificationEvidenceRecord>;
     runs: Map<string, EvaluationRunRecord>;
   }): void {
+    this.sampleSets.clear();
+    for (const [id, record] of snapshot.sampleSets.entries()) {
+      this.sampleSets.set(id, cloneEvaluationSampleSet(record));
+    }
+
+    this.sampleSetItems.clear();
+    for (const [id, record] of snapshot.sampleSetItems.entries()) {
+      this.sampleSetItems.set(id, cloneEvaluationSampleSetItem(record));
+    }
+
     this.checkProfiles.clear();
     for (const [id, record] of snapshot.checkProfiles.entries()) {
       this.checkProfiles.set(id, cloneCheckProfile(record));
