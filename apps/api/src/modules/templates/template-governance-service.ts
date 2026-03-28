@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import {
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
@@ -37,11 +39,18 @@ export interface CreateModuleTemplateDraftInput {
   prompt: string;
   checklist?: string[];
   sectionRequirements?: string[];
+  sourceLearningCandidateId?: string;
+}
+
+export interface CreateModuleTemplateDraftFromLearningCandidateInput
+  extends CreateModuleTemplateDraftInput {
+  sourceLearningCandidateId: string;
 }
 
 export interface TemplateGovernanceServiceOptions {
   templateFamilyRepository: TemplateFamilyRepository;
   moduleTemplateRepository: ModuleTemplateRepository;
+  learningCandidateRepository?: LearningCandidateRepository;
   transactionManager?: WriteTransactionManager<TemplateWriteContext>;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
@@ -92,6 +101,7 @@ export class TemplateFamilyManuscriptTypeMismatchError extends Error {
 export class TemplateGovernanceService {
   private readonly templateFamilyRepository: TemplateFamilyRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
+  private readonly learningCandidateRepository?: LearningCandidateRepository;
   private readonly transactionManager: WriteTransactionManager<TemplateWriteContext>;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
@@ -99,6 +109,7 @@ export class TemplateGovernanceService {
   constructor(options: TemplateGovernanceServiceOptions) {
     this.templateFamilyRepository = options.templateFamilyRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
+    this.learningCandidateRepository = options.learningCandidateRepository;
     this.transactionManager =
       options.transactionManager ??
       createTemplateWriteTransactionManager({
@@ -157,12 +168,29 @@ export class TemplateGovernanceService {
           prompt: input.prompt,
           checklist: input.checklist,
           section_requirements: input.sectionRequirements,
+          ...(input.sourceLearningCandidateId
+            ? {
+                source_learning_candidate_id: input.sourceLearningCandidateId,
+              }
+            : {}),
         };
 
         await moduleTemplateRepository.save(record);
         return record;
       },
     );
+  }
+
+  async createModuleTemplateDraftFromLearningCandidate(
+    actorRole: RoleKey,
+    input: CreateModuleTemplateDraftFromLearningCandidateInput,
+  ): Promise<ModuleTemplateRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+    await requireApprovedLearningCandidate(
+      this.learningCandidateRepository,
+      input.sourceLearningCandidateId,
+    );
+    return this.createModuleTemplateDraft(input);
   }
 
   async publishModuleTemplate(

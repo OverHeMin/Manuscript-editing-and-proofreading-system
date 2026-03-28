@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
+import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import type {
   PromptTemplateRecord,
   SkillPackageRecord,
@@ -12,6 +14,12 @@ export interface CreateSkillPackageInput {
   version: string;
   appliesToModules: SkillPackageRecord["applies_to_modules"];
   dependencyTools?: string[];
+  sourceLearningCandidateId?: string;
+}
+
+export interface CreateSkillPackageFromLearningCandidateInput
+  extends CreateSkillPackageInput {
+  sourceLearningCandidateId: string;
 }
 
 export interface CreatePromptTemplateInput {
@@ -20,10 +28,17 @@ export interface CreatePromptTemplateInput {
   module: PromptTemplateRecord["module"];
   manuscriptTypes: PromptTemplateRecord["manuscript_types"];
   rollbackTargetVersion?: string;
+  sourceLearningCandidateId?: string;
+}
+
+export interface CreatePromptTemplateFromLearningCandidateInput
+  extends CreatePromptTemplateInput {
+  sourceLearningCandidateId: string;
 }
 
 export interface PromptSkillRegistryServiceOptions {
   repository: PromptSkillRegistryRepository;
+  learningCandidateRepository?: LearningCandidateRepository;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -51,11 +66,13 @@ export class PromptSkillRegistryStatusTransitionError extends Error {
 
 export class PromptSkillRegistryService {
   private readonly repository: PromptSkillRegistryRepository;
+  private readonly learningCandidateRepository?: LearningCandidateRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
   constructor(options: PromptSkillRegistryServiceOptions) {
     this.repository = options.repository;
+    this.learningCandidateRepository = options.learningCandidateRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -74,10 +91,27 @@ export class PromptSkillRegistryService {
       status: "draft",
       applies_to_modules: [...input.appliesToModules],
       dependency_tools: input.dependencyTools ? [...input.dependencyTools] : undefined,
+      ...(input.sourceLearningCandidateId
+        ? {
+            source_learning_candidate_id: input.sourceLearningCandidateId,
+          }
+        : {}),
     };
 
     await this.repository.saveSkillPackage(record);
     return record;
+  }
+
+  async createSkillPackageFromLearningCandidate(
+    actorRole: RoleKey,
+    input: CreateSkillPackageFromLearningCandidateInput,
+  ): Promise<SkillPackageRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+    await requireApprovedLearningCandidate(
+      this.learningCandidateRepository,
+      input.sourceLearningCandidateId,
+    );
+    return this.createSkillPackage(actorRole, input);
   }
 
   listSkillPackages(): Promise<SkillPackageRecord[]> {
@@ -139,10 +173,27 @@ export class PromptSkillRegistryService {
           ? "any"
           : [...input.manuscriptTypes],
       rollback_target_version: input.rollbackTargetVersion,
+      ...(input.sourceLearningCandidateId
+        ? {
+            source_learning_candidate_id: input.sourceLearningCandidateId,
+          }
+        : {}),
     };
 
     await this.repository.savePromptTemplate(record);
     return record;
+  }
+
+  async createPromptTemplateFromLearningCandidate(
+    actorRole: RoleKey,
+    input: CreatePromptTemplateFromLearningCandidateInput,
+  ): Promise<PromptTemplateRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+    await requireApprovedLearningCandidate(
+      this.learningCandidateRepository,
+      input.sourceLearningCandidateId,
+    );
+    return this.createPromptTemplate(actorRole, input);
   }
 
   listPromptTemplates(): Promise<PromptTemplateRecord[]> {

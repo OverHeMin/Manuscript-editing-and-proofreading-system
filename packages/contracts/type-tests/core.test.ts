@@ -203,6 +203,7 @@ type _LearningCandidateType = Assert<
     | "template_update_candidate"
     | "prompt_optimization_candidate"
     | "checklist_update_candidate"
+    | "skill_update_candidate"
   >
 >;
 

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
@@ -31,6 +33,12 @@ export interface CreateKnowledgeDraftInput {
   sourceLink?: string;
   aliases?: string[];
   templateBindings?: string[];
+  sourceLearningCandidateId?: string;
+}
+
+export interface CreateKnowledgeDraftFromLearningCandidateInput
+  extends CreateKnowledgeDraftInput {
+  sourceLearningCandidateId: string;
 }
 
 export interface UpdateKnowledgeDraftInput {
@@ -47,6 +55,7 @@ export interface UpdateKnowledgeDraftInput {
 export interface KnowledgeServiceOptions {
   repository: KnowledgeRepository;
   reviewActionRepository: KnowledgeReviewActionRepository;
+  learningCandidateRepository?: LearningCandidateRepository;
   transactionManager?: WriteTransactionManager<KnowledgeWriteContext>;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
@@ -77,6 +86,7 @@ export class KnowledgeStatusTransitionError extends Error {
 export class KnowledgeService {
   private readonly repository: KnowledgeRepository;
   private readonly reviewActionRepository: KnowledgeReviewActionRepository;
+  private readonly learningCandidateRepository?: LearningCandidateRepository;
   private readonly transactionManager: WriteTransactionManager<KnowledgeWriteContext>;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
@@ -85,6 +95,7 @@ export class KnowledgeService {
   constructor(options: KnowledgeServiceOptions) {
     this.repository = options.repository;
     this.reviewActionRepository = options.reviewActionRepository;
+    this.learningCandidateRepository = options.learningCandidateRepository;
     this.transactionManager =
       options.transactionManager ??
       createKnowledgeWriteTransactionManager({
@@ -116,10 +127,27 @@ export class KnowledgeService {
       source_link: input.sourceLink,
       aliases: input.aliases,
       template_bindings: input.templateBindings,
+      ...(input.sourceLearningCandidateId
+        ? {
+            source_learning_candidate_id: input.sourceLearningCandidateId,
+          }
+        : {}),
     };
 
     await this.repository.save(record);
     return record;
+  }
+
+  async createDraftFromLearningCandidate(
+    actorRole: RoleKey,
+    input: CreateKnowledgeDraftFromLearningCandidateInput,
+  ): Promise<KnowledgeRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+    await requireApprovedLearningCandidate(
+      this.learningCandidateRepository,
+      input.sourceLearningCandidateId,
+    );
+    return this.createDraft(input);
   }
 
   async submitForReview(knowledgeItemId: string): Promise<KnowledgeRecord> {

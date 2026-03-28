@@ -1,5 +1,6 @@
 import type { ManuscriptType, TemplateFamilyId } from "./manuscript.js";
 import type { ManuscriptModule } from "./assets.js";
+import type { LearningCandidateId } from "./learning.js";
 
 export type ModuleType = Extract<
   ManuscriptModule,
@@ -41,6 +42,7 @@ export interface ModuleTemplate {
   prompt: string;
   checklist?: string[];
   section_requirements?: string[];
+  source_learning_candidate_id?: LearningCandidateId;
 }
 
 export interface TemplateKnowledgeBinding {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError, PermissionGuard } from "../../src/auth/permission-guard.ts";
+import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import { createTemplateApi } from "../../src/modules/templates/template-api.ts";
 import {
   InMemoryModuleTemplateRepository,
@@ -29,6 +30,7 @@ function createTemplateHarness(
   moduleTemplateRepository: InMemoryModuleTemplateRepository = new InMemoryModuleTemplateRepository(),
 ) {
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const issuedIds = ["family-1", "template-1", "template-2"];
   const nextId = () => {
     const value = issuedIds.shift();
@@ -38,6 +40,7 @@ function createTemplateHarness(
   const service = new TemplateGovernanceService({
     templateFamilyRepository,
     moduleTemplateRepository,
+    learningCandidateRepository,
     permissionGuard: new PermissionGuard(),
     now: () => new Date("2026-03-27T06:10:00.000Z"),
     createId: nextId,
@@ -48,9 +51,48 @@ function createTemplateHarness(
 
   return {
     api,
+    service,
+    learningCandidateRepository,
     moduleTemplateRepository,
   };
 }
+
+test("module template draft revisions can be created from an approved learning candidate", async () => {
+  const { api, service, learningCandidateRepository } = createTemplateHarness();
+
+  await learningCandidateRepository.save({
+    id: "candidate-approved-1",
+    type: "template_update_candidate",
+    status: "approved",
+    module: "editing",
+    manuscript_type: "review",
+    title: "综述编加模板修订",
+    proposal_text: "补充结果与讨论衔接检查项。",
+    created_by: "editor-1",
+    created_at: "2026-03-27T06:00:00.000Z",
+    updated_at: "2026-03-27T06:05:00.000Z",
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "综述模板族",
+  });
+
+  const template = await service.createModuleTemplateDraftFromLearningCandidate(
+    "admin",
+    {
+      sourceLearningCandidateId: "candidate-approved-1",
+      templateFamilyId: family.body.id,
+      module: "editing",
+      manuscriptType: "review",
+      prompt: "统一医学术语并补充结果与讨论衔接检查。",
+      checklist: ["结果段完整性", "讨论段衔接性"],
+    },
+  );
+
+  assert.equal(template.status, "draft");
+  assert.equal(template.source_learning_candidate_id, "candidate-approved-1");
+});
 
 test("create template family and module template draft for a manuscript type", async () => {
   const { api } = createTemplateHarness();

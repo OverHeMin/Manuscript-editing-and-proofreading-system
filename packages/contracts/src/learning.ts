@@ -9,7 +9,8 @@ export type LearningCandidateType =
   | "case_pattern_candidate"
   | "template_update_candidate"
   | "prompt_optimization_candidate"
-  | "checklist_update_candidate";
+  | "checklist_update_candidate"
+  | "skill_update_candidate";
 
 export type LearningCandidateStatus =
   | "draft"

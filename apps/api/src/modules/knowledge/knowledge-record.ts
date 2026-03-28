@@ -48,6 +48,7 @@ export interface KnowledgeRecord {
   source_link?: string;
   aliases?: string[];
   template_bindings?: string[];
+  source_learning_candidate_id?: string;
 }
 
 export interface KnowledgeReviewActionRecord {
