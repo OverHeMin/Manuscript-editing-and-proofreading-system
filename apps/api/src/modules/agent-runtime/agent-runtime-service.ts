@@ -89,7 +89,7 @@ export class AgentRuntimeService {
       if (
         runtime.id !== existing.id &&
         runtime.status === "active" &&
-        runtime.adapter === existing.adapter
+        shareActivationScope(runtime, existing)
       ) {
         await this.repository.save({
           ...runtime,
@@ -135,4 +135,15 @@ export class AgentRuntimeService {
 
     return record;
   }
+}
+
+function shareActivationScope(
+  left: AgentRuntimeRecord,
+  right: AgentRuntimeRecord,
+): boolean {
+  const leftScope = left.runtime_slot ? `slot:${left.runtime_slot}` : `adapter:${left.adapter}`;
+  const rightScope =
+    right.runtime_slot ? `slot:${right.runtime_slot}` : `adapter:${right.adapter}`;
+
+  return leftScope === rightScope;
 }

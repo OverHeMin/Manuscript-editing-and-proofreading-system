@@ -9,7 +9,7 @@ import {
 } from "../../src/modules/agent-runtime/agent-runtime-service.ts";
 
 function createAgentRuntimeHarness() {
-  const ids = ["runtime-1", "runtime-2"];
+  const ids = ["runtime-1", "runtime-2", "runtime-3", "runtime-4"];
   const service = new AgentRuntimeService({
     repository: new InMemoryAgentRuntimeRepository(),
     createId: () => {
@@ -129,4 +129,48 @@ test("publishing a runtime archives the previous active runtime for the same ada
   assert.deepEqual(activeForEditing.body.map((record) => record.id), ["runtime-2"]);
   assert.deepEqual(activeForScreening.body.map((record) => record.id), ["runtime-2"]);
   assert.equal(firstReloaded.body.status, "archived");
+});
+
+test("publishing runtimes in different runtime slots keeps both active", async () => {
+  const { api } = createAgentRuntimeHarness();
+
+  const screening = await api.createRuntime({
+    actorRole: "admin",
+    input: {
+      name: "Screening Runtime",
+      adapter: "deepagents",
+      sandboxProfileId: "sandbox-screening",
+      allowedModules: ["screening"],
+      runtimeSlot: "screening",
+    },
+  });
+  await api.publishRuntime({
+    actorRole: "admin",
+    runtimeId: screening.body.id,
+  });
+
+  const editing = await api.createRuntime({
+    actorRole: "admin",
+    input: {
+      name: "Editing Runtime",
+      adapter: "deepagents",
+      sandboxProfileId: "sandbox-editing",
+      allowedModules: ["editing"],
+      runtimeSlot: "editing",
+    },
+  });
+  await api.publishRuntime({
+    actorRole: "admin",
+    runtimeId: editing.body.id,
+  });
+
+  const activeScreening = await api.getRuntime({
+    runtimeId: screening.body.id,
+  });
+  const activeEditing = await api.getRuntime({
+    runtimeId: editing.body.id,
+  });
+
+  assert.equal(activeScreening.body.status, "active");
+  assert.equal(activeEditing.body.status, "active");
 });
