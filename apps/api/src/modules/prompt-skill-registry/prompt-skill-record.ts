@@ -11,6 +11,7 @@ export interface SkillPackageRecord {
   status: RegistryAssetStatus;
   applies_to_modules: TemplateModule[];
   dependency_tools?: string[];
+  source_learning_candidate_id?: string;
 }
 
 export interface PromptTemplateRecord {
@@ -21,4 +22,5 @@ export interface PromptTemplateRecord {
   module: TemplateModule;
   manuscript_types: ManuscriptType[] | "any";
   rollback_target_version?: string;
+  source_learning_candidate_id?: string;
 }

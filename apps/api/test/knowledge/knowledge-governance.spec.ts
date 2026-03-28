@@ -6,6 +6,7 @@ import {
   InMemoryKnowledgeReviewActionRepository,
 } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import type { KnowledgeReviewActionRecord } from "../../src/modules/knowledge/knowledge-record.ts";
 
 class FailingKnowledgeReviewActionRepository extends InMemoryKnowledgeReviewActionRepository {
@@ -28,6 +29,7 @@ function createKnowledgeHarness(
   reviewActionRepository: InMemoryKnowledgeReviewActionRepository = new InMemoryKnowledgeReviewActionRepository(),
 ) {
   const repository = new InMemoryKnowledgeRepository();
+  const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const issuedIds = [
     "knowledge-1",
     "review-action-1",
@@ -35,6 +37,7 @@ function createKnowledgeHarness(
     "knowledge-2",
     "review-action-3",
     "review-action-4",
+    "knowledge-3",
   ];
   const nextId = () => {
     const value = issuedIds.shift();
@@ -44,6 +47,7 @@ function createKnowledgeHarness(
   const service = new KnowledgeService({
     repository,
     reviewActionRepository,
+    learningCandidateRepository,
     now: () => new Date("2026-03-27T06:00:00.000Z"),
     createId: nextId,
   });
@@ -53,10 +57,41 @@ function createKnowledgeHarness(
 
   return {
     api,
+    service,
     repository,
     reviewActionRepository,
+    learningCandidateRepository,
   };
 }
+
+test("knowledge drafts can be created from an approved learning candidate with provenance", async () => {
+  const { service, learningCandidateRepository } = createKnowledgeHarness();
+
+  await learningCandidateRepository.save({
+    id: "candidate-approved-1",
+    type: "rule_candidate",
+    status: "approved",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    title: "统计学报告补充规则",
+    proposal_text: "补充主要终点与统计方法说明。",
+    created_by: "editor-1",
+    created_at: "2026-03-27T05:50:00.000Z",
+    updated_at: "2026-03-27T05:55:00.000Z",
+  });
+
+  const record = await service.createDraftFromLearningCandidate("admin", {
+    sourceLearningCandidateId: "candidate-approved-1",
+    title: "统计学报告补充规则",
+    canonicalText: "临床研究需明确主要终点与统计方法。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  assert.equal(record.status, "draft");
+  assert.equal(record.source_learning_candidate_id, "candidate-approved-1");
+});
 
 test("create knowledge draft keeps routing fields editable before review", async () => {
   const { api } = createKnowledgeHarness();

@@ -26,4 +26,5 @@ export interface ModuleTemplateRecord {
   prompt: string;
   checklist?: string[];
   section_requirements?: string[];
+  source_learning_candidate_id?: string;
 }

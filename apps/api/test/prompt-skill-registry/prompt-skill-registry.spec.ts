@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
+import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import { createPromptSkillRegistryApi } from "../../src/modules/prompt-skill-registry/prompt-skill-api.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { PromptSkillRegistryService } from "../../src/modules/prompt-skill-registry/prompt-skill-service.ts";
 
 function createPromptSkillHarness() {
   const repository = new InMemoryPromptSkillRegistryRepository();
+  const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const service = new PromptSkillRegistryService({
     repository,
+    learningCandidateRepository,
     createId: (() => {
       const ids = [
         "skill-1",
@@ -31,8 +34,58 @@ function createPromptSkillHarness() {
 
   return {
     api,
+    service,
+    learningCandidateRepository,
   };
 }
+
+test("prompt templates and skill packages can create provenance-aware drafts from approved learning candidates", async () => {
+  const { service, learningCandidateRepository } = createPromptSkillHarness();
+
+  await learningCandidateRepository.save({
+    id: "candidate-approved-1",
+    type: "prompt_optimization_candidate",
+    status: "approved",
+    module: "proofreading",
+    manuscript_type: "review",
+    title: "校对提示词优化",
+    proposal_text: "先出草稿，再进入人工确认。",
+    created_by: "proofreader-1",
+    created_at: "2026-03-27T06:00:00.000Z",
+    updated_at: "2026-03-27T06:05:00.000Z",
+  });
+  await learningCandidateRepository.save({
+    id: "candidate-approved-2",
+    type: "skill_update_candidate",
+    status: "approved",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    title: "编加技能包更新",
+    proposal_text: "补充术语标准化与风险段落检查。",
+    created_by: "editor-1",
+    created_at: "2026-03-27T06:06:00.000Z",
+    updated_at: "2026-03-27T06:08:00.000Z",
+  });
+
+  const prompt = await service.createPromptTemplateFromLearningCandidate("admin", {
+    sourceLearningCandidateId: "candidate-approved-1",
+    name: "proofreading_mainline",
+    version: "1.1.0",
+    module: "proofreading",
+    manuscriptTypes: ["review"],
+  });
+  const skill = await service.createSkillPackageFromLearningCandidate("admin", {
+    sourceLearningCandidateId: "candidate-approved-2",
+    name: "editing_skills",
+    version: "1.1.0",
+    appliesToModules: ["editing"],
+  });
+
+  assert.equal(prompt.source_learning_candidate_id, "candidate-approved-1");
+  assert.equal(skill.source_learning_candidate_id, "candidate-approved-2");
+  assert.equal(prompt.status, "draft");
+  assert.equal(skill.status, "draft");
+});
 
 test("prompt and skill packages are versioned and remain admin-only", async () => {
   const { api } = createPromptSkillHarness();
