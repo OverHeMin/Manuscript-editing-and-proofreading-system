@@ -1,5 +1,6 @@
 import type {
   CreateToolGatewayToolInput,
+  ToolGatewayScope,
   ToolGatewayToolViewModel,
   UpdateToolGatewayToolInput,
 } from "./types.ts";
@@ -22,7 +23,14 @@ export function createToolGatewayTool(
   return client.request<ToolGatewayToolViewModel>({
     method: "POST",
     url: "/api/v1/tool-gateway",
-    body: input,
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        name: input.name,
+        scope: input.scope,
+        accessMode: input.accessMode,
+      },
+    },
   });
 }
 
@@ -30,6 +38,16 @@ export function listToolGatewayTools(client: ToolGatewayHttpClient) {
   return client.request<ToolGatewayToolViewModel[]>({
     method: "GET",
     url: "/api/v1/tool-gateway",
+  });
+}
+
+export function listToolGatewayToolsByScope(
+  client: ToolGatewayHttpClient,
+  scope: ToolGatewayScope,
+) {
+  return client.request<ToolGatewayToolViewModel[]>({
+    method: "GET",
+    url: `/api/v1/tool-gateway/by-scope/${scope}`,
   });
 }
 
@@ -51,6 +69,12 @@ export function updateToolGatewayTool(
   return client.request<ToolGatewayToolViewModel>({
     method: "POST",
     url: `/api/v1/tool-gateway/${toolId}`,
-    body: input,
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        scope: input.scope,
+        accessMode: input.accessMode,
+      },
+    },
   });
 }

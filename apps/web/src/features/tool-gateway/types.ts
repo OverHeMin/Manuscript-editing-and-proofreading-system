@@ -6,7 +6,10 @@ export type ToolGatewayScope =
   | "assets"
   | "knowledge"
   | "templates"
-  | "audit";
+  | "audit"
+  | "browser_qa"
+  | "benchmark"
+  | "deploy_verification";
 
 export interface ToolGatewayToolViewModel {
   id: string;

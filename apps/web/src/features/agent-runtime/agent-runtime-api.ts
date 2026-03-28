@@ -1,7 +1,9 @@
+import type { TemplateModule } from "../templates/types.ts";
 import type {
   AgentRuntimeViewModel,
   ArchiveAgentRuntimeInput,
   CreateAgentRuntimeInput,
+  PublishAgentRuntimeInput,
 } from "./types.ts";
 
 export interface AgentRuntimeHttpClient {
@@ -22,7 +24,16 @@ export function createAgentRuntime(
   return client.request<AgentRuntimeViewModel>({
     method: "POST",
     url: "/api/v1/agent-runtime",
-    body: input,
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        name: input.name,
+        adapter: input.adapter,
+        sandboxProfileId: input.sandboxProfileId,
+        allowedModules: input.allowedModules,
+        runtimeSlot: input.runtimeSlot,
+      },
+    },
   });
 }
 
@@ -30,6 +41,18 @@ export function listAgentRuntimes(client: AgentRuntimeHttpClient) {
   return client.request<AgentRuntimeViewModel[]>({
     method: "GET",
     url: "/api/v1/agent-runtime",
+  });
+}
+
+export function listAgentRuntimesByModule(
+  client: AgentRuntimeHttpClient,
+  module: TemplateModule,
+  activeOnly = false,
+) {
+  const search = activeOnly ? "?activeOnly=true" : "";
+  return client.request<AgentRuntimeViewModel[]>({
+    method: "GET",
+    url: `/api/v1/agent-runtime/by-module/${module}${search}`,
   });
 }
 
@@ -51,6 +74,18 @@ export function archiveAgentRuntime(
   return client.request<AgentRuntimeViewModel>({
     method: "POST",
     url: `/api/v1/agent-runtime/${runtimeId}/archive`,
+    body: input,
+  });
+}
+
+export function publishAgentRuntime(
+  client: AgentRuntimeHttpClient,
+  runtimeId: string,
+  input: PublishAgentRuntimeInput,
+) {
+  return client.request<AgentRuntimeViewModel>({
+    method: "POST",
+    url: `/api/v1/agent-runtime/${runtimeId}/publish`,
     body: input,
   });
 }
