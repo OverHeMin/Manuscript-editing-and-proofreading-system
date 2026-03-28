@@ -5,19 +5,35 @@ import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
+import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
+import {
+  AgentExecutionLogNotFoundError,
+  type AgentExecutionService,
+} from "../agent-execution/agent-execution-service.ts";
+import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
+import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
+import type {
+  ExecutionTrackingService,
+  RecordKnowledgeHitInput,
+} from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
+import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
+import {
+  resolveGovernedAgentContext,
+} from "../shared/governed-agent-context-resolver.ts";
+import type { ModuleExecutionResult } from "../shared/module-run-support.ts";
 import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
-import {
-  prepareModuleExecution,
-  type ModuleExecutionResult,
-} from "../shared/module-run-support.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
+import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 
 export interface CreateProofreadingDraftInput {
   manuscriptId: string;
@@ -41,10 +57,19 @@ export interface ProofreadingServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
   moduleTemplateRepository: ModuleTemplateRepository;
+  promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
+  executionGovernanceService: ExecutionGovernanceService;
+  executionTrackingService: ExecutionTrackingService;
   jobRepository: JobRepository;
   documentAssetService: DocumentAssetService;
   aiGatewayService: AiGatewayService;
+  sandboxProfileService: SandboxProfileService;
+  agentProfileService: AgentProfileService;
+  agentRuntimeService: AgentRuntimeService;
+  runtimeBindingService: RuntimeBindingService;
+  toolPermissionPolicyService: ToolPermissionPolicyService;
+  agentExecutionService: AgentExecutionService;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -78,9 +103,18 @@ export class ProofreadingService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly jobRepository: JobRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
+  private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
+  private readonly executionGovernanceService: ExecutionGovernanceService;
+  private readonly executionTrackingService: ExecutionTrackingService;
   private readonly documentAssetService: DocumentAssetService;
   private readonly aiGatewayService: AiGatewayService;
+  private readonly sandboxProfileService: SandboxProfileService;
+  private readonly agentProfileService: AgentProfileService;
+  private readonly agentRuntimeService: AgentRuntimeService;
+  private readonly runtimeBindingService: RuntimeBindingService;
+  private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
+  private readonly agentExecutionService: AgentExecutionService;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -91,9 +125,18 @@ export class ProofreadingService {
     this.assetRepository = options.assetRepository;
     this.jobRepository = options.jobRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
+    this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
+    this.executionGovernanceService = options.executionGovernanceService;
+    this.executionTrackingService = options.executionTrackingService;
     this.documentAssetService = options.documentAssetService;
     this.aiGatewayService = options.aiGatewayService;
+    this.sandboxProfileService = options.sandboxProfileService;
+    this.agentProfileService = options.agentProfileService;
+    this.agentRuntimeService = options.agentRuntimeService;
+    this.runtimeBindingService = options.runtimeBindingService;
+    this.toolPermissionPolicyService = options.toolPermissionPolicyService;
+    this.agentExecutionService = options.agentExecutionService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -143,7 +186,7 @@ export class ProofreadingService {
       draftAsset.source_job_id
         ? await this.jobRepository.findById(draftAsset.source_job_id)
         : undefined;
-    const pinnedContext = extractPinnedDraftContext(draftJob);
+    const pinnedContext = await this.loadPinnedDraftExecutionContext(draftJob);
 
     if (!pinnedContext) {
       throw new ProofreadingDraftContextNotFoundError(input.draftAssetId);
@@ -173,11 +216,7 @@ export class ProofreadingService {
     assetType: "proofreading_draft_report" | "final_proof_annotated_docx";
     mimeType: string;
     jobType: "proofreading_draft_run" | "proofreading_confirm";
-    pinnedContext?: {
-      templateId: string;
-      knowledgeItemIds: string[];
-      modelId: string;
-    };
+    pinnedContext?: ResolvedProofreadingGovernedContext;
   }): Promise<ProofreadingRunResult> {
     return this.transactionManager.withTransaction(async (context) => {
       const { jobRepository } = context;
@@ -196,6 +235,25 @@ export class ProofreadingService {
             jobId,
           });
 
+      const executionLog =
+        input.pinnedContext?.agentExecutionLogId
+          ? undefined
+          : await this.agentExecutionService.createLog({
+              manuscriptId: input.manuscriptId,
+              module: "proofreading",
+              triggeredBy: input.requestedBy,
+              runtimeId: resolvedContext.agentRuntimeId,
+              sandboxProfileId: resolvedContext.sandboxProfileId,
+              agentProfileId: resolvedContext.agentProfileId,
+              runtimeBindingId: resolvedContext.runtimeBindingId,
+              toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+              knowledgeItemIds: resolvedContext.knowledgeHits.map(
+                (hit) => hit.knowledgeItemId,
+              ),
+            });
+      const agentExecutionLogId =
+        input.pinnedContext?.agentExecutionLogId ?? executionLog?.id;
+
       const queuedJob: JobRecord = {
         id: jobId,
         manuscript_id: input.manuscriptId,
@@ -205,8 +263,22 @@ export class ProofreadingService {
         requested_by: input.requestedBy,
         payload: {
           templateId: resolvedContext.templateId,
-          knowledgeItemIds: resolvedContext.knowledgeItemIds,
+          executionProfileId: resolvedContext.executionProfileId,
+          promptTemplateId: resolvedContext.promptTemplateId,
+          skillPackageIds: resolvedContext.skillPackageIds,
+          knowledgeItemIds: resolvedContext.knowledgeHits.map(
+            (hit) => hit.knowledgeItemId,
+          ),
           modelId: resolvedContext.modelId,
+          agentRuntimeId: resolvedContext.agentRuntimeId,
+          sandboxProfileId: resolvedContext.sandboxProfileId,
+          agentProfileId: resolvedContext.agentProfileId,
+          runtimeBindingId: resolvedContext.runtimeBindingId,
+          toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+          agentExecutionLogId,
+          ...(resolvedContext.draftSnapshotId
+            ? { draftSnapshotId: resolvedContext.draftSnapshotId }
+            : {}),
           parentAssetId: input.parentAssetId,
         },
         attempt_count: 0,
@@ -229,12 +301,36 @@ export class ProofreadingService {
         sourceModule: "proofreading",
         sourceJobId: jobId,
       });
+      const snapshot = await this.executionTrackingService.recordSnapshot({
+        manuscriptId: input.manuscriptId,
+        module: "proofreading",
+        jobId,
+        executionProfileId: resolvedContext.executionProfileId,
+        moduleTemplateId: resolvedContext.templateId,
+        moduleTemplateVersionNo: resolvedContext.moduleTemplateVersionNo,
+        promptTemplateId: resolvedContext.promptTemplateId,
+        promptTemplateVersion: resolvedContext.promptTemplateVersion,
+        skillPackageIds: resolvedContext.skillPackageIds,
+        skillPackageVersions: resolvedContext.skillPackageVersions,
+        modelId: resolvedContext.modelId,
+        modelVersion: resolvedContext.modelVersion,
+        createdAssetIds: [asset.id],
+        draftSnapshotId: resolvedContext.draftSnapshotId,
+        knowledgeHits: resolvedContext.knowledgeHits,
+      });
+      if (executionLog) {
+        await this.agentExecutionService.completeLog({
+          logId: executionLog.id,
+          executionSnapshotId: snapshot.id,
+        });
+      }
 
       const completedJob: JobRecord = {
         ...queuedJob,
         status: "completed",
         payload: {
           ...queuedJob.payload,
+          snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: input.assetType,
         },
@@ -249,8 +345,17 @@ export class ProofreadingService {
         job: completedJob,
         asset,
         template_id: resolvedContext.templateId,
-        knowledge_item_ids: resolvedContext.knowledgeItemIds,
+        execution_profile_id: resolvedContext.executionProfileId,
+        prompt_template_id: resolvedContext.promptTemplateId,
+        skill_package_ids: resolvedContext.skillPackageIds,
+        snapshot_id: snapshot.id,
+        knowledge_item_ids: resolvedContext.knowledgeHits.map(
+          (hit) => hit.knowledgeItemId,
+        ),
         model_id: resolvedContext.modelId,
+        agent_runtime_id: resolvedContext.agentRuntimeId,
+        agent_profile_id: resolvedContext.agentProfileId,
+        agent_execution_log_id: agentExecutionLogId,
       };
     });
   }
@@ -260,12 +365,8 @@ export class ProofreadingService {
     requestedBy: string;
     actorRole: RoleKey;
     jobId: string;
-  }): Promise<{
-    templateId: string;
-    knowledgeItemIds: string[];
-    modelId: string;
-  }> {
-    const prepared = await prepareModuleExecution({
+  }): Promise<ResolvedProofreadingGovernedContext> {
+    const governedContext = await resolveGovernedAgentContext({
       manuscriptId: input.manuscriptId,
       module: "proofreading",
       jobId: input.jobId,
@@ -273,47 +374,142 @@ export class ProofreadingService {
       actorRole: input.actorRole,
       manuscriptRepository: this.manuscriptRepository,
       moduleTemplateRepository: this.moduleTemplateRepository,
+      executionGovernanceService: this.executionGovernanceService,
+      promptSkillRegistryRepository: this.promptSkillRegistryRepository,
       knowledgeRepository: this.knowledgeRepository,
       aiGatewayService: this.aiGatewayService,
+      sandboxProfileService: this.sandboxProfileService,
+      agentProfileService: this.agentProfileService,
+      agentRuntimeService: this.agentRuntimeService,
+      runtimeBindingService: this.runtimeBindingService,
+      toolPermissionPolicyService: this.toolPermissionPolicyService,
     });
+    const moduleContext = governedContext.moduleContext;
 
     return {
-      templateId: prepared.template.id,
-      knowledgeItemIds: prepared.knowledgeItems.map((record) => record.id),
-      modelId: prepared.modelSelection.model.id,
+      executionProfileId: governedContext.executionProfile.id,
+      templateId: moduleContext.moduleTemplate.id,
+      moduleTemplateVersionNo: moduleContext.moduleTemplate.version_no,
+      promptTemplateId: moduleContext.promptTemplate.id,
+      promptTemplateVersion: moduleContext.promptTemplate.version,
+      skillPackageIds: moduleContext.skillPackages.map((record) => record.id),
+      skillPackageVersions: moduleContext.skillPackages.map(
+        (record) => record.version,
+      ),
+      knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
+        knowledgeItemId: selection.knowledgeItem.id,
+        matchSourceId: selection.matchSourceId,
+        bindingRuleId: selection.bindingRuleId,
+        matchSource: selection.matchSource,
+        matchReasons: selection.matchReasons,
+      })),
+      modelId: moduleContext.modelSelection.model.id,
+      modelVersion: moduleContext.modelSelection.model.model_version,
+      agentRuntimeId: governedContext.runtime.id,
+      sandboxProfileId: governedContext.sandboxProfile.id,
+      agentProfileId: governedContext.agentProfile.id,
+      runtimeBindingId: governedContext.runtimeBinding.id,
+      toolPermissionPolicyId: governedContext.toolPolicy.id,
     };
+  }
+
+  private async loadPinnedDraftExecutionContext(
+    draftJob: JobRecord | undefined,
+  ): Promise<ResolvedProofreadingGovernedContext | undefined> {
+    const snapshotId = extractDraftSnapshotId(draftJob);
+    if (!snapshotId) {
+      return undefined;
+    }
+
+    const snapshot = await this.executionTrackingService.getSnapshot(snapshotId);
+    if (!snapshot) {
+      return undefined;
+    }
+
+    const draftExecutionLog = await this.loadDraftExecutionLog(draftJob);
+    if (!draftExecutionLog) {
+      return undefined;
+    }
+
+    const hitLogs =
+      await this.executionTrackingService.listKnowledgeHitLogsBySnapshotId(snapshotId);
+
+    // Final confirmation must stay pinned to the reviewed draft governance context.
+    return {
+      executionProfileId: snapshot.execution_profile_id,
+      templateId: snapshot.module_template_id,
+      moduleTemplateVersionNo: snapshot.module_template_version_no,
+      promptTemplateId: snapshot.prompt_template_id,
+      promptTemplateVersion: snapshot.prompt_template_version,
+      skillPackageIds: [...snapshot.skill_package_ids],
+      skillPackageVersions: [...snapshot.skill_package_versions],
+      knowledgeHits: hitLogs.map((hit) => ({
+        knowledgeItemId: hit.knowledge_item_id,
+        matchSourceId: hit.match_source_id,
+        bindingRuleId: hit.binding_rule_id,
+        matchSource: hit.match_source,
+        matchReasons: [...hit.match_reasons],
+      })),
+      modelId: snapshot.model_id,
+      modelVersion: snapshot.model_version,
+      draftSnapshotId: snapshot.id,
+      agentRuntimeId: draftExecutionLog.runtime_id,
+      sandboxProfileId: draftExecutionLog.sandbox_profile_id,
+      agentProfileId: draftExecutionLog.agent_profile_id,
+      runtimeBindingId: draftExecutionLog.runtime_binding_id,
+      toolPermissionPolicyId: draftExecutionLog.tool_permission_policy_id,
+      agentExecutionLogId: draftExecutionLog.id,
+    };
+  }
+
+  private async loadDraftExecutionLog(
+    draftJob: JobRecord | undefined,
+  ): Promise<AgentExecutionLogRecord | undefined> {
+    const logId = extractStringPayloadValue(draftJob, "agentExecutionLogId");
+    if (!logId) {
+      return undefined;
+    }
+
+    try {
+      return await this.agentExecutionService.getLog(logId);
+    } catch (error) {
+      if (error instanceof AgentExecutionLogNotFoundError) {
+        return undefined;
+      }
+
+      throw error;
+    }
   }
 }
 
-function extractPinnedDraftContext(
-  draftJob: JobRecord | undefined,
-): {
+interface ResolvedProofreadingGovernedContext {
+  executionProfileId: string;
   templateId: string;
-  knowledgeItemIds: string[];
+  moduleTemplateVersionNo: number;
+  promptTemplateId: string;
+  promptTemplateVersion: string;
+  skillPackageIds: string[];
+  skillPackageVersions: string[];
+  knowledgeHits: RecordKnowledgeHitInput[];
   modelId: string;
-} | undefined {
-  const payload = draftJob?.payload;
+  modelVersion?: string;
+  draftSnapshotId?: string;
+  agentRuntimeId: string;
+  sandboxProfileId: string;
+  agentProfileId: string;
+  runtimeBindingId: string;
+  toolPermissionPolicyId: string;
+  agentExecutionLogId?: string;
+}
 
-  if (!payload) {
-    return undefined;
-  }
+function extractDraftSnapshotId(draftJob: JobRecord | undefined): string | undefined {
+  return extractStringPayloadValue(draftJob, "snapshotId");
+}
 
-  const templateId = payload.templateId;
-  const modelId = payload.modelId;
-  const knowledgeItemIds = payload.knowledgeItemIds;
-
-  if (
-    typeof templateId !== "string" ||
-    typeof modelId !== "string" ||
-    !Array.isArray(knowledgeItemIds) ||
-    !knowledgeItemIds.every((value) => typeof value === "string")
-  ) {
-    return undefined;
-  }
-
-  return {
-    templateId,
-    knowledgeItemIds,
-    modelId,
-  };
+function extractStringPayloadValue(
+  job: JobRecord | undefined,
+  key: string,
+): string | undefined {
+  const value = job?.payload?.[key];
+  return typeof value === "string" ? value : undefined;
 }

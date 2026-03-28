@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import { createLearningApi } from "../../src/modules/learning/learning-api.ts";
+import { FeedbackGovernanceService } from "../../src/modules/feedback-governance/feedback-governance-service.ts";
+import { InMemoryFeedbackGovernanceRepository } from "../../src/modules/feedback-governance/in-memory-feedback-governance-repository.ts";
+import { InMemoryExecutionTrackingRepository } from "../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
 import {
   LearningAnnotatedAssetMismatchError,
   LearningAnnotatedAssetNotFoundError,
   LearningDeidentificationRequiredError,
+  LearningCandidateGovernedProvenanceRequiredError,
   LearningHumanFinalAssetRequiredError,
   LearningSnapshotDeidentificationRequiredError,
   LearningService,
@@ -41,6 +45,8 @@ function createLearningHarness(options?: {
 }) {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
+  const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
+  const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
   const snapshotRepository =
     options?.snapshotRepository ?? new InMemoryReviewedCaseSnapshotRepository();
   const candidateRepository =
@@ -49,8 +55,11 @@ function createLearningHarness(options?: {
     "asset-1",
     "asset-2",
     "asset-3",
-    "snapshot-1",
+    "reviewed-snapshot-1",
     "candidate-1",
+    "asset-4",
+    "reviewed-snapshot-2",
+    "candidate-2",
   ];
   const nextId = () => {
     const value = issuedIds.shift();
@@ -64,12 +73,27 @@ function createLearningHarness(options?: {
     createId: nextId,
     now: () => new Date("2026-03-27T10:00:00.000Z"),
   });
+  const feedbackGovernanceService = new FeedbackGovernanceService({
+    repository: feedbackGovernanceRepository,
+    executionTrackingRepository,
+    assetRepository,
+    createId: (() => {
+      const ids = ["feedback-1", "link-1", "feedback-2", "link-2"];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a feedback governance test id to be available.");
+        return value;
+      };
+    })(),
+    now: () => new Date("2026-03-27T10:05:00.000Z"),
+  });
   const learningService = new LearningService({
     manuscriptRepository,
     assetRepository,
     snapshotRepository,
     candidateRepository,
     documentAssetService,
+    feedbackGovernanceService,
     createId: nextId,
     now: () => new Date("2026-03-27T10:00:00.000Z"),
   });
@@ -77,7 +101,11 @@ function createLearningHarness(options?: {
   return {
     manuscriptRepository,
     assetRepository,
+    candidateRepository,
     documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    learningService,
     learningApi: createLearningApi({
       learningService,
     }),
@@ -208,7 +236,14 @@ test("learning candidates require a de-identification pass", async () => {
 });
 
 test("learning candidate approval is restricted to the dedicated learning review permission", async () => {
-  const { learningApi, documentAssetService, originalAsset } =
+  const {
+    learningApi,
+    learningService,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    originalAsset,
+  } =
     await seedLearningContext();
 
   const humanFinalAsset = await documentAssetService.createAsset({
@@ -241,6 +276,8 @@ test("learning candidate approval is restricted to the dedicated learning review
     deidentificationPassed: true,
   });
 
+  await seedGovernedExecutionSnapshot(executionTrackingRepository);
+
   await assert.rejects(
     () =>
       learningApi.approveLearningCandidate({
@@ -258,6 +295,33 @@ test("learning candidate approval is restricted to the dedicated learning review
     AuthorizationError,
   );
 
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/editing/annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "annotated.docx",
+    parentAssetId: humanFinalAsset.id,
+    sourceModule: "editing",
+    sourceJobId: "job-1",
+  });
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    snapshotId: "execution-snapshot-1",
+    feedbackType: "manual_correction",
+    feedbackText: "Normalize terminology according to the governed template.",
+    createdBy: "editor-1",
+  });
+  await learningService.attachGovernedSource({
+    candidateId: candidate.body.id,
+    snapshotId: "execution-snapshot-1",
+    feedbackRecordId: feedback.id,
+    sourceAssetId: sourceAsset.id,
+  });
+
   const reviewerApproved = await learningApi.approveLearningCandidate({
     candidateId: candidate.body.id,
     actorRole: "knowledge_reviewer",
@@ -265,6 +329,100 @@ test("learning candidate approval is restricted to the dedicated learning review
 
   assert.equal(reviewerApproved.status, 200);
   assert.equal(reviewerApproved.body.status, "approved");
+});
+
+test("learning candidates stay draft until governed provenance is attached", async () => {
+  const {
+    learningApi,
+    learningService,
+    candidateRepository,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    originalAsset,
+  } = await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const reviewedSnapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+  const candidate = await learningApi.createLearningCandidate({
+    snapshotId: reviewedSnapshot.body.id,
+    type: "rule_candidate",
+    title: "Terminology fix",
+    proposalText: "Replace outdated disease naming with the current standard.",
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+  });
+
+  assert.equal(candidate.body.status, "draft");
+
+  await assert.rejects(
+    () =>
+      learningApi.approveLearningCandidate({
+        candidateId: candidate.body.id,
+        actorRole: "knowledge_reviewer",
+      }),
+    LearningCandidateGovernedProvenanceRequiredError,
+  );
+
+  await seedGovernedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/editing/annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "annotated.docx",
+    parentAssetId: humanFinalAsset.id,
+    sourceModule: "editing",
+    sourceJobId: "job-1",
+  });
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    snapshotId: "execution-snapshot-1",
+    feedbackType: "manual_correction",
+    feedbackText: "The governed editing output was adjusted by the reviewer.",
+    createdBy: "editor-1",
+  });
+
+  const sourceLink = await learningService.attachGovernedSource({
+    candidateId: candidate.body.id,
+    snapshotId: "execution-snapshot-1",
+    feedbackRecordId: feedback.id,
+    sourceAssetId: sourceAsset.id,
+  });
+  const storedCandidate = await candidateRepository.findById(candidate.body.id);
+
+  assert.equal(sourceLink.learning_candidate_id, candidate.body.id);
+  assert.equal(storedCandidate?.status, "pending_review");
+
+  const approved = await learningApi.approveLearningCandidate({
+    candidateId: candidate.body.id,
+    actorRole: "knowledge_reviewer",
+  });
+
+  assert.equal(approved.body.status, "approved");
 });
 
 test("reviewed case snapshot creation rolls back the snapshot asset on persistence failure", async () => {
@@ -443,4 +601,26 @@ async function seedLearningContextWithOverrides(options?: {
     ...harness,
     originalAsset,
   };
+}
+
+async function seedGovernedExecutionSnapshot(
+  executionTrackingRepository: InMemoryExecutionTrackingRepository,
+) {
+  await executionTrackingRepository.saveSnapshot({
+    id: "execution-snapshot-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_id: "job-1",
+    execution_profile_id: "profile-1",
+    module_template_id: "template-1",
+    module_template_version_no: 1,
+    prompt_template_id: "prompt-1",
+    prompt_template_version: "1.0.0",
+    skill_package_ids: ["skill-1"],
+    skill_package_versions: ["1.0.0"],
+    model_id: "model-1",
+    knowledge_item_ids: ["knowledge-1"],
+    created_asset_ids: ["asset-1"],
+    created_at: "2026-03-27T09:59:00.000Z",
+  });
 }

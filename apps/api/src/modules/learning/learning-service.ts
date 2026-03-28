@@ -13,6 +13,8 @@ import {
   type SnapshotCapableRepository,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import type { LearningCandidateSourceLinkRecord } from "../feedback-governance/feedback-governance-record.ts";
+import type { LinkLearningCandidateSourceInput } from "../feedback-governance/feedback-governance-service.ts";
 import {
   InMemoryLearningCandidateRepository,
   InMemoryReviewedCaseSnapshotRepository,
@@ -47,12 +49,29 @@ export interface CreateLearningCandidateInput {
   deidentificationPassed: boolean;
 }
 
+export interface AttachGovernedSourceInput {
+  candidateId: string;
+  snapshotId: string;
+  feedbackRecordId: string;
+  sourceAssetId: string;
+}
+
+export interface LearningFeedbackGovernanceService {
+  linkLearningCandidateSource(
+    input: LinkLearningCandidateSourceInput,
+  ): Promise<LearningCandidateSourceLinkRecord>;
+  listLearningCandidateSourceLinksByCandidateId(
+    learningCandidateId: string,
+  ): Promise<LearningCandidateSourceLinkRecord[]>;
+}
+
 export interface LearningServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
   snapshotRepository: ReviewedCaseSnapshotRepository;
   candidateRepository: LearningCandidateRepository;
   documentAssetService: DocumentAssetService;
+  feedbackGovernanceService: LearningFeedbackGovernanceService;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<LearningWriteContext>;
   createId?: () => string;
@@ -132,6 +151,7 @@ export class LearningService {
   private readonly snapshotRepository: ReviewedCaseSnapshotRepository;
   private readonly candidateRepository: LearningCandidateRepository;
   private readonly documentAssetService: DocumentAssetService;
+  private readonly feedbackGovernanceService: LearningFeedbackGovernanceService;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<LearningWriteContext>;
   private readonly createId: () => string;
@@ -143,6 +163,7 @@ export class LearningService {
     this.snapshotRepository = options.snapshotRepository;
     this.candidateRepository = options.candidateRepository;
     this.documentAssetService = options.documentAssetService;
+    this.feedbackGovernanceService = options.feedbackGovernanceService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -245,7 +266,7 @@ export class LearningService {
     const candidate: LearningCandidateRecord = {
       id: this.createId(),
       type: input.type,
-      status: "pending_review",
+      status: "draft",
       module: snapshot.module,
       manuscript_type: snapshot.manuscript_type,
       human_final_asset_id: snapshot.human_final_asset_id,
@@ -262,6 +283,33 @@ export class LearningService {
     return candidate;
   }
 
+  async attachGovernedSource(
+    input: AttachGovernedSourceInput,
+  ): Promise<LearningCandidateSourceLinkRecord> {
+    const candidate = await this.candidateRepository.findById(input.candidateId);
+    if (!candidate) {
+      throw new LearningCandidateNotFoundError(input.candidateId);
+    }
+
+    const sourceLink = await this.feedbackGovernanceService.linkLearningCandidateSource(
+      {
+        learningCandidateId: input.candidateId,
+        snapshotId: input.snapshotId,
+        feedbackRecordId: input.feedbackRecordId,
+        sourceAssetId: input.sourceAssetId,
+      },
+    );
+    const nextStatus =
+      candidate.status === "draft" ? "pending_review" : candidate.status;
+    await this.candidateRepository.save({
+      ...candidate,
+      status: nextStatus,
+      updated_at: this.now().toISOString(),
+    });
+
+    return sourceLink;
+  }
+
   async approveLearningCandidate(
     candidateId: string,
     actorRole: RoleKey,
@@ -271,6 +319,14 @@ export class LearningService {
     const candidate = await this.candidateRepository.findById(candidateId);
     if (!candidate) {
       throw new LearningCandidateNotFoundError(candidateId);
+    }
+
+    const sourceLinks =
+      await this.feedbackGovernanceService.listLearningCandidateSourceLinksByCandidateId(
+        candidateId,
+      );
+    if (sourceLinks.length === 0) {
+      throw new LearningCandidateGovernedProvenanceRequiredError(candidateId);
     }
 
     const approved: LearningCandidateRecord = {
@@ -304,6 +360,15 @@ export class LearningService {
     }
 
     return annotatedAsset.id;
+  }
+}
+
+export class LearningCandidateGovernedProvenanceRequiredError extends Error {
+  constructor(candidateId: string) {
+    super(
+      `Learning candidate ${candidateId} requires governed provenance before approval.`,
+    );
+    this.name = "LearningCandidateGovernedProvenanceRequiredError";
   }
 }
 

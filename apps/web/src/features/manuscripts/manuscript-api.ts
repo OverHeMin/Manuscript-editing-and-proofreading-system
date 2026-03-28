@@ -1,4 +1,5 @@
 import type {
+  DocumentAssetExportViewModel,
   DocumentAssetViewModel,
   JobViewModel,
   ManuscriptViewModel,
@@ -42,6 +43,20 @@ export function listManuscriptAssets(
   return client.request<DocumentAssetViewModel[]>({
     method: "GET",
     url: `/api/v1/manuscripts/${manuscriptId}/assets`,
+  });
+}
+
+export function exportCurrentAsset(
+  client: ManuscriptHttpClient,
+  input: {
+    manuscriptId: string;
+    preferredAssetType?: DocumentAssetViewModel["asset_type"];
+  },
+) {
+  return client.request<DocumentAssetExportViewModel>({
+    method: "POST",
+    url: "/api/v1/document-pipeline/export-current-asset",
+    body: input,
   });
 }
 

@@ -17,6 +17,9 @@ await assertTcpReachable(
   "Object storage",
   new URL(requireEnv("OBJECT_STORAGE_ENDPOINT")),
 );
+requireOptionalUrl("ONLYOFFICE_URL");
+requireOptionalValue("ONLYOFFICE_JWT_SECRET");
+requireOptionalValue("LIBREOFFICE_BINARY");
 await assertDatabaseReachable(getDatabaseUrl());
 
 console.log("[api] smoke boot OK");
@@ -54,6 +57,22 @@ function requireEnv(name: string): string {
   }
 
   return value;
+}
+
+function requireOptionalUrl(name: string): void {
+  const value = process.env[name];
+  if (!value) {
+    return;
+  }
+
+  new URL(value);
+}
+
+function requireOptionalValue(name: string): void {
+  const value = process.env[name];
+  if (value !== undefined && value.trim() === "") {
+    throw new Error(`Environment variable ${name} must not be empty when set.`);
+  }
 }
 
 async function assertDatabaseReachable(connectionString: string): Promise<void> {

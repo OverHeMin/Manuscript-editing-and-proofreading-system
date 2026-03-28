@@ -15,10 +15,15 @@ if (!["local", "dev", "staging", "prod"].includes(appEnv)) {
 }
 
 const apiBaseUrl = new URL(requireEnv("VITE_API_BASE_URL"));
+const onlyOfficePublicUrl = process.env.VITE_ONLYOFFICE_PUBLIC_URL;
 const webPort = Number(process.env.WEB_PORT ?? "4173");
 
 if (!Number.isInteger(webPort) || webPort <= 0) {
   throw new Error(`WEB_PORT must be a positive integer, received: ${webPort}`);
+}
+
+if (onlyOfficePublicUrl) {
+  new URL(onlyOfficePublicUrl);
 }
 
 console.log(

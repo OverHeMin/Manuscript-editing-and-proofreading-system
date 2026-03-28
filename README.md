@@ -57,6 +57,13 @@
 - `infra`: 本地依赖服务编排
 - `docs`: 运维、方案与实现文档
 
+## 开发规范
+
+- 代码质量与 review 基线：`docs/CODE_QUALITY.md`
+- 开发与 review 检查清单：`docs/REVIEW_CHECKLIST.md`
+- 运维、迁移与远程维护：`docs/OPERATIONS.md`
+- 规格文档入口：`docs/superpowers/specs/README.md`
+
 ## 运维与迁移
 
 详细操作手册见 `docs/OPERATIONS.md`。
