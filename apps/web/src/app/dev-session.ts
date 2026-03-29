@@ -7,9 +7,19 @@ import {
 
 const DEFAULT_DEV_ROLE: AuthRole = "knowledge_reviewer";
 
+export function isDevelopmentSessionBootstrapEnabled(
+  env: ImportMetaEnv = import.meta.env,
+): boolean {
+  return env.DEV;
+}
+
 export function resolveDevSession(
   env: ImportMetaEnv = import.meta.env,
 ): AuthSessionViewModel {
+  if (!isDevelopmentSessionBootstrapEnabled(env)) {
+    throw new Error("resolveDevSession is development-only and must not be used in non-dev mode.");
+  }
+
   const role = parseAuthRole(env.VITE_DEV_ROLE) ?? DEFAULT_DEV_ROLE;
   const roleLabel = role.replaceAll("_", "-");
 

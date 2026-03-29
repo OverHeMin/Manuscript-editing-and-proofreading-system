@@ -140,6 +140,14 @@ body {
   line-height: 1.5;
 }
 
+.app-phase-host {
+  max-width: 860px;
+}
+
+.app-phase-placeholder p + p {
+  margin-top: 10px;
+}
+
 @media (max-width: 1024px) {
   .app-shell {
     padding: 16px;
