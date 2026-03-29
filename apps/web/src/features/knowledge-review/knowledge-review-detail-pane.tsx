@@ -14,6 +14,7 @@ export interface KnowledgeReviewDetailPaneProps {
   item: KnowledgeReviewQueueItemViewModel | null;
   history: KnowledgeReviewHistoryViewState;
   isUsingStableSnapshot: boolean;
+  historyScopeNote: string | null;
   onRetryHistory(): void;
 }
 
@@ -21,6 +22,7 @@ export function KnowledgeReviewDetailPane({
   item,
   history,
   isUsingStableSnapshot,
+  historyScopeNote,
   onRetryHistory,
 }: KnowledgeReviewDetailPaneProps) {
   if (item == null) {
@@ -41,7 +43,11 @@ export function KnowledgeReviewDetailPane({
     <section className="knowledge-review-panel knowledge-review-detail-pane">
       <header className="knowledge-review-pane-header">
         <h2>{item.title}</h2>
-        <p>{isUsingStableSnapshot ? "Showing last stable selection while queue reload recovers." : "Review context"}</p>
+        <p>
+          {isUsingStableSnapshot
+            ? "Showing last stable selection while queue reload recovers."
+            : "Review context"}
+        </p>
       </header>
 
       <dl className="knowledge-review-detail-grid">
@@ -89,6 +95,10 @@ export function KnowledgeReviewDetailPane({
           <p>Decision trace and reviewer notes.</p>
         </header>
 
+        {historyScopeNote ? (
+          <p className="knowledge-review-history-state">{historyScopeNote}</p>
+        ) : null}
+
         {history.status === "loading" ? (
           <p className="knowledge-review-history-state" role="status">
             Loading review history...
@@ -113,7 +123,7 @@ export function KnowledgeReviewDetailPane({
             {history.actions.map((action) => (
               <li key={action.id}>
                 <p className="knowledge-review-history-event">
-                  {eventLabel(action.action)} · {actorLabel(action.actor_role)}
+                  {eventLabel(action.action)} | {actorLabel(action.actor_role)}
                 </p>
                 <p className="knowledge-review-history-time">{formatTimestamp(action.created_at)}</p>
                 <p className="knowledge-review-history-note">
@@ -150,7 +160,7 @@ function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
       ? "Any manuscript type"
       : item.routing.manuscript_types.map(startCase).join(", ");
 
-  return `${moduleScope} · ${manuscriptScope}`;
+  return `${moduleScope} | ${manuscriptScope}`;
 }
 
 function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {

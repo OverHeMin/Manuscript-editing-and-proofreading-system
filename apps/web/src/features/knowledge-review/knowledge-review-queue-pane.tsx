@@ -2,11 +2,8 @@ import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import type { KnowledgeKind, KnowledgeReviewQueueItemViewModel } from "../knowledge/index.ts";
 import type { KnowledgeReviewFilterState } from "./workbench-state.ts";
 
-export type KnowledgeReviewStatusFilter = "pending_review";
-
 export interface KnowledgeReviewQueuePaneProps {
   filters: Pick<KnowledgeReviewFilterState, "searchText" | "knowledgeKind" | "moduleScope">;
-  statusFilter: KnowledgeReviewStatusFilter;
   queue: readonly KnowledgeReviewQueueItemViewModel[];
   totalQueueCount: number;
   activeItemId: string | null;
@@ -15,7 +12,6 @@ export interface KnowledgeReviewQueuePaneProps {
   isQueueEmpty: boolean;
   isNoResults: boolean;
   onSearchTextChange(value: string): void;
-  onStatusFilterChange(value: KnowledgeReviewStatusFilter): void;
   onKnowledgeKindChange(value: KnowledgeReviewFilterState["knowledgeKind"]): void;
   onModuleScopeChange(value: KnowledgeReviewFilterState["moduleScope"]): void;
   onSelectItem(itemId: string): void;
@@ -52,7 +48,6 @@ const knowledgeKindOptions: Array<{
 
 export function KnowledgeReviewQueuePane({
   filters,
-  statusFilter,
   queue,
   totalQueueCount,
   activeItemId,
@@ -61,7 +56,6 @@ export function KnowledgeReviewQueuePane({
   isQueueEmpty,
   isNoResults,
   onSearchTextChange,
-  onStatusFilterChange,
   onKnowledgeKindChange,
   onModuleScopeChange,
   onSelectItem,
@@ -88,14 +82,10 @@ export function KnowledgeReviewQueuePane({
         <div className="knowledge-review-inline-filters">
           <label>
             Status
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                onStatusFilterChange(event.target.value as KnowledgeReviewStatusFilter)
-              }
-            >
+            <select value="pending_review" disabled>
               <option value="pending_review">Pending review</option>
             </select>
+            <span className="knowledge-review-filter-note">Phase 7B scope</span>
           </label>
 
           <label>
@@ -250,7 +240,7 @@ function resolveHintText(item: KnowledgeReviewQueueItemViewModel): string {
   const riskHint = compactHint("Risk", item.routing.risk_tags);
   const hints = [templateHint, riskHint].filter((value): value is string => Boolean(value));
 
-  return hints.join(" · ");
+  return hints.join(" | ");
 }
 
 function compactHint(label: string, values: readonly string[] | undefined): string | null {

@@ -22,10 +22,7 @@ import {
   KnowledgeReviewDetailPane,
   type KnowledgeReviewHistoryViewState,
 } from "./knowledge-review-detail-pane.tsx";
-import {
-  KnowledgeReviewQueuePane,
-  type KnowledgeReviewStatusFilter,
-} from "./knowledge-review-queue-pane.tsx";
+import { KnowledgeReviewQueuePane } from "./knowledge-review-queue-pane.tsx";
 import "./knowledge-review-workbench.css";
 
 export interface KnowledgeReviewWorkbenchPageProps {
@@ -43,8 +40,6 @@ export function KnowledgeReviewWorkbenchPage({
 }: KnowledgeReviewWorkbenchPageProps) {
   const workbenchController = controller ?? defaultWorkbenchController;
   const [filters, setFilters] = useState(() => createKnowledgeReviewFilterState());
-  const [statusFilter, setStatusFilter] =
-    useState<KnowledgeReviewStatusFilter>("pending_review");
   const [desk, setDesk] = useState<KnowledgeReviewDeskLoadResult | null>(null);
   const [queueLoadStatus, setQueueLoadStatus] = useState<"initial" | "loading" | "ready" | "error">(
     "initial",
@@ -71,7 +66,7 @@ export function KnowledgeReviewWorkbenchPage({
     void loadDesk({ showLoading: true });
   }, [workbenchController]);
 
-  const selectedItem = resolveDetailSelection(
+  const effectiveSelectedItem = resolveDetailSelection(
     queueLoadStatus,
     desk?.selectedItem ?? null,
     stableSelectionSnapshot,
@@ -82,7 +77,7 @@ export function KnowledgeReviewWorkbenchPage({
     stableSelectionSnapshot != null;
 
   useEffect(() => {
-    if (selectedItem == null) {
+    if (effectiveSelectedItem == null) {
       selectedItemIdRef.current = null;
       setHistory({
         knowledgeItemId: null,
@@ -94,11 +89,21 @@ export function KnowledgeReviewWorkbenchPage({
     }
 
     if (queueLoadStatus === "error" && isUsingStableSnapshot) {
+      setHistory((current) =>
+        current.knowledgeItemId === effectiveSelectedItem.id
+          ? current
+          : {
+              knowledgeItemId: effectiveSelectedItem.id,
+              status: "idle",
+              actions: [],
+              errorMessage: null,
+            },
+      );
       return;
     }
 
-    void loadHistory(selectedItem.id);
-  }, [isUsingStableSnapshot, queueLoadStatus, selectedItem?.id]);
+    void loadHistory(effectiveSelectedItem.id);
+  }, [effectiveSelectedItem?.id, isUsingStableSnapshot, queueLoadStatus]);
 
   async function loadDesk(input: {
     filters?: Partial<KnowledgeReviewFilterState>;
@@ -199,15 +204,6 @@ export function KnowledgeReviewWorkbenchPage({
     setActionFeedback({ status: "idle", message: null });
     void loadDesk({
       filters: { moduleScope },
-      showLoading: true,
-    });
-  }
-
-  function handleStatusFilterChange(nextStatusFilter: KnowledgeReviewStatusFilter) {
-    setStatusFilter(nextStatusFilter);
-    setActionFeedback({ status: "idle", message: null });
-    void loadDesk({
-      filters: {},
       showLoading: true,
     });
   }
@@ -356,6 +352,7 @@ export function KnowledgeReviewWorkbenchPage({
   const totalQueueCount = desk?.queue.length ?? 0;
   const isQueueEmpty = desk ? isKnowledgeReviewQueueTrulyEmpty(desk.state) : false;
   const isNoResults = desk ? isKnowledgeReviewFilterResultEmpty(desk.state) : false;
+  const displayedHistory = resolveDisplayedHistory(history, effectiveSelectedItem?.id ?? null);
 
   return (
     <main className="knowledge-review-workbench">
@@ -365,16 +362,14 @@ export function KnowledgeReviewWorkbenchPage({
           knowledgeKind: filters.knowledgeKind,
           moduleScope: filters.moduleScope,
         }}
-        statusFilter={statusFilter}
         queue={visibleQueue}
         totalQueueCount={totalQueueCount}
-        activeItemId={desk?.selectedItem?.id ?? null}
+        activeItemId={effectiveSelectedItem?.id ?? null}
         isLoading={queueLoadStatus === "initial" || queueLoadStatus === "loading"}
         loadErrorMessage={queueErrorMessage}
         isQueueEmpty={isQueueEmpty}
         isNoResults={isNoResults}
         onSearchTextChange={handleSearchTextChange}
-        onStatusFilterChange={handleStatusFilterChange}
         onKnowledgeKindChange={handleKnowledgeKindChange}
         onModuleScopeChange={handleModuleScopeChange}
         onSelectItem={handleSelectItem}
@@ -383,13 +378,14 @@ export function KnowledgeReviewWorkbenchPage({
 
       <section className="knowledge-review-main-column">
         <KnowledgeReviewDetailPane
-          item={selectedItem}
-          history={history}
+          item={effectiveSelectedItem}
+          history={displayedHistory.history}
           isUsingStableSnapshot={isUsingStableSnapshot}
+          historyScopeNote={displayedHistory.scopeNote}
           onRetryHistory={handleRetryHistory}
         />
         <KnowledgeReviewActionPanel
-          selectedItemId={selectedItem?.id ?? null}
+          selectedItemId={effectiveSelectedItem?.id ?? null}
           reviewNote={reviewNote}
           feedback={actionFeedback}
           onReviewNoteChange={setReviewNote}
@@ -421,4 +417,42 @@ function toErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function resolveDisplayedHistory(
+  history: KnowledgeReviewHistoryViewState,
+  displayedItemId: string | null,
+): {
+  history: KnowledgeReviewHistoryViewState;
+  scopeNote: string | null;
+} {
+  if (displayedItemId == null) {
+    return {
+      history: {
+        knowledgeItemId: null,
+        status: "idle",
+        actions: [],
+        errorMessage: null,
+      },
+      scopeNote: null,
+    };
+  }
+
+  if (history.knowledgeItemId === displayedItemId) {
+    return {
+      history,
+      scopeNote: null,
+    };
+  }
+
+  return {
+    history: {
+      knowledgeItemId: displayedItemId,
+      status: "idle",
+      actions: [],
+      errorMessage: null,
+    },
+    scopeNote:
+      "History currently tracks a different item. Use Retry history to load events for the item shown above.",
+  };
 }
