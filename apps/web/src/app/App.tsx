@@ -1,10 +1,10 @@
+import { resolveDevSession } from "./dev-session.ts";
+import { WorkbenchHost } from "./workbench-host.tsx";
+
 export default function App() {
+  const session = resolveDevSession();
+
   return (
-    <main className="app-shell">
-      <section className="app-card">
-        <h1>Knowledge Review Workbench Host</h1>
-        <p>Web runtime shell is running.</p>
-      </section>
-    </main>
+    <WorkbenchHost session={session} />
   );
 }
