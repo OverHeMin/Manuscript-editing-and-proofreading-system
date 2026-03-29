@@ -130,6 +130,9 @@ export function listWorkbenchesForRole(
 ): readonly WorkbenchEntry[] {
   const allowedIds = new Set(ROLE_WORKBENCHES[role]);
   return WORKBENCH_ENTRIES.filter(
-    (entry) => allowedIds.has(entry.id) && entry.surfaces.includes(surface),
+    (entry) =>
+      allowedIds.has(entry.id) &&
+      entry.roles.includes(role) &&
+      entry.surfaces.includes(surface),
   );
 }
