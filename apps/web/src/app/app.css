@@ -116,6 +116,14 @@ body {
   background: #f8fafc;
 }
 
+.workbench-nav-button.is-disabled,
+.workbench-nav-button:disabled {
+  cursor: not-allowed;
+  color: #6b7280;
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
 .workbench-content {
   min-width: 0;
 }
@@ -138,10 +146,6 @@ body {
   margin: 0;
   color: #4b5563;
   line-height: 1.5;
-}
-
-.app-phase-host {
-  max-width: 860px;
 }
 
 .app-phase-placeholder p + p {
