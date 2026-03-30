@@ -23,6 +23,14 @@ export interface WriteTransactionManager<TContext = WriteTransactionContext> {
   ): Promise<TResult>;
 }
 
+export interface TransactionalQueryableClient {
+  query: <TRow = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[],
+  ) => Promise<{ rows: TRow[]; rowCount: number | null }>;
+  release?: () => void;
+}
+
 class DirectWriteTransactionManager<TContext>
   implements WriteTransactionManager<TContext>
 {
@@ -147,4 +155,29 @@ export function createDirectWriteTransactionManager<TContext>(
   context: TContext,
 ): WriteTransactionManager<TContext> {
   return new DirectWriteTransactionManager(context);
+}
+
+export function createPostgresWriteTransactionManager<TContext>(options: {
+  getClient: () => Promise<TransactionalQueryableClient>;
+  createContext: (client: TransactionalQueryableClient) => TContext;
+}): WriteTransactionManager<TContext> {
+  return {
+    async withTransaction<TResult>(
+      work: (context: TContext) => Promise<TResult>,
+    ): Promise<TResult> {
+      const client = await options.getClient();
+      await client.query("begin");
+
+      try {
+        const result = await work(options.createContext(client));
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release?.();
+      }
+    },
+  };
 }

@@ -8,6 +8,35 @@ import { withTemporaryDatabase, withTestClient } from "./support/postgres.ts";
 import { getMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
 
 const expectedTableColumns: Record<string, string[]> = {
+  roles: ["key", "description", "created_at"],
+  users: [
+    "id",
+    "username",
+    "display_name",
+    "role_key",
+    "password_hash",
+    "status",
+    "created_at",
+    "updated_at",
+  ],
+  auth_sessions: [
+    "id",
+    "user_id",
+    "provider",
+    "issued_at",
+    "expires_at",
+    "refresh_at",
+    "ip_address",
+    "user_agent",
+    "revoked_at",
+  ],
+  login_attempts: [
+    "username",
+    "failure_count",
+    "first_failed_at",
+    "last_failed_at",
+    "locked_until",
+  ],
   manuscripts: [
     "id",
     "title",
@@ -36,6 +65,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "version_no",
     "status",
     "prompt",
+    "source_learning_candidate_id",
   ],
   knowledge_items: [
     "id",
@@ -45,6 +75,15 @@ const expectedTableColumns: Record<string, string[]> = {
     "module_scope",
     "manuscript_types",
     "status",
+    "source_learning_candidate_id",
+  ],
+  knowledge_review_actions: [
+    "id",
+    "knowledge_item_id",
+    "action",
+    "actor_role",
+    "review_note",
+    "created_at",
   ],
   learning_candidates: [
     "id",
@@ -53,6 +92,17 @@ const expectedTableColumns: Record<string, string[]> = {
     "module",
     "manuscript_type",
     "snapshot_asset_id",
+  ],
+  learning_writebacks: [
+    "id",
+    "learning_candidate_id",
+    "target_type",
+    "status",
+    "created_draft_asset_id",
+    "created_by",
+    "created_at",
+    "applied_by",
+    "applied_at",
   ],
   model_registry: [
     "id",
@@ -66,12 +116,18 @@ const expectedTableColumns: Record<string, string[]> = {
 };
 
 const expectedIndexes = [
+  "users_username_idx",
+  "auth_sessions_user_id_idx",
+  "auth_sessions_active_expires_at_idx",
   "manuscripts_status_idx",
   "document_assets_manuscript_id_idx",
   "knowledge_items_status_module_scope_idx",
   "knowledge_items_manuscript_types_gin_idx",
   "knowledge_items_risk_tags_gin_idx",
+  "knowledge_review_actions_knowledge_item_id_created_at_idx",
+  "learning_writebacks_candidate_target_status_idx",
   "module_templates_manuscript_type_module_idx",
+  "module_templates_template_family_id_module_status_idx",
 ];
 
 const expectedRoleKeys = [
@@ -189,6 +245,14 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
           version: "0003_document_assets_file_name.sql",
           checksum: getMigrationChecksum("0003_document_assets_file_name.sql"),
         },
+        {
+          version: "0004_auth_persistence.sql",
+          checksum: getMigrationChecksum("0004_auth_persistence.sql"),
+        },
+        {
+          version: "0005_governed_registry_persistence.sql",
+          checksum: getMigrationChecksum("0005_governed_registry_persistence.sql"),
+        },
       ],
       "Expected migration bookkeeping for all applied database migrations.",
     );
@@ -305,6 +369,8 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
         "0001_initial.sql",
         "0002_model_registry_version_guard.sql",
         "0003_document_assets_file_name.sql",
+        "0004_auth_persistence.sql",
+        "0005_governed_registry_persistence.sql",
       ]) {
         await client.query(
           `

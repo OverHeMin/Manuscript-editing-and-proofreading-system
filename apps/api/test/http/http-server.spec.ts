@@ -75,6 +75,29 @@ test("http server rejects protected review routes without a trusted session", as
   }
 });
 
+test("http server returns 401 for invalid login credentials", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: "dev.editor",
+        password: "wrong-password",
+      }),
+    });
+    const body = (await response.json()) as { error: string };
+
+    assert.equal(response.status, 401);
+    assert.equal(body.error, "invalid_credentials");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server uses the authenticated session role instead of a forged actorRole body", async () => {
   const { server, baseUrl } = await startServer();
 

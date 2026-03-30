@@ -9,10 +9,14 @@ import {
   PermissionGuard,
 } from "../auth/permission-guard.ts";
 import {
+  AccountLockedError,
+  InvalidCredentialsError,
+} from "../auth/auth-service.ts";
+import {
   AuthenticationRequiredError,
   createDemoHttpAuthRuntime,
-  type DemoHttpAuthRuntime,
-  type DemoHttpAuthenticatedSession,
+  type HttpAuthRuntime,
+  type HttpAuthenticatedSession,
 } from "./demo-auth-runtime.ts";
 import {
   DocumentAssetService,
@@ -86,7 +90,7 @@ type RouteResponse<TBody> = {
   headers?: Record<string, string>;
 };
 
-type AppEnv = "local" | "test" | "production";
+export type AppEnv = "local" | "test" | "development" | "staging" | "production";
 
 type HttpRouteMatch =
   | {
@@ -167,12 +171,14 @@ export interface CreateApiHttpServerOptions {
   appEnv?: AppEnv;
   allowedOrigins?: string[];
   seedDemoKnowledgeReviewData?: boolean;
+  authRuntime?: HttpAuthRuntime;
+  runtime?: ApiServerRuntime;
 }
 
 export type ApiHttpServer = Server;
 
-interface AppRuntime {
-  authRuntime: DemoHttpAuthRuntime;
+export interface ApiServerRuntime {
+  authRuntime: HttpAuthRuntime;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
@@ -183,9 +189,13 @@ export function createApiHttpServer(
   options: CreateApiHttpServerOptions = {},
 ): ApiHttpServer {
   const appEnv = options.appEnv ?? "production";
-  const runtime = createAppRuntime({
-    seedDemoData: options.seedDemoKnowledgeReviewData ?? appEnv === "local",
-  });
+  const runtime =
+    options.runtime ??
+    createInMemoryApiRuntime({
+      appEnv,
+      authRuntime: options.authRuntime,
+      seedDemoData: options.seedDemoKnowledgeReviewData ?? appEnv === "local",
+    });
   const allowedOrigins =
     options.allowedOrigins?.filter((origin) => origin.trim().length > 0) ?? [];
 
@@ -228,8 +238,20 @@ export function createApiHttpServer(
   });
 }
 
-function createAppRuntime(input: { seedDemoData: boolean }): AppRuntime {
-  const authRuntime = createDemoHttpAuthRuntime();
+export function createInMemoryApiRuntime(input: {
+  appEnv: AppEnv;
+  authRuntime?: HttpAuthRuntime;
+  seedDemoData: boolean;
+}): ApiServerRuntime {
+  const authRuntime =
+    input.authRuntime ??
+    (input.appEnv === "local" ? createDemoHttpAuthRuntime() : undefined);
+  if (!authRuntime) {
+    throw new Error(
+      `Persistent API runtime requires an explicit persistent auth runtime for APP_ENV="${input.appEnv}".`,
+    );
+  }
+
   const permissionGuard = new PermissionGuard();
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
@@ -584,7 +606,7 @@ function seedDemoLearningData(input: {
 async function handleRoute(
   routeMatch: HttpRouteMatch,
   req: IncomingMessage,
-  runtime: AppRuntime,
+  runtime: ApiServerRuntime,
 ): Promise<RouteResponse<unknown>> {
   switch (routeMatch.route) {
     case "healthz":
@@ -621,23 +643,23 @@ async function handleRoute(
       };
     }
     case "knowledge-create-draft":
-      requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.createDraft(
         (await readJsonBody(req)) as CreateKnowledgeDraftInput,
       );
     case "knowledge-list":
-      requirePermission(req, runtime, "knowledge.review");
+      await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listKnowledgeItems();
     case "knowledge-review-queue":
-      requirePermission(req, runtime, "knowledge.review");
+      await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listPendingReviewItems();
     case "knowledge-submit":
-      requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.submitForReview({
         knowledgeItemId: routeMatch.knowledgeItemId,
       });
     case "knowledge-approve": {
-      const session = requirePermission(req, runtime, "knowledge.review");
+      const session = await requirePermission(req, runtime, "knowledge.review");
       const body = (await readJsonBody(req)) as {
         reviewNote?: string;
       };
@@ -649,7 +671,7 @@ async function handleRoute(
       });
     }
     case "knowledge-reject": {
-      const session = requirePermission(req, runtime, "knowledge.review");
+      const session = await requirePermission(req, runtime, "knowledge.review");
       const body = (await readJsonBody(req)) as {
         reviewNote?: string;
       };
@@ -661,23 +683,23 @@ async function handleRoute(
       });
     }
     case "knowledge-update-draft":
-      requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.updateDraft({
         knowledgeItemId: routeMatch.knowledgeItemId,
         input: (await readJsonBody(req)) as UpdateKnowledgeDraftInput,
       });
     case "knowledge-review-actions":
-      requirePermission(req, runtime, "knowledge.review");
+      await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listReviewActions({
         knowledgeItemId: routeMatch.knowledgeItemId,
       });
     case "knowledge-archive":
-      requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.archive({
         knowledgeItemId: routeMatch.knowledgeItemId,
       });
     case "learning-create-reviewed-case-snapshot": {
-      const session = requirePermission(req, runtime, "learning.review");
+      const session = await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.createReviewedCaseSnapshot(
         {
           ...((await readJsonBody(req)) as Omit<
@@ -689,18 +711,18 @@ async function handleRoute(
       );
     }
     case "learning-list-candidates":
-      requirePermission(req, runtime, "learning.review");
+      await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.listLearningCandidates();
     case "learning-review-queue":
-      requirePermission(req, runtime, "learning.review");
+      await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.listPendingReviewCandidates();
     case "learning-get-candidate":
-      requirePermission(req, runtime, "learning.review");
+      await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.getLearningCandidate({
         candidateId: routeMatch.candidateId,
       });
     case "learning-create-candidate": {
-      const session = requirePermission(req, runtime, "learning.review");
+      const session = await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.createLearningCandidate(
         {
           ...((await readJsonBody(req)) as Omit<
@@ -712,7 +734,7 @@ async function handleRoute(
       );
     }
     case "learning-create-governed-candidate": {
-      const session = requirePermission(req, runtime, "learning.review");
+      const session = await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.createGovernedLearningCandidate(
         {
           ...((await readJsonBody(req)) as Omit<
@@ -724,7 +746,7 @@ async function handleRoute(
       );
     }
     case "learning-approve-candidate": {
-      const session = requirePermission(req, runtime, "learning.review");
+      const session = await requirePermission(req, runtime, "learning.review");
 
       return runtime.learningApi.approveLearningCandidate({
         candidateId: routeMatch.candidateId,
@@ -732,7 +754,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-create-writeback": {
-      const session = requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
         input: Omit<
           Parameters<typeof runtime.learningGovernanceApi.createWriteback>[0]["input"],
@@ -749,7 +771,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-apply-writeback": {
-      const session = requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
         input: Omit<
           Parameters<typeof runtime.learningGovernanceApi.applyWriteback>[0]["input"],
@@ -767,7 +789,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-list-writebacks":
-      requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "permissions.manage");
       return runtime.learningGovernanceApi.listWritebacksByCandidate({
         learningCandidateId: routeMatch.candidateId,
       });
@@ -923,12 +945,12 @@ function readRemoteAddress(req: IncomingMessage): string | undefined {
   return req.socket.remoteAddress ?? undefined;
 }
 
-function requirePermission(
+async function requirePermission(
   req: IncomingMessage,
-  runtime: AppRuntime,
+  runtime: ApiServerRuntime,
   permission: Parameters<PermissionGuard["assert"]>[1],
-): DemoHttpAuthenticatedSession {
-  const session = runtime.authRuntime.requireSession(req);
+): Promise<HttpAuthenticatedSession> {
+  const session = await runtime.authRuntime.requireSession(req);
   runtime.permissionGuard.assert(session.user.role, permission);
   return session;
 }
@@ -1026,6 +1048,14 @@ function mapErrorToHttpResponse(
 
   if (error instanceof AuthorizationError) {
     return [403, { error: "forbidden", message: error.message }];
+  }
+
+  if (error instanceof InvalidCredentialsError) {
+    return [401, { error: "invalid_credentials", message: error.message }];
+  }
+
+  if (error instanceof AccountLockedError) {
+    return [423, { error: "account_locked", message: error.message }];
   }
 
   if (error instanceof AuthenticationRequiredError) {
