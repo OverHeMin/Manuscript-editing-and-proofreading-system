@@ -9,7 +9,21 @@ import {
   FeedbackGovernanceService,
   InMemoryFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
-import { InMemoryExecutionTrackingRepository } from "../modules/execution-tracking/index.ts";
+import {
+  createExecutionGovernanceApi,
+  ExecutionGovernanceService,
+  PostgresExecutionGovernanceRepository,
+} from "../modules/execution-governance/index.ts";
+import {
+  createExecutionResolutionApi,
+  ExecutionResolutionService,
+} from "../modules/execution-resolution/index.ts";
+import {
+  createExecutionTrackingApi,
+  ExecutionTrackingService,
+  InMemoryExecutionTrackingRepository,
+  PostgresExecutionTrackingRepository,
+} from "../modules/execution-tracking/index.ts";
 import {
   createKnowledgeApi,
   KnowledgeService,
@@ -72,7 +86,8 @@ export function createPersistentGovernanceRuntime(
   const assetRepository = new InMemoryDocumentAssetRepository();
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
-  const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const feedbackExecutionTrackingRepository =
+    new InMemoryExecutionTrackingRepository();
 
   const learningCandidateRepository = new PostgresLearningCandidateRepository({
     client: options.client,
@@ -93,6 +108,12 @@ export function createPersistentGovernanceRuntime(
   const learningGovernanceRepository = new PostgresLearningGovernanceRepository({
     client: options.client,
   });
+  const executionGovernanceRepository = new PostgresExecutionGovernanceRepository({
+    client: options.client,
+  });
+  const executionTrackingRepository = new PostgresExecutionTrackingRepository({
+    client: options.client,
+  });
   const modelRegistryRepository = new PostgresModelRegistryRepository({
     client: options.client,
   });
@@ -110,7 +131,7 @@ export function createPersistentGovernanceRuntime(
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
-    executionTrackingRepository,
+    executionTrackingRepository: feedbackExecutionTrackingRepository,
     assetRepository,
     reviewedCaseSnapshotRepository,
   });
@@ -152,6 +173,23 @@ export function createPersistentGovernanceRuntime(
       }),
     }),
   });
+  const executionGovernanceService = new ExecutionGovernanceService({
+    repository: executionGovernanceRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    transactionManager: createPostgresWriteTransactionManager({
+      getClient: async () => options.client.connect(),
+      createContext: (client) => ({
+        repository: new PostgresExecutionGovernanceRepository({
+          client,
+        }),
+      }),
+    }),
+  });
+  const executionTrackingService = new ExecutionTrackingService({
+    repository: executionTrackingRepository,
+  });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
@@ -159,6 +197,14 @@ export function createPersistentGovernanceRuntime(
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+  });
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
@@ -178,6 +224,15 @@ export function createPersistentGovernanceRuntime(
 
   return {
     authRuntime: options.authRuntime,
+    executionGovernanceApi: createExecutionGovernanceApi({
+      executionGovernanceService,
+    }),
+    executionResolutionApi: createExecutionResolutionApi({
+      executionResolutionService,
+    }),
+    executionTrackingApi: createExecutionTrackingApi({
+      executionTrackingService,
+    }),
     knowledgeApi: createKnowledgeApi({ knowledgeService }),
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({

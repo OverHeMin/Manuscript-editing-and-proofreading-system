@@ -1,4 +1,13 @@
 import {
+  listExecutionProfiles,
+  resolveExecutionBundlePreview,
+} from "../execution-governance/index.ts";
+import type {
+  ModuleExecutionProfileViewModel,
+  ResolvedExecutionBundleViewModel,
+  ResolveExecutionBundlePreviewInput,
+} from "../execution-governance/index.ts";
+import {
   createModelRegistryEntry,
   getModelRoutingPolicy,
   listModelRegistryEntries,
@@ -42,6 +51,7 @@ export interface AdminGovernanceOverview {
   moduleTemplates: ModuleTemplateViewModel[];
   promptTemplates: PromptTemplateViewModel[];
   skillPackages: SkillPackageViewModel[];
+  executionProfiles: ModuleExecutionProfileViewModel[];
   modelRegistryEntries: ModelRegistryEntryViewModel[];
   modelRoutingPolicy: ModelRoutingPolicyViewModel;
 }
@@ -71,6 +81,9 @@ export interface AdminGovernanceWorkbenchController {
   updateRoutingPolicyAndReload(
     input: UpdateModelRoutingPolicyInput,
   ): Promise<AdminGovernanceOverview>;
+  resolveExecutionBundlePreview(
+    input: ResolveExecutionBundlePreviewInput,
+  ): Promise<ResolvedExecutionBundleViewModel>;
   publishModuleTemplateAndReload(input: {
     selectedTemplateFamilyId: string;
     moduleTemplateId: string;
@@ -123,6 +136,9 @@ export function createAdminGovernanceWorkbenchController(
       await updateModelRoutingPolicy(client, input);
       return loadAdminGovernanceOverview(client);
     },
+    async resolveExecutionBundlePreview(input) {
+      return (await resolveExecutionBundlePreview(client, input)).body;
+    },
     async publishModuleTemplateAndReload(input) {
       await publishModuleTemplate(client, input.moduleTemplateId, input.actorRole);
       return loadAdminGovernanceOverview(client, {
@@ -144,12 +160,14 @@ export async function loadAdminGovernanceOverview(
     skillResponse,
     modelRegistryResponse,
     modelRoutingPolicyResponse,
+    executionProfileResponse,
   ] = await Promise.all([
     listTemplateFamilies(client),
     listPromptTemplates(client),
     listSkillPackages(client),
     listModelRegistryEntries(client),
     getModelRoutingPolicy(client),
+    listExecutionProfiles(client),
   ]);
 
   const templateFamilies = familyResponse.body;
@@ -173,6 +191,7 @@ export async function loadAdminGovernanceOverview(
     moduleTemplates,
     promptTemplates: promptResponse.body,
     skillPackages: skillResponse.body,
+    executionProfiles: executionProfileResponse.body,
     modelRegistryEntries: modelRegistryResponse.body,
     modelRoutingPolicy: modelRoutingPolicyResponse.body,
   };

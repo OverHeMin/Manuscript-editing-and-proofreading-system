@@ -2,6 +2,10 @@ import { startTransition, useEffect, useState } from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
+  ResolvedExecutionBundleViewModel,
+} from "../execution-governance/index.ts";
+import type { ManuscriptType } from "../manuscripts/index.ts";
+import type {
   CreateModelRegistryEntryInput,
   ModelRegistryEntryViewModel,
 } from "../model-registry/index.ts";
@@ -73,6 +77,17 @@ export function AdminGovernanceWorkbenchPage({
       proofreading: "",
     },
   });
+  const [executionPreviewForm, setExecutionPreviewForm] = useState<{
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  }>({
+    module: "editing",
+    manuscriptType: "review",
+    templateFamilyId: "",
+  });
+  const [executionPreview, setExecutionPreview] =
+    useState<ResolvedExecutionBundleViewModel | null>(null);
 
   useEffect(() => {
     void loadOverview();
@@ -83,10 +98,20 @@ export function AdminGovernanceWorkbenchPage({
       return;
     }
 
+    const selectedFamily = overview.templateFamilies.find(
+      (family) => family.id === overview.selectedTemplateFamilyId,
+    );
+
     setModuleDraftForm((current) => ({
       ...current,
       templateFamilyId: overview.selectedTemplateFamilyId ?? "",
     }));
+    setExecutionPreviewForm((current) => ({
+      ...current,
+      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
+      templateFamilyId: overview.selectedTemplateFamilyId ?? "",
+    }));
+    setExecutionPreview(null);
   }, [overview?.selectedTemplateFamilyId]);
 
   useEffect(() => {
@@ -226,6 +251,26 @@ export function AdminGovernanceWorkbenchPage({
     });
   }
 
+  async function handleResolveExecutionPreview() {
+    const templateFamilyId = executionPreviewForm.templateFamilyId.trim();
+    if (templateFamilyId.length === 0) {
+      return;
+    }
+
+    await runMutation(async () => {
+      const preview = await defaultController.resolveExecutionBundlePreview({
+        module: executionPreviewForm.module,
+        manuscriptType: executionPreviewForm.manuscriptType,
+        templateFamilyId,
+      });
+
+      startTransition(() => {
+        setExecutionPreview(preview);
+        setStatusMessage("Resolved execution bundle preview.");
+      });
+    });
+  }
+
   if (loadStatus === "loading" && overview == null) {
     return (
       <article className="workbench-placeholder" role="status">
@@ -263,6 +308,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Module Templates" value={overview?.moduleTemplates.length ?? 0} />
         <SummaryCard label="Prompt Templates" value={overview?.promptTemplates.length ?? 0} />
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
+        <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
         <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
       </section>
 
@@ -697,6 +743,133 @@ export function AdminGovernanceWorkbenchPage({
             <p className="admin-governance-empty">
               Add a model entry first. Module defaults only allow models that support the selected
               module.
+            </p>
+          )}
+        </article>
+
+        <article className="admin-governance-panel admin-governance-panel-wide">
+          <h3>Execution Governance</h3>
+          {(overview?.executionProfiles.length ?? 0) > 0 ? (
+            <ul className="admin-governance-list admin-governance-list-spaced">
+              {(overview?.executionProfiles ?? []).map((profile) => (
+                <li key={profile.id} className="admin-governance-template-row">
+                  <div>
+                    <strong>
+                      {profile.module} / {profile.manuscript_type}
+                    </strong>
+                    <p>
+                      Family {profile.template_family_id} 路 Template {profile.module_template_id}
+                    </p>
+                  </div>
+                  <div className="admin-governance-template-actions">
+                    <span className="admin-governance-badge">{profile.status}</span>
+                    <small>v{profile.version}</small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="admin-governance-empty">
+              No execution profiles yet. Publish at least one governance profile to resolve a live
+              runtime bundle.
+            </p>
+          )}
+
+          <div className="admin-governance-form-grid">
+            <label className="admin-governance-field">
+              <span>Template Family</span>
+              <select
+                value={executionPreviewForm.templateFamilyId}
+                onChange={(event) =>
+                  setExecutionPreviewForm((current) => {
+                    const selectedFamily = overview?.templateFamilies.find(
+                      (family) => family.id === event.target.value,
+                    );
+
+                    return {
+                      ...current,
+                      templateFamilyId: event.target.value,
+                      manuscriptType:
+                        selectedFamily?.manuscript_type ?? current.manuscriptType,
+                    };
+                  })
+                }
+                disabled={isMutating}
+              >
+                <option value="">Select family</option>
+                {(overview?.templateFamilies ?? []).map((family) => (
+                  <option key={family.id} value={family.id}>
+                    {family.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="admin-governance-field">
+              <span>Module</span>
+              <select
+                value={executionPreviewForm.module}
+                onChange={(event) =>
+                  setExecutionPreviewForm((current) => ({
+                    ...current,
+                    module: event.target.value as TemplateModule,
+                  }))
+                }
+                disabled={isMutating}
+              >
+                {templateModules.map((module) => (
+                  <option key={module} value={module}>
+                    {module}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="auth-actions">
+            <button
+              type="button"
+              className="auth-primary-action"
+              onClick={() => void handleResolveExecutionPreview()}
+              disabled={isMutating || executionPreviewForm.templateFamilyId.trim().length === 0}
+            >
+              Preview Execution Bundle
+            </button>
+          </div>
+
+          {executionPreview ? (
+            <div className="admin-governance-resolution-grid">
+              <article className="admin-governance-asset-row">
+                <span>Resolved Profile</span>
+                <small>{executionPreview.profile.id}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Resolved Model</span>
+                <small>
+                  {executionPreview.resolved_model.provider} /{" "}
+                  {executionPreview.resolved_model.model_name}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Model Source</span>
+                <small>{executionPreview.model_source}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Knowledge Hits</span>
+                <small>{executionPreview.knowledge_items.length}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Prompt Template</span>
+                <small>{executionPreview.prompt_template.name}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Skill Packages</span>
+                <small>{executionPreview.skill_packages.length}</small>
+              </article>
+            </div>
+          ) : (
+            <p className="admin-governance-empty">
+              Resolve a family/module pair to preview the exact governed runtime bundle the system
+              will execute.
             </p>
           )}
         </article>

@@ -362,6 +362,307 @@ test("persistent governance runtime keeps model registry entries and routing pol
   });
 });
 
+test("persistent governance runtime keeps execution profiles and snapshots across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const familyResponse = await fetch(`${firstServer.baseUrl}/api/v1/templates/families`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            manuscriptType: "clinical_study",
+            name: "Persistent execution family",
+          }),
+        });
+        const family = (await familyResponse.json()) as { id: string };
+
+        const moduleTemplateDraftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/templates/module-drafts`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              templateFamilyId: family.id,
+              module: "editing",
+              manuscriptType: "clinical_study",
+              prompt: "Persistent execution editing template",
+            }),
+          },
+        );
+        const moduleTemplateDraft = (await moduleTemplateDraftResponse.json()) as {
+          id: string;
+          version_no: number;
+        };
+        await fetch(
+          `${firstServer.baseUrl}/api/v1/templates/module-templates/${moduleTemplateDraft.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        const promptResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              name: "persistent_editing_mainline",
+              version: "1.0.0",
+              module: "editing",
+              manuscriptTypes: ["clinical_study"],
+            }),
+          },
+        );
+        const prompt = (await promptResponse.json()) as { id: string };
+        await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${prompt.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        const skillResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              name: "persistent_editing_skills",
+              version: "1.0.0",
+              appliesToModules: ["editing"],
+            }),
+          },
+        );
+        const skill = (await skillResponse.json()) as { id: string };
+        await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skill.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        const modelResponse = await fetch(`${firstServer.baseUrl}/api/v1/model-registry`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorRole: "editor",
+            provider: "openai",
+            modelName: "persistent-gpt-5.4",
+            allowedModules: ["editing"],
+            isProdAllowed: true,
+          }),
+        });
+        const model = (await modelResponse.json()) as { id: string };
+        await fetch(`${firstServer.baseUrl}/api/v1/model-registry/routing-policy`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorRole: "editor",
+            moduleDefaults: {
+              editing: model.id,
+            },
+          }),
+        });
+
+        const profileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/execution-governance/profiles`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: family.id,
+                moduleTemplateId: moduleTemplateDraft.id,
+                promptTemplateId: prompt.id,
+                skillPackageIds: [skill.id],
+                knowledgeBindingMode: "profile_plus_dynamic",
+              },
+            }),
+          },
+        );
+        const profile = (await profileResponse.json()) as { id: string };
+        await fetch(
+          `${firstServer.baseUrl}/api/v1/execution-governance/profiles/${profile.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        const snapshotResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/execution-tracking/snapshots`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                manuscriptId: "11111111-1111-1111-1111-111111111111",
+                module: "editing",
+                jobId: "persistent-job-1",
+                executionProfileId: profile.id,
+                moduleTemplateId: moduleTemplateDraft.id,
+                moduleTemplateVersionNo: moduleTemplateDraft.version_no,
+                promptTemplateId: prompt.id,
+                promptTemplateVersion: "1.0.0",
+                skillPackageIds: [skill.id],
+                skillPackageVersions: ["1.0.0"],
+                modelId: model.id,
+                knowledgeHits: [
+                  {
+                    knowledgeItemId: "11111111-1111-1111-1111-111111111111",
+                    matchSource: "dynamic_routing",
+                    matchReasons: ["persistent"],
+                  },
+                ],
+              },
+            }),
+          },
+        );
+        const snapshot = (await snapshotResponse.json()) as { id: string };
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const profilesResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/execution-governance/profiles`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const profiles = (await profilesResponse.json()) as Array<{
+            id: string;
+            status: string;
+          }>;
+          const snapshotLoadedResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/execution-tracking/snapshots/${snapshot.id}`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const snapshotLoaded = (await snapshotLoadedResponse.json()) as { id: string };
+          const resolveResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/execution-governance/resolve`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: cookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: family.id,
+              }),
+            },
+          );
+          const resolved = (await resolveResponse.json()) as {
+            profile: { id: string };
+            resolved_model: { id: string };
+          };
+
+          assert.equal(profilesResponse.status, 200);
+          assert.equal(snapshotLoadedResponse.status, 200);
+          assert.equal(resolveResponse.status, 200);
+          assert.deepEqual(
+            profiles.map((record) => ({
+              id: record.id,
+              status: record.status,
+            })),
+            [
+              {
+                id: profile.id,
+                status: "active",
+              },
+            ],
+          );
+          assert.equal(snapshotLoaded.id, snapshot.id);
+          assert.equal(resolved.profile.id, profile.id);
+          assert.equal(resolved.resolved_model.id, model.id);
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });

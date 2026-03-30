@@ -92,6 +92,7 @@ test("admin governance controller loads families, prompts, skills, and the selec
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      "/api/v1/execution-governance/profiles",
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -244,6 +245,7 @@ test("admin governance controller loads model registry entries and routing polic
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      "/api/v1/execution-governance/profiles",
     ],
   );
 });
@@ -326,6 +328,7 @@ test("admin governance controller creates a model entry and reloads governance o
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      "/api/v1/execution-governance/profiles",
     ],
   );
 });
@@ -415,6 +418,178 @@ test("admin governance controller updates routing policy and reloads governance 
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      "/api/v1/execution-governance/profiles",
+    ],
+  );
+});
+
+test("admin governance controller loads execution profiles and resolves execution preview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Execution family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "template-1",
+              template_family_id: "family-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              version_no: 1,
+              status: "published",
+              prompt: "Execution template",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "prompt-1",
+              name: "editing_mainline",
+              version: "1.0.0",
+              status: "published",
+              module: "editing",
+              manuscript_types: ["clinical_study"],
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/skill-packages") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "skill-1",
+              name: "editing_skills",
+              version: "1.0.0",
+              scope: "admin_only",
+              status: "published",
+              applies_to_modules: ["editing"],
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-1",
+              provider: "openai",
+              model_name: "gpt-5.4",
+              model_version: "2026-03-01",
+              allowed_modules: ["editing"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: undefined,
+            module_defaults: {
+              editing: "model-1",
+            },
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/execution-governance/profiles") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "profile-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              module_template_id: "template-1",
+              prompt_template_id: "prompt-1",
+              skill_package_ids: ["skill-1"],
+              knowledge_binding_mode: "profile_plus_dynamic",
+              status: "active",
+              version: 1,
+            },
+          ] as TResponse,
+        };
+      }
+
+      return {
+        status: 200,
+        body: {
+          profile: {
+            id: "profile-1",
+          },
+          resolved_model: {
+            id: "model-1",
+          },
+          knowledge_items: [
+            {
+              id: "knowledge-1",
+            },
+          ],
+        } as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.loadOverview();
+  const preview = await controller.resolveExecutionBundlePreview({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(overview.executionProfiles.length, 1);
+  assert.equal(overview.executionProfiles[0]?.id, "profile-1");
+  assert.equal(preview.profile.id, "profile-1");
+  assert.equal(preview.resolved_model.id, "model-1");
+  assert.deepEqual(
+    preview.knowledge_items.map((record) => record.id),
+    ["knowledge-1"],
+  );
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+      "/api/v1/execution-governance/profiles",
+      "/api/v1/templates/families/family-1/module-templates",
+      "/api/v1/execution-governance/resolve",
     ],
   );
 });

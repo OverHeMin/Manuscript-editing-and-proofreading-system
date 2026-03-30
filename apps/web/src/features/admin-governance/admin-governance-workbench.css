@@ -238,11 +238,18 @@
   gap: 12px;
 }
 
+.admin-governance-resolution-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 @media (max-width: 1024px) {
   .admin-governance-summary,
   .admin-governance-grid,
   .admin-governance-form-grid,
-  .admin-governance-policy-grid {
+  .admin-governance-policy-grid,
+  .admin-governance-resolution-grid {
     grid-template-columns: 1fr;
   }
 

@@ -19,6 +19,35 @@ import {
   type HttpAuthenticatedSession,
 } from "./demo-auth-runtime.ts";
 import {
+  ActiveExecutionProfileNotFoundError,
+  createExecutionGovernanceApi,
+  ExecutionGovernanceService,
+  ExecutionProfileCompatibilityError,
+  ExecutionProfileKnowledgeItemNotApprovedError,
+  ExecutionProfileModuleTemplateNotPublishedError,
+  ExecutionProfilePromptTemplateNotPublishedError,
+  ExecutionProfileSkillPackageNotPublishedError,
+  InMemoryExecutionGovernanceRepository,
+  KnowledgeBindingRuleNotFoundError,
+  KnowledgeBindingRuleStatusTransitionError,
+  ModuleExecutionProfileNotFoundError,
+  ModuleExecutionProfileStatusTransitionError,
+} from "../modules/execution-governance/index.ts";
+import {
+  createExecutionResolutionApi,
+  ExecutionResolutionKnowledgeItemNotFoundError,
+  ExecutionResolutionModelIncompatibleError,
+  ExecutionResolutionModelNotFoundError,
+  ExecutionResolutionProfileAssetNotFoundError,
+  ExecutionResolutionService,
+} from "../modules/execution-resolution/index.ts";
+import {
+  createExecutionTrackingApi,
+  ExecutionTrackingService,
+  ExecutionTrackingSkillPackageVersionMismatchError,
+  InMemoryExecutionTrackingRepository,
+} from "../modules/execution-tracking/index.ts";
+import {
   DocumentAssetService,
   InMemoryDocumentAssetRepository,
   ManuscriptNotFoundError,
@@ -32,7 +61,6 @@ import {
   InMemoryFeedbackGovernanceRepository,
   type LearningCandidateSourceLinkRecord,
 } from "../modules/feedback-governance/index.ts";
-import { InMemoryExecutionTrackingRepository } from "../modules/execution-tracking/index.ts";
 import {
   createKnowledgeApi,
   InMemoryKnowledgeRepository,
@@ -167,6 +195,44 @@ type HttpRouteMatch =
       promptTemplateId: string;
     }
   | {
+      route: "execution-governance-create-profile";
+    }
+  | {
+      route: "execution-governance-list-profiles";
+    }
+  | {
+      route: "execution-governance-publish-profile";
+      profileId: string;
+    }
+  | {
+      route: "execution-governance-archive-profile";
+      profileId: string;
+    }
+  | {
+      route: "execution-governance-create-knowledge-binding-rule";
+    }
+  | {
+      route: "execution-governance-list-knowledge-binding-rules";
+    }
+  | {
+      route: "execution-governance-activate-knowledge-binding-rule";
+      ruleId: string;
+    }
+  | {
+      route: "execution-governance-resolve";
+    }
+  | {
+      route: "execution-tracking-record-snapshot";
+    }
+  | {
+      route: "execution-tracking-get-snapshot";
+      snapshotId: string;
+    }
+  | {
+      route: "execution-tracking-list-knowledge-hit-logs";
+      snapshotId: string;
+    }
+  | {
       route: "model-registry-create-entry";
     }
   | {
@@ -259,6 +325,9 @@ export type ApiHttpServer = Server;
 
 export interface ApiServerRuntime {
   authRuntime: HttpAuthRuntime;
+  executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
+  executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
+  executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
@@ -345,6 +414,7 @@ export function createInMemoryApiRuntime(input: {
     new InMemoryKnowledgeReviewActionRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
@@ -381,9 +451,26 @@ export function createInMemoryApiRuntime(input: {
     moduleTemplateRepository,
     learningCandidateRepository,
   });
+  const executionGovernanceService = new ExecutionGovernanceService({
+    repository: executionGovernanceRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+  });
+  const executionTrackingService = new ExecutionTrackingService({
+    repository: executionTrackingRepository,
+  });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+  });
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
@@ -413,6 +500,15 @@ export function createInMemoryApiRuntime(input: {
 
   return {
     authRuntime,
+    executionGovernanceApi: createExecutionGovernanceApi({
+      executionGovernanceService,
+    }),
+    executionResolutionApi: createExecutionResolutionApi({
+      executionResolutionService,
+    }),
+    executionTrackingApi: createExecutionTrackingApi({
+      executionTrackingService,
+    }),
     knowledgeApi: createKnowledgeApi({ knowledgeService }),
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
@@ -759,6 +855,83 @@ async function handleRoute(
           "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
         },
       };
+    case "execution-governance-create-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.executionGovernanceApi.createProfile>[0]["input"];
+      };
+
+      return runtime.executionGovernanceApi.createProfile({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "execution-governance-list-profiles":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionGovernanceApi.listProfiles();
+    case "execution-governance-publish-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionGovernanceApi.publishProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "execution-governance-archive-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionGovernanceApi.archiveProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "execution-governance-create-knowledge-binding-rule": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.executionGovernanceApi.createKnowledgeBindingRule
+        >[0]["input"];
+      };
+
+      return runtime.executionGovernanceApi.createKnowledgeBindingRule({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "execution-governance-list-knowledge-binding-rules":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionGovernanceApi.listKnowledgeBindingRules();
+    case "execution-governance-activate-knowledge-binding-rule": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionGovernanceApi.activateKnowledgeBindingRule({
+        actorRole: session.user.role,
+        ruleId: routeMatch.ruleId,
+      });
+    }
+    case "execution-governance-resolve":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionResolutionApi.resolveBundle({
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.executionResolutionApi.resolveBundle
+        >[0]["input"],
+      });
+    case "execution-tracking-record-snapshot":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionTrackingApi.recordSnapshot({
+        input: ((await readJsonBody(req)) as {
+          input: Parameters<typeof runtime.executionTrackingApi.recordSnapshot>[0]["input"];
+        }).input,
+      });
+    case "execution-tracking-get-snapshot":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionTrackingApi.getSnapshot({
+        snapshotId: routeMatch.snapshotId,
+      });
+    case "execution-tracking-list-knowledge-hit-logs":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.executionTrackingApi.listKnowledgeHitLogsBySnapshotId({
+        snapshotId: routeMatch.snapshotId,
+      });
     case "templates-create-family":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.createTemplateFamily(
@@ -1168,6 +1341,36 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "prompt-skill-list-prompt-templates" };
   }
 
+  if (method === "POST" && path === "/api/v1/execution-governance/profiles") {
+    return { route: "execution-governance-create-profile" };
+  }
+
+  if (method === "GET" && path === "/api/v1/execution-governance/profiles") {
+    return { route: "execution-governance-list-profiles" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/execution-governance/knowledge-binding-rules"
+  ) {
+    return { route: "execution-governance-create-knowledge-binding-rule" };
+  }
+
+  if (
+    method === "GET" &&
+    path === "/api/v1/execution-governance/knowledge-binding-rules"
+  ) {
+    return { route: "execution-governance-list-knowledge-binding-rules" };
+  }
+
+  if (method === "POST" && path === "/api/v1/execution-governance/resolve") {
+    return { route: "execution-governance-resolve" };
+  }
+
+  if (method === "POST" && path === "/api/v1/execution-tracking/snapshots") {
+    return { route: "execution-tracking-record-snapshot" };
+  }
+
   if (method === "POST" && path === "/api/v1/model-registry") {
     return { route: "model-registry-create-entry" };
   }
@@ -1236,11 +1439,61 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const publishExecutionProfileMatch = path.match(
+    /^\/api\/v1\/execution-governance\/profiles\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishExecutionProfileMatch) {
+    return {
+      route: "execution-governance-publish-profile",
+      profileId: publishExecutionProfileMatch[1],
+    };
+  }
+
+  const archiveExecutionProfileMatch = path.match(
+    /^\/api\/v1\/execution-governance\/profiles\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && archiveExecutionProfileMatch) {
+    return {
+      route: "execution-governance-archive-profile",
+      profileId: archiveExecutionProfileMatch[1],
+    };
+  }
+
+  const activateKnowledgeBindingRuleMatch = path.match(
+    /^\/api\/v1\/execution-governance\/knowledge-binding-rules\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && activateKnowledgeBindingRuleMatch) {
+    return {
+      route: "execution-governance-activate-knowledge-binding-rule",
+      ruleId: activateKnowledgeBindingRuleMatch[1],
+    };
+  }
+
   const updateModelRegistryEntryMatch = path.match(/^\/api\/v1\/model-registry\/([^/]+)$/);
   if (method === "POST" && updateModelRegistryEntryMatch) {
     return {
       route: "model-registry-update-entry",
       modelId: updateModelRegistryEntryMatch[1],
+    };
+  }
+
+  const executionSnapshotMatch = path.match(
+    /^\/api\/v1\/execution-tracking\/snapshots\/([^/]+)$/,
+  );
+  if (method === "GET" && executionSnapshotMatch) {
+    return {
+      route: "execution-tracking-get-snapshot",
+      snapshotId: executionSnapshotMatch[1],
+    };
+  }
+
+  const executionHitLogsMatch = path.match(
+    /^\/api\/v1\/execution-tracking\/snapshots\/([^/]+)\/knowledge-hit-logs$/,
+  );
+  if (method === "GET" && executionHitLogsMatch) {
+    return {
+      route: "execution-tracking-list-knowledge-hit-logs",
+      snapshotId: executionHitLogsMatch[1],
     };
   }
 
@@ -1457,7 +1710,12 @@ function mapErrorToHttpResponse(
     error instanceof ModelRegistryEntryNotFoundError ||
     error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
-    error instanceof PromptTemplateNotFoundError
+    error instanceof PromptTemplateNotFoundError ||
+    error instanceof ModuleExecutionProfileNotFoundError ||
+    error instanceof KnowledgeBindingRuleNotFoundError ||
+    error instanceof ActiveExecutionProfileNotFoundError ||
+    error instanceof ExecutionResolutionProfileAssetNotFoundError ||
+    error instanceof ExecutionResolutionKnowledgeItemNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -1471,7 +1729,16 @@ function mapErrorToHttpResponse(
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ModuleTemplateStatusTransitionError ||
     error instanceof DuplicateModelRegistryEntryError ||
-    error instanceof PromptSkillRegistryStatusTransitionError
+    error instanceof PromptSkillRegistryStatusTransitionError ||
+    error instanceof ModuleExecutionProfileStatusTransitionError ||
+    error instanceof KnowledgeBindingRuleStatusTransitionError ||
+    error instanceof ExecutionProfileModuleTemplateNotPublishedError ||
+    error instanceof ExecutionProfilePromptTemplateNotPublishedError ||
+    error instanceof ExecutionProfileSkillPackageNotPublishedError ||
+    error instanceof ExecutionProfileKnowledgeItemNotApprovedError ||
+    error instanceof ExecutionProfileCompatibilityError ||
+    error instanceof ExecutionResolutionModelNotFoundError ||
+    error instanceof ExecutionResolutionModelIncompatibleError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -1482,7 +1749,8 @@ function mapErrorToHttpResponse(
     error instanceof LearningSnapshotDeidentificationRequiredError ||
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||
-    error instanceof ModelRoutingPolicyValidationError
+    error instanceof ModelRoutingPolicyValidationError ||
+    error instanceof ExecutionTrackingSkillPackageVersionMismatchError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

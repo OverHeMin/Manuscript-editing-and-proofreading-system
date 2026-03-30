@@ -10,7 +10,7 @@
 - AI 模型注册与路由基础
 - PDF 一致性核对与学习候选基础能力
 - React workbench 页面、本地 demo runtime 与持久化登录壳层
-- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry 与模型路由 runtime
+- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、执行治理与执行追踪 runtime
 - 本地运维、迁移、交付文档基线
 
 ## 当前状态
@@ -27,19 +27,21 @@
   - 学习回写记录
   - Prompt 模板与 Skill 包注册表
   - 模型注册表与路由策略
+  - 执行治理配置（execution profiles、knowledge binding rules）
+  - 执行追踪快照与知识命中日志
 
 当前仍然是 mixed-mode，不应误判为“整套业务都已完全生产持久化”。仍未完成真实持久化或仍属基础实现的部分包括：
 
 - 稿件、资产、上传与导出主链路
 - 学习快照、反馈溯源与完整学习主流程
-- 评测、验证、执行治理等后续阶段模块
+- 评测、验证与 agent 执行编排等后续阶段模块
 
 这意味着：
 
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
-- `apps/web` 里的 admin-console 已经能加载并编辑治理数据，不再是纯占位页
-- 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由持久化 runtime”，不是最终生产版完整业务系统
+- `apps/web` 里的 admin-console 已经能加载治理数据，并预览 execution bundle，不再是纯占位页
+- 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
 
 ## 环境要求
 
@@ -84,7 +86,7 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
-- 当前持久化范围是“认证 + 治理注册表”
+- 当前持久化范围是“认证 + 治理注册表 + execution governance/tracking”
 - 不会自动注入 demo 审稿数据
 
 ### Web Workbench Shell
@@ -125,5 +127,5 @@
 - 稿件与资产主链路的真实持久化
 - 学习主流程与反馈溯源落库
 - 模型执行治理、评测与路由策略联动
-- Web workbench 对持久化治理接口的完整接线
+- Web workbench 对持久化治理接口的完整接线与深度运营能力
 - 部署、监控、回滚、远程维护标准化

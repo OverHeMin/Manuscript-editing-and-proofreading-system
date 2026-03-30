@@ -821,6 +821,283 @@ test("http server lets admin manage model registry entries and routing policy", 
   }
 });
 
+test("http server resolves governed execution bundles and records execution snapshots", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "clinical_study",
+        name: "Execution family",
+      }),
+    });
+    const family = (await familyResponse.json()) as { id: string };
+
+    const moduleTemplateDraftResponse = await fetch(
+      `${baseUrl}/api/v1/templates/module-drafts`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          templateFamilyId: family.id,
+          module: "editing",
+          manuscriptType: "clinical_study",
+          prompt: "Execution editing template",
+          checklist: ["Consistency"],
+        }),
+      },
+    );
+    const moduleTemplateDraft = (await moduleTemplateDraftResponse.json()) as {
+      id: string;
+      version_no: number;
+    };
+    await fetch(`${baseUrl}/api/v1/templates/module-templates/${moduleTemplateDraft.id}/publish`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    });
+
+    const promptTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "editing_mainline",
+          version: "1.0.0",
+          module: "editing",
+          manuscriptTypes: ["clinical_study"],
+        }),
+      },
+    );
+    const promptTemplate = (await promptTemplateResponse.json()) as { id: string };
+    await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${promptTemplate.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    const skillPackageResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "editing_skills",
+          version: "1.0.0",
+          appliesToModules: ["editing"],
+        }),
+      },
+    );
+    const skillPackage = (await skillPackageResponse.json()) as { id: string };
+    await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skillPackage.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    const modelResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        provider: "openai",
+        modelName: "gpt-5.4",
+        allowedModules: ["editing"],
+        isProdAllowed: true,
+      }),
+    });
+    const model = (await modelResponse.json()) as { id: string };
+
+    await fetch(`${baseUrl}/api/v1/model-registry/routing-policy`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        moduleDefaults: {
+          editing: model.id,
+        },
+      }),
+    });
+
+    const profileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: family.id,
+            moduleTemplateId: moduleTemplateDraft.id,
+            promptTemplateId: promptTemplate.id,
+            skillPackageIds: [skillPackage.id],
+            knowledgeBindingMode: "profile_plus_dynamic",
+          },
+        }),
+      },
+    );
+    const profile = (await profileResponse.json()) as { id: string };
+
+    const publishProfileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles/${profile.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+    const publishedProfile = (await publishProfileResponse.json()) as { status: string };
+
+    assert.equal(profileResponse.status, 201);
+    assert.equal(publishProfileResponse.status, 200);
+    assert.equal(publishedProfile.status, "active");
+
+    const resolveResponse = await fetch(`${baseUrl}/api/v1/execution-governance/resolve`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        module: "editing",
+        manuscriptType: "clinical_study",
+        templateFamilyId: family.id,
+      }),
+    });
+    const resolved = (await resolveResponse.json()) as {
+      profile: { id: string };
+      resolved_model: { id: string };
+      skill_packages: Array<{ id: string }>;
+    };
+
+    assert.equal(resolveResponse.status, 200);
+    assert.equal(resolved.profile.id, profile.id);
+    assert.equal(resolved.resolved_model.id, model.id);
+    assert.deepEqual(
+      resolved.skill_packages.map((record) => record.id),
+      [skillPackage.id],
+    );
+
+    const snapshotResponse = await fetch(
+      `${baseUrl}/api/v1/execution-tracking/snapshots`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            manuscriptId: "manuscript-demo-1",
+            module: "editing",
+            jobId: "job-demo-1",
+            executionProfileId: profile.id,
+            moduleTemplateId: moduleTemplateDraft.id,
+            moduleTemplateVersionNo: moduleTemplateDraft.version_no,
+            promptTemplateId: promptTemplate.id,
+            promptTemplateVersion: "1.0.0",
+            skillPackageIds: [skillPackage.id],
+            skillPackageVersions: ["1.0.0"],
+            modelId: model.id,
+            knowledgeHits: [
+              {
+                knowledgeItemId: "knowledge-demo-1",
+                matchSource: "dynamic_routing",
+                matchReasons: ["demo"],
+              },
+            ],
+          },
+        }),
+      },
+    );
+    const snapshot = (await snapshotResponse.json()) as { id: string; model_id: string };
+
+    assert.equal(snapshotResponse.status, 201);
+    assert.equal(snapshot.model_id, model.id);
+
+    const loadedSnapshotResponse = await fetch(
+      `${baseUrl}/api/v1/execution-tracking/snapshots/${snapshot.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const hitLogsResponse = await fetch(
+      `${baseUrl}/api/v1/execution-tracking/snapshots/${snapshot.id}/knowledge-hit-logs`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const loadedSnapshot = (await loadedSnapshotResponse.json()) as { id: string };
+    const hitLogs = (await hitLogsResponse.json()) as Array<{ match_source: string }>;
+
+    assert.equal(loadedSnapshotResponse.status, 200);
+    assert.equal(hitLogsResponse.status, 200);
+    assert.equal(loadedSnapshot.id, snapshot.id);
+    assert.deepEqual(hitLogs.map((record) => record.match_source), ["dynamic_routing"]);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server creates, applies, and lists learning governance writebacks", async () => {
   const { server, baseUrl } = await startServer();
 
