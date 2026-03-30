@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch ./src/http/dev-server.ts",
+    "dev": "pnpm run dev:demo",
+    "dev:demo": "tsx watch ./src/http/dev-server.ts",
     "lint": "pnpm run typecheck",
-    "serve": "tsx ./src/http/dev-server.ts",
+    "serve:demo": "tsx ./src/http/dev-server.ts",
     "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",

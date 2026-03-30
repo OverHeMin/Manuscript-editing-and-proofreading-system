@@ -14,10 +14,11 @@
 这还是基础设施与领域层仓库，不是完整可上线的 Web/API 产品。
 
 - API / Web / Worker 的 `smoke:boot` 目前验证的是配置加载、依赖连通性和基础模块可导入性。
-- 后续阶段再补真正的 HTTP 服务、前端页面和后台任务常驻进程。
+- 当前仓库已经包含 phase 7 的本地 Web workbench 页面，以及一个仅用于本地联调 / QA 的 API demo runtime。
+- `pnpm --filter @medical/api run dev:demo` / `serve:demo` 启动的是内存型演示服务，只允许本机回环地址访问，不连接真实持久化存储，也不能作为生产 API 入口。
 - 当前 `pnpm lint && pnpm typecheck && pnpm test` 覆盖的是：
-  API 领域层静态检查与测试、Worker 文档/PDF pipeline 测试、Web 类型检查与 smoke boot。
-- 它不是最终的 UI 自动化测试或 HTTP 端到端验收。
+  API 领域层静态检查与测试、Worker 文档/PDF pipeline 测试、Web 类型检查与 smoke boot、以及本地 demo HTTP 回归测试。
+- 它不是最终的 UI 自动化测试或生产 HTTP 端到端验收。
 
 ## 环境要求
 
@@ -34,11 +35,13 @@
    `docker compose -f infra/docker-compose.yml up -d`
 3. 验证 API 基线：
    `pnpm --filter @medical/api run smoke:boot`
-4. 验证 Web 基线：
+4. 如需本地演示 HTTP workbench API：
+   `pnpm --filter @medical/api run serve:demo`
+5. 验证 Web 基线：
    `pnpm --filter @medsys/web run smoke:boot`
-5. 验证 Worker 基线：
+6. 验证 Worker 基线：
    `pnpm --filter @medical/worker-py run smoke:boot`
-6. 跑全仓校验：
+7. 跑全仓校验：
    `pnpm lint && pnpm typecheck && pnpm test`
 
 ## 环境文件
