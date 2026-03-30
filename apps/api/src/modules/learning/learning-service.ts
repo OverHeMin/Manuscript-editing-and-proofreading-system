@@ -51,9 +51,32 @@ export interface CreateLearningCandidateInput {
 
 export interface AttachGovernedSourceInput {
   candidateId: string;
+  sourceKind?: "human_feedback";
   snapshotId: string;
   feedbackRecordId: string;
   sourceAssetId: string;
+}
+
+export interface AttachEvaluationGovernedSourceInput {
+  candidateId: string;
+  sourceKind: "evaluation_experiment";
+  reviewedCaseSnapshotId: string;
+  evaluationRunId: string;
+  evidencePackId: string;
+  sourceAssetId: string;
+}
+
+export type AttachLearningGovernedSourceInput =
+  | AttachGovernedSourceInput
+  | AttachEvaluationGovernedSourceInput;
+
+export type CreateGovernedLearningCandidateSourceInput =
+  | Omit<AttachGovernedSourceInput, "candidateId">
+  | Omit<AttachEvaluationGovernedSourceInput, "candidateId">;
+
+export interface CreateGovernedLearningCandidateInput
+  extends CreateLearningCandidateInput {
+  governedSource: CreateGovernedLearningCandidateSourceInput;
 }
 
 export interface LearningFeedbackGovernanceService {
@@ -284,30 +307,61 @@ export class LearningService {
   }
 
   async attachGovernedSource(
-    input: AttachGovernedSourceInput,
+    input: AttachLearningGovernedSourceInput,
   ): Promise<LearningCandidateSourceLinkRecord> {
     const candidate = await this.candidateRepository.findById(input.candidateId);
     if (!candidate) {
       throw new LearningCandidateNotFoundError(input.candidateId);
     }
 
-    const sourceLink = await this.feedbackGovernanceService.linkLearningCandidateSource(
-      {
-        learningCandidateId: input.candidateId,
-        snapshotId: input.snapshotId,
-        feedbackRecordId: input.feedbackRecordId,
-        sourceAssetId: input.sourceAssetId,
-      },
-    );
+    const sourceLink =
+      await this.feedbackGovernanceService.linkLearningCandidateSource(
+        "sourceKind" in input && input.sourceKind === "evaluation_experiment"
+          ? {
+              sourceKind: "evaluation_experiment",
+              learningCandidateId: input.candidateId,
+              reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+              evaluationRunId: input.evaluationRunId,
+              evidencePackId: input.evidencePackId,
+              sourceAssetId: input.sourceAssetId,
+            }
+          : {
+              learningCandidateId: input.candidateId,
+              snapshotId: input.snapshotId,
+              feedbackRecordId: input.feedbackRecordId,
+              sourceAssetId: input.sourceAssetId,
+            },
+      );
     const nextStatus =
       candidate.status === "draft" ? "pending_review" : candidate.status;
     await this.candidateRepository.save({
       ...candidate,
       status: nextStatus,
+      governed_provenance_kind: sourceLink.source_kind,
+      governed_feedback_record_id: sourceLink.feedback_record_id,
+      governed_evaluation_run_id: sourceLink.evaluation_run_id,
+      governed_evidence_pack_id: sourceLink.evidence_pack_id,
       updated_at: this.now().toISOString(),
     });
 
     return sourceLink;
+  }
+
+  async createGovernedLearningCandidate(
+    input: CreateGovernedLearningCandidateInput,
+  ): Promise<LearningCandidateRecord> {
+    const candidate = await this.createLearningCandidate(input);
+    await this.attachGovernedSource({
+      candidateId: candidate.id,
+      ...input.governedSource,
+    });
+
+    const updatedCandidate = await this.candidateRepository.findById(candidate.id);
+    if (!updatedCandidate) {
+      throw new LearningCandidateNotFoundError(candidate.id);
+    }
+
+    return updatedCandidate;
   }
 
   async approveLearningCandidate(
@@ -336,6 +390,25 @@ export class LearningService {
     };
     await this.candidateRepository.save(approved);
     return approved;
+  }
+
+  async getLearningCandidate(
+    candidateId: string,
+  ): Promise<LearningCandidateRecord> {
+    const candidate = await this.candidateRepository.findById(candidateId);
+    if (!candidate) {
+      throw new LearningCandidateNotFoundError(candidateId);
+    }
+
+    return candidate;
+  }
+
+  listLearningCandidates(): Promise<LearningCandidateRecord[]> {
+    return this.candidateRepository.list();
+  }
+
+  listPendingReviewCandidates(): Promise<LearningCandidateRecord[]> {
+    return this.candidateRepository.listByStatus("pending_review");
   }
 
   private async resolveAnnotatedAssetId(

@@ -16,6 +16,9 @@ export type LearningCandidateStatus =
   | "approved"
   | "rejected"
   | "archived";
+export type LearningCandidateProvenanceKind =
+  | "human_feedback"
+  | "evaluation_experiment";
 
 export interface ReviewedCaseSnapshotRecord {
   id: string;
@@ -36,6 +39,10 @@ export interface LearningCandidateRecord {
   status: LearningCandidateStatus;
   module: ManuscriptModule;
   manuscript_type: ManuscriptType;
+  governed_provenance_kind?: LearningCandidateProvenanceKind;
+  governed_feedback_record_id?: string;
+  governed_evaluation_run_id?: string;
+  governed_evidence_pack_id?: string;
   human_final_asset_id?: DocumentAssetRecord["id"];
   annotated_asset_id?: DocumentAssetRecord["id"];
   snapshot_asset_id?: DocumentAssetRecord["id"];

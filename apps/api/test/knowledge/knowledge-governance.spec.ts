@@ -285,3 +285,87 @@ test("approval rolls back the knowledge status when the audit write fails", asyn
     ],
   );
 });
+
+test("knowledge review queue lists pending items and preserves note-aware audit history", async () => {
+  const { api } = createKnowledgeHarness();
+
+  const approvedCandidate = await api.createDraft({
+    title: "Pending review A",
+    canonicalText: "Pending review A canonical text",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+  const rejectedCandidate = await api.createDraft({
+    title: "Pending review B",
+    canonicalText: "Pending review B canonical text",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await api.submitForReview({
+    knowledgeItemId: approvedCandidate.body.id,
+  });
+  await api.submitForReview({
+    knowledgeItemId: rejectedCandidate.body.id,
+  });
+
+  const queueBeforeDecision = await api.listPendingReviewItems();
+  const approved = await api.approve({
+    knowledgeItemId: approvedCandidate.body.id,
+    actorRole: "knowledge_reviewer",
+    reviewNote: "Approved for mini-program publishing.",
+  });
+  const rejected = await api.reject({
+    knowledgeItemId: rejectedCandidate.body.id,
+    actorRole: "knowledge_reviewer",
+    reviewNote: "Please clarify the evidence source before resubmitting.",
+  });
+  const queueAfterDecision = await api.listPendingReviewItems();
+  const approvedHistory = await api.listReviewActions({
+    knowledgeItemId: approvedCandidate.body.id,
+  });
+  const rejectedHistory = await api.listReviewActions({
+    knowledgeItemId: rejectedCandidate.body.id,
+  });
+
+  assert.equal(queueBeforeDecision.status, 200);
+  assert.equal(queueBeforeDecision.body.length, 2);
+  assert.equal(approved.body.status, "approved");
+  assert.equal(rejected.body.status, "draft");
+  assert.equal(queueAfterDecision.status, 200);
+  assert.equal(queueAfterDecision.body.length, 0);
+  assert.deepEqual(
+    approvedHistory.body.map((record) => ({
+      action: record.action,
+      review_note: record.review_note,
+    })),
+    [
+      {
+        action: "submitted_for_review",
+        review_note: undefined,
+      },
+      {
+        action: "approved",
+        review_note: "Approved for mini-program publishing.",
+      },
+    ],
+  );
+  assert.deepEqual(
+    rejectedHistory.body.map((record) => ({
+      action: record.action,
+      review_note: record.review_note,
+    })),
+    [
+      {
+        action: "submitted_for_review",
+        review_note: undefined,
+      },
+      {
+        action: "rejected",
+        review_note: "Please clarify the evidence source before resubmitting.",
+      },
+    ],
+  );
+});

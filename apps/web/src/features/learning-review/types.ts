@@ -16,6 +16,10 @@ export type LearningCandidateStatus =
   | "rejected"
   | "archived";
 
+export type LearningCandidateGovernedProvenanceKind =
+  | "human_feedback"
+  | "evaluation_experiment";
+
 export interface ReviewedCaseSnapshotViewModel {
   id: string;
   manuscript_id: string;
@@ -35,6 +39,7 @@ export interface LearningCandidateViewModel {
   status: LearningCandidateStatus;
   module: string;
   manuscript_type: string;
+  governed_provenance_kind?: LearningCandidateGovernedProvenanceKind;
   human_final_asset_id?: string;
   annotated_asset_id?: string;
   snapshot_asset_id?: string;
@@ -65,6 +70,17 @@ export interface CreateLearningCandidateInput {
   proposalText?: string;
   requestedBy: string;
   deidentificationPassed: boolean;
+}
+
+export interface CreateGovernedLearningCandidateInput
+  extends CreateLearningCandidateInput {
+  governedSource: {
+    sourceKind: "evaluation_experiment";
+    reviewedCaseSnapshotId: string;
+    evaluationRunId: string;
+    evidencePackId: string;
+    sourceAssetId: string;
+  };
 }
 
 export interface ApproveLearningCandidateInput {

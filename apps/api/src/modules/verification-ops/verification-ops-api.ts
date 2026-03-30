@@ -1,6 +1,10 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type { LearningCandidateRecord } from "../learning/learning-record.ts";
 import type {
   EvaluationRunRecord,
+  EvaluationRunItemRecord,
+  EvaluationSampleSetItemRecord,
+  EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -8,10 +12,14 @@ import type {
 } from "./verification-ops-record.ts";
 import type {
   CompleteEvaluationRunInput,
+  CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
+  CreateEvaluationSampleSetInput,
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  FinalizeEvaluationRunResult,
+  RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
   VerificationOpsService,
 } from "./verification-ops-service.ts";
@@ -31,6 +39,57 @@ export function createVerificationOpsApi(
   const { verificationOpsService } = options;
 
   return {
+    async createEvaluationSampleSet({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: CreateEvaluationSampleSetInput;
+    }): Promise<RouteResponse<EvaluationSampleSetRecord>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.createEvaluationSampleSet(actorRole, input),
+      };
+    },
+
+    async publishEvaluationSampleSet({
+      actorRole,
+      sampleSetId,
+    }: {
+      actorRole: RoleKey;
+      sampleSetId: string;
+    }): Promise<RouteResponse<EvaluationSampleSetRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.publishEvaluationSampleSet(
+          sampleSetId,
+          actorRole,
+        ),
+      };
+    },
+
+    async listEvaluationSampleSets(): Promise<
+      RouteResponse<EvaluationSampleSetRecord[]>
+    > {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSampleSets(),
+      };
+    },
+
+    async listEvaluationSampleSetItems({
+      sampleSetId,
+    }: {
+      sampleSetId: string;
+    }): Promise<RouteResponse<EvaluationSampleSetItemRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSampleSetItemsBySampleSetId(
+          sampleSetId,
+        ),
+      };
+    },
+
     async createVerificationCheckProfile({
       actorRole,
       input,
@@ -191,6 +250,51 @@ export function createVerificationOpsApi(
       };
     },
 
+    async recordEvaluationRunItemResult({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: RecordEvaluationRunItemResultInput;
+    }): Promise<RouteResponse<EvaluationRunItemRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.recordEvaluationRunItemResult(
+          actorRole,
+          input,
+        ),
+      };
+    },
+
+    async finalizeEvaluationRun({
+      actorRole,
+      runId,
+    }: {
+      actorRole: RoleKey;
+      runId: string;
+    }): Promise<RouteResponse<FinalizeEvaluationRunResult>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.finalizeEvaluationRun(actorRole, runId),
+      };
+    },
+
+    async createLearningCandidateFromEvaluation({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: CreateLearningCandidateFromEvaluationInput;
+    }): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.createLearningCandidateFromEvaluation(
+          actorRole,
+          input,
+        ),
+      };
+    },
+
     async listEvaluationRunsBySuiteId({
       suiteId,
     }: {
@@ -199,6 +303,17 @@ export function createVerificationOpsApi(
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationRunsBySuiteId(suiteId),
+      };
+    },
+
+    async listEvaluationRunItemsByRunId({
+      runId,
+    }: {
+      runId: string;
+    }): Promise<RouteResponse<EvaluationRunItemRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationRunItemsByRunId(runId),
       };
     },
   };

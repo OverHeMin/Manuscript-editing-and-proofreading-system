@@ -51,6 +51,12 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     return [...this.records.values()].map(cloneKnowledgeRecord);
   }
 
+  async listByStatus(status: KnowledgeRecord["status"]): Promise<KnowledgeRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.status === status)
+      .map(cloneKnowledgeRecord);
+  }
+
   snapshotState(): Map<string, KnowledgeRecord> {
     return new Map(
       [...this.records.entries()].map(([id, record]) => [

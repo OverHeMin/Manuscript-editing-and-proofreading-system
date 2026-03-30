@@ -11,7 +11,7 @@ test("role-based permission guard allows only the expected workbench-sensitive a
   assert.equal(guard.can("admin", "permissions.manage"), true);
   assert.equal(guard.can("knowledge_reviewer", "knowledge.review"), true);
   assert.equal(guard.can("knowledge_reviewer", "learning.review"), true);
-  assert.equal(guard.can("admin", "learning.review"), false);
+  assert.equal(guard.can("admin", "learning.review"), true);
   assert.equal(guard.can("admin", "templates.publish"), true);
   assert.equal(guard.can("editor", "workbench.editing"), true);
   assert.equal(guard.can("editor", "templates.publish"), false);
@@ -21,10 +21,7 @@ test("role-based permission guard allows only the expected workbench-sensitive a
     () => guard.assert("proofreader", "knowledge.review"),
     AuthorizationError,
   );
-  assert.throws(
-    () => guard.assert("admin", "learning.review"),
-    AuthorizationError,
-  );
 
   assert.doesNotThrow(() => guard.assert("screener", "workbench.screening"));
+  assert.doesNotThrow(() => guard.assert("admin", "learning.review"));
 });

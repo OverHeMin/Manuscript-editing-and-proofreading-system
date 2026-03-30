@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type { ExecutionTrackingRepository } from "../execution-tracking/execution-tracking-repository.ts";
+import type { ReviewedCaseSnapshotRepository } from "../learning/learning-repository.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
@@ -29,6 +30,7 @@ export interface FeedbackGovernanceServiceOptions {
   repository: FeedbackGovernanceRepository;
   executionTrackingRepository: ExecutionTrackingRepository;
   assetRepository: DocumentAssetRepository;
+  reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   transactionManager?: WriteTransactionManager<FeedbackGovernanceWriteContext>;
   createId?: () => string;
   now?: () => Date;
@@ -43,12 +45,26 @@ export interface RecordHumanFeedbackInput {
   createdBy: string;
 }
 
-export interface LinkLearningCandidateSourceInput {
+export interface LinkLearningCandidateHumanSourceInput {
+  sourceKind?: "human_feedback";
   learningCandidateId: string;
   snapshotId: string;
   feedbackRecordId: string;
   sourceAssetId: string;
 }
+
+export interface LinkLearningCandidateEvaluationSourceInput {
+  sourceKind: "evaluation_experiment";
+  learningCandidateId: string;
+  reviewedCaseSnapshotId: string;
+  evaluationRunId: string;
+  evidencePackId: string;
+  sourceAssetId: string;
+}
+
+export type LinkLearningCandidateSourceInput =
+  | LinkLearningCandidateHumanSourceInput
+  | LinkLearningCandidateEvaluationSourceInput;
 
 export class ModuleExecutionSnapshotNotFoundError extends Error {
   constructor(snapshotId: string) {
@@ -96,10 +112,27 @@ export class FeedbackSourceAssetMismatchError extends Error {
   }
 }
 
+export class FeedbackGovernanceReviewedSnapshotRepositoryRequiredError extends Error {
+  constructor() {
+    super(
+      "Reviewed case snapshot repository is required for experiment-sourced learning provenance.",
+    );
+    this.name = "FeedbackGovernanceReviewedSnapshotRepositoryRequiredError";
+  }
+}
+
+export class FeedbackGovernanceReviewedSnapshotNotFoundError extends Error {
+  constructor(snapshotId: string) {
+    super(`Reviewed case snapshot ${snapshotId} was not found.`);
+    this.name = "FeedbackGovernanceReviewedSnapshotNotFoundError";
+  }
+}
+
 export class FeedbackGovernanceService {
   private readonly repository: FeedbackGovernanceRepository;
   private readonly executionTrackingRepository: ExecutionTrackingRepository;
   private readonly assetRepository: DocumentAssetRepository;
+  private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   private readonly transactionManager: WriteTransactionManager<FeedbackGovernanceWriteContext>;
   private readonly createId: () => string;
   private readonly now: () => Date;
@@ -108,6 +141,7 @@ export class FeedbackGovernanceService {
     this.repository = options.repository;
     this.executionTrackingRepository = options.executionTrackingRepository;
     this.assetRepository = options.assetRepository;
+    this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
     this.transactionManager =
       options.transactionManager ??
       createFeedbackGovernanceTransactionManager({
@@ -152,6 +186,32 @@ export class FeedbackGovernanceService {
     input: LinkLearningCandidateSourceInput,
   ): Promise<LearningCandidateSourceLinkRecord> {
     return this.transactionManager.withTransaction(async ({ repository }) => {
+      if ("sourceKind" in input && input.sourceKind === "evaluation_experiment") {
+        const reviewedSnapshot = await this.requireReviewedCaseSnapshot(
+          input.reviewedCaseSnapshotId,
+        );
+        const sourceAsset = await this.requireSourceAsset(
+          input.sourceAssetId,
+          reviewedSnapshot.manuscript_id,
+        );
+
+        const link: LearningCandidateSourceLinkRecord = {
+          id: this.createId(),
+          learning_candidate_id: input.learningCandidateId,
+          source_kind: "evaluation_experiment",
+          snapshot_kind: "reviewed_case_snapshot",
+          snapshot_id: input.reviewedCaseSnapshotId,
+          feedback_record_id: undefined,
+          evaluation_run_id: input.evaluationRunId,
+          evidence_pack_id: input.evidencePackId,
+          source_asset_id: sourceAsset.id,
+          created_at: this.now().toISOString(),
+        };
+
+        await repository.saveLearningCandidateSourceLink(link);
+        return link;
+      }
+
       const snapshot = await this.requireSnapshot(input.snapshotId);
       const feedback = await repository.findHumanFeedbackById(input.feedbackRecordId);
       if (!feedback) {
@@ -165,24 +225,19 @@ export class FeedbackGovernanceService {
         );
       }
 
-      const sourceAsset = await this.assetRepository.findById(input.sourceAssetId);
-      if (!sourceAsset) {
-        throw new FeedbackSourceAssetNotFoundError(input.sourceAssetId);
-      }
-
-      if (sourceAsset.manuscript_id !== snapshot.manuscript_id) {
-        throw new FeedbackSourceAssetMismatchError(
-          input.sourceAssetId,
-          snapshot.manuscript_id,
-        );
-      }
+      const sourceAsset = await this.requireSourceAsset(
+        input.sourceAssetId,
+        snapshot.manuscript_id,
+      );
 
       const link: LearningCandidateSourceLinkRecord = {
         id: this.createId(),
         learning_candidate_id: input.learningCandidateId,
+        source_kind: "human_feedback",
+        snapshot_kind: "execution_snapshot",
         snapshot_id: input.snapshotId,
         feedback_record_id: input.feedbackRecordId,
-        source_asset_id: input.sourceAssetId,
+        source_asset_id: sourceAsset.id,
         created_at: this.now().toISOString(),
       };
 
@@ -212,6 +267,32 @@ export class FeedbackGovernanceService {
     }
 
     return snapshot;
+  }
+
+  private async requireReviewedCaseSnapshot(snapshotId: string) {
+    if (!this.reviewedCaseSnapshotRepository) {
+      throw new FeedbackGovernanceReviewedSnapshotRepositoryRequiredError();
+    }
+
+    const snapshot = await this.reviewedCaseSnapshotRepository.findById(snapshotId);
+    if (!snapshot) {
+      throw new FeedbackGovernanceReviewedSnapshotNotFoundError(snapshotId);
+    }
+
+    return snapshot;
+  }
+
+  private async requireSourceAsset(sourceAssetId: string, manuscriptId: string) {
+    const sourceAsset = await this.assetRepository.findById(sourceAssetId);
+    if (!sourceAsset) {
+      throw new FeedbackSourceAssetNotFoundError(sourceAssetId);
+    }
+
+    if (sourceAsset.manuscript_id !== manuscriptId) {
+      throw new FeedbackSourceAssetMismatchError(sourceAssetId, manuscriptId);
+    }
+
+    return sourceAsset;
   }
 }
 

@@ -4,5 +4,8 @@ node_modules/
 **/node_modules/
 .env
 **/.env
+apps/web/dist/
+.playwright-cli/
+output/
 .pytest_cache/
 **/__pycache__/

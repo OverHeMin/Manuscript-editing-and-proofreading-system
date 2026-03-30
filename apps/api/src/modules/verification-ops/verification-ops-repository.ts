@@ -1,5 +1,10 @@
 import type {
+  EvaluationEvidencePackRecord,
+  EvaluationPromotionRecommendationRecord,
   EvaluationRunRecord,
+  EvaluationRunItemRecord,
+  EvaluationSampleSetItemRecord,
+  EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -7,6 +12,17 @@ import type {
 } from "./verification-ops-record.ts";
 
 export interface VerificationOpsRepository {
+  saveEvaluationSampleSet(record: EvaluationSampleSetRecord): Promise<void>;
+  findEvaluationSampleSetById(
+    id: string,
+  ): Promise<EvaluationSampleSetRecord | undefined>;
+  listEvaluationSampleSets(): Promise<EvaluationSampleSetRecord[]>;
+
+  saveEvaluationSampleSetItem(record: EvaluationSampleSetItemRecord): Promise<void>;
+  listEvaluationSampleSetItemsBySampleSetId(
+    sampleSetId: string,
+  ): Promise<EvaluationSampleSetItemRecord[]>;
+
   saveVerificationCheckProfile(record: VerificationCheckProfileRecord): Promise<void>;
   findVerificationCheckProfileById(
     id: string,
@@ -32,4 +48,16 @@ export interface VerificationOpsRepository {
   saveEvaluationRun(record: EvaluationRunRecord): Promise<void>;
   findEvaluationRunById(id: string): Promise<EvaluationRunRecord | undefined>;
   listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]>;
+
+  saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void>;
+  findEvaluationRunItemById(id: string): Promise<EvaluationRunItemRecord | undefined>;
+  listEvaluationRunItemsByRunId(runId: string): Promise<EvaluationRunItemRecord[]>;
+
+  saveEvaluationEvidencePack(record: EvaluationEvidencePackRecord): Promise<void>;
+  findEvaluationEvidencePackById(
+    id: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined>;
+  saveEvaluationPromotionRecommendation(
+    record: EvaluationPromotionRecommendationRecord,
+  ): Promise<void>;
 }
