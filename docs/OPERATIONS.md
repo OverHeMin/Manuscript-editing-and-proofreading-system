@@ -60,7 +60,7 @@
 - 模型注册表与模块路由策略
 - Tool Gateway、Sandbox Profile、Agent Profile、Agent Runtime
 - Tool Permission Policy、Runtime Binding
-- execution bundle preview 与最近 Agent Execution 日志查看
+- execution bundle preview、最近 Agent Execution 日志查看，以及 execution snapshot / knowledge-hit 证据下钻
 
 ## 3. 本地依赖服务
 

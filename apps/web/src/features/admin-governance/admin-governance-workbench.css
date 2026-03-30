@@ -84,10 +84,22 @@
   grid-column: 1 / -1;
 }
 
+.admin-governance-panel-tight {
+  padding: 14px;
+}
+
 .admin-governance-panel h3 {
   margin: 0;
   color: #111827;
   font-size: 1rem;
+}
+
+.admin-governance-panel h4,
+.admin-governance-panel h5,
+.admin-governance-evidence h4,
+.admin-governance-evidence h5 {
+  margin: 0;
+  color: #111827;
 }
 
 .admin-governance-field {
@@ -246,6 +258,27 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.admin-governance-evidence {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-governance-evidence-header {
+  padding: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-governance-evidence-header p {
+  margin: 8px 0 0;
+  color: #4b5563;
 }
 
 @media (max-width: 1024px) {

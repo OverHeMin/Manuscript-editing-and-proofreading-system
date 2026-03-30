@@ -1,4 +1,5 @@
 import {
+  getAgentExecutionLog,
   listAgentExecutionLogs,
 } from "../agent-execution/index.ts";
 import type { AgentExecutionLogViewModel } from "../agent-execution/index.ts";
@@ -29,6 +30,14 @@ import type {
   ResolvedExecutionBundleViewModel,
   ResolveExecutionBundlePreviewInput,
 } from "../execution-governance/index.ts";
+import {
+  getExecutionSnapshot,
+  listKnowledgeHitLogsBySnapshotId,
+} from "../execution-tracking/index.ts";
+import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel,
+} from "../execution-tracking/index.ts";
 import {
   createModelRegistryEntry,
   getModelRoutingPolicy,
@@ -120,6 +129,12 @@ export interface AdminGovernanceOverview {
   agentExecutionLogs: AgentExecutionLogViewModel[];
 }
 
+export interface AdminGovernanceExecutionEvidence {
+  log: AgentExecutionLogViewModel;
+  snapshot: ModuleExecutionSnapshotViewModel | null;
+  knowledgeHitLogs: KnowledgeHitLogViewModel[];
+}
+
 export interface AdminGovernanceWorkbenchController {
   loadOverview(input?: {
     selectedTemplateFamilyId?: string | null;
@@ -191,6 +206,7 @@ export interface AdminGovernanceWorkbenchController {
     bindingId: string;
     selectedTemplateFamilyId?: string | null;
   }): Promise<AdminGovernanceOverview>;
+  loadExecutionEvidence(logId: string): Promise<AdminGovernanceExecutionEvidence>;
   updateRoutingPolicyAndReload(
     input: UpdateModelRoutingPolicyInput,
   ): Promise<AdminGovernanceOverview>;
@@ -335,6 +351,9 @@ export function createAdminGovernanceWorkbenchController(
         selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
       });
     },
+    loadExecutionEvidence(logId) {
+      return loadAdminGovernanceExecutionEvidence(client, logId);
+    },
     async updateRoutingPolicyAndReload(input) {
       await updateModelRoutingPolicy(client, input);
       return loadAdminGovernanceOverview(client);
@@ -418,6 +437,33 @@ export async function loadAdminGovernanceOverview(
     toolPermissionPolicies: toolPermissionPolicyResponse.body,
     runtimeBindings: runtimeBindingResponse.body,
     agentExecutionLogs: agentExecutionResponse.body,
+  };
+}
+
+export async function loadAdminGovernanceExecutionEvidence(
+  client: AdminGovernanceHttpClient,
+  logId: string,
+): Promise<AdminGovernanceExecutionEvidence> {
+  const log = (await getAgentExecutionLog(client, logId)).body;
+  const snapshotId = log.execution_snapshot_id;
+
+  if (!snapshotId) {
+    return {
+      log,
+      snapshot: null,
+      knowledgeHitLogs: [],
+    };
+  }
+
+  const [snapshotResponse, knowledgeHitResponse] = await Promise.all([
+    getExecutionSnapshot(client, snapshotId),
+    listKnowledgeHitLogsBySnapshotId(client, snapshotId),
+  ]);
+
+  return {
+    log,
+    snapshot: snapshotResponse.body ?? null,
+    knowledgeHitLogs: knowledgeHitResponse.body,
   };
 }
 

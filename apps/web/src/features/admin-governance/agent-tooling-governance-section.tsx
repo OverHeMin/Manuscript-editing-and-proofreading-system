@@ -10,9 +10,11 @@ import type {
   ToolGatewayScope,
 } from "../tool-gateway/index.ts";
 import type {
+  AdminGovernanceExecutionEvidence,
   AdminGovernanceOverview,
   AdminGovernanceWorkbenchController,
 } from "./admin-governance-controller.ts";
+import { AgentExecutionEvidenceView } from "./agent-execution-evidence-view.tsx";
 
 const templateModules: TemplateModule[] = ["screening", "editing", "proofreading"];
 const manuscriptTypes: ManuscriptType[] = [
@@ -108,6 +110,11 @@ export function AgentToolingGovernanceSection({
     skillPackageIds: [] as string[],
     executionProfileId: "",
   });
+  const [selectedExecutionLogId, setSelectedExecutionLogId] = useState("");
+  const [executionEvidence, setExecutionEvidence] =
+    useState<AdminGovernanceExecutionEvidence | null>(null);
+  const [executionEvidenceError, setExecutionEvidenceError] = useState<string | null>(null);
+  const [isExecutionEvidenceLoading, setIsExecutionEvidenceLoading] = useState(false);
 
   useEffect(() => {
     const firstToolId = overview.toolGatewayTools[0]?.id ?? "";
@@ -123,6 +130,13 @@ export function AgentToolingGovernanceSection({
       ),
     }));
   }, [overview.toolGatewayTools]);
+
+  useEffect(() => {
+    const firstExecutionLogId = overview.agentExecutionLogs[0]?.id ?? "";
+    setSelectedExecutionLogId((current) =>
+      syncSingleSelection(current, overview.agentExecutionLogs, firstExecutionLogId),
+    );
+  }, [overview.agentExecutionLogs]);
 
   useEffect(() => {
     const firstSandboxId = overview.sandboxProfiles[0]?.id ?? "";
@@ -171,6 +185,45 @@ export function AgentToolingGovernanceSection({
     overview.skillPackages,
     overview.templateFamilies,
   ]);
+
+  useEffect(() => {
+    if (selectedExecutionLogId.length === 0) {
+      setExecutionEvidence(null);
+      setExecutionEvidenceError(null);
+      return;
+    }
+
+    let isActive = true;
+    setIsExecutionEvidenceLoading(true);
+    setExecutionEvidenceError(null);
+
+    void controller
+      .loadExecutionEvidence(selectedExecutionLogId)
+      .then((nextEvidence) => {
+        if (!isActive) {
+          return;
+        }
+
+        setExecutionEvidence(nextEvidence);
+      })
+      .catch((error: unknown) => {
+        if (!isActive) {
+          return;
+        }
+
+        setExecutionEvidence(null);
+        setExecutionEvidenceError(toExecutionEvidenceErrorMessage(error));
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsExecutionEvidenceLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [controller, selectedExecutionLogId]);
 
   async function handleCreateTool() {
     await runMutation(async () => {
@@ -1303,6 +1356,18 @@ export function AgentToolingGovernanceSection({
                 <div className="admin-governance-template-actions">
                   <span className="admin-governance-badge">{log.status}</span>
                   <small>{log.started_at}</small>
+                  <button
+                    type="button"
+                    className="workbench-secondary-action"
+                    onClick={() => setSelectedExecutionLogId(log.id)}
+                    disabled={isExecutionEvidenceLoading && selectedExecutionLogId === log.id}
+                  >
+                    {selectedExecutionLogId === log.id
+                      ? isExecutionEvidenceLoading
+                        ? "Inspecting"
+                        : "Selected"
+                      : "Inspect"}
+                  </button>
                 </div>
               </li>
             ))}
@@ -1313,6 +1378,22 @@ export function AgentToolingGovernanceSection({
             execution starts using runtime bindings.
           </p>
         )}
+
+        {executionEvidenceError ? (
+          <article className="workbench-placeholder workbench-notice" role="alert">
+            <h2>Execution Evidence Unavailable</h2>
+            <p>{executionEvidenceError}</p>
+          </article>
+        ) : null}
+
+        {isExecutionEvidenceLoading ? (
+          <article className="workbench-placeholder" role="status">
+            <h2>Loading Execution Evidence</h2>
+            <p>Fetching snapshot and knowledge-hit details for the selected execution log.</p>
+          </article>
+        ) : executionEvidence ? (
+          <AgentExecutionEvidenceView evidence={executionEvidence} />
+        ) : null}
       </article>
     </>
   );
@@ -1397,4 +1478,12 @@ function syncMultiSelection<TRecord extends { id: string }>(
   }
 
   return records.some((record) => record.id === fallbackId) ? [fallbackId] : [];
+}
+
+function toExecutionEvidenceErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return "Unable to load execution evidence.";
 }

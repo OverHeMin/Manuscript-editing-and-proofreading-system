@@ -43,7 +43,7 @@
 
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
-- `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并预览 execution bundle，不再是纯占位页
+- `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
 - 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
 
 ## 环境要求
