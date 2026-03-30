@@ -1,4 +1,10 @@
 import {
+  createModelRegistryEntry,
+  getModelRoutingPolicy,
+  listModelRegistryEntries,
+  updateModelRoutingPolicy,
+} from "../model-registry/index.ts";
+import {
   createModuleTemplateDraft,
   listModuleTemplatesByTemplateFamilyId,
   listTemplateFamilies,
@@ -6,6 +12,12 @@ import {
 } from "../templates/index.ts";
 import { listPromptTemplates, listSkillPackages } from "../prompt-skill-registry/index.ts";
 import type { AuthRole } from "../auth/index.ts";
+import type {
+  CreateModelRegistryEntryInput,
+  ModelRegistryEntryViewModel,
+  ModelRoutingPolicyViewModel,
+  UpdateModelRoutingPolicyInput,
+} from "../model-registry/index.ts";
 import type { PromptTemplateViewModel, SkillPackageViewModel } from "../prompt-skill-registry/index.ts";
 import type {
   CreateModuleTemplateDraftInput,
@@ -30,6 +42,8 @@ export interface AdminGovernanceOverview {
   moduleTemplates: ModuleTemplateViewModel[];
   promptTemplates: PromptTemplateViewModel[];
   skillPackages: SkillPackageViewModel[];
+  modelRegistryEntries: ModelRegistryEntryViewModel[];
+  modelRoutingPolicy: ModelRoutingPolicyViewModel;
 }
 
 export interface AdminGovernanceWorkbenchController {
@@ -50,6 +64,13 @@ export interface AdminGovernanceWorkbenchController {
     createdDraft: ModuleTemplateViewModel;
     overview: AdminGovernanceOverview;
   }>;
+  createModelEntryAndReload(input: CreateModelRegistryEntryInput): Promise<{
+    createdModel: ModelRegistryEntryViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  updateRoutingPolicyAndReload(
+    input: UpdateModelRoutingPolicyInput,
+  ): Promise<AdminGovernanceOverview>;
   publishModuleTemplateAndReload(input: {
     selectedTemplateFamilyId: string;
     moduleTemplateId: string;
@@ -90,6 +111,18 @@ export function createAdminGovernanceWorkbenchController(
         }),
       };
     },
+    async createModelEntryAndReload(input) {
+      const createdModel = (await createModelRegistryEntry(client, input)).body;
+
+      return {
+        createdModel,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async updateRoutingPolicyAndReload(input) {
+      await updateModelRoutingPolicy(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
     async publishModuleTemplateAndReload(input) {
       await publishModuleTemplate(client, input.moduleTemplateId, input.actorRole);
       return loadAdminGovernanceOverview(client, {
@@ -105,10 +138,18 @@ export async function loadAdminGovernanceOverview(
     selectedTemplateFamilyId?: string | null;
   } = {},
 ): Promise<AdminGovernanceOverview> {
-  const [familyResponse, promptResponse, skillResponse] = await Promise.all([
+  const [
+    familyResponse,
+    promptResponse,
+    skillResponse,
+    modelRegistryResponse,
+    modelRoutingPolicyResponse,
+  ] = await Promise.all([
     listTemplateFamilies(client),
     listPromptTemplates(client),
     listSkillPackages(client),
+    listModelRegistryEntries(client),
+    getModelRoutingPolicy(client),
   ]);
 
   const templateFamilies = familyResponse.body;
@@ -132,6 +173,8 @@ export async function loadAdminGovernanceOverview(
     moduleTemplates,
     promptTemplates: promptResponse.body,
     skillPackages: skillResponse.body,
+    modelRegistryEntries: modelRegistryResponse.body,
+    modelRoutingPolicy: modelRoutingPolicyResponse.body,
   };
 }
 

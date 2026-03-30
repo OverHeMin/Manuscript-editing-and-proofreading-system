@@ -247,6 +247,121 @@ test("persistent governance runtime keeps prompt and skill registry assets acros
   });
 });
 
+test("persistent governance runtime keeps model registry entries and routing policy across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const createResponse = await fetch(`${firstServer.baseUrl}/api/v1/model-registry`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorRole: "editor",
+            provider: "openai",
+            modelName: "gpt-5.4",
+            modelVersion: "2026-03-01",
+            allowedModules: ["screening", "editing", "proofreading"],
+            isProdAllowed: true,
+          }),
+        });
+        const created = (await createResponse.json()) as { id: string };
+
+        assert.equal(createResponse.status, 201);
+
+        const routingResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-registry/routing-policy`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              systemDefaultModelId: created.id,
+              moduleDefaults: {
+                screening: created.id,
+                editing: created.id,
+                proofreading: created.id,
+              },
+            }),
+          },
+        );
+
+        assert.equal(routingResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const listResponse = await fetch(`${secondServer.baseUrl}/api/v1/model-registry`, {
+            headers: {
+              Cookie: cookie,
+            },
+          });
+          const models = (await listResponse.json()) as Array<{
+            id: string;
+            model_name: string;
+          }>;
+          const policyResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/model-registry/routing-policy`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const policy = (await policyResponse.json()) as {
+            system_default_model_id?: string;
+            module_defaults: Record<string, string>;
+          };
+
+          assert.equal(listResponse.status, 200);
+          assert.deepEqual(
+            models.map((record) => ({
+              id: record.id,
+              model_name: record.model_name,
+            })),
+            [
+              {
+                id: created.id,
+                model_name: "gpt-5.4",
+              },
+            ],
+          );
+          assert.equal(policyResponse.status, 200);
+          assert.equal(policy.system_default_model_id, created.id);
+          assert.deepEqual(policy.module_defaults, {
+            screening: created.id,
+            editing: created.id,
+            proofreading: created.id,
+          });
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });

@@ -2,6 +2,10 @@ import { startTransition, useEffect, useState } from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
+  CreateModelRegistryEntryInput,
+  ModelRegistryEntryViewModel,
+} from "../model-registry/index.ts";
+import type {
   CreateModuleTemplateDraftInput,
   ModuleTemplateViewModel,
   TemplateFamilyViewModel,
@@ -45,6 +49,30 @@ export function AdminGovernanceWorkbenchPage({
     checklist: ["Consistency", "Privacy"],
     sectionRequirements: ["discussion", "references"],
   });
+  const [modelForm, setModelForm] = useState<{
+    provider: ModelRegistryEntryViewModel["provider"];
+    modelName: string;
+    modelVersion: string;
+    allowedModules: TemplateModule[];
+    isProdAllowed: boolean;
+  }>({
+    provider: "openai",
+    modelName: "gpt-5.4",
+    modelVersion: "",
+    allowedModules: [...templateModules],
+    isProdAllowed: true,
+  });
+  const [routingPolicyForm, setRoutingPolicyForm] = useState<{
+    systemDefaultModelId: string;
+    moduleDefaults: Record<TemplateModule, string>;
+  }>({
+    systemDefaultModelId: "",
+    moduleDefaults: {
+      screening: "",
+      editing: "",
+      proofreading: "",
+    },
+  });
 
   useEffect(() => {
     void loadOverview();
@@ -60,6 +88,21 @@ export function AdminGovernanceWorkbenchPage({
       templateFamilyId: overview.selectedTemplateFamilyId ?? "",
     }));
   }, [overview?.selectedTemplateFamilyId]);
+
+  useEffect(() => {
+    if (!overview) {
+      return;
+    }
+
+    setRoutingPolicyForm({
+      systemDefaultModelId: overview.modelRoutingPolicy.system_default_model_id ?? "",
+      moduleDefaults: {
+        screening: overview.modelRoutingPolicy.module_defaults.screening ?? "",
+        editing: overview.modelRoutingPolicy.module_defaults.editing ?? "",
+        proofreading: overview.modelRoutingPolicy.module_defaults.proofreading ?? "",
+      },
+    });
+  }, [overview]);
 
   async function loadOverview(input?: { selectedTemplateFamilyId?: string | null }) {
     setLoadStatus("loading");
@@ -140,6 +183,49 @@ export function AdminGovernanceWorkbenchPage({
     });
   }
 
+  async function handleCreateModelEntry() {
+    await runMutation(async () => {
+      const result = await defaultController.createModelEntryAndReload({
+        actorRole,
+        provider: modelForm.provider,
+        modelName: modelForm.modelName.trim(),
+        modelVersion: normalizeOptionalText(modelForm.modelVersion),
+        allowedModules: modelForm.allowedModules,
+        isProdAllowed: modelForm.isProdAllowed,
+      });
+
+      startTransition(() => {
+        setOverview(result.overview);
+        setStatusMessage(`Created model entry: ${result.createdModel.model_name}`);
+      });
+    });
+  }
+
+  async function handleSaveRoutingPolicy() {
+    await runMutation(async () => {
+      const nextOverview = await defaultController.updateRoutingPolicyAndReload({
+        actorRole,
+        systemDefaultModelId: normalizeOptionalSelection(
+          routingPolicyForm.systemDefaultModelId,
+        ),
+        moduleDefaults: {
+          screening: normalizeOptionalSelection(
+            routingPolicyForm.moduleDefaults.screening,
+          ),
+          editing: normalizeOptionalSelection(routingPolicyForm.moduleDefaults.editing),
+          proofreading: normalizeOptionalSelection(
+            routingPolicyForm.moduleDefaults.proofreading,
+          ),
+        },
+      });
+
+      startTransition(() => {
+        setOverview(nextOverview);
+        setStatusMessage("Updated model routing policy.");
+      });
+    });
+  }
+
   if (loadStatus === "loading" && overview == null) {
     return (
       <article className="workbench-placeholder" role="status">
@@ -164,8 +250,8 @@ export function AdminGovernanceWorkbenchPage({
         <div>
           <h2>Admin Governance Console</h2>
           <p>
-            Manage template families and inspect the Prompt/Skill registry that feeds governed
-            manuscript execution.
+            Manage template families, prompt and skill registries, plus model routing defaults for
+            governed manuscript execution.
           </p>
           {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
         </div>
@@ -177,6 +263,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Module Templates" value={overview?.moduleTemplates.length ?? 0} />
         <SummaryCard label="Prompt Templates" value={overview?.promptTemplates.length ?? 0} />
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
+        <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
       </section>
 
       <section className="admin-governance-grid">
@@ -386,6 +473,233 @@ export function AdminGovernanceWorkbenchPage({
             ))}
           </ul>
         </article>
+
+        <article className="admin-governance-panel admin-governance-panel-wide">
+          <h3>Model Registry</h3>
+          <div className="admin-governance-form-grid">
+            <label className="admin-governance-field">
+              <span>Provider</span>
+              <select
+                value={modelForm.provider}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    provider: event.target.value as ModelRegistryEntryViewModel["provider"],
+                  }))
+                }
+                disabled={isMutating}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google</option>
+                <option value="azure_openai">Azure OpenAI</option>
+                <option value="local">Local</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="admin-governance-field">
+              <span>Model Name</span>
+              <input
+                type="text"
+                value={modelForm.modelName}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    modelName: event.target.value,
+                  }))
+                }
+                disabled={isMutating}
+              />
+            </label>
+            <label className="admin-governance-field">
+              <span>Model Version</span>
+              <input
+                type="text"
+                value={modelForm.modelVersion}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    modelVersion: event.target.value,
+                  }))
+                }
+                disabled={isMutating}
+                placeholder="optional"
+              />
+            </label>
+            <label className="admin-governance-field">
+              <span>Production Approved</span>
+              <select
+                value={modelForm.isProdAllowed ? "yes" : "no"}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    isProdAllowed: event.target.value === "yes",
+                  }))
+                }
+                disabled={isMutating}
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset className="admin-governance-module-selector">
+            <legend>Allowed Modules</legend>
+            <div className="admin-governance-module-options">
+              {templateModules.map((module) => (
+                <label key={module} className="admin-governance-module-option">
+                  <input
+                    type="checkbox"
+                    checked={modelForm.allowedModules.includes(module)}
+                    onChange={() =>
+                      setModelForm((current) => ({
+                        ...current,
+                        allowedModules: toggleModuleSelection(
+                          current.allowedModules,
+                          module,
+                        ),
+                      }))
+                    }
+                    disabled={isMutating}
+                  />
+                  <span>{module}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="auth-actions">
+            <button
+              type="button"
+              className="auth-primary-action"
+              onClick={() => void handleCreateModelEntry()}
+              disabled={
+                isMutating ||
+                modelForm.modelName.trim().length === 0 ||
+                modelForm.allowedModules.length === 0
+              }
+            >
+              Create Model Entry
+            </button>
+          </div>
+
+          {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
+            <ul className="admin-governance-list admin-governance-list-spaced">
+              {(overview?.modelRegistryEntries ?? []).map((model) => (
+                <li key={model.id} className="admin-governance-template-row">
+                  <div>
+                    <strong>
+                      {model.provider} / {model.model_name}
+                    </strong>
+                    <p>
+                      Version {model.model_version || "default"} · Modules{" "}
+                      {model.allowed_modules.join(", ")}
+                    </p>
+                  </div>
+                  <div className="admin-governance-template-actions">
+                    <span className="admin-governance-badge">
+                      {model.is_prod_allowed ? "prod_allowed" : "review_only"}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="admin-governance-empty">
+              No model entries yet. Add at least one production-approved model before assigning
+              routing defaults.
+            </p>
+          )}
+        </article>
+
+        <article className="admin-governance-panel admin-governance-panel-wide">
+          <h3>Routing Policy</h3>
+          {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
+            <>
+              <div className="admin-governance-form-grid">
+                <label className="admin-governance-field">
+                  <span>System Default</span>
+                  <select
+                    value={routingPolicyForm.systemDefaultModelId}
+                    onChange={(event) =>
+                      setRoutingPolicyForm((current) => ({
+                        ...current,
+                        systemDefaultModelId: event.target.value,
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    <option value="">Unassigned</option>
+                    {(overview?.modelRegistryEntries ?? []).map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.provider} / {model.model_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {templateModules.map((module) => (
+                  <label key={module} className="admin-governance-field">
+                    <span>{module} Default</span>
+                    <select
+                      value={routingPolicyForm.moduleDefaults[module]}
+                      onChange={(event) =>
+                        setRoutingPolicyForm((current) => ({
+                          ...current,
+                          moduleDefaults: {
+                            ...current.moduleDefaults,
+                            [module]: event.target.value,
+                          },
+                        }))
+                      }
+                      disabled={isMutating}
+                    >
+                      <option value="">Unassigned</option>
+                      {(overview?.modelRegistryEntries ?? [])
+                        .filter((model) => model.allowed_modules.includes(module))
+                        .map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.provider} / {model.model_name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+
+              <div className="auth-actions">
+                <button
+                  type="button"
+                  className="auth-primary-action"
+                  onClick={() => void handleSaveRoutingPolicy()}
+                  disabled={isMutating}
+                >
+                  Save Routing Policy
+                </button>
+              </div>
+
+              <div className="admin-governance-policy-grid">
+                <article className="admin-governance-asset-row">
+                  <span>Current System Default</span>
+                  <small>
+                    {overview?.modelRoutingPolicy.system_default_model_id ?? "Unassigned"}
+                  </small>
+                </article>
+                <article className="admin-governance-asset-row">
+                  <span>Template Overrides</span>
+                  <small>
+                    {Object.keys(overview?.modelRoutingPolicy.template_overrides ?? {}).length}
+                  </small>
+                </article>
+              </div>
+            </>
+          ) : (
+            <p className="admin-governance-empty">
+              Add a model entry first. Module defaults only allow models that support the selected
+              module.
+            </p>
+          )}
+        </article>
       </section>
     </section>
   );
@@ -426,6 +740,27 @@ function normalizeCommaSeparatedList(input: string | string[] | undefined): stri
 
 function renderCommaSeparatedList(values: string[] | undefined): string {
   return values?.join(", ") ?? "";
+}
+
+function normalizeOptionalText(value: string): string | undefined {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeOptionalSelection(value: string): string | null {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toggleModuleSelection(
+  currentModules: readonly TemplateModule[],
+  module: TemplateModule,
+): TemplateModule[] {
+  if (currentModules.includes(module)) {
+    return currentModules.filter((value) => value !== module);
+  }
+
+  return [...currentModules, module];
 }
 
 function toErrorMessage(error: unknown): string {

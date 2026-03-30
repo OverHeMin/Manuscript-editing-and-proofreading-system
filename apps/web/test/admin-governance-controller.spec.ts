@@ -90,6 +90,8 @@ test("admin governance controller loads families, prompts, skills, and the selec
       "/api/v1/templates/families",
       "/api/v1/prompt-skill-registry/prompt-templates",
       "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -150,4 +152,269 @@ test("admin governance controller creates a family and reloads the overview arou
   assert.equal(result.createdFamily.id, "family-2");
   assert.equal(result.overview.selectedTemplateFamilyId, "family-2");
   assert.deepEqual(result.overview.moduleTemplates, []);
+});
+
+test("admin governance controller loads model registry entries and routing policy", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/skill-packages") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-1",
+              provider: "openai",
+              model_name: "gpt-5.4",
+              model_version: "2026-03-01",
+              allowed_modules: ["screening", "editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      return {
+        status: 200,
+        body: {
+          system_default_model_id: "model-1",
+          module_defaults: {
+            screening: "model-1",
+          },
+          template_overrides: {
+            "template-1": "model-1",
+          },
+        } as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.modelRegistryEntries.length, 1);
+  assert.deepEqual(overview.modelRegistryEntries[0], {
+    id: "model-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["screening", "editing", "proofreading"],
+    is_prod_allowed: true,
+  });
+  assert.deepEqual(overview.modelRoutingPolicy, {
+    system_default_model_id: "model-1",
+    module_defaults: {
+      screening: "model-1",
+    },
+    template_overrides: {
+      "template-1": "model-1",
+    },
+  });
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+    ],
+  );
+});
+
+test("admin governance controller creates a model entry and reloads governance overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/model-registry") {
+        return {
+          status: 201,
+          body: {
+            id: "model-2",
+            provider: "anthropic",
+            model_name: "claude-sonnet",
+            model_version: "2026-02-15",
+            allowed_modules: ["editing", "proofreading"],
+            is_prod_allowed: true,
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-2",
+              provider: "anthropic",
+              model_name: "claude-sonnet",
+              model_version: "2026-02-15",
+              allowed_modules: ["editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: undefined,
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const result = await controller.createModelEntryAndReload({
+    actorRole: "admin",
+    provider: "anthropic",
+    modelName: "claude-sonnet",
+    modelVersion: "2026-02-15",
+    allowedModules: ["editing", "proofreading"],
+    isProdAllowed: true,
+  });
+
+  assert.equal(result.createdModel.id, "model-2");
+  assert.equal(result.overview.modelRegistryEntries.length, 1);
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/model-registry",
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+    ],
+  );
+});
+
+test("admin governance controller updates routing policy and reloads governance overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-registry/routing-policy"
+      ) {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-1",
+            module_defaults: {
+              editing: "model-1",
+            },
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-1",
+              provider: "openai",
+              model_name: "gpt-5.4",
+              model_version: "2026-03-01",
+              allowed_modules: ["screening", "editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-1",
+            module_defaults: {
+              editing: "model-1",
+            },
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.updateRoutingPolicyAndReload({
+    actorRole: "admin",
+    moduleDefaults: {
+      editing: "model-1",
+    },
+  });
+
+  assert.deepEqual(overview.modelRoutingPolicy, {
+    system_default_model_id: "model-1",
+    module_defaults: {
+      editing: "model-1",
+    },
+    template_overrides: {},
+  });
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/model-registry/routing-policy",
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+    ],
+  );
 });

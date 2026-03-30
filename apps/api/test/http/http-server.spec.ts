@@ -667,6 +667,160 @@ test("http server lets admin create template governance and prompt skill drafts"
   }
 });
 
+test("http server lets admin manage model registry entries and routing policy", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        provider: "openai",
+        modelName: "gpt-5.4",
+        modelVersion: "2026-03-01",
+        allowedModules: ["screening", "editing", "proofreading"],
+        isProdAllowed: true,
+        costProfile: {
+          currency: "USD",
+          unit: "per_1m_tokens",
+          input: 5,
+          output: 15,
+        },
+      }),
+    });
+    const createdModel = (await createResponse.json()) as {
+      id: string;
+      provider: string;
+      model_name: string;
+      allowed_modules: string[];
+      is_prod_allowed: boolean;
+    };
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(createdModel.provider, "openai");
+    assert.equal(createdModel.model_name, "gpt-5.4");
+    assert.deepEqual(createdModel.allowed_modules, [
+      "screening",
+      "editing",
+      "proofreading",
+    ]);
+    assert.equal(createdModel.is_prod_allowed, true);
+
+    const updateResponse = await fetch(
+      `${baseUrl}/api/v1/model-registry/${createdModel.id}`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "knowledge_reviewer",
+          allowedModules: ["editing", "proofreading"],
+          fallbackModelId: null,
+        }),
+      },
+    );
+    const updatedModel = (await updateResponse.json()) as {
+      id: string;
+      allowed_modules: string[];
+    };
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal(updatedModel.id, createdModel.id);
+    assert.deepEqual(updatedModel.allowed_modules, ["editing", "proofreading"]);
+
+    const listResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const models = (await listResponse.json()) as Array<{
+      id: string;
+      model_name: string;
+      allowed_modules: string[];
+    }>;
+
+    assert.equal(listResponse.status, 200);
+    assert.deepEqual(
+      models.map((record) => ({
+        id: record.id,
+        model_name: record.model_name,
+        allowed_modules: record.allowed_modules,
+      })),
+      [
+        {
+          id: createdModel.id,
+          model_name: "gpt-5.4",
+          allowed_modules: ["editing", "proofreading"],
+        },
+      ],
+    );
+
+    const policyUpdateResponse = await fetch(
+      `${baseUrl}/api/v1/model-registry/routing-policy`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          moduleDefaults: {
+            editing: createdModel.id,
+            proofreading: createdModel.id,
+          },
+          templateOverrides: {
+            "template-review-proofreading-v1": createdModel.id,
+          },
+        }),
+      },
+    );
+    const updatedPolicy = (await policyUpdateResponse.json()) as {
+      system_default_model_id?: string;
+      module_defaults: Record<string, string>;
+      template_overrides: Record<string, string>;
+    };
+
+    assert.equal(policyUpdateResponse.status, 200);
+    assert.equal(updatedPolicy.system_default_model_id, undefined);
+    assert.deepEqual(updatedPolicy.module_defaults, {
+      editing: createdModel.id,
+      proofreading: createdModel.id,
+    });
+    assert.deepEqual(updatedPolicy.template_overrides, {
+      "template-review-proofreading-v1": createdModel.id,
+    });
+
+    const policyResponse = await fetch(`${baseUrl}/api/v1/model-registry/routing-policy`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const policy = (await policyResponse.json()) as {
+      module_defaults: Record<string, string>;
+      template_overrides: Record<string, string>;
+    };
+
+    assert.equal(policyResponse.status, 200);
+    assert.deepEqual(policy.module_defaults, {
+      editing: createdModel.id,
+      proofreading: createdModel.id,
+    });
+    assert.deepEqual(policy.template_overrides, {
+      "template-review-proofreading-v1": createdModel.id,
+    });
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server creates, applies, and lists learning governance writebacks", async () => {
   const { server, baseUrl } = await startServer();
 

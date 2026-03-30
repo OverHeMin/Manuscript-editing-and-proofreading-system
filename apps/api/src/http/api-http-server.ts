@@ -73,6 +73,16 @@ import {
 } from "../modules/learning-governance/index.ts";
 import { InMemoryManuscriptRepository, type ManuscriptRecord } from "../modules/manuscripts/index.ts";
 import {
+  createModelRegistryApi,
+  DuplicateModelRegistryEntryError,
+  InMemoryModelRegistryRepository,
+  InMemoryModelRoutingPolicyRepository,
+  ModelRegistryEntryNotFoundError,
+  ModelRegistryService,
+  ModelRoutingPolicyValidationError,
+  ModelRoutingReferenceNotFoundError,
+} from "../modules/model-registry/index.ts";
+import {
   createPromptSkillRegistryApi,
   InMemoryPromptSkillRegistryRepository,
   PromptTemplateNotFoundError,
@@ -157,6 +167,22 @@ type HttpRouteMatch =
       promptTemplateId: string;
     }
   | {
+      route: "model-registry-create-entry";
+    }
+  | {
+      route: "model-registry-list-entries";
+    }
+  | {
+      route: "model-registry-update-entry";
+      modelId: string;
+    }
+  | {
+      route: "model-registry-get-routing-policy";
+    }
+  | {
+      route: "model-registry-update-routing-policy";
+    }
+  | {
       route: "knowledge-list";
     }
   | {
@@ -237,6 +263,7 @@ export interface ApiServerRuntime {
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
   templateApi: ReturnType<typeof createTemplateApi>;
+  modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
   permissionGuard: PermissionGuard;
 }
@@ -321,6 +348,8 @@ export function createInMemoryApiRuntime(input: {
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
+  const modelRegistryRepository = new InMemoryModelRegistryRepository();
+  const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
 
@@ -351,6 +380,10 @@ export function createInMemoryApiRuntime(input: {
     templateFamilyRepository,
     moduleTemplateRepository,
     learningCandidateRepository,
+  });
+  const modelRegistryService = new ModelRegistryService({
+    repository: modelRegistryRepository,
+    routingPolicyRepository: modelRoutingPolicyRepository,
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
@@ -386,6 +419,7 @@ export function createInMemoryApiRuntime(input: {
       learningGovernanceService,
     }),
     templateApi: createTemplateApi({ templateService }),
+    modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
     }),
@@ -828,6 +862,110 @@ async function handleRoute(
         promptTemplateId: routeMatch.promptTemplateId,
       });
     }
+    case "model-registry-create-entry": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        provider: string;
+        modelName: string;
+        modelVersion?: string;
+        allowedModules: string[];
+        isProdAllowed: boolean;
+        costProfile?: Parameters<
+          typeof runtime.modelRegistryApi.createModelEntry
+        >[0]["input"]["costProfile"];
+        rateLimit?: Parameters<
+          typeof runtime.modelRegistryApi.createModelEntry
+        >[0]["input"]["rateLimit"];
+        fallbackModelId?: string | null;
+      };
+
+      return runtime.modelRegistryApi.createModelEntry({
+        actorRole: session.user.role,
+        input: {
+          provider: body.provider as Parameters<
+            typeof runtime.modelRegistryApi.createModelEntry
+          >[0]["input"]["provider"],
+          modelName: body.modelName,
+          modelVersion: coalesceOptionalString(body.modelVersion),
+          allowedModules: body.allowedModules as Parameters<
+            typeof runtime.modelRegistryApi.createModelEntry
+          >[0]["input"]["allowedModules"],
+          isProdAllowed: body.isProdAllowed,
+          costProfile: body.costProfile,
+          rateLimit: body.rateLimit,
+          fallbackModelId:
+            typeof body.fallbackModelId === "string"
+              ? coalesceOptionalString(body.fallbackModelId)
+              : undefined,
+        },
+      });
+    }
+    case "model-registry-list-entries":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.modelRegistryApi.listModelEntries();
+    case "model-registry-update-entry": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        allowedModules?: string[];
+        isProdAllowed?: boolean;
+        costProfile?: Parameters<
+          typeof runtime.modelRegistryApi.updateModelEntry
+        >[0]["input"]["costProfile"];
+        rateLimit?: Parameters<
+          typeof runtime.modelRegistryApi.updateModelEntry
+        >[0]["input"]["rateLimit"];
+        fallbackModelId?: string | null;
+      };
+
+      return runtime.modelRegistryApi.updateModelEntry({
+        actorRole: session.user.role,
+        modelId: routeMatch.modelId,
+        input: {
+          allowedModules: body.allowedModules as Parameters<
+            typeof runtime.modelRegistryApi.updateModelEntry
+          >[0]["input"]["allowedModules"],
+          isProdAllowed: body.isProdAllowed,
+          costProfile: body.costProfile,
+          rateLimit: body.rateLimit,
+          fallbackModelId:
+            typeof body.fallbackModelId === "string"
+              ? coalesceOptionalString(body.fallbackModelId)
+              : body.fallbackModelId === null
+                ? null
+                : undefined,
+        },
+      });
+    }
+    case "model-registry-get-routing-policy":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.modelRegistryApi.getRoutingPolicy();
+    case "model-registry-update-routing-policy": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        systemDefaultModelId?: string | null;
+        moduleDefaults?: Record<string, string | null>;
+        templateOverrides?: Record<string, string | null>;
+      };
+
+      return runtime.modelRegistryApi.updateRoutingPolicy({
+        actorRole: session.user.role,
+        input: {
+          systemDefaultModelId:
+            typeof body.systemDefaultModelId === "string"
+              ? coalesceOptionalString(body.systemDefaultModelId)
+              : body.systemDefaultModelId === null
+                ? null
+                : undefined,
+          moduleDefaults: body.moduleDefaults as Parameters<
+            typeof runtime.modelRegistryApi.updateRoutingPolicy
+          >[0]["input"]["moduleDefaults"],
+          templateOverrides: body.templateOverrides,
+        },
+      });
+    }
     case "knowledge-create-draft":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.createDraft(
@@ -1030,6 +1168,22 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "prompt-skill-list-prompt-templates" };
   }
 
+  if (method === "POST" && path === "/api/v1/model-registry") {
+    return { route: "model-registry-create-entry" };
+  }
+
+  if (method === "GET" && path === "/api/v1/model-registry") {
+    return { route: "model-registry-list-entries" };
+  }
+
+  if (method === "GET" && path === "/api/v1/model-registry/routing-policy") {
+    return { route: "model-registry-get-routing-policy" };
+  }
+
+  if (method === "POST" && path === "/api/v1/model-registry/routing-policy") {
+    return { route: "model-registry-update-routing-policy" };
+  }
+
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {
     return { route: "knowledge-create-draft" };
   }
@@ -1079,6 +1233,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "prompt-skill-publish-prompt-template",
       promptTemplateId: publishPromptTemplateMatch[1],
+    };
+  }
+
+  const updateModelRegistryEntryMatch = path.match(/^\/api\/v1\/model-registry\/([^/]+)$/);
+  if (method === "POST" && updateModelRegistryEntryMatch) {
+    return {
+      route: "model-registry-update-entry",
+      modelId: updateModelRegistryEntryMatch[1],
     };
   }
 
@@ -1292,6 +1454,8 @@ function mapErrorToHttpResponse(
     error instanceof ManuscriptNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
+    error instanceof ModelRegistryEntryNotFoundError ||
+    error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError
   ) {
@@ -1306,6 +1470,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningGovernanceConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ModuleTemplateStatusTransitionError ||
+    error instanceof DuplicateModelRegistryEntryError ||
     error instanceof PromptSkillRegistryStatusTransitionError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
@@ -1316,7 +1481,8 @@ function mapErrorToHttpResponse(
     error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
     error instanceof FeedbackSourceAssetNotFoundError ||
-    error instanceof FeedbackSourceAssetMismatchError
+    error instanceof FeedbackSourceAssetMismatchError ||
+    error instanceof ModelRoutingPolicyValidationError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

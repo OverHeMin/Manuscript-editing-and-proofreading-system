@@ -42,7 +42,7 @@
 
 .admin-governance-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
@@ -111,6 +111,34 @@
   font: inherit;
   color: #111827;
   background: #ffffff;
+}
+
+.admin-governance-module-selector {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.admin-governance-module-selector legend {
+  padding: 0 6px;
+  color: #374151;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.admin-governance-module-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-governance-module-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #111827;
 }
 
 .admin-governance-list {
@@ -204,10 +232,17 @@
   color: #6b7280;
 }
 
+.admin-governance-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 @media (max-width: 1024px) {
   .admin-governance-summary,
   .admin-governance-grid,
-  .admin-governance-form-grid {
+  .admin-governance-form-grid,
+  .admin-governance-policy-grid {
     grid-template-columns: 1fr;
   }
 

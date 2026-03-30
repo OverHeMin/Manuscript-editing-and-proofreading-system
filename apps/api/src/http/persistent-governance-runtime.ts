@@ -27,6 +27,12 @@ import {
   LearningGovernanceService,
   PostgresLearningGovernanceRepository,
 } from "../modules/learning-governance/index.ts";
+import {
+  createModelRegistryApi,
+  ModelRegistryService,
+  PostgresModelRegistryRepository,
+  PostgresModelRoutingPolicyRepository,
+} from "../modules/model-registry/index.ts";
 import { InMemoryManuscriptRepository } from "../modules/manuscripts/index.ts";
 import {
   createPromptSkillRegistryApi,
@@ -87,6 +93,12 @@ export function createPersistentGovernanceRuntime(
   const learningGovernanceRepository = new PostgresLearningGovernanceRepository({
     client: options.client,
   });
+  const modelRegistryRepository = new PostgresModelRegistryRepository({
+    client: options.client,
+  });
+  const modelRoutingPolicyRepository = new PostgresModelRoutingPolicyRepository({
+    client: options.client,
+  });
   const promptSkillRegistryRepository =
     new PostgresPromptSkillRegistryRepository({
       client: options.client,
@@ -144,6 +156,10 @@ export function createPersistentGovernanceRuntime(
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
   });
+  const modelRegistryService = new ModelRegistryService({
+    repository: modelRegistryRepository,
+    routingPolicyRepository: modelRoutingPolicyRepository,
+  });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
     learningCandidateRepository,
@@ -168,6 +184,7 @@ export function createPersistentGovernanceRuntime(
       learningGovernanceService,
     }),
     templateApi: createTemplateApi({ templateService }),
+    modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
     }),

@@ -9,7 +9,7 @@
 - demo runtime
   本地联调专用，内存态，允许 demo 数据
 - persistent runtime
-  当前用于 PostgreSQL-backed 认证与治理注册表
+  当前用于 PostgreSQL-backed 认证、治理注册表与模型路由
 
 ## 2. 当前持久化边界
 
@@ -26,6 +26,8 @@
 - 学习回写记录
 - Prompt 模板
 - Skill 包
+- 模型注册表
+- 模型路由策略
 
 当前仍然不是完整生产持久化的部分：
 
@@ -155,6 +157,7 @@ Web 关键环境变量：
 - 审计日志
 - 管理员配置数据
   - 模型注册表
+  - 模型路由策略
   - Agent Runtime Registry
   - Tool Gateway Registry
   - Prompt / Skill Registry
