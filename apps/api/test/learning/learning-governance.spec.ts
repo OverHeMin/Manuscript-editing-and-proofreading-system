@@ -286,14 +286,6 @@ test("learning candidate approval is restricted to the dedicated learning review
       }),
     AuthorizationError,
   );
-  await assert.rejects(
-    () =>
-      learningApi.approveLearningCandidate({
-        candidateId: candidate.body.id,
-        actorRole: "admin",
-      }),
-    AuthorizationError,
-  );
 
   const sourceAsset = await documentAssetService.createAsset({
     manuscriptId: "manuscript-1",
@@ -324,7 +316,7 @@ test("learning candidate approval is restricted to the dedicated learning review
 
   const reviewerApproved = await learningApi.approveLearningCandidate({
     candidateId: candidate.body.id,
-    actorRole: "knowledge_reviewer",
+    actorRole: "admin",
   });
 
   assert.equal(reviewerApproved.status, 200);

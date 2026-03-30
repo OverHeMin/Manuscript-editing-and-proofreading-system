@@ -65,5 +65,30 @@ export function createLearningApi(options: CreateLearningApiOptions) {
         ),
       };
     },
+
+    async listLearningCandidates(): Promise<RouteResponse<LearningCandidateRecord[]>> {
+      return {
+        status: 200,
+        body: await learningService.listLearningCandidates(),
+      };
+    },
+
+    async listPendingReviewCandidates(): Promise<RouteResponse<LearningCandidateRecord[]>> {
+      return {
+        status: 200,
+        body: await learningService.listPendingReviewCandidates(),
+      };
+    },
+
+    async getLearningCandidate({
+      candidateId,
+    }: {
+      candidateId: string;
+    }): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 200,
+        body: await learningService.getLearningCandidate(candidateId),
+      };
+    },
   };
 }

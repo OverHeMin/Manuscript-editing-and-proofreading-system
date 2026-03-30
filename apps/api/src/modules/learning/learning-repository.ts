@@ -11,4 +11,8 @@ export interface ReviewedCaseSnapshotRepository {
 export interface LearningCandidateRepository {
   save(record: LearningCandidateRecord): Promise<void>;
   findById(id: string): Promise<LearningCandidateRecord | undefined>;
+  list(): Promise<LearningCandidateRecord[]>;
+  listByStatus(
+    status: LearningCandidateRecord["status"],
+  ): Promise<LearningCandidateRecord[]>;
 }

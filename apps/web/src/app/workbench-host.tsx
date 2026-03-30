@@ -5,6 +5,8 @@ import type {
   WorkbenchId,
 } from "../features/auth/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
+import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
+import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
@@ -33,9 +35,6 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
 
   const activeEntry =
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
-  const canAccessKnowledgeReview = visibleEntries.some(
-    (entry) => entry.id === "knowledge-review",
-  );
 
   return (
     <main className="app-shell">
@@ -86,19 +85,22 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
       );
     }
 
-    if (activeWorkbenchId === "knowledge-review" && canAccessKnowledgeReview) {
-      return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
+    switch (resolveWorkbenchRenderKind(activeWorkbenchId)) {
+      case "knowledge-review":
+        return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
+      case "learning-review":
+        return <LearningReviewWorkbenchPage actorRole={session.role} />;
+      case "placeholder":
+        return (
+          <article className="workbench-placeholder" role="status">
+            <h2>{activeEntry?.label ?? "Workbench"}</h2>
+            <p>
+              This workbench is visible for navigation, but its web implementation is not part of
+              the current phase yet.
+            </p>
+          </article>
+        );
     }
-
-    return (
-      <article className="workbench-placeholder" role="status">
-        <h2>{activeEntry?.label ?? "Workbench"}</h2>
-        <p>
-          This workbench is visible for navigation, but its web implementation is not part of
-          Phase 7B yet.
-        </p>
-      </article>
-    );
   }
 }
 

@@ -19,6 +19,21 @@ function cloneCandidateRecord(
   return { ...record };
 }
 
+function compareCandidateRecords(
+  left: LearningCandidateRecord,
+  right: LearningCandidateRecord,
+): number {
+  if (left.updated_at !== right.updated_at) {
+    return right.updated_at.localeCompare(left.updated_at);
+  }
+
+  if (left.created_at !== right.created_at) {
+    return right.created_at.localeCompare(left.created_at);
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 export class InMemoryReviewedCaseSnapshotRepository
   implements ReviewedCaseSnapshotRepository
 {
@@ -62,6 +77,21 @@ export class InMemoryLearningCandidateRepository
   async findById(id: string): Promise<LearningCandidateRecord | undefined> {
     const record = this.records.get(id);
     return record ? cloneCandidateRecord(record) : undefined;
+  }
+
+  async list(): Promise<LearningCandidateRecord[]> {
+    return [...this.records.values()]
+      .sort(compareCandidateRecords)
+      .map(cloneCandidateRecord);
+  }
+
+  async listByStatus(
+    status: LearningCandidateRecord["status"],
+  ): Promise<LearningCandidateRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.status === status)
+      .sort(compareCandidateRecords)
+      .map(cloneCandidateRecord);
   }
 
   snapshotState(): Map<string, LearningCandidateRecord> {

@@ -392,6 +392,25 @@ export class LearningService {
     return approved;
   }
 
+  async getLearningCandidate(
+    candidateId: string,
+  ): Promise<LearningCandidateRecord> {
+    const candidate = await this.candidateRepository.findById(candidateId);
+    if (!candidate) {
+      throw new LearningCandidateNotFoundError(candidateId);
+    }
+
+    return candidate;
+  }
+
+  listLearningCandidates(): Promise<LearningCandidateRecord[]> {
+    return this.candidateRepository.list();
+  }
+
+  listPendingReviewCandidates(): Promise<LearningCandidateRecord[]> {
+    return this.candidateRepository.listByStatus("pending_review");
+  }
+
   private async resolveAnnotatedAssetId(
     annotatedAssetId: string | undefined,
     manuscriptId: string,

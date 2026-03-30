@@ -13,12 +13,8 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-const ADMIN_PERMISSIONS = PERMISSIONS.filter(
-  (permission) => permission !== "learning.review",
-);
-
 const PERMISSIONS_BY_ROLE: Record<RoleKey, readonly Permission[]> = {
-  admin: ADMIN_PERMISSIONS,
+  admin: PERMISSIONS,
   screener: ["workbench.screening"],
   editor: ["workbench.editing"],
   proofreader: ["workbench.proofreading"],
