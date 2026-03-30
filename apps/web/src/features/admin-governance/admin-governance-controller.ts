@@ -1,4 +1,26 @@
 import {
+  listAgentExecutionLogs,
+} from "../agent-execution/index.ts";
+import type { AgentExecutionLogViewModel } from "../agent-execution/index.ts";
+import {
+  createAgentProfile,
+  listAgentProfiles,
+  publishAgentProfile,
+} from "../agent-profiles/index.ts";
+import type {
+  AgentProfileViewModel,
+  CreateAgentProfileInput,
+} from "../agent-profiles/index.ts";
+import {
+  createAgentRuntime,
+  listAgentRuntimes,
+  publishAgentRuntime,
+} from "../agent-runtime/index.ts";
+import type {
+  AgentRuntimeViewModel,
+  CreateAgentRuntimeInput,
+} from "../agent-runtime/index.ts";
+import {
   listExecutionProfiles,
   resolveExecutionBundlePreview,
 } from "../execution-governance/index.ts";
@@ -14,11 +36,46 @@ import {
   updateModelRoutingPolicy,
 } from "../model-registry/index.ts";
 import {
+  activateRuntimeBinding,
+  createRuntimeBinding,
+  listRuntimeBindings,
+} from "../runtime-bindings/index.ts";
+import type {
+  CreateRuntimeBindingInput,
+  RuntimeBindingViewModel,
+} from "../runtime-bindings/index.ts";
+import {
+  activateSandboxProfile,
+  createSandboxProfile,
+  listSandboxProfiles,
+} from "../sandbox-profiles/index.ts";
+import type {
+  CreateSandboxProfileInput,
+  SandboxProfileViewModel,
+} from "../sandbox-profiles/index.ts";
+import {
   createModuleTemplateDraft,
   listModuleTemplatesByTemplateFamilyId,
   listTemplateFamilies,
   publishModuleTemplate,
 } from "../templates/index.ts";
+import {
+  createToolGatewayTool,
+  listToolGatewayTools,
+} from "../tool-gateway/index.ts";
+import type {
+  CreateToolGatewayToolInput,
+  ToolGatewayToolViewModel,
+} from "../tool-gateway/index.ts";
+import {
+  activateToolPermissionPolicy,
+  createToolPermissionPolicy,
+  listToolPermissionPolicies,
+} from "../tool-permission-policies/index.ts";
+import type {
+  CreateToolPermissionPolicyInput,
+  ToolPermissionPolicyViewModel,
+} from "../tool-permission-policies/index.ts";
 import { listPromptTemplates, listSkillPackages } from "../prompt-skill-registry/index.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -54,6 +111,13 @@ export interface AdminGovernanceOverview {
   executionProfiles: ModuleExecutionProfileViewModel[];
   modelRegistryEntries: ModelRegistryEntryViewModel[];
   modelRoutingPolicy: ModelRoutingPolicyViewModel;
+  toolGatewayTools: ToolGatewayToolViewModel[];
+  sandboxProfiles: SandboxProfileViewModel[];
+  agentProfiles: AgentProfileViewModel[];
+  agentRuntimes: AgentRuntimeViewModel[];
+  toolPermissionPolicies: ToolPermissionPolicyViewModel[];
+  runtimeBindings: RuntimeBindingViewModel[];
+  agentExecutionLogs: AgentExecutionLogViewModel[];
 }
 
 export interface AdminGovernanceWorkbenchController {
@@ -78,6 +142,55 @@ export interface AdminGovernanceWorkbenchController {
     createdModel: ModelRegistryEntryViewModel;
     overview: AdminGovernanceOverview;
   }>;
+  createToolGatewayToolAndReload(input: CreateToolGatewayToolInput): Promise<{
+    createdTool: ToolGatewayToolViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  createSandboxProfileAndReload(input: CreateSandboxProfileInput): Promise<{
+    createdProfile: SandboxProfileViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  activateSandboxProfileAndReload(input: {
+    actorRole: AuthRole;
+    profileId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
+  createAgentProfileAndReload(input: CreateAgentProfileInput): Promise<{
+    createdProfile: AgentProfileViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  publishAgentProfileAndReload(input: {
+    actorRole: AuthRole;
+    profileId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
+  createAgentRuntimeAndReload(input: CreateAgentRuntimeInput): Promise<{
+    createdRuntime: AgentRuntimeViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  publishAgentRuntimeAndReload(input: {
+    actorRole: AuthRole;
+    runtimeId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
+  createToolPermissionPolicyAndReload(input: CreateToolPermissionPolicyInput): Promise<{
+    createdPolicy: ToolPermissionPolicyViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  activateToolPermissionPolicyAndReload(input: {
+    actorRole: AuthRole;
+    policyId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
+  createRuntimeBindingAndReload(input: CreateRuntimeBindingInput): Promise<{
+    createdBinding: RuntimeBindingViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  activateRuntimeBindingAndReload(input: {
+    actorRole: AuthRole;
+    bindingId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
   updateRoutingPolicyAndReload(
     input: UpdateModelRoutingPolicyInput,
   ): Promise<AdminGovernanceOverview>;
@@ -132,6 +245,96 @@ export function createAdminGovernanceWorkbenchController(
         overview: await loadAdminGovernanceOverview(client),
       };
     },
+    async createToolGatewayToolAndReload(input) {
+      const createdTool = (await createToolGatewayTool(client, input)).body;
+
+      return {
+        createdTool,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async createSandboxProfileAndReload(input) {
+      const createdProfile = (await createSandboxProfile(client, input)).body;
+
+      return {
+        createdProfile,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async activateSandboxProfileAndReload(input) {
+      await activateSandboxProfile(client, input.profileId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
+    async createAgentProfileAndReload(input) {
+      const createdProfile = (await createAgentProfile(client, input)).body;
+
+      return {
+        createdProfile,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async publishAgentProfileAndReload(input) {
+      await publishAgentProfile(client, input.profileId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
+    async createAgentRuntimeAndReload(input) {
+      const createdRuntime = (await createAgentRuntime(client, input)).body;
+
+      return {
+        createdRuntime,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async publishAgentRuntimeAndReload(input) {
+      await publishAgentRuntime(client, input.runtimeId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
+    async createToolPermissionPolicyAndReload(input) {
+      const createdPolicy = (await createToolPermissionPolicy(client, input)).body;
+
+      return {
+        createdPolicy,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async activateToolPermissionPolicyAndReload(input) {
+      await activateToolPermissionPolicy(client, input.policyId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
+    async createRuntimeBindingAndReload(input) {
+      const createdBinding = (await createRuntimeBinding(client, input)).body;
+
+      return {
+        createdBinding,
+        overview: await loadAdminGovernanceOverview(client, {
+          selectedTemplateFamilyId: input.templateFamilyId,
+        }),
+      };
+    },
+    async activateRuntimeBindingAndReload(input) {
+      await activateRuntimeBinding(client, input.bindingId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
     async updateRoutingPolicyAndReload(input) {
       await updateModelRoutingPolicy(client, input);
       return loadAdminGovernanceOverview(client);
@@ -161,6 +364,13 @@ export async function loadAdminGovernanceOverview(
     modelRegistryResponse,
     modelRoutingPolicyResponse,
     executionProfileResponse,
+    toolGatewayResponse,
+    sandboxProfileResponse,
+    agentProfileResponse,
+    agentRuntimeResponse,
+    toolPermissionPolicyResponse,
+    runtimeBindingResponse,
+    agentExecutionResponse,
   ] = await Promise.all([
     listTemplateFamilies(client),
     listPromptTemplates(client),
@@ -168,6 +378,13 @@ export async function loadAdminGovernanceOverview(
     listModelRegistryEntries(client),
     getModelRoutingPolicy(client),
     listExecutionProfiles(client),
+    listToolGatewayTools(client),
+    listSandboxProfiles(client),
+    listAgentProfiles(client),
+    listAgentRuntimes(client),
+    listToolPermissionPolicies(client),
+    listRuntimeBindings(client),
+    listAgentExecutionLogs(client),
   ]);
 
   const templateFamilies = familyResponse.body;
@@ -194,6 +411,13 @@ export async function loadAdminGovernanceOverview(
     executionProfiles: executionProfileResponse.body,
     modelRegistryEntries: modelRegistryResponse.body,
     modelRoutingPolicy: modelRoutingPolicyResponse.body,
+    toolGatewayTools: toolGatewayResponse.body,
+    sandboxProfiles: sandboxProfileResponse.body,
+    agentProfiles: agentProfileResponse.body,
+    agentRuntimes: agentRuntimeResponse.body,
+    toolPermissionPolicies: toolPermissionPolicyResponse.body,
+    runtimeBindings: runtimeBindingResponse.body,
+    agentExecutionLogs: agentExecutionResponse.body,
   };
 }
 

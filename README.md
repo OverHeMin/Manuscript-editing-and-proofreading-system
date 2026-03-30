@@ -43,7 +43,7 @@
 
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
-- `apps/web` 里的 admin-console 已经能加载治理数据，并预览 execution bundle，不再是纯占位页
+- `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并预览 execution bundle，不再是纯占位页
 - 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
 
 ## 环境要求
@@ -130,6 +130,6 @@
 - 稿件与资产主链路的真实持久化
 - 学习主流程与反馈溯源落库
 - 模型执行治理、评测与路由策略联动
-- agent-tooling 管理台与 workbench 的更深层运营能力
+- agent 执行编排、运行证据与更深层治理运营能力
 - Web workbench 对持久化治理接口的完整接线与深度运营能力
 - 部署、监控、回滚、远程维护标准化

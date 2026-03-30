@@ -54,6 +54,14 @@
 
 - 已经覆盖全部业务域的最终生产系统
 
+当前 `apps/web` 的 admin governance console 已经可以直接管理：
+
+- 模板家族与模块模板草稿/发布
+- 模型注册表与模块路由策略
+- Tool Gateway、Sandbox Profile、Agent Profile、Agent Runtime
+- Tool Permission Policy、Runtime Binding
+- execution bundle preview 与最近 Agent Execution 日志查看
+
 ## 3. 本地依赖服务
 
 `infra/docker-compose.yml` 当前提供：

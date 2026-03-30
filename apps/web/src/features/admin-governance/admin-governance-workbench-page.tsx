@@ -17,8 +17,10 @@ import type {
 } from "../templates/index.ts";
 import {
   createAdminGovernanceWorkbenchController,
+  type AdminGovernanceWorkbenchController,
   type AdminGovernanceOverview,
 } from "./admin-governance-controller.ts";
+import { AgentToolingGovernanceSection } from "./agent-tooling-governance-section.tsx";
 import "./admin-governance-workbench.css";
 
 const defaultController = createAdminGovernanceWorkbenchController(
@@ -29,10 +31,12 @@ const templateModules: TemplateModule[] = ["screening", "editing", "proofreading
 
 export interface AdminGovernanceWorkbenchPageProps {
   actorRole?: AuthRole;
+  controller?: AdminGovernanceWorkbenchController;
 }
 
 export function AdminGovernanceWorkbenchPage({
   actorRole = "admin",
+  controller = defaultController,
 }: AdminGovernanceWorkbenchPageProps) {
   const [overview, setOverview] = useState<AdminGovernanceOverview | null>(null);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
@@ -134,7 +138,7 @@ export function AdminGovernanceWorkbenchPage({
     setErrorMessage(null);
 
     try {
-      const nextOverview = await defaultController.loadOverview(input);
+      const nextOverview = await controller.loadOverview(input);
       startTransition(() => {
         setOverview(nextOverview);
         setLoadStatus("ready");
@@ -149,7 +153,7 @@ export function AdminGovernanceWorkbenchPage({
 
   async function handleCreateFamily() {
     await runMutation(async () => {
-      const result = await defaultController.createTemplateFamilyAndReload({
+      const result = await controller.createTemplateFamilyAndReload({
         manuscriptType: familyForm.manuscriptType,
         name: familyForm.name.trim(),
       });
@@ -168,7 +172,7 @@ export function AdminGovernanceWorkbenchPage({
     const selectedTemplateFamilyId = overview.selectedTemplateFamilyId;
 
     await runMutation(async () => {
-      const result = await defaultController.createModuleTemplateDraftAndReload({
+      const result = await controller.createModuleTemplateDraftAndReload({
         selectedTemplateFamilyId,
         draft: {
           ...moduleDraftForm,
@@ -195,7 +199,7 @@ export function AdminGovernanceWorkbenchPage({
     const selectedTemplateFamilyId = overview.selectedTemplateFamilyId;
 
     await runMutation(async () => {
-      const nextOverview = await defaultController.publishModuleTemplateAndReload({
+      const nextOverview = await controller.publishModuleTemplateAndReload({
         selectedTemplateFamilyId,
         moduleTemplateId,
         actorRole,
@@ -210,7 +214,7 @@ export function AdminGovernanceWorkbenchPage({
 
   async function handleCreateModelEntry() {
     await runMutation(async () => {
-      const result = await defaultController.createModelEntryAndReload({
+      const result = await controller.createModelEntryAndReload({
         actorRole,
         provider: modelForm.provider,
         modelName: modelForm.modelName.trim(),
@@ -228,7 +232,7 @@ export function AdminGovernanceWorkbenchPage({
 
   async function handleSaveRoutingPolicy() {
     await runMutation(async () => {
-      const nextOverview = await defaultController.updateRoutingPolicyAndReload({
+      const nextOverview = await controller.updateRoutingPolicyAndReload({
         actorRole,
         systemDefaultModelId: normalizeOptionalSelection(
           routingPolicyForm.systemDefaultModelId,
@@ -258,7 +262,7 @@ export function AdminGovernanceWorkbenchPage({
     }
 
     await runMutation(async () => {
-      const preview = await defaultController.resolveExecutionBundlePreview({
+      const preview = await controller.resolveExecutionBundlePreview({
         module: executionPreviewForm.module,
         manuscriptType: executionPreviewForm.manuscriptType,
         templateFamilyId,
@@ -295,8 +299,8 @@ export function AdminGovernanceWorkbenchPage({
         <div>
           <h2>Admin Governance Console</h2>
           <p>
-            Manage template families, prompt and skill registries, plus model routing defaults for
-            governed manuscript execution.
+            Manage template governance, model routing, and the agent-tooling runtime registry that
+            powers governed manuscript execution.
           </p>
           {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
         </div>
@@ -310,6 +314,11 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
         <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
         <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
+        <SummaryCard label="Tool Gateway" value={overview?.toolGatewayTools.length ?? 0} />
+        <SummaryCard label="Sandbox Profiles" value={overview?.sandboxProfiles.length ?? 0} />
+        <SummaryCard label="Agent Profiles" value={overview?.agentProfiles.length ?? 0} />
+        <SummaryCard label="Agent Runtimes" value={overview?.agentRuntimes.length ?? 0} />
+        <SummaryCard label="Runtime Bindings" value={overview?.runtimeBindings.length ?? 0} />
       </section>
 
       <section className="admin-governance-grid">
@@ -873,6 +882,25 @@ export function AdminGovernanceWorkbenchPage({
             </p>
           )}
         </article>
+
+        {overview ? (
+          <AgentToolingGovernanceSection
+            actorRole={actorRole}
+            controller={controller}
+            overview={overview}
+            isMutating={isMutating}
+            runMutation={runMutation}
+            onOverviewChange={(
+              nextOverview: AdminGovernanceOverview,
+              nextStatusMessage: string,
+            ) => {
+              startTransition(() => {
+                setOverview(nextOverview);
+                setStatusMessage(nextStatusMessage);
+              });
+            }}
+          />
+        ) : null}
       </section>
     </section>
   );
