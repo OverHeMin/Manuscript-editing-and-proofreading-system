@@ -4,6 +4,7 @@ import type {
   WorkbenchEntry,
   WorkbenchId,
 } from "../features/auth/index.ts";
+import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
 import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
@@ -119,6 +120,8 @@ export function WorkbenchHost({
         return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
       case "learning-review":
         return <LearningReviewWorkbenchPage actorRole={session.role} />;
+      case "admin-governance":
+        return <AdminGovernanceWorkbenchPage actorRole={session.role} />;
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">

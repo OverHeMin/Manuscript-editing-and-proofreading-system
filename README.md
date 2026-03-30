@@ -10,7 +10,7 @@
 - AI 模型注册与路由基础
 - PDF 一致性核对与学习候选基础能力
 - React workbench 页面、本地 demo runtime 与持久化登录壳层
-- PostgreSQL 持久化的认证、会话、审计与治理注册表 runtime
+- PostgreSQL 持久化的认证、会话、审计、模板治理与 Prompt/Skill Registry runtime
 - 本地运维、迁移、交付文档基线
 
 ## 当前状态
@@ -25,6 +25,7 @@
   - 知识库条目与知识审稿动作
   - 模板家族与模块模板版本治理
   - 学习回写记录
+  - Prompt 模板与 Skill 包注册表
 
 当前仍然是 mixed-mode，不应误判为“整套业务都已完全生产持久化”。仍未完成真实持久化或仍属基础实现的部分包括：
 
@@ -37,6 +38,7 @@
 
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
+- `apps/web` 里的 admin-console 已经能加载治理数据，不再是纯占位页
 - 但 `serve` 当前代表“认证 + 治理注册表持久化 runtime”，不是最终生产版完整业务系统
 
 ## 环境要求

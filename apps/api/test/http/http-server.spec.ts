@@ -520,6 +520,153 @@ test("http server seeded pending learning candidates can be approved by admin", 
   }
 });
 
+test("http server lets admin create template governance and prompt skill drafts", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "review",
+        name: "Review governance family",
+      }),
+    });
+    const family = (await familyResponse.json()) as { id: string; name: string };
+
+    assert.equal(familyResponse.status, 201);
+    assert.equal(family.name, "Review governance family");
+
+    const moduleDraftResponse = await fetch(`${baseUrl}/api/v1/templates/module-drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        templateFamilyId: family.id,
+        module: "proofreading",
+        manuscriptType: "review",
+        prompt: "Create a proofreading draft before final handoff.",
+        checklist: ["Consistency"],
+        sectionRequirements: ["discussion"],
+      }),
+    });
+    const moduleDraft = (await moduleDraftResponse.json()) as {
+      id: string;
+      status: string;
+      version_no: number;
+    };
+
+    assert.equal(moduleDraftResponse.status, 201);
+    assert.equal(moduleDraft.status, "draft");
+    assert.equal(moduleDraft.version_no, 1);
+
+    const promptTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "user",
+          name: "proofreading_mainline",
+          version: "1.0.0",
+          module: "proofreading",
+          manuscriptTypes: ["review"],
+        }),
+      },
+    );
+    const promptTemplate = (await promptTemplateResponse.json()) as {
+      id: string;
+      status: string;
+      module: string;
+    };
+
+    assert.equal(promptTemplateResponse.status, 201);
+    assert.equal(promptTemplate.status, "draft");
+    assert.equal(promptTemplate.module, "proofreading");
+
+    const skillPackageResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "editing_skills",
+          version: "1.0.0",
+          appliesToModules: ["editing"],
+          dependencyTools: ["python-docx"],
+        }),
+      },
+    );
+    const skillPackage = (await skillPackageResponse.json()) as {
+      id: string;
+      status: string;
+      scope: string;
+    };
+
+    assert.equal(skillPackageResponse.status, 201);
+    assert.equal(skillPackage.status, "draft");
+    assert.equal(skillPackage.scope, "admin_only");
+
+    const moduleListResponse = await fetch(
+      `${baseUrl}/api/v1/templates/families/${family.id}/module-templates`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const moduleList = (await moduleListResponse.json()) as Array<{ id: string }>;
+    const familyListResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const familyList = (await familyListResponse.json()) as Array<{ id: string }>;
+    const promptListResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const promptList = (await promptListResponse.json()) as Array<{ id: string }>;
+    const skillListResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const skillList = (await skillListResponse.json()) as Array<{ id: string }>;
+
+    assert.equal(moduleListResponse.status, 200);
+    assert.equal(familyListResponse.status, 200);
+    assert.equal(promptListResponse.status, 200);
+    assert.equal(skillListResponse.status, 200);
+    assert.equal(moduleList.some((record) => record.id === moduleDraft.id), true);
+    assert.equal(familyList.some((record) => record.id === family.id), true);
+    assert.equal(promptList.some((record) => record.id === promptTemplate.id), true);
+    assert.equal(skillList.some((record) => record.id === skillPackage.id), true);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server creates, applies, and lists learning governance writebacks", async () => {
   const { server, baseUrl } = await startServer();
 

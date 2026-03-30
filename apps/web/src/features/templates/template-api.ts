@@ -40,6 +40,16 @@ export function createModuleTemplateDraft(
   });
 }
 
+export function listModuleTemplatesByTemplateFamilyId(
+  client: TemplateHttpClient,
+  templateFamilyId: string,
+) {
+  return client.request<ModuleTemplateViewModel[]>({
+    method: "GET",
+    url: `/api/v1/templates/families/${templateFamilyId}/module-templates`,
+  });
+}
+
 export function publishModuleTemplate(
   client: TemplateHttpClient,
   moduleTemplateId: string,

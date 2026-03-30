@@ -29,11 +29,13 @@ import {
 } from "../modules/learning-governance/index.ts";
 import { InMemoryManuscriptRepository } from "../modules/manuscripts/index.ts";
 import {
-  InMemoryPromptSkillRegistryRepository,
+  createPromptSkillRegistryApi,
+  PostgresPromptSkillRegistryRepository,
   PromptSkillRegistryService,
 } from "../modules/prompt-skill-registry/index.ts";
 import { createPostgresWriteTransactionManager } from "../modules/shared/write-transaction-manager.ts";
 import {
+  createTemplateApi,
   PostgresModuleTemplateRepository,
   PostgresTemplateFamilyRepository,
   TemplateGovernanceService,
@@ -86,7 +88,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const promptSkillRegistryRepository =
-    new InMemoryPromptSkillRegistryRepository();
+    new PostgresPromptSkillRegistryRepository({
+      client: options.client,
+    });
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -162,6 +166,10 @@ export function createPersistentGovernanceRuntime(
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+    }),
+    templateApi: createTemplateApi({ templateService }),
+    promptSkillRegistryApi: createPromptSkillRegistryApi({
+      promptSkillRegistryService,
     }),
     permissionGuard,
   };

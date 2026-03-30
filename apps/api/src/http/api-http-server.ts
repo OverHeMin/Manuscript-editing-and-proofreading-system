@@ -73,12 +73,19 @@ import {
 } from "../modules/learning-governance/index.ts";
 import { InMemoryManuscriptRepository, type ManuscriptRecord } from "../modules/manuscripts/index.ts";
 import {
+  createPromptSkillRegistryApi,
   InMemoryPromptSkillRegistryRepository,
+  PromptTemplateNotFoundError,
   PromptSkillRegistryService,
+  PromptSkillRegistryStatusTransitionError,
+  SkillPackageNotFoundError,
 } from "../modules/prompt-skill-registry/index.ts";
 import {
+  createTemplateApi,
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
+  ModuleTemplateNotFoundError,
+  ModuleTemplateStatusTransitionError,
   TemplateFamilyNotFoundError,
   TemplateFamilyManuscriptTypeMismatchError,
   TemplateGovernanceService,
@@ -107,6 +114,47 @@ type HttpRouteMatch =
     }
   | {
       route: "knowledge-create-draft";
+    }
+  | {
+      route: "templates-create-family";
+    }
+  | {
+      route: "templates-list-families";
+    }
+  | {
+      route: "templates-update-family";
+      templateFamilyId: string;
+    }
+  | {
+      route: "templates-create-module-draft";
+    }
+  | {
+      route: "templates-list-module-templates";
+      templateFamilyId: string;
+    }
+  | {
+      route: "templates-publish-module-template";
+      moduleTemplateId: string;
+    }
+  | {
+      route: "prompt-skill-create-skill-package";
+    }
+  | {
+      route: "prompt-skill-list-skill-packages";
+    }
+  | {
+      route: "prompt-skill-publish-skill-package";
+      skillPackageId: string;
+    }
+  | {
+      route: "prompt-skill-create-prompt-template";
+    }
+  | {
+      route: "prompt-skill-list-prompt-templates";
+    }
+  | {
+      route: "prompt-skill-publish-prompt-template";
+      promptTemplateId: string;
     }
   | {
       route: "knowledge-list";
@@ -188,6 +236,8 @@ export interface ApiServerRuntime {
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
+  templateApi: ReturnType<typeof createTemplateApi>;
+  promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
   permissionGuard: PermissionGuard;
 }
 
@@ -334,6 +384,10 @@ export function createInMemoryApiRuntime(input: {
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+    }),
+    templateApi: createTemplateApi({ templateService }),
+    promptSkillRegistryApi: createPromptSkillRegistryApi({
+      promptSkillRegistryService,
     }),
     permissionGuard,
   };
@@ -671,6 +725,109 @@ async function handleRoute(
           "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
         },
       };
+    case "templates-create-family":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createTemplateFamily(
+        (await readJsonBody(req)) as Parameters<typeof runtime.templateApi.createTemplateFamily>[0],
+      );
+    case "templates-list-families":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.listTemplateFamilies();
+    case "templates-update-family":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.updateTemplateFamily({
+        templateFamilyId: routeMatch.templateFamilyId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateTemplateFamily
+        >[0]["input"],
+      });
+    case "templates-create-module-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createModuleTemplateDraft(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createModuleTemplateDraft
+        >[0],
+      );
+    case "templates-list-module-templates":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
+        templateFamilyId: routeMatch.templateFamilyId,
+      });
+    case "templates-publish-module-template": {
+      const session = await requirePermission(req, runtime, "templates.publish");
+      return runtime.templateApi.publishModuleTemplate({
+        moduleTemplateId: routeMatch.moduleTemplateId,
+        actorRole: session.user.role,
+      });
+    }
+    case "prompt-skill-create-skill-package": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        name: string;
+        version: string;
+        appliesToModules: string[];
+        dependencyTools?: string[];
+      };
+
+      return runtime.promptSkillRegistryApi.createSkillPackage({
+        actorRole: session.user.role,
+        input: {
+          name: body.name,
+          version: body.version,
+          appliesToModules: body.appliesToModules as Parameters<
+            typeof runtime.promptSkillRegistryApi.createSkillPackage
+          >[0]["input"]["appliesToModules"],
+          dependencyTools: body.dependencyTools,
+        },
+      });
+    }
+    case "prompt-skill-list-skill-packages":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.promptSkillRegistryApi.listSkillPackages();
+    case "prompt-skill-publish-skill-package": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.promptSkillRegistryApi.publishSkillPackage({
+        actorRole: session.user.role,
+        skillPackageId: routeMatch.skillPackageId,
+      });
+    }
+    case "prompt-skill-create-prompt-template": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        name: string;
+        version: string;
+        module: string;
+        manuscriptTypes: string[] | "any";
+        rollbackTargetVersion?: string;
+      };
+
+      return runtime.promptSkillRegistryApi.createPromptTemplate({
+        actorRole: session.user.role,
+        input: {
+          name: body.name,
+          version: body.version,
+          module: body.module as Parameters<
+            typeof runtime.promptSkillRegistryApi.createPromptTemplate
+          >[0]["input"]["module"],
+          manuscriptTypes: body.manuscriptTypes as Parameters<
+            typeof runtime.promptSkillRegistryApi.createPromptTemplate
+          >[0]["input"]["manuscriptTypes"],
+          rollbackTargetVersion: coalesceOptionalString(body.rollbackTargetVersion),
+        },
+      });
+    }
+    case "prompt-skill-list-prompt-templates":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.promptSkillRegistryApi.listPromptTemplates();
+    case "prompt-skill-publish-prompt-template": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.promptSkillRegistryApi.publishPromptTemplate({
+        actorRole: session.user.role,
+        promptTemplateId: routeMatch.promptTemplateId,
+      });
+    }
     case "knowledge-create-draft":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.createDraft(
@@ -845,8 +1002,84 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "auth-logout" };
   }
 
+  if (method === "POST" && path === "/api/v1/templates/families") {
+    return { route: "templates-create-family" };
+  }
+
+  if (method === "GET" && path === "/api/v1/templates/families") {
+    return { route: "templates-list-families" };
+  }
+
+  if (method === "POST" && path === "/api/v1/templates/module-drafts") {
+    return { route: "templates-create-module-draft" };
+  }
+
+  if (method === "POST" && path === "/api/v1/prompt-skill-registry/skill-packages") {
+    return { route: "prompt-skill-create-skill-package" };
+  }
+
+  if (method === "GET" && path === "/api/v1/prompt-skill-registry/skill-packages") {
+    return { route: "prompt-skill-list-skill-packages" };
+  }
+
+  if (method === "POST" && path === "/api/v1/prompt-skill-registry/prompt-templates") {
+    return { route: "prompt-skill-create-prompt-template" };
+  }
+
+  if (method === "GET" && path === "/api/v1/prompt-skill-registry/prompt-templates") {
+    return { route: "prompt-skill-list-prompt-templates" };
+  }
+
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {
     return { route: "knowledge-create-draft" };
+  }
+
+  const templateFamilyUpdateMatch = path.match(/^\/api\/v1\/templates\/families\/([^/]+)$/);
+  if (method === "POST" && templateFamilyUpdateMatch) {
+    return {
+      route: "templates-update-family",
+      templateFamilyId: templateFamilyUpdateMatch[1],
+    };
+  }
+
+  const moduleTemplateListMatch = path.match(
+    /^\/api\/v1\/templates\/families\/([^/]+)\/module-templates$/,
+  );
+  if (method === "GET" && moduleTemplateListMatch) {
+    return {
+      route: "templates-list-module-templates",
+      templateFamilyId: moduleTemplateListMatch[1],
+    };
+  }
+
+  const publishModuleTemplateMatch = path.match(
+    /^\/api\/v1\/templates\/module-templates\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishModuleTemplateMatch) {
+    return {
+      route: "templates-publish-module-template",
+      moduleTemplateId: publishModuleTemplateMatch[1],
+    };
+  }
+
+  const publishSkillPackageMatch = path.match(
+    /^\/api\/v1\/prompt-skill-registry\/skill-packages\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishSkillPackageMatch) {
+    return {
+      route: "prompt-skill-publish-skill-package",
+      skillPackageId: publishSkillPackageMatch[1],
+    };
+  }
+
+  const publishPromptTemplateMatch = path.match(
+    /^\/api\/v1\/prompt-skill-registry\/prompt-templates\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishPromptTemplateMatch) {
+    return {
+      route: "prompt-skill-publish-prompt-template",
+      promptTemplateId: publishPromptTemplateMatch[1],
+    };
   }
 
   if (method === "GET" && path === "/api/v1/knowledge") {
@@ -1057,7 +1290,10 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackNotFoundError ||
     error instanceof FeedbackGovernanceReviewedSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
-    error instanceof TemplateFamilyNotFoundError
+    error instanceof TemplateFamilyNotFoundError ||
+    error instanceof ModuleTemplateNotFoundError ||
+    error instanceof SkillPackageNotFoundError ||
+    error instanceof PromptTemplateNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -1068,7 +1304,9 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackTargetMismatchError ||
     error instanceof LearningWritebackStatusTransitionError ||
     error instanceof LearningGovernanceConflictError ||
-    error instanceof TemplateFamilyManuscriptTypeMismatchError
+    error instanceof TemplateFamilyManuscriptTypeMismatchError ||
+    error instanceof ModuleTemplateStatusTransitionError ||
+    error instanceof PromptSkillRegistryStatusTransitionError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }

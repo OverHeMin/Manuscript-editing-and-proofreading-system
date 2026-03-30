@@ -136,6 +136,117 @@ test("persistent governance runtime serves review state from PostgreSQL across s
   });
 });
 
+test("persistent governance runtime keeps prompt and skill registry assets across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const createPromptResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+              name: "proofreading_mainline",
+              version: "1.0.0",
+              module: "proofreading",
+              manuscriptTypes: ["review"],
+            }),
+          },
+        );
+        const createSkillResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+              name: "editing_skills",
+              version: "1.0.0",
+              appliesToModules: ["editing"],
+              dependencyTools: ["python-docx"],
+            }),
+          },
+        );
+        const createdPrompt = (await createPromptResponse.json()) as { id: string };
+        const createdSkill = (await createSkillResponse.json()) as { id: string };
+
+        assert.equal(createPromptResponse.status, 201);
+        assert.equal(createSkillResponse.status, 201);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const promptListResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const skillListResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const prompts = (await promptListResponse.json()) as Array<{ id: string; name: string }>;
+          const skills = (await skillListResponse.json()) as Array<{ id: string; name: string }>;
+
+          assert.equal(promptListResponse.status, 200);
+          assert.equal(skillListResponse.status, 200);
+          assert.deepEqual(
+            prompts.map((record) => ({ id: record.id, name: record.name })),
+            [
+              {
+                id: createdPrompt.id,
+                name: "proofreading_mainline",
+              },
+            ],
+          );
+          assert.deepEqual(
+            skills.map((record) => ({ id: record.id, name: record.name })),
+            [
+              {
+                id: createdSkill.id,
+                name: "editing_skills",
+              },
+            ],
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -148,6 +259,14 @@ async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
     username: "persistent.reviewer",
     displayName: "Persistent Reviewer",
     role: "knowledge_reviewer",
+    passwordHash:
+      "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+  });
+  await userRepository.save({
+    id: "persistent-admin",
+    username: "persistent.admin",
+    displayName: "Persistent Admin",
+    role: "admin",
     passwordHash:
       "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
   });
@@ -169,6 +288,24 @@ async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
     actor_role: "user",
     created_at: "2026-03-30T09:00:00.000Z",
   });
+}
+
+async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username: "persistent.admin",
+      password: "demo-password",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie, "Expected persistent admin login to return a session cookie.");
+  return setCookie.split(";")[0] ?? "";
 }
 
 async function startPersistentGovernanceServer(databaseUrl: string): Promise<{

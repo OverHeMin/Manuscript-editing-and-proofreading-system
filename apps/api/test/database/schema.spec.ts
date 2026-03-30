@@ -104,6 +104,26 @@ const expectedTableColumns: Record<string, string[]> = {
     "applied_by",
     "applied_at",
   ],
+  prompt_templates: [
+    "id",
+    "name",
+    "version",
+    "status",
+    "module",
+    "manuscript_types",
+    "rollback_target_version",
+    "source_learning_candidate_id",
+  ],
+  skill_packages: [
+    "id",
+    "name",
+    "version",
+    "scope",
+    "status",
+    "applies_to_modules",
+    "dependency_tools",
+    "source_learning_candidate_id",
+  ],
   model_registry: [
     "id",
     "provider",
@@ -126,6 +146,8 @@ const expectedIndexes = [
   "knowledge_items_risk_tags_gin_idx",
   "knowledge_review_actions_knowledge_item_id_created_at_idx",
   "learning_writebacks_candidate_target_status_idx",
+  "prompt_templates_module_name_status_idx",
+  "skill_packages_name_status_idx",
   "module_templates_manuscript_type_module_idx",
   "module_templates_template_family_id_module_status_idx",
 ];
@@ -252,6 +274,10 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
         {
           version: "0005_governed_registry_persistence.sql",
           checksum: getMigrationChecksum("0005_governed_registry_persistence.sql"),
+        },
+        {
+          version: "0006_prompt_skill_registry_persistence.sql",
+          checksum: getMigrationChecksum("0006_prompt_skill_registry_persistence.sql"),
         },
       ],
       "Expected migration bookkeeping for all applied database migrations.",
