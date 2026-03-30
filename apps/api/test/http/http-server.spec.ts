@@ -34,13 +34,84 @@ async function stopServer(server: ApiHttpServer): Promise<void> {
   await once(server, "close");
 }
 
-test("http server exposes the seeded knowledge review queue with CORS", async () => {
+async function loginAsDemoUser(baseUrl: string, username: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username,
+      password: "demo-password",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie, "Expected auth login to return a session cookie.");
+  return setCookie.split(";")[0] ?? "";
+}
+
+test("http server rejects protected review routes without a trusted session", async () => {
   const { server, baseUrl } = await startServer();
 
   try {
     const response = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
       headers: {
         Origin: "http://127.0.0.1:4173",
+      },
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(
+      response.headers.get("access-control-allow-origin"),
+      "http://127.0.0.1:4173",
+    );
+    assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+    const body = (await response.json()) as { error: string };
+    assert.equal(body.error, "unauthorized");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server uses the authenticated session role instead of a forged actorRole body", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.editor");
+    const approveResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/knowledge-demo-1/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          reviewNote: "forged admin attempt",
+        }),
+      },
+    );
+    const approveBody = (await approveResponse.json()) as { error: string };
+
+    assert.equal(approveResponse.status, 403);
+    assert.equal(approveBody.error, "forbidden");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server exposes the seeded knowledge review queue with CORS for authenticated users", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+    const response = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      headers: {
+        Origin: "http://127.0.0.1:4173",
+        Cookie: cookie,
       },
     });
 
@@ -78,13 +149,23 @@ test("http server returns review history and updates queue state after approve a
   const { server, baseUrl } = await startServer();
 
   try {
-    const queueResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`);
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+    const queueResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
     const queue = (await queueResponse.json()) as Array<{ id: string }>;
 
     assert.equal(queue.length, 2);
 
     const initialHistoryResponse = await fetch(
       `${baseUrl}/api/v1/knowledge/${queue[0]?.id}/review-actions`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
     );
     const initialHistory = (await initialHistoryResponse.json()) as Array<{
       action: string;
@@ -109,10 +190,10 @@ test("http server returns review history and updates queue state after approve a
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          actorRole: "knowledge_reviewer",
           reviewNote: "Approved in browser validation.",
         }),
       },
@@ -127,10 +208,10 @@ test("http server returns review history and updates queue state after approve a
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          actorRole: "knowledge_reviewer",
           reviewNote: "Needs stronger privacy evidence.",
         }),
       },
@@ -140,13 +221,22 @@ test("http server returns review history and updates queue state after approve a
     assert.equal(rejectResponse.status, 200);
     assert.equal(rejectBody.status, "draft");
 
-    const finalQueueResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`);
+    const finalQueueResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
     const finalQueue = (await finalQueueResponse.json()) as Array<unknown>;
 
     assert.equal(finalQueue.length, 0);
 
     const approvedHistoryResponse = await fetch(
       `${baseUrl}/api/v1/knowledge/${queue[0]?.id}/review-actions`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
     );
     const approvedHistory = (await approvedHistoryResponse.json()) as Array<{
       action: string;
@@ -208,11 +298,13 @@ test("http server creates and approves a governed learning candidate", async () 
   const { server, baseUrl } = await startServer();
 
   try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
     const snapshotResponse = await fetch(
       `${baseUrl}/api/v1/learning/reviewed-case-snapshots`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -221,21 +313,26 @@ test("http server creates and approves a governed learning candidate", async () 
           manuscriptType: "clinical_study",
           humanFinalAssetId: "human-final-demo-1",
           deidentificationPassed: true,
-          requestedBy: "editor-1",
+          requestedBy: "forged-requested-by",
           storageKey: "learning/manuscript-demo-1/snapshot.bin",
         }),
       },
     );
-    const snapshot = (await snapshotResponse.json()) as { id: string };
+    const snapshot = (await snapshotResponse.json()) as {
+      id: string;
+      created_by: string;
+    };
 
     assert.equal(snapshotResponse.status, 201);
     assert.ok(snapshot.id);
+    assert.equal(snapshot.created_by, "dev-knowledge-reviewer");
 
     const candidateResponse = await fetch(
       `${baseUrl}/api/v1/learning/candidates/governed`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -243,7 +340,7 @@ test("http server creates and approves a governed learning candidate", async () 
           type: "rule_candidate",
           title: "Terminology normalization candidate",
           proposalText: "Normalize core endpoint terminology across the manuscript.",
-          requestedBy: "editor-1",
+          requestedBy: "forged-requested-by",
           deidentificationPassed: true,
           governedSource: {
             sourceKind: "evaluation_experiment",
@@ -258,11 +355,13 @@ test("http server creates and approves a governed learning candidate", async () 
     const candidate = (await candidateResponse.json()) as {
       id: string;
       status: string;
+      created_by: string;
       governed_provenance_kind?: string;
     };
 
     assert.equal(candidateResponse.status, 201);
     assert.equal(candidate.status, "pending_review");
+    assert.equal(candidate.created_by, "dev-knowledge-reviewer");
     assert.equal(candidate.governed_provenance_kind, "evaluation_experiment");
 
     const approveResponse = await fetch(
@@ -270,6 +369,7 @@ test("http server creates and approves a governed learning candidate", async () 
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -290,11 +390,13 @@ test("http server preserves CORS headers on learning approval permission errors"
   const { server, baseUrl } = await startServer();
 
   try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.editor");
     const response = await fetch(
       `${baseUrl}/api/v1/learning/candidates/learning-pending-demo-1/approve`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           Origin: "http://127.0.0.1:4173",
           "Content-Type": "application/json",
         },
@@ -321,15 +423,17 @@ test("http server seeded pending learning candidates can be approved by admin", 
   const { server, baseUrl } = await startServer();
 
   try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const approveResponse = await fetch(
       `${baseUrl}/api/v1/learning/candidates/learning-pending-demo-1/approve`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          actorRole: "admin",
+          actorRole: "user",
         }),
       },
     );
@@ -346,11 +450,13 @@ test("http server creates, applies, and lists learning governance writebacks", a
   const { server, baseUrl } = await startServer();
 
   try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const createResponse = await fetch(
       `${baseUrl}/api/v1/learning-governance/writebacks`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -358,28 +464,34 @@ test("http server creates, applies, and lists learning governance writebacks", a
           input: {
             learningCandidateId: "learning-approved-demo-1",
             targetType: "knowledge_item",
-            createdBy: "admin-1",
+            createdBy: "forged-created-by",
           },
         }),
       },
     );
-    const created = (await createResponse.json()) as { id: string; status: string };
+    const created = (await createResponse.json()) as {
+      id: string;
+      status: string;
+      created_by: string;
+    };
 
     assert.equal(createResponse.status, 201);
     assert.equal(created.status, "draft");
+    assert.equal(created.created_by, "dev-admin");
 
     const applyResponse = await fetch(
       `${baseUrl}/api/v1/learning-governance/writebacks/${created.id}/apply`,
       {
         method: "POST",
         headers: {
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           actorRole: "admin",
           input: {
             targetType: "knowledge_item",
-            appliedBy: "admin-1",
+            appliedBy: "forged-applied-by",
             title: "Screening endpoint governance rule",
             canonicalText:
               "Clinical study submissions must disclose the primary endpoint and analysis method.",
@@ -393,14 +505,21 @@ test("http server creates, applies, and lists learning governance writebacks", a
     const applied = (await applyResponse.json()) as {
       status: string;
       created_draft_asset_id?: string;
+      applied_by?: string;
     };
 
     assert.equal(applyResponse.status, 200);
     assert.equal(applied.status, "applied");
     assert.ok(applied.created_draft_asset_id);
+    assert.equal(applied.applied_by, "dev-admin");
 
     const listResponse = await fetch(
       `${baseUrl}/api/v1/learning-governance/candidates/learning-approved-demo-1/writebacks`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
     );
     const writebacks = (await listResponse.json()) as Array<{
       id: string;
@@ -422,7 +541,12 @@ test("http server lists seeded learning review candidates and exposes candidate 
   const { server, baseUrl } = await startServer();
 
   try {
-    const queueResponse = await fetch(`${baseUrl}/api/v1/learning/candidates/review-queue`);
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+    const queueResponse = await fetch(`${baseUrl}/api/v1/learning/candidates/review-queue`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
     const queue = (await queueResponse.json()) as Array<{
       id: string;
       title?: string;
@@ -452,6 +576,11 @@ test("http server lists seeded learning review candidates and exposes candidate 
 
     const detailResponse = await fetch(
       `${baseUrl}/api/v1/learning/candidates/learning-approved-demo-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
     );
     const detail = (await detailResponse.json()) as {
       id: string;
