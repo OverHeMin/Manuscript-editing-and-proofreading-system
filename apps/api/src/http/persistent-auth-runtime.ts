@@ -52,6 +52,42 @@ export function createPersistentHttpAuthRuntime(
     client: options.client,
   });
 
+  async function readPersistedSession(
+    req: IncomingMessage,
+  ): Promise<HttpAuthenticatedSession | null> {
+    const sessionId = readCookie(
+      req.headers.cookie,
+      PERSISTENT_HTTP_SESSION_COOKIE_NAME,
+    );
+    if (!sessionId) {
+      return null;
+    }
+
+    const sessionRecord = await sessionRepository.findActiveById(sessionId, now());
+    if (!sessionRecord) {
+      return null;
+    }
+
+    const user = await userRepository.findById(sessionRecord.userId);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      sessionId: sessionRecord.id,
+      provider: sessionRecord.provider,
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        role: user.role,
+      },
+      issuedAt: sessionRecord.issuedAt,
+      expiresAt: sessionRecord.expiresAt,
+      refreshAt: sessionRecord.refreshAt,
+    };
+  }
+
   return {
     async authenticateLocal(input: LoginInput): Promise<HttpAuthenticatedSession> {
       const session = await authProvider.authenticate(input);
@@ -71,38 +107,29 @@ export function createPersistentHttpAuthRuntime(
       };
     },
 
+    readSession(req: IncomingMessage): Promise<HttpAuthenticatedSession | null> {
+      return readPersistedSession(req);
+    },
+
     async requireSession(req: IncomingMessage): Promise<HttpAuthenticatedSession> {
+      const session = await readPersistedSession(req);
+      if (!session) {
+        throw new AuthenticationRequiredError();
+      }
+
+      return session;
+    },
+
+    async clearSession(req: IncomingMessage): Promise<void> {
       const sessionId = readCookie(
         req.headers.cookie,
         PERSISTENT_HTTP_SESSION_COOKIE_NAME,
       );
       if (!sessionId) {
-        throw new AuthenticationRequiredError();
+        return;
       }
 
-      const sessionRecord = await sessionRepository.findActiveById(sessionId, now());
-      if (!sessionRecord) {
-        throw new AuthenticationRequiredError();
-      }
-
-      const user = await userRepository.findById(sessionRecord.userId);
-      if (!user) {
-        throw new AuthenticationRequiredError();
-      }
-
-      return {
-        sessionId: sessionRecord.id,
-        provider: sessionRecord.provider,
-        user: {
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          role: user.role,
-        },
-        issuedAt: sessionRecord.issuedAt,
-        expiresAt: sessionRecord.expiresAt,
-        refreshAt: sessionRecord.refreshAt,
-      };
+      await sessionRepository.revoke(sessionId, now().toISOString());
     },
 
     createSessionCookieHeader(session: HttpAuthenticatedSession): string {
@@ -119,6 +146,20 @@ export function createPersistentHttpAuthRuntime(
           sameSite: "Lax",
           path: "/",
           maxAgeSeconds,
+          secure: options.secureCookies ?? false,
+        },
+      );
+    },
+
+    createClearedSessionCookieHeader(): string {
+      return serializeCookie(
+        PERSISTENT_HTTP_SESSION_COOKIE_NAME,
+        "",
+        {
+          httpOnly: true,
+          sameSite: "Lax",
+          path: "/",
+          maxAgeSeconds: 0,
           secure: options.secureCookies ?? false,
         },
       );

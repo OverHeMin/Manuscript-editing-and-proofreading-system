@@ -10,9 +10,17 @@ import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
+  onLogout?: () => void | Promise<void>;
+  isLogoutPending?: boolean;
+  noticeMessage?: string | null;
 }
 
-export function WorkbenchHost({ session }: WorkbenchHostProps) {
+export function WorkbenchHost({
+  session,
+  onLogout,
+  isLogoutPending = false,
+  noticeMessage = null,
+}: WorkbenchHostProps) {
   const visibleEntries = session.availableWorkbenchEntries;
   const [activeWorkbenchId, setActiveWorkbenchId] = useState<WorkbenchId>(() =>
     resolveInitialWorkbenchId(session.defaultWorkbench, visibleEntries),
@@ -40,14 +48,35 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
     <main className="app-shell">
       <section className="workbench-host">
         <header className="workbench-header">
-          <h1>Reviewer Workbench Host</h1>
-          <p>
-            Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
-            <code>{session.role}</code>.
-          </p>
+          <div className="workbench-header-topline">
+            <div>
+              <h1>Reviewer Workbench Host</h1>
+              <p>
+                Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
+                <code>{session.role}</code>.
+              </p>
+            </div>
+            {onLogout ? (
+              <button
+                type="button"
+                className="workbench-secondary-action"
+                onClick={() => void onLogout()}
+                disabled={isLogoutPending}
+              >
+                {isLogoutPending ? "Signing out..." : "Sign out"}
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <div className="workbench-layout">
+          {noticeMessage ? (
+            <article className="workbench-placeholder workbench-notice" role="alert">
+              <h2>Session Action Error</h2>
+              <p>{noticeMessage}</p>
+            </article>
+          ) : null}
+
           <aside className="workbench-nav" aria-label="Workbench navigation">
             <h2>Workbenches</h2>
             <ul className="workbench-nav-list">

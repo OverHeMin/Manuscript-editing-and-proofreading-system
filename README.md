@@ -9,7 +9,7 @@
 - 知识库、模板治理、学习治理骨架
 - AI 模型注册与路由基础
 - PDF 一致性核对与学习候选基础能力
-- React workbench 页面与本地 demo HTTP runtime
+- React workbench 页面、本地 demo runtime 与持久化登录壳层
 - PostgreSQL 持久化的认证、会话、审计与治理注册表 runtime
 - 本地运维、迁移、交付文档基线
 
@@ -60,6 +60,8 @@
    `pnpm --filter @medical/api run serve`
 6. 启动 Web workbench
    `pnpm --filter @medsys/web run dev`
+   - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调
+   - `VITE_APP_ENV=dev|staging|prod`：走 persistent login shell，调用后端真实会话接口
 7. 验证 Web 基线
    `pnpm --filter @medsys/web run smoke:boot`
 8. 验证 Worker 基线
@@ -82,6 +84,13 @@
 - 必须提供 `DATABASE_URL`
 - 当前持久化范围是“认证 + 治理注册表”
 - 不会自动注入 demo 审稿数据
+
+### Web Workbench Shell
+
+- `VITE_APP_ENV=local`
+  Web 端走 demo bootstrap shell，并使用本地 demo 用户自动换取后端 cookie。该模式仅建议在 `vite dev` 下使用。
+- `VITE_APP_ENV=dev|staging|prod`
+  Web 端走 persistent login shell，通过 `/api/v1/auth/session`、`/api/v1/auth/local/login`、`/api/v1/auth/logout` 管理真实后端会话。
 
 ## 目录结构
 

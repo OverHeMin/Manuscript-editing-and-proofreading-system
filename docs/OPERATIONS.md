@@ -89,12 +89,23 @@ API 关键环境变量：
 - `ONLYOFFICE_*`
 - `LIBREOFFICE_BINARY`
 
+Web 关键环境变量：
+
+- `VITE_APP_ENV`
+- `VITE_API_BASE_URL`
+- `VITE_DEMO_PASSWORD`
+- `VITE_DEV_*`
+
 约束：
 
 - `APP_ENV=local`
   只能跑 `serve:demo` / `dev:demo`
 - `APP_ENV=development|test|staging|production`
   走 `serve` / `serve:persistent`
+- `VITE_APP_ENV=local`
+  Web 端走 demo bootstrap shell，仅建议配合 `vite dev`
+- `VITE_APP_ENV=dev|staging|prod`
+  Web 端走 persistent login shell，依赖后端会话接口
 - 生产环境必须替换 `ONLYOFFICE_JWT_SECRET`
 - 生产环境必须使用真实数据库与对象存储凭据
 
@@ -127,8 +138,9 @@ API 关键环境变量：
 3. 如需预览联调，再启动 ONLYOFFICE profile
 4. 跑三端 `smoke:boot`
 5. 本地联调用 `serve:demo`
-6. 持久化验证用 `serve`
-7. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
+6. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
+7. 持久化验证用 `serve`
+8. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
 
 ## 7. 迁移、备份与回滚
 

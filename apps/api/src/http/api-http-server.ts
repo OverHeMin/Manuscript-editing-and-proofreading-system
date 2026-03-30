@@ -100,6 +100,12 @@ type HttpRouteMatch =
       route: "auth-local-login";
     }
   | {
+      route: "auth-session";
+    }
+  | {
+      route: "auth-logout";
+    }
+  | {
       route: "knowledge-create-draft";
     }
   | {
@@ -642,6 +648,29 @@ async function handleRoute(
         },
       };
     }
+    case "auth-session": {
+      const session = await runtime.authRuntime.requireSession(req);
+
+      return {
+        status: 200,
+        body: {
+          provider: session.provider,
+          user: session.user,
+          issuedAt: session.issuedAt,
+          expiresAt: session.expiresAt,
+          refreshAt: session.refreshAt,
+        },
+      };
+    }
+    case "auth-logout":
+      await runtime.authRuntime.clearSession(req);
+      return {
+        status: 204,
+        body: null,
+        headers: {
+          "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
+        },
+      };
     case "knowledge-create-draft":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.createDraft(
@@ -806,6 +835,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/auth/local/login") {
     return { route: "auth-local-login" };
+  }
+
+  if (method === "GET" && path === "/api/v1/auth/session") {
+    return { route: "auth-session" };
+  }
+
+  if (method === "POST" && path === "/api/v1/auth/logout") {
+    return { route: "auth-logout" };
   }
 
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {

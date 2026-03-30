@@ -69,7 +69,10 @@ export interface HttpAuthenticatedSession extends AuthSession {
 export interface HttpAuthRuntime {
   authenticateLocal(input: LoginInput): Promise<HttpAuthenticatedSession>;
   requireSession(req: IncomingMessage): Promise<HttpAuthenticatedSession>;
+  readSession(req: IncomingMessage): Promise<HttpAuthenticatedSession | null>;
+  clearSession(req: IncomingMessage): Promise<void>;
   createSessionCookieHeader(session: HttpAuthenticatedSession): string;
+  createClearedSessionCookieHeader(): string;
 }
 
 export type DemoHttpAuthenticatedSession = HttpAuthenticatedSession;
@@ -121,6 +124,10 @@ class InMemoryDemoHttpSessionStore {
       ...storedSession.session,
     };
   }
+
+  revoke(sessionId: string): void {
+    this.sessions.delete(sessionId);
+  }
 }
 
 export function createDemoHttpAuthRuntime(
@@ -147,19 +154,35 @@ export function createDemoHttpAuthRuntime(
       return sessionStore.create(session);
     },
 
-    async requireSession(req: IncomingMessage): Promise<DemoHttpAuthenticatedSession> {
+    async readSession(req: IncomingMessage): Promise<DemoHttpAuthenticatedSession | null> {
       const cookieHeader = req.headers.cookie;
       const sessionId = readCookie(cookieHeader, DEMO_HTTP_SESSION_COOKIE_NAME);
       if (!sessionId) {
-        throw new AuthenticationRequiredError();
+        return null;
       }
 
-      const session = sessionStore.find(sessionId);
+      return sessionStore.find(sessionId);
+    },
+
+    async requireSession(req: IncomingMessage): Promise<DemoHttpAuthenticatedSession> {
+      const session = await this.readSession(req);
       if (!session) {
         throw new AuthenticationRequiredError();
       }
 
       return session;
+    },
+
+    async clearSession(req: IncomingMessage): Promise<void> {
+      const sessionId = readCookie(
+        req.headers.cookie,
+        DEMO_HTTP_SESSION_COOKIE_NAME,
+      );
+      if (!sessionId) {
+        return;
+      }
+
+      sessionStore.revoke(sessionId);
     },
 
     createSessionCookieHeader(session: DemoHttpAuthenticatedSession): string {
@@ -173,6 +196,15 @@ export function createDemoHttpAuthRuntime(
         sameSite: "Lax",
         path: "/",
         maxAgeSeconds,
+      });
+    },
+
+    createClearedSessionCookieHeader(): string {
+      return serializeCookie(DEMO_HTTP_SESSION_COOKIE_NAME, "", {
+        httpOnly: true,
+        sameSite: "Lax",
+        path: "/",
+        maxAgeSeconds: 0,
       });
     },
   };

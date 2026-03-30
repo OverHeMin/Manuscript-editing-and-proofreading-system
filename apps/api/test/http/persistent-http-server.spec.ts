@@ -64,6 +64,65 @@ test("persistent auth runtime issues a durable session row on login", async () =
   });
 });
 
+test("persistent auth runtime exposes the current session and revokes it on logout", async () => {
+  await withPersistentServer(async ({ baseUrl, client }) => {
+    const cookie = await loginAsPersistentUser(baseUrl);
+    const sessionResponse = await fetch(`${baseUrl}/api/v1/auth/session`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const sessionBody = (await sessionResponse.json()) as {
+      user: {
+        id: string;
+        username: string;
+        displayName: string;
+        role: string;
+      };
+    };
+
+    assert.equal(sessionResponse.status, 200);
+    assert.deepEqual(sessionBody.user, {
+      id: "persistent-knowledge-reviewer",
+      username: "persistent.reviewer",
+      displayName: "Persistent Reviewer",
+      role: "knowledge_reviewer",
+    });
+
+    const logoutResponse = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+      },
+    });
+
+    assert.equal(logoutResponse.status, 204);
+    assert.match(logoutResponse.headers.get("set-cookie") ?? "", /Max-Age=0/i);
+
+    const sessions = await client.query<{
+      revoked_at: Date | null;
+    }>(
+      `
+        select revoked_at
+        from auth_sessions
+      `,
+    );
+
+    assert.equal(sessions.rowCount, 1);
+    assert.ok(sessions.rows[0]?.revoked_at instanceof Date);
+
+    const afterLogoutResponse = await fetch(`${baseUrl}/api/v1/auth/session`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const afterLogoutBody = (await afterLogoutResponse.json()) as { error: string };
+
+    assert.equal(afterLogoutResponse.status, 401);
+    assert.equal(afterLogoutBody.error, "unauthorized");
+  });
+});
+
 test("persistent auth runtime restores the server-side user identity on protected writes", async () => {
   await withPersistentServer(async ({ baseUrl }) => {
     const cookie = await loginAsPersistentUser(baseUrl);

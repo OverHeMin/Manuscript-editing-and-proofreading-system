@@ -98,6 +98,57 @@ test("http server returns 401 for invalid login credentials", async () => {
   }
 });
 
+test("http server exposes the current demo auth session and clears it on logout", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+    const sessionResponse = await fetch(`${baseUrl}/api/v1/auth/session`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const sessionBody = (await sessionResponse.json()) as {
+      user: {
+        id: string;
+        username: string;
+        displayName: string;
+        role: string;
+      };
+    };
+
+    assert.equal(sessionResponse.status, 200);
+    assert.deepEqual(sessionBody.user, {
+      id: "dev-knowledge-reviewer",
+      username: "dev.knowledge-reviewer",
+      displayName: "Knowledge Reviewer",
+      role: "knowledge_reviewer",
+    });
+
+    const logoutResponse = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+      },
+    });
+
+    assert.equal(logoutResponse.status, 204);
+    assert.match(logoutResponse.headers.get("set-cookie") ?? "", /Max-Age=0/i);
+
+    const afterLogoutResponse = await fetch(`${baseUrl}/api/v1/auth/session`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const afterLogoutBody = (await afterLogoutResponse.json()) as { error: string };
+
+    assert.equal(afterLogoutResponse.status, 401);
+    assert.equal(afterLogoutBody.error, "unauthorized");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server uses the authenticated session role instead of a forged actorRole body", async () => {
   const { server, baseUrl } = await startServer();
 

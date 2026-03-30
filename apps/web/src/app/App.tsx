@@ -4,9 +4,30 @@ import {
   resolveDevSession,
 } from "./dev-session.ts";
 import { ensureDemoBackendSession } from "./demo-backend-session.ts";
+import { PersistentAuthShell } from "./persistent-auth-shell.tsx";
+import { resolveWorkbenchRuntimeMode } from "./persistent-session.ts";
 import { WorkbenchHost } from "./workbench-host.tsx";
 
 export default function App() {
+  if (resolveWorkbenchRuntimeMode(import.meta.env) === "persistent") {
+    return (
+      <PersistentAuthShell
+        renderAuthenticated={({ session, onLogout, isLogoutPending, noticeMessage }) => (
+          <WorkbenchHost
+            session={session}
+            onLogout={onLogout}
+            isLogoutPending={isLogoutPending}
+            noticeMessage={noticeMessage}
+          />
+        )}
+      />
+    );
+  }
+
+  return <DemoApp />;
+}
+
+function DemoApp() {
   if (!isDevelopmentSessionBootstrapEnabled()) {
     return (
       <main className="app-shell">
@@ -14,7 +35,7 @@ export default function App() {
           <header className="workbench-header">
             <h1>Reviewer Workbench Host</h1>
             <p>
-              Session context is unavailable in non-development mode.
+              Demo bootstrap is limited to local development mode.
             </p>
           </header>
 
@@ -33,13 +54,14 @@ export default function App() {
 
             <section className="workbench-content">
               <article className="workbench-placeholder app-phase-placeholder" role="status">
-                <h2>Workbench Host Placeholder</h2>
+                <h2>Demo Runtime Unavailable</h2>
                 <p>
-                  Development bootstrap auth is disabled outside development mode.
+                  `VITE_APP_ENV=local` keeps the demo bootstrap path, but it still depends on the
+                  Vite development server.
                 </p>
                 <p>
-                  Production auth and role-aware host wiring are intentionally out of scope for
-                  Phase 7B.
+                  Use `VITE_APP_ENV=dev` or another persistent app environment to load the real
+                  backend login shell.
                 </p>
               </article>
             </section>
@@ -49,10 +71,6 @@ export default function App() {
     );
   }
 
-  return <DevelopmentApp />;
-}
-
-function DevelopmentApp() {
   const [session] = useState(() => resolveDevSession());
   const [bootstrapStatus, setBootstrapStatus] = useState<"loading" | "ready" | "error">(
     "loading",
