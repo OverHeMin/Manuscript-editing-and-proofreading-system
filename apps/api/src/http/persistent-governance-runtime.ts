@@ -2,6 +2,21 @@ import { PermissionGuard } from "../auth/permission-guard.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
 import type { ApiServerRuntime } from "./api-http-server.ts";
 import {
+  AgentProfileService,
+  createAgentProfileApi,
+  PostgresAgentProfileRepository,
+} from "../modules/agent-profiles/index.ts";
+import {
+  AgentExecutionService,
+  createAgentExecutionApi,
+  PostgresAgentExecutionRepository,
+} from "../modules/agent-execution/index.ts";
+import {
+  AgentRuntimeService,
+  createAgentRuntimeApi,
+  PostgresAgentRuntimeRepository,
+} from "../modules/agent-runtime/index.ts";
+import {
   DocumentAssetService,
   InMemoryDocumentAssetRepository,
 } from "../modules/assets/index.ts";
@@ -53,6 +68,16 @@ import {
   PostgresPromptSkillRegistryRepository,
   PromptSkillRegistryService,
 } from "../modules/prompt-skill-registry/index.ts";
+import {
+  createRuntimeBindingApi,
+  PostgresRuntimeBindingRepository,
+  RuntimeBindingService,
+} from "../modules/runtime-bindings/index.ts";
+import {
+  createSandboxProfileApi,
+  PostgresSandboxProfileRepository,
+  SandboxProfileService,
+} from "../modules/sandbox-profiles/index.ts";
 import { createPostgresWriteTransactionManager } from "../modules/shared/write-transaction-manager.ts";
 import {
   createTemplateApi,
@@ -60,6 +85,16 @@ import {
   PostgresTemplateFamilyRepository,
   TemplateGovernanceService,
 } from "../modules/templates/index.ts";
+import {
+  createToolGatewayApi,
+  PostgresToolGatewayRepository,
+  ToolGatewayService,
+} from "../modules/tool-gateway/index.ts";
+import {
+  createToolPermissionPolicyApi,
+  PostgresToolPermissionPolicyRepository,
+  ToolPermissionPolicyService,
+} from "../modules/tool-permission-policies/index.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -89,6 +124,15 @@ export function createPersistentGovernanceRuntime(
   const feedbackExecutionTrackingRepository =
     new InMemoryExecutionTrackingRepository();
 
+  const agentExecutionRepository = new PostgresAgentExecutionRepository({
+    client: options.client,
+  });
+  const agentProfileRepository = new PostgresAgentProfileRepository({
+    client: options.client,
+  });
+  const agentRuntimeRepository = new PostgresAgentRuntimeRepository({
+    client: options.client,
+  });
   const learningCandidateRepository = new PostgresLearningCandidateRepository({
     client: options.client,
   });
@@ -120,6 +164,19 @@ export function createPersistentGovernanceRuntime(
   const modelRoutingPolicyRepository = new PostgresModelRoutingPolicyRepository({
     client: options.client,
   });
+  const runtimeBindingRepository = new PostgresRuntimeBindingRepository({
+    client: options.client,
+  });
+  const sandboxProfileRepository = new PostgresSandboxProfileRepository({
+    client: options.client,
+  });
+  const toolGatewayRepository = new PostgresToolGatewayRepository({
+    client: options.client,
+  });
+  const toolPermissionPolicyRepository =
+    new PostgresToolPermissionPolicyRepository({
+      client: options.client,
+    });
   const promptSkillRegistryRepository =
     new PostgresPromptSkillRegistryRepository({
       client: options.client,
@@ -173,6 +230,22 @@ export function createPersistentGovernanceRuntime(
       }),
     }),
   });
+  const toolGatewayService = new ToolGatewayService({
+    repository: toolGatewayRepository,
+  });
+  const toolPermissionPolicyService = new ToolPermissionPolicyService({
+    repository: toolPermissionPolicyRepository,
+    toolGatewayRepository,
+  });
+  const sandboxProfileService = new SandboxProfileService({
+    repository: sandboxProfileRepository,
+  });
+  const agentRuntimeService = new AgentRuntimeService({
+    repository: agentRuntimeRepository,
+  });
+  const agentProfileService = new AgentProfileService({
+    repository: agentProfileRepository,
+  });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
     moduleTemplateRepository,
@@ -190,6 +263,9 @@ export function createPersistentGovernanceRuntime(
   const executionTrackingService = new ExecutionTrackingService({
     repository: executionTrackingRepository,
   });
+  const agentExecutionService = new AgentExecutionService({
+    repository: agentExecutionRepository,
+  });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
@@ -205,6 +281,14 @@ export function createPersistentGovernanceRuntime(
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+  });
+  const runtimeBindingService = new RuntimeBindingService({
+    repository: runtimeBindingRepository,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
@@ -224,6 +308,15 @@ export function createPersistentGovernanceRuntime(
 
   return {
     authRuntime: options.authRuntime,
+    agentExecutionApi: createAgentExecutionApi({
+      agentExecutionService,
+    }),
+    agentProfileApi: createAgentProfileApi({
+      agentProfileService,
+    }),
+    agentRuntimeApi: createAgentRuntimeApi({
+      agentRuntimeService,
+    }),
     executionGovernanceApi: createExecutionGovernanceApi({
       executionGovernanceService,
     }),
@@ -242,6 +335,18 @@ export function createPersistentGovernanceRuntime(
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
+    }),
+    runtimeBindingApi: createRuntimeBindingApi({
+      runtimeBindingService,
+    }),
+    sandboxProfileApi: createSandboxProfileApi({
+      sandboxProfileService,
+    }),
+    toolGatewayApi: createToolGatewayApi({
+      toolGatewayService,
+    }),
+    toolPermissionPolicyApi: createToolPermissionPolicyApi({
+      toolPermissionPolicyService,
     }),
     permissionGuard,
   };

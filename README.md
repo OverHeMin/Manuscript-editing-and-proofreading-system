@@ -10,7 +10,7 @@
 - AI 模型注册与路由基础
 - PDF 一致性核对与学习候选基础能力
 - React workbench 页面、本地 demo runtime 与持久化登录壳层
-- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、执行治理与执行追踪 runtime
+- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
 - 本地运维、迁移、交付文档基线
 
 ## 当前状态
@@ -27,6 +27,9 @@
   - 学习回写记录
   - Prompt 模板与 Skill 包注册表
   - 模型注册表与路由策略
+  - Agent Runtime / Tool Gateway / Sandbox Profile / Agent Profile 注册表
+  - Runtime Binding / Tool Permission Policy 治理配置
+  - Agent Execution 日志
   - 执行治理配置（execution profiles、knowledge binding rules）
   - 执行追踪快照与知识命中日志
 
@@ -41,7 +44,7 @@
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/web` 里的 admin-console 已经能加载治理数据，并预览 execution bundle，不再是纯占位页
-- 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
+- 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
 
 ## 环境要求
 
@@ -86,7 +89,7 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
-- 当前持久化范围是“认证 + 治理注册表 + execution governance/tracking”
+- 当前持久化范围是“认证 + 治理注册表 + agent-tooling governance + execution governance/tracking”
 - 不会自动注入 demo 审稿数据
 
 ### Web Workbench Shell
@@ -127,5 +130,6 @@
 - 稿件与资产主链路的真实持久化
 - 学习主流程与反馈溯源落库
 - 模型执行治理、评测与路由策略联动
+- agent-tooling 管理台与 workbench 的更深层运营能力
 - Web workbench 对持久化治理接口的完整接线与深度运营能力
 - 部署、监控、回滚、远程维护标准化

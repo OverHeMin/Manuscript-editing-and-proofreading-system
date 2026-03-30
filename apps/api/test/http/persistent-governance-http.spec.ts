@@ -663,6 +663,490 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
   });
 });
 
+test("persistent governance runtime keeps agent-tooling governance records across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+
+        const toolResponse = await fetch(`${firstServer.baseUrl}/api/v1/tool-gateway`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorRole: "editor",
+            input: {
+              name: "knowledge.search",
+              scope: "knowledge",
+            },
+          }),
+        });
+        const tool = (await toolResponse.json()) as { id: string; access_mode: string };
+
+        assert.equal(toolResponse.status, 201);
+        assert.equal(tool.access_mode, "read");
+
+        const toolUpdateResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/tool-gateway/${tool.id}`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "knowledge_reviewer",
+              input: {
+                accessMode: "write",
+              },
+            }),
+          },
+        );
+        const updatedTool = (await toolUpdateResponse.json()) as {
+          id: string;
+          access_mode: string;
+        };
+
+        assert.equal(toolUpdateResponse.status, 200);
+        assert.equal(updatedTool.access_mode, "write");
+
+        const policyResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/tool-permission-policies`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                name: "Persistent Agent Policy",
+                allowedToolIds: [tool.id],
+                highRiskToolIds: [tool.id],
+              },
+            }),
+          },
+        );
+        const policy = (await policyResponse.json()) as { id: string };
+
+        assert.equal(policyResponse.status, 201);
+
+        const activatePolicyResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/tool-permission-policies/${policy.id}/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(activatePolicyResponse.status, 200);
+
+        const sandboxResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/sandbox-profiles`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                name: "Persistent Editing Workspace",
+                sandboxMode: "workspace_write",
+                networkAccess: false,
+                approvalRequired: true,
+                allowedToolIds: [tool.id],
+              },
+            }),
+          },
+        );
+        const sandbox = (await sandboxResponse.json()) as { id: string };
+
+        assert.equal(sandboxResponse.status, 201);
+
+        const activateSandboxResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/sandbox-profiles/${sandbox.id}/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(activateSandboxResponse.status, 200);
+
+        const runtimeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-runtime`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                name: "Persistent Editing Runtime",
+                adapter: "deepagents",
+                sandboxProfileId: sandbox.id,
+                allowedModules: ["editing"],
+                runtimeSlot: "editing",
+              },
+            }),
+          },
+        );
+        const runtime = (await runtimeResponse.json()) as { id: string };
+
+        assert.equal(runtimeResponse.status, 201);
+
+        const publishRuntimeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-runtime/${runtime.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(publishRuntimeResponse.status, 200);
+
+        const agentProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-profiles`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                name: "Persistent Editing Executor",
+                roleKey: "subagent",
+                moduleScope: ["editing"],
+                manuscriptTypes: ["clinical_study"],
+              },
+            }),
+          },
+        );
+        const agentProfile = (await agentProfileResponse.json()) as { id: string };
+
+        assert.equal(agentProfileResponse.status, 201);
+
+        const publishAgentProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-profiles/${agentProfile.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(publishAgentProfileResponse.status, 200);
+
+        const promptResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              name: "persistent_agent_runtime_prompt",
+              version: "1.0.0",
+              module: "editing",
+              manuscriptTypes: ["clinical_study"],
+            }),
+          },
+        );
+        const prompt = (await promptResponse.json()) as { id: string };
+
+        assert.equal(promptResponse.status, 201);
+
+        const publishPromptResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${prompt.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        assert.equal(publishPromptResponse.status, 200);
+
+        const skillResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              name: "persistent_agent_runtime_skills",
+              version: "1.0.0",
+              appliesToModules: ["editing"],
+              dependencyTools: ["knowledge.search"],
+            }),
+          },
+        );
+        const skill = (await skillResponse.json()) as { id: string };
+
+        assert.equal(skillResponse.status, 201);
+
+        const publishSkillResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skill.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        assert.equal(publishSkillResponse.status, 200);
+
+        const bindingResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/runtime-bindings`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: "persistent-agent-family",
+                runtimeId: runtime.id,
+                sandboxProfileId: sandbox.id,
+                agentProfileId: agentProfile.id,
+                toolPermissionPolicyId: policy.id,
+                promptTemplateId: prompt.id,
+                skillPackageIds: [skill.id],
+              },
+            }),
+          },
+        );
+        const binding = (await bindingResponse.json()) as { id: string };
+
+        assert.equal(bindingResponse.status, 201);
+
+        const activateBindingResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/runtime-bindings/${binding.id}/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(activateBindingResponse.status, 200);
+
+        const executionLogResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-execution`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                manuscriptId: "11111111-1111-1111-1111-111111111111",
+                module: "editing",
+                triggeredBy: "persistent-admin",
+                runtimeId: runtime.id,
+                sandboxProfileId: sandbox.id,
+                agentProfileId: agentProfile.id,
+                runtimeBindingId: binding.id,
+                toolPermissionPolicyId: policy.id,
+                knowledgeItemIds: ["11111111-1111-1111-1111-111111111111"],
+              },
+            }),
+          },
+        );
+        const executionLog = (await executionLogResponse.json()) as { id: string };
+
+        assert.equal(executionLogResponse.status, 201);
+
+        const completeExecutionLogResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              executionSnapshotId: "persistent-snapshot-1",
+              verificationEvidenceIds: ["persistent-evidence-1"],
+            }),
+          },
+        );
+
+        assert.equal(completeExecutionLogResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const getToolResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/tool-gateway/${tool.id}`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const persistedTool = (await getToolResponse.json()) as {
+            id: string;
+            access_mode: string;
+          };
+
+          const listRuntimeResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/agent-runtime/by-module/editing?activeOnly=true`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const runtimes = (await listRuntimeResponse.json()) as Array<{
+            id: string;
+            status: string;
+          }>;
+
+          const listBindingsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/runtime-bindings/by-scope/editing/clinical_study/persistent-agent-family?activeOnly=true`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const bindings = (await listBindingsResponse.json()) as Array<{
+            id: string;
+            status: string;
+          }>;
+
+          const getExecutionLogResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/agent-execution/${executionLog.id}`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const persistedExecutionLog = (await getExecutionLogResponse.json()) as {
+            id: string;
+            status: string;
+            execution_snapshot_id?: string;
+          };
+
+          assert.equal(getToolResponse.status, 200);
+          assert.equal(persistedTool.id, tool.id);
+          assert.equal(persistedTool.access_mode, "write");
+          assert.equal(listRuntimeResponse.status, 200);
+          assert.deepEqual(
+            runtimes.map((record) => ({
+              id: record.id,
+              status: record.status,
+            })),
+            [
+              {
+                id: runtime.id,
+                status: "active",
+              },
+            ],
+          );
+          assert.equal(listBindingsResponse.status, 200);
+          assert.deepEqual(
+            bindings.map((record) => ({
+              id: record.id,
+              status: record.status,
+            })),
+            [
+              {
+                id: binding.id,
+                status: "active",
+              },
+            ],
+          );
+          assert.equal(getExecutionLogResponse.status, 200);
+          assert.equal(persistedExecutionLog.id, executionLog.id);
+          assert.equal(persistedExecutionLog.status, "completed");
+          assert.equal(
+            persistedExecutionLog.execution_snapshot_id,
+            "persistent-snapshot-1",
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });

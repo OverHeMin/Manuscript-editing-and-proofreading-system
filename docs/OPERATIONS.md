@@ -9,7 +9,7 @@
 - demo runtime
   本地联调专用，内存态，允许 demo 数据
 - persistent runtime
-  当前用于 PostgreSQL-backed 认证、治理注册表与模型路由
+  当前用于 PostgreSQL-backed 认证、治理注册表、agent-tooling 治理与模型路由
 
 ## 2. 当前持久化边界
 
@@ -28,6 +28,13 @@
 - Skill 包
 - 模型注册表
 - 模型路由策略
+- Agent Runtime Registry
+- Tool Gateway Registry
+- Sandbox Profile Registry
+- Agent Profile Registry
+- Runtime Binding Registry
+- Tool Permission Policy Registry
+- Agent Execution 日志
 - 执行治理配置
 - 执行追踪快照
 - 知识命中日志
@@ -163,6 +170,11 @@ Web 关键环境变量：
   - 模型路由策略
   - Agent Runtime Registry
   - Tool Gateway Registry
+  - Sandbox Profile Registry
+  - Agent Profile Registry
+  - Runtime Binding Registry
+  - Tool Permission Policy Registry
+  - Agent Execution Logs
   - Prompt / Skill Registry
 
 回滚原则：

@@ -1260,3 +1260,493 @@ test("http server lists seeded learning review candidates and exposes candidate 
     await stopServer(server);
   }
 });
+
+test("http server exposes admin agent-tooling governance routes and execution logging", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const createKnowledgeToolResponse = await fetch(`${baseUrl}/api/v1/tool-gateway`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        input: {
+          name: "knowledge.search",
+          scope: "knowledge",
+        },
+      }),
+    });
+    const knowledgeTool = (await createKnowledgeToolResponse.json()) as {
+      id: string;
+      access_mode: string;
+    };
+
+    const createAssetToolResponse = await fetch(`${baseUrl}/api/v1/tool-gateway`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "knowledge_reviewer",
+        input: {
+          name: "assets.write",
+          scope: "assets",
+          accessMode: "write",
+        },
+      }),
+    });
+    const assetTool = (await createAssetToolResponse.json()) as {
+      id: string;
+      access_mode: string;
+    };
+
+    assert.equal(createKnowledgeToolResponse.status, 201);
+    assert.equal(createAssetToolResponse.status, 201);
+    assert.equal(knowledgeTool.access_mode, "read");
+    assert.equal(assetTool.access_mode, "write");
+
+    const policyDraftResponse = await fetch(
+      `${baseUrl}/api/v1/tool-permission-policies`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            name: "Editing Agent Policy",
+            allowedToolIds: [knowledgeTool.id, assetTool.id],
+            highRiskToolIds: [assetTool.id],
+          },
+        }),
+      },
+    );
+    const policyDraft = (await policyDraftResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(policyDraftResponse.status, 201);
+    assert.equal(policyDraft.status, "draft");
+
+    const activatePolicyResponse = await fetch(
+      `${baseUrl}/api/v1/tool-permission-policies/${policyDraft.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "user",
+        }),
+      },
+    );
+    const activePolicy = (await activatePolicyResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(activatePolicyResponse.status, 200);
+    assert.equal(activePolicy.status, "active");
+
+    const sandboxDraftResponse = await fetch(`${baseUrl}/api/v1/sandbox-profiles`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        input: {
+          name: "Editing Workspace",
+          sandboxMode: "workspace_write",
+          networkAccess: false,
+          approvalRequired: true,
+          allowedToolIds: [knowledgeTool.id, assetTool.id],
+        },
+      }),
+    });
+    const sandboxDraft = (await sandboxDraftResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(sandboxDraftResponse.status, 201);
+    assert.equal(sandboxDraft.status, "draft");
+
+    const activateSandboxResponse = await fetch(
+      `${baseUrl}/api/v1/sandbox-profiles/${sandboxDraft.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "proofreader",
+        }),
+      },
+    );
+    const activeSandbox = (await activateSandboxResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(activateSandboxResponse.status, 200);
+    assert.equal(activeSandbox.status, "active");
+
+    const runtimeDraftResponse = await fetch(`${baseUrl}/api/v1/agent-runtime`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        input: {
+          name: "Deep Editing Runtime",
+          adapter: "deepagents",
+          sandboxProfileId: sandboxDraft.id,
+          allowedModules: ["editing"],
+          runtimeSlot: "editing",
+        },
+      }),
+    });
+    const runtimeDraft = (await runtimeDraftResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(runtimeDraftResponse.status, 201);
+    assert.equal(runtimeDraft.status, "draft");
+
+    const publishRuntimeResponse = await fetch(
+      `${baseUrl}/api/v1/agent-runtime/${runtimeDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "user",
+        }),
+      },
+    );
+    const activeRuntime = (await publishRuntimeResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(publishRuntimeResponse.status, 200);
+    assert.equal(activeRuntime.status, "active");
+
+    const runtimeByModuleResponse = await fetch(
+      `${baseUrl}/api/v1/agent-runtime/by-module/editing?activeOnly=true`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const runtimesByModule = (await runtimeByModuleResponse.json()) as Array<{
+      id: string;
+    }>;
+
+    assert.equal(runtimeByModuleResponse.status, 200);
+    assert.deepEqual(runtimesByModule.map((record) => record.id), [runtimeDraft.id]);
+
+    const agentProfileDraftResponse = await fetch(
+      `${baseUrl}/api/v1/agent-profiles`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            name: "Editing Executor",
+            roleKey: "subagent",
+            moduleScope: ["editing"],
+            manuscriptTypes: ["clinical_study"],
+            description: "Executes editing plans in the approved runtime.",
+          },
+        }),
+      },
+    );
+    const agentProfileDraft = (await agentProfileDraftResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(agentProfileDraftResponse.status, 201);
+    assert.equal(agentProfileDraft.status, "draft");
+
+    const publishAgentProfileResponse = await fetch(
+      `${baseUrl}/api/v1/agent-profiles/${agentProfileDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "user",
+        }),
+      },
+    );
+    const publishedAgentProfile = (await publishAgentProfileResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(publishAgentProfileResponse.status, 200);
+    assert.equal(publishedAgentProfile.status, "published");
+
+    const promptDraftResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "editing_runtime_prompt",
+          version: "1.0.0",
+          module: "editing",
+          manuscriptTypes: ["clinical_study"],
+        }),
+      },
+    );
+    const promptDraft = (await promptDraftResponse.json()) as { id: string };
+
+    assert.equal(promptDraftResponse.status, 201);
+
+    const publishPromptResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${promptDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishPromptResponse.status, 200);
+
+    const skillDraftResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "editing_runtime_skills",
+          version: "1.0.0",
+          appliesToModules: ["editing"],
+          dependencyTools: ["knowledge.search", "assets.write"],
+        }),
+      },
+    );
+    const skillDraft = (await skillDraftResponse.json()) as { id: string };
+
+    assert.equal(skillDraftResponse.status, 201);
+
+    const publishSkillResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skillDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishSkillResponse.status, 200);
+
+    const bindingDraftResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: "family-agent-tooling-1",
+            runtimeId: runtimeDraft.id,
+            sandboxProfileId: sandboxDraft.id,
+            agentProfileId: agentProfileDraft.id,
+            toolPermissionPolicyId: policyDraft.id,
+            promptTemplateId: promptDraft.id,
+            skillPackageIds: [skillDraft.id],
+          },
+        }),
+      },
+    );
+    const bindingDraft = (await bindingDraftResponse.json()) as {
+      id: string;
+      status: string;
+      version: number;
+    };
+
+    assert.equal(bindingDraftResponse.status, 201);
+    assert.equal(bindingDraft.status, "draft");
+    assert.equal(bindingDraft.version, 1);
+
+    const activateBindingResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/${bindingDraft.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "user",
+        }),
+      },
+    );
+    const activeBinding = (await activateBindingResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    assert.equal(activateBindingResponse.status, 200);
+    assert.equal(activeBinding.status, "active");
+
+    const bindingScopeResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/by-scope/editing/clinical_study/family-agent-tooling-1?activeOnly=true`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const bindingsByScope = (await bindingScopeResponse.json()) as Array<{
+      id: string;
+    }>;
+
+    assert.equal(bindingScopeResponse.status, 200);
+    assert.deepEqual(bindingsByScope.map((record) => record.id), [bindingDraft.id]);
+
+    const createExecutionLogResponse = await fetch(
+      `${baseUrl}/api/v1/agent-execution`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            manuscriptId: "manuscript-demo-1",
+            module: "editing",
+            triggeredBy: "dev-admin",
+            runtimeId: runtimeDraft.id,
+            sandboxProfileId: sandboxDraft.id,
+            agentProfileId: agentProfileDraft.id,
+            runtimeBindingId: bindingDraft.id,
+            toolPermissionPolicyId: policyDraft.id,
+            knowledgeItemIds: ["knowledge-demo-1", "knowledge-demo-1"],
+          },
+        }),
+      },
+    );
+    const executionLog = (await createExecutionLogResponse.json()) as {
+      id: string;
+      status: string;
+      knowledge_item_ids: string[];
+    };
+
+    assert.equal(createExecutionLogResponse.status, 201);
+    assert.equal(executionLog.status, "running");
+    assert.deepEqual(executionLog.knowledge_item_ids, ["knowledge-demo-1"]);
+
+    const completeExecutionLogResponse = await fetch(
+      `${baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          executionSnapshotId: "snapshot-agent-tooling-1",
+          verificationEvidenceIds: ["evidence-1", "evidence-1", "evidence-2"],
+        }),
+      },
+    );
+    const completedExecutionLog = (await completeExecutionLogResponse.json()) as {
+      id: string;
+      status: string;
+      execution_snapshot_id?: string;
+      verification_evidence_ids: string[];
+    };
+
+    assert.equal(completeExecutionLogResponse.status, 200);
+    assert.equal(completedExecutionLog.status, "completed");
+    assert.equal(
+      completedExecutionLog.execution_snapshot_id,
+      "snapshot-agent-tooling-1",
+    );
+    assert.deepEqual(completedExecutionLog.verification_evidence_ids, [
+      "evidence-1",
+      "evidence-2",
+    ]);
+
+    const listExecutionLogsResponse = await fetch(
+      `${baseUrl}/api/v1/agent-execution`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const executionLogs = (await listExecutionLogsResponse.json()) as Array<{
+      id: string;
+      status: string;
+    }>;
+
+    assert.equal(listExecutionLogsResponse.status, 200);
+    assert.deepEqual(executionLogs.map((record) => ({
+      id: record.id,
+      status: record.status,
+    })), [
+      {
+        id: executionLog.id,
+        status: "completed",
+      },
+    ]);
+  } finally {
+    await stopServer(server);
+  }
+});

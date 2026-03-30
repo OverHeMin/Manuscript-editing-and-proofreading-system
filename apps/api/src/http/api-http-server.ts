@@ -19,6 +19,24 @@ import {
   type HttpAuthenticatedSession,
 } from "./demo-auth-runtime.ts";
 import {
+  AgentProfileNotFoundError,
+  AgentProfileService,
+  createAgentProfileApi,
+  InMemoryAgentProfileRepository,
+} from "../modules/agent-profiles/index.ts";
+import {
+  AgentExecutionLogNotFoundError,
+  AgentExecutionService,
+  createAgentExecutionApi,
+  InMemoryAgentExecutionRepository,
+} from "../modules/agent-execution/index.ts";
+import {
+  AgentRuntimeNotFoundError,
+  AgentRuntimeService,
+  createAgentRuntimeApi,
+  InMemoryAgentRuntimeRepository,
+} from "../modules/agent-runtime/index.ts";
+import {
   ActiveExecutionProfileNotFoundError,
   createExecutionGovernanceApi,
   ExecutionGovernanceService,
@@ -119,6 +137,20 @@ import {
   SkillPackageNotFoundError,
 } from "../modules/prompt-skill-registry/index.ts";
 import {
+  createRuntimeBindingApi,
+  InMemoryRuntimeBindingRepository,
+  RuntimeBindingCompatibilityError,
+  RuntimeBindingDependencyStateError,
+  RuntimeBindingNotFoundError,
+  RuntimeBindingService,
+} from "../modules/runtime-bindings/index.ts";
+import {
+  createSandboxProfileApi,
+  InMemorySandboxProfileRepository,
+  SandboxProfileNotFoundError,
+  SandboxProfileService,
+} from "../modules/sandbox-profiles/index.ts";
+import {
   createTemplateApi,
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
@@ -128,6 +160,20 @@ import {
   TemplateFamilyManuscriptTypeMismatchError,
   TemplateGovernanceService,
 } from "../modules/templates/index.ts";
+import {
+  createToolGatewayApi,
+  InMemoryToolGatewayRepository,
+  ToolGatewayService,
+  ToolGatewayToolNotFoundError,
+} from "../modules/tool-gateway/index.ts";
+import {
+  createToolPermissionPolicyApi,
+  InMemoryToolPermissionPolicyRepository,
+  ToolPermissionPolicyHighRiskAllowlistError,
+  ToolPermissionPolicyNotFoundError,
+  ToolPermissionPolicyService,
+  ToolPermissionPolicyUnknownToolError,
+} from "../modules/tool-permission-policies/index.ts";
 
 type RouteResponse<TBody> = {
   status: number;
@@ -149,6 +195,140 @@ type HttpRouteMatch =
     }
   | {
       route: "auth-logout";
+    }
+  | {
+      route: "agent-runtime-create";
+    }
+  | {
+      route: "agent-runtime-list";
+    }
+  | {
+      route: "agent-runtime-list-by-module";
+      module: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "agent-runtime-get";
+      runtimeId: string;
+    }
+  | {
+      route: "agent-runtime-publish";
+      runtimeId: string;
+    }
+  | {
+      route: "agent-runtime-archive";
+      runtimeId: string;
+    }
+  | {
+      route: "tool-gateway-create";
+    }
+  | {
+      route: "tool-gateway-list";
+    }
+  | {
+      route: "tool-gateway-list-by-scope";
+      scope: string;
+    }
+  | {
+      route: "tool-gateway-get";
+      toolId: string;
+    }
+  | {
+      route: "tool-gateway-update";
+      toolId: string;
+    }
+  | {
+      route: "sandbox-profile-create";
+    }
+  | {
+      route: "sandbox-profile-list";
+    }
+  | {
+      route: "sandbox-profile-get";
+      profileId: string;
+    }
+  | {
+      route: "sandbox-profile-activate";
+      profileId: string;
+    }
+  | {
+      route: "sandbox-profile-archive";
+      profileId: string;
+    }
+  | {
+      route: "agent-profile-create";
+    }
+  | {
+      route: "agent-profile-list";
+    }
+  | {
+      route: "agent-profile-get";
+      profileId: string;
+    }
+  | {
+      route: "agent-profile-publish";
+      profileId: string;
+    }
+  | {
+      route: "agent-profile-archive";
+      profileId: string;
+    }
+  | {
+      route: "runtime-binding-create";
+    }
+  | {
+      route: "runtime-binding-list";
+    }
+  | {
+      route: "runtime-binding-list-by-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "runtime-binding-get";
+      bindingId: string;
+    }
+  | {
+      route: "runtime-binding-activate";
+      bindingId: string;
+    }
+  | {
+      route: "runtime-binding-archive";
+      bindingId: string;
+    }
+  | {
+      route: "tool-permission-policy-create";
+    }
+  | {
+      route: "tool-permission-policy-list";
+    }
+  | {
+      route: "tool-permission-policy-get";
+      policyId: string;
+    }
+  | {
+      route: "tool-permission-policy-activate";
+      policyId: string;
+    }
+  | {
+      route: "tool-permission-policy-archive";
+      policyId: string;
+    }
+  | {
+      route: "agent-execution-create";
+    }
+  | {
+      route: "agent-execution-list";
+    }
+  | {
+      route: "agent-execution-get";
+      logId: string;
+    }
+  | {
+      route: "agent-execution-complete";
+      logId: string;
     }
   | {
       route: "knowledge-create-draft";
@@ -325,6 +505,9 @@ export type ApiHttpServer = Server;
 
 export interface ApiServerRuntime {
   authRuntime: HttpAuthRuntime;
+  agentExecutionApi: ReturnType<typeof createAgentExecutionApi>;
+  agentProfileApi: ReturnType<typeof createAgentProfileApi>;
+  agentRuntimeApi: ReturnType<typeof createAgentRuntimeApi>;
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
@@ -334,6 +517,10 @@ export interface ApiServerRuntime {
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
+  runtimeBindingApi: ReturnType<typeof createRuntimeBindingApi>;
+  sandboxProfileApi: ReturnType<typeof createSandboxProfileApi>;
+  toolGatewayApi: ReturnType<typeof createToolGatewayApi>;
+  toolPermissionPolicyApi: ReturnType<typeof createToolPermissionPolicyApi>;
   permissionGuard: PermissionGuard;
 }
 
@@ -413,6 +600,9 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
+  const agentExecutionRepository = new InMemoryAgentExecutionRepository();
+  const agentProfileRepository = new InMemoryAgentProfileRepository();
+  const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
@@ -420,6 +610,11 @@ export function createInMemoryApiRuntime(input: {
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
+  const sandboxProfileRepository = new InMemorySandboxProfileRepository();
+  const toolGatewayRepository = new InMemoryToolGatewayRepository();
+  const toolPermissionPolicyRepository =
+    new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
 
@@ -451,6 +646,30 @@ export function createInMemoryApiRuntime(input: {
     moduleTemplateRepository,
     learningCandidateRepository,
   });
+  const toolGatewayService = new ToolGatewayService({
+    repository: toolGatewayRepository,
+  });
+  const toolPermissionPolicyService = new ToolPermissionPolicyService({
+    repository: toolPermissionPolicyRepository,
+    toolGatewayRepository,
+  });
+  const sandboxProfileService = new SandboxProfileService({
+    repository: sandboxProfileRepository,
+  });
+  const agentRuntimeService = new AgentRuntimeService({
+    repository: agentRuntimeRepository,
+  });
+  const agentProfileService = new AgentProfileService({
+    repository: agentProfileRepository,
+  });
+  const runtimeBindingService = new RuntimeBindingService({
+    repository: runtimeBindingRepository,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
+  });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
     moduleTemplateRepository,
@@ -459,6 +678,9 @@ export function createInMemoryApiRuntime(input: {
   });
   const executionTrackingService = new ExecutionTrackingService({
     repository: executionTrackingRepository,
+  });
+  const agentExecutionService = new AgentExecutionService({
+    repository: agentExecutionRepository,
   });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
@@ -500,6 +722,15 @@ export function createInMemoryApiRuntime(input: {
 
   return {
     authRuntime,
+    agentExecutionApi: createAgentExecutionApi({
+      agentExecutionService,
+    }),
+    agentProfileApi: createAgentProfileApi({
+      agentProfileService,
+    }),
+    agentRuntimeApi: createAgentRuntimeApi({
+      agentRuntimeService,
+    }),
     executionGovernanceApi: createExecutionGovernanceApi({
       executionGovernanceService,
     }),
@@ -518,6 +749,18 @@ export function createInMemoryApiRuntime(input: {
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
+    }),
+    runtimeBindingApi: createRuntimeBindingApi({
+      runtimeBindingService,
+    }),
+    sandboxProfileApi: createSandboxProfileApi({
+      sandboxProfileService,
+    }),
+    toolGatewayApi: createToolGatewayApi({
+      toolGatewayService,
+    }),
+    toolPermissionPolicyApi: createToolPermissionPolicyApi({
+      toolPermissionPolicyService,
     }),
     permissionGuard,
   };
@@ -855,6 +1098,262 @@ async function handleRoute(
           "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
         },
       };
+    case "agent-runtime-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.agentRuntimeApi.createRuntime>[0]["input"];
+      };
+
+      return runtime.agentRuntimeApi.createRuntime({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "agent-runtime-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentRuntimeApi.listRuntimes();
+    case "agent-runtime-list-by-module":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentRuntimeApi.listRuntimesByModule({
+        module: routeMatch.module as Parameters<
+          typeof runtime.agentRuntimeApi.listRuntimesByModule
+        >[0]["module"],
+        activeOnly: routeMatch.activeOnly,
+      });
+    case "agent-runtime-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentRuntimeApi.getRuntime({
+        runtimeId: routeMatch.runtimeId,
+      });
+    case "agent-runtime-publish": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentRuntimeApi.publishRuntime({
+        actorRole: session.user.role,
+        runtimeId: routeMatch.runtimeId,
+      });
+    }
+    case "agent-runtime-archive": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentRuntimeApi.archiveRuntime({
+        actorRole: session.user.role,
+        runtimeId: routeMatch.runtimeId,
+      });
+    }
+    case "tool-gateway-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.toolGatewayApi.createTool>[0]["input"];
+      };
+
+      return runtime.toolGatewayApi.createTool({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "tool-gateway-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolGatewayApi.listTools();
+    case "tool-gateway-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolGatewayApi.listToolsByScope({
+        scope: routeMatch.scope as Parameters<
+          typeof runtime.toolGatewayApi.listToolsByScope
+        >[0]["scope"],
+      });
+    case "tool-gateway-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolGatewayApi.getTool({
+        toolId: routeMatch.toolId,
+      });
+    case "tool-gateway-update": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.toolGatewayApi.updateTool>[0]["input"];
+      };
+
+      return runtime.toolGatewayApi.updateTool({
+        actorRole: session.user.role,
+        toolId: routeMatch.toolId,
+        input: body.input,
+      });
+    }
+    case "sandbox-profile-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.sandboxProfileApi.createProfile>[0]["input"];
+      };
+
+      return runtime.sandboxProfileApi.createProfile({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "sandbox-profile-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.sandboxProfileApi.listProfiles();
+    case "sandbox-profile-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.sandboxProfileApi.getProfile({
+        profileId: routeMatch.profileId,
+      });
+    case "sandbox-profile-activate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.sandboxProfileApi.activateProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "sandbox-profile-archive": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.sandboxProfileApi.archiveProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "agent-profile-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.agentProfileApi.createProfile>[0]["input"];
+      };
+
+      return runtime.agentProfileApi.createProfile({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "agent-profile-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentProfileApi.listProfiles();
+    case "agent-profile-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentProfileApi.getProfile({
+        profileId: routeMatch.profileId,
+      });
+    case "agent-profile-publish": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentProfileApi.publishProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "agent-profile-archive": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentProfileApi.archiveProfile({
+        actorRole: session.user.role,
+        profileId: routeMatch.profileId,
+      });
+    }
+    case "runtime-binding-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.runtimeBindingApi.createBinding>[0]["input"];
+      };
+
+      return runtime.runtimeBindingApi.createBinding({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "runtime-binding-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.listBindings();
+    case "runtime-binding-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.listBindingsForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.runtimeBindingApi.listBindingsForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.runtimeBindingApi.listBindingsForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+        activeOnly: routeMatch.activeOnly,
+      });
+    case "runtime-binding-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.getBinding({
+        bindingId: routeMatch.bindingId,
+      });
+    case "runtime-binding-activate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.activateBinding({
+        actorRole: session.user.role,
+        bindingId: routeMatch.bindingId,
+      });
+    }
+    case "runtime-binding-archive": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.archiveBinding({
+        actorRole: session.user.role,
+        bindingId: routeMatch.bindingId,
+      });
+    }
+    case "tool-permission-policy-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.toolPermissionPolicyApi.createPolicy
+        >[0]["input"];
+      };
+
+      return runtime.toolPermissionPolicyApi.createPolicy({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "tool-permission-policy-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolPermissionPolicyApi.listPolicies();
+    case "tool-permission-policy-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolPermissionPolicyApi.getPolicy({
+        policyId: routeMatch.policyId,
+      });
+    case "tool-permission-policy-activate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolPermissionPolicyApi.activatePolicy({
+        actorRole: session.user.role,
+        policyId: routeMatch.policyId,
+      });
+    }
+    case "tool-permission-policy-archive": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.toolPermissionPolicyApi.archivePolicy({
+        actorRole: session.user.role,
+        policyId: routeMatch.policyId,
+      });
+    }
+    case "agent-execution-create":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentExecutionApi.createLog(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.agentExecutionApi.createLog
+        >[0],
+      );
+    case "agent-execution-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentExecutionApi.listLogs();
+    case "agent-execution-get":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentExecutionApi.getLog({
+        logId: routeMatch.logId,
+      });
+    case "agent-execution-complete":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.agentExecutionApi.completeLog({
+        logId: routeMatch.logId,
+        ...((await readJsonBody(req)) as Omit<
+          Parameters<typeof runtime.agentExecutionApi.completeLog>[0],
+          "logId"
+        >),
+      });
     case "execution-governance-create-profile": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -1295,7 +1794,8 @@ async function handleRoute(
 
 function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
   const method = req.method ?? "GET";
-  const path = readRequestPath(req);
+  const url = readRequestUrl(req);
+  const path = url.pathname;
 
   if (method === "GET" && path === "/healthz") {
     return { route: "healthz" };
@@ -1311,6 +1811,62 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/auth/logout") {
     return { route: "auth-logout" };
+  }
+
+  if (method === "POST" && path === "/api/v1/agent-runtime") {
+    return { route: "agent-runtime-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/agent-runtime") {
+    return { route: "agent-runtime-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/tool-gateway") {
+    return { route: "tool-gateway-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/tool-gateway") {
+    return { route: "tool-gateway-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/sandbox-profiles") {
+    return { route: "sandbox-profile-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/sandbox-profiles") {
+    return { route: "sandbox-profile-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/agent-profiles") {
+    return { route: "agent-profile-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/agent-profiles") {
+    return { route: "agent-profile-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/runtime-bindings") {
+    return { route: "runtime-binding-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/runtime-bindings") {
+    return { route: "runtime-binding-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/tool-permission-policies") {
+    return { route: "tool-permission-policy-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/tool-permission-policies") {
+    return { route: "tool-permission-policy-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/agent-execution") {
+    return { route: "agent-execution-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/agent-execution") {
+    return { route: "agent-execution-list" };
   }
 
   if (method === "POST" && path === "/api/v1/templates/families") {
@@ -1389,6 +1945,40 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {
     return { route: "knowledge-create-draft" };
+  }
+
+  const agentRuntimeByModuleMatch = path.match(
+    /^\/api\/v1\/agent-runtime\/by-module\/([^/]+)$/,
+  );
+  if (method === "GET" && agentRuntimeByModuleMatch) {
+    return {
+      route: "agent-runtime-list-by-module",
+      module: agentRuntimeByModuleMatch[1],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
+  }
+
+  const toolGatewayByScopeMatch = path.match(
+    /^\/api\/v1\/tool-gateway\/by-scope\/([^/]+)$/,
+  );
+  if (method === "GET" && toolGatewayByScopeMatch) {
+    return {
+      route: "tool-gateway-list-by-scope",
+      scope: toolGatewayByScopeMatch[1],
+    };
+  }
+
+  const runtimeBindingByScopeMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && runtimeBindingByScopeMatch) {
+    return {
+      route: "runtime-binding-list-by-scope",
+      module: runtimeBindingByScopeMatch[1],
+      manuscriptType: runtimeBindingByScopeMatch[2],
+      templateFamilyId: runtimeBindingByScopeMatch[3],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
   }
 
   const templateFamilyUpdateMatch = path.match(/^\/api\/v1\/templates\/families\/([^/]+)$/);
@@ -1474,6 +2064,184 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "model-registry-update-entry",
       modelId: updateModelRegistryEntryMatch[1],
+    };
+  }
+
+  const agentRuntimePublishMatch = path.match(
+    /^\/api\/v1\/agent-runtime\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && agentRuntimePublishMatch) {
+    return {
+      route: "agent-runtime-publish",
+      runtimeId: agentRuntimePublishMatch[1],
+    };
+  }
+
+  const agentRuntimeArchiveMatch = path.match(
+    /^\/api\/v1\/agent-runtime\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && agentRuntimeArchiveMatch) {
+    return {
+      route: "agent-runtime-archive",
+      runtimeId: agentRuntimeArchiveMatch[1],
+    };
+  }
+
+  const agentRuntimeGetMatch = path.match(/^\/api\/v1\/agent-runtime\/([^/]+)$/);
+  if (method === "GET" && agentRuntimeGetMatch) {
+    return {
+      route: "agent-runtime-get",
+      runtimeId: agentRuntimeGetMatch[1],
+    };
+  }
+
+  const toolGatewayUpdateMatch = path.match(/^\/api\/v1\/tool-gateway\/([^/]+)$/);
+  if (method === "POST" && toolGatewayUpdateMatch) {
+    return {
+      route: "tool-gateway-update",
+      toolId: toolGatewayUpdateMatch[1],
+    };
+  }
+
+  const toolGatewayGetMatch = path.match(/^\/api\/v1\/tool-gateway\/([^/]+)$/);
+  if (method === "GET" && toolGatewayGetMatch) {
+    return {
+      route: "tool-gateway-get",
+      toolId: toolGatewayGetMatch[1],
+    };
+  }
+
+  const sandboxActivateMatch = path.match(
+    /^\/api\/v1\/sandbox-profiles\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && sandboxActivateMatch) {
+    return {
+      route: "sandbox-profile-activate",
+      profileId: sandboxActivateMatch[1],
+    };
+  }
+
+  const sandboxArchiveMatch = path.match(
+    /^\/api\/v1\/sandbox-profiles\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && sandboxArchiveMatch) {
+    return {
+      route: "sandbox-profile-archive",
+      profileId: sandboxArchiveMatch[1],
+    };
+  }
+
+  const sandboxGetMatch = path.match(/^\/api\/v1\/sandbox-profiles\/([^/]+)$/);
+  if (method === "GET" && sandboxGetMatch) {
+    return {
+      route: "sandbox-profile-get",
+      profileId: sandboxGetMatch[1],
+    };
+  }
+
+  const agentProfilePublishMatch = path.match(
+    /^\/api\/v1\/agent-profiles\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && agentProfilePublishMatch) {
+    return {
+      route: "agent-profile-publish",
+      profileId: agentProfilePublishMatch[1],
+    };
+  }
+
+  const agentProfileArchiveMatch = path.match(
+    /^\/api\/v1\/agent-profiles\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && agentProfileArchiveMatch) {
+    return {
+      route: "agent-profile-archive",
+      profileId: agentProfileArchiveMatch[1],
+    };
+  }
+
+  const agentProfileGetMatch = path.match(/^\/api\/v1\/agent-profiles\/([^/]+)$/);
+  if (method === "GET" && agentProfileGetMatch) {
+    return {
+      route: "agent-profile-get",
+      profileId: agentProfileGetMatch[1],
+    };
+  }
+
+  const runtimeBindingActivateMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && runtimeBindingActivateMatch) {
+    return {
+      route: "runtime-binding-activate",
+      bindingId: runtimeBindingActivateMatch[1],
+    };
+  }
+
+  const runtimeBindingArchiveMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && runtimeBindingArchiveMatch) {
+    return {
+      route: "runtime-binding-archive",
+      bindingId: runtimeBindingArchiveMatch[1],
+    };
+  }
+
+  const runtimeBindingGetMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/([^/]+)$/,
+  );
+  if (method === "GET" && runtimeBindingGetMatch) {
+    return {
+      route: "runtime-binding-get",
+      bindingId: runtimeBindingGetMatch[1],
+    };
+  }
+
+  const toolPermissionPolicyActivateMatch = path.match(
+    /^\/api\/v1\/tool-permission-policies\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && toolPermissionPolicyActivateMatch) {
+    return {
+      route: "tool-permission-policy-activate",
+      policyId: toolPermissionPolicyActivateMatch[1],
+    };
+  }
+
+  const toolPermissionPolicyArchiveMatch = path.match(
+    /^\/api\/v1\/tool-permission-policies\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && toolPermissionPolicyArchiveMatch) {
+    return {
+      route: "tool-permission-policy-archive",
+      policyId: toolPermissionPolicyArchiveMatch[1],
+    };
+  }
+
+  const toolPermissionPolicyGetMatch = path.match(
+    /^\/api\/v1\/tool-permission-policies\/([^/]+)$/,
+  );
+  if (method === "GET" && toolPermissionPolicyGetMatch) {
+    return {
+      route: "tool-permission-policy-get",
+      policyId: toolPermissionPolicyGetMatch[1],
+    };
+  }
+
+  const agentExecutionCompleteMatch = path.match(
+    /^\/api\/v1\/agent-execution\/([^/]+)\/complete$/,
+  );
+  if (method === "POST" && agentExecutionCompleteMatch) {
+    return {
+      route: "agent-execution-complete",
+      logId: agentExecutionCompleteMatch[1],
+    };
+  }
+
+  const agentExecutionGetMatch = path.match(/^\/api\/v1\/agent-execution\/([^/]+)$/);
+  if (method === "GET" && agentExecutionGetMatch) {
+    return {
+      route: "agent-execution-get",
+      logId: agentExecutionGetMatch[1],
     };
   }
 
@@ -1623,7 +2391,11 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 }
 
 function readRequestPath(req: IncomingMessage): string {
-  return new URL(req.url || "/", "http://127.0.0.1").pathname;
+  return readRequestUrl(req).pathname;
+}
+
+function readRequestUrl(req: IncomingMessage): URL {
+  return new URL(req.url || "/", "http://127.0.0.1");
 }
 
 function readRemoteAddress(req: IncomingMessage): string | undefined {
@@ -1699,6 +2471,9 @@ function mapErrorToHttpResponse(
   error: unknown,
 ): [number, unknown, Record<string, string>?] {
   if (
+    error instanceof AgentExecutionLogNotFoundError ||
+    error instanceof AgentProfileNotFoundError ||
+    error instanceof AgentRuntimeNotFoundError ||
     error instanceof KnowledgeItemNotFoundError ||
     error instanceof LearningCandidateNotFoundError ||
     error instanceof ReviewedCaseSnapshotNotFoundError ||
@@ -1711,6 +2486,10 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError ||
+    error instanceof RuntimeBindingNotFoundError ||
+    error instanceof SandboxProfileNotFoundError ||
+    error instanceof ToolGatewayToolNotFoundError ||
+    error instanceof ToolPermissionPolicyNotFoundError ||
     error instanceof ModuleExecutionProfileNotFoundError ||
     error instanceof KnowledgeBindingRuleNotFoundError ||
     error instanceof ActiveExecutionProfileNotFoundError ||
@@ -1730,6 +2509,8 @@ function mapErrorToHttpResponse(
     error instanceof ModuleTemplateStatusTransitionError ||
     error instanceof DuplicateModelRegistryEntryError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
+    error instanceof RuntimeBindingCompatibilityError ||
+    error instanceof RuntimeBindingDependencyStateError ||
     error instanceof ModuleExecutionProfileStatusTransitionError ||
     error instanceof KnowledgeBindingRuleStatusTransitionError ||
     error instanceof ExecutionProfileModuleTemplateNotPublishedError ||
@@ -1750,7 +2531,9 @@ function mapErrorToHttpResponse(
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||
     error instanceof ModelRoutingPolicyValidationError ||
-    error instanceof ExecutionTrackingSkillPackageVersionMismatchError
+    error instanceof ExecutionTrackingSkillPackageVersionMismatchError ||
+    error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
+    error instanceof ToolPermissionPolicyUnknownToolError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }
