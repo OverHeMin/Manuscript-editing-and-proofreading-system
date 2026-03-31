@@ -32,7 +32,7 @@ import {
 } from "../modules/editing/index.ts";
 import {
   FeedbackGovernanceService,
-  InMemoryFeedbackGovernanceRepository,
+  PostgresFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
 import {
   createExecutionGovernanceApi,
@@ -46,7 +46,6 @@ import {
 import {
   createExecutionTrackingApi,
   ExecutionTrackingService,
-  InMemoryExecutionTrackingRepository,
   PostgresExecutionTrackingRepository,
 } from "../modules/execution-tracking/index.ts";
 import {
@@ -57,9 +56,9 @@ import {
 } from "../modules/knowledge/index.ts";
 import {
   createLearningApi,
-  InMemoryReviewedCaseSnapshotRepository,
   LearningService,
   PostgresLearningCandidateRepository,
+  PostgresReviewedCaseSnapshotRepository,
 } from "../modules/learning/index.ts";
 import {
   createLearningGovernanceApi,
@@ -151,10 +150,12 @@ export function createPersistentGovernanceRuntime(
   const jobRepository = new PostgresJobRepository({
     client: options.client,
   });
-  const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
-  const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
-  const feedbackExecutionTrackingRepository =
-    new InMemoryExecutionTrackingRepository();
+  const reviewedCaseSnapshotRepository = new PostgresReviewedCaseSnapshotRepository({
+    client: options.client,
+  });
+  const feedbackGovernanceRepository = new PostgresFeedbackGovernanceRepository({
+    client: options.client,
+  });
 
   const agentExecutionRepository = new PostgresAgentExecutionRepository({
     client: options.client,
@@ -222,6 +223,21 @@ export function createPersistentGovernanceRuntime(
       jobRepository: new PostgresJobRepository({ client }),
     }),
   });
+  const learningTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      manuscriptRepository: new PostgresManuscriptRepository({ client }),
+      assetRepository: new PostgresDocumentAssetRepository({ client }),
+      snapshotRepository: new PostgresReviewedCaseSnapshotRepository({ client }),
+      candidateRepository: new PostgresLearningCandidateRepository({ client }),
+    }),
+  });
+  const feedbackGovernanceTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      repository: new PostgresFeedbackGovernanceRepository({ client }),
+    }),
+  });
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -233,9 +249,10 @@ export function createPersistentGovernanceRuntime(
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
-    executionTrackingRepository: feedbackExecutionTrackingRepository,
+    executionTrackingRepository,
     assetRepository,
     reviewedCaseSnapshotRepository,
+    transactionManager: feedbackGovernanceTransactionManager,
   });
   const learningService = new LearningService({
     manuscriptRepository,
@@ -244,6 +261,7 @@ export function createPersistentGovernanceRuntime(
     candidateRepository: learningCandidateRepository,
     documentAssetService,
     feedbackGovernanceService,
+    transactionManager: learningTransactionManager,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,

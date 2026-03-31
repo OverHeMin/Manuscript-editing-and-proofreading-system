@@ -1,8 +1,10 @@
 import type {
+  ReviewedCaseSnapshotRepository,
   LearningCandidateRepository,
 } from "./learning-repository.ts";
 import type {
   LearningCandidateRecord,
+  ReviewedCaseSnapshotRecord,
 } from "./learning-record.ts";
 
 type QueryableClient = {
@@ -32,6 +34,102 @@ interface LearningCandidateRow {
   created_by: string;
   created_at: Date;
   updated_at: Date;
+}
+
+interface ReviewedCaseSnapshotRow {
+  id: string;
+  manuscript_id: string;
+  module: ReviewedCaseSnapshotRecord["module"];
+  manuscript_type: ReviewedCaseSnapshotRecord["manuscript_type"];
+  human_final_asset_id: string;
+  deidentification_passed: boolean;
+  annotated_asset_id: string | null;
+  snapshot_asset_id: string;
+  created_by: string;
+  created_at: Date;
+}
+
+export class PostgresReviewedCaseSnapshotRepository
+  implements ReviewedCaseSnapshotRepository
+{
+  constructor(private readonly dependencies: { client: QueryableClient }) {}
+
+  async save(record: ReviewedCaseSnapshotRecord): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        insert into reviewed_case_snapshots (
+          id,
+          manuscript_id,
+          module,
+          manuscript_type,
+          human_final_asset_id,
+          deidentification_passed,
+          annotated_asset_id,
+          snapshot_asset_id,
+          created_by,
+          created_at
+        )
+        values (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10
+        )
+        on conflict (id) do update
+        set
+          manuscript_id = excluded.manuscript_id,
+          module = excluded.module,
+          manuscript_type = excluded.manuscript_type,
+          human_final_asset_id = excluded.human_final_asset_id,
+          deidentification_passed = excluded.deidentification_passed,
+          annotated_asset_id = excluded.annotated_asset_id,
+          snapshot_asset_id = excluded.snapshot_asset_id,
+          created_by = excluded.created_by,
+          created_at = excluded.created_at
+      `,
+      [
+        record.id,
+        record.manuscript_id,
+        record.module,
+        record.manuscript_type,
+        record.human_final_asset_id,
+        record.deidentification_passed,
+        record.annotated_asset_id ?? null,
+        record.snapshot_asset_id,
+        record.created_by,
+        record.created_at,
+      ],
+    );
+  }
+
+  async findById(id: string): Promise<ReviewedCaseSnapshotRecord | undefined> {
+    const result = await this.dependencies.client.query<ReviewedCaseSnapshotRow>(
+      `
+        select
+          id,
+          manuscript_id,
+          module,
+          manuscript_type,
+          human_final_asset_id,
+          deidentification_passed,
+          annotated_asset_id,
+          snapshot_asset_id,
+          created_by,
+          created_at
+        from reviewed_case_snapshots
+        where id = $1
+      `,
+      [id],
+    );
+
+    return result.rows[0] ? mapReviewedCaseSnapshotRow(result.rows[0]) : undefined;
+  }
 }
 
 export class PostgresLearningCandidateRepository
@@ -250,6 +348,25 @@ function mapLearningCandidateRow(
     ...(row.title != null ? { title: row.title } : {}),
     ...(row.proposal_text != null
       ? { proposal_text: row.proposal_text }
+      : {}),
+  };
+}
+
+function mapReviewedCaseSnapshotRow(
+  row: ReviewedCaseSnapshotRow,
+): ReviewedCaseSnapshotRecord {
+  return {
+    id: row.id,
+    manuscript_id: row.manuscript_id,
+    module: row.module,
+    manuscript_type: row.manuscript_type,
+    human_final_asset_id: row.human_final_asset_id,
+    deidentification_passed: row.deidentification_passed,
+    snapshot_asset_id: row.snapshot_asset_id,
+    created_by: row.created_by,
+    created_at: row.created_at.toISOString(),
+    ...(row.annotated_asset_id != null
+      ? { annotated_asset_id: row.annotated_asset_id }
       : {}),
   };
 }

@@ -569,6 +569,204 @@ test("persistent proofreading publish-human-final route survives restart and bec
   });
 });
 
+test("persistent learning review snapshots and governed provenance survive restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const proofreaderCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+        const reviewerCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.knowledge_reviewer",
+        );
+
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/learning-proofreading/draft.md",
+              fileName: "persistent-learning-draft.md",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(draftResponse.status, 201);
+
+        const finalizeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/finalize`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              draftAssetId: draft.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/learning-proofreading/final.docx",
+              fileName: "persistent-learning-final.docx",
+            }),
+          },
+        );
+        const finalized = (await finalizeResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(finalizeResponse.status, 201);
+
+        const publishResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/publish-human-final`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              finalAssetId: finalized.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/learning-proofreading/human-final.docx",
+              fileName: "persistent-learning-human-final.docx",
+            }),
+          },
+        );
+        const published = (await publishResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(publishResponse.status, 201);
+
+        const snapshotResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/reviewed-case-snapshots`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: reviewerCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              module: "proofreading",
+              manuscriptType: "clinical_study",
+              humanFinalAssetId: published.asset.id,
+              annotatedAssetId: finalized.asset.id,
+              deidentificationPassed: true,
+              requestedBy: "forged-reviewer",
+              storageKey: "persistent/learning/reviewed-case-snapshot.bin",
+            }),
+          },
+        );
+        const snapshot = (await snapshotResponse.json()) as {
+          id: string;
+          created_by: string;
+        };
+        assert.equal(snapshotResponse.status, 201);
+        assert.equal(snapshot.created_by, "persistent-knowledge-reviewer");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        try {
+          const candidateResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/learning/candidates/governed`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: reviewerCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                snapshotId: snapshot.id,
+                type: "rule_candidate",
+                title: "Persistent learning rule candidate",
+                proposalText: "Carry governed learning provenance across restart.",
+                requestedBy: "forged-reviewer",
+                deidentificationPassed: true,
+                governedSource: {
+                  sourceKind: "evaluation_experiment",
+                  reviewedCaseSnapshotId: snapshot.id,
+                  evaluationRunId: "persistent-eval-1",
+                  evidencePackId: "persistent-evidence-1",
+                  sourceAssetId: published.asset.id,
+                },
+              }),
+            },
+          );
+          const candidate = (await candidateResponse.json()) as {
+            id: string;
+            status: string;
+            governed_provenance_kind?: string;
+          };
+          assert.equal(candidateResponse.status, 201);
+          assert.equal(candidate.status, "pending_review");
+          assert.equal(candidate.governed_provenance_kind, "evaluation_experiment");
+
+          await stopServer(secondServer.server);
+
+          const thirdServer = await startPersistentWorkbenchServer(databaseUrl);
+          try {
+            const approveResponse = await fetch(
+              `${thirdServer.baseUrl}/api/v1/learning/candidates/${candidate.id}/approve`,
+              {
+                method: "POST",
+                headers: {
+                  Cookie: reviewerCookie,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  actorRole: "admin",
+                }),
+              },
+            );
+            const approved = (await approveResponse.json()) as {
+              id: string;
+              status: string;
+            };
+
+            assert.equal(approveResponse.status, 200);
+            assert.equal(approved.id, candidate.id);
+            assert.equal(approved.status, "approved");
+          } finally {
+            await stopServer(thirdServer.server);
+          }
+        } finally {
+          await stopServer(secondServer.server).catch(() => undefined);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -628,6 +826,14 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     username: "persistent.proofreader",
     displayName: "Persistent Proofreader",
     role: "proofreader",
+    passwordHash:
+      "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+  });
+  await userRepository.save({
+    id: "persistent-knowledge-reviewer",
+    username: "persistent.knowledge_reviewer",
+    displayName: "Persistent Knowledge Reviewer",
+    role: "knowledge_reviewer",
     passwordHash:
       "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
   });
