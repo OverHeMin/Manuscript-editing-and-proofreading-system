@@ -111,6 +111,16 @@ export function EvaluationWorkbenchPage({
     selectedRun != null && finalizedResult?.run.id === selectedRun.id
       ? finalizedResult
       : overview?.selectedRunFinalization ?? null;
+  const finalizedRunHistory = overview?.finalizedRunHistory ?? [];
+  const selectedRunHistoryEntry =
+    selectedRun == null
+      ? null
+      : finalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
+  const previousRunHistoryEntry =
+    selectedRun == null
+      ? null
+      : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
+  const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
@@ -298,6 +308,7 @@ export function EvaluationWorkbenchPage({
                 <li key={run.id}>
                   <button
                     type="button"
+                    aria-label={`Run ${run.id}`}
                     className={`evaluation-workbench-select${run.id === overview.selectedRunId ? " is-selected" : ""}`}
                     onClick={() => void handleSelectRun(run.id)}
                   >
@@ -307,6 +318,72 @@ export function EvaluationWorkbenchPage({
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+
+        <section className="evaluation-workbench-panel evaluation-workbench-history">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Run History</h3>
+            <span>{finalizedRunHistory.length} finalized runs</span>
+          </div>
+          {selectedSuite == null ? (
+            <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
+          ) : finalizedRunHistory.length === 0 ? (
+            <p className="evaluation-workbench-empty">Finalize at least one run to unlock suite-level history.</p>
+          ) : (
+            <>
+              <dl className="evaluation-workbench-metadata">
+                <div>
+                  <dt>Recommended</dt>
+                  <dd>{historyCounts.recommended}</dd>
+                </div>
+                <div>
+                  <dt>Needs Review</dt>
+                  <dd>{historyCounts.needsReview}</dd>
+                </div>
+                <div>
+                  <dt>Rejected</dt>
+                  <dd>{historyCounts.rejected}</dd>
+                </div>
+              </dl>
+              {selectedRunHistoryEntry ? (
+                previousRunHistoryEntry ? (
+                  <div className="evaluation-workbench-result">
+                    <strong>Comparing against {previousRunHistoryEntry.run.id}</strong>
+                    <div className="evaluation-workbench-history-compare">
+                      <span>Selected recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
+                      <span>Previous recommendation: {previousRunHistoryEntry.finalized.recommendation.status}</span>
+                      <span>Selected summary: {summarizeFinalizedEntry(selectedRunHistoryEntry)}</span>
+                      <span>Previous summary: {summarizeFinalizedEntry(previousRunHistoryEntry)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="evaluation-workbench-empty">
+                    Finalize one more run in this suite to compare the current result against history.
+                  </p>
+                )
+              ) : (
+                <p className="evaluation-workbench-empty">
+                  Select a finalized run from the suite to compare it against prior history.
+                </p>
+              )}
+              <ul className="evaluation-workbench-stack">
+                {finalizedRunHistory.map((entry) => (
+                  <li key={entry.run.id}>
+                    <button
+                      type="button"
+                      aria-label={`History run ${entry.run.id}`}
+                      className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
+                      onClick={() => void handleSelectRun(entry.run.id)}
+                    >
+                      <strong>{entry.run.id}</strong>
+                      <span>{entry.finalized.recommendation.status} 路 {entry.finalized.evidence_pack.summary_status}</span>
+                      <span>{summarizeFinalizedEntry(entry)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </section>
 
@@ -619,6 +696,42 @@ function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][numb
     item.weighted_score == null ? "Score pending" : `Score ${item.weighted_score}`,
     item.requires_human_review ? "Needs review" : "No manual review flag",
   ].join(" 路 ");
+}
+
+function summarizeHistoryCounts(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+) {
+  return entries.reduce(
+    (summary, entry) => {
+      if (entry.finalized.recommendation.status === "recommended") summary.recommended += 1;
+      if (entry.finalized.recommendation.status === "needs_review") summary.needsReview += 1;
+      if (entry.finalized.recommendation.status === "rejected") summary.rejected += 1;
+      return summary;
+    },
+    { recommended: 0, needsReview: 0, rejected: 0 },
+  );
+}
+
+function findPreviousFinalizedRunHistoryEntry(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  selectedRunId: string,
+) {
+  const selectedIndex = entries.findIndex((entry) => entry.run.id === selectedRunId);
+  if (selectedIndex === -1) return null;
+  return entries.slice(selectedIndex + 1).find((entry) => entry != null) ?? null;
+}
+
+function summarizeFinalizedEntry(
+  entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
+) {
+  return [
+    entry.finalized.evidence_pack.score_summary,
+    entry.finalized.evidence_pack.failure_summary,
+    entry.finalized.recommendation.decision_reason,
+    entry.run.finished_at ? `Finished ${entry.run.finished_at}` : undefined,
+  ]
+    .filter((value) => Boolean(value))
+    .join(" 路 ");
 }
 
 function resolveSampleSetId(overview: EvaluationWorkbenchOverview, preferredId: string, selectedSuite: EvaluationWorkbenchOverview["suites"][number] | null) {

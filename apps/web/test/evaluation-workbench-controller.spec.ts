@@ -207,6 +207,238 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
   );
 });
 
+test("evaluation workbench controller loads finalized suite history for comparison", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Sample Set",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-2"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "failed",
+              evidence_ids: ["evidence-1"],
+              started_at: "2026-03-31T12:00:00.000Z",
+              finished_at: "2026-03-31T12:12:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-1",
+              lane: "candidate",
+              result_asset_id: "asset-2",
+              hard_gate_passed: true,
+              weighted_score: 96,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-2"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-2",
+              experiment_run_id: "run-2",
+              summary_status: "recommended",
+              score_summary: "Candidate weighted score 96.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-2",
+              experiment_run_id: "run-2",
+              evidence_pack_id: "pack-2",
+              status: "recommended",
+              decision_reason: "Latest run is safe to promote.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/finalized-result") {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "failed",
+              evidence_ids: ["evidence-1"],
+              started_at: "2026-03-31T12:00:00.000Z",
+              finished_at: "2026-03-31T12:12:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-1",
+              experiment_run_id: "run-1",
+              summary_status: "rejected",
+              failure_summary: "Previous run failed a hard gate.",
+              created_at: "2026-03-31T12:12:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-1",
+              experiment_run_id: "run-1",
+              evidence_pack_id: "pack-1",
+              status: "rejected",
+              decision_reason: "Previous run cannot be promoted.",
+              created_at: "2026-03-31T12:12:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-2",
+  });
+
+  assert.equal(overview.selectedRunId, "run-2");
+  assert.equal(overview.selectedRunFinalization?.run.id, "run-2");
+  assert.deepEqual(
+    overview.finalizedRunHistory.map((entry) => entry.run.id),
+    ["run-2", "run-1"],
+  );
+  assert.equal(
+    overview.finalizedRunHistory[0]?.finalized.recommendation.status,
+    "recommended",
+  );
+  assert.equal(
+    overview.finalizedRunHistory[1]?.finalized.recommendation.status,
+    "rejected",
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/finalized-result",
+    ],
+  );
+});
+
 test("evaluation workbench controller activates a suite and reloads the selected overview", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createEvaluationWorkbenchController({
@@ -438,6 +670,13 @@ test("evaluation workbench controller creates a run and reloads the selected run
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/finalized-result") {
+        return {
+          status: 200,
+          body: null as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
         return {
           status: 200,
@@ -501,6 +740,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/finalized-result",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
     ],
   );

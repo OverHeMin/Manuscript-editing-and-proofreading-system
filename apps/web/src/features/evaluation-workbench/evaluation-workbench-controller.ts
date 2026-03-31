@@ -55,6 +55,12 @@ export interface EvaluationWorkbenchOverview {
   sampleSetItems: EvaluationSampleSetItemViewModel[];
   runItems: EvaluationRunItemViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
+  finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
+}
+
+export interface EvaluationWorkbenchFinalizedRunHistoryEntry {
+  run: EvaluationRunViewModel;
+  finalized: FinalizeEvaluationRunResultViewModel;
 }
 
 export interface EvaluationWorkbenchController {
@@ -232,6 +238,7 @@ async function loadEvaluationWorkbenchOverview(
   let sampleSetItems: EvaluationSampleSetItemViewModel[] = [];
   let runItems: EvaluationRunItemViewModel[] = [];
   let selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null = null;
+  let finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[] = [];
 
   if (selectedSuiteId != null) {
     runs = (await listEvaluationRunsBySuiteId(client, selectedSuiteId)).body;
@@ -252,10 +259,25 @@ async function loadEvaluationWorkbenchOverview(
       ]);
       sampleSetItems = nextSampleSetItems;
       runItems = nextRunItems;
-      selectedRunFinalization = (
-        await getEvaluationRunFinalizedResult(client, selectedRunId)
-      ).body;
     }
+
+    finalizedRunHistory = (
+      await Promise.all(
+        runs.map(async (run) => {
+          const finalized = (await getEvaluationRunFinalizedResult(client, run.id)).body;
+          return finalized == null ? null : { run, finalized };
+        }),
+      )
+    )
+      .filter(
+        (
+          entry,
+        ): entry is EvaluationWorkbenchFinalizedRunHistoryEntry => entry != null,
+      )
+      .sort(compareFinalizedRunHistory);
+
+    selectedRunFinalization =
+      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
   }
 
   return {
@@ -269,7 +291,29 @@ async function loadEvaluationWorkbenchOverview(
     sampleSetItems,
     runItems,
     selectedRunFinalization,
+    finalizedRunHistory,
   };
+}
+
+function compareFinalizedRunHistory(
+  left: EvaluationWorkbenchFinalizedRunHistoryEntry,
+  right: EvaluationWorkbenchFinalizedRunHistoryEntry,
+) {
+  return compareRunRecency(right.run, left.run);
+}
+
+function compareRunRecency(
+  left: EvaluationRunViewModel,
+  right: EvaluationRunViewModel,
+) {
+  const leftTimestamp = left.finished_at ?? left.started_at;
+  const rightTimestamp = right.finished_at ?? right.started_at;
+
+  if (leftTimestamp !== rightTimestamp) {
+    return leftTimestamp.localeCompare(rightTimestamp);
+  }
+
+  return left.id.localeCompare(right.id);
 }
 
 function resolveSelectedId(

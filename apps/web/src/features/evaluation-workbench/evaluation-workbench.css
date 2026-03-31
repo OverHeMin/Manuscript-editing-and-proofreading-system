@@ -292,6 +292,11 @@
   gap: 4px;
 }
 
+.evaluation-workbench-history-compare {
+  display: grid;
+  gap: 6px;
+}
+
 .evaluation-workbench-finalized {
   border-color: #bfdbfe;
   background: #eff6ff;

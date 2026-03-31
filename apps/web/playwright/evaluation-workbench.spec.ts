@@ -155,11 +155,51 @@ test("admin can reload a finalized evaluation run and still see the persisted re
   await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
 
   await page.getByRole("button", { name: prepared.suiteName }).click();
-  await page.getByRole("button", { name: new RegExp(runId ?? "") }).click();
+  await page.getByRole("button", { name: `Run ${runId}`, exact: true }).click();
 
   await expect(finalizedCard).toContainText("Finalized Recommendation");
   await expect(finalizedCard).toContainText("recommended");
   await expect(page.getByLabel("Reviewed Case Snapshot ID")).toHaveValue(prepared.snapshotId);
+});
+
+test("admin can compare the latest finalized run against prior finalized history in the same suite", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9E",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const firstRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "91",
+    diffSummary: "First finalized run establishes the previous baseline.",
+    evidenceLabel: "Phase 9E baseline evidence",
+    evidenceUrl: "https://example.test/evidence/phase9e-baseline",
+  });
+
+  const secondRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "97",
+    diffSummary: "Second finalized run improves structure stability.",
+    evidenceLabel: "Phase 9E comparison evidence",
+    evidenceUrl: "https://example.test/evidence/phase9e-comparison",
+  });
+
+  const historyPanel = page.locator(".evaluation-workbench-history");
+  await expect(historyPanel).toContainText("Run History");
+  await expect(historyPanel).toContainText(firstRunId);
+  await expect(historyPanel).toContainText(secondRunId);
+  await expect(historyPanel).toContainText(`Comparing against ${firstRunId}`);
+  await expect(historyPanel).toContainText("Selected recommendation");
+  await expect(historyPanel).toContainText("recommended");
 });
 
 interface PrepareDraftEvaluationSuiteInput {
@@ -449,6 +489,40 @@ async function prepareActiveEvaluationScenario(
     sampleSetId: sampleSet.id,
     snapshotId: snapshot.id,
   };
+}
+
+async function createAndFinalizeRunFromWorkbench(
+  page: Page,
+  input: {
+    sampleSetId: string;
+    weightedScore: string;
+    diffSummary: string;
+    evidenceLabel: string;
+    evidenceUrl: string;
+  },
+): Promise<string> {
+  await page.getByLabel("Sample Set").selectOption(input.sampleSetId);
+  await page.getByRole("button", { name: "Create Evaluation Run" }).click();
+
+  const createStatus = await page.locator(".evaluation-workbench-status").textContent();
+  const runId = createStatus?.match(/Created evaluation run ([^.]+)\./)?.[1] ?? null;
+  expect(runId).toBeTruthy();
+
+  await page.getByLabel("Weighted Score").fill(input.weightedScore);
+  await page.getByLabel("Diff Summary").fill(input.diffSummary);
+  await page.getByRole("button", { name: "Save Run Item Result" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Saved run item result",
+  );
+
+  await page.getByLabel("Evidence Label").fill(input.evidenceLabel);
+  await page.getByLabel("Evidence URL").fill(input.evidenceUrl);
+  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+  await expect(page.locator(".evaluation-workbench-finalized")).toContainText(
+    "recommended",
+  );
+
+  return runId ?? "";
 }
 
 async function loginAsDemoUser(
