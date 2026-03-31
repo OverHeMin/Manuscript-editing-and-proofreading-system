@@ -117,4 +117,10 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText(
     `runs/${manuscriptId}/proofreading/final`,
   );
+  const downloadLink = page.getByRole("link", { name: "Download Latest Export" });
+  await expect(downloadLink).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await downloadLink.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("proofreading-final.docx");
 });

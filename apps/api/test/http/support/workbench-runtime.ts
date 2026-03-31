@@ -9,6 +9,7 @@ import {
   createDemoHttpAuthRuntime,
   type DemoHttpAuthRuntime,
 } from "../../../src/http/demo-auth-runtime.ts";
+import { LocalAssetMaterializationService } from "../../../src/http/local-asset-materialization.ts";
 import { InMemoryAuditService } from "../../../src/audit/audit-service.ts";
 import { PermissionGuard } from "../../../src/auth/permission-guard.ts";
 import { DocumentAssetService } from "../../../src/modules/assets/document-asset-service.ts";
@@ -82,8 +83,18 @@ export interface WorkbenchRuntimeBundle {
           storage_key: string;
           file_name?: string;
           mime_type: string;
+          url: string;
         };
       };
+    }>;
+    downloadAsset: (input: {
+      assetId: string;
+      uploadRootDir: string;
+    }) => Promise<{
+      status: number;
+      body: null;
+      rawBody: Buffer;
+      headers: Record<string, string>;
     }>;
   };
   screeningApi: ReturnType<typeof createScreeningApi>;
@@ -276,6 +287,26 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
             manuscriptId: input.manuscriptId,
             preferredAssetType: input.preferredAssetType as never,
           }),
+        };
+      },
+      async downloadAsset(input) {
+        const downloadService = new LocalAssetMaterializationService({
+          assetRepository,
+          manuscriptRepository,
+          rootDir: input.uploadRootDir,
+        });
+        const download = await downloadService.downloadAsset(input.assetId);
+
+        return {
+          status: 200,
+          body: null,
+          rawBody: download.bytes,
+          headers: {
+            "Content-Type": download.mimeType,
+            "Content-Length": String(download.bytes.byteLength),
+            "Content-Disposition": `attachment; filename="${download.fileName.replace(/["\\\\]/g, "-")}"`,
+            "Cache-Control": "no-store",
+          },
         };
       },
     },

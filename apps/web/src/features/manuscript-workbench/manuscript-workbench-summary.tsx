@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
+import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
 import type {
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
@@ -207,6 +208,17 @@ export function ManuscriptWorkbenchSummary({
               <SummaryMetric
                 label="Source Asset"
                 value={renderAssetIdentity(latestExport.asset)}
+              />
+              <SummaryMetric
+                label="Download"
+                value={
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={resolveBrowserApiUrl(latestExport.download.url)}
+                  >
+                    Download Latest Export
+                  </a>
+                }
               />
               <SummaryMetric label="Ready State" value="Prepared for downstream delivery" />
             </>

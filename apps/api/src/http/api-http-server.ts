@@ -26,6 +26,11 @@ import {
   storeInlineUpload,
 } from "./local-upload-storage.ts";
 import {
+  DocumentAssetDownloadNotFoundError,
+  DocumentAssetDownloadUnsupportedError,
+  LocalAssetMaterializationService,
+} from "./local-asset-materialization.ts";
+import {
   AgentProfileNotFoundError,
   AgentProfileService,
   createAgentProfileApi,
@@ -216,6 +221,7 @@ type RouteResponse<TBody> = {
   status: number;
   body: TBody;
   headers?: Record<string, string>;
+  rawBody?: Buffer;
 };
 
 export type AppEnv = "local" | "test" | "development" | "staging" | "production";
@@ -250,6 +256,10 @@ type HttpRouteMatch =
     }
   | {
       route: "document-pipeline-export-current-asset";
+    }
+  | {
+      route: "document-assets-download";
+      assetId: string;
     }
   | {
       route: "modules-screening-run";
@@ -592,8 +602,18 @@ export interface ApiServerRuntime {
           storage_key: string;
           file_name?: string;
           mime_type: string;
+          url: string;
         };
       }>
+    >;
+    downloadAsset: (input: {
+      assetId: string;
+      uploadRootDir: string;
+    }) => Promise<
+      RouteResponse<null> & {
+        rawBody: Buffer;
+        headers: Record<string, string>;
+      }
     >;
   };
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
@@ -655,7 +675,7 @@ export function createApiHttpServer(
       writeResponse(res, routeResponse.status, routeResponse.body, {
         ...corsHeaders,
         ...(routeResponse.headers ?? {}),
-      });
+      }, routeResponse.rawBody);
     } catch (error) {
       const [status, body, extraHeaders = {}] = mapErrorToHttpResponse(error);
       writeResponse(res, status, body, {
@@ -926,6 +946,21 @@ export function createInMemoryApiRuntime(input: {
         return {
           status: 200,
           body: await exportService.exportCurrentAsset(input),
+        };
+      },
+      async downloadAsset(input) {
+        const downloadService = new LocalAssetMaterializationService({
+          assetRepository,
+          manuscriptRepository,
+          rootDir: input.uploadRootDir,
+        });
+        const download = await downloadService.downloadAsset(input.assetId);
+
+        return {
+          status: 200,
+          body: null,
+          rawBody: download.bytes,
+          headers: buildDownloadHeaders(download.fileName, download.mimeType, download.bytes),
         };
       },
     },
@@ -1752,6 +1787,12 @@ async function handleRoute(
       >[0];
       return runtime.documentPipelineApi.exportCurrentAsset(body);
     }
+    case "document-assets-download":
+      await runtime.authRuntime.requireSession(req);
+      return runtime.documentPipelineApi.downloadAsset({
+        assetId: routeMatch.assetId,
+        uploadRootDir,
+      });
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -2523,6 +2564,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "document-pipeline-export-current-asset" };
   }
 
+  const documentAssetDownloadMatch = path.match(
+    /^\/api\/v1\/document-assets\/([^/]+)\/download$/,
+  );
+  if (method === "GET" && documentAssetDownloadMatch) {
+    return {
+      route: "document-assets-download",
+      assetId: documentAssetDownloadMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/modules/screening/run") {
     return { route: "modules-screening-run" };
   }
@@ -3205,10 +3256,17 @@ function writeResponse(
   status: number,
   body: unknown,
   extraHeaders: Record<string, string> = {},
+  rawBody?: Buffer,
 ): void {
   if (status === 204) {
     res.writeHead(status, extraHeaders);
     res.end();
+    return;
+  }
+
+  if (rawBody) {
+    res.writeHead(status, extraHeaders);
+    res.end(rawBody);
     return;
   }
 
@@ -3234,6 +3292,7 @@ function mapErrorToHttpResponse(
     error instanceof FeedbackGovernanceReviewedSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
+    error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
@@ -3291,7 +3350,8 @@ function mapErrorToHttpResponse(
     error instanceof ToolPermissionPolicyUnknownToolError ||
     error instanceof ProofreadingDraftAssetRequiredError ||
     error instanceof InlineUploadStorageReferenceRequiredError ||
-    error instanceof InlineUploadPayloadInvalidError
+    error instanceof InlineUploadPayloadInvalidError ||
+    error instanceof DocumentAssetDownloadUnsupportedError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }
@@ -3364,4 +3424,21 @@ async function resolveUploadStorageKey(input: {
 
 function resolveDefaultUploadRootDir(appEnv: AppEnv): string {
   return path.resolve(process.cwd(), ".local-data", "uploads", appEnv);
+}
+
+function buildDownloadHeaders(
+  fileName: string,
+  mimeType: string,
+  bytes: Buffer,
+): Record<string, string> {
+  return {
+    "Content-Type": mimeType,
+    "Content-Length": String(bytes.byteLength),
+    "Content-Disposition": `attachment; filename="${sanitizeDownloadFileName(fileName)}"`,
+    "Cache-Control": "no-store",
+  };
+}
+
+function sanitizeDownloadFileName(fileName: string): string {
+  return fileName.replace(/["\\]/g, "-");
 }

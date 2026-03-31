@@ -5,6 +5,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../..");
 const webRoot = import.meta.dirname;
 const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 const webBaseUrl = process.env.PLAYWRIGHT_WEB_BASE_URL ?? "http://127.0.0.1:4173";
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1";
 
 export default defineConfig({
   testDir: "./playwright",
@@ -21,13 +22,13 @@ export default defineConfig({
       command: "pnpm --filter @medical/api run serve:demo",
       cwd: repoRoot,
       url: `${apiBaseUrl}/healthz`,
-      reuseExistingServer: true,
+      reuseExistingServer,
     },
     {
       command: "pnpm run dev -- --host 127.0.0.1 --port 4173",
       cwd: webRoot,
       url: webBaseUrl,
-      reuseExistingServer: true,
+      reuseExistingServer,
       env: {
         ...process.env,
         VITE_APP_ENV: "local",

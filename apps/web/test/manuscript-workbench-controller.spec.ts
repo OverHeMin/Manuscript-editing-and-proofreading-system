@@ -523,6 +523,7 @@ test("manuscript workbench controller exports the current asset through the docu
               file_name: "proofreading-final.docx",
               mime_type:
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              url: "/api/v1/document-assets/asset-proof-final-1/download",
             },
           } as TResponse,
         };
@@ -541,6 +542,10 @@ test("manuscript workbench controller exports the current asset through the docu
   assert.equal(
     exported.download.mime_type,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.equal(
+    exported.download.url,
+    "/api/v1/document-assets/asset-proof-final-1/download",
   );
   assert.deepEqual(requests, [
     {

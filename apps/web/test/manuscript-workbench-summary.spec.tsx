@@ -123,6 +123,7 @@ test("manuscript workbench summary renders operator-facing overview cards and th
           storage_key: "exports/manuscript-1/current.docx",
           file_name: "editing-final.docx",
           mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url: "/api/v1/document-assets/asset-edited-1/download",
         },
       }}
       latestActionResult={{
@@ -157,6 +158,11 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /completed/);
   assert.match(markup, /Latest Export/);
   assert.match(markup, /exports\/manuscript-1\/current\.docx/);
+  assert.match(markup, /Download Latest Export/);
+  assert.match(
+    markup,
+    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
+  );
   assert.match(markup, /Asset Chain/);
   assert.match(markup, /asset-original-1/);
   assert.match(markup, /Debug Snapshot/);

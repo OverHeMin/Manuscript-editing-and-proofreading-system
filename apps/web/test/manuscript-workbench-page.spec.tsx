@@ -267,6 +267,7 @@ test("manuscript workbench summary shows prepared export metadata for finalized 
           file_name: "proofreading-final.docx",
           mime_type:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url: "/api/v1/document-assets/asset-proof-final-1/download",
         },
       }}
       latestActionResult={null}
@@ -281,5 +282,10 @@ test("manuscript workbench summary shows prepared export metadata for finalized 
   assert.match(
     markup,
     /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/,
+  );
+  assert.match(markup, /Download Latest Export/);
+  assert.match(
+    markup,
+    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-proof-final-1\/download"/,
   );
 });

@@ -17,6 +17,7 @@ export interface DocumentExportResult {
     storage_key: string;
     file_name?: string;
     mime_type: string;
+    url: string;
   };
 }
 
@@ -72,6 +73,7 @@ export class DocumentExportService {
         storage_key: asset.storage_key,
         file_name: asset.file_name,
         mime_type: asset.mime_type,
+        url: `/api/v1/document-assets/${asset.id}/download`,
       },
     };
   }

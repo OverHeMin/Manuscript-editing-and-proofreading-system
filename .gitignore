@@ -12,5 +12,7 @@ test-results/
 playwright-report/
 **/playwright-report/
 output/
+.local-data/
+**/.local-data/
 .pytest_cache/
 **/__pycache__/

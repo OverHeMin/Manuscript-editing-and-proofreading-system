@@ -1,5 +1,8 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import { Pool } from "pg";
 import {
   createApiHttpServer,
@@ -63,6 +66,7 @@ const seededIds: PersistentWorkbenchSeededIds = {
 
 test("persistent workbench upload routes keep manuscripts, assets, jobs, and exports across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-persistent-workbench-"));
     const migrate = runMigrateProcess(databaseUrl);
     assert.equal(
       migrate.status,
@@ -74,7 +78,9 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
     try {
       await seedPersistentWorkbenchData(seedPool);
 
-      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
       try {
         const cookie = await loginAsPersistentUser(
           firstServer.baseUrl,
@@ -95,7 +101,7 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
               fileName: "persistent-http-upload.docx",
               mimeType:
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              storageKey: "persistent/uploads/persistent-http-upload.docx",
+              fileContentBase64: "UGVyc2lzdGVudCBkb3dubG9hZCBieXRlcw==",
             }),
           },
         );
@@ -116,7 +122,9 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
 
         await stopServer(firstServer.server);
 
-        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl, {
+          uploadRootDir,
+        });
         try {
           const manuscriptResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}`,
@@ -166,12 +174,35 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
           const exported = (await exportResponse.json()) as {
             manuscript_id: string;
             asset: { id: string };
+            download: {
+              storage_key: string;
+              url: string;
+            };
           };
+          assert.ok(
+            exported.download.url,
+            "Expected export payload to include a download URL.",
+          );
+          const downloadResponse = await fetch(
+            `${secondServer.baseUrl}${exported.download.url}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const downloadedBody = Buffer.from(
+            await downloadResponse.arrayBuffer(),
+          ).toString("utf8");
+          const storedPath = path.join(
+            uploadRootDir,
+            ...exported.download.storage_key.split("/"),
+          );
+          const storedBody = await readFile(storedPath, "utf8");
 
           assert.equal(manuscriptResponse.status, 200);
           assert.equal(assetsResponse.status, 200);
           assert.equal(jobResponse.status, 200);
           assert.equal(exportResponse.status, 200);
+          assert.equal(downloadResponse.status, 200);
           assert.equal(manuscript.id, uploaded.manuscript.id);
           assert.deepEqual(
             assets.map((asset) => ({
@@ -190,6 +221,12 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
           assert.equal(job.module, "upload");
           assert.equal(exported.manuscript_id, uploaded.manuscript.id);
           assert.equal(exported.asset.id, uploaded.asset.id);
+          assert.equal(
+            exported.download.url,
+            `/api/v1/document-assets/${uploaded.asset.id}/download`,
+          );
+          assert.equal(downloadedBody, "Persistent download bytes");
+          assert.equal(storedBody, "Persistent download bytes");
         } finally {
           await stopServer(secondServer.server);
         }
@@ -198,6 +235,7 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
       }
     } finally {
       await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
     }
   });
 });
@@ -647,7 +685,12 @@ async function loginAsPersistentUser(
   return setCookie.split(";")[0] ?? "";
 }
 
-async function startPersistentWorkbenchServer(databaseUrl: string): Promise<{
+async function startPersistentWorkbenchServer(
+  databaseUrl: string,
+  input: {
+    uploadRootDir?: string;
+  } = {},
+): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
 }> {
@@ -663,6 +706,7 @@ async function startPersistentWorkbenchServer(databaseUrl: string): Promise<{
       client: pool,
       authRuntime,
     }),
+    uploadRootDir: input.uploadRootDir,
   });
 
   server.on("close", () => {

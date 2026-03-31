@@ -2,6 +2,7 @@ import { PermissionGuard } from "../auth/permission-guard.ts";
 import { PostgresAuditService } from "../audit/index.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
 import type { ApiServerRuntime } from "./api-http-server.ts";
+import { LocalAssetMaterializationService } from "./local-asset-materialization.ts";
 import {
   AgentProfileService,
   createAgentProfileApi,
@@ -450,6 +451,26 @@ export function createPersistentGovernanceRuntime(
         return {
           status: 200,
           body: await exportService.exportCurrentAsset(input),
+        };
+      },
+      async downloadAsset(input) {
+        const downloadService = new LocalAssetMaterializationService({
+          assetRepository,
+          manuscriptRepository,
+          rootDir: input.uploadRootDir,
+        });
+        const download = await downloadService.downloadAsset(input.assetId);
+
+        return {
+          status: 200,
+          body: null,
+          rawBody: download.bytes,
+          headers: {
+            "Content-Type": download.mimeType,
+            "Content-Length": String(download.bytes.byteLength),
+            "Content-Disposition": `attachment; filename="${download.fileName.replace(/["\\\\]/g, "-")}"`,
+            "Cache-Control": "no-store",
+          },
         };
       },
     },

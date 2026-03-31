@@ -1,5 +1,8 @@
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import {
   loginAsDemoUser,
   startWorkbenchServer,
@@ -7,7 +10,10 @@ import {
 } from "./support/workbench-runtime.ts";
 
 test("workbench http routes upload a manuscript and expose manuscript, asset, job, and export reads", async () => {
-  const { server, baseUrl } = await startWorkbenchServer();
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.user");
@@ -24,7 +30,7 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         fileName: "uploaded-through-http.docx",
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        storageKey: "uploads/http/uploaded-through-http.docx",
+        fileContentBase64: "RG93bmxvYWQgbWUgdGhyb3VnaCBIVFRQ",
       }),
     });
     const uploaded = (await uploadResponse.json()) as {
@@ -97,19 +103,46 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
       asset: {
         id: string;
       };
+      download: {
+        storage_key: string;
+        url: string;
+      };
     };
+    assert.ok(exported.download.url, "Expected export payload to include a download URL.");
+
+    const downloadResponse = await fetch(`${baseUrl}${exported.download.url}`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const downloadedBody = Buffer.from(await downloadResponse.arrayBuffer()).toString("utf8");
 
     assert.equal(manuscriptResponse.status, 200);
     assert.equal(assetsResponse.status, 200);
     assert.equal(jobResponse.status, 200);
     assert.equal(exportResponse.status, 200);
+    assert.equal(downloadResponse.status, 200);
     assert.equal(manuscript.id, uploaded.manuscript.id);
     assert.deepEqual(assets.map((asset) => asset.id), [uploaded.asset.id]);
     assert.equal(job.id, uploaded.job.id);
     assert.equal(exported.manuscript_id, uploaded.manuscript.id);
     assert.equal(exported.asset.id, uploaded.asset.id);
+    assert.equal(
+      exported.download.url,
+      `/api/v1/document-assets/${uploaded.asset.id}/download`,
+    );
+    assert.match(
+      downloadResponse.headers.get("content-type") ?? "",
+      /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/i,
+    );
+    assert.match(
+      downloadResponse.headers.get("content-disposition") ?? "",
+      /filename="?uploaded-through-http\.docx"?/i,
+    );
+    assert.equal(downloadedBody, "Download me through HTTP");
   } finally {
     await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
 
@@ -303,5 +336,119 @@ test("workbench http proofreading routes create a draft and then finalize agains
     assert.equal(finalized.job.payload?.draftSnapshotId, draft.snapshot_id);
   } finally {
     await stopServer(server);
+  }
+});
+
+test("workbench http export download route materializes a proofreading final docx artifact", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-download-"));
+  const { server, baseUrl, seededIds } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-download/proofreading/draft.md",
+        fileName: "proofreading-draft.md",
+      }),
+    });
+    const draft = (await draftResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(draftResponse.status, 201);
+
+    const finalizeResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/finalize`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        draftAssetId: draft.asset.id,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-download/proofreading/final.docx",
+        fileName: "proofreading-final.docx",
+      }),
+    });
+    const finalized = (await finalizeResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(finalizeResponse.status, 201);
+
+    const exportResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/export-current-asset`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+        }),
+      },
+    );
+    const exported = (await exportResponse.json()) as {
+      asset: {
+        id: string;
+      };
+      download: {
+        storage_key: string;
+        file_name?: string;
+        url: string;
+      };
+    };
+    assert.ok(exported.download.url, "Expected export payload to include a download URL.");
+
+    const downloadResponse = await fetch(`${baseUrl}${exported.download.url}`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const downloadedBytes = Buffer.from(await downloadResponse.arrayBuffer());
+
+    assert.equal(exportResponse.status, 200);
+    assert.equal(exported.asset.id, finalized.asset.id);
+    assert.equal(
+      exported.download.url,
+      `/api/v1/document-assets/${finalized.asset.id}/download`,
+    );
+    assert.equal(downloadResponse.status, 200);
+    assert.equal(exported.download.file_name, "proofreading-final.docx");
+    assert.match(
+      downloadResponse.headers.get("content-type") ?? "",
+      /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/i,
+    );
+    assert.match(
+      downloadResponse.headers.get("content-disposition") ?? "",
+      /filename="?proofreading-final\.docx"?/i,
+    );
+    assert.equal(downloadedBytes.subarray(0, 2).toString("utf8"), "PK");
+
+    const materializedPath = path.join(
+      uploadRootDir,
+      ...exported.download.storage_key.split("/"),
+    );
+    const materializedStats = await stat(materializedPath);
+    assert.equal(materializedStats.isFile(), true);
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
