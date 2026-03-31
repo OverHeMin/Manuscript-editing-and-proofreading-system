@@ -8,7 +8,10 @@ import {
 } from "./manuscript-workbench-controls.tsx";
 import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
-import { ManuscriptWorkbenchSummary } from "./manuscript-workbench-summary.tsx";
+import {
+  ManuscriptWorkbenchSummary,
+  type WorkbenchActionResultViewModel,
+} from "./manuscript-workbench-summary.tsx";
 import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
@@ -36,6 +39,8 @@ export function ManuscriptWorkbenchPage({
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<string>("");
+  const [latestActionResult, setLatestActionResult] =
+    useState<WorkbenchActionResultViewModel | null>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -73,14 +78,27 @@ export function ManuscriptWorkbenchPage({
     );
   }, [workspace]);
 
-  async function run(task: () => Promise<void>) {
+  async function run(
+    actionLabel: string,
+    task: () => Promise<WorkbenchActionResultViewModel | void>,
+  ) {
     setBusy(true);
     setError("");
     try {
-      await task();
+      const result = await task();
+      if (result) {
+        setLatestActionResult(result);
+      }
     } catch (nextError) {
+      const message = formatError(nextError);
       setStatus("");
-      setError(formatError(nextError));
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel,
+        message,
+        details: [],
+      });
     } finally {
       setBusy(false);
     }
@@ -96,9 +114,31 @@ export function ManuscriptWorkbenchPage({
         ...inlineFields,
       }));
       setStatus(`Attached file ${inlineFields.fileName}`);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Attach Manuscript File",
+        message: `Attached file ${inlineFields.fileName}`,
+        details: [
+          {
+            label: "File",
+            value: inlineFields.fileName,
+          },
+          {
+            label: "MIME Type",
+            value: inlineFields.mimeType,
+          },
+        ],
+      });
     } catch (nextError) {
+      const message = formatError(nextError);
       setStatus("");
-      setError(formatError(nextError));
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Attach Manuscript File",
+        message,
+        details: [],
+      });
     } finally {
       setBusy(false);
     }
@@ -149,11 +189,26 @@ export function ManuscriptWorkbenchPage({
                   void attachUploadFile(file);
                 },
                 onSubmit: () =>
-                  void run(async () => {
+                  void run("Upload Manuscript", async () => {
                     const result = await controller.uploadManuscriptAndLoad(uploadForm);
                     setWorkspace(result.workspace);
                     setLatestJob(result.upload.job);
                     setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: "Upload Manuscript",
+                      message: `Uploaded manuscript ${result.upload.manuscript.id}`,
+                      details: [
+                        {
+                          label: "Manuscript",
+                          value: result.upload.manuscript.id,
+                        },
+                        {
+                          label: "Job",
+                          value: result.upload.job.id,
+                        },
+                      ],
+                    };
                   }),
               }
             : undefined
@@ -162,10 +217,25 @@ export function ManuscriptWorkbenchPage({
           manuscriptId: lookupId,
           onChange: setLookupId,
           onLoad: () =>
-            void run(async () => {
+            void run("Load Workspace", async () => {
               const nextWorkspace = await controller.loadWorkspace(lookupId.trim());
               setWorkspace(nextWorkspace);
               setStatus(`Loaded manuscript ${nextWorkspace.manuscript.id}`);
+              return {
+                tone: "success",
+                actionLabel: "Load Workspace",
+                message: `Loaded manuscript ${nextWorkspace.manuscript.id}`,
+                details: [
+                  {
+                    label: "Manuscript",
+                    value: nextWorkspace.manuscript.id,
+                  },
+                  {
+                    label: "Current Asset",
+                    value: nextWorkspace.currentAsset?.id ?? "Not available",
+                  },
+                ],
+              };
             }),
         }}
         moduleAction={
@@ -179,11 +249,12 @@ export function ManuscriptWorkbenchPage({
                   .filter((asset) => isSelectableParentAsset(asset))
                   .map((asset) => ({
                     value: asset.id,
-                    label: `${asset.asset_type} · ${asset.id}`,
+                    label: formatAssetOptionLabel(asset),
                   })),
+                selectedContextLabel: "Selected Parent Asset",
                 onSelect: setParentAssetId,
                 onRun: () =>
-                  void run(async () => {
+                  void run(resolveActionLabel(mode), async () => {
                     const result = await controller.runModuleAndLoad({
                       mode,
                       manuscriptId: workspace.manuscript.id,
@@ -195,6 +266,21 @@ export function ManuscriptWorkbenchPage({
                     setWorkspace(result.workspace);
                     setLatestJob(result.runResult.job);
                     setStatus(`Created asset ${result.runResult.asset.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: resolveActionLabel(mode),
+                      message: `Created asset ${result.runResult.asset.id}`,
+                      details: [
+                        {
+                          label: "Asset",
+                          value: result.runResult.asset.id,
+                        },
+                        {
+                          label: "Job",
+                          value: result.runResult.job.id,
+                        },
+                      ],
+                    };
                   }),
               }
             : undefined
@@ -210,11 +296,12 @@ export function ManuscriptWorkbenchPage({
                   .filter((asset) => asset.asset_type === "proofreading_draft_report")
                   .map((asset) => ({
                     value: asset.id,
-                    label: asset.id,
+                    label: formatAssetOptionLabel(asset),
                   })),
+                selectedContextLabel: "Selected Draft Asset",
                 onSelect: setDraftAssetId,
                 onRun: () =>
-                  void run(async () => {
+                  void run("Finalize Proofreading", async () => {
                     const result = await controller.finalizeProofreadingAndLoad({
                       manuscriptId: workspace.manuscript.id,
                       draftAssetId,
@@ -225,6 +312,21 @@ export function ManuscriptWorkbenchPage({
                     setWorkspace(result.workspace);
                     setLatestJob(result.runResult.job);
                     setStatus(`Finalized asset ${result.runResult.asset.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: "Finalize Proofreading",
+                      message: `Finalized asset ${result.runResult.asset.id}`,
+                      details: [
+                        {
+                          label: "Asset",
+                          value: result.runResult.asset.id,
+                        },
+                        {
+                          label: "Job",
+                          value: result.runResult.job.id,
+                        },
+                      ],
+                    };
                   }),
               }
             : undefined
@@ -235,22 +337,52 @@ export function ManuscriptWorkbenchPage({
                 canExport: true,
                 canRefreshLatestJob: Boolean(latestJob?.id),
                 onExport: () =>
-                  void run(async () => {
+                  void run("Export Current Asset", async () => {
                     const exported = await controller.exportCurrentAsset({
                       manuscriptId: workspace.manuscript.id,
                     });
                     setLatestExport(exported.download.storage_key);
                     setStatus(`Prepared export ${exported.asset.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: "Export Current Asset",
+                      message: `Prepared export ${exported.asset.id}`,
+                      details: [
+                        {
+                          label: "Asset",
+                          value: exported.asset.id,
+                        },
+                        {
+                          label: "Storage Key",
+                          value: exported.download.storage_key,
+                        },
+                      ],
+                    };
                   }),
                 onRefreshLatestJob: () => {
                   if (!latestJob?.id) {
                     return;
                   }
 
-                  void run(async () => {
+                  void run("Refresh Latest Job", async () => {
                     const nextJob = await controller.loadJob(latestJob.id);
                     setLatestJob(nextJob);
                     setStatus(`Refreshed job ${nextJob.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: "Refresh Latest Job",
+                      message: `Refreshed job ${nextJob.id}`,
+                      details: [
+                        {
+                          label: "Job",
+                          value: nextJob.id,
+                        },
+                        {
+                          label: "Status",
+                          value: nextJob.status,
+                        },
+                      ],
+                    };
                   });
                 },
               }
@@ -262,6 +394,7 @@ export function ManuscriptWorkbenchPage({
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}
+          latestActionResult={latestActionResult}
         />
       ) : null}
     </article>
@@ -317,4 +450,12 @@ function hasUploadPayload(input: UploadManuscriptInput): boolean {
     (input.fileContentBase64?.trim().length ?? 0) > 0 ||
     (input.storageKey?.trim().length ?? 0) > 0
   );
+}
+
+function formatAssetOptionLabel(asset: {
+  id: string;
+  asset_type: string;
+  file_name?: string | null;
+}): string {
+  return `${asset.file_name ?? asset.asset_type} · ${asset.asset_type} · ${asset.id}`;
 }

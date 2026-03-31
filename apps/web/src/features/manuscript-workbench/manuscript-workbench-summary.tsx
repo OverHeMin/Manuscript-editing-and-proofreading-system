@@ -5,20 +5,62 @@ import type { ManuscriptWorkbenchWorkspace } from "./manuscript-workbench-contro
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
+export interface WorkbenchActionResultDetail {
+  label: string;
+  value: string;
+}
+
+export interface WorkbenchActionResultViewModel {
+  tone: "success" | "error";
+  actionLabel: string;
+  message: string;
+  details: WorkbenchActionResultDetail[];
+}
+
 export interface ManuscriptWorkbenchSummaryProps {
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: string;
+  latestActionResult?: WorkbenchActionResultViewModel | null;
 }
 
 export function ManuscriptWorkbenchSummary({
   workspace,
   latestJob,
   latestExport,
+  latestActionResult = null,
 }: ManuscriptWorkbenchSummaryProps) {
   return (
     <section className="manuscript-workbench-summary">
       <div className="manuscript-workbench-summary-grid">
+        <SummaryCard title="Latest Action Result">
+          {latestActionResult ? (
+            <>
+              <SummaryMetric label="Action" value={latestActionResult.actionLabel} />
+              <SummaryMetric
+                label="Outcome"
+                value={
+                  <StatusPill tone={latestActionResult.tone}>
+                    {latestActionResult.tone === "success" ? "success" : "attention needed"}
+                  </StatusPill>
+                }
+              />
+              <SummaryMetric label="Result" value={latestActionResult.message} />
+              {latestActionResult.details.map((detail) => (
+                <SummaryMetric
+                  key={`${detail.label}:${detail.value}`}
+                  label={detail.label}
+                  value={detail.value}
+                />
+              ))}
+            </>
+          ) : (
+            <p className="manuscript-workbench-empty">
+              Complete an upload, module run, export, or refresh to pin the latest operator action.
+            </p>
+          )}
+        </SummaryCard>
+
         <SummaryCard title="Manuscript Overview">
           <SummaryMetric label="Title" value={workspace.manuscript.title} />
           <SummaryMetric label="Manuscript ID" value={workspace.manuscript.id} />
@@ -224,7 +266,7 @@ function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
 }
 
 interface StatusPillProps {
-  tone: "neutral" | "success";
+  tone: "neutral" | "success" | "error";
   children: ReactNode;
 }
 

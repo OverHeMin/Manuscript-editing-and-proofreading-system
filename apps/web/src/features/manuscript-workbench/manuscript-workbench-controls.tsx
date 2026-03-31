@@ -44,6 +44,7 @@ export interface ManuscriptWorkbenchActionPanelProps {
   emptyLabel: string;
   actionLabel: string;
   options: WorkbenchSelectOption[];
+  selectedContextLabel?: string;
   onSelect(value: string): void;
   onRun(): void;
 }
@@ -78,6 +79,13 @@ export function ManuscriptWorkbenchControls({
   const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
   const canRunModule = Boolean(moduleAction?.selectedAssetId.length);
   const canFinalizeProofreading = Boolean(finalizeAction?.selectedAssetId.length);
+  const requiresUploadPayload = Boolean(
+    intake &&
+      (intake.uploadForm.fileContentBase64?.trim().length ?? 0) === 0 &&
+      (intake.uploadForm.storageKey?.trim().length ?? 0) === 0,
+  );
+  const selectedModuleOption = resolveSelectedOption(moduleAction);
+  const selectedFinalizeOption = resolveSelectedOption(finalizeAction);
 
   return (
     <section className="manuscript-workbench-controls">
@@ -93,7 +101,9 @@ export function ManuscriptWorkbenchControls({
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
-              <label className="manuscript-workbench-field">
+              <label
+                className={resolveFieldClassName(intake.uploadForm.title.trim().length === 0)}
+              >
                 <span>Title</span>
                 <input
                   value={intake.uploadForm.title}
@@ -115,7 +125,7 @@ export function ManuscriptWorkbenchControls({
                   ))}
                 </select>
               </label>
-              <label className="manuscript-workbench-field">
+              <label className={resolveFieldClassName(requiresUploadPayload)}>
                 <span>Storage Key</span>
                 <input
                   value={intake.uploadForm.storageKey ?? ""}
@@ -123,7 +133,7 @@ export function ManuscriptWorkbenchControls({
                   onChange={(event) => intake.onStorageKeyChange(event.target.value)}
                 />
               </label>
-              <label className="manuscript-workbench-field">
+              <label className={resolveFieldClassName(requiresUploadPayload)}>
                 <span>Manuscript File</span>
                 <input
                   type="file"
@@ -170,7 +180,7 @@ export function ManuscriptWorkbenchControls({
             </div>
           </div>
           <div className="manuscript-workbench-panel-body">
-            <label className="manuscript-workbench-field">
+            <label className={resolveFieldClassName(!canLoadWorkspace)}>
               <span>Manuscript ID</span>
               <input
                 value={lookup.manuscriptId}
@@ -203,7 +213,7 @@ export function ManuscriptWorkbenchControls({
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
-              <label className="manuscript-workbench-field">
+              <label className={resolveFieldClassName(!canRunModule)}>
                 <span>Parent Asset</span>
                 <select
                   value={moduleAction.selectedAssetId}
@@ -217,6 +227,12 @@ export function ManuscriptWorkbenchControls({
                   ))}
                 </select>
               </label>
+              {selectedModuleOption ? (
+                <div className="manuscript-workbench-selection-context">
+                  <span>{moduleAction.selectedContextLabel ?? "Selected Asset"}</span>
+                  <strong>{selectedModuleOption.label}</strong>
+                </div>
+              ) : null}
               {!canRunModule ? (
                 <p className="manuscript-workbench-help is-warning">
                   Select a parent asset before starting this module run.
@@ -244,7 +260,7 @@ export function ManuscriptWorkbenchControls({
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
-              <label className="manuscript-workbench-field">
+              <label className={resolveFieldClassName(!canFinalizeProofreading)}>
                 <span>Draft Asset</span>
                 <select
                   value={finalizeAction.selectedAssetId}
@@ -258,6 +274,12 @@ export function ManuscriptWorkbenchControls({
                   ))}
                 </select>
               </label>
+              {selectedFinalizeOption ? (
+                <div className="manuscript-workbench-selection-context">
+                  <span>{finalizeAction.selectedContextLabel ?? "Selected Asset"}</span>
+                  <strong>{selectedFinalizeOption.label}</strong>
+                </div>
+              ) : null}
               {!canFinalizeProofreading ? (
                 <p className="manuscript-workbench-help is-warning">
                   Select a proofreading draft before finalizing.
@@ -343,4 +365,20 @@ function buildIntakeValidationMessages(input: UploadManuscriptInput): string[] {
   }
 
   return messages;
+}
+
+function resolveFieldClassName(isInvalid: boolean): string {
+  return isInvalid
+    ? "manuscript-workbench-field is-invalid"
+    : "manuscript-workbench-field";
+}
+
+function resolveSelectedOption(
+  action: ManuscriptWorkbenchActionPanelProps | undefined,
+): WorkbenchSelectOption | undefined {
+  if (!action?.selectedAssetId) {
+    return undefined;
+  }
+
+  return action.options.find((option) => option.value === action.selectedAssetId);
 }

@@ -68,6 +68,10 @@
   gap: 6px;
 }
 
+.manuscript-workbench-field.is-invalid span {
+  color: #b91c1c;
+}
+
 .manuscript-workbench-field span {
   font-size: 0.77rem;
   font-weight: 700;
@@ -92,6 +96,34 @@
   outline: 2px solid #bfdbfe;
   outline-offset: 1px;
   border-color: #60a5fa;
+}
+
+.manuscript-workbench-field.is-invalid input,
+.manuscript-workbench-field.is-invalid select {
+  border-color: #fca5a5;
+  background: #fff7ed;
+}
+
+.manuscript-workbench-selection-context {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  background: #f0f9ff;
+}
+
+.manuscript-workbench-selection-context span {
+  font-size: 0.77rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0369a1;
+}
+
+.manuscript-workbench-selection-context strong {
+  color: #0f172a;
+  word-break: break-word;
 }
 
 .manuscript-workbench-help {
@@ -217,6 +249,11 @@
 .manuscript-workbench-status-pill.is-success {
   background: #dcfce7;
   color: #166534;
+}
+
+.manuscript-workbench-status-pill.is-error {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .manuscript-workbench-asset-identity,

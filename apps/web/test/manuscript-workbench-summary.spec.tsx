@@ -99,10 +99,29 @@ test("manuscript workbench summary renders operator-facing overview cards and th
         updated_at: "2026-03-31T09:46:00.000Z",
       }}
       latestExport="exports/manuscript-1/current.docx"
+      latestActionResult={{
+        tone: "success",
+        actionLabel: "Run Editing",
+        message: "Created asset asset-edited-1",
+        details: [
+          {
+            label: "Asset",
+            value: "asset-edited-1",
+          },
+          {
+            label: "Job",
+            value: "job-edit-1",
+          },
+        ],
+      }}
     />,
   );
 
   assert.match(markup, /Manuscript Overview/);
+  assert.match(markup, /Latest Action Result/);
+  assert.match(markup, /Run Editing/);
+  assert.match(markup, /Created asset asset-edited-1/);
+  assert.match(markup, /job-edit-1/);
   assert.match(markup, /Cardiology review/);
   assert.match(markup, /Current Asset/);
   assert.match(markup, /editing-final\.docx/);

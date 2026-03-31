@@ -123,4 +123,53 @@ test("manuscript workbench controls show inline guidance when required operator 
   assert.match(markup, /Enter a manuscript ID before loading the workspace\./);
   assert.match(markup, /Select a parent asset before starting this module run\./);
   assert.match(markup, /Refresh becomes available after the workspace creates at least one job\./);
+  assert.match(markup, /class="manuscript-workbench-field is-invalid"/);
+});
+
+test("manuscript workbench controls surface the currently selected asset context for operators", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="proofreading"
+      busy={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      moduleAction={{
+        title: "Proofreading Draft",
+        selectedAssetId: "asset-edited-1",
+        emptyLabel: "Select asset",
+        actionLabel: "Create Draft",
+        options: [
+          {
+            value: "asset-edited-1",
+            label: "editing-final.docx · edited_docx · asset-edited-1",
+          },
+        ],
+        selectedContextLabel: "Selected Parent Asset",
+        onSelect: () => {},
+        onRun: () => {},
+      }}
+      finalizeAction={{
+        selectedAssetId: "asset-draft-1",
+        emptyLabel: "Select draft",
+        actionLabel: "Finalize Proofreading",
+        options: [
+          {
+            value: "asset-draft-1",
+            label: "proofreading-draft.docx · proofreading_draft_report · asset-draft-1",
+          },
+        ],
+        selectedContextLabel: "Selected Draft Asset",
+        onSelect: () => {},
+        onRun: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /Selected Parent Asset/);
+  assert.match(markup, /editing-final\.docx/);
+  assert.match(markup, /Selected Draft Asset/);
+  assert.match(markup, /proofreading-draft\.docx/);
 });
