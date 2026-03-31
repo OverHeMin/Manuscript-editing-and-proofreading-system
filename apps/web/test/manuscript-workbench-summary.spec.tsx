@@ -8,6 +8,7 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="editing"
+      accessibleHandoffModes={["editing", "proofreading"]}
       workspace={{
         manuscript: {
           id: "manuscript-1",
@@ -123,6 +124,8 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /Run Editing/);
   assert.match(markup, /Created asset asset-edited-1/);
   assert.match(markup, /job-edit-1/);
+  assert.match(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /href="#proofreading\?manuscriptId=manuscript-1"/);
   assert.match(markup, /Cardiology review/);
   assert.match(markup, /Current Asset/);
   assert.match(markup, /editing-final\.docx/);
@@ -139,6 +142,7 @@ test("manuscript workbench summary guides screening operators toward the next go
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="screening"
+      accessibleHandoffModes={["screening", "editing"]}
       workspace={{
         manuscript: {
           id: "manuscript-screen-1",
@@ -214,6 +218,7 @@ test("manuscript workbench summary guides proofreading operators to finalize an 
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="proofreading"
+      accessibleHandoffModes={["proofreading"]}
       workspace={{
         manuscript: {
           id: "manuscript-proof-1",

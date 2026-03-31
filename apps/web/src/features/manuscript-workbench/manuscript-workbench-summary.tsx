@@ -22,6 +22,7 @@ export interface WorkbenchActionResultViewModel {
 
 export interface ManuscriptWorkbenchSummaryProps {
   mode: ManuscriptWorkbenchMode;
+  accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: string;
@@ -30,6 +31,7 @@ export interface ManuscriptWorkbenchSummaryProps {
 
 export function ManuscriptWorkbenchSummary({
   mode,
+  accessibleHandoffModes = [],
   workspace,
   latestJob,
   latestExport,
@@ -83,6 +85,19 @@ export function ManuscriptWorkbenchSummary({
               value={detail.value}
             />
           ))}
+          {recommendedNextStep.targetMode &&
+          accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
+            <a
+              className="manuscript-workbench-shortcut"
+              href={formatWorkbenchHandoffHref(
+                recommendedNextStep.targetMode,
+                workspace.manuscript.id,
+              )}
+            >
+              {recommendedNextStep.targetLabel ??
+                `Open ${formatWorkbenchModeLabel(recommendedNextStep.targetMode)} Workbench`}
+            </a>
+          ) : null}
         </SummaryCard>
 
         <SummaryCard title="Manuscript Overview">
@@ -313,6 +328,8 @@ interface RecommendedNextStepViewModel {
   focus: string;
   guidance: string;
   details: WorkbenchActionResultDetail[];
+  targetMode?: ManuscriptWorkbenchMode;
+  targetLabel?: string;
 }
 
 function buildRecommendedNextStep(
@@ -370,6 +387,8 @@ function buildRecommendedNextStep(
             value: describeAsset(workspace.currentAsset),
           },
         ],
+        targetMode: "editing",
+        targetLabel: "Open Editing Workbench",
       };
     }
 
@@ -404,6 +423,8 @@ function buildRecommendedNextStep(
             value: describeAsset(workspace.currentAsset),
           },
         ],
+        targetMode: "proofreading",
+        targetLabel: "Open Proofreading Workbench",
       };
     }
 
@@ -491,4 +512,29 @@ function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
     asset.asset_type === "final_proof_annotated_docx" ||
     asset.asset_type === "human_final_docx"
   );
+}
+
+function formatWorkbenchHandoffHref(
+  targetMode: ManuscriptWorkbenchMode,
+  manuscriptId: string,
+): string {
+  const params = new URLSearchParams({
+    manuscriptId,
+  });
+
+  return `#${targetMode}?${params.toString()}`;
+}
+
+function formatWorkbenchModeLabel(targetMode: ManuscriptWorkbenchMode): string {
+  if (targetMode === "submission") {
+    return "Submission";
+  }
+  if (targetMode === "screening") {
+    return "Screening";
+  }
+  if (targetMode === "editing") {
+    return "Editing";
+  }
+
+  return "Proofreading";
 }

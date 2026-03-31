@@ -35,3 +35,35 @@ test("submission workbench renders a real file picker for inline uploads", () =>
   assert.match(markup, /Storage Key/);
   assert.match(markup, /Upload Manuscript/);
 });
+
+test("manuscript workbench page prefills lookup state from a workbench handoff", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="proofreading"
+      prefilledManuscriptId="manuscript-9"
+      controller={{
+        loadWorkspace: async () => {
+          throw new Error("not used");
+        },
+        uploadManuscriptAndLoad: async () => {
+          throw new Error("not used");
+        },
+        runModuleAndLoad: async () => {
+          throw new Error("not used");
+        },
+        finalizeProofreadingAndLoad: async () => {
+          throw new Error("not used");
+        },
+        loadJob: async () => {
+          throw new Error("not used");
+        },
+        exportCurrentAsset: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /manuscript-9/);
+  assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
+});

@@ -30,6 +30,12 @@
   margin-top: 18px;
 }
 
+.manuscript-workbench-prefill-note {
+  margin: 12px 0 0;
+  color: #0f766e;
+  font-weight: 600;
+}
+
 .manuscript-workbench-controls-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -203,6 +209,23 @@
   margin: 0 0 14px;
   font-size: 0.98rem;
   color: #0f172a;
+}
+
+.manuscript-workbench-shortcut {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 10px 14px;
+  border: 1px solid #0f766e;
+  border-radius: 10px;
+  background: #ecfeff;
+  color: #115e59;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.manuscript-workbench-shortcut:hover {
+  background: #ccfbf1;
 }
 
 .manuscript-workbench-metric-list {

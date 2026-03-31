@@ -11,7 +11,12 @@ import {
   ManuscriptWorkbenchPage,
   type ManuscriptWorkbenchMode,
 } from "../features/manuscript-workbench/index.ts";
-import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
+import {
+  formatWorkbenchHash,
+  isManuscriptWorkbenchId,
+  resolveWorkbenchLocation,
+  resolveWorkbenchRenderKind,
+} from "./workbench-routing.ts";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
@@ -27,9 +32,13 @@ export function WorkbenchHost({
   noticeMessage = null,
 }: WorkbenchHostProps) {
   const visibleEntries = session.availableWorkbenchEntries;
-  const [activeWorkbenchId, setActiveWorkbenchId] = useState<WorkbenchId>(() =>
-    resolveInitialWorkbenchId(session.defaultWorkbench, visibleEntries),
+  const [routeState, setRouteState] = useState(() =>
+    resolveInitialWorkbenchRoute(session.defaultWorkbench, visibleEntries),
   );
+  const activeWorkbenchId = routeState.activeWorkbenchId;
+  const accessibleManuscriptWorkbenchModes = visibleEntries
+    .map((entry) => entry.id)
+    .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -42,9 +51,32 @@ export function WorkbenchHost({
       ? activeWorkbenchId
       : resolveInitialWorkbenchId(session.defaultWorkbench, visibleEntries);
     if (nextActiveWorkbenchId !== activeWorkbenchId) {
-      setActiveWorkbenchId(nextActiveWorkbenchId);
+      setRouteState({
+        activeWorkbenchId: nextActiveWorkbenchId,
+      });
     }
   }, [activeWorkbenchId, session.defaultWorkbench, visibleEntries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handleHashChange() {
+      setRouteState(
+        resolveInitialWorkbenchRoute(
+          session.defaultWorkbench,
+          visibleEntries,
+          window.location.hash,
+        ),
+      );
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, [session.defaultWorkbench, visibleEntries]);
 
   const activeEntry =
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
@@ -92,7 +124,7 @@ export function WorkbenchHost({
                     <button
                       type="button"
                       className={`workbench-nav-button${isActive ? " is-active" : ""}`}
-                      onClick={() => setActiveWorkbenchId(entry.id)}
+                      onClick={() => navigateToWorkbench(entry.id)}
                     >
                       <span>{entry.label}</span>
                       <small>{entry.placement}</small>
@@ -123,8 +155,11 @@ export function WorkbenchHost({
       case "manuscript-workbench":
         return (
           <ManuscriptWorkbenchPage
+            key={activeWorkbenchId}
             actorRole={session.role}
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
+            prefilledManuscriptId={routeState.manuscriptId}
+            accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
           />
         );
       case "knowledge-review":
@@ -145,6 +180,17 @@ export function WorkbenchHost({
         );
     }
   }
+
+  function navigateToWorkbench(workbenchId: WorkbenchId, manuscriptId?: string) {
+    setRouteState({
+      activeWorkbenchId: workbenchId,
+      manuscriptId,
+    });
+
+    if (typeof window !== "undefined") {
+      window.location.hash = formatWorkbenchHash(workbenchId, manuscriptId);
+    }
+  }
 }
 
 function resolveInitialWorkbenchId(
@@ -156,4 +202,31 @@ function resolveInitialWorkbenchId(
   }
 
   return visibleEntries[0]?.id ?? defaultWorkbench;
+}
+
+function resolveInitialWorkbenchRoute(
+  defaultWorkbench: WorkbenchId,
+  visibleEntries: readonly WorkbenchEntry[],
+  hash?: string,
+): {
+  activeWorkbenchId: WorkbenchId;
+  manuscriptId?: string;
+} {
+  const location = resolveWorkbenchLocation(
+    hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
+  );
+
+  if (
+    location.workbenchId &&
+    visibleEntries.some((entry) => entry.id === location.workbenchId)
+  ) {
+    return {
+      activeWorkbenchId: location.workbenchId,
+      manuscriptId: location.manuscriptId,
+    };
+  }
+
+  return {
+    activeWorkbenchId: resolveInitialWorkbenchId(defaultWorkbench, visibleEntries),
+  };
 }

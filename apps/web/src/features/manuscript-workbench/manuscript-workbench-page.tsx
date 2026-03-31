@@ -24,6 +24,8 @@ export interface ManuscriptWorkbenchPageProps {
   mode: ManuscriptWorkbenchMode;
   actorRole?: AuthRole;
   controller?: ManuscriptWorkbenchController;
+  prefilledManuscriptId?: string;
+  accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
 }
 
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
@@ -33,9 +35,12 @@ export function ManuscriptWorkbenchPage({
   mode,
   actorRole = "user",
   controller = defaultController,
+  prefilledManuscriptId,
+  accessibleHandoffModes,
 }: ManuscriptWorkbenchPageProps) {
   const canUpload = mode === "submission" || actorRole === "admin";
-  const [lookupId, setLookupId] = useState("");
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const [lookupId, setLookupId] = useState(normalizedPrefilledManuscriptId);
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<string>("");
@@ -77,6 +82,22 @@ export function ManuscriptWorkbenchPage({
         : workspace.latestProofreadingDraftAsset?.id ?? "",
     );
   }, [workspace]);
+
+  useEffect(() => {
+    if (normalizedPrefilledManuscriptId.length === 0) {
+      return;
+    }
+
+    setLookupId(normalizedPrefilledManuscriptId);
+    setWorkspace(null);
+    setLatestJob(null);
+    setLatestExport("");
+    setLatestActionResult(null);
+    setStatus("");
+    setError("");
+    setParentAssetId("");
+    setDraftAssetId("");
+  }, [normalizedPrefilledManuscriptId]);
 
   async function run(
     actionLabel: string,
@@ -148,6 +169,11 @@ export function ManuscriptWorkbenchPage({
     <article className="workbench-placeholder">
       <h2>{resolveTitle(mode)}</h2>
       <p>{resolveDescription(mode)}</p>
+      {normalizedPrefilledManuscriptId.length > 0 ? (
+        <p className="manuscript-workbench-prefill-note">
+          This workbench was prefilled from the previous manuscript handoff.
+        </p>
+      ) : null}
       {error ? (
         <ManuscriptWorkbenchNotice
           tone="error"
@@ -392,6 +418,7 @@ export function ManuscriptWorkbenchPage({
       {workspace ? (
         <ManuscriptWorkbenchSummary
           mode={mode}
+          accessibleHandoffModes={accessibleHandoffModes}
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}
