@@ -16,7 +16,7 @@
 - Manuscript workbench 的上传、查稿、模块执行、导出控制区已重组为运营面板式布局
 - Manuscript workbench 现已提供顶部成功/错误状态横幅和面板内输入校验提示
 - 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行稿件 handoff、learning review、knowledge review 真实浏览器 smoke
-- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
+- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理/追踪，以及 verification-ops 评测资产 runtime
 - 本地运维、迁移、交付文档基线
 
 ## 当前状态
@@ -53,10 +53,10 @@
 - `apps/web` 已经能从 submission / screening / editing / proofreading workbench 直接触发真实稿件主链路与模块执行
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
-- `apps/api run serve` 已经能持久化 learning review 的 reviewed-case snapshots、人工反馈记录、governed provenance，以及 knowledge review 的队列 / 历史治理数据
+- `apps/api run serve` 已经能持久化 learning review 的 reviewed-case snapshots、人工反馈记录、governed provenance，knowledge review 的队列 / 历史治理数据，以及 verification-ops 的 sample sets / check profiles / suites / runs / evidence packs
 - `apps/api` 的稿件 intake 路由已经支持 `fileContentBase64` 直传，本地文件默认写入 `.local-data/uploads/<app-env>`，也可通过 `UPLOAD_ROOT_DIR` 改到独立数据目录
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
-- `pnpm verify:manuscript-workbench` 当前已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions 的真实浏览器门禁
+- `pnpm verify:manuscript-workbench` 当前已经覆盖 manuscript handoff、learning review flow、knowledge review handoff + approve/reject terminal actions 的真实浏览器门禁，并包含 verification-ops 持久化 HTTP 路由回归
 - 但 `serve` 当前仍是“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
 
 ## 环境要求
@@ -105,7 +105,7 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
-- 当前持久化范围已覆盖“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + agent-tooling governance + execution governance/tracking”
+- 当前持久化范围已覆盖“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + agent-tooling governance + execution governance/tracking + verification-ops persistence”
 - 不会自动注入 demo 审稿数据
 
 ### Web Workbench Shell
@@ -149,4 +149,5 @@
 - 模型执行治理、评测与路由策略联动
 - agent 执行编排、运行证据与更深层治理运营能力
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
+- Evaluation Workbench UI（Phase 9B）对 verification-ops 持久化路由的运营化接入
 - 部署、监控、回滚、远程维护标准化

@@ -110,6 +110,11 @@ import {
   TemplateGovernanceService,
 } from "../modules/templates/index.ts";
 import {
+  createVerificationOpsApi,
+  PostgresVerificationOpsRepository,
+  VerificationOpsService,
+} from "../modules/verification-ops/index.ts";
+import {
   createToolGatewayApi,
   PostgresToolGatewayRepository,
   ToolGatewayService,
@@ -214,6 +219,9 @@ export function createPersistentGovernanceRuntime(
     new PostgresPromptSkillRegistryRepository({
     client: options.client,
   });
+  const verificationOpsRepository = new PostgresVerificationOpsRepository({
+    client: options.client,
+  });
 
   const workbenchTransactionManager = createPostgresWriteTransactionManager({
     getClient: async () => options.client.connect(),
@@ -236,6 +244,12 @@ export function createPersistentGovernanceRuntime(
     getClient: async () => options.client.connect(),
     createContext: (client) => ({
       repository: new PostgresFeedbackGovernanceRepository({ client }),
+    }),
+  });
+  const verificationOpsTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      repository: new PostgresVerificationOpsRepository({ client }),
     }),
   });
 
@@ -262,6 +276,13 @@ export function createPersistentGovernanceRuntime(
     documentAssetService,
     feedbackGovernanceService,
     transactionManager: learningTransactionManager,
+  });
+  const verificationOpsService = new VerificationOpsService({
+    repository: verificationOpsRepository,
+    reviewedCaseSnapshotRepository,
+    learningService,
+    toolGatewayRepository,
+    transactionManager: verificationOpsTransactionManager,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -505,6 +526,9 @@ export function createPersistentGovernanceRuntime(
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+    }),
+    verificationOpsApi: createVerificationOpsApi({
+      verificationOpsService,
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),

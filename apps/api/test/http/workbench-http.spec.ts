@@ -1,8 +1,14 @@
+import { once } from "node:events";
 import { mkdtemp, rm, stat } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
+import {
+  createApiHttpServer,
+  type ApiHttpServer,
+} from "../../src/http/api-http-server.ts";
 import {
   loginAsDemoUser,
   startWorkbenchServer,
@@ -452,6 +458,367 @@ test("workbench http export download route materializes a proofreading final doc
     await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
+
+test("verification ops http routes support an admin evaluation flow and learning handoff", async () => {
+  const { server, baseUrl } = await startDefaultDemoServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createSampleSetResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-sample-sets`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            name: "Demo Editing Evaluation Samples",
+            module: "editing",
+            sampleItemInputs: [
+              {
+                reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
+                riskTags: ["structure"],
+              },
+            ],
+          },
+        }),
+      },
+    );
+    assert.equal(createSampleSetResponse.status, 201);
+    const sampleSet = (await createSampleSetResponse.json()) as {
+      id: string;
+      status: string;
+      sample_count: number;
+    };
+    assert.equal(sampleSet.status, "draft");
+    assert.equal(sampleSet.sample_count, 1);
+
+    const publishSampleSetResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-sample-sets/${sampleSet.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+        }),
+      },
+    );
+    assert.equal(publishSampleSetResponse.status, 200);
+
+    const createCheckProfileResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/check-profiles`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            name: "Demo Browser QA Check",
+            checkType: "browser_qa",
+          },
+        }),
+      },
+    );
+    assert.equal(createCheckProfileResponse.status, 201);
+    const checkProfile = (await createCheckProfileResponse.json()) as {
+      id: string;
+      status: string;
+    };
+    assert.equal(checkProfile.status, "draft");
+
+    const publishCheckProfileResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+        }),
+      },
+    );
+    assert.equal(publishCheckProfileResponse.status, 200);
+
+    const createSuiteResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            name: "Demo Editing Regression Suite",
+            suiteType: "regression",
+            verificationCheckProfileIds: [checkProfile.id],
+            moduleScope: ["editing"],
+            requiresProductionBaseline: true,
+            supportsAbComparison: true,
+            hardGatePolicy: {
+              mustUseDeidentifiedSamples: true,
+              requiresParsableOutput: true,
+            },
+            scoreWeights: {
+              structure: 25,
+              terminology: 20,
+              knowledgeCoverage: 20,
+              riskDetection: 20,
+              humanEditBurden: 10,
+              costAndLatency: 5,
+            },
+          },
+        }),
+      },
+    );
+    assert.equal(createSuiteResponse.status, 201);
+    const suite = (await createSuiteResponse.json()) as {
+      id: string;
+      status: string;
+    };
+    assert.equal(suite.status, "draft");
+
+    const activateSuiteResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+        }),
+      },
+    );
+    assert.equal(activateSuiteResponse.status, 200);
+
+    const createRunResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            suiteId: suite.id,
+            sampleSetId: sampleSet.id,
+            baselineBinding: {
+              lane: "baseline",
+              modelId: "demo-model-prod-1",
+              runtimeId: "demo-runtime-prod-1",
+              promptTemplateId: "demo-prompt-prod-1",
+              skillPackageIds: ["demo-skill-prod-1"],
+              moduleTemplateId: "demo-template-prod-1",
+            },
+            candidateBinding: {
+              lane: "candidate",
+              modelId: "demo-model-candidate-1",
+              runtimeId: "demo-runtime-prod-1",
+              promptTemplateId: "demo-prompt-prod-1",
+              skillPackageIds: ["demo-skill-prod-1"],
+              moduleTemplateId: "demo-template-prod-1",
+            },
+          },
+        }),
+      },
+    );
+    assert.equal(createRunResponse.status, 201);
+    const run = (await createRunResponse.json()) as {
+      id: string;
+      status: string;
+      run_item_count: number;
+    };
+    assert.equal(run.status, "queued");
+    assert.equal(run.run_item_count, 1);
+
+    const listRunItemsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/items`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(listRunItemsResponse.status, 200);
+    const runItems = (await listRunItemsResponse.json()) as Array<{
+      id: string;
+      lane: string;
+    }>;
+    assert.equal(runItems.length, 1);
+    assert.equal(runItems[0]?.lane, "candidate");
+
+    const recordRunItemResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-run-items/${runItems[0]?.id}/result`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            runItemId: runItems[0]?.id,
+            resultAssetId: "human-final-demo-1",
+            hardGatePassed: true,
+            weightedScore: 91,
+            diffSummary: "Candidate improves editing structure stability.",
+          },
+        }),
+      },
+    );
+    assert.equal(recordRunItemResponse.status, 200);
+
+    const recordEvidenceResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evidence`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            kind: "url",
+            label: "Demo evaluation browser QA",
+            uri: "https://example.test/evidence/browser-qa",
+          },
+        }),
+      },
+    );
+    assert.equal(recordEvidenceResponse.status, 201);
+    const evidence = (await recordEvidenceResponse.json()) as { id: string };
+
+    const completeRunResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/complete`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          status: "passed",
+          evidenceIds: [evidence.id],
+        }),
+      },
+    );
+    assert.equal(completeRunResponse.status, 200);
+
+    const finalizeRunResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/finalize`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+        }),
+      },
+    );
+    assert.equal(finalizeRunResponse.status, 200);
+    const finalized = (await finalizeRunResponse.json()) as {
+      run: {
+        id: string;
+        status: string;
+      };
+      evidence_pack: {
+        id: string;
+        summary_status: string;
+      };
+      recommendation: {
+        status: string;
+      };
+    };
+    assert.equal(finalized.run.id, run.id);
+    assert.equal(finalized.run.status, "passed");
+    assert.equal(finalized.evidence_pack.summary_status, "recommended");
+    assert.equal(finalized.recommendation.status, "recommended");
+
+    const createLearningCandidateResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/learning-candidates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "admin",
+          input: {
+            runId: run.id,
+            evidencePackId: finalized.evidence_pack.id,
+            reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
+            candidateType: "prompt_optimization_candidate",
+            title: "Demo evaluation prompt promotion",
+            proposalText: "Promote the candidate editing prompt after regression approval.",
+            createdBy: "forged-admin",
+            sourceAssetId: "human-final-demo-1",
+          },
+        }),
+      },
+    );
+    assert.equal(createLearningCandidateResponse.status, 201);
+    const learningCandidate = (await createLearningCandidateResponse.json()) as {
+      type: string;
+      status: string;
+      created_by: string;
+      governed_evaluation_run_id?: string;
+      governed_evidence_pack_id?: string;
+    };
+    assert.equal(learningCandidate.type, "prompt_optimization_candidate");
+    assert.equal(learningCandidate.status, "pending_review");
+    assert.equal(learningCandidate.created_by, "dev-admin");
+    assert.equal(learningCandidate.governed_evaluation_run_id, run.id);
+    assert.equal(
+      learningCandidate.governed_evidence_pack_id,
+      finalized.evidence_pack.id,
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
+async function startDefaultDemoServer(): Promise<{
+  server: ApiHttpServer;
+  baseUrl: string;
+}> {
+  const server = createApiHttpServer({
+    appEnv: "local",
+    allowedOrigins: ["http://127.0.0.1:4173"],
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
+
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
+  };
+}
 
 test("workbench http proofreading publish route creates a human-final asset and advances export resolution", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();

@@ -9,7 +9,7 @@
 - demo runtime
   本地联调专用，内存态，允许 demo 数据
 - persistent runtime
-  当前用于 PostgreSQL-backed 稿件主链路、认证、学习/知识治理主干、治理注册表、agent-tooling 治理与模型路由
+  当前用于 PostgreSQL-backed 稿件主链路、认证、学习/知识治理主干、治理注册表、agent-tooling 治理、执行治理/追踪、模型路由与 verification-ops 评测资产
 
 ## 2. 当前持久化边界
 
@@ -45,11 +45,21 @@
 - 执行治理配置
 - 执行追踪快照
 - 知识命中日志
+- Evaluation Sample Sets
+- Evaluation Sample Set Items
+- Verification Check Profiles
+- Release Check Profiles
+- Evaluation Suites
+- Verification Evidence
+- Evaluation Runs
+- Evaluation Run Items
+- Evaluation Evidence Packs
+- Evaluation Promotion Recommendations
 
 当前仍然不是完整生产持久化的部分：
 
 - 完整学习主流程的更深自动化、评测闭环与策略优化
-- 更完整的评测、验证与 agent 执行编排等后续模块
+- 更完整的评测运营 UI、验证与 agent 执行编排等后续模块
 
 因此，persistent runtime 当前应被视为：
 
@@ -168,6 +178,7 @@ Web 关键环境变量：
 
 - 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 smoke
 - 当前浏览器门禁已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions
+- 同一条门禁也覆盖 verification-ops 持久化 HTTP 回归，确保评测资产、run/evidence/evidence-pack 与 learning handoff 在重启后仍可读取和继续流转
 - `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
 
 ## 6. 启动顺序
@@ -204,6 +215,10 @@ Web 关键环境变量：
   - Tool Permission Policy Registry
   - Agent Execution Logs
   - Prompt / Skill Registry
+  - Verification Sample Sets / Sample Set Items
+  - Verification Check Profiles / Release Check Profiles
+  - Evaluation Suites / Runs / Run Items
+  - Verification Evidence / Evidence Packs / Promotion Recommendations
 
 回滚原则：
 

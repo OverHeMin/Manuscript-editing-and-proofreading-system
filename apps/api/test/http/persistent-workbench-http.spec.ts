@@ -53,6 +53,8 @@ import {
 interface PersistentWorkbenchSeededIds {
   manuscriptId: string;
   originalAssetId: string;
+  humanFinalAssetId: string;
+  reviewedCaseSnapshotId: string;
   screeningKnowledgeId: string;
   proofreadingKnowledgeId: string;
   screeningModelId: string;
@@ -62,6 +64,8 @@ interface PersistentWorkbenchSeededIds {
 const seededIds: PersistentWorkbenchSeededIds = {
   manuscriptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   originalAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  humanFinalAssetId: "abababab-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  reviewedCaseSnapshotId: "cdcdcdcd-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   screeningKnowledgeId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   proofreadingKnowledgeId: "eeeeeeee-cccc-4ccc-8ccc-cccccccccccc",
   screeningModelId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
@@ -256,7 +260,6 @@ test("persistent workbench screening routes keep governed execution evidence acr
     const seedPool = new Pool({ connectionString: databaseUrl });
     try {
       await seedPersistentWorkbenchData(seedPool);
-
       const firstServer = await startPersistentWorkbenchServer(databaseUrl);
       try {
         const cookie = await loginAsPersistentUser(
@@ -1117,6 +1120,402 @@ test("persistent learning writebacks can submit knowledge drafts into review acr
   });
 });
 
+test("persistent verification ops routes keep finalized evaluation evidence usable across restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent verification database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      await seedPersistentVerificationLearningFixtures(seedPool);
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.admin",
+        );
+
+        const createSampleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-sample-sets`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                name: "Persistent Evaluation Samples",
+                module: "proofreading",
+                sampleItemInputs: [
+                  {
+                    reviewedCaseSnapshotId: seededIds.reviewedCaseSnapshotId,
+                    riskTags: ["terminology"],
+                  },
+                ],
+              },
+            }),
+          },
+        );
+        assert.equal(createSampleSetResponse.status, 201);
+        const sampleSet = (await createSampleSetResponse.json()) as {
+          id: string;
+        };
+
+        const publishSampleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-sample-sets/${sampleSet.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+            }),
+          },
+        );
+        assert.equal(publishSampleSetResponse.status, 200);
+
+        const createCheckProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/check-profiles`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                name: "Persistent Browser QA",
+                checkType: "browser_qa",
+              },
+            }),
+          },
+        );
+        assert.equal(createCheckProfileResponse.status, 201);
+        const checkProfile = (await createCheckProfileResponse.json()) as {
+          id: string;
+        };
+
+        const publishCheckProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+            }),
+          },
+        );
+        assert.equal(publishCheckProfileResponse.status, 200);
+
+        const createSuiteResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-suites`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                name: "Persistent Proofreading Regression Suite",
+                suiteType: "regression",
+                verificationCheckProfileIds: [checkProfile.id],
+                moduleScope: ["proofreading"],
+                requiresProductionBaseline: true,
+                supportsAbComparison: true,
+                hardGatePolicy: {
+                  mustUseDeidentifiedSamples: true,
+                  requiresParsableOutput: true,
+                },
+                scoreWeights: {
+                  structure: 25,
+                  terminology: 20,
+                  knowledgeCoverage: 20,
+                  riskDetection: 20,
+                  humanEditBurden: 10,
+                  costAndLatency: 5,
+                },
+              },
+            }),
+          },
+        );
+        assert.equal(createSuiteResponse.status, 201);
+        const suite = (await createSuiteResponse.json()) as {
+          id: string;
+        };
+
+        const activateSuiteResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+            }),
+          },
+        );
+        assert.equal(activateSuiteResponse.status, 200);
+
+        const createRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                suiteId: suite.id,
+                sampleSetId: sampleSet.id,
+                baselineBinding: {
+                  lane: "baseline",
+                  modelId: seededIds.proofreadingModelId,
+                  runtimeId: "persistent-runtime-prod-1",
+                  promptTemplateId: "12121212-2222-4333-8444-555555555555",
+                  skillPackageIds: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
+                  moduleTemplateId: "12121212-ffff-4fff-8fff-ffffffffffff",
+                },
+                candidateBinding: {
+                  lane: "candidate",
+                  modelId: "persistent-proofreading-candidate-model",
+                  runtimeId: "persistent-runtime-prod-1",
+                  promptTemplateId: "12121212-2222-4333-8444-555555555555",
+                  skillPackageIds: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
+                  moduleTemplateId: "12121212-ffff-4fff-8fff-ffffffffffff",
+                },
+              },
+            }),
+          },
+        );
+        assert.equal(createRunResponse.status, 201);
+        const run = (await createRunResponse.json()) as {
+          id: string;
+          run_item_count: number;
+        };
+        assert.equal(run.run_item_count, 1);
+
+        const runItemsResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/items`,
+          {
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+        assert.equal(runItemsResponse.status, 200);
+        const runItems = (await runItemsResponse.json()) as Array<{ id: string }>;
+        assert.equal(runItems.length, 1);
+
+        const recordRunItemResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-run-items/${runItems[0]?.id}/result`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                runItemId: runItems[0]?.id,
+                resultAssetId: seededIds.humanFinalAssetId,
+                hardGatePassed: true,
+                weightedScore: 93,
+                diffSummary: "Persistent candidate reduced human edit burden.",
+              },
+            }),
+          },
+        );
+        assert.equal(recordRunItemResponse.status, 200);
+
+        const recordEvidenceResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evidence`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                kind: "url",
+                label: "Persistent browser QA",
+                uri: "https://example.test/persistent/browser-qa",
+              },
+            }),
+          },
+        );
+        assert.equal(recordEvidenceResponse.status, 201);
+        const evidence = (await recordEvidenceResponse.json()) as { id: string };
+
+        const completeRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/complete`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              status: "passed",
+              evidenceIds: [evidence.id],
+            }),
+          },
+        );
+        assert.equal(completeRunResponse.status, 200);
+
+        const finalizeRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/finalize`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+            }),
+          },
+        );
+        assert.equal(finalizeRunResponse.status, 200);
+        const finalized = (await finalizeRunResponse.json()) as {
+          evidence_pack: {
+            id: string;
+            summary_status: string;
+          };
+          recommendation: {
+            status: string;
+          };
+        };
+        assert.equal(finalized.evidence_pack.summary_status, "recommended");
+        assert.equal(finalized.recommendation.status, "recommended");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        try {
+          const persistedRunsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
+            {
+              headers: {
+                Cookie: adminCookie,
+              },
+            },
+          );
+          assert.equal(persistedRunsResponse.status, 200);
+          const persistedRuns = (await persistedRunsResponse.json()) as Array<{
+            id: string;
+            status: string;
+            evidence_ids: string[];
+          }>;
+          assert.deepEqual(
+            persistedRuns.map((record) => ({
+              id: record.id,
+              status: record.status,
+              evidence_ids: record.evidence_ids,
+            })),
+            [
+              {
+                id: run.id,
+                status: "passed",
+                evidence_ids: [evidence.id],
+              },
+            ],
+          );
+
+          const persistedRunItemsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/items`,
+            {
+              headers: {
+                Cookie: adminCookie,
+              },
+            },
+          );
+          assert.equal(persistedRunItemsResponse.status, 200);
+          const persistedRunItems =
+            (await persistedRunItemsResponse.json()) as Array<{
+              weighted_score?: number;
+              result_asset_id?: string;
+            }>;
+          assert.equal(persistedRunItems.length, 1);
+          assert.equal(persistedRunItems[0]?.weighted_score, 93);
+          assert.equal(
+            persistedRunItems[0]?.result_asset_id,
+            seededIds.humanFinalAssetId,
+          );
+
+          const createLearningCandidateResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/learning-candidates`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: adminCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                actorRole: "admin",
+                input: {
+                  runId: run.id,
+                  evidencePackId: finalized.evidence_pack.id,
+                  reviewedCaseSnapshotId: seededIds.reviewedCaseSnapshotId,
+                  candidateType: "prompt_optimization_candidate",
+                  title: "Persistent evaluation promotion candidate",
+                  proposalText:
+                    "Promote the persistent proofreading candidate after restart-safe evidence review.",
+                  createdBy: "forged-admin",
+                  sourceAssetId: seededIds.humanFinalAssetId,
+                },
+              }),
+            },
+          );
+          assert.equal(createLearningCandidateResponse.status, 201);
+          const learningCandidate = (await createLearningCandidateResponse.json()) as {
+            status: string;
+            created_by: string;
+            governed_evaluation_run_id?: string;
+            governed_evidence_pack_id?: string;
+          };
+          assert.equal(learningCandidate.status, "pending_review");
+          assert.equal(learningCandidate.created_by, "persistent-admin");
+          assert.equal(learningCandidate.governed_evaluation_run_id, run.id);
+          assert.equal(
+            learningCandidate.governed_evidence_pack_id,
+            finalized.evidence_pack.id,
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -1529,6 +1928,182 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     status: "active",
     version: 1,
   });
+}
+
+async function seedPersistentVerificationLearningFixtures(
+  pool: Pool,
+): Promise<void> {
+  await pool.query(
+    `
+      insert into document_assets (
+        id,
+        manuscript_id,
+        asset_type,
+        status,
+        storage_key,
+        mime_type,
+        parent_asset_id,
+        source_module,
+        created_by,
+        version_no,
+        is_current,
+        file_name,
+        created_at,
+        updated_at
+      )
+      values (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14
+      )
+      on conflict (id) do update
+      set
+        manuscript_id = excluded.manuscript_id,
+        asset_type = excluded.asset_type,
+        status = excluded.status,
+        storage_key = excluded.storage_key,
+        mime_type = excluded.mime_type,
+        parent_asset_id = excluded.parent_asset_id,
+        source_module = excluded.source_module,
+        created_by = excluded.created_by,
+        version_no = excluded.version_no,
+        is_current = excluded.is_current,
+        file_name = excluded.file_name,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `,
+    [
+      seededIds.humanFinalAssetId,
+      seededIds.manuscriptId,
+      "human_final_docx",
+      "active",
+      "persistent/learning/human-final.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      seededIds.originalAssetId,
+      "manual",
+      "persistent-admin",
+      2,
+      false,
+      "persistent-human-final.docx",
+      "2026-03-31T08:02:00.000Z",
+      "2026-03-31T08:02:00.000Z",
+    ],
+  );
+  await pool.query(
+    `
+      insert into document_assets (
+        id,
+        manuscript_id,
+        asset_type,
+        status,
+        storage_key,
+        mime_type,
+        parent_asset_id,
+        source_module,
+        created_by,
+        version_no,
+        is_current,
+        file_name,
+        created_at,
+        updated_at
+      )
+      values (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14
+      )
+      on conflict (id) do update
+      set
+        manuscript_id = excluded.manuscript_id,
+        asset_type = excluded.asset_type,
+        status = excluded.status,
+        storage_key = excluded.storage_key,
+        mime_type = excluded.mime_type,
+        parent_asset_id = excluded.parent_asset_id,
+        source_module = excluded.source_module,
+        created_by = excluded.created_by,
+        version_no = excluded.version_no,
+        is_current = excluded.is_current,
+        file_name = excluded.file_name,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `,
+    [
+      "dededede-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      seededIds.manuscriptId,
+      "learning_snapshot_attachment",
+      "active",
+      "persistent/learning/reviewed-case-snapshot.bin",
+      "application/octet-stream",
+      seededIds.humanFinalAssetId,
+      "learning",
+      "persistent-admin",
+      1,
+      false,
+      "persistent-reviewed-snapshot.bin",
+      "2026-03-31T08:03:00.000Z",
+      "2026-03-31T08:03:00.000Z",
+    ],
+  );
+  await pool.query(
+    `
+      insert into reviewed_case_snapshots (
+        id,
+        manuscript_id,
+        module,
+        manuscript_type,
+        human_final_asset_id,
+        deidentification_passed,
+        snapshot_asset_id,
+        created_by,
+        created_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      on conflict (id) do update
+      set
+        manuscript_id = excluded.manuscript_id,
+        module = excluded.module,
+        manuscript_type = excluded.manuscript_type,
+        human_final_asset_id = excluded.human_final_asset_id,
+        deidentification_passed = excluded.deidentification_passed,
+        snapshot_asset_id = excluded.snapshot_asset_id,
+        created_by = excluded.created_by,
+        created_at = excluded.created_at
+    `,
+    [
+      seededIds.reviewedCaseSnapshotId,
+      seededIds.manuscriptId,
+      "proofreading",
+      "clinical_study",
+      seededIds.humanFinalAssetId,
+      true,
+      "dededede-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "persistent-admin",
+      "2026-03-31T08:03:30.000Z",
+    ],
+  );
 }
 
 async function loginAsPersistentUser(
