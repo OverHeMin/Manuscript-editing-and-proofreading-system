@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import type { JobViewModel, DocumentAssetViewModel } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
-import type { ManuscriptWorkbenchWorkspace } from "./manuscript-workbench-controller.ts";
+import type {
+  ManuscriptWorkbenchMode,
+  ManuscriptWorkbenchWorkspace,
+} from "./manuscript-workbench-controller.ts";
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
@@ -18,6 +21,7 @@ export interface WorkbenchActionResultViewModel {
 }
 
 export interface ManuscriptWorkbenchSummaryProps {
+  mode: ManuscriptWorkbenchMode;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: string;
@@ -25,11 +29,19 @@ export interface ManuscriptWorkbenchSummaryProps {
 }
 
 export function ManuscriptWorkbenchSummary({
+  mode,
   workspace,
   latestJob,
   latestExport,
   latestActionResult = null,
 }: ManuscriptWorkbenchSummaryProps) {
+  const recommendedNextStep = buildRecommendedNextStep(
+    mode,
+    workspace,
+    latestJob,
+    latestExport,
+  );
+
   return (
     <section className="manuscript-workbench-summary">
       <div className="manuscript-workbench-summary-grid">
@@ -59,6 +71,18 @@ export function ManuscriptWorkbenchSummary({
               Complete an upload, module run, export, or refresh to pin the latest operator action.
             </p>
           )}
+        </SummaryCard>
+
+        <SummaryCard title="Recommended Next Step">
+          <SummaryMetric label="Focus" value={recommendedNextStep.focus} />
+          <SummaryMetric label="Guidance" value={recommendedNextStep.guidance} />
+          {recommendedNextStep.details.map((detail) => (
+            <SummaryMetric
+              key={`${detail.label}:${detail.value}`}
+              label={detail.label}
+              value={detail.value}
+            />
+          ))}
         </SummaryCard>
 
         <SummaryCard title="Manuscript Overview">
@@ -216,6 +240,7 @@ export function ManuscriptWorkbenchSummary({
           {JSON.stringify(
             {
               workspace,
+              mode,
               latestJob,
               latestExport,
             },
@@ -282,4 +307,188 @@ function formatTimestamp(value: string | undefined): string {
   }
 
   return value.replace("T", " ").replace(".000Z", "Z");
+}
+
+interface RecommendedNextStepViewModel {
+  focus: string;
+  guidance: string;
+  details: WorkbenchActionResultDetail[];
+}
+
+function buildRecommendedNextStep(
+  mode: ManuscriptWorkbenchMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+  latestJob: AnyWorkbenchJob | null,
+  latestExport: string,
+): RecommendedNextStepViewModel {
+  if (mode === "submission") {
+    if (latestExport) {
+      return {
+        focus: "Hand off the prepared submission package",
+        guidance: "Submission and export are ready for downstream screening or delivery.",
+        details: [
+          {
+            label: "Manuscript",
+            value: workspace.manuscript.id,
+          },
+          {
+            label: "Export",
+            value: latestExport,
+          },
+        ],
+      };
+    }
+
+    return {
+      focus: "Move this manuscript into screening",
+      guidance: "Use the manuscript ID in Screening Workbench or prepare an export for downstream handoff.",
+      details: [
+        {
+          label: "Manuscript",
+          value: workspace.manuscript.id,
+        },
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+      ],
+    };
+  }
+
+  if (mode === "screening") {
+    if (latestJob?.module === "screening" && latestJob.status === "completed") {
+      return {
+        focus: "Advance this manuscript into editing",
+        guidance: "Screening output is ready for the next governed editing handoff.",
+        details: [
+          {
+            label: "Manuscript",
+            value: workspace.manuscript.id,
+          },
+          {
+            label: "Current Asset",
+            value: describeAsset(workspace.currentAsset),
+          },
+        ],
+      };
+    }
+
+    return {
+      focus: "Run screening on the recommended parent asset",
+      guidance: "Launch Screening Workbench execution before any editing handoff.",
+      details: [
+        {
+          label: "Recommended Parent",
+          value: describeAsset(workspace.suggestedParentAsset),
+        },
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+      ],
+    };
+  }
+
+  if (mode === "editing") {
+    if (latestJob?.module === "editing" && latestJob.status === "completed") {
+      return {
+        focus: "Advance this manuscript into proofreading",
+        guidance: "The edited asset is ready for proofreading draft generation.",
+        details: [
+          {
+            label: "Manuscript",
+            value: workspace.manuscript.id,
+          },
+          {
+            label: "Current Asset",
+            value: describeAsset(workspace.currentAsset),
+          },
+        ],
+      };
+    }
+
+    return {
+      focus: "Run editing on the screened manuscript asset",
+      guidance: "Generate the governed editing output before proofreading begins.",
+      details: [
+        {
+          label: "Recommended Parent",
+          value: describeAsset(workspace.suggestedParentAsset),
+        },
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+      ],
+    };
+  }
+
+  if (isFinalProofAsset(workspace.currentAsset)) {
+    return {
+      focus: "Export or hand off the finalized proofreading output",
+      guidance: "The proofreading final is active and ready for downstream delivery.",
+      details: [
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+        {
+          label: "Export",
+          value: latestExport || "Prepare export from Workspace Utilities",
+        },
+      ],
+    };
+  }
+
+  if (workspace.latestProofreadingDraftAsset) {
+    return {
+      focus: "Finalize the reviewed proofreading draft",
+      guidance: "Human confirmation is still required before producing the proofreading final.",
+      details: [
+        {
+          label: "Draft Asset",
+          value: describeAsset(workspace.latestProofreadingDraftAsset),
+        },
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+      ],
+    };
+  }
+
+  return {
+    focus: "Create the proofreading draft",
+    guidance: "Produce the draft first, then confirm it manually before finalization.",
+    details: [
+      {
+        label: "Recommended Parent",
+        value: describeAsset(workspace.suggestedParentAsset),
+      },
+      {
+        label: "Current Asset",
+        value: describeAsset(workspace.currentAsset),
+      },
+    ],
+  };
+}
+
+function describeAsset(asset: DocumentAssetViewModel | null): string {
+  if (!asset) {
+    return "Not available";
+  }
+
+  return `${asset.file_name ?? asset.asset_type} / ${asset.asset_type} / ${asset.id}`;
+}
+
+function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
+  if (!asset) {
+    return false;
+  }
+
+  return (
+    asset.asset_type === "final_proof_issue_report" ||
+    asset.asset_type === "final_proof_annotated_docx" ||
+    asset.asset_type === "human_final_docx"
+  );
 }

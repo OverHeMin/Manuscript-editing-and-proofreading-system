@@ -391,6 +391,7 @@ export function ManuscriptWorkbenchPage({
       />
       {workspace ? (
         <ManuscriptWorkbenchSummary
+          mode={mode}
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}
