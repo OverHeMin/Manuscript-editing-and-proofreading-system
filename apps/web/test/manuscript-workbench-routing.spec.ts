@@ -31,3 +31,15 @@ test("workbench routing formats and resolves manuscript handoff hashes", () => {
     manuscriptId: "manuscript-42",
   });
 });
+
+test("workbench routing formats and resolves knowledge review handoff hashes", () => {
+  const hash = formatWorkbenchHash("knowledge-review", {
+    knowledgeItemId: "knowledge-42",
+  });
+
+  assert.equal(hash, "#knowledge-review?knowledgeItemId=knowledge-42");
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "knowledge-review",
+    knowledgeItemId: "knowledge-42",
+  });
+});

@@ -167,7 +167,12 @@ export function WorkbenchHost({
           />
         );
       case "knowledge-review":
-        return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
+        return (
+          <KnowledgeReviewWorkbenchPage
+            actorRole={session.role}
+            prefilledKnowledgeItemId={routeState.knowledgeItemId}
+          />
+        );
       case "learning-review":
         return (
           <LearningReviewWorkbenchPage
@@ -190,14 +195,18 @@ export function WorkbenchHost({
     }
   }
 
-  function navigateToWorkbench(workbenchId: WorkbenchId, manuscriptId?: string) {
+  function navigateToWorkbench(
+    workbenchId: WorkbenchId,
+    handoff?: { manuscriptId?: string; knowledgeItemId?: string },
+  ) {
     setRouteState({
       activeWorkbenchId: workbenchId,
-      manuscriptId,
+      manuscriptId: handoff?.manuscriptId,
+      knowledgeItemId: handoff?.knowledgeItemId,
     });
 
     if (typeof window !== "undefined") {
-      window.location.hash = formatWorkbenchHash(workbenchId, manuscriptId);
+      window.location.hash = formatWorkbenchHash(workbenchId, handoff);
     }
   }
 }
@@ -220,6 +229,7 @@ function resolveInitialWorkbenchRoute(
 ): {
   activeWorkbenchId: WorkbenchId;
   manuscriptId?: string;
+  knowledgeItemId?: string;
 } {
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
@@ -232,6 +242,7 @@ function resolveInitialWorkbenchRoute(
     return {
       activeWorkbenchId: location.workbenchId,
       manuscriptId: location.manuscriptId,
+      knowledgeItemId: location.knowledgeItemId,
     };
   }
 

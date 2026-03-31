@@ -44,6 +44,7 @@ const steps = [
       "--import",
       "tsx",
       "--test",
+      "test/manuscript-workbench-routing.spec.ts",
       "test/manuscript-workbench-controller.spec.ts",
       "test/manuscript-workbench-page.spec.tsx",
       "test/manuscript-workbench-summary.spec.tsx",
@@ -73,6 +74,19 @@ const steps = [
       "--",
       "--browser=chromium",
       "playwright/learning-review-flow.spec.ts",
+    ],
+  },
+  {
+    label: "Browser knowledge review handoff smoke",
+    command: pnpmCommand,
+    args: [
+      "--filter",
+      "@medsys/web",
+      "run",
+      "test:browser",
+      "--",
+      "--browser=chromium",
+      "playwright/knowledge-review-handoff.spec.ts",
     ],
   },
 ];

@@ -1,6 +1,8 @@
 import { startTransition, useEffect, useState, type ReactNode } from "react";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
+import { submitKnowledgeForReview } from "../knowledge/index.ts";
 import {
   applyLearningWriteback,
   createLearningWriteback,
@@ -126,6 +128,7 @@ export function LearningReviewWorkbenchPage({
   const [approvedCandidate, setApprovedCandidate] =
     useState<LearningCandidateViewModel | null>(null);
   const [writebacks, setWritebacks] = useState<LearningWritebackViewModel[]>([]);
+  const [submittedKnowledgeItemId, setSubmittedKnowledgeItemId] = useState("");
   const [knowledgeWritebackForm, setKnowledgeWritebackForm] =
     useState<KnowledgeWritebackFormState>({
       targetType: "knowledge_item",
@@ -154,6 +157,13 @@ export function LearningReviewWorkbenchPage({
     writebacks,
     createdWritebackId,
   );
+  const latestKnowledgeDraftId = resolveLatestKnowledgeDraftId(writebacks);
+  const knowledgeReviewHandoffHash =
+    submittedKnowledgeItemId.length > 0
+      ? formatWorkbenchHash("knowledge-review", {
+          knowledgeItemId: submittedKnowledgeItemId,
+        })
+      : null;
 
   useEffect(() => {
     void loadCandidateQueue();
@@ -209,6 +219,7 @@ export function LearningReviewWorkbenchPage({
     const candidateId = writebackCandidate?.id ?? "";
     startTransition(() => {
       setCreatedWritebackId("");
+      setSubmittedKnowledgeItemId("");
       setWritebacks([]);
     });
     if (candidateId.length === 0) {
@@ -306,6 +317,7 @@ export function LearningReviewWorkbenchPage({
         setCandidateResult(response.body);
         setApprovedCandidate(null);
         setCreatedWritebackId("");
+        setSubmittedKnowledgeItemId("");
         setWritebacks([]);
         setStatusMessage(`Governed learning candidate created: ${response.body.id}`);
       });
@@ -328,6 +340,7 @@ export function LearningReviewWorkbenchPage({
       startTransition(() => {
         setApprovedCandidate(response.body);
         setCreatedWritebackId("");
+        setSubmittedKnowledgeItemId("");
         setStatusMessage(`Learning candidate approved: ${response.body.id}`);
       });
       const nextWorkbenchState = applyLearningReviewApprovalSuccess(
@@ -391,6 +404,7 @@ export function LearningReviewWorkbenchPage({
 
       startTransition(() => {
         setCreatedWritebackId(response.body.id);
+        setSubmittedKnowledgeItemId("");
         syncWritebackSummaries(writebackCandidate.id, [...writebacks, response.body]);
         setStatusMessage(`Draft writeback created: ${response.body.id}`);
       });
@@ -428,7 +442,29 @@ export function LearningReviewWorkbenchPage({
           ),
         );
         setCreatedWritebackId("");
+        setSubmittedKnowledgeItemId("");
         setStatusMessage(`Writeback applied into governed draft: ${response.body.id}`);
+      });
+    });
+  }
+
+  async function handleSubmitKnowledgeDraftForReview() {
+    if (actorRole !== "admin") {
+      setErrorMessage("Only admin can submit governed knowledge drafts for review.");
+      return;
+    }
+
+    if (!latestKnowledgeDraftId) {
+      setErrorMessage("Apply a governed knowledge writeback before submitting it for review.");
+      return;
+    }
+
+    await runBusyTask(async () => {
+      const response = await submitKnowledgeForReview(defaultClient, latestKnowledgeDraftId);
+
+      startTransition(() => {
+        setSubmittedKnowledgeItemId(response.body.id);
+        setStatusMessage(`Knowledge draft submitted for review: ${response.body.id}`);
       });
     });
   }
@@ -690,6 +726,16 @@ export function LearningReviewWorkbenchPage({
               <span>Ready for apply</span>
             </ResultBlock>
           ) : null}
+          {latestKnowledgeDraftId ? (
+            <ResultBlock title="Knowledge draft handoff">
+              <code>{latestKnowledgeDraftId}</code>
+              <span>
+                {submittedKnowledgeItemId.length > 0
+                  ? "Pending review in governed queue"
+                  : "Draft ready for review submission"}
+              </span>
+            </ResultBlock>
+          ) : null}
           <label>
             Knowledge Title
             <input
@@ -721,6 +767,23 @@ export function LearningReviewWorkbenchPage({
           >
             Apply writeback
           </button>
+          <div className="learning-review-button-row">
+            <button
+              type="button"
+              onClick={handleSubmitKnowledgeDraftForReview}
+              disabled={
+                isBusy ||
+                actorRole !== "admin" ||
+                !latestKnowledgeDraftId ||
+                submittedKnowledgeItemId.length > 0
+              }
+            >
+              Submit Knowledge Draft For Review
+            </button>
+            {knowledgeReviewHandoffHash ? (
+              <a href={knowledgeReviewHandoffHash}>Open Knowledge Review</a>
+            ) : null}
+          </div>
         </article>
       </div>
 
@@ -937,4 +1000,17 @@ function toErrorMessage(error: unknown): string {
   }
 
   return "Unknown workbench error.";
+}
+
+function resolveLatestKnowledgeDraftId(
+  writebacks: readonly LearningWritebackViewModel[],
+): string | null {
+  for (let index = writebacks.length - 1; index >= 0; index -= 1) {
+    const record = writebacks[index];
+    if (record?.target_type === "knowledge_item" && record.created_draft_asset_id) {
+      return record.created_draft_asset_id;
+    }
+  }
+
+  return null;
 }

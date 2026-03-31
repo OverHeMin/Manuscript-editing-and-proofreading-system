@@ -11,6 +11,7 @@ export type WorkbenchRenderKind =
 export interface WorkbenchLocation {
   workbenchId: WorkbenchId | null;
   manuscriptId?: string;
+  knowledgeItemId?: string;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -48,11 +49,25 @@ export function isWorkbenchImplemented(
 
 export function formatWorkbenchHash(
   workbenchId: WorkbenchId,
-  manuscriptId?: string,
+  handoff?:
+    | string
+    | {
+        manuscriptId?: string;
+        knowledgeItemId?: string;
+      },
 ): string {
   const params = new URLSearchParams();
+  const manuscriptId =
+    typeof handoff === "string" ? handoff : handoff?.manuscriptId;
+  const knowledgeItemId =
+    typeof handoff === "string" ? undefined : handoff?.knowledgeItemId;
+
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
+  }
+
+  if (knowledgeItemId && knowledgeItemId.trim().length > 0) {
+    params.set("knowledgeItemId", knowledgeItemId.trim());
   }
 
   const query = params.toString();
@@ -76,10 +91,12 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
 
   const params = new URLSearchParams(rawQuery);
   const manuscriptId = params.get("manuscriptId")?.trim();
+  const knowledgeItemId = params.get("knowledgeItemId")?.trim();
 
   return {
     workbenchId: rawWorkbenchId,
-    manuscriptId: manuscriptId && manuscriptId.length > 0 ? manuscriptId : undefined,
+    ...(manuscriptId && manuscriptId.length > 0 ? { manuscriptId } : {}),
+    ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
   };
 }
 
