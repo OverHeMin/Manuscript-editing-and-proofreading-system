@@ -450,16 +450,11 @@ export function EvaluationWorkbenchPage({
               </ul>
               {selectedRunItem ? (
                 <>
-                  {linkedSampleSetItem ? (
-                    <div className="evaluation-workbench-result">
-                      <strong>Linked Sample Context</strong>
-                      <div>
-                        <span>Sample Item: {linkedSampleSetItem.id}</span>
-                        <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
-                        <span>Manuscript: {linkedSampleSetItem.manuscript_id}</span>
-                      </div>
-                    </div>
-                  ) : null}
+                  <EvaluationWorkbenchSelectedRunItemDetailCard
+                    selectedRun={selectedRun}
+                    selectedRunItem={selectedRunItem}
+                    linkedSampleSetItem={linkedSampleSetItem}
+                  />
                   <div className="evaluation-workbench-form-grid">
                     <Field label="Result Asset ID"><input value={runItemForm.resultAssetId} onChange={(event) => setRunItemForm((current) => ({ ...current, resultAssetId: event.target.value }))} /></Field>
                     <Field label="Weighted Score"><input type="number" min="0" max="100" value={runItemForm.weightedScore} onChange={(event) => setRunItemForm((current) => ({ ...current, weightedScore: event.target.value }))} /></Field>
@@ -713,6 +708,55 @@ export function EvaluationWorkbenchPage({
   }
 }
 
+export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number];
+  selectedRunItem: EvaluationWorkbenchOverview["runItems"][number];
+  linkedSampleSetItem: EvaluationWorkbenchOverview["sampleSetItems"][number] | null;
+}) {
+  const { selectedRun, selectedRunItem, linkedSampleSetItem } = props;
+
+  return (
+    <div className="evaluation-workbench-result evaluation-workbench-run-item-detail">
+      <strong>Selected Sample Detail</strong>
+      <div className="evaluation-workbench-history-compare">
+        <span>Run Item: {selectedRunItem.id}</span>
+        <span>Lane: {selectedRunItem.lane}</span>
+        <span>Hard Gate: {describeHardGate(selectedRunItem.hard_gate_passed)}</span>
+        <span>
+          Weighted Score: {selectedRunItem.weighted_score == null ? "Pending" : selectedRunItem.weighted_score}
+        </span>
+        <span>Result Asset: {selectedRunItem.result_asset_id ?? "Pending"}</span>
+        <span>Manual Review: {selectedRunItem.requires_human_review ? "Required" : "Not required"}</span>
+        {selectedRunItem.diff_summary ? <span>{selectedRunItem.diff_summary}</span> : null}
+        {selectedRunItem.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
+        {linkedSampleSetItem ? (
+          <>
+            <span>Sample Item: {linkedSampleSetItem.id}</span>
+            <span>Module: {linkedSampleSetItem.module}</span>
+            <span>Manuscript Type: {linkedSampleSetItem.manuscript_type}</span>
+            <span>Risk Tags: {formatOptionalList(linkedSampleSetItem.risk_tags)}</span>
+            <span>Snapshot Asset: {linkedSampleSetItem.snapshot_asset_id}</span>
+            <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
+            <span>Manuscript: {linkedSampleSetItem.manuscript_id}</span>
+          </>
+        ) : (
+          <span>No linked sample-set item is available for this run item.</span>
+        )}
+      </div>
+      <ul className="evaluation-workbench-inline-list">
+        <li>
+          <strong>Baseline Binding</strong>
+          <span>{summarizeBinding(selectedRun.baseline_binding)}</span>
+        </li>
+        <li>
+          <strong>Candidate Binding</strong>
+          <span>{summarizeBinding(selectedRun.candidate_binding)}</span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 function Field(props: { label: string; wide?: boolean; children: React.ReactNode }) {
   return <label className={`evaluation-workbench-field${props.wide ? " evaluation-workbench-field--wide" : ""}`}><span>{props.label}</span>{props.children}</label>;
 }
@@ -794,6 +838,29 @@ function createBinding(lane: "baseline" | "candidate", modelId: string, form: ty
 function optional(value: string) {
   const normalized = value.trim();
   return normalized ? normalized : undefined;
+}
+
+function describeHardGate(hardGatePassed: boolean | undefined) {
+  if (hardGatePassed == null) return "Pending";
+  return hardGatePassed ? "Passed" : "Failed";
+}
+
+function formatOptionalList(values: readonly string[] | undefined) {
+  return values != null && values.length > 0 ? values.join(", ") : "None";
+}
+
+function summarizeBinding(
+  binding: EvaluationWorkbenchOverview["runs"][number]["baseline_binding"],
+) {
+  if (!binding) return "Not recorded";
+
+  return [
+    `Model ${binding.model_id}`,
+    `Runtime ${binding.runtime_id}`,
+    `Prompt ${binding.prompt_template_id}`,
+    `Skills ${formatOptionalList(binding.skill_package_ids)}`,
+    `Module Template ${binding.module_template_id}`,
+  ].join(" | ");
 }
 
 function numberOrUndefined(value: string) {

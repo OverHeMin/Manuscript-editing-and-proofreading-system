@@ -62,6 +62,13 @@ test("admin can complete a manual evaluation loop and hand off a governed learni
   await expect(page.locator(".evaluation-workbench-status")).toContainText(
     "Saved run item result",
   );
+  const runItemDetail = page.locator(".evaluation-workbench-run-item-detail");
+  await expect(runItemDetail).toContainText("Selected Sample Detail");
+  await expect(runItemDetail).toContainText(prepared.snapshotId);
+  await expect(runItemDetail).toContainText("clinical_study");
+  await expect(runItemDetail).toContainText("structure");
+  await expect(runItemDetail).toContainText("demo-model-prod-1");
+  await expect(runItemDetail).toContainText("demo-model-candidate-1");
 
   await page.getByLabel("Evidence Label").fill("Phase 9C browser QA");
   await page
