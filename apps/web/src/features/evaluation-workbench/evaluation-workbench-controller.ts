@@ -5,6 +5,7 @@ import {
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
   listEvaluationRunItemsByRunId,
+  listEvaluationSampleSetItems,
   listEvaluationRunsBySuiteId,
   listEvaluationSampleSets,
   listEvaluationSuites,
@@ -21,6 +22,7 @@ import type {
   EvaluationRunItemViewModel,
   EvaluationRunViewModel,
   EvaluationSampleSetViewModel,
+  EvaluationSampleSetItemViewModel,
   EvaluationSuiteViewModel,
   FinalizeEvaluationRunResultViewModel,
   RecordEvaluationRunItemResultInput,
@@ -49,6 +51,7 @@ export interface EvaluationWorkbenchOverview {
   selectedSuiteId: string | null;
   runs: EvaluationRunViewModel[];
   selectedRunId: string | null;
+  sampleSetItems: EvaluationSampleSetItemViewModel[];
   runItems: EvaluationRunItemViewModel[];
 }
 
@@ -224,6 +227,7 @@ async function loadEvaluationWorkbenchOverview(
 
   let runs: EvaluationRunViewModel[] = [];
   let selectedRunId: string | null = null;
+  let sampleSetItems: EvaluationSampleSetItemViewModel[] = [];
   let runItems: EvaluationRunItemViewModel[] = [];
 
   if (selectedSuiteId != null) {
@@ -234,7 +238,17 @@ async function loadEvaluationWorkbenchOverview(
     );
 
     if (selectedRunId != null) {
-      runItems = (await listEvaluationRunItemsByRunId(client, selectedRunId)).body;
+      const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+      const [nextSampleSetItems, nextRunItems] = await Promise.all([
+        selectedRun?.sample_set_id
+          ? listEvaluationSampleSetItems(client, selectedRun.sample_set_id).then(
+              (response) => response.body,
+            )
+          : Promise.resolve([]),
+        listEvaluationRunItemsByRunId(client, selectedRunId).then((response) => response.body),
+      ]);
+      sampleSetItems = nextSampleSetItems;
+      runItems = nextRunItems;
     }
   }
 
@@ -246,6 +260,7 @@ async function loadEvaluationWorkbenchOverview(
     selectedSuiteId,
     runs,
     selectedRunId,
+    sampleSetItems,
     runItems,
   };
 }

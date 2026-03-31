@@ -108,6 +108,10 @@ export function EvaluationWorkbenchPage({
   const selectedSuite = overview?.suites.find((item) => item.id === overview.selectedSuiteId) ?? null;
   const selectedRun = overview?.runs.find((item) => item.id === overview.selectedRunId) ?? null;
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
+  const linkedSampleSetItem =
+    selectedRunItem == null
+      ? null
+      : overview?.sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ?? null;
   const learningReviewHash = createdLearningCandidate ? formatWorkbenchHash("learning-review") : null;
 
   useEffect(() => {
@@ -127,6 +131,14 @@ export function EvaluationWorkbenchPage({
       sourceAssetId: selectedRunItem.result_asset_id ?? current.sourceAssetId,
     }));
   }, [selectedRunItem]);
+
+  useEffect(() => {
+    if (!linkedSampleSetItem) return;
+    setLearningForm((current) => ({
+      ...current,
+      reviewedCaseSnapshotId: linkedSampleSetItem.reviewed_case_snapshot_id,
+    }));
+  }, [linkedSampleSetItem]);
 
   useEffect(() => {
     if (!selectedRun || finalizedResult?.run.id === selectedRun.id) return;
@@ -321,6 +333,16 @@ export function EvaluationWorkbenchPage({
               </ul>
               {selectedRunItem ? (
                 <>
+                  {linkedSampleSetItem ? (
+                    <div className="evaluation-workbench-result">
+                      <strong>Linked Sample Context</strong>
+                      <div>
+                        <span>Sample Item: {linkedSampleSetItem.id}</span>
+                        <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
+                        <span>Manuscript: {linkedSampleSetItem.manuscript_id}</span>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="evaluation-workbench-form-grid">
                     <Field label="Result Asset ID"><input value={runItemForm.resultAssetId} onChange={(event) => setRunItemForm((current) => ({ ...current, resultAssetId: event.target.value }))} /></Field>
                     <Field label="Weighted Score"><input type="number" min="0" max="100" value={runItemForm.weightedScore} onChange={(event) => setRunItemForm((current) => ({ ...current, weightedScore: event.target.value }))} /></Field>
@@ -397,6 +419,11 @@ export function EvaluationWorkbenchPage({
             <p className="evaluation-workbench-empty">The learning handoff stays gated until the evaluation run is finalized.</p>
           ) : (
             <>
+              {linkedSampleSetItem ? (
+                <p className="evaluation-workbench-empty">
+                  Snapshot auto-linked from sample item {linkedSampleSetItem.id}.
+                </p>
+              ) : null}
               <div className="evaluation-workbench-form-grid">
                 <Field label="Reviewed Case Snapshot ID"><input value={learningForm.reviewedCaseSnapshotId} onChange={(event) => setLearningForm((current) => ({ ...current, reviewedCaseSnapshotId: event.target.value }))} /></Field>
                 <Field label="Source Asset ID"><input value={learningForm.sourceAssetId} onChange={(event) => setLearningForm((current) => ({ ...current, sourceAssetId: event.target.value }))} /></Field>

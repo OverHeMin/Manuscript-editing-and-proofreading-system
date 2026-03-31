@@ -123,6 +123,24 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+              risk_tags: ["terminology"],
+            },
+          ] as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -137,6 +155,8 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
   assert.equal(overview.runs.length, 1);
   assert.equal(overview.selectedRunId, "run-1");
   assert.equal(overview.runItems.length, 1);
+  assert.equal(overview.sampleSetItems.length, 1);
+  assert.equal(overview.sampleSetItems[0]?.reviewed_case_snapshot_id, "reviewed-case-snapshot-1");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -145,6 +165,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
       "GET /api/v1/verification-ops/evaluation-sample-sets",
       "GET /api/v1/verification-ops/evaluation-suites",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/items",
     ],
   );
@@ -374,6 +395,23 @@ test("evaluation workbench controller creates a run and reloads the selected run
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-2",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-2",
+              snapshot_asset_id: "snapshot-asset-2",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-2",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -404,6 +442,10 @@ test("evaluation workbench controller creates a run and reloads the selected run
   assert.equal(result.overview.selectedSuiteId, "suite-1");
   assert.equal(result.overview.selectedRunId, "run-2");
   assert.equal(result.overview.runItems[0]?.id, "run-item-2");
+  assert.equal(
+    result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
+    "reviewed-case-snapshot-2",
+  );
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -413,6 +455,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
       "GET /api/v1/verification-ops/evaluation-sample-sets",
       "GET /api/v1/verification-ops/evaluation-suites",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
     ],
   );
@@ -523,6 +566,23 @@ test("evaluation workbench controller records a run item result and reloads the 
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-2",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-2",
+              snapshot_asset_id: "snapshot-asset-2",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-2",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -542,6 +602,7 @@ test("evaluation workbench controller records a run item result and reloads the 
   assert.equal(result.runItem.id, "run-item-2");
   assert.equal(result.overview.selectedRunId, "run-2");
   assert.equal(result.overview.runItems[0]?.weighted_score, 97);
+  assert.equal(result.overview.sampleSetItems[0]?.id, "sample-item-2");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -551,6 +612,7 @@ test("evaluation workbench controller records a run item result and reloads the 
       "GET /api/v1/verification-ops/evaluation-sample-sets",
       "GET /api/v1/verification-ops/evaluation-suites",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
     ],
   );
@@ -709,6 +771,23 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-2",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-2",
+              snapshot_asset_id: "snapshot-asset-2",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-2",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -729,6 +808,10 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
   assert.equal(result.finalized.evidence_pack.id, "pack-1");
   assert.equal(result.finalized.recommendation.status, "recommended");
   assert.equal(result.overview.selectedRunId, "run-2");
+  assert.equal(
+    result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
+    "reviewed-case-snapshot-2",
+  );
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -740,6 +823,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
       "GET /api/v1/verification-ops/evaluation-sample-sets",
       "GET /api/v1/verification-ops/evaluation-suites",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
     ],
   );

@@ -71,6 +71,9 @@ test("admin can complete a manual evaluation loop and hand off a governed learni
   await expect(page.locator(".evaluation-workbench-finalized")).toContainText(
     "recommended",
   );
+  await expect(page.getByLabel("Reviewed Case Snapshot ID")).toHaveValue(
+    prepared.snapshotId,
+  );
 
   await page
     .getByLabel("Learning Candidate Title")
@@ -230,8 +233,32 @@ async function listEvaluationSuites(
 async function prepareActiveEvaluationScenario(
   request: APIRequestContext,
   input: PrepareDraftEvaluationSuiteInput,
-): Promise<PreparedDraftEvaluationSuite & { sampleSetId: string }> {
+): Promise<PreparedDraftEvaluationSuite & { sampleSetId: string; snapshotId: string }> {
   const cookie = await loginAsDemoUser(request, "dev.admin");
+
+  const snapshotResponse = await request.post(
+    `${apiBaseUrl}/api/v1/learning/reviewed-case-snapshots`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        manuscriptId: "manuscript-demo-1",
+        module: "editing",
+        manuscriptType: "clinical_study",
+        humanFinalAssetId: "human-final-demo-1",
+        deidentificationPassed: true,
+        requestedBy: "ignored-by-server",
+        storageKey: `learning/${input.label.toLowerCase().replace(/\s+/g, "-")}/snapshot.bin`,
+      },
+    },
+  );
+  if (!snapshotResponse.ok()) {
+    throw new Error(
+      `create reviewed snapshot failed (${snapshotResponse.status()}): ${await snapshotResponse.text()}`,
+    );
+  }
+  const snapshot = (await snapshotResponse.json()) as { id: string };
 
   const sampleSetResponse = await request.post(
     `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets`,
@@ -246,7 +273,7 @@ async function prepareActiveEvaluationScenario(
           module: "editing",
           sampleItemInputs: [
             {
-              reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
+              reviewedCaseSnapshotId: snapshot.id,
               riskTags: ["structure"],
             },
           ],
@@ -366,6 +393,7 @@ async function prepareActiveEvaluationScenario(
     suiteId: suite.id,
     suiteName: suite.name,
     sampleSetId: sampleSet.id,
+    snapshotId: snapshot.id,
   };
 }
 
