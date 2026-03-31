@@ -3,10 +3,14 @@ import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { LearningCandidateType } from "../learning-review/types.ts";
-import type { EvaluationRunItemFailureKind } from "../verification-ops/index.ts";
+import type {
+  EvaluationRunItemFailureKind,
+  VerificationEvidenceViewModel,
+} from "../verification-ops/index.ts";
 import {
   createEvaluationWorkbenchController,
   type EvaluationWorkbenchController,
+  type EvaluationWorkbenchFinalizedRunHistoryEntry,
   type EvaluationWorkbenchOverview,
 } from "./evaluation-workbench-controller.ts";
 
@@ -122,6 +126,7 @@ export function EvaluationWorkbenchPage({
       : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
   const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
+  const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
@@ -349,15 +354,12 @@ export function EvaluationWorkbenchPage({
               </dl>
               {selectedRunHistoryEntry ? (
                 previousRunHistoryEntry ? (
-                  <div className="evaluation-workbench-result">
-                    <strong>Comparing against {previousRunHistoryEntry.run.id}</strong>
-                    <div className="evaluation-workbench-history-compare">
-                      <span>Selected recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
-                      <span>Previous recommendation: {previousRunHistoryEntry.finalized.recommendation.status}</span>
-                      <span>Selected summary: {summarizeFinalizedEntry(selectedRunHistoryEntry)}</span>
-                      <span>Previous summary: {summarizeFinalizedEntry(previousRunHistoryEntry)}</span>
-                    </div>
-                  </div>
+                  <EvaluationWorkbenchRunComparisonCard
+                    selectedEntry={selectedRunHistoryEntry}
+                    previousEntry={previousRunHistoryEntry}
+                    selectedEvidence={selectedRunEvidence}
+                    previousEvidence={previousRunEvidence}
+                  />
                 ) : (
                   <p className="evaluation-workbench-empty">
                     Finalize one more run in this suite to compare the current result against history.
@@ -708,6 +710,37 @@ export function EvaluationWorkbenchPage({
   }
 }
 
+export function EvaluationWorkbenchRunComparisonCard(props: {
+  selectedEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  previousEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  selectedEvidence: VerificationEvidenceViewModel[];
+  previousEvidence: VerificationEvidenceViewModel[];
+}) {
+  const bindingChanges = summarizeBindingChanges(props.selectedEntry.run, props.previousEntry.run);
+
+  return (
+    <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
+      <strong>Comparing against {props.previousEntry.run.id}</strong>
+      <div className="evaluation-workbench-history-compare">
+        <span>Selected recommendation: {props.selectedEntry.finalized.recommendation.status}</span>
+        <span>Previous recommendation: {props.previousEntry.finalized.recommendation.status}</span>
+        <span>Selected summary: {summarizeFinalizedEntry(props.selectedEntry)}</span>
+        <span>Previous summary: {summarizeFinalizedEntry(props.previousEntry)}</span>
+      </div>
+      <div className="evaluation-workbench-history-compare">
+        <strong>Binding Changes</strong>
+        {bindingChanges.length > 0 ? (
+          bindingChanges.map((change) => <span key={change}>{change}</span>)
+        ) : (
+          <span>Bindings unchanged from the previous finalized run.</span>
+        )}
+        <span>Selected evidence: {summarizeEvidenceLabels(props.selectedEvidence)}</span>
+        <span>Previous evidence: {summarizeEvidenceLabels(props.previousEvidence)}</span>
+      </div>
+    </div>
+  );
+}
+
 export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
   selectedRun: EvaluationWorkbenchOverview["runs"][number];
   selectedRunItem: EvaluationWorkbenchOverview["runItems"][number];
@@ -861,6 +894,70 @@ function summarizeBinding(
     `Skills ${formatOptionalList(binding.skill_package_ids)}`,
     `Module Template ${binding.module_template_id}`,
   ].join(" | ");
+}
+
+function summarizeBindingChanges(
+  selectedRun: EvaluationWorkbenchOverview["runs"][number],
+  previousRun: EvaluationWorkbenchOverview["runs"][number],
+) {
+  return [
+    ...compareBindingFields("Baseline", selectedRun.baseline_binding, previousRun.baseline_binding),
+    ...compareBindingFields("Candidate", selectedRun.candidate_binding, previousRun.candidate_binding),
+  ];
+}
+
+function compareBindingFields(
+  label: "Baseline" | "Candidate",
+  selectedBinding: EvaluationWorkbenchOverview["runs"][number]["baseline_binding"],
+  previousBinding: EvaluationWorkbenchOverview["runs"][number]["baseline_binding"],
+) {
+  const changes: string[] = [];
+
+  if (!selectedBinding || !previousBinding) {
+    if (selectedBinding?.model_id !== previousBinding?.model_id) {
+      changes.push(
+        `${label} binding availability changed: ${summarizeBinding(selectedBinding)} (was ${summarizeBinding(previousBinding)})`,
+      );
+    }
+    return changes;
+  }
+
+  pushBindingChange(changes, `${label} model`, selectedBinding.model_id, previousBinding.model_id);
+  pushBindingChange(changes, `${label} runtime`, selectedBinding.runtime_id, previousBinding.runtime_id);
+  pushBindingChange(
+    changes,
+    `${label} prompt`,
+    selectedBinding.prompt_template_id,
+    previousBinding.prompt_template_id,
+  );
+  pushBindingChange(
+    changes,
+    `${label} skills`,
+    formatOptionalList(selectedBinding.skill_package_ids),
+    formatOptionalList(previousBinding.skill_package_ids),
+  );
+  pushBindingChange(
+    changes,
+    `${label} module template`,
+    selectedBinding.module_template_id,
+    previousBinding.module_template_id,
+  );
+
+  return changes;
+}
+
+function pushBindingChange(
+  changes: string[],
+  label: string,
+  selectedValue: string,
+  previousValue: string,
+) {
+  if (selectedValue === previousValue) return;
+  changes.push(`${label} changed: ${selectedValue} (was ${previousValue})`);
+}
+
+function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
+  return evidence.length > 0 ? evidence.map((item) => item.label).join(", ") : "None recorded";
 }
 
 function numberOrUndefined(value: string) {

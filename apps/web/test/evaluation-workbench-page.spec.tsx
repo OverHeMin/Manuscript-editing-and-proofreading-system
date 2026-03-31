@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   EvaluationWorkbenchPage,
+  EvaluationWorkbenchRunComparisonCard,
   EvaluationWorkbenchSelectedRunItemDetailCard,
 } from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
 
@@ -90,4 +91,137 @@ test("evaluation workbench run-item detail card renders linked sample context an
   assert.match(markup, /candidate-model-1/);
   assert.match(markup, /skill-prod-1, skill-prod-2/);
   assert.match(markup, /skill-candidate-1/);
+});
+
+test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchRunComparisonCard
+      selectedEvidence={[
+        {
+          id: "evidence-2",
+          kind: "url",
+          label: "Latest browser QA",
+          uri: "https://example.test/evidence/latest-browser-qa",
+          created_at: "2026-04-01T08:19:00.000Z",
+        },
+      ]}
+      previousEvidence={[
+        {
+          id: "evidence-1",
+          kind: "url",
+          label: "Rejected browser QA",
+          uri: "https://example.test/evidence/rejected-browser-qa",
+          created_at: "2026-04-01T07:19:00.000Z",
+        },
+      ]}
+      selectedEntry={{
+        run: {
+          id: "run-2",
+          suite_id: "suite-1",
+          sample_set_id: "sample-set-1",
+          baseline_binding: {
+            lane: "baseline",
+            model_id: "baseline-model-2",
+            runtime_id: "runtime-1",
+            prompt_template_id: "prompt-1",
+            skill_package_ids: ["skill-1"],
+            module_template_id: "template-1",
+          },
+          candidate_binding: {
+            lane: "candidate",
+            model_id: "candidate-model-2",
+            runtime_id: "runtime-1",
+            prompt_template_id: "prompt-2",
+            skill_package_ids: ["skill-1", "skill-2"],
+            module_template_id: "template-1",
+          },
+          run_item_count: 1,
+          status: "passed",
+          evidence_ids: [],
+          started_at: "2026-04-01T08:00:00.000Z",
+          finished_at: "2026-04-01T08:20:00.000Z",
+        },
+        finalized: {
+          run: {
+            id: "run-2",
+            suite_id: "suite-1",
+            status: "passed",
+            evidence_ids: [],
+            started_at: "2026-04-01T08:00:00.000Z",
+          },
+          evidence_pack: {
+            id: "pack-2",
+            experiment_run_id: "run-2",
+            summary_status: "recommended",
+            created_at: "2026-04-01T08:20:00.000Z",
+          },
+          recommendation: {
+            id: "recommendation-2",
+            experiment_run_id: "run-2",
+            evidence_pack_id: "pack-2",
+            status: "recommended",
+            created_at: "2026-04-01T08:20:00.000Z",
+          },
+        },
+      }}
+      previousEntry={{
+        run: {
+          id: "run-1",
+          suite_id: "suite-1",
+          sample_set_id: "sample-set-1",
+          baseline_binding: {
+            lane: "baseline",
+            model_id: "baseline-model-1",
+            runtime_id: "runtime-1",
+            prompt_template_id: "prompt-1",
+            skill_package_ids: ["skill-1"],
+            module_template_id: "template-1",
+          },
+          candidate_binding: {
+            lane: "candidate",
+            model_id: "candidate-model-1",
+            runtime_id: "runtime-1",
+            prompt_template_id: "prompt-1",
+            skill_package_ids: ["skill-1"],
+            module_template_id: "template-1",
+          },
+          run_item_count: 1,
+          status: "passed",
+          evidence_ids: [],
+          started_at: "2026-04-01T07:00:00.000Z",
+          finished_at: "2026-04-01T07:20:00.000Z",
+        },
+        finalized: {
+          run: {
+            id: "run-1",
+            suite_id: "suite-1",
+            status: "passed",
+            evidence_ids: [],
+            started_at: "2026-04-01T07:00:00.000Z",
+          },
+          evidence_pack: {
+            id: "pack-1",
+            experiment_run_id: "run-1",
+            summary_status: "recommended",
+            created_at: "2026-04-01T07:20:00.000Z",
+          },
+          recommendation: {
+            id: "recommendation-1",
+            experiment_run_id: "run-1",
+            evidence_pack_id: "pack-1",
+            status: "recommended",
+            created_at: "2026-04-01T07:20:00.000Z",
+          },
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /Binding Changes/);
+  assert.match(markup, /Baseline model changed: baseline-model-2 \(was baseline-model-1\)/);
+  assert.match(markup, /Candidate model changed: candidate-model-2 \(was candidate-model-1\)/);
+  assert.match(markup, /Candidate prompt changed: prompt-2 \(was prompt-1\)/);
+  assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
+  assert.match(markup, /Selected evidence: Latest browser QA/);
+  assert.match(markup, /Previous evidence: Rejected browser QA/);
 });

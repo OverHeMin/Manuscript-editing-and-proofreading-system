@@ -56,6 +56,7 @@ export interface EvaluationWorkbenchOverview {
   sampleSetItems: EvaluationSampleSetItemViewModel[];
   runItems: EvaluationRunItemViewModel[];
   selectedRunEvidence: VerificationEvidenceViewModel[];
+  previousRunEvidence: VerificationEvidenceViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
   finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
 }
@@ -240,6 +241,7 @@ async function loadEvaluationWorkbenchOverview(
   let sampleSetItems: EvaluationSampleSetItemViewModel[] = [];
   let runItems: EvaluationRunItemViewModel[] = [];
   let selectedRunEvidence: VerificationEvidenceViewModel[] = [];
+  let previousRunEvidence: VerificationEvidenceViewModel[] = [];
   let selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null = null;
   let finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[] = [];
 
@@ -280,6 +282,20 @@ async function loadEvaluationWorkbenchOverview(
         .sort(compareFinalizedRunHistory);
     }
 
+    const previousRunId =
+      selectedRunId == null
+        ? null
+        : findPreviousFinalizedRunHistoryRunId(finalizedRunHistory, selectedRunId);
+
+    if (previousRunId != null) {
+      const previousRun = runs.find((run) => run.id === previousRunId) ?? null;
+      if (previousRun != null && previousRun.evidence_ids.length > 0) {
+        previousRunEvidence = (
+          await listEvaluationRunEvidenceByRunId(client, previousRunId)
+        ).body;
+      }
+    }
+
     selectedRunFinalization =
       finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
   }
@@ -295,6 +311,7 @@ async function loadEvaluationWorkbenchOverview(
     sampleSetItems,
     runItems,
     selectedRunEvidence,
+    previousRunEvidence,
     selectedRunFinalization,
     finalizedRunHistory,
   };
@@ -330,4 +347,13 @@ function resolveSelectedId(
   }
 
   return candidateIds[0] ?? null;
+}
+
+function findPreviousFinalizedRunHistoryRunId(
+  entries: EvaluationWorkbenchFinalizedRunHistoryEntry[],
+  selectedRunId: string,
+) {
+  const selectedIndex = entries.findIndex((entry) => entry.run.id === selectedRunId);
+  if (selectedIndex === -1) return null;
+  return entries.slice(selectedIndex + 1)[0]?.run.id ?? null;
 }

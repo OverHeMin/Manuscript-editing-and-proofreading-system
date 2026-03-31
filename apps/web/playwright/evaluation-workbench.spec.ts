@@ -190,6 +190,8 @@ test("admin can compare the latest finalized run against prior finalized history
     diffSummary: "First finalized run establishes the previous baseline.",
     evidenceLabel: "Phase 9E baseline evidence",
     evidenceUrl: "https://example.test/evidence/phase9e-baseline",
+    baselineModelId: "demo-model-prod-1",
+    candidateModelId: "demo-model-candidate-1",
   });
 
   const secondRunId = await createAndFinalizeRunFromWorkbench(page, {
@@ -198,6 +200,10 @@ test("admin can compare the latest finalized run against prior finalized history
     diffSummary: "Second finalized run improves structure stability.",
     evidenceLabel: "Phase 9E comparison evidence",
     evidenceUrl: "https://example.test/evidence/phase9e-comparison",
+    baselineModelId: "demo-model-prod-2",
+    candidateModelId: "demo-model-candidate-2",
+    promptTemplateId: "demo-prompt-candidate-2",
+    skillPackageIds: "demo-skill-prod-1,demo-skill-candidate-2",
   });
 
   const historyPanel = page.locator(".evaluation-workbench-history");
@@ -207,6 +213,22 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText(`Comparing against ${firstRunId}`);
   await expect(historyPanel).toContainText("Selected recommendation");
   await expect(historyPanel).toContainText("recommended");
+  await expect(historyPanel).toContainText("Binding Changes");
+  await expect(historyPanel).toContainText(
+    "Baseline model changed: demo-model-prod-2 (was demo-model-prod-1)",
+  );
+  await expect(historyPanel).toContainText(
+    "Candidate model changed: demo-model-candidate-2 (was demo-model-candidate-1)",
+  );
+  await expect(historyPanel).toContainText(
+    "Candidate prompt changed: demo-prompt-candidate-2 (was demo-prompt-prod-1)",
+  );
+  await expect(historyPanel).toContainText(
+    "Selected evidence: Phase 9E comparison evidence",
+  );
+  await expect(historyPanel).toContainText(
+    "Previous evidence: Phase 9E baseline evidence",
+  );
 });
 
 test("admin can inspect rejected history details for a prior finalized run", async ({
@@ -552,6 +574,10 @@ async function createAndFinalizeRunFromWorkbench(
     diffSummary: string;
     evidenceLabel: string;
     evidenceUrl: string;
+    baselineModelId?: string;
+    candidateModelId?: string;
+    promptTemplateId?: string;
+    skillPackageIds?: string;
     hardGatePassed?: boolean;
     failureKind?: string;
     failureReason?: string;
@@ -559,6 +585,18 @@ async function createAndFinalizeRunFromWorkbench(
   },
 ): Promise<string> {
   await page.getByLabel("Sample Set").selectOption(input.sampleSetId);
+  if (input.baselineModelId) {
+    await page.getByLabel("Baseline Model ID").fill(input.baselineModelId);
+  }
+  if (input.candidateModelId) {
+    await page.getByLabel("Candidate Model ID").fill(input.candidateModelId);
+  }
+  if (input.promptTemplateId) {
+    await page.getByLabel("Prompt Template ID").fill(input.promptTemplateId);
+  }
+  if (input.skillPackageIds) {
+    await page.getByLabel("Skill Package IDs").fill(input.skillPackageIds);
+  }
   await page.getByRole("button", { name: "Create Evaluation Run" }).click();
 
   const createStatus = await page.locator(".evaluation-workbench-status").textContent();

@@ -401,6 +401,21 @@ test("evaluation workbench controller loads finalized suite history for comparis
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-1",
+              kind: "url",
+              label: "Rejected browser QA",
+              uri: "https://example.test/evidence/rejected-browser-qa",
+              created_at: "2026-03-31T12:11:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
         return {
           status: 200,
@@ -541,6 +556,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
   assert.equal(overview.selectedRunId, "run-2");
   assert.equal(overview.selectedRunFinalization?.run.id, "run-2");
   assert.equal(overview.selectedRunEvidence[0]?.label, "Latest browser QA");
+  assert.equal(overview.previousRunEvidence[0]?.label, "Rejected browser QA");
   assert.deepEqual(
     overview.finalizedRunHistory.map((entry) => entry.run.id),
     ["run-2", "run-1"],
@@ -565,6 +581,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
     ],
   );
 });
