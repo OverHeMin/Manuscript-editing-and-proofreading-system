@@ -1,4 +1,5 @@
 import { PermissionGuard } from "../auth/permission-guard.ts";
+import { PostgresAuditService } from "../audit/index.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
 import type { ApiServerRuntime } from "./api-http-server.ts";
 import {
@@ -16,10 +17,18 @@ import {
   createAgentRuntimeApi,
   PostgresAgentRuntimeRepository,
 } from "../modules/agent-runtime/index.ts";
+import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
   DocumentAssetService,
-  InMemoryDocumentAssetRepository,
+  PostgresDocumentAssetRepository,
 } from "../modules/assets/index.ts";
+import {
+  DocumentExportService,
+} from "../modules/document-pipeline/index.ts";
+import {
+  createEditingApi,
+  EditingService,
+} from "../modules/editing/index.ts";
 import {
   FeedbackGovernanceService,
   InMemoryFeedbackGovernanceRepository,
@@ -57,22 +66,37 @@ import {
   PostgresLearningGovernanceRepository,
 } from "../modules/learning-governance/index.ts";
 import {
+  PostgresJobRepository,
+} from "../modules/jobs/index.ts";
+import {
   createModelRegistryApi,
   ModelRegistryService,
   PostgresModelRegistryRepository,
   PostgresModelRoutingPolicyRepository,
 } from "../modules/model-registry/index.ts";
-import { InMemoryManuscriptRepository } from "../modules/manuscripts/index.ts";
+import {
+  createManuscriptApi,
+  ManuscriptLifecycleService,
+  PostgresManuscriptRepository,
+} from "../modules/manuscripts/index.ts";
 import {
   createPromptSkillRegistryApi,
   PostgresPromptSkillRegistryRepository,
   PromptSkillRegistryService,
 } from "../modules/prompt-skill-registry/index.ts";
 import {
+  createProofreadingApi,
+  ProofreadingService,
+} from "../modules/proofreading/index.ts";
+import {
   createRuntimeBindingApi,
   PostgresRuntimeBindingRepository,
   RuntimeBindingService,
 } from "../modules/runtime-bindings/index.ts";
+import {
+  createScreeningApi,
+  ScreeningService,
+} from "../modules/screening/index.ts";
 import {
   createSandboxProfileApi,
   PostgresSandboxProfileRepository,
@@ -117,8 +141,15 @@ export function createPersistentGovernanceRuntime(
 ): ApiServerRuntime {
   const permissionGuard = new PermissionGuard();
 
-  const manuscriptRepository = new InMemoryManuscriptRepository();
-  const assetRepository = new InMemoryDocumentAssetRepository();
+  const manuscriptRepository = new PostgresManuscriptRepository({
+    client: options.client,
+  });
+  const assetRepository = new PostgresDocumentAssetRepository({
+    client: options.client,
+  });
+  const jobRepository = new PostgresJobRepository({
+    client: options.client,
+  });
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
   const feedbackExecutionTrackingRepository =
@@ -179,12 +210,24 @@ export function createPersistentGovernanceRuntime(
     });
   const promptSkillRegistryRepository =
     new PostgresPromptSkillRegistryRepository({
-      client: options.client,
-    });
+    client: options.client,
+  });
+
+  const workbenchTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      manuscriptRepository: new PostgresManuscriptRepository({ client }),
+      assetRepository: new PostgresDocumentAssetRepository({ client }),
+      jobRepository: new PostgresJobRepository({ client }),
+    }),
+  });
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
     manuscriptRepository,
+  });
+  const exportService = new DocumentExportService({
+    assetRepository,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -266,6 +309,13 @@ export function createPersistentGovernanceRuntime(
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
   });
+  const aiGatewayService = new AiGatewayService({
+    repository: modelRegistryRepository,
+    routingPolicyRepository: modelRoutingPolicyRepository,
+    auditService: new PostgresAuditService({
+      client: options.client,
+    }),
+  });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
@@ -305,6 +355,69 @@ export function createPersistentGovernanceRuntime(
       }),
     }),
   });
+  const manuscriptService = new ManuscriptLifecycleService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    transactionManager: workbenchTransactionManager,
+  });
+  const screeningService = new ScreeningService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+    transactionManager: workbenchTransactionManager,
+  });
+  const editingService = new EditingService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+    transactionManager: workbenchTransactionManager,
+  });
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+    transactionManager: workbenchTransactionManager,
+  });
 
   return {
     authRuntime: options.authRuntime,
@@ -317,6 +430,27 @@ export function createPersistentGovernanceRuntime(
     agentRuntimeApi: createAgentRuntimeApi({
       agentRuntimeService,
     }),
+    editingApi: createEditingApi({
+      editingService,
+    }),
+    manuscriptApi: createManuscriptApi({
+      manuscriptService,
+      assetService: documentAssetService,
+    }),
+    proofreadingApi: createProofreadingApi({
+      proofreadingService,
+    }),
+    screeningApi: createScreeningApi({
+      screeningService,
+    }),
+    documentPipelineApi: {
+      async exportCurrentAsset(input) {
+        return {
+          status: 200,
+          body: await exportService.exportCurrentAsset(input),
+        };
+      },
+    },
     executionGovernanceApi: createExecutionGovernanceApi({
       executionGovernanceService,
     }),

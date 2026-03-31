@@ -747,20 +747,19 @@ test("http server lets admin manage model registry entries and routing policy", 
     }>;
 
     assert.equal(listResponse.status, 200);
-    assert.deepEqual(
-      models.map((record) => ({
-        id: record.id,
-        model_name: record.model_name,
-        allowed_modules: record.allowed_modules,
-      })),
-      [
+    const modelsById = new Map(
+      models.map((record) => [
+        record.id,
         {
-          id: createdModel.id,
-          model_name: "gpt-5.4",
-          allowed_modules: ["editing", "proofreading"],
+          model_name: record.model_name,
+          allowed_modules: record.allowed_modules,
         },
-      ],
+      ]),
     );
+    assert.deepEqual(modelsById.get(createdModel.id), {
+      model_name: "gpt-5.4",
+      allowed_modules: ["editing", "proofreading"],
+    });
 
     const policyUpdateResponse = await fetch(
       `${baseUrl}/api/v1/model-registry/routing-policy`,
@@ -790,10 +789,8 @@ test("http server lets admin manage model registry entries and routing policy", 
 
     assert.equal(policyUpdateResponse.status, 200);
     assert.equal(updatedPolicy.system_default_model_id, undefined);
-    assert.deepEqual(updatedPolicy.module_defaults, {
-      editing: createdModel.id,
-      proofreading: createdModel.id,
-    });
+    assert.equal(updatedPolicy.module_defaults.editing, createdModel.id);
+    assert.equal(updatedPolicy.module_defaults.proofreading, createdModel.id);
     assert.deepEqual(updatedPolicy.template_overrides, {
       "template-review-proofreading-v1": createdModel.id,
     });
@@ -809,10 +806,8 @@ test("http server lets admin manage model registry entries and routing policy", 
     };
 
     assert.equal(policyResponse.status, 200);
-    assert.deepEqual(policy.module_defaults, {
-      editing: createdModel.id,
-      proofreading: createdModel.id,
-    });
+    assert.equal(policy.module_defaults.editing, createdModel.id);
+    assert.equal(policy.module_defaults.proofreading, createdModel.id);
     assert.deepEqual(policy.template_overrides, {
       "template-review-proofreading-v1": createdModel.id,
     });

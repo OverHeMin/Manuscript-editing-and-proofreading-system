@@ -65,12 +65,22 @@ import {
   ExecutionTrackingSkillPackageVersionMismatchError,
   InMemoryExecutionTrackingRepository,
 } from "../modules/execution-tracking/index.ts";
+import { InMemoryAuditService } from "../audit/index.ts";
+import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
   DocumentAssetService,
   InMemoryDocumentAssetRepository,
   ManuscriptNotFoundError,
   type DocumentAssetRecord,
 } from "../modules/assets/index.ts";
+import {
+  DocumentExportAssetNotFoundError,
+  DocumentExportService,
+} from "../modules/document-pipeline/index.ts";
+import {
+  createEditingApi,
+  EditingService,
+} from "../modules/editing/index.ts";
 import {
   FeedbackGovernanceService,
   FeedbackGovernanceReviewedSnapshotNotFoundError,
@@ -117,7 +127,17 @@ import {
   LearningWritebackStatusTransitionError,
   LearningWritebackTargetMismatchError,
 } from "../modules/learning-governance/index.ts";
-import { InMemoryManuscriptRepository, type ManuscriptRecord } from "../modules/manuscripts/index.ts";
+import {
+  InMemoryJobRepository,
+  type JobRecord,
+} from "../modules/jobs/index.ts";
+import {
+  InMemoryManuscriptRepository,
+  JobNotFoundError,
+  createManuscriptApi,
+  type ManuscriptRecord,
+  ManuscriptLifecycleService,
+} from "../modules/manuscripts/index.ts";
 import {
   createModelRegistryApi,
   DuplicateModelRegistryEntryError,
@@ -137,6 +157,12 @@ import {
   SkillPackageNotFoundError,
 } from "../modules/prompt-skill-registry/index.ts";
 import {
+  createProofreadingApi,
+  ProofreadingDraftAssetRequiredError,
+  ProofreadingDraftContextNotFoundError,
+  ProofreadingService,
+} from "../modules/proofreading/index.ts";
+import {
   createRuntimeBindingApi,
   InMemoryRuntimeBindingRepository,
   RuntimeBindingCompatibilityError,
@@ -150,6 +176,10 @@ import {
   SandboxProfileNotFoundError,
   SandboxProfileService,
 } from "../modules/sandbox-profiles/index.ts";
+import {
+  createScreeningApi,
+  ScreeningService,
+} from "../modules/screening/index.ts";
 import {
   createTemplateApi,
   InMemoryModuleTemplateRepository,
@@ -195,6 +225,36 @@ type HttpRouteMatch =
     }
   | {
       route: "auth-logout";
+    }
+  | {
+      route: "manuscripts-upload";
+    }
+  | {
+      route: "manuscripts-get";
+      manuscriptId: string;
+    }
+  | {
+      route: "manuscripts-list-assets";
+      manuscriptId: string;
+    }
+  | {
+      route: "jobs-get";
+      jobId: string;
+    }
+  | {
+      route: "document-pipeline-export-current-asset";
+    }
+  | {
+      route: "modules-screening-run";
+    }
+  | {
+      route: "modules-editing-run";
+    }
+  | {
+      route: "modules-proofreading-draft";
+    }
+  | {
+      route: "modules-proofreading-finalize";
     }
   | {
       route: "agent-runtime-create";
@@ -508,6 +568,26 @@ export interface ApiServerRuntime {
   agentExecutionApi: ReturnType<typeof createAgentExecutionApi>;
   agentProfileApi: ReturnType<typeof createAgentProfileApi>;
   agentRuntimeApi: ReturnType<typeof createAgentRuntimeApi>;
+  editingApi: ReturnType<typeof createEditingApi>;
+  manuscriptApi: ReturnType<typeof createManuscriptApi>;
+  proofreadingApi: ReturnType<typeof createProofreadingApi>;
+  screeningApi: ReturnType<typeof createScreeningApi>;
+  documentPipelineApi: {
+    exportCurrentAsset: (input: {
+      manuscriptId: string;
+      preferredAssetType?: DocumentAssetRecord["asset_type"];
+    }) => Promise<
+      RouteResponse<{
+        manuscript_id: string;
+        asset: DocumentAssetRecord;
+        download: {
+          storage_key: string;
+          file_name?: string;
+          mime_type: string;
+        };
+      }>
+    >;
+  };
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
@@ -594,6 +674,7 @@ export function createInMemoryApiRuntime(input: {
   const permissionGuard = new PermissionGuard();
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
+  const jobRepository = new InMemoryJobRepository();
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -617,6 +698,7 @@ export function createInMemoryApiRuntime(input: {
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const auditService = new InMemoryAuditService();
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -682,6 +764,19 @@ export function createInMemoryApiRuntime(input: {
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
   });
+  const manuscriptService = new ManuscriptLifecycleService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+  });
+  const exportService = new DocumentExportService({
+    assetRepository,
+  });
+  const aiGatewayService = new AiGatewayService({
+    repository: modelRegistryRepository,
+    routingPolicyRepository: modelRoutingPolicyRepository,
+    auditService,
+  });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
@@ -718,7 +813,77 @@ export function createInMemoryApiRuntime(input: {
       candidateRepository: learningCandidateRepository,
       feedbackGovernanceRepository,
     });
+    seedDemoWorkbenchData({
+      manuscriptRepository,
+      assetRepository,
+      knowledgeRepository,
+      moduleTemplateRepository,
+      promptSkillRegistryRepository,
+      executionGovernanceRepository,
+      sandboxProfileRepository,
+      agentProfileRepository,
+      agentRuntimeRepository,
+      runtimeBindingRepository,
+      toolPermissionPolicyRepository,
+      modelRegistryRepository,
+      modelRoutingPolicyRepository,
+    });
   }
+
+  const screeningService = new ScreeningService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+  });
+  const editingService = new EditingService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+  });
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository,
+    assetRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    executionGovernanceService,
+    executionTrackingService,
+    jobRepository,
+    documentAssetService,
+    aiGatewayService,
+    sandboxProfileService,
+    agentProfileService,
+    agentRuntimeService,
+    runtimeBindingService,
+    toolPermissionPolicyService,
+    agentExecutionService,
+  });
 
   return {
     authRuntime,
@@ -731,6 +896,27 @@ export function createInMemoryApiRuntime(input: {
     agentRuntimeApi: createAgentRuntimeApi({
       agentRuntimeService,
     }),
+    editingApi: createEditingApi({
+      editingService,
+    }),
+    manuscriptApi: createManuscriptApi({
+      manuscriptService,
+      assetService: documentAssetService,
+    }),
+    proofreadingApi: createProofreadingApi({
+      proofreadingService,
+    }),
+    screeningApi: createScreeningApi({
+      screeningService,
+    }),
+    documentPipelineApi: {
+      async exportCurrentAsset(input) {
+        return {
+          status: 200,
+          body: await exportService.exportCurrentAsset(input),
+        };
+      },
+    },
     executionGovernanceApi: createExecutionGovernanceApi({
       executionGovernanceService,
     }),
@@ -1036,6 +1222,406 @@ function seedDemoLearningData(input: {
   }
 }
 
+function seedDemoWorkbenchData(input: {
+  manuscriptRepository: InMemoryManuscriptRepository;
+  assetRepository: InMemoryDocumentAssetRepository;
+  knowledgeRepository: InMemoryKnowledgeRepository;
+  moduleTemplateRepository: InMemoryModuleTemplateRepository;
+  promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
+  executionGovernanceRepository: InMemoryExecutionGovernanceRepository;
+  sandboxProfileRepository: InMemorySandboxProfileRepository;
+  agentProfileRepository: InMemoryAgentProfileRepository;
+  agentRuntimeRepository: InMemoryAgentRuntimeRepository;
+  runtimeBindingRepository: InMemoryRuntimeBindingRepository;
+  toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
+  modelRegistryRepository: InMemoryModelRegistryRepository;
+  modelRoutingPolicyRepository: InMemoryModelRoutingPolicyRepository;
+}): void {
+  void input.manuscriptRepository.save({
+    id: "manuscript-seeded-1",
+    title: "Seeded Workbench Manuscript",
+    manuscript_type: "clinical_study",
+    status: "uploaded",
+    created_by: "seed-user",
+    current_screening_asset_id: undefined,
+    current_editing_asset_id: undefined,
+    current_proofreading_asset_id: undefined,
+    current_template_family_id: "family-seeded-1",
+    created_at: "2026-03-31T07:55:00.000Z",
+    updated_at: "2026-03-31T07:55:00.000Z",
+  });
+  void input.assetRepository.save({
+    id: "original-seeded-1",
+    manuscript_id: "manuscript-seeded-1",
+    asset_type: "original",
+    status: "active",
+    storage_key: "uploads/seeded/original.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: undefined,
+    source_module: "upload",
+    source_job_id: undefined,
+    created_by: "seed-user",
+    version_no: 1,
+    is_current: true,
+    file_name: "seeded-original.docx",
+    created_at: "2026-03-31T07:56:00.000Z",
+    updated_at: "2026-03-31T07:56:00.000Z",
+  });
+
+  void input.moduleTemplateRepository.save({
+    id: "template-screening-1",
+    template_family_id: "family-seeded-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Seeded screening prompt",
+  });
+  void input.moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Seeded editing prompt",
+  });
+  void input.moduleTemplateRepository.save({
+    id: "template-proofreading-1",
+    template_family_id: "family-seeded-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Seeded proofreading prompt",
+  });
+
+  void input.promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-screening-1",
+    name: "screening_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+  });
+  void input.promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  void input.promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-proofreading-1",
+    name: "proofreading_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "proofreading",
+    manuscript_types: ["clinical_study"],
+  });
+  void input.promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-screening-1",
+    name: "screening_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["screening"],
+  });
+  void input.promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-editing-1",
+    name: "editing_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
+  });
+  void input.promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-proofreading-1",
+    name: "proofreading_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["proofreading"],
+  });
+
+  void input.knowledgeRepository.save({
+    id: "knowledge-screening-1",
+    title: "Screening knowledge",
+    canonical_text: "Check endpoint definitions.",
+    knowledge_kind: "rule",
+    status: "approved",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    template_bindings: ["template-screening-1"],
+  });
+  void input.knowledgeRepository.save({
+    id: "knowledge-editing-1",
+    title: "Editing knowledge",
+    canonical_text: "Normalize manuscript terminology.",
+    knowledge_kind: "rule",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    template_bindings: ["template-editing-1"],
+  });
+  void input.knowledgeRepository.save({
+    id: "knowledge-proofreading-1",
+    title: "Proofreading knowledge",
+    canonical_text: "Confirm punctuation consistency.",
+    knowledge_kind: "checklist",
+    status: "approved",
+    routing: {
+      module_scope: "proofreading",
+      manuscript_types: ["clinical_study"],
+    },
+    template_bindings: ["template-proofreading-1"],
+  });
+
+  void input.executionGovernanceRepository.saveProfile({
+    id: "profile-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    module_template_id: "template-screening-1",
+    prompt_template_id: "prompt-screening-1",
+    skill_package_ids: ["skill-screening-1"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
+  void input.executionGovernanceRepository.saveProfile({
+    id: "profile-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    module_template_id: "template-editing-1",
+    prompt_template_id: "prompt-editing-1",
+    skill_package_ids: ["skill-editing-1"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
+  void input.executionGovernanceRepository.saveProfile({
+    id: "profile-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    module_template_id: "template-proofreading-1",
+    prompt_template_id: "prompt-proofreading-1",
+    skill_package_ids: ["skill-proofreading-1"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
+
+  void input.sandboxProfileRepository.save({
+    id: "sandbox-screening-1",
+    name: "Screening Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+  void input.sandboxProfileRepository.save({
+    id: "sandbox-editing-1",
+    name: "Editing Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+  void input.sandboxProfileRepository.save({
+    id: "sandbox-proofreading-1",
+    name: "Proofreading Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+
+  void input.agentRuntimeRepository.save({
+    id: "runtime-screening-1",
+    name: "Screening Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "sandbox-screening-1",
+    allowed_modules: ["screening"],
+    runtime_slot: "screening",
+    admin_only: true,
+  });
+  void input.agentRuntimeRepository.save({
+    id: "runtime-editing-1",
+    name: "Editing Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "sandbox-editing-1",
+    allowed_modules: ["editing"],
+    runtime_slot: "editing",
+    admin_only: true,
+  });
+  void input.agentRuntimeRepository.save({
+    id: "runtime-proofreading-1",
+    name: "Proofreading Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "sandbox-proofreading-1",
+    allowed_modules: ["proofreading"],
+    runtime_slot: "proofreading",
+    admin_only: true,
+  });
+
+  void input.agentProfileRepository.save({
+    id: "agent-profile-screening-1",
+    name: "Screening Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["screening"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+  void input.agentProfileRepository.save({
+    id: "agent-profile-editing-1",
+    name: "Editing Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["editing"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+  void input.agentProfileRepository.save({
+    id: "agent-profile-proofreading-1",
+    name: "Proofreading Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["proofreading"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+
+  void input.toolPermissionPolicyRepository.save({
+    id: "policy-screening-1",
+    name: "Screening Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+  void input.toolPermissionPolicyRepository.save({
+    id: "policy-editing-1",
+    name: "Editing Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+  void input.toolPermissionPolicyRepository.save({
+    id: "policy-proofreading-1",
+    name: "Proofreading Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+
+  void input.runtimeBindingRepository.save({
+    id: "binding-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    runtime_id: "runtime-screening-1",
+    sandbox_profile_id: "sandbox-screening-1",
+    agent_profile_id: "agent-profile-screening-1",
+    tool_permission_policy_id: "policy-screening-1",
+    prompt_template_id: "prompt-screening-1",
+    skill_package_ids: ["skill-screening-1"],
+    execution_profile_id: "profile-screening-1",
+    status: "active",
+    version: 1,
+  });
+  void input.runtimeBindingRepository.save({
+    id: "binding-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    runtime_id: "runtime-editing-1",
+    sandbox_profile_id: "sandbox-editing-1",
+    agent_profile_id: "agent-profile-editing-1",
+    tool_permission_policy_id: "policy-editing-1",
+    prompt_template_id: "prompt-editing-1",
+    skill_package_ids: ["skill-editing-1"],
+    execution_profile_id: "profile-editing-1",
+    status: "active",
+    version: 1,
+  });
+  void input.runtimeBindingRepository.save({
+    id: "binding-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    runtime_id: "runtime-proofreading-1",
+    sandbox_profile_id: "sandbox-proofreading-1",
+    agent_profile_id: "agent-profile-proofreading-1",
+    tool_permission_policy_id: "policy-proofreading-1",
+    prompt_template_id: "prompt-proofreading-1",
+    skill_package_ids: ["skill-proofreading-1"],
+    execution_profile_id: "profile-proofreading-1",
+    status: "active",
+    version: 1,
+  });
+
+  void input.modelRegistryRepository.save({
+    id: "model-screening-1",
+    provider: "openai",
+    model_name: "screening-model",
+    model_version: "2026-03-31",
+    allowed_modules: ["screening"],
+    is_prod_allowed: true,
+  });
+  void input.modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "editing-model",
+    model_version: "2026-03-31",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+  void input.modelRegistryRepository.save({
+    id: "model-proofreading-1",
+    provider: "openai",
+    model_name: "proofreading-model",
+    model_version: "2026-03-31",
+    allowed_modules: ["proofreading"],
+    is_prod_allowed: true,
+  });
+  void input.modelRoutingPolicyRepository.save({
+    system_default_model_id: undefined,
+    module_defaults: {
+      screening: "model-screening-1",
+      editing: "model-editing-1",
+      proofreading: "model-proofreading-1",
+    },
+    template_overrides: {},
+  });
+}
+
 async function handleRoute(
   routeMatch: HttpRouteMatch,
   req: IncomingMessage,
@@ -1098,6 +1684,87 @@ async function handleRoute(
           "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
         },
       };
+    case "manuscripts-upload": {
+      const session = await requirePermission(req, runtime, "manuscripts.submit");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.manuscriptApi.upload
+      >[0];
+
+      return runtime.manuscriptApi.upload({
+        ...body,
+        createdBy: session.user.id,
+      });
+    }
+    case "manuscripts-get":
+      await runtime.authRuntime.requireSession(req);
+      return runtime.manuscriptApi.getManuscript({
+        manuscriptId: routeMatch.manuscriptId,
+      });
+    case "manuscripts-list-assets":
+      await runtime.authRuntime.requireSession(req);
+      return runtime.manuscriptApi.listAssets({
+        manuscriptId: routeMatch.manuscriptId,
+      });
+    case "jobs-get":
+      await runtime.authRuntime.requireSession(req);
+      return runtime.manuscriptApi.getJob({
+        jobId: routeMatch.jobId,
+      });
+    case "document-pipeline-export-current-asset": {
+      await runtime.authRuntime.requireSession(req);
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.documentPipelineApi.exportCurrentAsset
+      >[0];
+      return runtime.documentPipelineApi.exportCurrentAsset(body);
+    }
+    case "modules-screening-run": {
+      const session = await requirePermission(req, runtime, "workbench.screening");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.screeningApi.runScreening
+      >[0];
+
+      return runtime.screeningApi.runScreening({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-editing-run": {
+      const session = await requirePermission(req, runtime, "workbench.editing");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editingApi.runEditing
+      >[0];
+
+      return runtime.editingApi.runEditing({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-draft": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.proofreadingApi.createDraft
+      >[0];
+
+      return runtime.proofreadingApi.createDraft({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-finalize": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.proofreadingApi.confirmFinal
+      >[0];
+
+      return runtime.proofreadingApi.confirmFinal({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
     case "agent-runtime-create": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -1813,6 +2480,30 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "auth-logout" };
   }
 
+  if (method === "POST" && path === "/api/v1/manuscripts/upload") {
+    return { route: "manuscripts-upload" };
+  }
+
+  if (method === "POST" && path === "/api/v1/document-pipeline/export-current-asset") {
+    return { route: "document-pipeline-export-current-asset" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/screening/run") {
+    return { route: "modules-screening-run" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/editing/run") {
+    return { route: "modules-editing-run" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/proofreading/draft") {
+    return { route: "modules-proofreading-draft" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/proofreading/finalize") {
+    return { route: "modules-proofreading-finalize" };
+  }
+
   if (method === "POST" && path === "/api/v1/agent-runtime") {
     return { route: "agent-runtime-create" };
   }
@@ -1945,6 +2636,32 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {
     return { route: "knowledge-create-draft" };
+  }
+
+  const manuscriptAssetListMatch = path.match(
+    /^\/api\/v1\/manuscripts\/([^/]+)\/assets$/,
+  );
+  if (method === "GET" && manuscriptAssetListMatch) {
+    return {
+      route: "manuscripts-list-assets",
+      manuscriptId: manuscriptAssetListMatch[1],
+    };
+  }
+
+  const manuscriptGetMatch = path.match(/^\/api\/v1\/manuscripts\/([^/]+)$/);
+  if (method === "GET" && manuscriptGetMatch) {
+    return {
+      route: "manuscripts-get",
+      manuscriptId: manuscriptGetMatch[1],
+    };
+  }
+
+  const jobGetMatch = path.match(/^\/api\/v1\/jobs\/([^/]+)$/);
+  if (method === "GET" && jobGetMatch) {
+    return {
+      route: "jobs-get",
+      jobId: jobGetMatch[1],
+    };
   }
 
   const agentRuntimeByModuleMatch = path.match(
@@ -2474,12 +3191,14 @@ function mapErrorToHttpResponse(
     error instanceof AgentExecutionLogNotFoundError ||
     error instanceof AgentProfileNotFoundError ||
     error instanceof AgentRuntimeNotFoundError ||
+    error instanceof JobNotFoundError ||
     error instanceof KnowledgeItemNotFoundError ||
     error instanceof LearningCandidateNotFoundError ||
     error instanceof ReviewedCaseSnapshotNotFoundError ||
     error instanceof LearningWritebackNotFoundError ||
     error instanceof FeedbackGovernanceReviewedSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
+    error instanceof DocumentExportAssetNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
@@ -2494,7 +3213,8 @@ function mapErrorToHttpResponse(
     error instanceof KnowledgeBindingRuleNotFoundError ||
     error instanceof ActiveExecutionProfileNotFoundError ||
     error instanceof ExecutionResolutionProfileAssetNotFoundError ||
-    error instanceof ExecutionResolutionKnowledgeItemNotFoundError
+    error instanceof ExecutionResolutionKnowledgeItemNotFoundError ||
+    error instanceof ProofreadingDraftContextNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -2533,7 +3253,8 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingPolicyValidationError ||
     error instanceof ExecutionTrackingSkillPackageVersionMismatchError ||
     error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
-    error instanceof ToolPermissionPolicyUnknownToolError
+    error instanceof ToolPermissionPolicyUnknownToolError ||
+    error instanceof ProofreadingDraftAssetRequiredError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

@@ -21,6 +21,8 @@
   仅用于本地 loopback-only 演示、联调和 QA。数据为内存态，可自动注入 demo 数据。
 - `pnpm --filter @medical/api run serve`
   启动持久化 runtime。当前已把以下内容接入 PostgreSQL：
+  - 稿件、文档资产、作业记录与当前资产导出主链路
+  - 审稿 / 编加 / 校对模块的受治理执行记录
   - 用户认证、登录失败窗口、服务端会话、审计日志
   - 知识库条目与知识审稿动作
   - 模板家族与模块模板版本治理
@@ -35,16 +37,17 @@
 
 当前仍然是 mixed-mode，不应误判为“整套业务都已完全生产持久化”。仍未完成真实持久化或仍属基础实现的部分包括：
 
-- 稿件、资产、上传与导出主链路
 - 学习快照、反馈溯源与完整学习主流程
 - 评测、验证与 agent 执行编排等后续阶段模块
+- 更完整的 Worker 编排、运维观测与生产级部署闭环
 
 这意味着：
 
 - `apps/web` 已经有真实可运行的 workbench 页面
 - `apps/api` 已经有真实可运行的 HTTP 服务
+- `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
-- 但 `serve` 当前代表“认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking 持久化 runtime”，不是最终生产版完整业务系统
+- 但 `serve` 当前仍是“稿件主链路 + 认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
 
 ## 环境要求
 
@@ -89,7 +92,7 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
-- 当前持久化范围是“认证 + 治理注册表 + agent-tooling governance + execution governance/tracking”
+- 当前持久化范围已覆盖“稿件主链路 + 认证 + 治理注册表 + agent-tooling governance + execution governance/tracking”
 - 不会自动注入 demo 审稿数据
 
 ### Web Workbench Shell
@@ -127,9 +130,8 @@
 
 如果要把这套系统继续推进到“完整生产可用”，下一批重点工作仍然是：
 
-- 稿件与资产主链路的真实持久化
 - 学习主流程与反馈溯源落库
 - 模型执行治理、评测与路由策略联动
 - agent 执行编排、运行证据与更深层治理运营能力
-- Web workbench 对持久化治理接口的完整接线与深度运营能力
+- Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
 - 部署、监控、回滚、远程维护标准化

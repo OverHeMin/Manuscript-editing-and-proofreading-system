@@ -120,8 +120,8 @@ export class ManuscriptLifecycleService {
         };
 
         await manuscriptRepository.save(manuscript);
-        await assetRepository.save(asset);
         await jobRepository.save(job);
+        await assetRepository.save(asset);
 
         return {
           manuscript,
