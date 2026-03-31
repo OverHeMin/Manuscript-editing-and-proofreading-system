@@ -12,6 +12,7 @@ test("workbench routing exposes manuscript processing surfaces as implemented", 
   assert.equal(isWorkbenchImplemented("screening"), true);
   assert.equal(isWorkbenchImplemented("editing"), true);
   assert.equal(isWorkbenchImplemented("proofreading"), true);
+  assert.equal(isWorkbenchImplemented("evaluation-workbench"), true);
 });
 
 test("workbench routing maps manuscript processing surfaces to the manuscript workbench", () => {
@@ -20,6 +21,7 @@ test("workbench routing maps manuscript processing surfaces to the manuscript wo
   assert.equal(resolveWorkbenchRenderKind("editing"), "manuscript-workbench");
   assert.equal(resolveWorkbenchRenderKind("proofreading"), "manuscript-workbench");
   assert.equal(resolveWorkbenchRenderKind("knowledge-review"), "knowledge-review");
+  assert.equal(resolveWorkbenchRenderKind("evaluation-workbench"), "evaluation-workbench");
 });
 
 test("workbench routing formats and resolves manuscript handoff hashes", () => {

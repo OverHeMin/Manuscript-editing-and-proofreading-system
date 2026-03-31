@@ -6,6 +6,7 @@ export type WorkbenchRenderKind =
   | "knowledge-review"
   | "learning-review"
   | "admin-governance"
+  | "evaluation-workbench"
   | "placeholder";
 
 export interface WorkbenchLocation {
@@ -36,6 +37,10 @@ export function resolveWorkbenchRenderKind(
 
   if (workbenchId === "admin-console" || workbenchId === "template-governance") {
     return "admin-governance";
+  }
+
+  if (workbenchId === "evaluation-workbench") {
+    return "evaluation-workbench";
   }
 
   return "placeholder";

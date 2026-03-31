@@ -34,7 +34,7 @@ const steps = [
     ],
   },
   {
-    label: "Web manuscript workbench tests",
+    label: "Web manuscript and evaluation workbench tests",
     command: pnpmCommand,
     args: [
       "--filter",
@@ -45,9 +45,24 @@ const steps = [
       "tsx",
       "--test",
       "test/manuscript-workbench-routing.spec.ts",
+      "test/evaluation-workbench-controller.spec.ts",
+      "test/evaluation-workbench-page.spec.tsx",
       "test/manuscript-workbench-controller.spec.ts",
       "test/manuscript-workbench-page.spec.tsx",
       "test/manuscript-workbench-summary.spec.tsx",
+    ],
+  },
+  {
+    label: "Browser evaluation workbench smoke",
+    command: pnpmCommand,
+    args: [
+      "--filter",
+      "@medsys/web",
+      "run",
+      "test:browser",
+      "--",
+      "--browser=chromium",
+      "playwright/evaluation-workbench.spec.ts",
     ],
   },
   {
