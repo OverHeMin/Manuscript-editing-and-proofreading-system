@@ -266,6 +266,19 @@ export class TemplateGovernanceService {
     return updatedFamily;
   }
 
+  async listModuleTemplatesByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<ModuleTemplateRecord[]> {
+    const templateFamily = await this.templateFamilyRepository.findById(
+      templateFamilyId,
+    );
+    if (!templateFamily) {
+      throw new TemplateFamilyNotFoundError(templateFamilyId);
+    }
+
+    return this.moduleTemplateRepository.listByTemplateFamilyId(templateFamilyId);
+  }
+
   listTemplateFamilies(): Promise<TemplateFamilyRecord[]> {
     return this.templateFamilyRepository.list();
   }

@@ -4,6 +4,8 @@ import type {
   CreateExecutionProfileInput,
   CreateKnowledgeBindingRuleInput,
   KnowledgeBindingRuleViewModel,
+  ResolveExecutionBundlePreviewInput,
+  ResolvedExecutionBundleViewModel,
   ModuleExecutionProfileViewModel,
   PublishExecutionProfileInput,
 } from "./types.ts";
@@ -116,5 +118,20 @@ export function listKnowledgeBindingRules(client: ExecutionGovernanceHttpClient)
   return client.request<KnowledgeBindingRuleViewModel[]>({
     method: "GET",
     url: "/api/v1/execution-governance/knowledge-binding-rules",
+  });
+}
+
+export function resolveExecutionBundlePreview(
+  client: ExecutionGovernanceHttpClient,
+  input: ResolveExecutionBundlePreviewInput,
+) {
+  return client.request<ResolvedExecutionBundleViewModel>({
+    method: "POST",
+    url: "/api/v1/execution-governance/resolve",
+    body: {
+      module: input.module,
+      manuscriptType: input.manuscriptType,
+      templateFamilyId: input.templateFamilyId,
+    },
   });
 }

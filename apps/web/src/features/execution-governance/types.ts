@@ -1,10 +1,20 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { KnowledgeItemViewModel } from "../knowledge/types.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
-import type { TemplateModule } from "../templates/types.ts";
+import type { ModelRegistryEntryViewModel } from "../model-registry/types.ts";
+import type {
+  PromptTemplateViewModel,
+  SkillPackageViewModel,
+} from "../prompt-skill-registry/types.ts";
+import type { ModuleTemplateViewModel, TemplateModule } from "../templates/types.ts";
 
 export type ExecutionProfileStatus = "draft" | "active" | "archived";
 export type KnowledgeBindingMode = "profile_only" | "profile_plus_dynamic";
 export type KnowledgeBindingRuleStatus = "draft" | "active" | "archived";
+export type ExecutionResolutionModelSource =
+  | "template_override"
+  | "module_default"
+  | "system_default";
 export type KnowledgeBindingPurpose =
   | "required"
   | "recommended"
@@ -77,4 +87,21 @@ export interface CreateKnowledgeBindingRuleInput {
 export interface ActivateKnowledgeBindingRuleInput {
   actorRole: AuthRole;
   ruleId: string;
+}
+
+export interface ResolveExecutionBundlePreviewInput {
+  module: TemplateModule;
+  manuscriptType: ManuscriptType;
+  templateFamilyId: string;
+}
+
+export interface ResolvedExecutionBundleViewModel {
+  profile: ModuleExecutionProfileViewModel;
+  module_template: ModuleTemplateViewModel;
+  prompt_template: PromptTemplateViewModel;
+  skill_packages: SkillPackageViewModel[];
+  resolved_model: ModelRegistryEntryViewModel;
+  model_source: ExecutionResolutionModelSource;
+  knowledge_binding_rules: KnowledgeBindingRuleViewModel[];
+  knowledge_items: KnowledgeItemViewModel[];
 }

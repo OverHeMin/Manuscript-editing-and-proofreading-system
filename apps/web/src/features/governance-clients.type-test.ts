@@ -1,9 +1,11 @@
 import {
   createExecutionProfile,
   listExecutionProfiles,
+  resolveExecutionBundlePreview,
   type CreateExecutionProfileInput,
   type ExecutionProfileStatus,
   type ModuleExecutionProfileViewModel,
+  type ResolvedExecutionBundleViewModel,
 } from "./execution-governance/index.ts";
 import {
   listKnowledgeHitLogsBySnapshotId,
@@ -34,6 +36,70 @@ const profileViewModelCheck: ModuleExecutionProfileViewModel = {
   knowledge_binding_mode: "profile_plus_dynamic",
   status: executionProfileStatusCheck,
   version: 2,
+};
+
+const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
+  profile: profileViewModelCheck,
+  module_template: {
+    id: "template-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 2,
+    status: "published",
+    prompt: "Editing template",
+  },
+  prompt_template: {
+    id: "prompt-1",
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  },
+  skill_packages: [
+    {
+      id: "skill-1",
+      name: "editing_skills",
+      version: "1.0.0",
+      scope: "admin_only",
+      status: "published",
+      applies_to_modules: ["editing"],
+    },
+  ],
+  resolved_model: {
+    id: "model-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  },
+  model_source: "module_default",
+  knowledge_binding_rules: [
+    {
+      id: "rule-1",
+      knowledge_item_id: "knowledge-1",
+      module: "editing",
+      manuscript_types: ["clinical_study"],
+      priority: 10,
+      binding_purpose: "required",
+      status: "active",
+    },
+  ],
+  knowledge_items: [
+    {
+      id: "knowledge-1",
+      title: "Editing rule",
+      canonical_text: "Approved editing rule",
+      knowledge_kind: "rule",
+      status: "approved",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["clinical_study"],
+      },
+    },
+  ],
 };
 
 const snapshotViewModelCheck: ModuleExecutionSnapshotViewModel = {
@@ -120,6 +186,11 @@ const client = {
 
 void createExecutionProfile(client, executionGovernanceInputCheck);
 void listExecutionProfiles(client);
+void resolveExecutionBundlePreview(client, {
+  module: "editing",
+  manuscriptType: "clinical_study",
+  templateFamilyId: "family-1",
+});
 void recordExecutionSnapshot(client, executionTrackingInputCheck);
 void listKnowledgeHitLogsBySnapshotId(client, "snapshot-1");
 void recordHumanFeedback(client, feedbackInputCheck);
@@ -130,5 +201,6 @@ export {
   humanFeedbackViewModelCheck,
   knowledgeHitSourceCheck,
   profileViewModelCheck,
+  resolvedExecutionBundleCheck,
   snapshotViewModelCheck,
 };

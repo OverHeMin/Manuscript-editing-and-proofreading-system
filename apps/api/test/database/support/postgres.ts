@@ -1,12 +1,20 @@
 import process from "node:process";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { getAdminDatabaseUrl, getDatabaseName, getDatabaseUrl } from "../../../src/database/config.ts";
+import { loadAppEnvDefaults } from "../../../src/ops/env-defaults.ts";
+import { runMigrateProcess } from "./migrate-process.ts";
+
+const appRoot = path.resolve(import.meta.dirname, "../../..");
+
+loadAppEnvDefaults(appRoot);
 
 const TEST_DATABASE_URL = getDatabaseUrl();
 
 const STARTUP_RETRIES = 30;
 const STARTUP_DELAY_MS = 1000;
+let readinessPromise: Promise<string> | undefined;
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
@@ -40,28 +48,8 @@ async function ensureDatabaseExists(): Promise<void> {
 }
 
 export async function ensureTestDatabaseReady(): Promise<string> {
-  await ensureDatabaseExists();
-
-  for (let attempt = 0; attempt < STARTUP_RETRIES; attempt += 1) {
-    const client = new Client({ connectionString: TEST_DATABASE_URL });
-
-    try {
-      await client.connect();
-      await client.query("select 1");
-      await client.end();
-      return TEST_DATABASE_URL;
-    } catch (error) {
-      await client.end().catch(() => undefined);
-
-      if (attempt === STARTUP_RETRIES - 1) {
-        throw error;
-      }
-
-      await sleep(STARTUP_DELAY_MS);
-    }
-  }
-
-  throw new Error("PostgreSQL test container did not become ready.");
+  readinessPromise ??= ensureReadyAndMigrated();
+  return readinessPromise;
 }
 
 export async function withTestClient<T>(
@@ -127,4 +115,39 @@ export async function withTemporaryDatabase<T>(
       await cleanupClient.end();
     }
   }
+}
+
+async function ensureReadyAndMigrated(): Promise<string> {
+  await ensureDatabaseExists();
+
+  for (let attempt = 0; attempt < STARTUP_RETRIES; attempt += 1) {
+    const client = new Client({ connectionString: TEST_DATABASE_URL });
+
+    try {
+      await client.connect();
+      await client.query("select 1");
+      await client.end();
+
+      const migrate = runMigrateProcess(TEST_DATABASE_URL);
+      if (migrate.status !== 0) {
+        throw new Error(
+          `Expected migrate to succeed for the shared test database.\n${migrate.stdout}\n${migrate.stderr}`,
+        );
+      }
+
+      return TEST_DATABASE_URL;
+    } catch (error) {
+      await client.end().catch(() => undefined);
+
+      if (attempt === STARTUP_RETRIES - 1) {
+        readinessPromise = undefined;
+        throw error;
+      }
+
+      await sleep(STARTUP_DELAY_MS);
+    }
+  }
+
+  readinessPromise = undefined;
+  throw new Error("PostgreSQL test container did not become ready.");
 }

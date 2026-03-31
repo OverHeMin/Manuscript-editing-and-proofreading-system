@@ -5,6 +5,7 @@ export interface DemoServerConfig {
   port: number;
   host: string;
   allowedOrigins: string[];
+  uploadRootDir?: string;
 }
 
 const DEFAULT_PORT = 3001;
@@ -26,6 +27,7 @@ export function resolveDemoServerConfig(
     port: parsePort(env.API_PORT),
     host,
     allowedOrigins,
+    uploadRootDir: parseOptionalPath(env.UPLOAD_ROOT_DIR),
   };
 }
 
@@ -81,6 +83,11 @@ function parsePort(value: string | undefined): number {
   }
 
   return port;
+}
+
+function parseOptionalPath(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function isLoopbackHost(host: string): boolean {

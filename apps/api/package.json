@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "pnpm run dev:demo",
     "dev:demo": "tsx watch ./src/http/dev-server.ts",
+    "dev:persistent": "tsx watch ./src/http/prod-server.ts",
     "lint": "pnpm run typecheck",
+    "serve": "pnpm run serve:persistent",
     "serve:demo": "tsx ./src/http/dev-server.ts",
+    "serve:persistent": "tsx ./src/http/prod-server.ts",
     "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",

@@ -62,15 +62,21 @@ const DEMO_USER_SEEDS: readonly UserRecord[] = [
   },
 ] as const;
 
-export interface DemoHttpAuthenticatedSession extends AuthSession {
+export interface HttpAuthenticatedSession extends AuthSession {
   sessionId: string;
 }
 
-export interface DemoHttpAuthRuntime {
-  authenticateLocal(input: LoginInput): Promise<DemoHttpAuthenticatedSession>;
-  requireSession(req: IncomingMessage): DemoHttpAuthenticatedSession;
-  createSessionCookieHeader(session: DemoHttpAuthenticatedSession): string;
+export interface HttpAuthRuntime {
+  authenticateLocal(input: LoginInput): Promise<HttpAuthenticatedSession>;
+  requireSession(req: IncomingMessage): Promise<HttpAuthenticatedSession>;
+  readSession(req: IncomingMessage): Promise<HttpAuthenticatedSession | null>;
+  clearSession(req: IncomingMessage): Promise<void>;
+  createSessionCookieHeader(session: HttpAuthenticatedSession): string;
+  createClearedSessionCookieHeader(): string;
 }
+
+export type DemoHttpAuthenticatedSession = HttpAuthenticatedSession;
+export type DemoHttpAuthRuntime = HttpAuthRuntime;
 
 export class AuthenticationRequiredError extends Error {
   constructor() {
@@ -118,6 +124,10 @@ class InMemoryDemoHttpSessionStore {
       ...storedSession.session,
     };
   }
+
+  revoke(sessionId: string): void {
+    this.sessions.delete(sessionId);
+  }
 }
 
 export function createDemoHttpAuthRuntime(
@@ -144,19 +154,35 @@ export function createDemoHttpAuthRuntime(
       return sessionStore.create(session);
     },
 
-    requireSession(req: IncomingMessage): DemoHttpAuthenticatedSession {
+    async readSession(req: IncomingMessage): Promise<DemoHttpAuthenticatedSession | null> {
       const cookieHeader = req.headers.cookie;
       const sessionId = readCookie(cookieHeader, DEMO_HTTP_SESSION_COOKIE_NAME);
       if (!sessionId) {
-        throw new AuthenticationRequiredError();
+        return null;
       }
 
-      const session = sessionStore.find(sessionId);
+      return sessionStore.find(sessionId);
+    },
+
+    async requireSession(req: IncomingMessage): Promise<DemoHttpAuthenticatedSession> {
+      const session = await this.readSession(req);
       if (!session) {
         throw new AuthenticationRequiredError();
       }
 
       return session;
+    },
+
+    async clearSession(req: IncomingMessage): Promise<void> {
+      const sessionId = readCookie(
+        req.headers.cookie,
+        DEMO_HTTP_SESSION_COOKIE_NAME,
+      );
+      if (!sessionId) {
+        return;
+      }
+
+      sessionStore.revoke(sessionId);
     },
 
     createSessionCookieHeader(session: DemoHttpAuthenticatedSession): string {
@@ -172,10 +198,19 @@ export function createDemoHttpAuthRuntime(
         maxAgeSeconds,
       });
     },
+
+    createClearedSessionCookieHeader(): string {
+      return serializeCookie(DEMO_HTTP_SESSION_COOKIE_NAME, "", {
+        httpOnly: true,
+        sameSite: "Lax",
+        path: "/",
+        maxAgeSeconds: 0,
+      });
+    },
   };
 }
 
-function readCookie(
+export function readCookie(
   cookieHeader: string | string[] | undefined,
   cookieName: string,
 ): string | null {
@@ -196,7 +231,7 @@ function readCookie(
   return null;
 }
 
-function serializeCookie(
+export function serializeCookie(
   name: string,
   value: string,
   options: {
@@ -204,6 +239,7 @@ function serializeCookie(
     sameSite?: "Lax" | "Strict" | "None";
     path?: string;
     maxAgeSeconds?: number;
+    secure?: boolean;
   },
 ): string {
   const parts = [`${name}=${encodeURIComponent(value)}`];
@@ -218,6 +254,9 @@ function serializeCookie(
   }
   if (options.sameSite) {
     parts.push(`SameSite=${options.sameSite}`);
+  }
+  if (options.secure) {
+    parts.push("Secure");
   }
 
   return parts.join("; ");

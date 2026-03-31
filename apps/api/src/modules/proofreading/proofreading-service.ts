@@ -223,6 +223,10 @@ export class ProofreadingService {
       if (!jobRepository) {
         throw new Error("Proofreading runs require a job repository.");
       }
+      const documentAssetService = this.documentAssetService.createScoped({
+        manuscriptRepository: context.manuscriptRepository,
+        assetRepository: context.assetRepository,
+      });
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
@@ -290,7 +294,7 @@ export class ProofreadingService {
       };
       await jobRepository.save(queuedJob);
 
-      const asset = await this.documentAssetService.createAsset({
+      const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
         assetType: input.assetType,
         storageKey: input.storageKey,

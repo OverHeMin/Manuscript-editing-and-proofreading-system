@@ -2,6 +2,8 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { Client } from "pg";
+import { resolveDemoServerConfig } from "../http/demo-server-config.ts";
+import { resolvePersistentServerConfig } from "../http/persistent-server-config.ts";
 import { getDatabaseUrl } from "../database/config.ts";
 import { loadAppEnvDefaults } from "./env-defaults.ts";
 
@@ -9,7 +11,13 @@ const appRoot = path.resolve(import.meta.dirname, "../..");
 
 loadAppEnvDefaults(appRoot);
 
-await assertTcpReachable("Postgres", new URL(getDatabaseUrl()));
+const runtimeMode = resolveApiRuntimeMode(process.env);
+const databaseUrl =
+  runtimeMode === "demo"
+    ? getDatabaseUrl()
+    : resolvePersistentServerConfig(process.env).databaseUrl;
+
+await assertTcpReachable("Postgres", new URL(databaseUrl));
 await assertTcpReachable("Redis", new URL(requireEnv("REDIS_URL")));
 await assertTcpReachable(
   "Object storage",
@@ -18,9 +26,22 @@ await assertTcpReachable(
 requireOptionalUrl("ONLYOFFICE_URL");
 requireOptionalValue("ONLYOFFICE_JWT_SECRET");
 requireOptionalValue("LIBREOFFICE_BINARY");
-await assertDatabaseReachable(getDatabaseUrl());
+await assertDatabaseReachable(databaseUrl);
 
-console.log("[api] smoke boot OK");
+console.log(`[api] smoke boot OK (${runtimeMode})`);
+
+function resolveApiRuntimeMode(
+  env: NodeJS.ProcessEnv,
+): "demo" | "persistent-auth-runtime" {
+  const appEnv = env.APP_ENV?.trim();
+  if (!appEnv || appEnv === "local") {
+    resolveDemoServerConfig(env);
+    return "demo";
+  }
+
+  resolvePersistentServerConfig(env);
+  return "persistent-auth-runtime";
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name];

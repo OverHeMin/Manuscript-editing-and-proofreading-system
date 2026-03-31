@@ -1,0 +1,110 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+  AgentExecutionEvidenceView,
+} from "../src/features/admin-governance/agent-execution-evidence-view.tsx";
+
+test("agent execution evidence view renders frozen snapshot context and knowledge hit reasons", () => {
+  const html = renderToStaticMarkup(
+    <AgentExecutionEvidenceView
+      evidence={{
+        log: {
+          id: "log-1",
+          manuscript_id: "manuscript-1",
+          module: "editing",
+          triggered_by: "dev.admin",
+          runtime_id: "runtime-1",
+          sandbox_profile_id: "sandbox-1",
+          agent_profile_id: "agent-profile-1",
+          runtime_binding_id: "binding-1",
+          tool_permission_policy_id: "policy-1",
+          execution_snapshot_id: "snapshot-1",
+          knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+          verification_evidence_ids: ["evidence-1", "evidence-2"],
+          status: "completed",
+          started_at: "2026-03-31T08:00:00.000Z",
+          finished_at: "2026-03-31T08:01:00.000Z",
+        },
+        snapshot: {
+          id: "snapshot-1",
+          manuscript_id: "manuscript-1",
+          module: "editing",
+          job_id: "job-1",
+          execution_profile_id: "profile-1",
+          module_template_id: "template-1",
+          module_template_version_no: 3,
+          prompt_template_id: "prompt-1",
+          prompt_template_version: "1.2.0",
+          skill_package_ids: ["skill-1"],
+          skill_package_versions: ["1.0.0"],
+          model_id: "model-1",
+          model_version: "2026-03-01",
+          knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+          created_asset_ids: ["asset-1"],
+          created_at: "2026-03-31T08:00:30.000Z",
+        },
+        knowledgeHitLogs: [
+          {
+            id: "hit-1",
+            snapshot_id: "snapshot-1",
+            knowledge_item_id: "knowledge-1",
+            binding_rule_id: "rule-1",
+            match_source: "binding_rule",
+            match_reasons: ["Required by editing profile"],
+            created_at: "2026-03-31T08:00:30.000Z",
+          },
+          {
+            id: "hit-2",
+            snapshot_id: "snapshot-1",
+            knowledge_item_id: "knowledge-2",
+            match_source_id: "knowledge-2",
+            match_source: "dynamic_routing",
+            match_reasons: ["Matched discussion terminology"],
+            section: "discussion",
+            created_at: "2026-03-31T08:00:30.000Z",
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(html, /Execution Evidence/);
+  assert.match(html, /snapshot-1/);
+  assert.match(html, /model-1/);
+  assert.match(html, /prompt-1/);
+  assert.match(html, /Required by editing profile/);
+  assert.match(html, /Matched discussion terminology/);
+  assert.match(html, /evidence-1/);
+});
+
+test("agent execution evidence view renders a snapshot-pending state for running logs", () => {
+  const html = renderToStaticMarkup(
+    <AgentExecutionEvidenceView
+      evidence={{
+        log: {
+          id: "log-running-1",
+          manuscript_id: "manuscript-2",
+          module: "screening",
+          triggered_by: "dev.admin",
+          runtime_id: "runtime-1",
+          sandbox_profile_id: "sandbox-1",
+          agent_profile_id: "agent-profile-1",
+          runtime_binding_id: "binding-1",
+          tool_permission_policy_id: "policy-1",
+          knowledge_item_ids: [],
+          verification_evidence_ids: [],
+          status: "running",
+          started_at: "2026-03-31T09:00:00.000Z",
+        },
+        snapshot: null,
+        knowledgeHitLogs: [],
+      }}
+    />,
+  );
+
+  assert.match(html, /Execution Evidence/);
+  assert.match(html, /Snapshot Pending/);
+  assert.match(html, /still running or has not written a frozen snapshot/i);
+});

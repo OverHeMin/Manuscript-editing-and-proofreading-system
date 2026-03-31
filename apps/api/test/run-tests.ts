@@ -1,10 +1,13 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { loadAppEnvDefaults } from "../src/ops/env-defaults.ts";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const testRoot = path.join(packageRoot, "test");
 const scopeFilters = process.argv.slice(2).map((value) => value.toLowerCase());
+
+loadAppEnvDefaults(packageRoot);
 
 function collectSpecFiles(directory: string): string[] {
   const entries = readdirSync(directory, { withFileTypes: true });

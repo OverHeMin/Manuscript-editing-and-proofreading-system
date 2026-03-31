@@ -4,19 +4,41 @@ import type {
   WorkbenchEntry,
   WorkbenchId,
 } from "../features/auth/index.ts";
+import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
-import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
+import {
+  ManuscriptWorkbenchPage,
+  type ManuscriptWorkbenchMode,
+} from "../features/manuscript-workbench/index.ts";
+import {
+  formatWorkbenchHash,
+  isManuscriptWorkbenchId,
+  resolveWorkbenchLocation,
+  resolveWorkbenchRenderKind,
+} from "./workbench-routing.ts";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
+  onLogout?: () => void | Promise<void>;
+  isLogoutPending?: boolean;
+  noticeMessage?: string | null;
 }
 
-export function WorkbenchHost({ session }: WorkbenchHostProps) {
+export function WorkbenchHost({
+  session,
+  onLogout,
+  isLogoutPending = false,
+  noticeMessage = null,
+}: WorkbenchHostProps) {
   const visibleEntries = session.availableWorkbenchEntries;
-  const [activeWorkbenchId, setActiveWorkbenchId] = useState<WorkbenchId>(() =>
-    resolveInitialWorkbenchId(session.defaultWorkbench, visibleEntries),
+  const [routeState, setRouteState] = useState(() =>
+    resolveInitialWorkbenchRoute(session.defaultWorkbench, visibleEntries),
   );
+  const activeWorkbenchId = routeState.activeWorkbenchId;
+  const accessibleManuscriptWorkbenchModes = visibleEntries
+    .map((entry) => entry.id)
+    .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -29,9 +51,32 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
       ? activeWorkbenchId
       : resolveInitialWorkbenchId(session.defaultWorkbench, visibleEntries);
     if (nextActiveWorkbenchId !== activeWorkbenchId) {
-      setActiveWorkbenchId(nextActiveWorkbenchId);
+      setRouteState({
+        activeWorkbenchId: nextActiveWorkbenchId,
+      });
     }
   }, [activeWorkbenchId, session.defaultWorkbench, visibleEntries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handleHashChange() {
+      setRouteState(
+        resolveInitialWorkbenchRoute(
+          session.defaultWorkbench,
+          visibleEntries,
+          window.location.hash,
+        ),
+      );
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, [session.defaultWorkbench, visibleEntries]);
 
   const activeEntry =
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
@@ -40,14 +85,35 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
     <main className="app-shell">
       <section className="workbench-host">
         <header className="workbench-header">
-          <h1>Reviewer Workbench Host</h1>
-          <p>
-            Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
-            <code>{session.role}</code>.
-          </p>
+          <div className="workbench-header-topline">
+            <div>
+              <h1>Reviewer Workbench Host</h1>
+              <p>
+                Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
+                <code>{session.role}</code>.
+              </p>
+            </div>
+            {onLogout ? (
+              <button
+                type="button"
+                className="workbench-secondary-action"
+                onClick={() => void onLogout()}
+                disabled={isLogoutPending}
+              >
+                {isLogoutPending ? "Signing out..." : "Sign out"}
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <div className="workbench-layout">
+          {noticeMessage ? (
+            <article className="workbench-placeholder workbench-notice" role="alert">
+              <h2>Session Action Error</h2>
+              <p>{noticeMessage}</p>
+            </article>
+          ) : null}
+
           <aside className="workbench-nav" aria-label="Workbench navigation">
             <h2>Workbenches</h2>
             <ul className="workbench-nav-list">
@@ -58,7 +124,7 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
                     <button
                       type="button"
                       className={`workbench-nav-button${isActive ? " is-active" : ""}`}
-                      onClick={() => setActiveWorkbenchId(entry.id)}
+                      onClick={() => navigateToWorkbench(entry.id)}
                     >
                       <span>{entry.label}</span>
                       <small>{entry.placement}</small>
@@ -86,10 +152,22 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
     }
 
     switch (resolveWorkbenchRenderKind(activeWorkbenchId)) {
+      case "manuscript-workbench":
+        return (
+          <ManuscriptWorkbenchPage
+            key={activeWorkbenchId}
+            actorRole={session.role}
+            mode={activeWorkbenchId as ManuscriptWorkbenchMode}
+            prefilledManuscriptId={routeState.manuscriptId}
+            accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
+          />
+        );
       case "knowledge-review":
         return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
       case "learning-review":
         return <LearningReviewWorkbenchPage actorRole={session.role} />;
+      case "admin-governance":
+        return <AdminGovernanceWorkbenchPage actorRole={session.role} />;
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">
@@ -100,6 +178,17 @@ export function WorkbenchHost({ session }: WorkbenchHostProps) {
             </p>
           </article>
         );
+    }
+  }
+
+  function navigateToWorkbench(workbenchId: WorkbenchId, manuscriptId?: string) {
+    setRouteState({
+      activeWorkbenchId: workbenchId,
+      manuscriptId,
+    });
+
+    if (typeof window !== "undefined") {
+      window.location.hash = formatWorkbenchHash(workbenchId, manuscriptId);
     }
   }
 }
@@ -113,4 +202,31 @@ function resolveInitialWorkbenchId(
   }
 
   return visibleEntries[0]?.id ?? defaultWorkbench;
+}
+
+function resolveInitialWorkbenchRoute(
+  defaultWorkbench: WorkbenchId,
+  visibleEntries: readonly WorkbenchEntry[],
+  hash?: string,
+): {
+  activeWorkbenchId: WorkbenchId;
+  manuscriptId?: string;
+} {
+  const location = resolveWorkbenchLocation(
+    hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
+  );
+
+  if (
+    location.workbenchId &&
+    visibleEntries.some((entry) => entry.id === location.workbenchId)
+  ) {
+    return {
+      activeWorkbenchId: location.workbenchId,
+      manuscriptId: location.manuscriptId,
+    };
+  }
+
+  return {
+    activeWorkbenchId: resolveInitialWorkbenchId(defaultWorkbench, visibleEntries),
+  };
 }

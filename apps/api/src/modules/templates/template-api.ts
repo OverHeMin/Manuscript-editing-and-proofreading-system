@@ -76,5 +76,18 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
         body: await templateService.listTemplateFamilies(),
       };
     },
+
+    async listModuleTemplatesByTemplateFamilyId({
+      templateFamilyId,
+    }: {
+      templateFamilyId: string;
+    }): Promise<RouteResponse<ModuleTemplateRecord[]>> {
+      return {
+        status: 200,
+        body: await templateService.listModuleTemplatesByTemplateFamilyId(
+          templateFamilyId,
+        ),
+      };
+    },
   };
 }

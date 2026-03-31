@@ -46,5 +46,15 @@ test("demo server config resolves local defaults for demo runtime", () => {
     port: 3001,
     host: "127.0.0.1",
     allowedOrigins: ["http://127.0.0.1:4173", "http://localhost:4173"],
+    uploadRootDir: undefined,
   });
+});
+
+test("demo server config accepts an explicit upload root override", () => {
+  const config = resolveDemoServerConfig({
+    APP_ENV: "local",
+    UPLOAD_ROOT_DIR: "  C:/medical/uploads/demo  ",
+  });
+
+  assert.equal(config.uploadRootDir, "C:/medical/uploads/demo");
 });

@@ -122,6 +122,10 @@ export class EditingService {
       if (!jobRepository) {
         throw new Error("Editing runs require a job repository.");
       }
+      const documentAssetService = this.documentAssetService.createScoped({
+        manuscriptRepository: context.manuscriptRepository,
+        assetRepository: context.assetRepository,
+      });
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
@@ -191,7 +195,7 @@ export class EditingService {
       };
       await jobRepository.save(queuedJob);
 
-      const asset = await this.documentAssetService.createAsset({
+      const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
         assetType: "edited_docx",
         storageKey: input.storageKey,

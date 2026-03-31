@@ -12,6 +12,7 @@ const server = createApiHttpServer({
   appEnv: config.appEnv,
   allowedOrigins: config.allowedOrigins,
   seedDemoKnowledgeReviewData: true,
+  uploadRootDir: config.uploadRootDir,
 });
 
 server.listen(config.port, config.host, () => {
