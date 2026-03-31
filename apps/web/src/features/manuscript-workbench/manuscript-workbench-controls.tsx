@@ -74,6 +74,11 @@ export function ManuscriptWorkbenchControls({
   finalizeAction,
   utilities,
 }: ManuscriptWorkbenchControlsProps) {
+  const intakeMessages = intake ? buildIntakeValidationMessages(intake.uploadForm) : [];
+  const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
+  const canRunModule = Boolean(moduleAction?.selectedAssetId.length);
+  const canFinalizeProofreading = Boolean(finalizeAction?.selectedAssetId.length);
+
   return (
     <section className="manuscript-workbench-controls">
       <div className="manuscript-workbench-controls-grid">
@@ -135,6 +140,13 @@ export function ManuscriptWorkbenchControls({
                   ? `Selected local file: ${intake.uploadForm.fileName}`
                   : "No local file selected. Enter a storage key to keep using metadata-only uploads."}
               </p>
+              {intakeMessages.length > 0 ? (
+                <ul className="manuscript-workbench-validation-list">
+                  {intakeMessages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              ) : null}
               <div className="manuscript-workbench-button-row">
                 <button
                   type="button"
@@ -165,8 +177,17 @@ export function ManuscriptWorkbenchControls({
                 onChange={(event) => lookup.onChange(event.target.value)}
               />
             </label>
+            {!canLoadWorkspace ? (
+              <p className="manuscript-workbench-help is-warning">
+                Enter a manuscript ID before loading the workspace.
+              </p>
+            ) : null}
             <div className="manuscript-workbench-button-row">
-              <button type="button" disabled={busy} onClick={() => lookup.onLoad()}>
+              <button
+                type="button"
+                disabled={busy || !canLoadWorkspace}
+                onClick={() => lookup.onLoad()}
+              >
                 Load Workspace
               </button>
             </div>
@@ -196,10 +217,15 @@ export function ManuscriptWorkbenchControls({
                   ))}
                 </select>
               </label>
+              {!canRunModule ? (
+                <p className="manuscript-workbench-help is-warning">
+                  Select a parent asset before starting this module run.
+                </p>
+              ) : null}
               <div className="manuscript-workbench-button-row">
                 <button
                   type="button"
-                  disabled={busy || moduleAction.selectedAssetId.length === 0}
+                  disabled={busy || !canRunModule}
                   onClick={() => moduleAction.onRun()}
                 >
                   {busy ? "Working..." : moduleAction.actionLabel}
@@ -232,10 +258,15 @@ export function ManuscriptWorkbenchControls({
                   ))}
                 </select>
               </label>
+              {!canFinalizeProofreading ? (
+                <p className="manuscript-workbench-help is-warning">
+                  Select a proofreading draft before finalizing.
+                </p>
+              ) : null}
               <div className="manuscript-workbench-button-row">
                 <button
                   type="button"
-                  disabled={busy || finalizeAction.selectedAssetId.length === 0}
+                  disabled={busy || !canFinalizeProofreading}
                   onClick={() => finalizeAction.onRun()}
                 >
                   {busy ? "Working..." : finalizeAction.actionLabel}
@@ -254,6 +285,11 @@ export function ManuscriptWorkbenchControls({
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
+              {!utilities.canRefreshLatestJob ? (
+                <p className="manuscript-workbench-help is-warning">
+                  Refresh becomes available after the workspace creates at least one job.
+                </p>
+              ) : null}
               <div className="manuscript-workbench-button-row">
                 <button
                   type="button"
@@ -290,4 +326,21 @@ function describeMode(mode: ManuscriptWorkbenchMode): string {
   }
 
   return "proofreading";
+}
+
+function buildIntakeValidationMessages(input: UploadManuscriptInput): string[] {
+  const messages: string[] = [];
+
+  if (input.title.trim().length === 0) {
+    messages.push("Add a manuscript title before upload.");
+  }
+
+  if (
+    (input.fileContentBase64?.trim().length ?? 0) === 0 &&
+    (input.storageKey?.trim().length ?? 0) === 0
+  ) {
+    messages.push("Choose a local file or enter a storage key before upload.");
+  }
+
+  return messages;
 }

@@ -74,3 +74,53 @@ test("manuscript workbench controls render structured operator panels for upload
   assert.match(markup, /Export Current Asset/);
   assert.match(markup, /Refresh Latest Job/);
 });
+
+test("manuscript workbench controls show inline guidance when required operator inputs are still missing", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="editing"
+      busy={false}
+      intake={{
+        uploadForm: {
+          title: "",
+          manuscriptType: "review",
+          createdBy: "web-workbench",
+          fileName: "editing-sample.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        canSubmit: false,
+        onTitleChange: () => {},
+        onManuscriptTypeChange: () => {},
+        onStorageKeyChange: () => {},
+        onFileSelect: () => {},
+        onSubmit: () => {},
+      }}
+      lookup={{
+        manuscriptId: "",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      moduleAction={{
+        title: "Editing Run",
+        selectedAssetId: "",
+        emptyLabel: "Select asset",
+        actionLabel: "Run Editing",
+        options: [],
+        onSelect: () => {},
+        onRun: () => {},
+      }}
+      utilities={{
+        canExport: true,
+        canRefreshLatestJob: false,
+        onExport: () => {},
+        onRefreshLatestJob: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /Add a manuscript title before upload\./);
+  assert.match(markup, /Choose a local file or enter a storage key before upload\./);
+  assert.match(markup, /Enter a manuscript ID before loading the workspace\./);
+  assert.match(markup, /Select a parent asset before starting this module run\./);
+  assert.match(markup, /Refresh becomes available after the workspace creates at least one job\./);
+});

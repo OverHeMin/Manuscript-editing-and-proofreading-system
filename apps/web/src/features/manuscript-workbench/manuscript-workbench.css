@@ -1,3 +1,31 @@
+.manuscript-workbench-notice {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.manuscript-workbench-notice strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.manuscript-workbench-notice p {
+  margin: 6px 0 0;
+}
+
+.manuscript-workbench-notice.is-success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.manuscript-workbench-notice.is-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .manuscript-workbench-controls {
   margin-top: 18px;
 }
@@ -69,6 +97,20 @@
 .manuscript-workbench-help {
   margin: 0;
   color: #64748b;
+}
+
+.manuscript-workbench-help.is-warning {
+  color: #9a3412;
+}
+
+.manuscript-workbench-validation-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #9a3412;
+}
+
+.manuscript-workbench-validation-list li + li {
+  margin-top: 4px;
 }
 
 .manuscript-workbench-button-row {

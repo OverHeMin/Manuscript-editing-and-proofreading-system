@@ -6,6 +6,7 @@ import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
 } from "./manuscript-workbench-controls.tsx";
+import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import { ManuscriptWorkbenchSummary } from "./manuscript-workbench-summary.tsx";
 import {
@@ -78,6 +79,7 @@ export function ManuscriptWorkbenchPage({
     try {
       await task();
     } catch (nextError) {
+      setStatus("");
       setError(formatError(nextError));
     } finally {
       setBusy(false);
@@ -95,6 +97,7 @@ export function ManuscriptWorkbenchPage({
       }));
       setStatus(`Attached file ${inlineFields.fileName}`);
     } catch (nextError) {
+      setStatus("");
       setError(formatError(nextError));
     } finally {
       setBusy(false);
@@ -105,8 +108,20 @@ export function ManuscriptWorkbenchPage({
     <article className="workbench-placeholder">
       <h2>{resolveTitle(mode)}</h2>
       <p>{resolveDescription(mode)}</p>
-      {error ? <p>{error}</p> : null}
-      {status ? <p>{status}</p> : null}
+      {error ? (
+        <ManuscriptWorkbenchNotice
+          tone="error"
+          title="Action Error"
+          message={error}
+        />
+      ) : null}
+      {!error && status ? (
+        <ManuscriptWorkbenchNotice
+          tone="success"
+          title="Action Complete"
+          message={status}
+        />
+      ) : null}
       <ManuscriptWorkbenchControls
         mode={mode}
         busy={busy}
