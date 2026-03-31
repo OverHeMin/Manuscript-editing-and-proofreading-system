@@ -277,6 +277,58 @@ test("admin can inspect rejected history details for a prior finalized run", asy
   await expect(historyDetail).toContainText(prepared.snapshotId);
 });
 
+test("admin can filter finalized run history by recommendation status", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9G",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const rejectedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "54",
+    diffSummary: "Rejected run is used to test history filtering.",
+    evidenceLabel: "Phase 9G rejected evidence",
+    evidenceUrl: "https://example.test/evidence/phase9g-rejected",
+    hardGatePassed: false,
+    failureKind: "regression_failed",
+    failureReason: "Rejected run tripped the hard gate.",
+    finalizeStatus: "failed",
+  });
+
+  const recommendedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "94",
+    diffSummary: "Recommended run restores the approved output.",
+    evidenceLabel: "Phase 9G recommended evidence",
+    evidenceUrl: "https://example.test/evidence/phase9g-recommended",
+  });
+
+  const historyList = page.locator(".evaluation-workbench-history-list");
+  await expect(historyList).toContainText(rejectedRunId);
+  await expect(historyList).toContainText(recommendedRunId);
+
+  await page.getByRole("button", { name: "Rejected (1)" }).click();
+  await expect(historyList).toContainText(rejectedRunId);
+  await expect(historyList).not.toContainText(recommendedRunId);
+
+  await page.getByRole("button", { name: "Recommended (1)" }).click();
+  await expect(historyList).toContainText(recommendedRunId);
+  await expect(historyList).not.toContainText(rejectedRunId);
+
+  await page.getByRole("button", { name: "All (2)" }).click();
+  await expect(historyList).toContainText(rejectedRunId);
+  await expect(historyList).toContainText(recommendedRunId);
+});
+
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
 }

@@ -61,6 +61,11 @@ const baseLearningForm = {
   proposalText: "Promote the candidate binding after governed evaluation approval.",
   createdBy: "admin-1",
 };
+export type EvaluationWorkbenchHistoryFilter =
+  | "all"
+  | "recommended"
+  | "needs_review"
+  | "rejected";
 
 export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
@@ -78,6 +83,7 @@ export function EvaluationWorkbenchPage({
   const [isBusy, setIsBusy] = useState(false);
   const [isActivatingSuiteId, setIsActivatingSuiteId] = useState<string | null>(null);
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
   const [runForm, setRunForm] = useState(baseRunForm);
   const [runItemForm, setRunItemForm] = useState(baseRunItemForm);
   const [finalizeForm, setFinalizeForm] = useState(baseFinalizeForm);
@@ -125,6 +131,7 @@ export function EvaluationWorkbenchPage({
       ? null
       : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
   const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
+  const filteredFinalizedRunHistory = filterFinalizedRunHistory(finalizedRunHistory, historyFilter);
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
@@ -165,6 +172,10 @@ export function EvaluationWorkbenchPage({
     setFinalizedResult(null);
     setCreatedLearningCandidate(null);
   }, [selectedRun, finalizedResult]);
+
+  useEffect(() => {
+    setHistoryFilter("all");
+  }, [overview?.selectedSuiteId]);
 
   if (loadStatus === "error" && !overview) {
     return (
@@ -330,7 +341,11 @@ export function EvaluationWorkbenchPage({
         <section className="evaluation-workbench-panel evaluation-workbench-history">
           <div className="evaluation-workbench-panel-header">
             <h3>Run History</h3>
-            <span>{finalizedRunHistory.length} finalized runs</span>
+            <span>
+              {historyFilter === "all"
+                ? `${finalizedRunHistory.length} finalized runs`
+                : `${filteredFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`}
+            </span>
           </div>
           {selectedSuite == null ? (
             <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
@@ -352,6 +367,19 @@ export function EvaluationWorkbenchPage({
                   <dd>{historyCounts.rejected}</dd>
                 </div>
               </dl>
+              <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history filters">
+                {createHistoryFilterOptions(historyCounts, finalizedRunHistory.length).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`evaluation-workbench-action${historyFilter === option.value ? " is-selected" : ""}`}
+                    aria-pressed={historyFilter === option.value}
+                    onClick={() => setHistoryFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               {selectedRunHistoryEntry ? (
                 previousRunHistoryEntry ? (
                   <EvaluationWorkbenchRunComparisonCard
@@ -405,8 +433,9 @@ export function EvaluationWorkbenchPage({
                   )}
                 </div>
               ) : null}
-              <ul className="evaluation-workbench-stack">
-                {finalizedRunHistory.map((entry) => (
+              {filteredFinalizedRunHistory.length > 0 ? (
+              <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
+                {filteredFinalizedRunHistory.map((entry) => (
                   <li key={entry.run.id}>
                     <button
                       type="button"
@@ -421,6 +450,9 @@ export function EvaluationWorkbenchPage({
                   </li>
                 ))}
               </ul>
+              ) : (
+                <p className="evaluation-workbench-empty">No finalized runs match the current history filter.</p>
+              )}
             </>
           )}
         </section>
@@ -823,6 +855,32 @@ function summarizeHistoryCounts(
     },
     { recommended: 0, needsReview: 0, rejected: 0 },
   );
+}
+
+function createHistoryFilterOptions(
+  historyCounts: ReturnType<typeof summarizeHistoryCounts>,
+  total: number,
+) {
+  return [
+    { value: "all" as const, label: `All (${total})` },
+    {
+      value: "recommended" as const,
+      label: `Recommended (${historyCounts.recommended})`,
+    },
+    {
+      value: "needs_review" as const,
+      label: `Needs Review (${historyCounts.needsReview})`,
+    },
+    { value: "rejected" as const, label: `Rejected (${historyCounts.rejected})` },
+  ];
+}
+
+export function filterFinalizedRunHistory(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  filter: EvaluationWorkbenchHistoryFilter,
+) {
+  if (filter === "all") return entries;
+  return entries.filter((entry) => entry.finalized.recommendation.status === filter);
 }
 
 function findPreviousFinalizedRunHistoryEntry(

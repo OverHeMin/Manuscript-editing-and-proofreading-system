@@ -6,6 +6,7 @@ import {
   EvaluationWorkbenchPage,
   EvaluationWorkbenchRunComparisonCard,
   EvaluationWorkbenchSelectedRunItemDetailCard,
+  filterFinalizedRunHistory,
 } from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
 
 test("evaluation workbench page renders an explicit loading state for server-side shell output", () => {
@@ -224,4 +225,38 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
   assert.match(markup, /Selected evidence: Latest browser QA/);
   assert.match(markup, /Previous evidence: Rejected browser QA/);
+});
+
+test("filterFinalizedRunHistory narrows finalized runs by recommendation status", () => {
+  const entries = [
+    {
+      run: { id: "run-recommended" },
+      finalized: { recommendation: { status: "recommended" } },
+    },
+    {
+      run: { id: "run-needs-review" },
+      finalized: { recommendation: { status: "needs_review" } },
+    },
+    {
+      run: { id: "run-rejected" },
+      finalized: { recommendation: { status: "rejected" } },
+    },
+  ] as const;
+
+  assert.deepEqual(
+    filterFinalizedRunHistory(entries as never, "all").map((entry) => entry.run.id),
+    ["run-recommended", "run-needs-review", "run-rejected"],
+  );
+  assert.deepEqual(
+    filterFinalizedRunHistory(entries as never, "recommended").map((entry) => entry.run.id),
+    ["run-recommended"],
+  );
+  assert.deepEqual(
+    filterFinalizedRunHistory(entries as never, "needs_review").map((entry) => entry.run.id),
+    ["run-needs-review"],
+  );
+  assert.deepEqual(
+    filterFinalizedRunHistory(entries as never, "rejected").map((entry) => entry.run.id),
+    ["run-rejected"],
+  );
 });
