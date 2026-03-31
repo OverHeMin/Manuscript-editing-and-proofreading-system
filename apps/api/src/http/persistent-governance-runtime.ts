@@ -359,6 +359,7 @@ export function createPersistentGovernanceRuntime(
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
     transactionManager: workbenchTransactionManager,
   });
   const screeningService = new ScreeningService({

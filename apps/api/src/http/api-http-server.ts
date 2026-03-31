@@ -777,6 +777,7 @@ export function createInMemoryApiRuntime(input: {
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
   });
   const exportService = new DocumentExportService({
     assetRepository,
@@ -825,6 +826,7 @@ export function createInMemoryApiRuntime(input: {
     seedDemoWorkbenchData({
       manuscriptRepository,
       assetRepository,
+      templateFamilyRepository,
       knowledgeRepository,
       moduleTemplateRepository,
       promptSkillRegistryRepository,
@@ -1234,6 +1236,7 @@ function seedDemoLearningData(input: {
 function seedDemoWorkbenchData(input: {
   manuscriptRepository: InMemoryManuscriptRepository;
   assetRepository: InMemoryDocumentAssetRepository;
+  templateFamilyRepository: InMemoryTemplateFamilyRepository;
   knowledgeRepository: InMemoryKnowledgeRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
@@ -1276,6 +1279,12 @@ function seedDemoWorkbenchData(input: {
     file_name: "seeded-original.docx",
     created_at: "2026-03-31T07:56:00.000Z",
     updated_at: "2026-03-31T07:56:00.000Z",
+  });
+  void input.templateFamilyRepository.save({
+    id: "family-seeded-1",
+    manuscript_type: "clinical_study",
+    name: "Seeded Clinical Study Family",
+    status: "active",
   });
 
   void input.moduleTemplateRepository.save({

@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import type { AddressInfo } from "node:net";
 import { Client } from "pg";
 import {
   createApiHttpServer,
@@ -11,6 +9,10 @@ import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
+import {
+  startHttpTestServer,
+  stopHttpTestServer,
+} from "./support/http-test-server.ts";
 
 test("non-local api runtime requires an explicit persistent auth runtime", () => {
   assert.throws(
@@ -186,21 +188,15 @@ async function withPersistentServer(
       }),
     });
 
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-
-    const address = server.address();
-    assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
-
     try {
+      const started = await startHttpTestServer(server);
       await run({
-        server,
-        baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
+        server: started.server,
+        baseUrl: started.baseUrl,
         client,
       });
     } finally {
-      server.close();
-      await once(server, "close");
+      await stopHttpTestServer(server);
       await client.end();
     }
   });

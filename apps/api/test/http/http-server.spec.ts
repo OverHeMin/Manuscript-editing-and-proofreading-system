@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import type { AddressInfo } from "node:net";
 import {
   createApiHttpServer,
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
+import {
+  startHttpTestServer,
+  stopHttpTestServer,
+} from "./support/http-test-server.ts";
 
 async function startServer(): Promise<{
   server: ApiHttpServer;
@@ -17,22 +19,10 @@ async function startServer(): Promise<{
     seedDemoKnowledgeReviewData: true,
   });
 
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-
-  const address = server.address();
-  assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
-
-  return {
-    server,
-    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
-  };
+  return startHttpTestServer(server);
 }
 
-async function stopServer(server: ApiHttpServer): Promise<void> {
-  server.close();
-  await once(server, "close");
-}
+const stopServer = stopHttpTestServer;
 
 async function loginAsDemoUser(baseUrl: string, username: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
@@ -172,6 +162,74 @@ test("http server uses the authenticated session role instead of a forged actorR
 
     assert.equal(approveResponse.status, 403);
     assert.equal(approveBody.error, "forbidden");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server auto-assigns the seeded template family on upload so admins can screen the new manuscript", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const userCookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: userCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "HTTP Upload Screening Mainline",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "http-upload-screening.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/http-upload-screening.docx",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: {
+        id: string;
+        current_template_family_id?: string;
+      };
+      asset: { id: string };
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.manuscript.current_template_family_id, "family-seeded-1");
+
+    const screeningResponse = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: uploaded.manuscript.id,
+        parentAssetId: uploaded.asset.id,
+        requestedBy: "forged-admin",
+        actorRole: "user",
+        storageKey: "runs/http-upload-screening/report.md",
+        fileName: "http-upload-screening.md",
+      }),
+    });
+    const screening = (await screeningResponse.json()) as {
+      asset?: { asset_type: string };
+      job?: { module: string };
+      error?: string;
+      message?: string;
+    };
+
+    assert.equal(
+      screeningResponse.status,
+      201,
+      `Expected screening to succeed, received ${screeningResponse.status}: ${JSON.stringify(screening)}`,
+    );
+    assert.equal(screening.asset?.asset_type, "screening_report");
+    assert.equal(screening.job?.module, "screening");
   } finally {
     await stopServer(server);
   }

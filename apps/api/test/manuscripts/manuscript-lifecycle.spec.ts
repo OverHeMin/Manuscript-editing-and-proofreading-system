@@ -7,6 +7,7 @@ import { DocumentAssetService } from "../../src/modules/assets/document-asset-se
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { createWriteTransactionManager } from "../../src/modules/shared/write-transaction-manager.ts";
+import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import type { DocumentAssetRecord } from "../../src/modules/assets/document-asset-record.ts";
 import type { ManuscriptRecord } from "../../src/modules/manuscripts/manuscript-record.ts";
 
@@ -64,6 +65,7 @@ function createLifecycleHarness(
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
 
   const nextId = () => {
     const value = issuedIds.shift();
@@ -76,6 +78,7 @@ function createLifecycleHarness(
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
     now: () => new Date("2026-03-26T10:00:00.000Z"),
     createId: nextId,
   });
@@ -96,6 +99,7 @@ function createLifecycleHarness(
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
   };
 }
 
@@ -268,6 +272,65 @@ test("writing new derived assets updates the manuscript current asset pointers w
       },
     ],
   );
+});
+
+test("upload assigns the active template family that matches the manuscript type when one is available", async () => {
+  const { api, templateFamilyRepository } = createLifecycleHarness();
+  await templateFamilyRepository.save({
+    id: "family-review-1",
+    manuscript_type: "review",
+    name: "Review Mainline",
+    status: "active",
+  });
+  await templateFamilyRepository.save({
+    id: "family-review-archived",
+    manuscript_type: "review",
+    name: "Review Legacy",
+    status: "archived",
+  });
+
+  const uploadResponse = await api.upload({
+    title: "Review Family Assignment",
+    manuscriptType: "review",
+    createdBy: "user-review",
+    fileName: "review-family.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/review-family.docx",
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(
+    uploadResponse.body.manuscript.current_template_family_id,
+    "family-review-1",
+  );
+});
+
+test("upload leaves the template family unset when multiple active families match the manuscript type", async () => {
+  const { api, templateFamilyRepository } = createLifecycleHarness();
+  await templateFamilyRepository.save({
+    id: "family-review-1",
+    manuscript_type: "review",
+    name: "Review Mainline A",
+    status: "active",
+  });
+  await templateFamilyRepository.save({
+    id: "family-review-2",
+    manuscript_type: "review",
+    name: "Review Mainline B",
+    status: "active",
+  });
+
+  const uploadResponse = await api.upload({
+    title: "Ambiguous Review Family Assignment",
+    manuscriptType: "review",
+    createdBy: "user-review",
+    fileName: "ambiguous-review-family.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/ambiguous-review-family.docx",
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploadResponse.body.manuscript.current_template_family_id, undefined);
 });
 
 test("proofreading draft assets do not advance the formal proofreading pointer until a final proofreading asset exists", async () => {
