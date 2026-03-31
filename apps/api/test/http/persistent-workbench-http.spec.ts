@@ -54,14 +54,18 @@ interface PersistentWorkbenchSeededIds {
   manuscriptId: string;
   originalAssetId: string;
   screeningKnowledgeId: string;
+  proofreadingKnowledgeId: string;
   screeningModelId: string;
+  proofreadingModelId: string;
 }
 
 const seededIds: PersistentWorkbenchSeededIds = {
   manuscriptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   originalAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   screeningKnowledgeId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  proofreadingKnowledgeId: "eeeeeeee-cccc-4ccc-8ccc-cccccccccccc",
   screeningModelId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  proofreadingModelId: "ffffffff-dddd-4ddd-8ddd-dddddddddddd",
 };
 
 test("persistent workbench upload routes keep manuscripts, assets, jobs, and exports across server restarts", async () => {
@@ -386,6 +390,185 @@ test("persistent workbench screening routes keep governed execution evidence acr
   });
 });
 
+test("persistent proofreading publish-human-final route survives restart and becomes the exported current asset", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/proofreading/draft.md",
+              fileName: "persistent-proofreading-draft.md",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          asset: {
+            id: string;
+          };
+        };
+        assert.equal(draftResponse.status, 201);
+
+        const finalizeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/finalize`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              draftAssetId: draft.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/proofreading/final.docx",
+              fileName: "persistent-proofreading-final.docx",
+            }),
+          },
+        );
+        const finalized = (await finalizeResponse.json()) as {
+          asset: {
+            id: string;
+          };
+        };
+        assert.equal(finalizeResponse.status, 201);
+
+        const publishResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/publish-human-final`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              finalAssetId: finalized.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/proofreading/human-final.docx",
+              fileName: "persistent-human-final.docx",
+            }),
+          },
+        );
+        const published = (await publishResponse.json()) as {
+          job: { id: string };
+          asset: { id: string; asset_type: string };
+        };
+        assert.equal(publishResponse.status, 201);
+        assert.equal(published.asset.asset_type, "human_final_docx");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        try {
+          const manuscriptResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const manuscript = (await manuscriptResponse.json()) as {
+            current_proofreading_asset_id?: string;
+          };
+
+          const assetsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/assets`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const assets = (await assetsResponse.json()) as Array<{
+            id: string;
+            asset_type: string;
+          }>;
+
+          const jobResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/jobs/${published.job.id}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const job = (await jobResponse.json()) as {
+            id: string;
+            module: string;
+            job_type: string;
+            payload?: Record<string, unknown>;
+          };
+
+          const exportResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/document-pipeline/export-current-asset`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: cookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                manuscriptId: seededIds.manuscriptId,
+              }),
+            },
+          );
+          const exported = (await exportResponse.json()) as {
+            asset: { id: string; asset_type: string };
+          };
+
+          assert.equal(manuscriptResponse.status, 200);
+          assert.equal(manuscript.current_proofreading_asset_id, published.asset.id);
+          assert.equal(assetsResponse.status, 200);
+          assert.ok(
+            assets.some(
+              (asset) =>
+                asset.id === published.asset.id && asset.asset_type === "human_final_docx",
+            ),
+          );
+          assert.equal(jobResponse.status, 200);
+          assert.equal(job.id, published.job.id);
+          assert.equal(job.module, "manual");
+          assert.equal(job.job_type, "publish_human_final");
+          assert.equal(job.payload?.sourceAssetId, finalized.asset.id);
+          assert.equal(exportResponse.status, 200);
+          assert.equal(exported.asset.id, published.asset.id);
+          assert.equal(exported.asset.asset_type, "human_final_docx");
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -440,6 +623,14 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     passwordHash:
       "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
   });
+  await userRepository.save({
+    id: "persistent-proofreader",
+    username: "persistent.proofreader",
+    displayName: "Persistent Proofreader",
+    role: "proofreader",
+    passwordHash:
+      "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+  });
 
   await templateFamilyRepository.save({
     id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
@@ -456,12 +647,29 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     status: "published",
     prompt: "Persistent screening prompt",
   });
+  await moduleTemplateRepository.save({
+    id: "12121212-ffff-4fff-8fff-ffffffffffff",
+    template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Persistent proofreading prompt",
+  });
   await promptSkillRegistryRepository.savePromptTemplate({
     id: "11111111-2222-4333-8444-555555555555",
     name: "persistent_screening_mainline",
     version: "1.0.0",
     status: "published",
     module: "screening",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "12121212-2222-4333-8444-555555555555",
+    name: "persistent_proofreading_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "proofreading",
     manuscript_types: ["clinical_study"],
   });
   await promptSkillRegistryRepository.saveSkillPackage({
@@ -471,6 +679,14 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     scope: "admin_only",
     status: "published",
     applies_to_modules: ["screening"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: "12121212-7777-4888-8999-aaaaaaaaaaaa",
+    name: "persistent_proofreading_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["proofreading"],
   });
   await knowledgeRepository.save({
     id: seededIds.screeningKnowledgeId,
@@ -484,6 +700,18 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     },
     template_bindings: ["ffffffff-ffff-4fff-8fff-ffffffffffff"],
   });
+  await knowledgeRepository.save({
+    id: seededIds.proofreadingKnowledgeId,
+    title: "Persistent proofreading knowledge",
+    canonical_text: "Persistent proofreading knowledge for governed HTTP runs.",
+    knowledge_kind: "checklist",
+    status: "approved",
+    routing: {
+      module_scope: "proofreading",
+      manuscript_types: ["clinical_study"],
+    },
+    template_bindings: ["12121212-ffff-4fff-8fff-ffffffffffff"],
+  });
   await executionGovernanceRepository.saveProfile({
     id: "bbbb1111-2222-4333-8444-555555555555",
     module: "screening",
@@ -496,9 +724,31 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     status: "active",
     version: 1,
   });
+  await executionGovernanceRepository.saveProfile({
+    id: "12121212-1111-4333-8444-555555555555",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    module_template_id: "12121212-ffff-4fff-8fff-ffffffffffff",
+    prompt_template_id: "12121212-2222-4333-8444-555555555555",
+    skill_package_ids: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
   await sandboxProfileRepository.save({
     id: "bbbbbbbb-1111-4222-8333-444444444444",
     name: "Persistent Screening Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+  await sandboxProfileRepository.save({
+    id: "12121212-1111-4222-8333-444444444444",
+    name: "Persistent Proofreading Sandbox",
     status: "active",
     sandbox_mode: "workspace_write",
     network_access: false,
@@ -516,6 +766,16 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     runtime_slot: "screening",
     admin_only: true,
   });
+  await agentRuntimeRepository.save({
+    id: "12121212-3333-4222-8333-444444444444",
+    name: "Persistent Proofreading Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "12121212-1111-4222-8333-444444444444",
+    allowed_modules: ["proofreading"],
+    runtime_slot: "proofreading",
+    admin_only: true,
+  });
   await agentProfileRepository.save({
     id: "dddddddd-1111-4222-8333-444444444444",
     name: "Persistent Screening Executor",
@@ -525,9 +785,28 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     manuscript_types: ["clinical_study"],
     admin_only: true,
   });
+  await agentProfileRepository.save({
+    id: "12121212-4444-4222-8333-444444444444",
+    name: "Persistent Proofreading Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["proofreading"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
   await toolPermissionPolicyRepository.save({
     id: "eeee1111-2222-4333-8444-555555555555",
     name: "Persistent Screening Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+  await toolPermissionPolicyRepository.save({
+    id: "12121212-5555-4333-8444-555555555555",
+    name: "Persistent Proofreading Policy",
     status: "active",
     default_mode: "read",
     allowed_tool_ids: [],
@@ -543,10 +822,19 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     allowed_modules: ["screening"],
     is_prod_allowed: true,
   });
+  await modelRegistryRepository.save({
+    id: seededIds.proofreadingModelId,
+    provider: "openai",
+    model_name: "persistent-proofreading-model",
+    model_version: "2026-03-31",
+    allowed_modules: ["proofreading"],
+    is_prod_allowed: true,
+  });
   await modelRoutingPolicyRepository.save({
     system_default_model_id: undefined,
     module_defaults: {
       screening: seededIds.screeningModelId,
+      proofreading: seededIds.proofreadingModelId,
     },
     template_overrides: {},
   });
@@ -659,6 +947,21 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     prompt_template_id: "11111111-2222-4333-8444-555555555555",
     skill_package_ids: ["66666666-7777-4888-8999-aaaaaaaaaaaa"],
     execution_profile_id: "bbbb1111-2222-4333-8444-555555555555",
+    status: "active",
+    version: 1,
+  });
+  await runtimeBindingRepository.save({
+    id: "12121212-6666-4333-8444-555555555555",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    runtime_id: "12121212-3333-4222-8333-444444444444",
+    sandbox_profile_id: "12121212-1111-4222-8333-444444444444",
+    agent_profile_id: "12121212-4444-4222-8333-444444444444",
+    tool_permission_policy_id: "12121212-5555-4333-8444-555555555555",
+    prompt_template_id: "12121212-2222-4333-8444-555555555555",
+    skill_package_ids: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
+    execution_profile_id: "12121212-1111-4333-8444-555555555555",
     status: "active",
     version: 1,
   });

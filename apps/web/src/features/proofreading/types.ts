@@ -29,3 +29,17 @@ export interface ConfirmProofreadingFinalInput {
   storageKey: string;
   fileName?: string;
 }
+
+export interface PublishProofreadingHumanFinalInput {
+  manuscriptId: string;
+  finalAssetId: string;
+  requestedBy: string;
+  actorRole: AuthRole;
+  storageKey: string;
+  fileName?: string;
+}
+
+export interface ProofreadingHumanFinalPublishResultViewModel {
+  job: ModuleJobViewModel;
+  asset: DocumentAssetViewModel;
+}

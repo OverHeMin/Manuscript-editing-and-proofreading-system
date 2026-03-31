@@ -73,7 +73,8 @@ function pointerFieldForAssetType(
 
   if (
     assetType === "final_proof_issue_report" ||
-    assetType === "final_proof_annotated_docx"
+    assetType === "final_proof_annotated_docx" ||
+    assetType === "human_final_docx"
   ) {
     return "current_proofreading_asset_id";
   }

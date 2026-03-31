@@ -39,6 +39,9 @@ export function WorkbenchHost({
   const accessibleManuscriptWorkbenchModes = visibleEntries
     .map((entry) => entry.id)
     .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
+  const canOpenLearningReview = visibleEntries.some(
+    (entry) => entry.id === "learning-review",
+  );
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -160,12 +163,18 @@ export function WorkbenchHost({
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
             prefilledManuscriptId={routeState.manuscriptId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
+            canOpenLearningReview={canOpenLearningReview}
           />
         );
       case "knowledge-review":
         return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
       case "learning-review":
-        return <LearningReviewWorkbenchPage actorRole={session.role} />;
+        return (
+          <LearningReviewWorkbenchPage
+            actorRole={session.role}
+            prefilledManuscriptId={routeState.manuscriptId}
+          />
+        );
       case "admin-governance":
         return <AdminGovernanceWorkbenchPage actorRole={session.role} />;
       case "placeholder":

@@ -29,6 +29,7 @@ export interface WorkbenchActionResultViewModel {
 export interface ManuscriptWorkbenchSummaryProps {
   mode: ManuscriptWorkbenchMode;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
+  canOpenLearningReview?: boolean;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: DocumentAssetExportViewModel | null;
@@ -38,6 +39,7 @@ export interface ManuscriptWorkbenchSummaryProps {
 export function ManuscriptWorkbenchSummary({
   mode,
   accessibleHandoffModes = [],
+  canOpenLearningReview = false,
   workspace,
   latestJob,
   latestExport,
@@ -48,6 +50,7 @@ export function ManuscriptWorkbenchSummary({
     workspace,
     latestJob,
     latestExport,
+    canOpenLearningReview,
   );
 
   return (
@@ -91,8 +94,15 @@ export function ManuscriptWorkbenchSummary({
               value={detail.value}
             />
           ))}
-          {recommendedNextStep.targetMode &&
-          accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
+          {recommendedNextStep.targetHref && recommendedNextStep.targetLabel ? (
+            <a
+              className="manuscript-workbench-shortcut"
+              href={recommendedNextStep.targetHref}
+            >
+              {recommendedNextStep.targetLabel}
+            </a>
+          ) : recommendedNextStep.targetMode &&
+            accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
             <a
               className="manuscript-workbench-shortcut"
               href={formatWorkbenchHash(recommendedNextStep.targetMode, workspace.manuscript.id)}
@@ -360,6 +370,7 @@ interface RecommendedNextStepViewModel {
   details: WorkbenchActionResultDetail[];
   targetMode?: ManuscriptWorkbenchMode;
   targetLabel?: string;
+  targetHref?: string;
 }
 
 function buildRecommendedNextStep(
@@ -367,6 +378,7 @@ function buildRecommendedNextStep(
   workspace: ManuscriptWorkbenchWorkspace,
   latestJob: AnyWorkbenchJob | null,
   latestExport: DocumentAssetExportViewModel | null,
+  canOpenLearningReview: boolean,
 ): RecommendedNextStepViewModel {
   if (mode === "submission") {
     if (latestExport) {
@@ -474,6 +486,27 @@ function buildRecommendedNextStep(
     };
   }
 
+  if (workspace.currentAsset?.asset_type === "human_final_docx") {
+    return {
+      focus: "Hand off this manuscript into learning review",
+      guidance: "The human-final manuscript is ready for governed learning snapshot creation.",
+      details: [
+        {
+          label: "Manuscript",
+          value: workspace.manuscript.id,
+        },
+        {
+          label: "Current Asset",
+          value: describeAsset(workspace.currentAsset),
+        },
+      ],
+      targetLabel: canOpenLearningReview ? "Open Learning Review" : undefined,
+      targetHref: canOpenLearningReview
+        ? formatWorkbenchHash("learning-review", workspace.manuscript.id)
+        : undefined,
+    };
+  }
+
   if (isFinalProofAsset(workspace.currentAsset)) {
     return {
       focus: "Export or hand off the finalized proofreading output",
@@ -539,8 +572,7 @@ function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
 
   return (
     asset.asset_type === "final_proof_issue_report" ||
-    asset.asset_type === "final_proof_annotated_docx" ||
-    asset.asset_type === "human_final_docx"
+    asset.asset_type === "final_proof_annotated_docx"
   );
 }
 

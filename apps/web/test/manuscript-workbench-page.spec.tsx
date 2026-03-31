@@ -25,6 +25,9 @@ test("submission workbench renders a real file picker for inline uploads", () =>
         finalizeProofreadingAndLoad: async () => {
           throw new Error("not used");
         },
+        publishHumanFinalAndLoad: async () => {
+          throw new Error("not used");
+        },
         loadJob: async () => {
           throw new Error("not used");
         },
@@ -58,6 +61,9 @@ test("manuscript workbench page prefills lookup state from a workbench handoff",
         finalizeProofreadingAndLoad: async () => {
           throw new Error("not used");
         },
+        publishHumanFinalAndLoad: async () => {
+          throw new Error("not used");
+        },
         loadJob: async () => {
           throw new Error("not used");
         },
@@ -88,6 +94,9 @@ test("manuscript workbench page shows an explicit loading state while a handed-o
           throw new Error("not used");
         },
         finalizeProofreadingAndLoad: async () => {
+          throw new Error("not used");
+        },
+        publishHumanFinalAndLoad: async () => {
           throw new Error("not used");
         },
         loadJob: async () => {
@@ -138,6 +147,9 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
         throw new Error("not used");
       },
       finalizeProofreadingAndLoad: async () => {
+        throw new Error("not used");
+      },
+      publishHumanFinalAndLoad: async () => {
         throw new Error("not used");
       },
       loadJob: async () => {

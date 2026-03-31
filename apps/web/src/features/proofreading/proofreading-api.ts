@@ -1,7 +1,9 @@
 import type {
   ConfirmProofreadingFinalInput,
   CreateProofreadingDraftInput,
+  ProofreadingHumanFinalPublishResultViewModel,
   ProofreadingRunResultViewModel,
+  PublishProofreadingHumanFinalInput,
 } from "./types.ts";
 
 export interface ProofreadingHttpClient {
@@ -33,6 +35,17 @@ export function confirmProofreadingFinal(
   return client.request<ProofreadingRunResultViewModel>({
     method: "POST",
     url: "/api/v1/modules/proofreading/finalize",
+    body: input,
+  });
+}
+
+export function publishProofreadingHumanFinal(
+  client: ProofreadingHttpClient,
+  input: PublishProofreadingHumanFinalInput,
+) {
+  return client.request<ProofreadingHumanFinalPublishResultViewModel>({
+    method: "POST",
+    url: "/api/v1/modules/proofreading/publish-human-final",
     body: input,
   });
 }

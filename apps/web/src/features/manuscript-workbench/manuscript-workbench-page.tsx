@@ -30,6 +30,7 @@ export interface ManuscriptWorkbenchPageProps {
   controller?: ManuscriptWorkbenchController;
   prefilledManuscriptId?: string;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
+  canOpenLearningReview?: boolean;
 }
 
 export async function loadPrefilledWorkbenchWorkspace(
@@ -73,6 +74,7 @@ export function ManuscriptWorkbenchPage({
   controller = defaultController,
   prefilledManuscriptId,
   accessibleHandoffModes,
+  canOpenLearningReview = false,
 }: ManuscriptWorkbenchPageProps) {
   const canUpload = mode === "submission" || actorRole === "admin";
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
@@ -497,6 +499,44 @@ export function ManuscriptWorkbenchPage({
                       ],
                     };
                   }),
+                canPublishHumanFinal:
+                  mode === "proofreading" &&
+                  workspace.currentAsset?.asset_type === "final_proof_annotated_docx",
+                onPublishHumanFinal: () =>
+                  void run("Publish Human Final", async () => {
+                    if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
+                      throw new Error(
+                        "A finalized proofreading asset is required before publishing the human-final manuscript.",
+                      );
+                    }
+
+                    const result = await controller.publishHumanFinalAndLoad({
+                      manuscriptId: workspace.manuscript.id,
+                      finalAssetId: workspace.currentAsset.id,
+                      actorRole,
+                      storageKey: `runs/${workspace.manuscript.id}/proofreading/human-final`,
+                      fileName: "human-final.docx",
+                    });
+                    setWorkspace(result.workspace);
+                    setLatestJob(result.runResult.job);
+                    setLatestExport(null);
+                    setStatus(`Published human-final asset ${result.runResult.asset.id}`);
+                    return {
+                      tone: "success",
+                      actionLabel: "Publish Human Final",
+                      message: `Published human-final asset ${result.runResult.asset.id}`,
+                      details: [
+                        {
+                          label: "Asset",
+                          value: result.runResult.asset.id,
+                        },
+                        {
+                          label: "Job",
+                          value: result.runResult.job.id,
+                        },
+                      ],
+                    };
+                  }),
                 onRefreshLatestJob: () => {
                   if (!latestJob?.id) {
                     return;
@@ -531,6 +571,7 @@ export function ManuscriptWorkbenchPage({
         <ManuscriptWorkbenchSummary
           mode={mode}
           accessibleHandoffModes={accessibleHandoffModes}
+          canOpenLearningReview={canOpenLearningReview}
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}

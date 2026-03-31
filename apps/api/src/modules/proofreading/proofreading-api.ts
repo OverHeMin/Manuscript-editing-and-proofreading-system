@@ -2,7 +2,9 @@ import { ProofreadingService } from "./proofreading-service.ts";
 import type {
   ConfirmProofreadingFinalInput,
   CreateProofreadingDraftInput,
+  ProofreadingHumanFinalPublishResult,
   ProofreadingRunResult,
+  PublishProofreadingHumanFinalInput,
 } from "./proofreading-service.ts";
 
 interface RouteResponse<T> {
@@ -33,6 +35,15 @@ export function createProofreadingApi(options: CreateProofreadingApiOptions) {
       return {
         status: 201,
         body: await proofreadingService.confirmFinal(input),
+      };
+    },
+
+    async publishHumanFinal(
+      input: PublishProofreadingHumanFinalInput,
+    ): Promise<RouteResponse<ProofreadingHumanFinalPublishResult>> {
+      return {
+        status: 201,
+        body: await proofreadingService.publishHumanFinal(input),
       };
     },
   };

@@ -172,6 +172,7 @@ import {
   createProofreadingApi,
   ProofreadingDraftAssetRequiredError,
   ProofreadingDraftContextNotFoundError,
+  ProofreadingFinalAssetRequiredError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import {
@@ -272,6 +273,9 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-proofreading-finalize";
+    }
+  | {
+      route: "modules-proofreading-publish-human-final";
     }
   | {
       route: "agent-runtime-create";
@@ -1841,6 +1845,18 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "modules-proofreading-publish-human-final": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.proofreadingApi.publishHumanFinal
+      >[0];
+
+      return runtime.proofreadingApi.publishHumanFinal({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
     case "agent-runtime-create": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -2588,6 +2604,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/modules/proofreading/finalize") {
     return { route: "modules-proofreading-finalize" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/proofreading/publish-human-final") {
+    return { route: "modules-proofreading-publish-human-final" };
   }
 
   if (method === "POST" && path === "/api/v1/agent-runtime") {
@@ -3349,6 +3369,7 @@ function mapErrorToHttpResponse(
     error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
     error instanceof ToolPermissionPolicyUnknownToolError ||
     error instanceof ProofreadingDraftAssetRequiredError ||
+    error instanceof ProofreadingFinalAssetRequiredError ||
     error instanceof InlineUploadStorageReferenceRequiredError ||
     error instanceof InlineUploadPayloadInvalidError ||
     error instanceof DocumentAssetDownloadUnsupportedError

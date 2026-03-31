@@ -452,3 +452,138 @@ test("workbench http export download route materializes a proofreading final doc
     await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
+
+test("workbench http proofreading publish route creates a human-final asset and advances export resolution", async () => {
+  const { server, baseUrl, seededIds } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-human-final/proofreading/draft.md",
+        fileName: "proofreading-draft.md",
+      }),
+    });
+    const draft = (await draftResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(draftResponse.status, 201);
+
+    const finalizeResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/finalize`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        draftAssetId: draft.asset.id,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-human-final/proofreading/final.docx",
+        fileName: "proofreading-final.docx",
+      }),
+    });
+    const finalized = (await finalizeResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(finalizeResponse.status, 201);
+
+    const publishResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/publish-human-final`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          finalAssetId: finalized.asset.id,
+          requestedBy: "forged-proofreader",
+          actorRole: "admin",
+          storageKey: "runs/http-human-final/proofreading/human-final.docx",
+          fileName: "human-final.docx",
+        }),
+      },
+    );
+    const published = (await publishResponse.json()) as {
+      job: {
+        id: string;
+        module: string;
+        job_type: string;
+        requested_by: string;
+        payload?: Record<string, unknown>;
+      };
+      asset: {
+        id: string;
+        asset_type: string;
+        created_by: string;
+        source_module: string;
+        parent_asset_id?: string;
+      };
+    };
+
+    const manuscriptResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const manuscript = (await manuscriptResponse.json()) as {
+      current_proofreading_asset_id?: string;
+    };
+
+    const exportResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/export-current-asset`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+        }),
+      },
+    );
+    const exported = (await exportResponse.json()) as {
+      asset: {
+        id: string;
+        asset_type: string;
+      };
+    };
+
+    assert.equal(publishResponse.status, 201);
+    assert.equal(published.job.module, "manual");
+    assert.equal(published.job.job_type, "publish_human_final");
+    assert.equal(published.job.requested_by, "dev-proofreader");
+    assert.equal(published.job.payload?.sourceAssetId, finalized.asset.id);
+    assert.equal(published.asset.asset_type, "human_final_docx");
+    assert.equal(published.asset.created_by, "dev-proofreader");
+    assert.equal(published.asset.source_module, "manual");
+    assert.equal(published.asset.parent_asset_id, finalized.asset.id);
+    assert.equal(manuscriptResponse.status, 200);
+    assert.equal(manuscript.current_proofreading_asset_id, published.asset.id);
+    assert.equal(exportResponse.status, 200);
+    assert.equal(exported.asset.id, published.asset.id);
+    assert.equal(exported.asset.asset_type, "human_final_docx");
+  } finally {
+    await stopServer(server);
+  }
+});

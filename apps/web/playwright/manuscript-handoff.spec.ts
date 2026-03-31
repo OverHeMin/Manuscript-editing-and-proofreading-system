@@ -106,21 +106,35 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     "The proofreading final is active and ready for downstream delivery.",
   );
 
+  await page.getByRole("button", { name: "Publish Human Final" }).click();
+  await expect(page.locator("body")).toContainText("Published human-final asset");
+  await expect(page.locator("body")).toContainText(
+    "The human-final manuscript is ready for governed learning snapshot creation.",
+  );
+  await expect(page.getByRole("link", { name: "Open Learning Review" })).toBeVisible();
+
   await page.getByRole("button", { name: "Export Current Asset" }).click();
   await expect(page.locator("body")).toContainText("Prepared export");
   await expect(page.locator("body")).toContainText("Export File Name");
-  await expect(page.locator("body")).toContainText("proofreading-final.docx");
+  await expect(page.locator("body")).toContainText("human-final.docx");
   await expect(page.locator("body")).toContainText("Download MIME Type");
   await expect(page.locator("body")).toContainText(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
   await expect(page.locator("body")).toContainText(
-    `runs/${manuscriptId}/proofreading/final`,
+    `runs/${manuscriptId}/proofreading/human-final`,
   );
   const downloadLink = page.getByRole("link", { name: "Download Latest Export" });
   await expect(downloadLink).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await downloadLink.click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("proofreading-final.docx");
+  expect(download.suggestedFilename()).toBe("human-final.docx");
+
+  await page.getByRole("link", { name: "Open Learning Review" }).click();
+  await expect(page.locator("body")).toContainText("Governed learning review desk");
+  await expect(page.locator("body")).toContainText(
+    "This review desk was prefilled from the manuscript workbench handoff.",
+  );
+  await expect(page.locator(`input[value="${manuscriptId}"]`)).toBeVisible();
 });
