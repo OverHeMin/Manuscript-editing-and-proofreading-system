@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
-import type { JobViewModel, ManuscriptType, UploadManuscriptInput } from "../manuscripts/index.ts";
+import type { JobViewModel, UploadManuscriptInput } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
+import {
+  ManuscriptWorkbenchControls,
+} from "./manuscript-workbench-controls.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import { ManuscriptWorkbenchSummary } from "./manuscript-workbench-summary.tsx";
 import {
@@ -21,21 +24,6 @@ export interface ManuscriptWorkbenchPageProps {
 
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
-const manuscriptTypeOptions: ManuscriptType[] = [
-  "clinical_study",
-  "review",
-  "systematic_review",
-  "meta_analysis",
-  "case_report",
-  "guideline_interpretation",
-  "expert_consensus",
-  "diagnostic_study",
-  "basic_research",
-  "nursing_study",
-  "methodology_paper",
-  "brief_report",
-  "other",
-];
 
 export function ManuscriptWorkbenchPage({
   mode,
@@ -119,197 +107,147 @@ export function ManuscriptWorkbenchPage({
       <p>{resolveDescription(mode)}</p>
       {error ? <p>{error}</p> : null}
       {status ? <p>{status}</p> : null}
-      {canUpload ? (
-        <>
-          <p>
-            <label>
-              Title{" "}
-              <input
-                value={uploadForm.title}
-                onChange={(event) =>
+      <ManuscriptWorkbenchControls
+        mode={mode}
+        busy={busy}
+        intake={
+          canUpload
+            ? {
+                uploadForm,
+                canSubmit: canSubmitUpload,
+                onTitleChange: (value) =>
                   setUploadForm((current) => ({
                     ...current,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </label>
-          </p>
-          <p>
-            <label>
-              Manuscript Type{" "}
-              <select
-                value={uploadForm.manuscriptType}
-                onChange={(event) =>
+                    title: value,
+                  })),
+                onManuscriptTypeChange: (value) =>
                   setUploadForm((current) => ({
                     ...current,
-                    manuscriptType: event.target.value as ManuscriptType,
-                  }))
-                }
-              >
-                {manuscriptTypeOptions.map((manuscriptType) => (
-                  <option key={manuscriptType} value={manuscriptType}>
-                    {manuscriptType}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </p>
-          <p>
-            <label>
-              Storage Key{" "}
-              <input
-                value={uploadForm.storageKey ?? ""}
-                placeholder="Optional when a local file is selected"
-                onChange={(event) =>
+                    manuscriptType: value,
+                  })),
+                onStorageKeyChange: (value) =>
                   setUploadForm((current) => ({
                     ...current,
-                    storageKey: normalizeOptionalText(event.target.value),
-                  }))
-                }
-              />
-            </label>
-          </p>
-          <p>
-            <label>
-              Manuscript File{" "}
-              <input
-                type="file"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) {
+                    storageKey: normalizeOptionalText(value),
+                  })),
+                onFileSelect: (file) => {
+                  void attachUploadFile(file);
+                },
+                onSubmit: () =>
+                  void run(async () => {
+                    const result = await controller.uploadManuscriptAndLoad(uploadForm);
+                    setWorkspace(result.workspace);
+                    setLatestJob(result.upload.job);
+                    setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
+                  }),
+              }
+            : undefined
+        }
+        lookup={{
+          manuscriptId: lookupId,
+          onChange: setLookupId,
+          onLoad: () =>
+            void run(async () => {
+              const nextWorkspace = await controller.loadWorkspace(lookupId.trim());
+              setWorkspace(nextWorkspace);
+              setStatus(`Loaded manuscript ${nextWorkspace.manuscript.id}`);
+            }),
+        }}
+        moduleAction={
+          workspace && mode !== "submission"
+            ? {
+                title: resolveActionPanelTitle(mode),
+                selectedAssetId: parentAssetId,
+                emptyLabel: "Select asset",
+                actionLabel: resolveActionLabel(mode),
+                options: workspace.assets
+                  .filter((asset) => isSelectableParentAsset(asset))
+                  .map((asset) => ({
+                    value: asset.id,
+                    label: `${asset.asset_type} · ${asset.id}`,
+                  })),
+                onSelect: setParentAssetId,
+                onRun: () =>
+                  void run(async () => {
+                    const result = await controller.runModuleAndLoad({
+                      mode,
+                      manuscriptId: workspace.manuscript.id,
+                      parentAssetId,
+                      actorRole,
+                      storageKey: `runs/${workspace.manuscript.id}/${mode}/output`,
+                      fileName: `${mode}-output`,
+                    });
+                    setWorkspace(result.workspace);
+                    setLatestJob(result.runResult.job);
+                    setStatus(`Created asset ${result.runResult.asset.id}`);
+                  }),
+              }
+            : undefined
+        }
+        finalizeAction={
+          workspace && mode === "proofreading"
+            ? {
+                title: "Proofreading Final",
+                selectedAssetId: draftAssetId,
+                emptyLabel: "Select draft",
+                actionLabel: "Finalize Proofreading",
+                options: workspace.assets
+                  .filter((asset) => asset.asset_type === "proofreading_draft_report")
+                  .map((asset) => ({
+                    value: asset.id,
+                    label: asset.id,
+                  })),
+                onSelect: setDraftAssetId,
+                onRun: () =>
+                  void run(async () => {
+                    const result = await controller.finalizeProofreadingAndLoad({
+                      manuscriptId: workspace.manuscript.id,
+                      draftAssetId,
+                      actorRole,
+                      storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
+                      fileName: "proofreading-final.docx",
+                    });
+                    setWorkspace(result.workspace);
+                    setLatestJob(result.runResult.job);
+                    setStatus(`Finalized asset ${result.runResult.asset.id}`);
+                  }),
+              }
+            : undefined
+        }
+        utilities={
+          workspace
+            ? {
+                canExport: true,
+                canRefreshLatestJob: Boolean(latestJob?.id),
+                onExport: () =>
+                  void run(async () => {
+                    const exported = await controller.exportCurrentAsset({
+                      manuscriptId: workspace.manuscript.id,
+                    });
+                    setLatestExport(exported.download.storage_key);
+                    setStatus(`Prepared export ${exported.asset.id}`);
+                  }),
+                onRefreshLatestJob: () => {
+                  if (!latestJob?.id) {
                     return;
                   }
 
-                  void attachUploadFile(file);
-                }}
-              />
-            </label>
-          </p>
-          <p>
-            {uploadForm.fileContentBase64
-              ? `Selected local file: ${uploadForm.fileName}`
-              : "No local file selected. Enter a storage key to keep using metadata-only uploads."}
-          </p>
-          <p>
-            <button
-              type="button"
-              disabled={busy || !canSubmitUpload}
-              onClick={() =>
-                void run(async () => {
-                  const result = await controller.uploadManuscriptAndLoad(uploadForm);
-                  setWorkspace(result.workspace);
-                  setLatestJob(result.upload.job);
-                  setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
-                })
+                  void run(async () => {
+                    const nextJob = await controller.loadJob(latestJob.id);
+                    setLatestJob(nextJob);
+                    setStatus(`Refreshed job ${nextJob.id}`);
+                  });
+                },
               }
-            >
-              {busy ? "Working..." : "Upload Manuscript"}
-            </button>
-          </p>
-        </>
-      ) : null}
-      <p>
-        <label>
-          Manuscript ID{" "}
-          <input value={lookupId} onChange={(event) => setLookupId(event.target.value)} />
-        </label>{" "}
-        <button type="button" disabled={busy} onClick={() => void run(async () => {
-          const nextWorkspace = await controller.loadWorkspace(lookupId.trim());
-          setWorkspace(nextWorkspace);
-          setStatus(`Loaded manuscript ${nextWorkspace.manuscript.id}`);
-        })}>
-          Load Workspace
-        </button>
-      </p>
+            : undefined
+        }
+      />
       {workspace ? (
-        <>
-          {mode !== "submission" ? (
-            <p>
-              <label>
-                Parent Asset{" "}
-                <select value={parentAssetId} onChange={(event) => setParentAssetId(event.target.value)}>
-                  <option value="">Select asset</option>
-                  {workspace.assets.filter((asset) => isSelectableParentAsset(asset)).map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.asset_type} · {asset.id}
-                    </option>
-                  ))}
-                </select>
-              </label>{" "}
-              <button type="button" disabled={busy || parentAssetId.length === 0} onClick={() => void run(async () => {
-                const result = await controller.runModuleAndLoad({
-                  mode,
-                  manuscriptId: workspace.manuscript.id,
-                  parentAssetId,
-                  actorRole,
-                  storageKey: `runs/${workspace.manuscript.id}/${mode}/output`,
-                  fileName: `${mode}-output`,
-                });
-                setWorkspace(result.workspace);
-                setLatestJob(result.runResult.job);
-                setStatus(`Created asset ${result.runResult.asset.id}`);
-              })}>
-                {busy ? "Working..." : resolveActionLabel(mode)}
-              </button>
-            </p>
-          ) : null}
-          {mode === "proofreading" ? (
-            <p>
-              <label>
-                Draft Asset{" "}
-                <select value={draftAssetId} onChange={(event) => setDraftAssetId(event.target.value)}>
-                  <option value="">Select draft</option>
-                  {workspace.assets.filter((asset) => asset.asset_type === "proofreading_draft_report").map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.id}
-                    </option>
-                  ))}
-                </select>
-              </label>{" "}
-              <button type="button" disabled={busy || draftAssetId.length === 0} onClick={() => void run(async () => {
-                const result = await controller.finalizeProofreadingAndLoad({
-                  manuscriptId: workspace.manuscript.id,
-                  draftAssetId,
-                  actorRole,
-                  storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
-                  fileName: "proofreading-final.docx",
-                });
-                setWorkspace(result.workspace);
-                setLatestJob(result.runResult.job);
-                setStatus(`Finalized asset ${result.runResult.asset.id}`);
-              })}>
-                {busy ? "Working..." : "Finalize Proofreading"}
-              </button>
-            </p>
-          ) : null}
-          <p>
-            <button type="button" disabled={busy} onClick={() => void run(async () => {
-              const exported = await controller.exportCurrentAsset({ manuscriptId: workspace.manuscript.id });
-              setLatestExport(exported.download.storage_key);
-              setStatus(`Prepared export ${exported.asset.id}`);
-            })}>
-              Export Current Asset
-            </button>
-            {latestJob?.id ? (
-              <>
-                {" "}
-                <button type="button" disabled={busy} onClick={() => void run(async () => {
-                  const nextJob = await controller.loadJob(latestJob.id);
-                  setLatestJob(nextJob);
-                  setStatus(`Refreshed job ${nextJob.id}`);
-                })}>
-                  Refresh Latest Job
-                </button>
-              </>
-            ) : null}
-          </p>
-          <ManuscriptWorkbenchSummary
-            workspace={workspace}
-            latestJob={latestJob}
-            latestExport={latestExport}
-          />
-        </>
+        <ManuscriptWorkbenchSummary
+          workspace={workspace}
+          latestJob={latestJob}
+          latestExport={latestExport}
+        />
       ) : null}
     </article>
   );
@@ -334,6 +272,13 @@ function resolveActionLabel(mode: ManuscriptWorkbenchMode): string {
   if (mode === "editing") return "Run Editing";
   if (mode === "proofreading") return "Create Draft";
   return "Run";
+}
+
+function resolveActionPanelTitle(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "screening") return "Screening Run";
+  if (mode === "editing") return "Editing Run";
+  if (mode === "proofreading") return "Proofreading Draft";
+  return "Module Action";
 }
 
 function formatError(error: unknown): string {
