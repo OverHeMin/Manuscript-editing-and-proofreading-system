@@ -71,6 +71,42 @@ test("manuscript workbench page prefills lookup state from a workbench handoff",
   assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
 });
 
+test("manuscript workbench page shows an explicit loading state while a handed-off workspace is auto-loading", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="proofreading"
+      prefilledManuscriptId="manuscript-9"
+      controller={{
+        loadWorkspace: async () => {
+          throw new Error("not used");
+        },
+        uploadManuscriptAndLoad: async () => {
+          throw new Error("not used");
+        },
+        runModuleAndLoad: async () => {
+          throw new Error("not used");
+        },
+        finalizeProofreadingAndLoad: async () => {
+          throw new Error("not used");
+        },
+        loadJob: async () => {
+          throw new Error("not used");
+        },
+        exportCurrentAsset: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /Loading manuscript manuscript-9\.\.\./);
+  assert.match(
+    markup,
+    /Fetching workspace assets and latest governed state before enabling actions\./,
+  );
+  assert.match(markup, /manuscript-workbench-loading-card/);
+});
+
 test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operator-facing status result", async () => {
   const workspace = {
     manuscript: {

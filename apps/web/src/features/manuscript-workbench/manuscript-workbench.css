@@ -30,6 +30,65 @@
   margin-top: 18px;
 }
 
+.manuscript-workbench-loading-card {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid #99f6e4;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.18), transparent 38%),
+    linear-gradient(180deg, #f0fdfa 0%, #ecfeff 100%);
+}
+
+.manuscript-workbench-loading-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.manuscript-workbench-loading-eyebrow {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.manuscript-workbench-loading-copy h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.manuscript-workbench-loading-copy p {
+  margin: 0;
+  color: #155e75;
+}
+
+.manuscript-workbench-loading-skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.manuscript-workbench-loading-bar {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ccfbf1 0%, #a5f3fc 48%, #ccfbf1 100%);
+  background-size: 200% 100%;
+  animation: manuscript-workbench-loading-pulse 1.4s ease-in-out infinite;
+}
+
+.manuscript-workbench-loading-bar.is-primary {
+  height: 14px;
+  width: 78%;
+}
+
+.manuscript-workbench-loading-bar.is-short {
+  width: 56%;
+}
+
 .manuscript-workbench-prefill-note {
   margin: 12px 0 0;
   color: #0f766e;
@@ -376,5 +435,15 @@
   .manuscript-workbench-controls-grid,
   .manuscript-workbench-summary-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@keyframes manuscript-workbench-loading-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
   }
 }

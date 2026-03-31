@@ -81,6 +81,9 @@ export function ManuscriptWorkbenchPage({
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [isPrefillLoading, setIsPrefillLoading] = useState(
+    normalizedPrefilledManuscriptId.length > 0,
+  );
   const [uploadForm, setUploadForm] = useState<UploadManuscriptInput>({
     title: `${mode} sample manuscript`,
     manuscriptType: "review",
@@ -96,6 +99,7 @@ export function ManuscriptWorkbenchPage({
     uploadForm.fileName.trim().length > 0 &&
     uploadForm.mimeType.trim().length > 0 &&
     hasUploadPayload(uploadForm);
+  const workbenchBusy = busy || isPrefillLoading;
 
   useEffect(() => {
     if (!workspace) {
@@ -117,9 +121,11 @@ export function ManuscriptWorkbenchPage({
 
   useEffect(() => {
     if (normalizedPrefilledManuscriptId.length === 0) {
+      setIsPrefillLoading(false);
       return;
     }
 
+    setIsPrefillLoading(true);
     setLookupId(normalizedPrefilledManuscriptId);
     setWorkspace(null);
     setLatestJob(null);
@@ -170,6 +176,7 @@ export function ManuscriptWorkbenchPage({
       .finally(() => {
         if (!cancelled) {
           setBusy(false);
+          setIsPrefillLoading(false);
         }
       });
 
@@ -267,9 +274,34 @@ export function ManuscriptWorkbenchPage({
           message={status}
         />
       ) : null}
+      {normalizedPrefilledManuscriptId.length > 0 && isPrefillLoading && !workspace ? (
+        <section
+          className="manuscript-workbench-loading-card"
+          aria-live="polite"
+          aria-label={`Loading manuscript ${normalizedPrefilledManuscriptId}`}
+        >
+          <div className="manuscript-workbench-loading-copy">
+            <span className="manuscript-workbench-loading-eyebrow">
+              Manuscript Handoff
+            </span>
+            <h3>{`Loading manuscript ${normalizedPrefilledManuscriptId}...`}</h3>
+            <p>
+              Fetching workspace assets and latest governed state before enabling actions.
+            </p>
+          </div>
+          <div
+            className="manuscript-workbench-loading-skeleton"
+            aria-hidden="true"
+          >
+            <span className="manuscript-workbench-loading-bar is-primary" />
+            <span className="manuscript-workbench-loading-bar" />
+            <span className="manuscript-workbench-loading-bar is-short" />
+          </div>
+        </section>
+      ) : null}
       <ManuscriptWorkbenchControls
         mode={mode}
-        busy={busy}
+        busy={workbenchBusy}
         intake={
           canUpload
             ? {
