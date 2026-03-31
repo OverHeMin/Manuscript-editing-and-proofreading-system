@@ -228,6 +228,7 @@ export function createPersistentGovernanceRuntime(
   });
   const exportService = new DocumentExportService({
     assetRepository,
+    manuscriptRepository,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,

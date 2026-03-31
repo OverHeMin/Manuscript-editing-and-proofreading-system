@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
-import type { JobViewModel, UploadManuscriptInput } from "../manuscripts/index.ts";
+import type {
+  DocumentAssetExportViewModel,
+  JobViewModel,
+  UploadManuscriptInput,
+} from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
@@ -75,7 +79,7 @@ export function ManuscriptWorkbenchPage({
   const [lookupId, setLookupId] = useState(normalizedPrefilledManuscriptId);
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
-  const [latestExport, setLatestExport] = useState<string>("");
+  const [latestExport, setLatestExport] = useState<DocumentAssetExportViewModel | null>(null);
   const [latestActionResult, setLatestActionResult] =
     useState<WorkbenchActionResultViewModel | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -129,7 +133,7 @@ export function ManuscriptWorkbenchPage({
     setLookupId(normalizedPrefilledManuscriptId);
     setWorkspace(null);
     setLatestJob(null);
-    setLatestExport("");
+    setLatestExport(null);
     setLatestActionResult(null);
     setStatus("");
     setError("");
@@ -154,7 +158,7 @@ export function ManuscriptWorkbenchPage({
 
         setWorkspace(result.workspace);
         setLatestJob(null);
-        setLatestExport("");
+        setLatestExport(null);
         setStatus(result.status);
         setLatestActionResult(result.latestActionResult);
       })
@@ -467,7 +471,7 @@ export function ManuscriptWorkbenchPage({
                     const exported = await controller.exportCurrentAsset({
                       manuscriptId: workspace.manuscript.id,
                     });
-                    setLatestExport(exported.download.storage_key);
+                    setLatestExport(exported);
                     setStatus(`Prepared export ${exported.asset.id}`);
                     return {
                       tone: "success",
@@ -477,6 +481,14 @@ export function ManuscriptWorkbenchPage({
                         {
                           label: "Asset",
                           value: exported.asset.id,
+                        },
+                        {
+                          label: "Export File Name",
+                          value: exported.download.file_name ?? exported.asset.file_name ?? "Not provided",
+                        },
+                        {
+                          label: "Download MIME Type",
+                          value: exported.download.mime_type,
                         },
                         {
                           label: "Storage Key",

@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
-import type { JobViewModel, DocumentAssetViewModel } from "../manuscripts/index.ts";
+import type {
+  DocumentAssetExportViewModel,
+  DocumentAssetViewModel,
+  JobViewModel,
+} from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
   ManuscriptWorkbenchMode,
@@ -26,7 +30,7 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
-  latestExport: string;
+  latestExport: DocumentAssetExportViewModel | null;
   latestActionResult?: WorkbenchActionResultViewModel | null;
 }
 
@@ -186,7 +190,23 @@ export function ManuscriptWorkbenchSummary({
             <>
               <SummaryMetric
                 label="Export Storage Key"
-                value={<code>{latestExport}</code>}
+                value={<code>{latestExport.download.storage_key}</code>}
+              />
+              <SummaryMetric
+                label="Export File Name"
+                value={
+                  latestExport.download.file_name ??
+                  latestExport.asset.file_name ??
+                  "Not provided"
+                }
+              />
+              <SummaryMetric
+                label="Download MIME Type"
+                value={latestExport.download.mime_type}
+              />
+              <SummaryMetric
+                label="Source Asset"
+                value={renderAssetIdentity(latestExport.asset)}
               />
               <SummaryMetric label="Ready State" value="Prepared for downstream delivery" />
             </>
@@ -334,7 +354,7 @@ function buildRecommendedNextStep(
   mode: ManuscriptWorkbenchMode,
   workspace: ManuscriptWorkbenchWorkspace,
   latestJob: AnyWorkbenchJob | null,
-  latestExport: string,
+  latestExport: DocumentAssetExportViewModel | null,
 ): RecommendedNextStepViewModel {
   if (mode === "submission") {
     if (latestExport) {
@@ -348,7 +368,7 @@ function buildRecommendedNextStep(
           },
           {
             label: "Export",
-            value: latestExport,
+            value: latestExport.download.storage_key,
           },
         ],
       };
@@ -446,17 +466,17 @@ function buildRecommendedNextStep(
     return {
       focus: "Export or hand off the finalized proofreading output",
       guidance: "The proofreading final is active and ready for downstream delivery.",
-      details: [
-        {
-          label: "Current Asset",
-          value: describeAsset(workspace.currentAsset),
-        },
-        {
-          label: "Export",
-          value: latestExport || "Prepare export from Workspace Utilities",
-        },
-      ],
-    };
+        details: [
+          {
+            label: "Current Asset",
+            value: describeAsset(workspace.currentAsset),
+          },
+          {
+            label: "Export",
+            value: latestExport?.download.storage_key ?? "Prepare export from Workspace Utilities",
+          },
+        ],
+      };
   }
 
   if (workspace.latestProofreadingDraftAsset) {

@@ -223,6 +223,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   });
   const exportService = new DocumentExportService({
     assetRepository,
+    manuscriptRepository,
   });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,

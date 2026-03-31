@@ -481,3 +481,74 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
     ],
   );
 });
+
+test("manuscript workbench controller exports the current asset through the document pipeline route", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/document-pipeline/export-current-asset"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-1",
+            asset: {
+              id: "asset-proof-final-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "final_proof_annotated_docx",
+              status: "active",
+              storage_key: "runs/manuscript-1/proofreading/final",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-draft-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-final-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "proofreading-final.docx",
+              created_at: "2026-03-31T10:02:00.000Z",
+              updated_at: "2026-03-31T10:02:00.000Z",
+            },
+            download: {
+              storage_key: "runs/manuscript-1/proofreading/final",
+              file_name: "proofreading-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const exported = await controller.exportCurrentAsset({
+    manuscriptId: "manuscript-1",
+  });
+
+  assert.equal(exported.asset.id, "asset-proof-final-1");
+  assert.equal(exported.download.file_name, "proofreading-final.docx");
+  assert.equal(
+    exported.download.mime_type,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/document-pipeline/export-current-asset",
+      body: {
+        manuscriptId: "manuscript-1",
+      },
+    },
+  ]);
+});

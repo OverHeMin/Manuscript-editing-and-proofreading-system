@@ -781,6 +781,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const exportService = new DocumentExportService({
     assetRepository,
+    manuscriptRepository,
   });
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,

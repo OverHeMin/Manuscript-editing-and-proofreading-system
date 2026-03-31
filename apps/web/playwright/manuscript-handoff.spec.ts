@@ -105,4 +105,16 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText(
     "The proofreading final is active and ready for downstream delivery.",
   );
+
+  await page.getByRole("button", { name: "Export Current Asset" }).click();
+  await expect(page.locator("body")).toContainText("Prepared export");
+  await expect(page.locator("body")).toContainText("Export File Name");
+  await expect(page.locator("body")).toContainText("proofreading-final.docx");
+  await expect(page.locator("body")).toContainText("Download MIME Type");
+  await expect(page.locator("body")).toContainText(
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  await expect(page.locator("body")).toContainText(
+    `runs/${manuscriptId}/proofreading/final`,
+  );
 });
