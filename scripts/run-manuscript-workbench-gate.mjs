@@ -62,6 +62,19 @@ const steps = [
       "playwright/manuscript-handoff.spec.ts",
     ],
   },
+  {
+    label: "Browser learning review smoke",
+    command: pnpmCommand,
+    args: [
+      "--filter",
+      "@medsys/web",
+      "run",
+      "test:browser",
+      "--",
+      "--browser=chromium",
+      "playwright/learning-review-flow.spec.ts",
+    ],
+  },
 ];
 
 for (const step of steps) {
