@@ -28,6 +28,38 @@ export interface ManuscriptWorkbenchPageProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
 }
 
+export async function loadPrefilledWorkbenchWorkspace(
+  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace">,
+  manuscriptId: string,
+): Promise<{
+  workspace: ManuscriptWorkbenchWorkspace;
+  status: string;
+  latestActionResult: WorkbenchActionResultViewModel;
+}> {
+  const workspace = await controller.loadWorkspace(manuscriptId);
+  const status = `Auto-loaded manuscript ${workspace.manuscript.id}`;
+
+  return {
+    workspace,
+    status,
+    latestActionResult: {
+      tone: "success",
+      actionLabel: "Load Workspace",
+      message: status,
+      details: [
+        {
+          label: "Manuscript",
+          value: workspace.manuscript.id,
+        },
+        {
+          label: "Current Asset",
+          value: workspace.currentAsset?.id ?? "Not available",
+        },
+      ],
+    },
+  };
+}
+
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
@@ -98,6 +130,53 @@ export function ManuscriptWorkbenchPage({
     setParentAssetId("");
     setDraftAssetId("");
   }, [normalizedPrefilledManuscriptId]);
+
+  useEffect(() => {
+    if (normalizedPrefilledManuscriptId.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    setBusy(true);
+    setError("");
+
+    void loadPrefilledWorkbenchWorkspace(controller, normalizedPrefilledManuscriptId)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setWorkspace(result.workspace);
+        setLatestJob(null);
+        setLatestExport("");
+        setStatus(result.status);
+        setLatestActionResult(result.latestActionResult);
+      })
+      .catch((nextError) => {
+        if (cancelled) {
+          return;
+        }
+
+        const message = formatError(nextError);
+        setStatus("");
+        setError(message);
+        setLatestActionResult({
+          tone: "error",
+          actionLabel: "Load Workspace",
+          message,
+          details: [],
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [controller, normalizedPrefilledManuscriptId]);
 
   async function run(
     actionLabel: string,
@@ -244,23 +323,12 @@ export function ManuscriptWorkbenchPage({
           onChange: setLookupId,
           onLoad: () =>
             void run("Load Workspace", async () => {
-              const nextWorkspace = await controller.loadWorkspace(lookupId.trim());
-              setWorkspace(nextWorkspace);
-              setStatus(`Loaded manuscript ${nextWorkspace.manuscript.id}`);
+              const result = await loadPrefilledWorkbenchWorkspace(controller, lookupId.trim());
+              setWorkspace(result.workspace);
+              setStatus(`Loaded manuscript ${result.workspace.manuscript.id}`);
               return {
-                tone: "success",
-                actionLabel: "Load Workspace",
-                message: `Loaded manuscript ${nextWorkspace.manuscript.id}`,
-                details: [
-                  {
-                    label: "Manuscript",
-                    value: nextWorkspace.manuscript.id,
-                  },
-                  {
-                    label: "Current Asset",
-                    value: nextWorkspace.currentAsset?.id ?? "Not available",
-                  },
-                ],
+                ...result.latestActionResult,
+                message: `Loaded manuscript ${result.workspace.manuscript.id}`,
               };
             }),
         }}

@@ -1,5 +1,5 @@
 import type { WorkbenchId } from "../features/auth/index.ts";
-import type { ManuscriptWorkbenchMode } from "../features/manuscript-workbench/index.ts";
+import type { ManuscriptWorkbenchMode } from "../features/manuscript-workbench/manuscript-workbench-controller.ts";
 
 export type WorkbenchRenderKind =
   | "manuscript-workbench"

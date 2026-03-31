@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type { JobViewModel, DocumentAssetViewModel } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
@@ -89,10 +90,7 @@ export function ManuscriptWorkbenchSummary({
           accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
             <a
               className="manuscript-workbench-shortcut"
-              href={formatWorkbenchHandoffHref(
-                recommendedNextStep.targetMode,
-                workspace.manuscript.id,
-              )}
+              href={formatWorkbenchHash(recommendedNextStep.targetMode, workspace.manuscript.id)}
             >
               {recommendedNextStep.targetLabel ??
                 `Open ${formatWorkbenchModeLabel(recommendedNextStep.targetMode)} Workbench`}
@@ -512,17 +510,6 @@ function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
     asset.asset_type === "final_proof_annotated_docx" ||
     asset.asset_type === "human_final_docx"
   );
-}
-
-function formatWorkbenchHandoffHref(
-  targetMode: ManuscriptWorkbenchMode,
-  manuscriptId: string,
-): string {
-  const params = new URLSearchParams({
-    manuscriptId,
-  });
-
-  return `#${targetMode}?${params.toString()}`;
 }
 
 function formatWorkbenchModeLabel(targetMode: ManuscriptWorkbenchMode): string {
