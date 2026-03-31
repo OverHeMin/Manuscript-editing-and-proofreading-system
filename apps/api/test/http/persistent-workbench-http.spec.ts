@@ -767,6 +767,356 @@ test("persistent learning review snapshots and governed provenance survive resta
   });
 });
 
+test("persistent learning writebacks can submit knowledge drafts into review across restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const proofreaderCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+        const reviewerCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.knowledge_reviewer",
+        );
+        const adminCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.admin",
+        );
+
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/knowledge-handoff-proofreading/draft.md",
+              fileName: "persistent-knowledge-handoff-draft.md",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(draftResponse.status, 201);
+
+        const finalizeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/finalize`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              draftAssetId: draft.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/knowledge-handoff-proofreading/final.docx",
+              fileName: "persistent-knowledge-handoff-final.docx",
+            }),
+          },
+        );
+        const finalized = (await finalizeResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(finalizeResponse.status, 201);
+
+        const publishResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/publish-human-final`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: proofreaderCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              finalAssetId: finalized.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/knowledge-handoff-proofreading/human-final.docx",
+              fileName: "persistent-knowledge-handoff-human-final.docx",
+            }),
+          },
+        );
+        const published = (await publishResponse.json()) as {
+          asset: { id: string };
+        };
+        assert.equal(publishResponse.status, 201);
+
+        const snapshotResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/reviewed-case-snapshots`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: reviewerCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              module: "proofreading",
+              manuscriptType: "clinical_study",
+              humanFinalAssetId: published.asset.id,
+              annotatedAssetId: finalized.asset.id,
+              deidentificationPassed: true,
+              requestedBy: "forged-reviewer",
+              storageKey: "persistent/learning/knowledge-handoff-reviewed-case-snapshot.bin",
+            }),
+          },
+        );
+        const snapshot = (await snapshotResponse.json()) as {
+          id: string;
+        };
+        assert.equal(snapshotResponse.status, 201);
+
+        const candidateResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/candidates/governed`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: reviewerCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              snapshotId: snapshot.id,
+              type: "rule_candidate",
+              title: "Persistent knowledge handoff candidate",
+              proposalText:
+                "Route governed learning writebacks into the knowledge review queue.",
+              requestedBy: "forged-reviewer",
+              deidentificationPassed: true,
+              governedSource: {
+                sourceKind: "evaluation_experiment",
+                reviewedCaseSnapshotId: snapshot.id,
+                evaluationRunId: "persistent-knowledge-handoff-eval-1",
+                evidencePackId: "persistent-knowledge-handoff-evidence-1",
+                sourceAssetId: published.asset.id,
+              },
+            }),
+          },
+        );
+        const candidate = (await candidateResponse.json()) as {
+          id: string;
+        };
+        assert.equal(candidateResponse.status, 201);
+
+        const approveCandidateResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/candidates/${candidate.id}/approve`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: reviewerCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+            }),
+          },
+        );
+        assert.equal(approveCandidateResponse.status, 200);
+
+        const createWritebackResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning-governance/writebacks`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                learningCandidateId: candidate.id,
+                targetType: "knowledge_item",
+                createdBy: "forged-admin",
+              },
+            }),
+          },
+        );
+        const writeback = (await createWritebackResponse.json()) as {
+          id: string;
+          status: string;
+        };
+        assert.equal(createWritebackResponse.status, 201);
+        assert.equal(writeback.status, "draft");
+
+        const applyWritebackResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning-governance/writebacks/${writeback.id}/apply`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              input: {
+                targetType: "knowledge_item",
+                appliedBy: "forged-admin",
+                title: "Persistent knowledge handoff rule",
+                canonicalText:
+                  "Governed learning writebacks must reach the knowledge review queue before publication.",
+                knowledgeKind: "rule",
+                moduleScope: "learning",
+                manuscriptTypes: ["clinical_study"],
+                summary: "Persistent knowledge handoff summary",
+              },
+            }),
+          },
+        );
+        const appliedWriteback = (await applyWritebackResponse.json()) as {
+          status: string;
+          created_draft_asset_id?: string;
+        };
+        assert.equal(applyWritebackResponse.status, 200);
+        assert.equal(appliedWriteback.status, "applied");
+        assert.ok(appliedWriteback.created_draft_asset_id);
+
+        const submitResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/${appliedWriteback.created_draft_asset_id}/submit`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+        const submittedKnowledgeItem = (await submitResponse.json()) as {
+          id: string;
+          title: string;
+          status: string;
+        };
+        assert.equal(submitResponse.status, 200);
+        assert.equal(submittedKnowledgeItem.id, appliedWriteback.created_draft_asset_id);
+        assert.equal(submittedKnowledgeItem.status, "pending_review");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        try {
+          const queueResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/review-queue`,
+            {
+              headers: {
+                Cookie: reviewerCookie,
+              },
+            },
+          );
+          const queue = (await queueResponse.json()) as Array<{
+            id: string;
+            title: string;
+            status: string;
+          }>;
+
+          assert.equal(queueResponse.status, 200);
+          const queuedKnowledgeItem = queue.find(
+            (item) => item.id === submittedKnowledgeItem.id,
+          );
+          assert.ok(queuedKnowledgeItem);
+          assert.equal(queuedKnowledgeItem.id, submittedKnowledgeItem.id);
+          assert.equal(queuedKnowledgeItem.title, "Persistent knowledge handoff rule");
+          assert.equal(queuedKnowledgeItem.status, "pending_review");
+
+          const approveKnowledgeResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/${submittedKnowledgeItem.id}/approve`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: reviewerCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                reviewNote: "Approved after persistent learning-to-knowledge restart check.",
+              }),
+            },
+          );
+          assert.equal(approveKnowledgeResponse.status, 200);
+
+          await stopServer(secondServer.server);
+
+          const thirdServer = await startPersistentWorkbenchServer(databaseUrl);
+          try {
+            const queueAfterApprovalResponse = await fetch(
+              `${thirdServer.baseUrl}/api/v1/knowledge/review-queue`,
+              {
+                headers: {
+                  Cookie: reviewerCookie,
+                },
+              },
+            );
+            const queueAfterApproval =
+              (await queueAfterApprovalResponse.json()) as Array<{ id: string }>;
+            const historyResponse = await fetch(
+              `${thirdServer.baseUrl}/api/v1/knowledge/${submittedKnowledgeItem.id}/review-actions`,
+              {
+                headers: {
+                  Cookie: reviewerCookie,
+                },
+              },
+            );
+            const history = (await historyResponse.json()) as Array<{
+              action: string;
+              review_note?: string;
+            }>;
+
+            assert.equal(queueAfterApprovalResponse.status, 200);
+            assert.equal(
+              queueAfterApproval.some((item) => item.id === submittedKnowledgeItem.id),
+              false,
+            );
+            assert.equal(historyResponse.status, 200);
+            assert.deepEqual(
+              history.map((record) => ({
+                action: record.action,
+                review_note: record.review_note,
+              })),
+              [
+                {
+                  action: "submitted_for_review",
+                  review_note: undefined,
+                },
+                {
+                  action: "approved",
+                  review_note:
+                    "Approved after persistent learning-to-knowledge restart check.",
+                },
+              ],
+            );
+          } finally {
+            await stopServer(thirdServer.server);
+          }
+        } finally {
+          await stopServer(secondServer.server).catch(() => undefined);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -834,6 +1184,14 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     username: "persistent.knowledge_reviewer",
     displayName: "Persistent Knowledge Reviewer",
     role: "knowledge_reviewer",
+    passwordHash:
+      "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+  });
+  await userRepository.save({
+    id: "persistent-admin",
+    username: "persistent.admin",
+    displayName: "Persistent Admin",
+    role: "admin",
     passwordHash:
       "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
   });
