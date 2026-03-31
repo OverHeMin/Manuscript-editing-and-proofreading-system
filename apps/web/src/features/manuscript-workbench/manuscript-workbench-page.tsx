@@ -4,6 +4,7 @@ import type { AuthRole } from "../auth/index.ts";
 import type { JobViewModel, ManuscriptType, UploadManuscriptInput } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
+import { ManuscriptWorkbenchSummary } from "./manuscript-workbench-summary.tsx";
 import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
@@ -303,7 +304,11 @@ export function ManuscriptWorkbenchPage({
               </>
             ) : null}
           </p>
-          <pre>{JSON.stringify({ workspace, latestJob, latestExport }, null, 2)}</pre>
+          <ManuscriptWorkbenchSummary
+            workspace={workspace}
+            latestJob={latestJob}
+            latestExport={latestExport}
+          />
         </>
       ) : null}
     </article>

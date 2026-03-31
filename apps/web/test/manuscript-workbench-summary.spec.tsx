@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ManuscriptWorkbenchSummary } from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
+
+test("manuscript workbench summary renders operator-facing overview cards and the asset chain", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      workspace={{
+        manuscript: {
+          id: "manuscript-1",
+          title: "Cardiology review",
+          manuscript_type: "review",
+          status: "processing",
+          created_by: "editor-1",
+          current_editing_asset_id: "asset-edited-1",
+          created_at: "2026-03-31T09:00:00.000Z",
+          updated_at: "2026-03-31T10:00:00.000Z",
+        },
+        assets: [
+          {
+            id: "asset-edited-1",
+            manuscript_id: "manuscript-1",
+            asset_type: "edited_docx",
+            status: "active",
+            storage_key: "runs/editing/final.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-original-1",
+            source_module: "editing",
+            source_job_id: "job-edit-1",
+            created_by: "editor-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "editing-final.docx",
+            created_at: "2026-03-31T09:45:00.000Z",
+            updated_at: "2026-03-31T09:45:00.000Z",
+          },
+          {
+            id: "asset-original-1",
+            manuscript_id: "manuscript-1",
+            asset_type: "original",
+            status: "superseded",
+            storage_key: "uploads/review/review.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            source_module: "upload",
+            created_by: "editor-1",
+            version_no: 1,
+            is_current: false,
+            file_name: "review.docx",
+            created_at: "2026-03-31T09:00:00.000Z",
+            updated_at: "2026-03-31T09:00:00.000Z",
+          },
+        ],
+        currentAsset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          source_job_id: "job-edit-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "editing-final.docx",
+          created_at: "2026-03-31T09:45:00.000Z",
+          updated_at: "2026-03-31T09:45:00.000Z",
+        },
+        suggestedParentAsset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          source_job_id: "job-edit-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "editing-final.docx",
+          created_at: "2026-03-31T09:45:00.000Z",
+          updated_at: "2026-03-31T09:45:00.000Z",
+        },
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={{
+        id: "job-edit-1",
+        module: "editing",
+        job_type: "editing_run",
+        status: "completed",
+        requested_by: "editor-1",
+        attempt_count: 1,
+        created_at: "2026-03-31T09:45:00.000Z",
+        updated_at: "2026-03-31T09:46:00.000Z",
+      }}
+      latestExport="exports/manuscript-1/current.docx"
+    />,
+  );
+
+  assert.match(markup, /Manuscript Overview/);
+  assert.match(markup, /Cardiology review/);
+  assert.match(markup, /Current Asset/);
+  assert.match(markup, /editing-final\.docx/);
+  assert.match(markup, /Latest Job/);
+  assert.match(markup, /completed/);
+  assert.match(markup, /Latest Export/);
+  assert.match(markup, /exports\/manuscript-1\/current\.docx/);
+  assert.match(markup, /Asset Chain/);
+  assert.match(markup, /asset-original-1/);
+  assert.match(markup, /Debug Snapshot/);
+});
