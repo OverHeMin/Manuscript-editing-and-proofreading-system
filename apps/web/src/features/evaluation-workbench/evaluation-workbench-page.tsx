@@ -121,6 +121,7 @@ export function EvaluationWorkbenchPage({
       ? null
       : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
   const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
+  const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
@@ -367,6 +368,41 @@ export function EvaluationWorkbenchPage({
                   Select a finalized run from the suite to compare it against prior history.
                 </p>
               )}
+              {selectedRunHistoryEntry ? (
+                <div className="evaluation-workbench-result evaluation-workbench-history-detail">
+                  <strong>Selected History Detail</strong>
+                  <div className="evaluation-workbench-history-compare">
+                    <span>Run: {selectedRunHistoryEntry.run.id}</span>
+                    <span>Recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
+                    <span>Evidence Pack: {selectedRunHistoryEntry.finalized.evidence_pack.id}</span>
+                    {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
+                      <span>{selectedRunHistoryEntry.finalized.recommendation.decision_reason}</span>
+                    ) : null}
+                    {selectedRunHistoryEntry.finalized.evidence_pack.score_summary ? (
+                      <span>{selectedRunHistoryEntry.finalized.evidence_pack.score_summary}</span>
+                    ) : null}
+                    {selectedRunHistoryEntry.finalized.evidence_pack.failure_summary ? (
+                      <span>{selectedRunHistoryEntry.finalized.evidence_pack.failure_summary}</span>
+                    ) : null}
+                    {selectedRunItem?.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
+                    {linkedSampleSetItem ? (
+                      <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
+                    ) : null}
+                  </div>
+                  {selectedRunEvidence.length > 0 ? (
+                    <ul className="evaluation-workbench-inline-list">
+                      {selectedRunEvidence.map((evidence) => (
+                        <li key={evidence.id}>
+                          <strong>{evidence.label}</strong>
+                          <span>{evidence.uri ?? evidence.artifact_asset_id ?? evidence.kind}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="evaluation-workbench-empty">No persisted verification evidence is attached to this run.</p>
+                  )}
+                </div>
+              ) : null}
               <ul className="evaluation-workbench-stack">
                 {finalizedRunHistory.map((entry) => (
                   <li key={entry.run.id}>

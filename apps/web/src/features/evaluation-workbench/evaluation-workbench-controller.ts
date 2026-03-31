@@ -5,6 +5,7 @@ import {
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
   listEvaluationSuiteFinalizedResults,
+  listEvaluationRunEvidenceByRunId,
   listEvaluationRunItemsByRunId,
   listEvaluationSampleSetItems,
   listEvaluationRunsBySuiteId,
@@ -54,6 +55,7 @@ export interface EvaluationWorkbenchOverview {
   selectedRunId: string | null;
   sampleSetItems: EvaluationSampleSetItemViewModel[];
   runItems: EvaluationRunItemViewModel[];
+  selectedRunEvidence: VerificationEvidenceViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
   finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
 }
@@ -237,6 +239,7 @@ async function loadEvaluationWorkbenchOverview(
   let selectedRunId: string | null = null;
   let sampleSetItems: EvaluationSampleSetItemViewModel[] = [];
   let runItems: EvaluationRunItemViewModel[] = [];
+  let selectedRunEvidence: VerificationEvidenceViewModel[] = [];
   let selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null = null;
   let finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[] = [];
 
@@ -249,16 +252,22 @@ async function loadEvaluationWorkbenchOverview(
 
     if (selectedRunId != null) {
       const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
-      const [nextSampleSetItems, nextRunItems] = await Promise.all([
+      const [nextSampleSetItems, nextRunItems, nextRunEvidence] = await Promise.all([
         selectedRun?.sample_set_id
           ? listEvaluationSampleSetItems(client, selectedRun.sample_set_id).then(
               (response) => response.body,
             )
           : Promise.resolve([]),
         listEvaluationRunItemsByRunId(client, selectedRunId).then((response) => response.body),
+        selectedRun != null && selectedRun.evidence_ids.length > 0
+          ? listEvaluationRunEvidenceByRunId(client, selectedRunId).then(
+              (response) => response.body,
+            )
+          : Promise.resolve([]),
       ]);
       sampleSetItems = nextSampleSetItems;
       runItems = nextRunItems;
+      selectedRunEvidence = nextRunEvidence;
     }
 
     if (runs.length > 0) {
@@ -285,6 +294,7 @@ async function loadEvaluationWorkbenchOverview(
     selectedRunId,
     sampleSetItems,
     runItems,
+    selectedRunEvidence,
     selectedRunFinalization,
     finalizedRunHistory,
   };

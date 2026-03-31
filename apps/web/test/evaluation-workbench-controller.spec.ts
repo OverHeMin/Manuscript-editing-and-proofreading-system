@@ -123,6 +123,21 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-1",
+              kind: "url",
+              label: "Historical browser QA",
+              uri: "https://example.test/evidence/historical-browser-qa",
+              created_at: "2026-03-31T12:11:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/finalized-result") {
         return {
           status: 200,
@@ -224,6 +239,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
   assert.equal(overview.selectedRunId, "run-1");
   assert.equal(overview.runItems.length, 1);
   assert.equal(overview.sampleSetItems.length, 1);
+  assert.equal(overview.selectedRunEvidence[0]?.label, "Historical browser QA");
   assert.equal(overview.sampleSetItems[0]?.reviewed_case_snapshot_id, "reviewed-case-snapshot-1");
   assert.equal(overview.selectedRunFinalization?.evidence_pack.id, "pack-1");
   assert.equal(overview.selectedRunFinalization?.recommendation.status, "recommended");
@@ -237,6 +253,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
     ],
   );
@@ -364,6 +381,21 @@ test("evaluation workbench controller loads finalized suite history for comparis
               hard_gate_passed: true,
               weighted_score: 96,
               requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-2",
+              kind: "url",
+              label: "Latest browser QA",
+              uri: "https://example.test/evidence/latest-browser-qa",
+              created_at: "2026-03-31T13:17:00.000Z",
             },
           ] as TResponse,
         };
@@ -508,6 +540,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
 
   assert.equal(overview.selectedRunId, "run-2");
   assert.equal(overview.selectedRunFinalization?.run.id, "run-2");
+  assert.equal(overview.selectedRunEvidence[0]?.label, "Latest browser QA");
   assert.deepEqual(
     overview.finalizedRunHistory.map((entry) => entry.run.id),
     ["run-2", "run-1"],
@@ -530,6 +563,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
     ],
   );
@@ -831,6 +865,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
     result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
     "reviewed-case-snapshot-2",
   );
+  assert.deepEqual(result.overview.selectedRunEvidence, []);
   assert.equal(result.overview.selectedRunFinalization, null);
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
@@ -1004,6 +1039,7 @@ test("evaluation workbench controller records a run item result and reloads the 
   assert.equal(result.overview.selectedRunId, "run-2");
   assert.equal(result.overview.runItems[0]?.weighted_score, 97);
   assert.equal(result.overview.sampleSetItems[0]?.id, "sample-item-2");
+  assert.deepEqual(result.overview.selectedRunEvidence, []);
   assert.equal(result.overview.selectedRunFinalization, null);
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
@@ -1174,6 +1210,21 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-2",
+              kind: "url",
+              label: "Browser QA proof",
+              uri: "https://example.test/browser-qa",
+              created_at: "2026-03-31T13:15:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
         return {
           status: 200,
@@ -1283,6 +1334,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
     result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
     "reviewed-case-snapshot-2",
   );
+  assert.equal(result.overview.selectedRunEvidence[0]?.label, "Browser QA proof");
   assert.equal(result.overview.selectedRunFinalization?.evidence_pack.id, "pack-1");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
@@ -1297,6 +1349,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
     ],
   );

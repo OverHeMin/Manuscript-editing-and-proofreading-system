@@ -345,6 +345,16 @@ export function listEvaluationRunsBySuiteId(
   });
 }
 
+export function listEvaluationRunEvidenceByRunId(
+  client: VerificationOpsHttpClient,
+  runId: string,
+) {
+  return client.request<VerificationEvidenceViewModel[]>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evaluation-runs/${runId}/evidence`,
+  });
+}
+
 export function listEvaluationRunItemsByRunId(
   client: VerificationOpsHttpClient,
   runId: string,

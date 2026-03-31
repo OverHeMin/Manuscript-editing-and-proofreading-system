@@ -345,5 +345,18 @@ export function createVerificationOpsApi(
         body: await verificationOpsService.listEvaluationRunItemsByRunId(runId),
       };
     },
+
+    async listEvaluationRunEvidence({
+      actorRole,
+      runId,
+    }: {
+      actorRole: RoleKey;
+      runId: string;
+    }): Promise<RouteResponse<VerificationEvidenceRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationRunEvidence(actorRole, runId),
+      };
+    },
   };
 }

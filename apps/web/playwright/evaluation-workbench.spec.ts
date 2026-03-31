@@ -202,6 +202,52 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText("recommended");
 });
 
+test("admin can inspect rejected history details for a prior finalized run", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9F",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const rejectedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "58",
+    diffSummary: "Rejected run regressed on structure stability.",
+    evidenceLabel: "Phase 9F rejected evidence",
+    evidenceUrl: "https://example.test/evidence/phase9f-rejected",
+    hardGatePassed: false,
+    failureKind: "regression_failed",
+    failureReason: "Structure regression triggered the hard gate.",
+    finalizeStatus: "failed",
+  });
+
+  await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "95",
+    diffSummary: "Recovery run restored stable structure handling.",
+    evidenceLabel: "Phase 9F recovery evidence",
+    evidenceUrl: "https://example.test/evidence/phase9f-recovery",
+  });
+
+  await page.getByRole("button", { name: `History run ${rejectedRunId}`, exact: true }).click();
+
+  const historyDetail = page.locator(".evaluation-workbench-history-detail");
+  await expect(historyDetail).toContainText("Selected History Detail");
+  await expect(historyDetail).toContainText(rejectedRunId);
+  await expect(historyDetail).toContainText("rejected");
+  await expect(historyDetail).toContainText("Structure regression triggered the hard gate.");
+  await expect(historyDetail).toContainText("Phase 9F rejected evidence");
+  await expect(historyDetail).toContainText(prepared.snapshotId);
+});
+
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
 }
@@ -499,6 +545,10 @@ async function createAndFinalizeRunFromWorkbench(
     diffSummary: string;
     evidenceLabel: string;
     evidenceUrl: string;
+    hardGatePassed?: boolean;
+    failureKind?: string;
+    failureReason?: string;
+    finalizeStatus?: "passed" | "failed";
   },
 ): Promise<string> {
   await page.getByLabel("Sample Set").selectOption(input.sampleSetId);
@@ -510,16 +560,28 @@ async function createAndFinalizeRunFromWorkbench(
 
   await page.getByLabel("Weighted Score").fill(input.weightedScore);
   await page.getByLabel("Diff Summary").fill(input.diffSummary);
+  if (input.hardGatePassed === false) {
+    await page.getByLabel("Hard Gate Passed").uncheck();
+  }
+  if (input.failureKind) {
+    await page.getByLabel("Failure Kind").selectOption(input.failureKind);
+  }
+  if (input.failureReason) {
+    await page.getByLabel("Failure Reason").fill(input.failureReason);
+  }
   await page.getByRole("button", { name: "Save Run Item Result" }).click();
   await expect(page.locator(".evaluation-workbench-status")).toContainText(
     "Saved run item result",
   );
 
+  if (input.finalizeStatus) {
+    await page.getByLabel("Run Status").selectOption(input.finalizeStatus);
+  }
   await page.getByLabel("Evidence Label").fill(input.evidenceLabel);
   await page.getByLabel("Evidence URL").fill(input.evidenceUrl);
   await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
   await expect(page.locator(".evaluation-workbench-finalized")).toContainText(
-    "recommended",
+    input.finalizeStatus === "failed" ? "rejected" : "recommended",
   );
 
   return runId ?? "";

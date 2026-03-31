@@ -722,6 +722,22 @@ export class VerificationOpsService {
     return this.repository.listEvaluationRunItemsByRunId(runId);
   }
 
+  async listEvaluationRunEvidence(
+    actorRole: RoleKey,
+    runId: string,
+  ): Promise<VerificationEvidenceRecord[]> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const run = await this.requireEvaluationRun(runId);
+    const evidenceRecords = await Promise.all(
+      run.evidence_ids.map(async (evidenceId) =>
+        this.requireVerificationEvidence(evidenceId),
+      ),
+    );
+
+    return evidenceRecords;
+  }
+
   async finalizeEvaluationRun(
     actorRole: RoleKey,
     runId: string,
@@ -939,6 +955,17 @@ export class VerificationOpsService {
     const record = await this.repository.findEvaluationSampleSetById(sampleSetId);
     if (!record) {
       throw new EvaluationSampleSetNotFoundError(sampleSetId);
+    }
+
+    return record;
+  }
+
+  private async requireVerificationEvidence(
+    evidenceId: string,
+  ): Promise<VerificationEvidenceRecord> {
+    const record = await this.repository.findVerificationEvidenceById(evidenceId);
+    if (!record) {
+      throw new VerificationEvidenceNotFoundError(evidenceId);
     }
 
     return record;
