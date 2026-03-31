@@ -4,8 +4,13 @@ node_modules/
 **/node_modules/
 .env
 **/.env
+**/.env.local
 apps/web/dist/
 .playwright-cli/
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
 output/
 .pytest_cache/
 **/__pycache__/
