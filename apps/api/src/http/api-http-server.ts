@@ -665,6 +665,10 @@ type HttpRouteMatch =
       runId: string;
     }
   | {
+      route: "verification-ops-get-finalized-run-result";
+      runId: string;
+    }
+  | {
       route: "verification-ops-record-run-item-result";
       runItemId: string;
     }
@@ -2805,6 +2809,14 @@ async function handleRoute(
       return runtime.verificationOpsApi.listEvaluationRunItemsByRunId({
         runId: routeMatch.runId,
       });
+    case "verification-ops-get-finalized-run-result": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.getEvaluationRunFinalization({
+        runId: routeMatch.runId,
+        actorRole: session.user.role,
+      });
+    }
     case "verification-ops-record-run-item-result": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -3521,6 +3533,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "verification-ops-list-run-items",
       runId: listEvaluationRunItemsMatch[1],
+    };
+  }
+
+  const getFinalizedEvaluationRunMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/finalized-result$/,
+  );
+  if (method === "GET" && getFinalizedEvaluationRunMatch) {
+    return {
+      route: "verification-ops-get-finalized-run-result",
+      runId: getFinalizedEvaluationRunMatch[1],
     };
   }
 

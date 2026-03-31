@@ -123,6 +123,39 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/finalized-result") {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 2,
+              status: "passed",
+              evidence_ids: ["evidence-1"],
+              started_at: "2026-03-31T12:00:00.000Z",
+              finished_at: "2026-03-31T12:12:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-1",
+              experiment_run_id: "run-1",
+              summary_status: "recommended",
+              score_summary: "Stable historical score.",
+              created_at: "2026-03-31T12:12:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-1",
+              experiment_run_id: "run-1",
+              evidence_pack_id: "pack-1",
+              status: "recommended",
+              decision_reason: "Historical run approved.",
+              created_at: "2026-03-31T12:12:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
         return {
           status: 200,
@@ -157,6 +190,8 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
   assert.equal(overview.runItems.length, 1);
   assert.equal(overview.sampleSetItems.length, 1);
   assert.equal(overview.sampleSetItems[0]?.reviewed_case_snapshot_id, "reviewed-case-snapshot-1");
+  assert.equal(overview.selectedRunFinalization?.evidence_pack.id, "pack-1");
+  assert.equal(overview.selectedRunFinalization?.recommendation.status, "recommended");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -167,6 +202,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/finalized-result",
     ],
   );
 });
@@ -395,6 +431,13 @@ test("evaluation workbench controller creates a run and reloads the selected run
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
+        return {
+          status: 200,
+          body: null as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
         return {
           status: 200,
@@ -446,6 +489,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
     result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
     "reviewed-case-snapshot-2",
   );
+  assert.equal(result.overview.selectedRunFinalization, null);
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -457,6 +501,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
     ],
   );
 });
@@ -566,6 +611,13 @@ test("evaluation workbench controller records a run item result and reloads the 
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
+        return {
+          status: 200,
+          body: null as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
         return {
           status: 200,
@@ -603,6 +655,7 @@ test("evaluation workbench controller records a run item result and reloads the 
   assert.equal(result.overview.selectedRunId, "run-2");
   assert.equal(result.overview.runItems[0]?.weighted_score, 97);
   assert.equal(result.overview.sampleSetItems[0]?.id, "sample-item-2");
+  assert.equal(result.overview.selectedRunFinalization, null);
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -614,6 +667,7 @@ test("evaluation workbench controller records a run item result and reloads the 
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
     ],
   );
 });
@@ -771,6 +825,39 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-2"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-1",
+              experiment_run_id: "run-2",
+              summary_status: "recommended",
+              score_summary: "Candidate weighted score 97.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-1",
+              experiment_run_id: "run-2",
+              evidence_pack_id: "pack-1",
+              status: "recommended",
+              decision_reason: "All hard gates passed with strong score.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
         return {
           status: 200,
@@ -812,6 +899,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
     result.overview.sampleSetItems[0]?.reviewed_case_snapshot_id,
     "reviewed-case-snapshot-2",
   );
+  assert.equal(result.overview.selectedRunFinalization?.evidence_pack.id, "pack-1");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -825,6 +913,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
     ],
   );
 });

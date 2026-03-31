@@ -108,6 +108,60 @@ test("admin can complete a manual evaluation loop and hand off a governed learni
   ).toBeTruthy();
 });
 
+test("admin can reload a finalized evaluation run and still see the persisted recommendation", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9D",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
+
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await page.getByLabel("Sample Set").selectOption(prepared.sampleSetId);
+  await page.getByRole("button", { name: "Create Evaluation Run" }).click();
+
+  const createStatus = await page.locator(".evaluation-workbench-status").textContent();
+  const runId = createStatus?.match(/Created evaluation run ([^.]+)\./)?.[1] ?? null;
+  expect(runId).toBeTruthy();
+
+  await page.getByLabel("Weighted Score").fill("96");
+  await page
+    .getByLabel("Diff Summary")
+    .fill("Persist finalized evaluation output for reload and reselection.");
+  await page.getByRole("button", { name: "Save Run Item Result" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Saved run item result",
+  );
+
+  await page.getByLabel("Evidence Label").fill("Phase 9D reload evidence");
+  await page
+    .getByLabel("Evidence URL")
+    .fill("https://example.test/evidence/phase9d-reload");
+  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+
+  const finalizedCard = page.locator(".evaluation-workbench-finalized");
+  await expect(finalizedCard).toContainText("Finalized Recommendation");
+  await expect(finalizedCard).toContainText("recommended");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
+
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await page.getByRole("button", { name: new RegExp(runId ?? "") }).click();
+
+  await expect(finalizedCard).toContainText("Finalized Recommendation");
+  await expect(finalizedCard).toContainText("recommended");
+  await expect(page.getByLabel("Reviewed Case Snapshot ID")).toHaveValue(prepared.snapshotId);
+});
+
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
 }

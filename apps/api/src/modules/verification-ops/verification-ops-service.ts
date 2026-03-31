@@ -768,6 +768,33 @@ export class VerificationOpsService {
     };
   }
 
+  async getEvaluationRunFinalization(
+    actorRole: RoleKey,
+    runId: string,
+  ): Promise<FinalizeEvaluationRunResult | null> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const run = await this.requireEvaluationRun(runId);
+    const recommendation =
+      await this.repository.findLatestEvaluationPromotionRecommendationByRunId(runId);
+    if (!recommendation) {
+      return null;
+    }
+
+    const evidencePack = await this.repository.findEvaluationEvidencePackById(
+      recommendation.evidence_pack_id,
+    );
+    if (!evidencePack) {
+      return null;
+    }
+
+    return {
+      run,
+      evidence_pack: evidencePack,
+      recommendation,
+    };
+  }
+
   async createLearningCandidateFromEvaluation(
     actorRole: RoleKey,
     input: CreateLearningCandidateFromEvaluationInput,

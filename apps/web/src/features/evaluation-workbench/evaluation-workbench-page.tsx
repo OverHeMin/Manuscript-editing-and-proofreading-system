@@ -107,6 +107,10 @@ export function EvaluationWorkbenchPage({
 
   const selectedSuite = overview?.suites.find((item) => item.id === overview.selectedSuiteId) ?? null;
   const selectedRun = overview?.runs.find((item) => item.id === overview.selectedRunId) ?? null;
+  const effectiveFinalizedResult =
+    selectedRun != null && finalizedResult?.run.id === selectedRun.id
+      ? finalizedResult
+      : overview?.selectedRunFinalization ?? null;
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
@@ -392,15 +396,15 @@ export function EvaluationWorkbenchPage({
                 <Field label="Evidence URL" wide><input value={finalizeForm.evidenceUrl} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceUrl: event.target.value }))} /></Field>
               </div>
               <button type="button" onClick={() => void handleCompleteAndFinalizeRun()} disabled={isBusy}>Complete And Finalize Run</button>
-              {finalizedResult ? (
+              {effectiveFinalizedResult ? (
                 <div className="evaluation-workbench-result evaluation-workbench-finalized">
                   <strong>Finalized Recommendation</strong>
                   <div>
-                    <span>Run: {finalizedResult.run.id}</span>
-                    <span>Evidence Pack: {finalizedResult.evidence_pack.id}</span>
-                    <span>Summary: {finalizedResult.evidence_pack.summary_status}</span>
-                    <span>Recommendation: {finalizedResult.recommendation.status}</span>
-                    {finalizedResult.recommendation.decision_reason ? <span>{finalizedResult.recommendation.decision_reason}</span> : null}
+                    <span>Run: {effectiveFinalizedResult.run.id}</span>
+                    <span>Evidence Pack: {effectiveFinalizedResult.evidence_pack.id}</span>
+                    <span>Summary: {effectiveFinalizedResult.evidence_pack.summary_status}</span>
+                    <span>Recommendation: {effectiveFinalizedResult.recommendation.status}</span>
+                    {effectiveFinalizedResult.recommendation.decision_reason ? <span>{effectiveFinalizedResult.recommendation.decision_reason}</span> : null}
                   </div>
                 </div>
               ) : (
@@ -413,9 +417,9 @@ export function EvaluationWorkbenchPage({
         <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
             <h3>Learning Handoff</h3>
-            <span>{finalizedResult ? createdLearningCandidate?.id ?? "Ready to create" : "Finalize run first"}</span>
+            <span>{effectiveFinalizedResult ? createdLearningCandidate?.id ?? "Ready to create" : "Finalize run first"}</span>
           </div>
-          {!finalizedResult ? (
+          {!effectiveFinalizedResult ? (
             <p className="evaluation-workbench-empty">The learning handoff stays gated until the evaluation run is finalized.</p>
           ) : (
             <>
@@ -564,12 +568,12 @@ export function EvaluationWorkbenchPage({
   }
 
   async function handleCreateLearningCandidate() {
-    if (!finalizedResult) return setErrorMessage("Finalize the evaluation run before creating a learning candidate.");
+    if (!effectiveFinalizedResult) return setErrorMessage("Finalize the evaluation run before creating a learning candidate.");
     await runBusyTask(async () => {
       const learningCandidate = await controller.createLearningCandidateFromEvaluation({
         actorRole,
-        runId: finalizedResult.run.id,
-        evidencePackId: finalizedResult.evidence_pack.id,
+        runId: effectiveFinalizedResult.run.id,
+        evidencePackId: effectiveFinalizedResult.evidence_pack.id,
         reviewedCaseSnapshotId: learningForm.reviewedCaseSnapshotId.trim(),
         candidateType: learningForm.candidateType,
         title: optional(learningForm.title),

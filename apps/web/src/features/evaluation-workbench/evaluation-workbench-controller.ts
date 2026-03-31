@@ -4,6 +4,7 @@ import {
   createEvaluationRun,
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
+  getEvaluationRunFinalizedResult,
   listEvaluationRunItemsByRunId,
   listEvaluationSampleSetItems,
   listEvaluationRunsBySuiteId,
@@ -53,6 +54,7 @@ export interface EvaluationWorkbenchOverview {
   selectedRunId: string | null;
   sampleSetItems: EvaluationSampleSetItemViewModel[];
   runItems: EvaluationRunItemViewModel[];
+  selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
 }
 
 export interface EvaluationWorkbenchController {
@@ -229,6 +231,7 @@ async function loadEvaluationWorkbenchOverview(
   let selectedRunId: string | null = null;
   let sampleSetItems: EvaluationSampleSetItemViewModel[] = [];
   let runItems: EvaluationRunItemViewModel[] = [];
+  let selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null = null;
 
   if (selectedSuiteId != null) {
     runs = (await listEvaluationRunsBySuiteId(client, selectedSuiteId)).body;
@@ -249,6 +252,9 @@ async function loadEvaluationWorkbenchOverview(
       ]);
       sampleSetItems = nextSampleSetItems;
       runItems = nextRunItems;
+      selectedRunFinalization = (
+        await getEvaluationRunFinalizedResult(client, selectedRunId)
+      ).body;
     }
   }
 
@@ -262,6 +268,7 @@ async function loadEvaluationWorkbenchOverview(
     selectedRunId,
     sampleSetItems,
     runItems,
+    selectedRunFinalization,
   };
 }
 

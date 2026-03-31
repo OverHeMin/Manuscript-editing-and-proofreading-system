@@ -290,6 +290,16 @@ export function finalizeEvaluationRun(
   });
 }
 
+export function getEvaluationRunFinalizedResult(
+  client: VerificationOpsHttpClient,
+  runId: string,
+) {
+  return client.request<FinalizeEvaluationRunResultViewModel | null>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evaluation-runs/${runId}/finalized-result`,
+  });
+}
+
 export function createLearningCandidateFromEvaluation(
   client: VerificationOpsHttpClient,
   input: CreateLearningCandidateFromEvaluationInput,

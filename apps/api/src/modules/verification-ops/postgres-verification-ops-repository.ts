@@ -125,6 +125,16 @@ interface EvaluationEvidencePackRow {
   created_at: Date;
 }
 
+interface EvaluationPromotionRecommendationRow {
+  id: string;
+  experiment_run_id: string;
+  evidence_pack_id: string;
+  status: EvaluationPromotionRecommendationRecord["status"];
+  decision_reason: string | null;
+  learning_candidate_ids: string[] | string;
+  created_at: Date;
+}
+
 export class PostgresVerificationOpsRepository
   implements VerificationOpsRepository
 {
@@ -881,6 +891,32 @@ export class PostgresVerificationOpsRepository
     return result.rows[0] ? mapEvaluationEvidencePackRow(result.rows[0]) : undefined;
   }
 
+  async findLatestEvaluationEvidencePackByRunId(
+    runId: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined> {
+    const result = await this.dependencies.client.query<EvaluationEvidencePackRow>(
+      `
+        select
+          id,
+          experiment_run_id,
+          summary_status,
+          score_summary,
+          regression_summary,
+          failure_summary,
+          cost_summary,
+          latency_summary,
+          created_at
+        from evaluation_evidence_packs
+        where experiment_run_id = $1
+        order by created_at desc, id desc
+        limit 1
+      `,
+      [runId],
+    );
+
+    return result.rows[0] ? mapEvaluationEvidencePackRow(result.rows[0]) : undefined;
+  }
+
   async saveEvaluationPromotionRecommendation(
     record: EvaluationPromotionRecommendationRecord,
   ): Promise<void> {
@@ -915,6 +951,33 @@ export class PostgresVerificationOpsRepository
         record.created_at,
       ],
     );
+  }
+
+  async findLatestEvaluationPromotionRecommendationByRunId(
+    runId: string,
+  ): Promise<EvaluationPromotionRecommendationRecord | undefined> {
+    const result =
+      await this.dependencies.client.query<EvaluationPromotionRecommendationRow>(
+        `
+          select
+            id,
+            experiment_run_id,
+            evidence_pack_id,
+            status,
+            decision_reason,
+            learning_candidate_ids,
+            created_at
+          from evaluation_promotion_recommendations
+          where experiment_run_id = $1
+          order by created_at desc, id desc
+          limit 1
+        `,
+        [runId],
+      );
+
+    return result.rows[0]
+      ? mapEvaluationPromotionRecommendationRow(result.rows[0])
+      : undefined;
   }
 }
 
@@ -1097,6 +1160,24 @@ function mapEvaluationEvidencePackRow(
     ...(row.failure_summary != null ? { failure_summary: row.failure_summary } : {}),
     ...(row.cost_summary != null ? { cost_summary: row.cost_summary } : {}),
     ...(row.latency_summary != null ? { latency_summary: row.latency_summary } : {}),
+  };
+}
+
+function mapEvaluationPromotionRecommendationRow(
+  row: EvaluationPromotionRecommendationRow,
+): EvaluationPromotionRecommendationRecord {
+  const learningCandidateIds = decodeTextArray(row.learning_candidate_ids);
+
+  return {
+    id: row.id,
+    experiment_run_id: row.experiment_run_id,
+    evidence_pack_id: row.evidence_pack_id,
+    status: row.status,
+    created_at: row.created_at.toISOString(),
+    ...(row.decision_reason != null ? { decision_reason: row.decision_reason } : {}),
+    ...(learningCandidateIds.length > 0
+      ? { learning_candidate_ids: learningCandidateIds }
+      : {}),
   };
 }
 

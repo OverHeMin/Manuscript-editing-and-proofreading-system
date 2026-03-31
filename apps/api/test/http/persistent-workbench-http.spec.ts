@@ -1416,6 +1416,34 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
 
         const secondServer = await startPersistentWorkbenchServer(databaseUrl);
         try {
+          const finalizedResultResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/finalized-result`,
+            {
+              headers: {
+                Cookie: adminCookie,
+              },
+            },
+          );
+          assert.equal(finalizedResultResponse.status, 200);
+          const finalizedResult = (await finalizedResultResponse.json()) as {
+            evidence_pack: {
+              id: string;
+              summary_status: string;
+            };
+            recommendation: {
+              status: string;
+            };
+          };
+          assert.equal(finalizedResult.evidence_pack.id, finalized.evidence_pack.id);
+          assert.equal(
+            finalizedResult.evidence_pack.summary_status,
+            finalized.evidence_pack.summary_status,
+          );
+          assert.equal(
+            finalizedResult.recommendation.status,
+            finalized.recommendation.status,
+          );
+
           const persistedRunsResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
             {
