@@ -7,6 +7,10 @@ import type {
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
+import {
+  ManuscriptWorkbenchPage,
+  type ManuscriptWorkbenchMode,
+} from "../features/manuscript-workbench/index.ts";
 import { resolveWorkbenchRenderKind } from "./workbench-routing.ts";
 
 export interface WorkbenchHostProps {
@@ -116,6 +120,13 @@ export function WorkbenchHost({
     }
 
     switch (resolveWorkbenchRenderKind(activeWorkbenchId)) {
+      case "manuscript-workbench":
+        return (
+          <ManuscriptWorkbenchPage
+            actorRole={session.role}
+            mode={activeWorkbenchId as ManuscriptWorkbenchMode}
+          />
+        );
       case "knowledge-review":
         return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
       case "learning-review":

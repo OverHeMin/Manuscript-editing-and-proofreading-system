@@ -10,6 +10,7 @@
 - AI 模型注册与路由基础
 - PDF 一致性核对与学习候选基础能力
 - React workbench 页面、本地 demo runtime 与持久化登录壳层
+- Submission / Screening / Editing / Proofreading web workbench 已可直连真实 HTTP 路由
 - PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
 - 本地运维、迁移、交付文档基线
 
@@ -44,6 +45,7 @@
 这意味着：
 
 - `apps/web` 已经有真实可运行的 workbench 页面
+- `apps/web` 已经能从 submission / screening / editing / proofreading workbench 直接触发真实稿件主链路与模块执行
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
