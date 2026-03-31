@@ -100,7 +100,31 @@ test("manuscript workbench summary renders operator-facing overview cards and th
         created_at: "2026-03-31T09:45:00.000Z",
         updated_at: "2026-03-31T09:46:00.000Z",
       }}
-      latestExport="exports/manuscript-1/current.docx"
+      latestExport={{
+        manuscript_id: "manuscript-1",
+        asset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          source_job_id: "job-edit-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "editing-final.docx",
+          created_at: "2026-03-31T09:45:00.000Z",
+          updated_at: "2026-03-31T09:45:00.000Z",
+        },
+        download: {
+          storage_key: "exports/manuscript-1/current.docx",
+          file_name: "editing-final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+      }}
       latestActionResult={{
         tone: "success",
         actionLabel: "Run Editing",
@@ -203,7 +227,7 @@ test("manuscript workbench summary guides screening operators toward the next go
         latestProofreadingDraftAsset: null,
       }}
       latestJob={null}
-      latestExport=""
+      latestExport={null}
       latestActionResult={null}
     />,
   );
@@ -322,7 +346,7 @@ test("manuscript workbench summary guides proofreading operators to finalize an 
         created_at: "2026-03-31T09:45:00.000Z",
         updated_at: "2026-03-31T09:46:00.000Z",
       }}
-      latestExport=""
+      latestExport={null}
       latestActionResult={null}
     />,
   );

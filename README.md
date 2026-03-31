@@ -15,6 +15,7 @@
 - Manuscript workbench 已将原始 JSON 输出升级为结构化的稿件、资产、作业摘要视图，并保留可折叠调试快照
 - Manuscript workbench 的上传、查稿、模块执行、导出控制区已重组为运营面板式布局
 - Manuscript workbench 现已提供顶部成功/错误状态横幅和面板内输入校验提示
+- 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行真实浏览器 smoke
 - PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
 - 本地运维、迁移、交付文档基线
 
@@ -86,6 +87,8 @@
    `pnpm --filter @medical/worker-py run smoke:boot`
 9. 跑全仓校验
    `pnpm lint && pnpm typecheck && pnpm test`
+10. 跑 Manuscript workbench 发布门禁
+   `pnpm verify:manuscript-workbench`
 
 ## Runtime 契约
 

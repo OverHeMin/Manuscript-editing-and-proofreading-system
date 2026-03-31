@@ -15,6 +15,10 @@
 
 `pnpm --filter @medical/api run serve` 当前已经持久化：
 
+- 稿件
+- 稿件资产
+- 作业记录
+- 当前资产导出主链路
 - 用户认证
 - 登录失败窗口
 - 服务端会话
@@ -41,7 +45,6 @@
 
 当前仍然不是完整生产持久化的部分：
 
-- 稿件、稿件资产、导出主链路
 - 学习快照与反馈溯源主链路
 - 评测、验证与 agent 执行编排等后续模块
 
@@ -154,6 +157,15 @@ Web 关键环境变量：
 - `pnpm typecheck`
 - `pnpm test`
 
+### 5.4 Manuscript Workbench Release Gate
+
+- `pnpm verify:manuscript-workbench`
+
+说明：
+
+- 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 handoff smoke
+- `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
+
 ## 6. 启动顺序
 
 1. `pnpm install`
@@ -164,6 +176,7 @@ Web 关键环境变量：
 6. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
 7. 持久化验证用 `serve`
 8. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
+9. 如需在发布前补一条贴近运营链路的回归，执行 `pnpm verify:manuscript-workbench`
 
 ## 7. 迁移、备份与回滚
 
