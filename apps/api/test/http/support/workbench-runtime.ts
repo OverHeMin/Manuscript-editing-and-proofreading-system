@@ -92,7 +92,9 @@ export interface WorkbenchRuntimeBundle {
   seededIds: WorkbenchSeededIds;
 }
 
-export async function startWorkbenchServer(): Promise<{
+export async function startWorkbenchServer(input: {
+  uploadRootDir?: string;
+} = {}): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
   seededIds: WorkbenchSeededIds;
@@ -102,6 +104,7 @@ export async function startWorkbenchServer(): Promise<{
     appEnv: "local",
     allowedOrigins: ["http://127.0.0.1:4173"],
     runtime: runtime as never,
+    uploadRootDir: input.uploadRootDir,
   });
 
   server.listen(0, "127.0.0.1");

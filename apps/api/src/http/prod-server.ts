@@ -22,6 +22,7 @@ const server = createApiHttpServer({
   appEnv: config.appEnv,
   allowedOrigins: config.allowedOrigins,
   seedDemoKnowledgeReviewData: false,
+  uploadRootDir: config.uploadRootDir,
   runtime: createPersistentGovernanceRuntime({
     client: pool,
     authRuntime,

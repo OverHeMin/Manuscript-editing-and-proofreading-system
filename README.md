@@ -11,6 +11,7 @@
 - PDF 一致性核对与学习候选基础能力
 - React workbench 页面、本地 demo runtime 与持久化登录壳层
 - Submission / Screening / Editing / Proofreading web workbench 已可直连真实 HTTP 路由
+- Submission workbench 已支持浏览器本地选文件上传，并可将文件落盘到受控本地目录
 - PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
 - 本地运维、迁移、交付文档基线
 
@@ -48,6 +49,7 @@
 - `apps/web` 已经能从 submission / screening / editing / proofreading workbench 直接触发真实稿件主链路与模块执行
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
+- `apps/api` 的稿件 intake 路由已经支持 `fileContentBase64` 直传，本地文件默认写入 `.local-data/uploads/<app-env>`，也可通过 `UPLOAD_ROOT_DIR` 改到独立数据目录
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
 - 但 `serve` 当前仍是“稿件主链路 + 认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
 
@@ -74,6 +76,7 @@
    `pnpm --filter @medsys/web run dev`
    - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调
    - `VITE_APP_ENV=dev|staging|prod`：走 persistent login shell，调用后端真实会话接口
+   - 可选：设置 `UPLOAD_ROOT_DIR` 为独立磁盘/目录，用于保存 submission workbench 的本地直传文件
 7. 验证 Web 基线
    `pnpm --filter @medsys/web run smoke:boot`
 8. 验证 Worker 基线
@@ -103,6 +106,8 @@
   Web 端走 demo bootstrap shell，并使用本地 demo 用户自动换取后端 cookie。该模式仅建议在 `vite dev` 下使用。
 - `VITE_APP_ENV=dev|staging|prod`
   Web 端走 persistent login shell，通过 `/api/v1/auth/session`、`/api/v1/auth/local/login`、`/api/v1/auth/logout` 管理真实后端会话。
+- Submission workbench
+  现在既支持旧的 `storageKey` 元数据上传，也支持浏览器选择本地文件后直接以内联 base64 调用 intake 路由；若未设置 `UPLOAD_ROOT_DIR`，文件默认落在 `.local-data/uploads/<app-env>`。
 
 ## 目录结构
 

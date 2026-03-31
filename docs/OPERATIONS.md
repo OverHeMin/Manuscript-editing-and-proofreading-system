@@ -105,6 +105,7 @@ API 关键环境变量：
 - `API_ALLOWED_ORIGINS`
 - `DATABASE_URL`
 - `DATABASE_ADMIN_URL`
+- `UPLOAD_ROOT_DIR`
 - `REDIS_URL`
 - `OBJECT_STORAGE_*`
 - `ONLYOFFICE_*`
@@ -129,6 +130,7 @@ Web 关键环境变量：
   Web 端走 persistent login shell，依赖后端会话接口
 - 生产环境必须替换 `ONLYOFFICE_JWT_SECRET`
 - 生产环境必须使用真实数据库与对象存储凭据
+- 稿件本地直传文件默认会写到 `.local-data/uploads/<APP_ENV>`；如需独立数据盘、跨平台迁移或集中备份，应显式设置 `UPLOAD_ROOT_DIR`
 
 ## 5. Smoke Checklist
 
@@ -169,6 +171,7 @@ Web 关键环境变量：
 
 - PostgreSQL 数据库
 - MinIO 对象存储
+- Manuscript inline upload root (`UPLOAD_ROOT_DIR` or `.local-data/uploads/<APP_ENV>`)
 - 模板治理数据
 - 知识库数据
 - 学习治理数据

@@ -4,6 +4,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import path from "node:path";
 import {
   AuthorizationError,
   PermissionGuard,
@@ -18,6 +19,12 @@ import {
   type HttpAuthRuntime,
   type HttpAuthenticatedSession,
 } from "./demo-auth-runtime.ts";
+import {
+  InlineUploadPayloadInvalidError,
+  InlineUploadPayloadTooLargeError,
+  InlineUploadStorageReferenceRequiredError,
+  storeInlineUpload,
+} from "./local-upload-storage.ts";
 import {
   AgentProfileNotFoundError,
   AgentProfileService,
@@ -559,6 +566,7 @@ export interface CreateApiHttpServerOptions {
   seedDemoKnowledgeReviewData?: boolean;
   authRuntime?: HttpAuthRuntime;
   runtime?: ApiServerRuntime;
+  uploadRootDir?: string;
 }
 
 export type ApiHttpServer = Server;
@@ -617,6 +625,7 @@ export function createApiHttpServer(
     });
   const allowedOrigins =
     options.allowedOrigins?.filter((origin) => origin.trim().length > 0) ?? [];
+  const uploadRootDir = options.uploadRootDir ?? resolveDefaultUploadRootDir(appEnv);
 
   return createServer(async (req, res) => {
     const corsHeaders = createCorsHeaders(req, allowedOrigins);
@@ -642,7 +651,7 @@ export function createApiHttpServer(
         return;
       }
 
-      const routeResponse = await handleRoute(routeMatch, req, runtime);
+      const routeResponse = await handleRoute(routeMatch, req, runtime, uploadRootDir);
       writeResponse(res, routeResponse.status, routeResponse.body, {
         ...corsHeaders,
         ...(routeResponse.headers ?? {}),
@@ -1626,6 +1635,7 @@ async function handleRoute(
   routeMatch: HttpRouteMatch,
   req: IncomingMessage,
   runtime: ApiServerRuntime,
+  uploadRootDir: string,
 ): Promise<RouteResponse<unknown>> {
   switch (routeMatch.route) {
     case "healthz":
@@ -1688,11 +1698,26 @@ async function handleRoute(
       const session = await requirePermission(req, runtime, "manuscripts.submit");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.manuscriptApi.upload
-      >[0];
+      >[0] & {
+        fileContentBase64?: string;
+        storageKey?: string;
+      };
+      const {
+        fileContentBase64,
+        storageKey: requestedStorageKey,
+        ...uploadBody
+      } = body;
+      const storageKey = await resolveUploadStorageKey({
+        fileName: uploadBody.fileName,
+        fileContentBase64,
+        requestedStorageKey,
+        uploadRootDir,
+      });
 
       return runtime.manuscriptApi.upload({
-        ...body,
+        ...uploadBody,
         createdBy: session.user.id,
+        storageKey,
       });
     }
     case "manuscripts-get":
@@ -3254,9 +3279,15 @@ function mapErrorToHttpResponse(
     error instanceof ExecutionTrackingSkillPackageVersionMismatchError ||
     error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
     error instanceof ToolPermissionPolicyUnknownToolError ||
-    error instanceof ProofreadingDraftAssetRequiredError
+    error instanceof ProofreadingDraftAssetRequiredError ||
+    error instanceof InlineUploadStorageReferenceRequiredError ||
+    error instanceof InlineUploadPayloadInvalidError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
+  }
+
+  if (error instanceof InlineUploadPayloadTooLargeError) {
+    return [413, { error: "payload_too_large", message: error.message }];
   }
 
   if (error instanceof AuthorizationError) {
@@ -3296,4 +3327,31 @@ function readSingleHeader(value: string | string[] | undefined): string | undefi
 
 function coalesceOptionalString(value: string | undefined): string | undefined {
   return value?.trim() ? value.trim() : undefined;
+}
+
+async function resolveUploadStorageKey(input: {
+  fileName: string;
+  fileContentBase64?: string;
+  requestedStorageKey?: string;
+  uploadRootDir: string;
+}): Promise<string> {
+  if (input.fileContentBase64?.trim().length) {
+    const storedUpload = await storeInlineUpload({
+      rootDir: input.uploadRootDir,
+      fileName: input.fileName,
+      fileContentBase64: input.fileContentBase64,
+      storageKey: input.requestedStorageKey,
+    });
+    return storedUpload.storageKey;
+  }
+
+  if (input.requestedStorageKey?.trim().length) {
+    return input.requestedStorageKey;
+  }
+
+  throw new InlineUploadStorageReferenceRequiredError();
+}
+
+function resolveDefaultUploadRootDir(appEnv: AppEnv): string {
+  return path.resolve(process.cwd(), ".local-data", "uploads", appEnv);
 }

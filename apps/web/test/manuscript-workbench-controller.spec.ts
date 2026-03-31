@@ -127,6 +127,133 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
       "GET /api/v1/manuscripts/manuscript-1/assets",
     ],
   );
+  assert.deepEqual(requests[0]?.body, {
+    title: "Uploaded review",
+    manuscriptType: "review",
+    createdBy: "forged-user",
+    fileName: "review.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/review/review.docx",
+  });
+});
+
+test("manuscript workbench controller forwards inline file content uploads without requiring a storage key", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/manuscripts/upload") {
+        return {
+          status: 201,
+          body: {
+            manuscript: {
+              id: "manuscript-inline-1",
+              title: "Inline upload",
+              manuscript_type: "clinical_study",
+              status: "uploaded",
+              created_by: "user-1",
+              created_at: "2026-03-31T11:00:00.000Z",
+              updated_at: "2026-03-31T11:00:00.000Z",
+            },
+            asset: {
+              id: "asset-inline-1",
+              manuscript_id: "manuscript-inline-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/2026/03/31/inline-upload.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "user-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "inline-upload.docx",
+              created_at: "2026-03-31T11:00:00.000Z",
+              updated_at: "2026-03-31T11:00:00.000Z",
+            },
+            job: {
+              id: "job-inline-1",
+              manuscript_id: "manuscript-inline-1",
+              module: "upload",
+              job_type: "manuscript_upload",
+              status: "queued",
+              requested_by: "user-1",
+              attempt_count: 0,
+              created_at: "2026-03-31T11:00:00.000Z",
+              updated_at: "2026-03-31T11:00:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-inline-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-inline-1",
+            title: "Inline upload",
+            manuscript_type: "clinical_study",
+            status: "uploaded",
+            created_by: "user-1",
+            created_at: "2026-03-31T11:00:00.000Z",
+            updated_at: "2026-03-31T11:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-inline-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-inline-1",
+              manuscript_id: "manuscript-inline-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/2026/03/31/inline-upload.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "user-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "inline-upload.docx",
+              created_at: "2026-03-31T11:00:00.000Z",
+              updated_at: "2026-03-31T11:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  await controller.uploadManuscriptAndLoad({
+    title: "Inline upload",
+    manuscriptType: "clinical_study",
+    createdBy: "forged-user",
+    fileName: "inline-upload.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    fileContentBase64: "SGVsbG8gV29ybGQ=",
+  });
+
+  assert.deepEqual(requests[0]?.body, {
+    title: "Inline upload",
+    manuscriptType: "clinical_study",
+    createdBy: "forged-user",
+    fileName: "inline-upload.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    fileContentBase64: "SGVsbG8gV29ybGQ=",
+  });
 });
 
 test("manuscript workbench controller runs proofreading draft and finalize flows while reloading workspace", async () => {

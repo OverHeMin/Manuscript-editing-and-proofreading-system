@@ -113,7 +113,8 @@ export interface UploadManuscriptInput {
   createdBy: string;
   fileName: string;
   mimeType: string;
-  storageKey: string;
+  storageKey?: string;
+  fileContentBase64?: string;
 }
 
 export interface UploadManuscriptResult {

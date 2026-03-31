@@ -6,6 +6,7 @@ export interface PersistentServerConfig {
   host: string;
   allowedOrigins: string[];
   databaseUrl: string;
+  uploadRootDir?: string;
 }
 
 const DEFAULT_PORT = 3001;
@@ -20,6 +21,7 @@ export function resolvePersistentServerConfig(
     host: env.API_HOST?.trim() || DEFAULT_HOST,
     allowedOrigins: parseAllowedOrigins(env.API_ALLOWED_ORIGINS),
     databaseUrl: parseDatabaseUrl(env.DATABASE_URL),
+    uploadRootDir: parseOptionalPath(env.UPLOAD_ROOT_DIR),
   };
 }
 
@@ -75,4 +77,9 @@ function parsePort(value: string | undefined): number {
   }
 
   return port;
+}
+
+function parseOptionalPath(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
