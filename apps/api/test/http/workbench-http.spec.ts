@@ -778,6 +778,29 @@ test("verification ops http routes support an admin evaluation flow and learning
       finalized.recommendation.status,
     );
 
+    const suiteFinalizedResultsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/finalized-results`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(suiteFinalizedResultsResponse.status, 200);
+    const suiteFinalizedResults =
+      (await suiteFinalizedResultsResponse.json()) as Array<{
+        run: { id: string };
+        evidence_pack: { id: string; summary_status: string };
+        recommendation: { status: string };
+      }>;
+    assert.equal(suiteFinalizedResults.length, 1);
+    assert.equal(suiteFinalizedResults[0]?.run.id, run.id);
+    assert.equal(suiteFinalizedResults[0]?.evidence_pack.id, finalized.evidence_pack.id);
+    assert.equal(
+      suiteFinalizedResults[0]?.recommendation.status,
+      finalized.recommendation.status,
+    );
+
     const createLearningCandidateResponse = await fetch(
       `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/learning-candidates`,
       {

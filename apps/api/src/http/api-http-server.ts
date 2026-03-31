@@ -669,6 +669,10 @@ type HttpRouteMatch =
       runId: string;
     }
   | {
+      route: "verification-ops-list-suite-finalized-results";
+      suiteId: string;
+    }
+  | {
       route: "verification-ops-record-run-item-result";
       runItemId: string;
     }
@@ -2817,6 +2821,14 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "verification-ops-list-suite-finalized-results": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.listEvaluationSuiteFinalizations({
+        suiteId: routeMatch.suiteId,
+        actorRole: session.user.role,
+      });
+    }
     case "verification-ops-record-run-item-result": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -3461,6 +3473,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "verification-ops-list-suite-runs",
       suiteId: listSuiteRunsMatch[1],
+    };
+  }
+
+  const listSuiteFinalizedResultsMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-suites\/([^/]+)\/finalized-results$/,
+  );
+  if (method === "GET" && listSuiteFinalizedResultsMatch) {
+    return {
+      route: "verification-ops-list-suite-finalized-results",
+      suiteId: listSuiteFinalizedResultsMatch[1],
     };
   }
 

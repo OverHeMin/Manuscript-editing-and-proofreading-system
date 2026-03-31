@@ -292,6 +292,22 @@ export function createVerificationOpsApi(
       };
     },
 
+    async listEvaluationSuiteFinalizations({
+      actorRole,
+      suiteId,
+    }: {
+      actorRole: RoleKey;
+      suiteId: string;
+    }): Promise<RouteResponse<FinalizeEvaluationRunResult[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSuiteFinalizations(
+          actorRole,
+          suiteId,
+        ),
+      };
+    },
+
     async createLearningCandidateFromEvaluation({
       actorRole,
       input,

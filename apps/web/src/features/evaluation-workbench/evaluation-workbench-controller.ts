@@ -4,7 +4,7 @@ import {
   createEvaluationRun,
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
-  getEvaluationRunFinalizedResult,
+  listEvaluationSuiteFinalizedResults,
   listEvaluationRunItemsByRunId,
   listEvaluationSampleSetItems,
   listEvaluationRunsBySuiteId,
@@ -261,20 +261,15 @@ async function loadEvaluationWorkbenchOverview(
       runItems = nextRunItems;
     }
 
-    finalizedRunHistory = (
-      await Promise.all(
-        runs.map(async (run) => {
-          const finalized = (await getEvaluationRunFinalizedResult(client, run.id)).body;
-          return finalized == null ? null : { run, finalized };
-        }),
-      )
-    )
-      .filter(
-        (
-          entry,
-        ): entry is EvaluationWorkbenchFinalizedRunHistoryEntry => entry != null,
-      )
-      .sort(compareFinalizedRunHistory);
+    if (runs.length > 0) {
+      finalizedRunHistory = (
+        await listEvaluationSuiteFinalizedResults(client, selectedSuiteId)
+      ).body.map((finalized) => ({
+        run: finalized.run,
+        finalized,
+      }))
+        .sort(compareFinalizedRunHistory);
+    }
 
     selectedRunFinalization =
       finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
