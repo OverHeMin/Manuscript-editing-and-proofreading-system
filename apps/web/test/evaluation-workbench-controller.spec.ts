@@ -250,3 +250,553 @@ test("evaluation workbench controller activates a suite and reloads the selected
     ],
   );
 });
+
+test("evaluation workbench controller creates a run and reloads the selected run overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs"
+      ) {
+        return {
+          status: 201,
+          body: {
+            id: "run-2",
+            suite_id: "suite-1",
+            sample_set_id: "sample-set-1",
+            run_item_count: 1,
+            status: "queued",
+            evidence_ids: [],
+            started_at: "2026-03-31T13:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Sample Set",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-1"],
+              started_at: "2026-03-31T12:00:00.000Z",
+              finished_at: "2026-03-31T12:08:00.000Z",
+            },
+            {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "queued",
+              evidence_ids: [],
+              started_at: "2026-03-31T13:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.createRunAndReload({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    sampleSetId: "sample-set-1",
+    baselineBinding: {
+      lane: "baseline",
+      modelId: "demo-model-prod-1",
+      runtimeId: "demo-runtime-prod-1",
+      promptTemplateId: "demo-prompt-prod-1",
+      skillPackageIds: ["demo-skill-prod-1"],
+      moduleTemplateId: "demo-template-prod-1",
+    },
+    candidateBinding: {
+      lane: "candidate",
+      modelId: "demo-model-candidate-1",
+      runtimeId: "demo-runtime-prod-1",
+      promptTemplateId: "demo-prompt-prod-1",
+      skillPackageIds: ["demo-skill-prod-1"],
+      moduleTemplateId: "demo-template-prod-1",
+    },
+  });
+
+  assert.equal(result.run.id, "run-2");
+  assert.equal(result.overview.selectedSuiteId, "suite-1");
+  assert.equal(result.overview.selectedRunId, "run-2");
+  assert.equal(result.overview.runItems[0]?.id, "run-item-2");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/verification-ops/evaluation-runs",
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+    ],
+  );
+});
+
+test("evaluation workbench controller records a run item result and reloads the selected run overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-run-items/run-item-2/result"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "run-item-2",
+            evaluation_run_id: "run-2",
+            sample_set_item_id: "sample-item-2",
+            lane: "candidate",
+            result_asset_id: "human-final-demo-1",
+            hard_gate_passed: true,
+            weighted_score: 97,
+            diff_summary: "Candidate improved section normalization.",
+            requires_human_review: false,
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "running",
+              evidence_ids: [],
+              started_at: "2026-03-31T13:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+              result_asset_id: "human-final-demo-1",
+              hard_gate_passed: true,
+              weighted_score: 97,
+              diff_summary: "Candidate improved section normalization.",
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.recordRunItemResultAndReload({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    runId: "run-2",
+    runItemId: "run-item-2",
+    resultAssetId: "human-final-demo-1",
+    hardGatePassed: true,
+    weightedScore: 97,
+    diffSummary: "Candidate improved section normalization.",
+    requiresHumanReview: false,
+  });
+
+  assert.equal(result.runItem.id, "run-item-2");
+  assert.equal(result.overview.selectedRunId, "run-2");
+  assert.equal(result.overview.runItems[0]?.weighted_score, 97);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/verification-ops/evaluation-run-items/run-item-2/result",
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+    ],
+  );
+});
+
+test("evaluation workbench controller records evidence, finalizes the run, and returns recommendation state", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/verification-ops/evidence") {
+        return {
+          status: 201,
+          body: {
+            id: "evidence-2",
+            kind: "url",
+            label: "Browser QA proof",
+            uri: "https://example.test/browser-qa",
+            created_at: "2026-03-31T13:15:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-2/complete"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "run-2",
+            suite_id: "suite-1",
+            sample_set_id: "sample-set-1",
+            run_item_count: 1,
+            status: "passed",
+            evidence_ids: ["evidence-2"],
+            started_at: "2026-03-31T13:00:00.000Z",
+            finished_at: "2026-03-31T13:18:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalize"
+      ) {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-2"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-1",
+              experiment_run_id: "run-2",
+              summary_status: "recommended",
+              score_summary: "Candidate weighted score 97.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-1",
+              experiment_run_id: "run-2",
+              evidence_pack_id: "pack-1",
+              status: "recommended",
+              decision_reason: "All hard gates passed with strong score.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-2"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+              result_asset_id: "human-final-demo-1",
+              hard_gate_passed: true,
+              weighted_score: 97,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.completeRunWithEvidenceAndFinalize({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    runId: "run-2",
+    status: "passed",
+    evidence: {
+      kind: "url",
+      label: "Browser QA proof",
+      uri: "https://example.test/browser-qa",
+    },
+  });
+
+  assert.equal(result.evidence?.id, "evidence-2");
+  assert.equal(result.finalized.evidence_pack.id, "pack-1");
+  assert.equal(result.finalized.recommendation.status, "recommended");
+  assert.equal(result.overview.selectedRunId, "run-2");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/verification-ops/evidence",
+      "POST /api/v1/verification-ops/evaluation-runs/run-2/complete",
+      "POST /api/v1/verification-ops/evaluation-runs/run-2/finalize",
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+    ],
+  );
+});
+
+test("evaluation workbench controller creates a governed learning candidate from a finalized run", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-2/learning-candidates"
+      ) {
+        return {
+          status: 201,
+          body: {
+            id: "candidate-1",
+            type: "prompt_optimization_candidate",
+            status: "pending_review",
+            module: "editing",
+            manuscript_type: "review",
+            governed_provenance_kind: "evaluation_experiment",
+            title: "Promote editing prompt",
+            proposal_text: "Promote the candidate binding after evaluation approval.",
+            created_by: "dev-admin",
+            created_at: "2026-03-31T13:19:00.000Z",
+            updated_at: "2026-03-31T13:19:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const learningCandidate = await controller.createLearningCandidateFromEvaluation({
+    actorRole: "admin",
+    runId: "run-2",
+    evidencePackId: "pack-1",
+    reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
+    candidateType: "prompt_optimization_candidate",
+    title: "Promote editing prompt",
+    proposalText: "Promote the candidate binding after evaluation approval.",
+    createdBy: "admin-1",
+    sourceAssetId: "human-final-demo-1",
+  });
+
+  assert.equal(learningCandidate.id, "candidate-1");
+  assert.equal(learningCandidate.status, "pending_review");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    ["POST /api/v1/verification-ops/evaluation-runs/run-2/learning-candidates"],
+  );
+});

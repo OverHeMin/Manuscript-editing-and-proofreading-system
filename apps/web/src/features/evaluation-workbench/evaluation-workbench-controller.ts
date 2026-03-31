@@ -1,19 +1,32 @@
 import {
   activateEvaluationSuite,
+  completeEvaluationRun,
+  createEvaluationRun,
+  createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
+  finalizeEvaluationRun,
   listEvaluationRunItemsByRunId,
   listEvaluationRunsBySuiteId,
   listEvaluationSampleSets,
   listEvaluationSuites,
   listReleaseCheckProfiles,
   listVerificationCheckProfiles,
+  recordEvaluationRunItemResult,
+  recordVerificationEvidence,
 } from "../verification-ops/index.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
+  CreateLearningCandidateFromEvaluationInput,
+  CreateEvaluationRunInput,
+  EvaluationLearningCandidateViewModel,
   EvaluationRunItemViewModel,
   EvaluationRunViewModel,
   EvaluationSampleSetViewModel,
   EvaluationSuiteViewModel,
+  FinalizeEvaluationRunResultViewModel,
+  RecordEvaluationRunItemResultInput,
   ReleaseCheckProfileViewModel,
+  VerificationEvidenceKind,
+  VerificationEvidenceViewModel,
   VerificationCheckProfileViewModel,
 } from "../verification-ops/index.ts";
 
@@ -48,6 +61,55 @@ export interface EvaluationWorkbenchController {
     suiteId: string;
     actorRole: AuthRole;
   }): Promise<EvaluationWorkbenchOverview>;
+  createRunAndReload(
+    input: CreateEvaluationRunInput,
+  ): Promise<EvaluationWorkbenchCreateRunResult>;
+  recordRunItemResultAndReload(
+    input: EvaluationWorkbenchRecordRunItemResultInput,
+  ): Promise<EvaluationWorkbenchRecordRunItemResultResult>;
+  completeRunWithEvidenceAndFinalize(
+    input: EvaluationWorkbenchCompleteRunInput,
+  ): Promise<EvaluationWorkbenchFinalizeRunResult>;
+  createLearningCandidateFromEvaluation(
+    input: CreateLearningCandidateFromEvaluationInput,
+  ): Promise<EvaluationLearningCandidateViewModel>;
+}
+
+export interface EvaluationWorkbenchCreateRunResult {
+  overview: EvaluationWorkbenchOverview;
+  run: EvaluationRunViewModel;
+}
+
+export interface EvaluationWorkbenchRecordRunItemResultInput
+  extends RecordEvaluationRunItemResultInput {
+  suiteId: string;
+  runId: string;
+}
+
+export interface EvaluationWorkbenchRecordRunItemResultResult {
+  overview: EvaluationWorkbenchOverview;
+  runItem: EvaluationRunItemViewModel;
+}
+
+export interface EvaluationWorkbenchCompleteRunInput {
+  actorRole: AuthRole;
+  suiteId: string;
+  runId: string;
+  status: "passed" | "failed";
+  evidence?: {
+    kind: VerificationEvidenceKind;
+    label: string;
+    uri?: string;
+    artifactAssetId?: string;
+    checkProfileId?: string;
+  };
+  existingEvidenceIds?: string[];
+}
+
+export interface EvaluationWorkbenchFinalizeRunResult {
+  overview: EvaluationWorkbenchOverview;
+  evidence: VerificationEvidenceViewModel | null;
+  finalized: FinalizeEvaluationRunResultViewModel;
 }
 
 export function createEvaluationWorkbenchController(
@@ -65,6 +127,72 @@ export function createEvaluationWorkbenchController(
       return loadEvaluationWorkbenchOverview(client, {
         selectedSuiteId: input.suiteId,
       });
+    },
+    async createRunAndReload(input) {
+      const run = (await createEvaluationRun(client, input)).body;
+
+      return {
+        run,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: run.id,
+        }),
+      };
+    },
+    async recordRunItemResultAndReload(input) {
+      const runItem = (await recordEvaluationRunItemResult(client, input)).body;
+
+      return {
+        runItem,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: input.runId,
+        }),
+      };
+    },
+    async completeRunWithEvidenceAndFinalize(input) {
+      const evidenceIds = [...(input.existingEvidenceIds ?? [])];
+      let evidence: VerificationEvidenceViewModel | null = null;
+
+      if (input.evidence) {
+        evidence = (
+          await recordVerificationEvidence(client, {
+            actorRole: input.actorRole,
+            kind: input.evidence.kind,
+            label: input.evidence.label,
+            uri: input.evidence.uri,
+            artifactAssetId: input.evidence.artifactAssetId,
+            checkProfileId: input.evidence.checkProfileId,
+          })
+        ).body;
+        evidenceIds.push(evidence.id);
+      }
+
+      const uniqueEvidenceIds = Array.from(new Set(evidenceIds));
+      await completeEvaluationRun(client, {
+        actorRole: input.actorRole,
+        runId: input.runId,
+        status: input.status,
+        evidenceIds: uniqueEvidenceIds,
+      });
+      const finalized = (
+        await finalizeEvaluationRun(client, {
+          actorRole: input.actorRole,
+          runId: input.runId,
+        })
+      ).body;
+
+      return {
+        evidence,
+        finalized,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: input.runId,
+        }),
+      };
+    },
+    async createLearningCandidateFromEvaluation(input) {
+      return (await createLearningCandidateFromEvaluationRequest(client, input)).body;
     },
   };
 }
