@@ -9,7 +9,7 @@
 - demo runtime
   本地联调专用，内存态，允许 demo 数据
 - persistent runtime
-  当前用于 PostgreSQL-backed 认证、治理注册表、agent-tooling 治理与模型路由
+  当前用于 PostgreSQL-backed 稿件主链路、认证、学习/知识治理主干、治理注册表、agent-tooling 治理与模型路由
 
 ## 2. 当前持久化边界
 
@@ -28,6 +28,9 @@
 - 模板家族
 - 模块模板版本
 - 学习回写记录
+- reviewed-case snapshots
+- 人工反馈记录
+- governed learning provenance source links
 - Prompt 模板
 - Skill 包
 - 模型注册表
@@ -45,8 +48,8 @@
 
 当前仍然不是完整生产持久化的部分：
 
-- 学习快照与反馈溯源主链路
-- 评测、验证与 agent 执行编排等后续模块
+- 完整学习主流程的更深自动化、评测闭环与策略优化
+- 更完整的评测、验证与 agent 执行编排等后续模块
 
 因此，persistent runtime 当前应被视为：
 
@@ -163,7 +166,8 @@ Web 关键环境变量：
 
 说明：
 
-- 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 handoff smoke
+- 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 smoke
+- 当前浏览器门禁已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions
 - `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
 
 ## 6. 启动顺序
