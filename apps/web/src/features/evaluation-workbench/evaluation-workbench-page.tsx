@@ -84,6 +84,7 @@ export function EvaluationWorkbenchPage({
   const [isActivatingSuiteId, setIsActivatingSuiteId] = useState<string | null>(null);
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [runForm, setRunForm] = useState(baseRunForm);
   const [runItemForm, setRunItemForm] = useState(baseRunItemForm);
   const [finalizeForm, setFinalizeForm] = useState(baseFinalizeForm);
@@ -132,6 +133,14 @@ export function EvaluationWorkbenchPage({
       : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
   const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
   const filteredFinalizedRunHistory = filterFinalizedRunHistory(finalizedRunHistory, historyFilter);
+  const visibleFinalizedRunHistory = searchFinalizedRunHistory(
+    filteredFinalizedRunHistory,
+    historySearchQuery,
+  );
+  const isSelectedRunHiddenByHistoryControls = isSelectedRunHiddenFromHistoryList(
+    visibleFinalizedRunHistory,
+    selectedRun?.id ?? null,
+  );
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
@@ -175,6 +184,7 @@ export function EvaluationWorkbenchPage({
 
   useEffect(() => {
     setHistoryFilter("all");
+    setHistorySearchQuery("");
   }, [overview?.selectedSuiteId]);
 
   if (loadStatus === "error" && !overview) {
@@ -343,8 +353,10 @@ export function EvaluationWorkbenchPage({
             <h3>Run History</h3>
             <span>
               {historyFilter === "all"
-                ? `${finalizedRunHistory.length} finalized runs`
-                : `${filteredFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`}
+                ? historySearchQuery.trim()
+                  ? `${visibleFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`
+                  : `${finalizedRunHistory.length} finalized runs`
+                : `${visibleFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`}
             </span>
           </div>
           {selectedSuite == null ? (
@@ -380,6 +392,33 @@ export function EvaluationWorkbenchPage({
                   </button>
                 ))}
               </div>
+              <Field label="Search History" wide>
+                <input
+                  value={historySearchQuery}
+                  placeholder="Run ID, model, or decision text"
+                  onChange={(event) => setHistorySearchQuery(event.target.value)}
+                />
+              </Field>
+              {isSelectedRunHiddenByHistoryControls ? (
+                <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
+                  <strong>Selected run is currently hidden by history controls.</strong>
+                  <div className="evaluation-workbench-history-compare">
+                    <span>Selected run: {selectedRun?.id}</span>
+                    <span>Filter: {historyFilter}</span>
+                    <span>Search: {historySearchQuery || "None"}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="evaluation-workbench-action"
+                    onClick={() => {
+                      setHistoryFilter("all");
+                      setHistorySearchQuery("");
+                    }}
+                  >
+                    Show Selected Run
+                  </button>
+                </div>
+              ) : null}
               {selectedRunHistoryEntry ? (
                 previousRunHistoryEntry ? (
                   <EvaluationWorkbenchRunComparisonCard
@@ -433,10 +472,10 @@ export function EvaluationWorkbenchPage({
                   )}
                 </div>
               ) : null}
-              {filteredFinalizedRunHistory.length > 0 ? (
-              <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
-                {filteredFinalizedRunHistory.map((entry) => (
-                  <li key={entry.run.id}>
+              {visibleFinalizedRunHistory.length > 0 ? (
+                <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
+                  {visibleFinalizedRunHistory.map((entry) => (
+                    <li key={entry.run.id}>
                     <button
                       type="button"
                       aria-label={`History run ${entry.run.id}`}
@@ -449,9 +488,11 @@ export function EvaluationWorkbenchPage({
                     </button>
                   </li>
                 ))}
-              </ul>
+                </ul>
               ) : (
-                <p className="evaluation-workbench-empty">No finalized runs match the current history filter.</p>
+                <p className="evaluation-workbench-empty">
+                  No finalized runs match the current history filter and search.
+                </p>
               )}
             </>
           )}
@@ -883,6 +924,28 @@ export function filterFinalizedRunHistory(
   return entries.filter((entry) => entry.finalized.recommendation.status === filter);
 }
 
+export function searchFinalizedRunHistory(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return entries;
+
+  return entries.filter((entry) =>
+    createHistorySearchHaystack(entry).some((value) =>
+      value.toLowerCase().includes(normalizedQuery),
+    ),
+  );
+}
+
+export function isSelectedRunHiddenFromHistoryList(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  selectedRunId: string | null,
+) {
+  if (selectedRunId == null) return false;
+  return !entries.some((entry) => entry.run.id === selectedRunId);
+}
+
 function findPreviousFinalizedRunHistoryEntry(
   entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
   selectedRunId: string,
@@ -1016,6 +1079,26 @@ function pushBindingChange(
 
 function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
   return evidence.length > 0 ? evidence.map((item) => item.label).join(", ") : "None recorded";
+}
+
+function createHistorySearchHaystack(
+  entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
+) {
+  return [
+    entry.run.id,
+    entry.finalized.recommendation.status,
+    entry.finalized.recommendation.decision_reason,
+    entry.finalized.evidence_pack.score_summary,
+    entry.finalized.evidence_pack.failure_summary,
+    entry.run.baseline_binding?.model_id,
+    entry.run.baseline_binding?.runtime_id,
+    entry.run.baseline_binding?.prompt_template_id,
+    formatOptionalList(entry.run.baseline_binding?.skill_package_ids),
+    entry.run.candidate_binding?.model_id,
+    entry.run.candidate_binding?.runtime_id,
+    entry.run.candidate_binding?.prompt_template_id,
+    formatOptionalList(entry.run.candidate_binding?.skill_package_ids),
+  ].filter((value): value is string => Boolean(value));
 }
 
 function numberOrUndefined(value: string) {

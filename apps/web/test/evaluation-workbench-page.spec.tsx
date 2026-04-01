@@ -7,6 +7,8 @@ import {
   EvaluationWorkbenchRunComparisonCard,
   EvaluationWorkbenchSelectedRunItemDetailCard,
   filterFinalizedRunHistory,
+  isSelectedRunHiddenFromHistoryList,
+  searchFinalizedRunHistory,
 } from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
 
 test("evaluation workbench page renders an explicit loading state for server-side shell output", () => {
@@ -259,4 +261,67 @@ test("filterFinalizedRunHistory narrows finalized runs by recommendation status"
     filterFinalizedRunHistory(entries as never, "rejected").map((entry) => entry.run.id),
     ["run-rejected"],
   );
+});
+
+test("searchFinalizedRunHistory matches run ids, model bindings, and decision text", () => {
+  const entries = [
+    {
+      run: {
+        id: "run-alpha",
+        baseline_binding: { model_id: "baseline-alpha" },
+        candidate_binding: { model_id: "candidate-alpha" },
+      },
+      finalized: {
+        evidence_pack: {
+          score_summary: "Alpha score summary",
+          failure_summary: "None",
+        },
+        recommendation: {
+          status: "recommended",
+          decision_reason: "Alpha is safe to promote",
+        },
+      },
+    },
+    {
+      run: {
+        id: "run-beta",
+        baseline_binding: { model_id: "baseline-beta" },
+        candidate_binding: { model_id: "candidate-beta" },
+      },
+      finalized: {
+        evidence_pack: {
+          score_summary: "Beta score summary",
+          failure_summary: "Hard gate failure",
+        },
+        recommendation: {
+          status: "rejected",
+          decision_reason: "Beta cannot be promoted",
+        },
+      },
+    },
+  ] as const;
+
+  assert.deepEqual(
+    searchFinalizedRunHistory(entries as never, "candidate-beta").map((entry) => entry.run.id),
+    ["run-beta"],
+  );
+  assert.deepEqual(
+    searchFinalizedRunHistory(entries as never, "safe to promote").map((entry) => entry.run.id),
+    ["run-alpha"],
+  );
+  assert.deepEqual(
+    searchFinalizedRunHistory(entries as never, "run-beta").map((entry) => entry.run.id),
+    ["run-beta"],
+  );
+});
+
+test("isSelectedRunHiddenFromHistoryList detects when filters hide the current run", () => {
+  const entries = [
+    { run: { id: "run-one" } },
+    { run: { id: "run-two" } },
+  ] as const;
+
+  assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, "run-two"), false);
+  assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, "run-three"), true);
+  assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, null), false);
 });

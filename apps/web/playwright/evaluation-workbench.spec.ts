@@ -329,6 +329,100 @@ test("admin can filter finalized run history by recommendation status", async ({
   await expect(historyList).toContainText(recommendedRunId);
 });
 
+test("admin can search finalized run history by model binding and run id", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9H",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const firstRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "89",
+    diffSummary: "Search target one establishes the older baseline.",
+    evidenceLabel: "Phase 9H first evidence",
+    evidenceUrl: "https://example.test/evidence/phase9h-first",
+    candidateModelId: "search-model-one",
+  });
+
+  const secondRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "95",
+    diffSummary: "Search target two updates the candidate binding.",
+    evidenceLabel: "Phase 9H second evidence",
+    evidenceUrl: "https://example.test/evidence/phase9h-second",
+    candidateModelId: "search-model-two",
+  });
+
+  const historyList = page.locator(".evaluation-workbench-history-list");
+  await page.getByLabel("Search History").fill("search-model-two");
+  await expect(historyList).toContainText(secondRunId);
+  await expect(historyList).not.toContainText(firstRunId);
+
+  await page.getByLabel("Search History").fill(firstRunId);
+  await expect(historyList).toContainText(firstRunId);
+  await expect(historyList).not.toContainText(secondRunId);
+
+  await page.getByLabel("Search History").fill("");
+  await expect(historyList).toContainText(firstRunId);
+  await expect(historyList).toContainText(secondRunId);
+});
+
+test("admin can recover a selected run hidden by history search", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9I",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const firstRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "88",
+    diffSummary: "First hidden-selection run.",
+    evidenceLabel: "Phase 9I first evidence",
+    evidenceUrl: "https://example.test/evidence/phase9i-first",
+    candidateModelId: "hidden-model-one",
+  });
+
+  const secondRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "96",
+    diffSummary: "Second hidden-selection run.",
+    evidenceLabel: "Phase 9I second evidence",
+    evidenceUrl: "https://example.test/evidence/phase9i-second",
+    candidateModelId: "hidden-model-two",
+  });
+
+  await page.getByLabel("Search History").fill(firstRunId);
+
+  const hiddenNotice = page.locator(".evaluation-workbench-history-hidden-selection");
+  await expect(hiddenNotice).toContainText("currently hidden");
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(firstRunId);
+  await expect(page.locator(".evaluation-workbench-history-list")).not.toContainText(secondRunId);
+
+  await page.getByRole("button", { name: "Show Selected Run" }).click();
+  await expect(hiddenNotice).toBeHidden();
+  await expect(page.getByLabel("Search History")).toHaveValue("");
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(firstRunId);
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(secondRunId);
+});
+
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
 }
