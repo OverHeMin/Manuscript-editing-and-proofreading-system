@@ -372,6 +372,10 @@ function resolveSelectedKnowledgeItemId(input: {
   visibleKnowledgeItems: readonly KnowledgeItemViewModel[];
   boundKnowledgeItems: readonly KnowledgeItemViewModel[];
 }): string | null {
+  if (input.preferredId === null) {
+    return input.boundKnowledgeItems[0]?.id ?? null;
+  }
+
   const visibleIds = new Set(input.visibleKnowledgeItems.map((item) => item.id));
   if (input.preferredId && visibleIds.has(input.preferredId)) {
     return input.preferredId;

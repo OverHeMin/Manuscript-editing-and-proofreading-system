@@ -7,7 +7,10 @@ import {
   PostgresModuleTemplateRepository,
   PostgresTemplateFamilyRepository,
 } from "../../src/modules/templates/postgres-template-repository.ts";
-import { TemplateGovernanceService } from "../../src/modules/templates/template-governance-service.ts";
+import {
+  TemplateFamilyActiveConflictError,
+  TemplateGovernanceService,
+} from "../../src/modules/templates/template-governance-service.ts";
 import type { ModuleTemplateRecord } from "../../src/modules/templates/template-record.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -35,6 +38,9 @@ class FailingPostgresModuleTemplateRepository extends PostgresModuleTemplateRepo
     await super.save(record);
   }
 }
+
+const activeTemplateFamilyConstraintName =
+  "template_families_active_manuscript_type_uidx";
 
 test("postgres template repositories persist template families, versions, and provenance", async () => {
   await withMigratedTemplatePool(async (pool) => {
@@ -337,6 +343,139 @@ test("postgres template governance updates draft content in place without changi
       section_requirements: ["results", "discussion"],
     });
     assert.deepEqual(stored, updated);
+  });
+});
+
+test("postgres template governance rejects activating a second family for the same manuscript type", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const { service } = createPostgresTemplateHarness(pool, {
+      issuedIds: [
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab",
+      ],
+    });
+    const firstFamily = await service.createTemplateFamily({
+      manuscriptType: "review",
+      name: "Review Family A",
+    });
+    const secondFamily = await service.createTemplateFamily({
+      manuscriptType: "review",
+      name: "Review Family B",
+    });
+
+    await service.updateTemplateFamily(firstFamily.id, {
+      status: "active",
+    });
+
+    await assert.rejects(
+      () =>
+        service.updateTemplateFamily(secondFamily.id, {
+          status: "active",
+        }),
+      /active/i,
+    );
+
+    const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+      client: pool,
+    });
+    const listedFamilies = await templateFamilyRepository.list();
+    assert.deepEqual(
+      listedFamilies.map((family) => ({
+        id: family.id,
+        status: family.status,
+      })),
+      [
+        {
+          id: firstFamily.id,
+          status: "active",
+        },
+        {
+          id: secondFamily.id,
+          status: "draft",
+        },
+      ],
+    );
+  });
+});
+
+test("postgres template schema rejects multiple active families for the same manuscript type", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    await pool.query(
+      `
+        insert into template_families (
+          id,
+          manuscript_type,
+          name,
+          status
+        )
+        values (
+          'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+          'review',
+          'Schema review family A',
+          'active'
+        )
+      `,
+    );
+
+    await assert.rejects(
+      () =>
+        pool.query(
+          `
+            insert into template_families (
+              id,
+              manuscript_type,
+              name,
+              status
+            )
+            values (
+              'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+              'review',
+              'Schema review family B',
+              'active'
+            )
+          `,
+        ),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, "23505");
+        assert.equal(
+          (error as { constraint?: string }).constraint,
+          activeTemplateFamilyConstraintName,
+        );
+        return true;
+      },
+      "Expected PostgreSQL to reject a second active family for the same manuscript type.",
+    );
+  });
+});
+
+test("postgres template family repository translates active-family unique violations into a domain conflict", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+      client: pool,
+    });
+
+    await templateFamilyRepository.save({
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+      manuscript_type: "review",
+      name: "Repository review family A",
+      status: "active",
+    });
+
+    await assert.rejects(
+      () =>
+        templateFamilyRepository.save({
+          id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+          manuscript_type: "review",
+          name: "Repository review family B",
+          status: "active",
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof TemplateFamilyActiveConflictError);
+        assert.match(error.message, /already active/i);
+        return true;
+      },
+      "Expected repository save to translate unique violations into TemplateFamilyActiveConflictError.",
+    );
   });
 });
 

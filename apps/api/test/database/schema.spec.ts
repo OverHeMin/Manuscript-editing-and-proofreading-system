@@ -283,6 +283,7 @@ const expectedIndexes = [
   "auth_sessions_active_expires_at_idx",
   "manuscripts_status_idx",
   "document_assets_manuscript_id_idx",
+  "template_families_active_manuscript_type_uidx",
   "knowledge_items_status_module_scope_idx",
   "knowledge_items_manuscript_types_gin_idx",
   "knowledge_items_risk_tags_gin_idx",
@@ -453,6 +454,10 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
           version: "0011_verification_ops_persistence.sql",
           checksum: getMigrationChecksum("0011_verification_ops_persistence.sql"),
         },
+        {
+          version: "0012_template_family_active_uniqueness.sql",
+          checksum: getMigrationChecksum("0012_template_family_active_uniqueness.sql"),
+        },
       ],
       "Expected migration bookkeeping for all applied database migrations.",
     );
@@ -577,6 +582,7 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
         "0009_agent_tooling_persistence.sql",
         "0010_learning_review_persistence.sql",
         "0011_verification_ops_persistence.sql",
+        "0012_template_family_active_uniqueness.sql",
       ]) {
         await client.query(
           `

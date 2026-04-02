@@ -102,6 +102,87 @@ test("template governance controller loads template families, module templates, 
   );
 });
 
+test("template governance controller clears knowledge selection when a family switch has no bound knowledge", async () => {
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+            {
+              id: "family-2",
+              manuscript_type: "review",
+              name: "Review Family",
+              status: "draft",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-2/module-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "knowledge-1",
+              title: "Primary endpoint rule",
+              canonical_text: "Clinical studies must declare a primary endpoint.",
+              knowledge_kind: "rule",
+              status: "approved",
+              routing: {
+                module_scope: "screening",
+                manuscript_types: ["clinical_study"],
+              },
+              template_bindings: ["template-screening-1"],
+            },
+            {
+              id: "knowledge-2",
+              title: "General reference",
+              canonical_text: "Use consistent medical terminology.",
+              knowledge_kind: "reference",
+              status: "draft",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: "any",
+              },
+              template_bindings: [],
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedTemplateFamilyId: "family-2",
+    selectedKnowledgeItemId: null,
+  });
+
+  assert.equal(overview.selectedTemplateFamilyId, "family-2");
+  assert.equal(overview.boundKnowledgeItems.length, 0);
+  assert.equal(overview.selectedKnowledgeItemId, null);
+  assert.equal(overview.selectedKnowledgeItem, null);
+});
+
 test("template governance controller can create, update, submit, and publish governed assets", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createTemplateGovernanceWorkbenchController({

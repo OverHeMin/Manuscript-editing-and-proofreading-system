@@ -497,7 +497,7 @@ export function TemplateGovernanceWorkbenchPage({
     setStatusMessage(null);
     void loadOverview({
       selectedTemplateFamilyId: templateFamilyId,
-      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+      selectedKnowledgeItemId: null,
       filters: overview.filters,
     });
   }
