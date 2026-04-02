@@ -1078,11 +1078,19 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
     props.selectedEvidence,
     props.previousEvidence,
   );
+  const operatorSummary = describeComparisonOperatorSummary({
+    comparisonScopeLabel: props.comparisonScopeLabel,
+    selectedStatus: props.selectedEntry.finalized.recommendation.status,
+    previousStatus: props.previousEntry.finalized.recommendation.status,
+    selectedScoreSummary: props.selectedEntry.finalized.evidence_pack.score_summary,
+    previousScoreSummary: props.previousEntry.finalized.evidence_pack.score_summary,
+  });
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
+        <span>{operatorSummary}</span>
         <span>Comparison scope: {props.comparisonScopeLabel}</span>
         {props.selectedOriginLabel ? (
           <span>Selected origin: {props.selectedOriginLabel}</span>
@@ -1589,11 +1597,58 @@ function describeRecommendationShift(
   return `Recommendation shift: ${selectedStatus} (was ${previousStatus})`;
 }
 
+export function describeComparisonOperatorSummary(input: {
+  comparisonScopeLabel: string;
+  selectedStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"];
+  previousStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"];
+  selectedScoreSummary?: string | null;
+  previousScoreSummary?: string | null;
+}) {
+  const scopeLabel = input.comparisonScopeLabel.toLowerCase();
+  const selectedSeverity = getRecommendationSeverity(input.selectedStatus);
+  const previousSeverity = getRecommendationSeverity(input.previousStatus);
+  const selectedScore = parseAverageWeightedScore(input.selectedScoreSummary);
+  const previousScore = parseAverageWeightedScore(input.previousScoreSummary);
+  const scoreDelta =
+    selectedScore != null && previousScore != null ? selectedScore - previousScore : null;
+
+  if (selectedSeverity === previousSeverity) {
+    if (scoreDelta != null && scoreDelta > 0.05) {
+      return `Operator summary: Improved over ${scopeLabel} by ${scoreDelta.toFixed(1)} weighted points while holding ${input.selectedStatus}.`;
+    }
+    if (scoreDelta != null && scoreDelta < -0.05) {
+      return `Operator summary: Regressed against ${scopeLabel} and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points while staying ${input.selectedStatus}.`;
+    }
+    return `Operator summary: Held steady against ${scopeLabel} at ${input.selectedStatus}.`;
+  }
+
+  if (selectedSeverity > previousSeverity) {
+    const scoreTail =
+      scoreDelta != null && Math.abs(scoreDelta) > 0.05
+        ? ` and gained ${scoreDelta.toFixed(1)} weighted points`
+        : "";
+    return `Operator summary: Improved over ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+  }
+
+  const scoreTail =
+    scoreDelta != null && Math.abs(scoreDelta) > 0.05
+      ? ` and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points`
+      : "";
+  return `Operator summary: Regressed against ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+}
+
 function describeEvidenceCountChange(
   selectedEvidence: VerificationEvidenceViewModel[],
   previousEvidence: VerificationEvidenceViewModel[],
 ) {
   return `Evidence count: ${selectedEvidence.length} (was ${previousEvidence.length})`;
+}
+
+function parseAverageWeightedScore(summary: string | null | undefined) {
+  if (!summary) return null;
+  const match = /Average weighted score ([0-9]+(?:\.[0-9]+)?)/.exec(summary);
+  if (!match) return null;
+  return Number(match[1]);
 }
 
 function findPreviousFinalizedRunHistoryEntry(

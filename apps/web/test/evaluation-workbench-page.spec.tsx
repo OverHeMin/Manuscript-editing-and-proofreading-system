@@ -6,6 +6,7 @@ import {
   describeHistoryComparisonGuidance,
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
+  describeComparisonOperatorSummary,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -243,6 +244,10 @@ test("evaluation workbench comparison card renders binding deltas between finali
     />,
   );
 
+  assert.match(
+    markup,
+    /Operator summary: Improved over broader suite history by 6\.0 weighted points while holding recommended\./,
+  );
   assert.match(markup, /Comparison scope: Broader suite history/);
   assert.match(markup, /Selected origin: Current manuscript/);
   assert.match(markup, /Previous origin: Broader suite/);
@@ -551,6 +556,41 @@ test("describeHistoryOriginSummary counts manuscript and broader-suite runs", ()
       scope: "suite",
     }),
     null,
+  );
+});
+
+test("describeComparisonOperatorSummary summarizes compare outcomes for operators", () => {
+  assert.equal(
+    describeComparisonOperatorSummary({
+      comparisonScopeLabel: "Broader suite history",
+      selectedStatus: "recommended",
+      previousStatus: "recommended",
+      selectedScoreSummary: "Average weighted score 97.0 across 1 item(s).",
+      previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
+    }),
+    "Operator summary: Improved over broader suite history by 6.0 weighted points while holding recommended.",
+  );
+
+  assert.equal(
+    describeComparisonOperatorSummary({
+      comparisonScopeLabel: "Entire suite history",
+      selectedStatus: "rejected",
+      previousStatus: "recommended",
+      selectedScoreSummary: "Average weighted score 52.0 across 1 item(s).",
+      previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
+    }),
+    "Operator summary: Regressed against entire suite history (recommended -> rejected) and dropped 39.0 weighted points.",
+  );
+
+  assert.equal(
+    describeComparisonOperatorSummary({
+      comparisonScopeLabel: "Matched manuscript history",
+      selectedStatus: "recommended",
+      previousStatus: "recommended",
+      selectedScoreSummary: "Average weighted score 91.0 across 1 item(s).",
+      previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
+    }),
+    "Operator summary: Held steady against matched manuscript history at recommended.",
   );
 });
 
