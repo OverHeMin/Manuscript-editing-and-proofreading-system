@@ -132,6 +132,45 @@ test("create template family and module template draft for a manuscript type", a
   });
 });
 
+test("module template drafts can be updated before publish without changing their governed identity", async () => {
+  const { api } = createTemplateHarness();
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Draft update family",
+  });
+  const template = await api.createModuleTemplateDraft({
+    templateFamilyId: family.body.id,
+    module: "editing",
+    manuscriptType: "review",
+    prompt: "Original editing prompt.",
+    checklist: ["Terminology"],
+    sectionRequirements: ["discussion"],
+  });
+
+  const updated = await api.updateModuleTemplateDraft({
+    moduleTemplateId: template.body.id,
+    input: {
+      prompt: "Updated editing prompt.",
+      checklist: ["Terminology", "Abbreviations"],
+      sectionRequirements: ["results", "discussion"],
+    },
+  });
+
+  assert.equal(updated.status, 200);
+  assert.deepEqual(updated.body, {
+    id: "template-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "review",
+    version_no: 1,
+    status: "draft",
+    prompt: "Updated editing prompt.",
+    checklist: ["Terminology", "Abbreviations"],
+    section_requirements: ["results", "discussion"],
+  });
+});
+
 test("publishing a module template is admin only", async () => {
   const { api } = createTemplateHarness();
 
@@ -162,6 +201,36 @@ test("publishing a module template is admin only", async () => {
 
   assert.equal(published.status, 200);
   assert.equal(published.body.status, "published");
+});
+
+test("published module templates cannot be edited through the draft update flow", async () => {
+  const { api } = createTemplateHarness();
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "clinical_study",
+    name: "Published family",
+  });
+  const template = await api.createModuleTemplateDraft({
+    templateFamilyId: family.body.id,
+    module: "screening",
+    manuscriptType: "clinical_study",
+    prompt: "Review study design and ethics statements.",
+  });
+  await api.publishModuleTemplate({
+    moduleTemplateId: template.body.id,
+    actorRole: "admin",
+  });
+
+  await assert.rejects(
+    () =>
+      api.updateModuleTemplateDraft({
+        moduleTemplateId: template.body.id,
+        input: {
+          prompt: "This should not be accepted for a published template.",
+        },
+      }),
+    /draft/i,
+  );
 });
 
 test("template families can be updated and listed while drafts are being prepared", async () => {

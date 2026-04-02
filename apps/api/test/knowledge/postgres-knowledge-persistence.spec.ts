@@ -252,9 +252,21 @@ async function seedLearningCandidate(client: Client, candidateId: string): Promi
         type,
         status,
         module,
-        manuscript_type
+        manuscript_type,
+        created_by,
+        title,
+        proposal_text
       )
-      values ($1, 'rule_candidate', 'approved', 'screening', 'clinical_study')
+      values (
+        $1,
+        'rule_candidate',
+        'approved',
+        'screening',
+        'clinical_study',
+        'test-seed',
+        'Seeded knowledge learning candidate',
+        'Seeded provenance for knowledge persistence tests.'
+      )
     `,
     [candidateId],
   );

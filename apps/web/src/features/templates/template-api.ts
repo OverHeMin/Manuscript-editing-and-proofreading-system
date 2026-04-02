@@ -4,6 +4,7 @@ import type {
   CreateTemplateFamilyInput,
   ModuleTemplateViewModel,
   TemplateFamilyViewModel,
+  UpdateModuleTemplateDraftInput,
   UpdateTemplateFamilyInput,
 } from "./types.ts";
 
@@ -36,6 +37,18 @@ export function createModuleTemplateDraft(
   return client.request<ModuleTemplateViewModel>({
     method: "POST",
     url: "/api/v1/templates/module-drafts",
+    body: input,
+  });
+}
+
+export function updateModuleTemplateDraft(
+  client: TemplateHttpClient,
+  moduleTemplateId: string,
+  input: UpdateModuleTemplateDraftInput,
+) {
+  return client.request<ModuleTemplateViewModel>({
+    method: "POST",
+    url: `/api/v1/templates/module-templates/${moduleTemplateId}/draft`,
     body: input,
   });
 }

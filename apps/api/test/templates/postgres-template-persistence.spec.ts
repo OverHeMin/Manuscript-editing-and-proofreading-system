@@ -295,6 +295,51 @@ test("postgres template governance publishes newer revisions, archives prior ver
   });
 });
 
+test("postgres template governance updates draft content in place without changing version lineage", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const { service, moduleTemplateRepository, createTemplateFamily } =
+      createPostgresTemplateHarness(pool, {
+        issuedIds: [
+          "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
+        ],
+      });
+
+    const family = await createTemplateFamily({
+      manuscriptType: "review",
+      name: "Draft update family",
+    });
+    const draft = await service.createModuleTemplateDraft({
+      templateFamilyId: family.id,
+      module: "editing",
+      manuscriptType: "review",
+      prompt: "Draft prompt v1",
+      checklist: ["Terminology"],
+      sectionRequirements: ["discussion"],
+    });
+
+    const updated = await service.updateModuleTemplateDraft(draft.id, {
+      prompt: "Draft prompt v2",
+      checklist: ["Terminology", "Consistency"],
+      sectionRequirements: ["results", "discussion"],
+    });
+    const stored = await moduleTemplateRepository.findById(draft.id);
+
+    assert.deepEqual(updated, {
+      id: draft.id,
+      template_family_id: family.id,
+      module: "editing",
+      manuscript_type: "review",
+      version_no: 1,
+      status: "draft",
+      prompt: "Draft prompt v2",
+      checklist: ["Terminology", "Consistency"],
+      section_requirements: ["results", "discussion"],
+    });
+    assert.deepEqual(stored, updated);
+  });
+});
+
 test("postgres template governance rolls back archived prior versions when the publish write fails", async () => {
   await withMigratedTemplatePool(async (pool) => {
     let failOnTemplateId: string | undefined;
@@ -465,9 +510,21 @@ async function seedLearningCandidate(
         type,
         status,
         module,
-        manuscript_type
+        manuscript_type,
+        created_by,
+        title,
+        proposal_text
       )
-      values ($1, 'template_update_candidate', 'approved', 'editing', 'review')
+      values (
+        $1,
+        'template_update_candidate',
+        'approved',
+        'editing',
+        'review',
+        'test-seed',
+        'Seeded template learning candidate',
+        'Seeded provenance for template persistence tests.'
+      )
     `,
     [candidateId],
   );

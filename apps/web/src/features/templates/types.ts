@@ -41,3 +41,9 @@ export interface CreateModuleTemplateDraftInput {
   checklist?: string[];
   sectionRequirements?: string[];
 }
+
+export interface UpdateModuleTemplateDraftInput {
+  prompt?: string;
+  checklist?: string[];
+  sectionRequirements?: string[];
+}

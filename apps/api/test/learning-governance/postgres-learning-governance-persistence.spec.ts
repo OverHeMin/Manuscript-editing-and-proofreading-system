@@ -330,9 +330,12 @@ async function seedLearningCandidate(
         type,
         status,
         module,
-        manuscript_type
+        manuscript_type,
+        created_by,
+        title,
+        proposal_text
       )
-      values ($1, $2, 'approved', $3, $4)
+      values ($1, $2, 'approved', $3, $4, 'test-seed', 'Seeded learning candidate', 'Seeded provenance for learning governance persistence tests.')
     `,
     [input.id, input.type, input.module, input.manuscriptType],
   );
