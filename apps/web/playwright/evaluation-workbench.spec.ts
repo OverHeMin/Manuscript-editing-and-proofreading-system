@@ -75,9 +75,12 @@ test("admin can complete a manual evaluation loop and hand off a governed learni
     .getByLabel("Evidence URL")
     .fill("https://example.test/evidence/phase9c-browser-qa");
   await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
-  await expect(page.locator(".evaluation-workbench-finalized")).toContainText(
-    "recommended",
-  );
+  const finalizedCard = page.locator(".evaluation-workbench-finalized");
+  await expect(finalizedCard).toContainText("recommended");
+  await expect(finalizedCard).toContainText("Score Summary");
+  await expect(finalizedCard).toContainText("Average weighted score 93.0 across 1 item(s).");
+  await expect(finalizedCard).toContainText("Cost Summary");
+  await expect(finalizedCard).toContainText("Cost tracking is not recorded in Phase 6A v1.");
   await expect(page.getByLabel("Reviewed Case Snapshot ID")).toHaveValue(
     prepared.snapshotId,
   );
@@ -356,6 +359,9 @@ test("admin can inspect rejected history details for a prior finalized run", asy
   await expect(historyDetail).toContainText("Structure regression triggered the hard gate.");
   await expect(historyDetail).toContainText("Phase 9F rejected evidence");
   await expect(historyDetail).toContainText(prepared.snapshotId);
+  await expect(historyDetail).toContainText("Failure Summary");
+  await expect(historyDetail).toContainText("Regression Summary");
+  await expect(historyDetail).toContainText("1 regression-failed item(s) detected.");
 });
 
 test("admin can filter finalized run history by recommendation status", async ({

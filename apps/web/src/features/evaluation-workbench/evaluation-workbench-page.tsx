@@ -476,17 +476,14 @@ export function EvaluationWorkbenchPage({
                     {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
                       <span>{selectedRunHistoryEntry.finalized.recommendation.decision_reason}</span>
                     ) : null}
-                    {selectedRunHistoryEntry.finalized.evidence_pack.score_summary ? (
-                      <span>{selectedRunHistoryEntry.finalized.evidence_pack.score_summary}</span>
-                    ) : null}
-                    {selectedRunHistoryEntry.finalized.evidence_pack.failure_summary ? (
-                      <span>{selectedRunHistoryEntry.finalized.evidence_pack.failure_summary}</span>
-                    ) : null}
                     {selectedRunItem?.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
                     {linkedSampleSetItem ? (
                       <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
                     ) : null}
                   </div>
+                  <EvaluationWorkbenchEvidencePackSummary
+                    evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
+                  />
                   <EvaluationWorkbenchEvidenceList
                     evidence={selectedRunEvidence}
                     emptyMessage="No persisted verification evidence is attached to this run."
@@ -659,6 +656,9 @@ export function EvaluationWorkbenchPage({
                     <span>Recommendation: {effectiveFinalizedResult.recommendation.status}</span>
                     {effectiveFinalizedResult.recommendation.decision_reason ? <span>{effectiveFinalizedResult.recommendation.decision_reason}</span> : null}
                   </div>
+                  <EvaluationWorkbenchEvidencePackSummary
+                    evidencePack={effectiveFinalizedResult.evidence_pack}
+                  />
                   <EvaluationWorkbenchEvidenceList evidence={selectedRunEvidence} />
                 </div>
               ) : (
@@ -942,6 +942,38 @@ export function EvaluationWorkbenchEvidenceList(props: {
         </li>
       ))}
     </ul>
+  );
+}
+
+export function EvaluationWorkbenchEvidencePackSummary(props: {
+  evidencePack: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["evidence_pack"];
+}) {
+  const { evidencePack } = props;
+  const summaryRows = [
+    { label: "Summary Status", value: evidencePack.summary_status },
+    { label: "Score Summary", value: evidencePack.score_summary },
+    { label: "Regression Summary", value: evidencePack.regression_summary },
+    { label: "Failure Summary", value: evidencePack.failure_summary },
+    { label: "Cost Summary", value: evidencePack.cost_summary },
+    { label: "Latency Summary", value: evidencePack.latency_summary },
+  ].filter((row): row is { label: string; value: string } => Boolean(row.value));
+
+  if (summaryRows.length === 0) {
+    return (
+      <p className="evaluation-workbench-empty">
+        No evidence-pack summaries were recorded for this finalized run.
+      </p>
+    );
+  }
+
+  return (
+    <div className="evaluation-workbench-history-compare">
+      {summaryRows.map((row) => (
+        <span key={row.label}>
+          <strong>{row.label}:</strong> {row.value}
+        </span>
+      ))}
+    </div>
   );
 }
 

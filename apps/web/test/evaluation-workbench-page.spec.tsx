@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
   EvaluationWorkbenchEvidenceList,
+  EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchPage,
   sortFinalizedRunHistory,
   EvaluationWorkbenchRunComparisonCard,
@@ -262,6 +263,35 @@ test("evaluation workbench evidence list renders actionable links for url and ar
   assert.match(markup, /Proof artifact evidence/);
   assert.match(markup, /Download evidence artifact/);
   assert.match(markup, /\/api\/v1\/document-assets\/asset-proof-1\/download/);
+});
+
+test("evaluation workbench evidence pack summary renders labeled outcome fields", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchEvidencePackSummary
+      evidencePack={{
+        id: "pack-1",
+        experiment_run_id: "run-1",
+        summary_status: "recommended",
+        score_summary: "Average weighted score 94.0 across 1 item(s).",
+        regression_summary: "No regression failures were recorded.",
+        failure_summary: "No failure annotations were recorded.",
+        cost_summary: "Cost tracking is not recorded in Phase 6A v1.",
+        latency_summary: "Latency tracking is not recorded in Phase 6A v1.",
+        created_at: "2026-04-02T08:15:00.000Z",
+      }}
+    />,
+  );
+
+  assert.match(markup, /Summary Status/);
+  assert.match(markup, /recommended/);
+  assert.match(markup, /Score Summary/);
+  assert.match(markup, /Average weighted score 94.0 across 1 item\(s\)\./);
+  assert.match(markup, /Regression Summary/);
+  assert.match(markup, /No regression failures were recorded\./);
+  assert.match(markup, /Failure Summary/);
+  assert.match(markup, /No failure annotations were recorded\./);
+  assert.match(markup, /Cost Summary/);
+  assert.match(markup, /Latency Summary/);
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
