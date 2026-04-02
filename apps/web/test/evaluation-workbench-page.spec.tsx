@@ -100,6 +100,8 @@ test("evaluation workbench run-item detail card renders linked sample context an
   assert.match(markup, /candidate-model-1/);
   assert.match(markup, /skill-prod-1, skill-prod-2/);
   assert.match(markup, /skill-candidate-1/);
+  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
 });
 
 test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
@@ -365,6 +367,7 @@ test("evaluation workbench linked sample context list renders run-item sample ma
         },
       ] as never}
       selectedRunItemId="run-item-1"
+      defaultWorkbenchMode="editing"
       onFocusRunItem={(runItemId) => {
         focusedRunItems.push(runItemId);
       }}
@@ -386,6 +389,8 @@ test("evaluation workbench linked sample context list renders run-item sample ma
   assert.match(markup, /\/api\/v1\/document-assets\/result-asset-1\/download/);
   assert.match(markup, /Download Sample Snapshot/);
   assert.match(markup, /\/api\/v1\/document-assets\/snapshot-asset-1\/download/);
+  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
   assert.deepEqual(focusedRunItems, []);
 });
 

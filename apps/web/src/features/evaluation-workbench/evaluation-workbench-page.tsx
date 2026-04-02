@@ -3,6 +3,7 @@ import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { LearningCandidateType } from "../learning-review/types.ts";
+import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
   EvaluationRunItemFailureKind,
   VerificationEvidenceKind,
@@ -160,6 +161,10 @@ export function EvaluationWorkbenchPage({
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
+  const selectedSampleSet =
+    selectedRun == null || overview == null
+      ? null
+      : overview.sampleSets.find((item) => item.id === selectedRun.sample_set_id) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
       ? null
@@ -489,6 +494,9 @@ export function EvaluationWorkbenchPage({
                     runItems={overview.runItems}
                     sampleSetItems={sampleSetItems}
                     selectedRunItemId={selectedRunItemId}
+                    defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
+                      selectedSampleSet?.module,
+                    )}
                     onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
                   />
                   <EvaluationWorkbenchEvidenceList
@@ -1045,6 +1053,7 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
   runItems: EvaluationWorkbenchOverview["runItems"];
   sampleSetItems: EvaluationWorkbenchOverview["sampleSetItems"];
   selectedRunItemId?: string | null;
+  defaultWorkbenchMode?: ManuscriptWorkbenchMode;
   onFocusRunItem?: (runItemId: string) => void;
 }) {
   if (props.runItems.length === 0) {
@@ -1063,6 +1072,16 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
           const sampleSetItem =
             props.sampleSetItems.find((item) => item.id === runItem.sample_set_item_id) ?? null;
           const isFocused = props.selectedRunItemId === runItem.id;
+          const manuscriptWorkbenchMode = resolveLinkedSampleWorkbenchMode(
+            sampleSetItem?.module,
+            props.defaultWorkbenchMode,
+          );
+          const manuscriptWorkbenchHash =
+            sampleSetItem?.manuscript_id?.trim()
+              ? formatWorkbenchHash(manuscriptWorkbenchMode, {
+                  manuscriptId: sampleSetItem.manuscript_id,
+                })
+              : null;
           return (
             <li key={runItem.id}>
               <strong>Run Item: {runItem.id}</strong>
@@ -1091,6 +1110,11 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
                   Download Sample Snapshot
                 </a>
               ) : null}
+              {manuscriptWorkbenchHash ? (
+                <a href={manuscriptWorkbenchHash}>
+                  {createLinkedSampleWorkbenchLabel(manuscriptWorkbenchMode)}
+                </a>
+              ) : null}
               {props.onFocusRunItem ? (
                 <button
                   type="button"
@@ -1114,6 +1138,16 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
   linkedSampleSetItem: EvaluationWorkbenchOverview["sampleSetItems"][number] | null;
 }) {
   const { selectedRun, selectedRunItem, linkedSampleSetItem } = props;
+  const manuscriptWorkbenchHash =
+    linkedSampleSetItem?.manuscript_id?.trim()
+      ? formatWorkbenchHash(
+          resolveLinkedSampleWorkbenchMode(linkedSampleSetItem.module),
+          { manuscriptId: linkedSampleSetItem.manuscript_id },
+        )
+      : null;
+  const manuscriptWorkbenchLabel = createLinkedSampleWorkbenchLabel(
+    resolveLinkedSampleWorkbenchMode(linkedSampleSetItem?.module),
+  );
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-run-item-detail">
@@ -1138,6 +1172,9 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
             <span>Snapshot Asset: {linkedSampleSetItem.snapshot_asset_id}</span>
             <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
             <span>Manuscript: {linkedSampleSetItem.manuscript_id}</span>
+            {manuscriptWorkbenchHash ? (
+              <a href={manuscriptWorkbenchHash}>{manuscriptWorkbenchLabel}</a>
+            ) : null}
           </>
         ) : (
           <span>No linked sample-set item is available for this run item.</span>
@@ -1168,6 +1205,29 @@ function SummaryCard(props: { label: string; value: number }) {
 function summarizeCoveredModules(overview: EvaluationWorkbenchOverview) {
   const modules = Array.from(new Set(overview.sampleSets.map((item) => item.module)));
   return modules.length > 0 ? modules.join(", ") : "Not available";
+}
+
+function resolveLinkedSampleWorkbenchMode(
+  sampleModule: string | null | undefined,
+  defaultWorkbenchMode: ManuscriptWorkbenchMode = "editing",
+): ManuscriptWorkbenchMode {
+  if (
+    sampleModule === "submission" ||
+    sampleModule === "screening" ||
+    sampleModule === "editing" ||
+    sampleModule === "proofreading"
+  ) {
+    return sampleModule;
+  }
+
+  return defaultWorkbenchMode;
+}
+
+function createLinkedSampleWorkbenchLabel(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "submission") return "Open Submission Workbench";
+  if (mode === "screening") return "Open Screening Workbench";
+  if (mode === "editing") return "Open Editing Workbench";
+  return "Open Proofreading Workbench";
 }
 
 function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][number]) {

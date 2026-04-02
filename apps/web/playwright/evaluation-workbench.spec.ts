@@ -433,6 +433,47 @@ test("admin can focus a specific run item from linked sample context", async ({
   await expect(runItemDetail).toContainText("Second run item drifted from the approved structure.");
 });
 
+test("admin can open the editing workbench from linked sample context", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9N ${Date.now()}`,
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "92",
+    diffSummary: "Linked sample context should hand off into the editing workbench.",
+    evidenceLabel: "Phase 9N handoff evidence",
+    evidenceUrl: "https://example.test/evidence/phase9n-handoff",
+  });
+
+  const historyDetail = page.locator(".evaluation-workbench-history-detail");
+  const handoffLink = historyDetail.getByRole("link", { name: "Open Editing Workbench" });
+  await expect(handoffLink).toBeVisible();
+  await expect(handoffLink).toHaveAttribute(
+    "href",
+    /#editing\?manuscriptId=manuscript-demo-1$/,
+  );
+
+  await handoffLink.click();
+
+  await expect(page).toHaveURL(/#editing\?manuscriptId=manuscript-demo-1$/);
+  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await expect(page.getByText("This workbench was prefilled from the previous manuscript handoff.")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "Auto-loaded manuscript manuscript-demo-1",
+  );
+});
+
 test("admin can filter finalized run history by recommendation status", async ({
   page,
   request,
