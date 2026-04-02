@@ -340,6 +340,7 @@ test("evaluation workbench history entry signals render structured list summarie
 });
 
 test("evaluation workbench linked sample context list renders run-item sample mappings", () => {
+  const focusedRunItems: string[] = [];
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchLinkedSampleContextList
       runItems={[
@@ -361,6 +362,10 @@ test("evaluation workbench linked sample context list renders run-item sample ma
           manuscript_id: "manuscript-1",
         },
       ] as never}
+      selectedRunItemId="run-item-1"
+      onFocusRunItem={(runItemId) => {
+        focusedRunItems.push(runItemId);
+      }}
     />,
   );
 
@@ -373,6 +378,9 @@ test("evaluation workbench linked sample context list renders run-item sample ma
   assert.match(markup, /snapshot-1/);
   assert.match(markup, /Weighted Score: 91/);
   assert.match(markup, /Structure regression triggered the hard gate\./);
+  assert.match(markup, /Focused/);
+  assert.match(markup, /Focus Run Item run-item-1/);
+  assert.deepEqual(focusedRunItems, []);
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {

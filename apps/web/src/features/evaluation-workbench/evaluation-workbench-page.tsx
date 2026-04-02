@@ -488,6 +488,8 @@ export function EvaluationWorkbenchPage({
                   <EvaluationWorkbenchLinkedSampleContextList
                     runItems={overview.runItems}
                     sampleSetItems={sampleSetItems}
+                    selectedRunItemId={selectedRunItemId}
+                    onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
                   />
                   <EvaluationWorkbenchEvidenceList
                     evidence={selectedRunEvidence}
@@ -1042,6 +1044,8 @@ export function EvaluationWorkbenchHistoryEntrySignals(props: {
 export function EvaluationWorkbenchLinkedSampleContextList(props: {
   runItems: EvaluationWorkbenchOverview["runItems"];
   sampleSetItems: EvaluationWorkbenchOverview["sampleSetItems"];
+  selectedRunItemId?: string | null;
+  onFocusRunItem?: (runItemId: string) => void;
 }) {
   if (props.runItems.length === 0) {
     return (
@@ -1058,9 +1062,11 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
         {props.runItems.map((runItem) => {
           const sampleSetItem =
             props.sampleSetItems.find((item) => item.id === runItem.sample_set_item_id) ?? null;
+          const isFocused = props.selectedRunItemId === runItem.id;
           return (
             <li key={runItem.id}>
               <strong>Run Item: {runItem.id}</strong>
+              {isFocused ? <span>Focused</span> : null}
               <span>Lane: {runItem.lane}</span>
               <span>Weighted Score: {runItem.weighted_score ?? "Not scored"}</span>
               {runItem.failure_reason ? <span>Failure: {runItem.failure_reason}</span> : null}
@@ -1075,6 +1081,15 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
               ) : (
                 <span>No linked sample-set item is available for this run item.</span>
               )}
+              {props.onFocusRunItem ? (
+                <button
+                  type="button"
+                  className="evaluation-workbench-action"
+                  onClick={() => props.onFocusRunItem?.(runItem.id)}
+                >
+                  Focus Run Item {runItem.id}
+                </button>
+              ) : null}
             </li>
           );
         })}

@@ -347,6 +347,11 @@
   background: #ffffff;
 }
 
+.evaluation-workbench-linked-sample-list .evaluation-workbench-action {
+  width: auto;
+  justify-self: flex-start;
+}
+
 .evaluation-workbench-finalized {
   border-color: #bfdbfe;
   background: #eff6ff;

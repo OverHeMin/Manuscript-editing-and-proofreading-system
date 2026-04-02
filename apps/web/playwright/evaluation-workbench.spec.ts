@@ -372,6 +372,65 @@ test("admin can inspect rejected history details for a prior finalized run", asy
   await expect(historyDetail).toContainText("Weighted Score:");
 });
 
+test("admin can focus a specific run item from linked sample context", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9M ${Date.now()}`,
+    sampleItemCount: 2,
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await page.getByLabel("Sample Set").selectOption(prepared.sampleSetId);
+  await page.getByRole("button", { name: "Create Evaluation Run" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Created evaluation run",
+  );
+
+  const runItemButtons = page.locator(".evaluation-workbench-panel").filter({ has: page.getByRole("heading", { name: "Run Items" }) }).locator(".evaluation-workbench-stack > li > button");
+  await expect(runItemButtons).toHaveCount(2);
+
+  await page.getByLabel("Weighted Score").fill("77");
+  await page.getByLabel("Diff Summary").fill("First run item keeps the baseline stable.");
+  await page.getByRole("button", { name: "Save Run Item Result" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Saved run item result",
+  );
+
+  await runItemButtons.nth(1).click();
+  await page.getByLabel("Weighted Score").fill("63");
+  await page.getByLabel("Failure Kind").selectOption("regression_failed");
+  await page.getByLabel("Failure Reason").fill("Second run item triggered a structure regression.");
+  await page.getByLabel("Diff Summary").fill("Second run item drifted from the approved structure.");
+  await page.getByRole("button", { name: "Save Run Item Result" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Saved run item result",
+  );
+
+  await page.getByLabel("Run Status").selectOption("failed");
+  await page.getByLabel("Evidence Label").fill("Phase 9M evidence");
+  await page.getByLabel("Evidence URL").fill("https://example.test/evidence/phase9m");
+  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+  await expect(page.locator(".evaluation-workbench-finalized")).toContainText("rejected");
+
+  const historyDetail = page.locator(".evaluation-workbench-history-detail");
+  const focusButtons = historyDetail.getByRole("button", { name: /Focus Run Item/ });
+  await expect(focusButtons).toHaveCount(2);
+  await runItemButtons.nth(0).click();
+
+  const runItemDetail = page.locator(".evaluation-workbench-run-item-detail");
+  await expect(runItemDetail).toContainText("First run item keeps the baseline stable.");
+  await focusButtons.nth(1).click();
+  await expect(runItemDetail).toContainText("Second run item triggered a structure regression.");
+  await expect(runItemDetail).toContainText("Second run item drifted from the approved structure.");
+});
+
 test("admin can filter finalized run history by recommendation status", async ({
   page,
   request,
@@ -624,6 +683,7 @@ test("admin can prioritize failed history runs to the top of the list", async ({
 
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
+  sampleItemCount?: number;
 }
 
 interface PreparedDraftEvaluationSuite {
@@ -747,32 +807,38 @@ async function listEvaluationSuites(
 async function prepareActiveEvaluationScenario(
   request: APIRequestContext,
   input: PrepareDraftEvaluationSuiteInput,
-): Promise<PreparedDraftEvaluationSuite & { sampleSetId: string; snapshotId: string }> {
+): Promise<
+  PreparedDraftEvaluationSuite & { sampleSetId: string; snapshotId: string; snapshotIds: string[] }
+> {
   const cookie = await loginAsDemoUser(request, "dev.admin");
-
-  const snapshotResponse = await request.post(
-    `${apiBaseUrl}/api/v1/learning/reviewed-case-snapshots`,
-    {
-      headers: {
-        Cookie: cookie,
+  const sampleItemCount = input.sampleItemCount ?? 1;
+  const storagePrefix = input.label.toLowerCase().replace(/\s+/g, "-");
+  const snapshots: Array<{ id: string }> = [];
+  for (let index = 0; index < sampleItemCount; index += 1) {
+    const snapshotResponse = await request.post(
+      `${apiBaseUrl}/api/v1/learning/reviewed-case-snapshots`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+        data: {
+          manuscriptId: "manuscript-demo-1",
+          module: "editing",
+          manuscriptType: "clinical_study",
+          humanFinalAssetId: "human-final-demo-1",
+          deidentificationPassed: true,
+          requestedBy: "ignored-by-server",
+          storageKey: `learning/${storagePrefix}/snapshot-${index + 1}.bin`,
+        },
       },
-      data: {
-        manuscriptId: "manuscript-demo-1",
-        module: "editing",
-        manuscriptType: "clinical_study",
-        humanFinalAssetId: "human-final-demo-1",
-        deidentificationPassed: true,
-        requestedBy: "ignored-by-server",
-        storageKey: `learning/${input.label.toLowerCase().replace(/\s+/g, "-")}/snapshot.bin`,
-      },
-    },
-  );
-  if (!snapshotResponse.ok()) {
-    throw new Error(
-      `create reviewed snapshot failed (${snapshotResponse.status()}): ${await snapshotResponse.text()}`,
     );
+    if (!snapshotResponse.ok()) {
+      throw new Error(
+        `create reviewed snapshot failed (${snapshotResponse.status()}): ${await snapshotResponse.text()}`,
+      );
+    }
+    snapshots.push((await snapshotResponse.json()) as { id: string });
   }
-  const snapshot = (await snapshotResponse.json()) as { id: string };
 
   const sampleSetResponse = await request.post(
     `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets`,
@@ -785,12 +851,10 @@ async function prepareActiveEvaluationScenario(
         input: {
           name: `${input.label} Editing Samples`,
           module: "editing",
-          sampleItemInputs: [
-            {
-              reviewedCaseSnapshotId: snapshot.id,
-              riskTags: ["structure"],
-            },
-          ],
+          sampleItemInputs: snapshots.map((snapshot, index) => ({
+            reviewedCaseSnapshotId: snapshot.id,
+            riskTags: [index === 0 ? "structure" : "terminology"],
+          })),
         },
       },
     },
@@ -907,7 +971,8 @@ async function prepareActiveEvaluationScenario(
     suiteId: suite.id,
     suiteName: suite.name,
     sampleSetId: sampleSet.id,
-    snapshotId: snapshot.id,
+    snapshotId: snapshots[0]?.id ?? "",
+    snapshotIds: snapshots.map((snapshot) => snapshot.id),
   };
 }
 
