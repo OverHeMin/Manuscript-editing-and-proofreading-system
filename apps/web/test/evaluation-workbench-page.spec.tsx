@@ -425,6 +425,25 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
 
   assert.equal(
     describeHistoryComparisonGuidance({
+      selectedRun: {
+        id: "run-2",
+        status: "passed",
+      } as never,
+      selectedRunHistoryEntry: {
+        run: {
+          id: "run-2",
+        },
+      } as never,
+      previousRunHistoryEntry: null,
+      scope: "manuscript",
+      totalFinalizedCount: 3,
+      scopedCount: 1,
+    }),
+    "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidance({
       selectedRun: null,
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,

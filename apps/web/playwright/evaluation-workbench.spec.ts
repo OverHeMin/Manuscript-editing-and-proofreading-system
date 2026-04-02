@@ -575,13 +575,74 @@ test("admin defaults history to manuscript-scoped runs after manuscript handoff 
   await expect(historyList).toContainText(matchedRunId);
   await expect(historyList).not.toContainText(unrelatedRunId);
 
-  await historyPanel.getByRole("button", { name: "Entire Suite History" }).click();
-  await expect(historyPanel.getByRole("button", { name: "Entire Suite History" })).toHaveAttribute(
+  await historyPanel.getByRole("button", { name: "Entire Suite History", exact: true }).click();
+  await expect(historyPanel.getByRole("button", { name: "Entire Suite History", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await expect(historyList).toContainText(matchedRunId);
   await expect(historyList).toContainText(unrelatedRunId);
+});
+
+test("admin gets a compare handoff when manuscript-scoped history only has one finalized run", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9Q ${Date.now()}`,
+  });
+  const unrelatedSampleSet = await createPublishedEditingSampleSet(request, prepared.cookie, {
+    label: `Phase 9Q unrelated ${Date.now()}`,
+    manuscriptId: "manuscript-seeded-1",
+    manuscriptType: "clinical_study",
+    parentAssetId: "original-seeded-1",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const unrelatedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: unrelatedSampleSet.sampleSetId,
+    weightedScore: "84",
+    diffSummary: "Unrelated manuscript run becomes the broader suite comparison target.",
+    evidenceLabel: "Phase 9Q unrelated evidence",
+    evidenceUrl: "https://example.test/evidence/phase9q-unrelated",
+  });
+
+  const matchedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "95",
+    diffSummary: "Matched manuscript run should offer a compare handoff into suite history.",
+    evidenceLabel: "Phase 9Q matched evidence",
+    evidenceUrl: "https://example.test/evidence/phase9q-matched",
+  });
+
+  await page.goto("/#evaluation-workbench?manuscriptId=manuscript-demo-1", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  const historyPanel = page.locator(".evaluation-workbench-history");
+  await expect(historyPanel.getByRole("button", { name: "Matched Manuscript Runs (1)", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(historyPanel).toContainText(
+    "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.",
+  );
+
+  await historyPanel.getByRole("button", { name: "Compare Against Entire Suite History" }).click();
+  await expect(historyPanel.getByRole("button", { name: "Entire Suite History", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(historyPanel).toContainText(`Comparing against ${unrelatedRunId}`);
+  await expect(historyPanel.locator(".evaluation-workbench-history-list")).toContainText(matchedRunId);
+  await expect(historyPanel.locator(".evaluation-workbench-history-list")).toContainText(unrelatedRunId);
 });
 
 test("admin can filter finalized run history by recommendation status", async ({

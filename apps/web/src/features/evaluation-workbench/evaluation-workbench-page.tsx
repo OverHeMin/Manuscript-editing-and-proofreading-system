@@ -161,7 +161,15 @@ export function EvaluationWorkbenchPage({
     selectedRun,
     selectedRunHistoryEntry,
     previousRunHistoryEntry,
+    scope: effectiveHistoryScope,
+    totalFinalizedCount: finalizedRunHistory.length,
+    scopedCount: scopedFinalizedRunHistory.length,
   });
+  const canSwitchToSuiteHistoryForComparison =
+    effectiveHistoryScope === "manuscript" &&
+    selectedRunHistoryEntry != null &&
+    previousRunHistoryEntry == null &&
+    finalizedRunHistory.length > scopedFinalizedRunHistory.length;
   const historyCounts = summarizeHistoryCounts(scopedFinalizedRunHistory);
   const filteredFinalizedRunHistory = filterFinalizedRunHistory(
     scopedFinalizedRunHistory,
@@ -555,6 +563,18 @@ export function EvaluationWorkbenchPage({
                   selectedEvidence={selectedRunEvidence}
                   previousEvidence={previousRunEvidence}
                 />
+              ) : historyComparisonGuidance && canSwitchToSuiteHistoryForComparison ? (
+                <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+                  <strong>History Compare Guidance</strong>
+                  <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+                  <button
+                    type="button"
+                    className="evaluation-workbench-action"
+                    onClick={() => setHistoryScope("suite")}
+                  >
+                    Compare Against Entire Suite History
+                  </button>
+                </div>
               ) : historyComparisonGuidance ? (
                 <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
               ) : null}
@@ -1461,14 +1481,29 @@ export function describeHistoryComparisonGuidance(input: {
   selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
   selectedRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
   previousRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  scope?: EvaluationWorkbenchHistoryScope;
+  totalFinalizedCount?: number;
+  scopedCount?: number;
 }) {
   const { previousRunHistoryEntry, selectedRun, selectedRunHistoryEntry } = input;
+  const scope = input.scope ?? "suite";
+  const totalFinalizedCount = input.totalFinalizedCount ?? input.scopedCount ?? 0;
+  const scopedCount = input.scopedCount ?? totalFinalizedCount;
   if (selectedRunHistoryEntry && previousRunHistoryEntry) return null;
   if (selectedRun && !selectedRunHistoryEntry) {
     return `Current run ${selectedRun.id} is still ${selectedRun.status}. Complete and finalize it to compare against history.`;
   }
   if (selectedRunHistoryEntry) {
+    if (scope === "manuscript" && totalFinalizedCount > scopedCount) {
+      return "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.";
+    }
+    if (scope === "manuscript") {
+      return "Finalize one more run for this manuscript to compare the current result against manuscript history.";
+    }
     return "Finalize one more run in this suite to compare the current result against history.";
+  }
+  if (scope === "manuscript") {
+    return "Select a finalized run from this manuscript to compare it against prior manuscript history.";
   }
   return "Select a finalized run from the suite to compare it against prior history.";
 }
