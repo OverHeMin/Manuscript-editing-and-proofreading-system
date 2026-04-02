@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { withTemporaryDatabase, withTestClient } from "./support/postgres.ts";
@@ -63,6 +63,112 @@ const expectedTableColumns: Record<string, string[]> = {
     "fallback_model_id",
   ],
   audit_logs: ["id", "actor_id", "action", "target_table", "target_id", "created_at"],
+  evaluation_sample_sets: [
+    "id",
+    "name",
+    "module",
+    "manuscript_types",
+    "risk_tags",
+    "sample_count",
+    "source_policy",
+    "status",
+    "admin_only",
+  ],
+  evaluation_sample_set_items: [
+    "id",
+    "sample_set_id",
+    "manuscript_id",
+    "snapshot_asset_id",
+    "reviewed_case_snapshot_id",
+    "module",
+    "manuscript_type",
+    "risk_tags",
+  ],
+  verification_check_profiles: [
+    "id",
+    "name",
+    "check_type",
+    "status",
+    "tool_ids",
+    "admin_only",
+  ],
+  release_check_profiles: [
+    "id",
+    "name",
+    "check_type",
+    "status",
+    "verification_check_profile_ids",
+    "admin_only",
+  ],
+  evaluation_suites: [
+    "id",
+    "name",
+    "suite_type",
+    "status",
+    "verification_check_profile_ids",
+    "module_scope",
+    "module_scope_is_any",
+    "requires_production_baseline",
+    "supports_ab_comparison",
+    "hard_gate_policy",
+    "score_weights",
+    "admin_only",
+  ],
+  verification_evidence: [
+    "id",
+    "kind",
+    "label",
+    "uri",
+    "artifact_asset_id",
+    "check_profile_id",
+    "created_at",
+  ],
+  evaluation_runs: [
+    "id",
+    "suite_id",
+    "sample_set_id",
+    "baseline_binding",
+    "candidate_binding",
+    "release_check_profile_id",
+    "run_item_count",
+    "status",
+    "evidence_ids",
+    "started_at",
+    "finished_at",
+  ],
+  evaluation_run_items: [
+    "id",
+    "evaluation_run_id",
+    "sample_set_item_id",
+    "lane",
+    "result_asset_id",
+    "hard_gate_passed",
+    "weighted_score",
+    "failure_kind",
+    "failure_reason",
+    "diff_summary",
+    "requires_human_review",
+  ],
+  evaluation_evidence_packs: [
+    "id",
+    "experiment_run_id",
+    "summary_status",
+    "score_summary",
+    "regression_summary",
+    "failure_summary",
+    "cost_summary",
+    "latency_summary",
+    "created_at",
+  ],
+  evaluation_promotion_recommendations: [
+    "id",
+    "experiment_run_id",
+    "evidence_pack_id",
+    "status",
+    "decision_reason",
+    "learning_candidate_ids",
+    "created_at",
+  ],
 };
 
 const expectedIndexes = [
@@ -72,6 +178,15 @@ const expectedIndexes = [
   "knowledge_items_manuscript_types_gin_idx",
   "knowledge_items_risk_tags_gin_idx",
   "module_templates_manuscript_type_module_idx",
+  "evaluation_sample_sets_module_status_idx",
+  "evaluation_sample_set_items_sample_set_id_idx",
+  "verification_check_profiles_status_idx",
+  "release_check_profiles_status_idx",
+  "evaluation_suites_status_idx",
+  "evaluation_runs_suite_id_started_at_idx",
+  "evaluation_run_items_evaluation_run_id_idx",
+  "evaluation_evidence_packs_experiment_run_id_idx",
+  "evaluation_promotion_recommendations_experiment_run_id_idx",
 ];
 
 const expectedRoleKeys = [
@@ -82,6 +197,14 @@ const expectedRoleKeys = [
   "screener",
   "user",
 ];
+
+const migrationDirectory = path.join(
+  import.meta.dirname,
+  "../../src/database/migrations",
+);
+const requiredMigrationFiles = readdirSync(migrationDirectory)
+  .filter((fileName) => fileName.endsWith(".sql"))
+  .sort();
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
@@ -174,24 +297,17 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
       expectedRoleKeys,
       "System roles should be present after migration and seeding.",
     );
-    assert.deepEqual(
-      migrationResult.rows,
-      [
-        {
-          version: "0001_initial.sql",
-          checksum: getMigrationChecksum("0001_initial.sql"),
-        },
-        {
-          version: "0002_model_registry_version_guard.sql",
-          checksum: getMigrationChecksum("0002_model_registry_version_guard.sql"),
-        },
-        {
-          version: "0003_document_assets_file_name.sql",
-          checksum: getMigrationChecksum("0003_document_assets_file_name.sql"),
-        },
-      ],
-      "Expected migration bookkeeping for all applied database migrations.",
+    const actualMigrations = new Map(
+      migrationResult.rows.map((row) => [row.version, row.checksum]),
     );
+
+    for (const fileName of requiredMigrationFiles) {
+      assert.equal(
+        actualMigrations.get(fileName),
+        getMigrationChecksum(fileName),
+        `Expected migration bookkeeping for ${fileName}.`,
+      );
+    }
   });
 });
 
@@ -301,11 +417,7 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
     await client.connect();
 
     try {
-      for (const fileName of [
-        "0001_initial.sql",
-        "0002_model_registry_version_guard.sql",
-        "0003_document_assets_file_name.sql",
-      ]) {
+      for (const fileName of requiredMigrationFiles) {
         await client.query(
           `
             update schema_migrations
