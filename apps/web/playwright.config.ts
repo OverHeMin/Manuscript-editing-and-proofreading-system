@@ -23,12 +23,18 @@ export default defineConfig({
       cwd: repoRoot,
       url: `${apiBaseUrl}/healthz`,
       reuseExistingServer,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
     },
     {
       command: "pnpm run dev -- --host 127.0.0.1 --port 4173",
       cwd: webRoot,
       url: webBaseUrl,
       reuseExistingServer,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
       env: {
         ...process.env,
         VITE_APP_ENV: "local",
