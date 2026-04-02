@@ -130,6 +130,37 @@ test("admin can inspect governed execution outputs from the governance console",
   await expect(page.locator("body")).toContainText(prepared.manuscriptId);
 });
 
+test("admin can triage recent agent executions with filters and search", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareExecutionFilterScenario(request, {
+    label: "Phase 8AH",
+  });
+
+  await page.goto("/#admin-console", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const recentExecutionsPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
+
+  await expect(
+    recentExecutionsPanel.getByRole("button", { name: /Running \(\d+\)/ }),
+  ).toBeVisible();
+  await expect(recentExecutionsPanel.getByLabel("Search executions")).toBeVisible();
+
+  await recentExecutionsPanel.getByRole("button", { name: /Running \(\d+\)/ }).click();
+  await expect(recentExecutionsPanel).toContainText(prepared.runningManuscriptId);
+
+  await recentExecutionsPanel.getByRole("button", { name: /Completed \(\d+\)/ }).click();
+  await expect(recentExecutionsPanel).toContainText(prepared.completedManuscriptId);
+
+  await recentExecutionsPanel.getByLabel("Search executions").fill(prepared.completedManuscriptId);
+  await expect(recentExecutionsPanel).toContainText(prepared.completedManuscriptId);
+});
+
 interface PrepareExecutionPreviewScenarioInput {
   label: string;
 }
@@ -151,6 +182,11 @@ interface PreparedExecutionEvidenceScenario {
   jobId: string;
   assetId: string;
   assetFileName: string;
+}
+
+interface PreparedExecutionFilterScenario {
+  completedManuscriptId: string;
+  runningManuscriptId: string;
 }
 
 async function prepareExecutionPreviewScenario(
@@ -365,6 +401,53 @@ async function prepareExecutionEvidenceScenario(
   };
 }
 
+async function prepareExecutionFilterScenario(
+  request: APIRequestContext,
+  input: PrepareExecutionEvidenceScenarioInput,
+): Promise<PreparedExecutionFilterScenario> {
+  const completed = await prepareExecutionEvidenceScenario(request, input);
+  const seedLog = await findExecutionLogByManuscriptId(request, completed.manuscriptId);
+  const slug = slugify(`${input.label}-running`);
+
+  const runningUploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    data: {
+      title: `${input.label} Running Execution Manuscript`,
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: `${slug}-source.docx`,
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      storageKey: `uploads/${slug}/${slug}-source.docx`,
+    },
+  });
+  expect(runningUploadResponse.ok()).toBeTruthy();
+  const runningUpload = (await runningUploadResponse.json()) as {
+    manuscript: { id: string };
+  };
+
+  const runningLogResponse = await request.post(`${apiBaseUrl}/api/v1/agent-execution`, {
+    data: {
+      input: {
+        manuscriptId: runningUpload.manuscript.id,
+        module: "editing",
+        triggeredBy: "dev.admin",
+        runtimeId: seedLog.runtime_id,
+        sandboxProfileId: seedLog.sandbox_profile_id,
+        agentProfileId: seedLog.agent_profile_id,
+        runtimeBindingId: seedLog.runtime_binding_id,
+        toolPermissionPolicyId: seedLog.tool_permission_policy_id,
+        knowledgeItemIds: [],
+      },
+    },
+  });
+  expect(runningLogResponse.ok()).toBeTruthy();
+
+  return {
+    completedManuscriptId: completed.manuscriptId,
+    runningManuscriptId: runningUpload.manuscript.id,
+  };
+}
+
 async function loginAsDemoUser(
   request: APIRequestContext,
   username: string,
@@ -376,6 +459,25 @@ async function loginAsDemoUser(
     },
   });
   expect(response.ok()).toBeTruthy();
+}
+
+async function findExecutionLogByManuscriptId(
+  request: APIRequestContext,
+  manuscriptId: string,
+) {
+  const response = await request.get(`${apiBaseUrl}/api/v1/agent-execution`);
+  expect(response.ok()).toBeTruthy();
+  const logs = (await response.json()) as Array<{
+    manuscript_id: string;
+    runtime_id: string;
+    sandbox_profile_id: string;
+    agent_profile_id: string;
+    runtime_binding_id: string;
+    tool_permission_policy_id: string;
+  }>;
+  const matchingLog = logs.find((log) => log.manuscript_id === manuscriptId);
+  expect(matchingLog).toBeTruthy();
+  return matchingLog!;
 }
 
 function slugify(value: string) {

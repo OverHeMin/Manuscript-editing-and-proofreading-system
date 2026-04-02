@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { AgentExecutionLogViewModel } from "../agent-execution/index.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { AgentProfileRoleKey } from "../agent-profiles/index.ts";
 import type { AgentRuntimeAdapter } from "../agent-runtime/index.ts";
@@ -46,6 +47,9 @@ const toolAccessModes: ToolGatewayAccessMode[] = ["read", "write"];
 const sandboxModes: SandboxMode[] = ["read_only", "workspace_write", "full_access"];
 const agentProfileRoleKeys: AgentProfileRoleKey[] = ["superpowers", "gstack", "subagent"];
 const agentRuntimeAdapters: AgentRuntimeAdapter[] = ["internal_prompt", "deepagents"];
+const executionStatusFilters = ["all", "running", "completed", "failed", "queued"] as const;
+
+type AgentExecutionStatusFilter = (typeof executionStatusFilters)[number];
 
 export interface AgentToolingGovernanceSectionProps {
   actorRole: AuthRole;
@@ -111,6 +115,9 @@ export function AgentToolingGovernanceSection({
     executionProfileId: "",
   });
   const [selectedExecutionLogId, setSelectedExecutionLogId] = useState("");
+  const [executionStatusFilter, setExecutionStatusFilter] =
+    useState<AgentExecutionStatusFilter>("all");
+  const [executionSearchValue, setExecutionSearchValue] = useState("");
   const [executionEvidence, setExecutionEvidence] =
     useState<AdminGovernanceExecutionEvidence | null>(null);
   const [executionEvidenceError, setExecutionEvidenceError] = useState<string | null>(null);
@@ -132,7 +139,11 @@ export function AgentToolingGovernanceSection({
   }, [overview.toolGatewayTools]);
 
   useEffect(() => {
-    const firstExecutionLogId = overview.agentExecutionLogs[0]?.id ?? "";
+    const firstExecutionLogId = getVisibleAgentExecutionLogs(overview.agentExecutionLogs, {
+      statusFilter: "all",
+      searchValue: "",
+      limit: overview.agentExecutionLogs.length,
+    })[0]?.id ?? "";
     setSelectedExecutionLogId((current) =>
       syncSingleSelection(current, overview.agentExecutionLogs, firstExecutionLogId),
     );
@@ -378,6 +389,19 @@ export function AgentToolingGovernanceSection({
       onOverviewChange(result.overview, `Created runtime binding: ${result.createdBinding.id}`);
     });
   }
+
+  const executionStatusCounts = countExecutionLogsByStatus(overview.agentExecutionLogs);
+  const visibleExecutionLogs = getVisibleAgentExecutionLogs(overview.agentExecutionLogs, {
+    statusFilter: executionStatusFilter,
+    searchValue: executionSearchValue,
+    limit: 6,
+  });
+  const selectedExecutionIsHidden =
+    selectedExecutionLogId.length > 0 &&
+    visibleExecutionLogs.every((log) => log.id !== selectedExecutionLogId) &&
+    overview.agentExecutionLogs.some((log) => log.id === selectedExecutionLogId);
+  const hasExecutionFilters =
+    executionStatusFilter !== "all" || executionSearchValue.trim().length > 0;
 
   async function handleActivateRuntimeBinding(bindingId: string) {
     await runMutation(async () => {
@@ -1340,9 +1364,55 @@ export function AgentToolingGovernanceSection({
 
       <article className="admin-governance-panel admin-governance-panel-wide">
         <h3>Recent Agent Executions</h3>
+        <div className="admin-governance-toolbar">
+          <div
+            className="admin-governance-filter-row"
+            role="group"
+            aria-label="Execution status filters"
+          >
+            {executionStatusFilters.map((statusFilter) => (
+              <button
+                key={statusFilter}
+                type="button"
+                className={`workbench-secondary-action admin-governance-filter-button${executionStatusFilter === statusFilter ? " is-selected" : ""}`}
+                onClick={() => setExecutionStatusFilter(statusFilter)}
+                aria-pressed={executionStatusFilter === statusFilter}
+              >
+                {formatExecutionStatusFilterLabel(statusFilter, executionStatusCounts[statusFilter])}
+              </button>
+            ))}
+          </div>
+          <label className="admin-governance-field">
+            <span>Search executions</span>
+            <input
+              type="search"
+              value={executionSearchValue}
+              onChange={(event) => setExecutionSearchValue(event.target.value)}
+              placeholder="Search manuscript, log, runtime, binding, or actor"
+            />
+          </label>
+        </div>
+
+        {selectedExecutionIsHidden ? (
+          <div className="admin-governance-inline-notice" role="status">
+            <p>Selected execution is hidden by the current filters.</p>
+            <button
+              type="button"
+              className="workbench-secondary-action"
+              onClick={() => {
+                setExecutionStatusFilter("all");
+                setExecutionSearchValue("");
+              }}
+            >
+              Show selected execution
+            </button>
+          </div>
+        ) : null}
+
         {overview.agentExecutionLogs.length > 0 ? (
-          <ul className="admin-governance-list admin-governance-list-spaced">
-            {overview.agentExecutionLogs.slice(0, 6).map((log) => (
+          visibleExecutionLogs.length > 0 ? (
+            <ul className="admin-governance-list admin-governance-list-spaced">
+              {visibleExecutionLogs.map((log) => (
               <li key={log.id} className="admin-governance-template-row">
                 <div>
                   <strong>
@@ -1370,8 +1440,25 @@ export function AgentToolingGovernanceSection({
                   </button>
                 </div>
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          ) : (
+            <div className="admin-governance-inline-notice" role="status">
+              <p>No executions match the current filters.</p>
+              {hasExecutionFilters ? (
+                <button
+                  type="button"
+                  className="workbench-secondary-action"
+                  onClick={() => {
+                    setExecutionStatusFilter("all");
+                    setExecutionSearchValue("");
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : null}
+            </div>
+          )
         ) : (
           <p className="admin-governance-empty">
             No agent execution logs yet. Recent governed runs will surface here after manuscript
@@ -1486,4 +1573,106 @@ function toExecutionEvidenceErrorMessage(error: unknown): string {
   }
 
   return "Unable to load execution evidence.";
+}
+
+function countExecutionLogsByStatus(logs: readonly AgentExecutionLogViewModel[]) {
+  return logs.reduce<Record<AgentExecutionStatusFilter, number>>(
+    (counts, log) => {
+      counts.all += 1;
+      counts[log.status] += 1;
+      return counts;
+    },
+    {
+      all: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+      queued: 0,
+    },
+  );
+}
+
+function getVisibleAgentExecutionLogs(
+  logs: readonly AgentExecutionLogViewModel[],
+  input: {
+    statusFilter: AgentExecutionStatusFilter;
+    searchValue: string;
+    limit: number;
+  },
+) {
+  const normalizedSearch = input.searchValue.trim().toLowerCase();
+
+  return [...logs]
+    .sort(compareAgentExecutionLogsForTriage)
+    .filter((log) =>
+      input.statusFilter === "all" ? true : log.status === input.statusFilter,
+    )
+    .filter((log) =>
+      normalizedSearch.length === 0
+        ? true
+        : formatAgentExecutionSearchHaystack(log).includes(normalizedSearch),
+    )
+    .slice(0, input.limit);
+}
+
+function compareAgentExecutionLogsForTriage(
+  left: AgentExecutionLogViewModel,
+  right: AgentExecutionLogViewModel,
+) {
+  const leftRank = getExecutionStatusPriority(left.status);
+  const rightRank = getExecutionStatusPriority(right.status);
+
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
+  }
+
+  return Date.parse(right.started_at) - Date.parse(left.started_at);
+}
+
+function getExecutionStatusPriority(status: AgentExecutionLogViewModel["status"]) {
+  switch (status) {
+    case "failed":
+      return 0;
+    case "running":
+      return 1;
+    case "queued":
+      return 2;
+    case "completed":
+      return 3;
+  }
+}
+
+function formatAgentExecutionSearchHaystack(log: AgentExecutionLogViewModel) {
+  return [
+    log.id,
+    log.manuscript_id,
+    log.module,
+    log.triggered_by,
+    log.runtime_id,
+    log.runtime_binding_id,
+    log.agent_profile_id,
+    log.sandbox_profile_id,
+    log.tool_permission_policy_id,
+    log.status,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function formatExecutionStatusFilterLabel(
+  statusFilter: AgentExecutionStatusFilter,
+  count: number,
+) {
+  switch (statusFilter) {
+    case "all":
+      return `All (${count})`;
+    case "running":
+      return `Running (${count})`;
+    case "completed":
+      return `Completed (${count})`;
+    case "failed":
+      return `Failed (${count})`;
+    case "queued":
+      return `Queued (${count})`;
+  }
 }

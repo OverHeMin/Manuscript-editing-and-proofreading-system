@@ -34,7 +34,7 @@ const steps = [
     ],
   },
   {
-    label: "Web manuscript and evaluation workbench tests",
+    label: "Web manuscript, admin governance, and evaluation workbench tests",
     command: pnpmCommand,
     args: [
       "--filter",
@@ -44,6 +44,9 @@ const steps = [
       "--import",
       "tsx",
       "--test",
+      "test/admin-governance-controller.spec.ts",
+      "test/agent-execution-evidence-view.spec.tsx",
+      "test/agent-tooling-governance-section.spec.tsx",
       "test/manuscript-workbench-routing.spec.ts",
       "test/evaluation-workbench-controller.spec.ts",
       "test/evaluation-workbench-page.spec.tsx",

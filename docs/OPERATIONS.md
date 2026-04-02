@@ -77,7 +77,7 @@
 - Tool Gateway、Sandbox Profile、Agent Profile、Agent Runtime
 - Tool Permission Policy、Runtime Binding
 - execution bundle preview、最近 Agent Execution 日志查看，以及 execution snapshot / knowledge-hit 证据下钻
-- Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻，以及跳转到对应 workbench / 下载可导出资产
+- Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻、跳转到对应 workbench / 下载可导出资产，以及按状态筛选/搜索的执行分诊
 
 ## 3. 本地依赖服务
 
@@ -181,7 +181,7 @@ Web 关键环境变量：
 
 - 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 smoke
 - 当前浏览器门禁已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions
-- 当前浏览器门禁已经覆盖 admin governance console 的模板治理、execution bundle preview，以及 execution observability 输出下钻
+- 当前浏览器门禁已经覆盖 admin governance console 的模板治理、execution bundle preview，以及 execution observability 输出下钻与 Recent Agent Executions triage
 - 当前浏览器门禁也覆盖 evaluation workbench 中 draft suite 的真实激活链路，以及 create run -> save run item result -> finalize -> create learning candidate 的手动评测闭环
 - 同一条门禁也覆盖 verification-ops 持久化 HTTP 回归，确保评测资产、run/evidence/evidence-pack 与 learning handoff 在重启后仍可读取和继续流转
 - `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
