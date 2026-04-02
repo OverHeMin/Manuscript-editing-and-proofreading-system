@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -8,6 +8,10 @@ import type {
   KnowledgeSourceType,
 } from "../knowledge/index.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
+import type {
+  ModuleTemplateViewModel,
+  TemplateFamilyStatus,
+} from "../templates/index.ts";
 import {
   createTemplateGovernanceWorkbenchController,
   type TemplateGovernanceWorkbenchController,
@@ -67,10 +71,20 @@ const knowledgeSourceTypes: KnowledgeSourceType[] = [
   "website",
   "internal_case",
 ];
+const templateFamilyStatuses: TemplateFamilyStatus[] = [
+  "draft",
+  "active",
+  "archived",
+];
 
 interface TemplateFamilyFormState {
   manuscriptType: ManuscriptType;
   name: string;
+}
+
+interface SelectedTemplateFamilyFormState {
+  name: string;
+  status: TemplateFamilyStatus;
 }
 
 interface ModuleTemplateFormState {
@@ -106,15 +120,22 @@ export function TemplateGovernanceWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
 }: TemplateGovernanceWorkbenchPageProps) {
+  const selectedModuleTemplateIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(null);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedModuleTemplateId, setSelectedModuleTemplateId] = useState<string | null>(null);
   const [familyForm, setFamilyForm] = useState<TemplateFamilyFormState>({
     manuscriptType: "clinical_study",
     name: "",
   });
+  const [selectedFamilyForm, setSelectedFamilyForm] =
+    useState<SelectedTemplateFamilyFormState>({
+      name: "",
+      status: "draft",
+    });
   const [moduleForm, setModuleForm] = useState<ModuleTemplateFormState>({
     module: "screening",
     prompt: "",
@@ -148,11 +169,41 @@ export function TemplateGovernanceWorkbenchPage({
     }
   }
 
+  function setModuleTemplateSelection(moduleTemplateId: string | null) {
+    selectedModuleTemplateIdRef.current = moduleTemplateId;
+    setSelectedModuleTemplateId(moduleTemplateId);
+  }
+
   function synchronizeForms(nextOverview: TemplateGovernanceWorkbenchOverview) {
     if (nextOverview.selectedTemplateFamily) {
       setFamilyForm((current) => ({
         ...current,
         manuscriptType: nextOverview.selectedTemplateFamily?.manuscript_type ?? current.manuscriptType,
+      }));
+      setSelectedFamilyForm({
+        name: nextOverview.selectedTemplateFamily.name,
+        status: nextOverview.selectedTemplateFamily.status,
+      });
+    } else {
+      setSelectedFamilyForm({
+        name: "",
+        status: "draft",
+      });
+    }
+
+    const selectedModuleTemplate = resolveSelectedModuleTemplate(
+      nextOverview.moduleTemplates,
+      selectedModuleTemplateIdRef.current,
+    );
+    if (selectedModuleTemplate?.status === "draft") {
+      setModuleForm(toModuleTemplateFormState(selectedModuleTemplate));
+    } else {
+      setModuleTemplateSelection(null);
+      setModuleForm((current) => ({
+        ...current,
+        prompt: "",
+        checklist: "",
+        sectionRequirements: "",
       }));
     }
 
@@ -211,7 +262,37 @@ export function TemplateGovernanceWorkbenchPage({
     }, "Template family created.");
   }
 
-  async function handleCreateModuleTemplateDraft(event: FormEvent<HTMLFormElement>) {
+  async function handleUpdateSelectedTemplateFamily(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
+    if (!selectedTemplateFamilyId || !overview) {
+      setErrorMessage("Select a template family before updating it.");
+      return;
+    }
+
+    if (selectedFamilyForm.name.trim().length === 0) {
+      setErrorMessage("Selected template family name is required.");
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.updateTemplateFamilyAndReload({
+        templateFamilyId: selectedTemplateFamilyId,
+        input: {
+          name: selectedFamilyForm.name.trim(),
+          status: selectedFamilyForm.status,
+        },
+        selectedTemplateFamilyId,
+        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+        filters: overview.filters,
+      });
+      return result.overview;
+    }, "Template family updated.");
+  }
+
+  async function handleSubmitModuleTemplateDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
     if (!selectedTemplateFamilyId) {
@@ -224,19 +305,44 @@ export function TemplateGovernanceWorkbenchPage({
       return;
     }
 
+    const selectedModuleTemplate = resolveSelectedModuleTemplate(
+      overview.moduleTemplates,
+      selectedModuleTemplateId,
+    );
+    const isEditingModuleTemplate = selectedModuleTemplate?.status === "draft";
+    const checklist = splitCommaSeparatedValues(moduleForm.checklist);
+    const sectionRequirements = splitCommaSeparatedValues(moduleForm.sectionRequirements);
+
     await runBusyAction(async () => {
+      if (isEditingModuleTemplate && selectedModuleTemplate) {
+        const result = await controller.updateModuleTemplateDraftAndReload({
+          moduleTemplateId: selectedModuleTemplate.id,
+          input: {
+            prompt: moduleForm.prompt.trim(),
+            checklist: checklist ?? [],
+            sectionRequirements: sectionRequirements ?? [],
+          },
+          selectedTemplateFamilyId,
+          selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+          filters: overview.filters,
+        });
+        setModuleTemplateSelection(result.moduleTemplate.id);
+        return result.overview;
+      }
+
       const result = await controller.createModuleTemplateDraftAndReload({
         templateFamilyId: selectedTemplateFamilyId,
         manuscriptType:
           overview.selectedTemplateFamily?.manuscript_type ?? familyForm.manuscriptType,
         module: moduleForm.module,
         prompt: moduleForm.prompt.trim(),
-        checklist: splitCommaSeparatedValues(moduleForm.checklist),
-        sectionRequirements: splitCommaSeparatedValues(moduleForm.sectionRequirements),
+        checklist,
+        sectionRequirements,
         selectedTemplateFamilyId,
         selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
         filters: overview.filters,
       });
+      setModuleTemplateSelection(null);
       setModuleForm((current) => ({
         ...current,
         prompt: "",
@@ -244,7 +350,7 @@ export function TemplateGovernanceWorkbenchPage({
         sectionRequirements: "",
       }));
       return result.overview;
-    }, "Module template draft created.");
+    }, isEditingModuleTemplate ? "Module template draft updated." : "Module template draft created.");
   }
 
   async function handlePublishModuleTemplate(moduleTemplateId: string) {
@@ -253,6 +359,9 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     await runBusyAction(async () => {
+      if (selectedModuleTemplateIdRef.current === moduleTemplateId) {
+        setModuleTemplateSelection(null);
+      }
       const result = await controller.publishModuleTemplateAndReload({
         moduleTemplateId,
         actorRole,
@@ -262,6 +371,33 @@ export function TemplateGovernanceWorkbenchPage({
       });
       return result.overview;
     }, "Module template published.");
+  }
+
+  function handleEditModuleTemplate(moduleTemplateId: string) {
+    const selectedModuleTemplate = resolveSelectedModuleTemplate(
+      overview?.moduleTemplates ?? [],
+      moduleTemplateId,
+    );
+
+    if (!selectedModuleTemplate || selectedModuleTemplate.status !== "draft") {
+      return;
+    }
+
+    setStatusMessage(null);
+    setErrorMessage(null);
+    setModuleTemplateSelection(selectedModuleTemplate.id);
+    setModuleForm(toModuleTemplateFormState(selectedModuleTemplate));
+  }
+
+  function handleResetModuleTemplateForm() {
+    setModuleTemplateSelection(null);
+    setModuleForm((current) => ({
+      ...current,
+      prompt: "",
+      checklist: "",
+      sectionRequirements: "",
+    }));
+    setStatusMessage("Module template editor reset for a new draft.");
   }
 
   async function handleSubmitKnowledgeDraft(event: FormEvent<HTMLFormElement>) {
@@ -419,6 +555,11 @@ export function TemplateGovernanceWorkbenchPage({
     setStatusMessage("Draft editor reset for a new knowledge item.");
   }
 
+  const selectedModuleTemplate = resolveSelectedModuleTemplate(
+    overview?.moduleTemplates ?? [],
+    selectedModuleTemplateId,
+  );
+  const isEditingModuleTemplate = selectedModuleTemplate?.status === "draft";
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
 
@@ -539,6 +680,65 @@ export function TemplateGovernanceWorkbenchPage({
               No template families exist yet. Start by creating the family you want to govern.
             </p>
           )}
+
+          {overview?.selectedTemplateFamily ? (
+            <form
+              className="template-governance-form-grid"
+              onSubmit={handleUpdateSelectedTemplateFamily}
+            >
+              <p className="template-governance-selected-note">
+                Editing selected family: <strong>{overview.selectedTemplateFamily.name}</strong>
+              </p>
+              <label className="template-governance-field">
+                <span>Selected Family Name</span>
+                <input
+                  value={selectedFamilyForm.name}
+                  onChange={(event) =>
+                    setSelectedFamilyForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Selected family name"
+                />
+              </label>
+              <label className="template-governance-field">
+                <span>Status</span>
+                <select
+                  value={selectedFamilyForm.status}
+                  onChange={(event) =>
+                    setSelectedFamilyForm((current) => ({
+                      ...current,
+                      status: event.target.value as TemplateFamilyStatus,
+                    }))
+                  }
+                >
+                  {templateFamilyStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="template-governance-actions template-governance-actions-full">
+                <button type="submit" disabled={isBusy}>
+                  {isBusy ? "Saving..." : "Save Selected Family"}
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() =>
+                    setSelectedFamilyForm({
+                      name: overview.selectedTemplateFamily?.name ?? "",
+                      status: overview.selectedTemplateFamily?.status ?? "draft",
+                    })
+                  }
+                >
+                  Reset Selected Family
+                </button>
+              </div>
+            </form>
+          ) : null}
         </article>
 
         <article className="template-governance-panel">
@@ -558,11 +758,18 @@ export function TemplateGovernanceWorkbenchPage({
                 Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
                 {overview.selectedTemplateFamily.manuscript_type})
               </p>
-              <form className="template-governance-form-grid" onSubmit={handleCreateModuleTemplateDraft}>
+              {isEditingModuleTemplate ? (
+                <p className="template-governance-selected-note">
+                  Editing draft: <strong>{selectedModuleTemplate.module}</strong> v
+                  {selectedModuleTemplate.version_no}
+                </p>
+              ) : null}
+              <form className="template-governance-form-grid" onSubmit={handleSubmitModuleTemplateDraft}>
                 <label className="template-governance-field">
                   <span>Module</span>
                   <select
                     value={moduleForm.module}
+                    disabled={isEditingModuleTemplate}
                     onChange={(event) =>
                       setModuleForm((current) => ({
                         ...current,
@@ -613,7 +820,14 @@ export function TemplateGovernanceWorkbenchPage({
                 </label>
                 <div className="template-governance-actions template-governance-actions-full">
                   <button type="submit" disabled={isBusy}>
-                    {isBusy ? "Saving..." : "Create Module Draft"}
+                    {isBusy
+                      ? "Saving..."
+                      : isEditingModuleTemplate
+                        ? "Save Draft Changes"
+                        : "Create Module Draft"}
+                  </button>
+                  <button type="button" disabled={isBusy} onClick={handleResetModuleTemplateForm}>
+                    {isEditingModuleTemplate ? "Cancel Editing" : "Reset Draft Form"}
                   </button>
                 </div>
               </form>
@@ -648,6 +862,15 @@ export function TemplateGovernanceWorkbenchPage({
                       </div>
                       {moduleTemplate.status === "draft" ? (
                         <div className="template-governance-actions">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleEditModuleTemplate(moduleTemplate.id)}
+                          >
+                            {selectedModuleTemplateId === moduleTemplate.id
+                              ? "Editing Draft"
+                              : "Edit Draft"}
+                          </button>
                           <button
                             type="button"
                             disabled={isBusy}
@@ -1015,6 +1238,31 @@ function createKnowledgeDraftFormState(input: {
     sourceType: "other",
     sourceLink: "",
   };
+}
+
+function toModuleTemplateFormState(
+  moduleTemplate: Pick<
+    ModuleTemplateViewModel,
+    "module" | "prompt" | "checklist" | "section_requirements"
+  >,
+): ModuleTemplateFormState {
+  return {
+    module: moduleTemplate.module,
+    prompt: moduleTemplate.prompt,
+    checklist: (moduleTemplate.checklist ?? []).join(", "),
+    sectionRequirements: (moduleTemplate.section_requirements ?? []).join(", "),
+  };
+}
+
+function resolveSelectedModuleTemplate(
+  moduleTemplates: readonly ModuleTemplateViewModel[],
+  moduleTemplateId: string | null,
+): ModuleTemplateViewModel | null {
+  if (!moduleTemplateId) {
+    return null;
+  }
+
+  return moduleTemplates.find((template) => template.id === moduleTemplateId) ?? null;
 }
 
 function toKnowledgeDraftFormState(item: {

@@ -42,6 +42,12 @@ export interface CreateModuleTemplateDraftInput {
   sourceLearningCandidateId?: string;
 }
 
+export interface UpdateModuleTemplateDraftInput {
+  prompt?: string;
+  checklist?: string[];
+  sectionRequirements?: string[];
+}
+
 export interface CreateModuleTemplateDraftFromLearningCandidateInput
   extends CreateModuleTemplateDraftInput {
   sourceLearningCandidateId: string;
@@ -82,6 +88,15 @@ export class ModuleTemplateStatusTransitionError extends Error {
       `Module template ${moduleTemplateId} cannot transition from ${fromStatus} to ${toStatus}.`,
     );
     this.name = "ModuleTemplateStatusTransitionError";
+  }
+}
+
+export class ModuleTemplateDraftNotEditableError extends Error {
+  constructor(moduleTemplateId: string, status: string) {
+    super(
+      `Module template ${moduleTemplateId} is ${status} and can only be edited while in draft status.`,
+    );
+    this.name = "ModuleTemplateDraftNotEditableError";
   }
 }
 
@@ -240,6 +255,39 @@ export class TemplateGovernanceService {
 
         await moduleTemplateRepository.save(publishedTemplate);
         return publishedTemplate;
+      },
+    );
+  }
+
+  async updateModuleTemplateDraft(
+    moduleTemplateId: string,
+    input: UpdateModuleTemplateDraftInput,
+  ): Promise<ModuleTemplateRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ moduleTemplateRepository }) => {
+        const template = await moduleTemplateRepository.findById(moduleTemplateId);
+
+        if (!template) {
+          throw new ModuleTemplateNotFoundError(moduleTemplateId);
+        }
+
+        if (template.status !== "draft") {
+          throw new ModuleTemplateDraftNotEditableError(
+            moduleTemplateId,
+            template.status,
+          );
+        }
+
+        const updatedTemplate: ModuleTemplateRecord = {
+          ...template,
+          prompt: input.prompt ?? template.prompt,
+          checklist: input.checklist ?? template.checklist,
+          section_requirements:
+            input.sectionRequirements ?? template.section_requirements,
+        };
+
+        await moduleTemplateRepository.save(updatedTemplate);
+        return updatedTemplate;
       },
     );
   }

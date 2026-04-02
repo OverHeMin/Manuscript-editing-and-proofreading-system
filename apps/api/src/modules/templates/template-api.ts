@@ -3,6 +3,7 @@ import { TemplateGovernanceService } from "./template-governance-service.ts";
 import type {
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
+  UpdateModuleTemplateDraftInput,
   UpdateTemplateFamilyInput,
 } from "./template-governance-service.ts";
 import type {
@@ -38,6 +39,22 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
       return {
         status: 201,
         body: await templateService.createModuleTemplateDraft(input),
+      };
+    },
+
+    async updateModuleTemplateDraft({
+      moduleTemplateId,
+      input,
+    }: {
+      moduleTemplateId: string;
+      input: UpdateModuleTemplateDraftInput;
+    }): Promise<RouteResponse<ModuleTemplateRecord>> {
+      return {
+        status: 200,
+        body: await templateService.updateModuleTemplateDraft(
+          moduleTemplateId,
+          input,
+        ),
       };
     },
 

@@ -170,6 +170,23 @@ test("template governance controller can create, update, submit, and publish gov
         };
       }
 
+      if (input.url === "/api/v1/templates/module-templates/template-editing-1/draft") {
+        return {
+          status: 200,
+          body: {
+            id: "template-editing-1",
+            template_family_id: "family-1",
+            module: "editing",
+            manuscript_type: "review",
+            version_no: 1,
+            status: "draft",
+            prompt: "Edit review manuscripts with evidence-aware language.",
+            checklist: ["Terminology", "Evidence"],
+            section_requirements: ["results", "discussion"],
+          } as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/templates/module-templates/template-editing-1/publish") {
         return {
           status: 200,
@@ -273,6 +290,15 @@ test("template governance controller can create, update, submit, and publish gov
     manuscriptType: "review",
     prompt: "Edit review manuscripts.",
   });
+  const updatedTemplate = await controller.updateModuleTemplateDraftAndReload({
+    moduleTemplateId: "template-editing-1",
+    input: {
+      prompt: "Edit review manuscripts with evidence-aware language.",
+      checklist: ["Terminology", "Evidence"],
+      sectionRequirements: ["results", "discussion"],
+    },
+    selectedTemplateFamilyId: "family-1",
+  });
   const knowledgeResult = await controller.createKnowledgeDraftAndReload({
     title: "Terminology draft",
     canonicalText: "Use standard terminology.",
@@ -301,6 +327,15 @@ test("template governance controller can create, update, submit, and publish gov
   });
 
   assert.equal(knowledgeResult.knowledgeItem.id, "knowledge-1");
+  assert.equal(updatedTemplate.moduleTemplate.prompt, "Edit review manuscripts with evidence-aware language.");
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.method === "POST" &&
+        request.url === "/api/v1/templates/module-templates/template-editing-1/draft",
+    ),
+    true,
+  );
   assert.equal(
     requests.some(
       (request) =>
@@ -314,6 +349,81 @@ test("template governance controller can create, update, submit, and publish gov
       (request) =>
         request.method === "POST" &&
         request.url === "/api/v1/templates/module-templates/template-editing-1/publish",
+    ),
+    true,
+  );
+});
+
+test("template governance controller updates a template family and keeps it selected after reload", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families/family-1" && input.method === "POST") {
+        return {
+          status: 200,
+          body: {
+            id: "family-1",
+            manuscript_type: "review",
+            name: "Review Family Active",
+            status: "active",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "review",
+              name: "Review Family Active",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.updateTemplateFamilyAndReload({
+    templateFamilyId: "family-1",
+    input: {
+      name: "Review Family Active",
+      status: "active",
+    },
+    selectedTemplateFamilyId: "family-1",
+  });
+
+  assert.equal(result.templateFamily.name, "Review Family Active");
+  assert.equal(result.overview.selectedTemplateFamilyId, "family-1");
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.method === "POST" &&
+        request.url === "/api/v1/templates/families/family-1",
     ),
     true,
   );

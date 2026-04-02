@@ -195,6 +195,7 @@ import {
 } from "../modules/screening/index.ts";
 import {
   createTemplateApi,
+  ModuleTemplateDraftNotEditableError,
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
   ModuleTemplateNotFoundError,
@@ -451,6 +452,10 @@ type HttpRouteMatch =
     }
   | {
       route: "templates-create-module-draft";
+    }
+  | {
+      route: "templates-update-module-draft";
+      moduleTemplateId: string;
     }
   | {
       route: "templates-list-module-templates";
@@ -2339,6 +2344,14 @@ async function handleRoute(
           typeof runtime.templateApi.createModuleTemplateDraft
         >[0],
       );
+    case "templates-update-module-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.updateModuleTemplateDraft({
+        moduleTemplateId: routeMatch.moduleTemplateId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateModuleTemplateDraft
+        >[0]["input"],
+      });
     case "templates-list-module-templates":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
@@ -3164,6 +3177,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const updateModuleTemplateDraftMatch = path.match(
+    /^\/api\/v1\/templates\/module-templates\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateModuleTemplateDraftMatch) {
+    return {
+      route: "templates-update-module-draft",
+      moduleTemplateId: updateModuleTemplateDraftMatch[1],
+    };
+  }
+
   const publishModuleTemplateMatch = path.match(
     /^\/api\/v1\/templates\/module-templates\/([^/]+)\/publish$/,
   );
@@ -3893,6 +3916,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackStatusTransitionError ||
     error instanceof LearningGovernanceConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
+    error instanceof ModuleTemplateDraftNotEditableError ||
     error instanceof ModuleTemplateStatusTransitionError ||
     error instanceof DuplicateModelRegistryEntryError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||

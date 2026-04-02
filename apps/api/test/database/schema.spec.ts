@@ -445,6 +445,14 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
           version: "0009_agent_tooling_persistence.sql",
           checksum: getMigrationChecksum("0009_agent_tooling_persistence.sql"),
         },
+        {
+          version: "0010_learning_review_persistence.sql",
+          checksum: getMigrationChecksum("0010_learning_review_persistence.sql"),
+        },
+        {
+          version: "0011_verification_ops_persistence.sql",
+          checksum: getMigrationChecksum("0011_verification_ops_persistence.sql"),
+        },
       ],
       "Expected migration bookkeeping for all applied database migrations.",
     );
@@ -567,6 +575,8 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
         "0007_model_routing_policy_persistence.sql",
         "0008_execution_runtime_persistence.sql",
         "0009_agent_tooling_persistence.sql",
+        "0010_learning_review_persistence.sql",
+        "0011_verification_ops_persistence.sql",
       ]) {
         await client.query(
           `

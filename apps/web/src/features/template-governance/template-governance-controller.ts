@@ -16,11 +16,15 @@ import {
   listModuleTemplatesByTemplateFamilyId,
   listTemplateFamilies,
   publishModuleTemplate,
+  updateModuleTemplateDraft,
+  updateTemplateFamily,
   type CreateModuleTemplateDraftInput,
   type CreateTemplateFamilyInput,
   type ModuleTemplateViewModel,
   type TemplateFamilyViewModel,
   type TemplateHttpClient,
+  type UpdateModuleTemplateDraftInput,
+  type UpdateTemplateFamilyInput,
 } from "../templates/index.ts";
 import type { AuthRole } from "../auth/index.ts";
 
@@ -56,9 +60,23 @@ export interface TemplateGovernanceWorkbenchController {
     templateFamily: TemplateFamilyViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
+  updateTemplateFamilyAndReload(input: {
+    templateFamilyId: string;
+    input: UpdateTemplateFamilyInput;
+  } & TemplateGovernanceReloadContext): Promise<{
+    templateFamily: TemplateFamilyViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
   createModuleTemplateDraftAndReload(
     input: CreateModuleTemplateDraftInput & TemplateGovernanceReloadContext,
   ): Promise<{
+    moduleTemplate: ModuleTemplateViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  updateModuleTemplateDraftAndReload(input: {
+    moduleTemplateId: string;
+    input: UpdateModuleTemplateDraftInput;
+  } & TemplateGovernanceReloadContext): Promise<{
     moduleTemplate: ModuleTemplateViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
@@ -115,6 +133,21 @@ export function createTemplateGovernanceWorkbenchController(
         }),
       };
     },
+    async updateTemplateFamilyAndReload(input) {
+      const templateFamily = (
+        await updateTemplateFamily(client, input.templateFamilyId, input.input)
+      ).body;
+
+      return {
+        templateFamily,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? templateFamily.id,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
     async createModuleTemplateDraftAndReload(input) {
       const { selectedKnowledgeItemId, selectedTemplateFamilyId, filters, ...draftInput } =
         input;
@@ -127,6 +160,21 @@ export function createTemplateGovernanceWorkbenchController(
             selectedTemplateFamilyId ?? draftInput.templateFamilyId,
           selectedKnowledgeItemId,
           filters,
+        }),
+      };
+    },
+    async updateModuleTemplateDraftAndReload(input) {
+      const moduleTemplate = (
+        await updateModuleTemplateDraft(client, input.moduleTemplateId, input.input)
+      ).body;
+
+      return {
+        moduleTemplate,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? moduleTemplate.template_family_id,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
         }),
       };
     },
