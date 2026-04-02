@@ -645,6 +645,9 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
   await expect(historyPanel).toContainText("Comparison scope: Broader suite history");
   await expect(historyPanel).toContainText("Selected origin: Current manuscript");
   await expect(historyPanel).toContainText("Previous origin: Broader suite");
+  await expect(historyPanel).toContainText(
+    "Current manuscript runs: 1 | Broader suite references: 1",
+  );
   const historyList = historyPanel.locator(".evaluation-workbench-history-list");
   await expect(historyList).toContainText(matchedRunId);
   await expect(historyList).toContainText("Origin: Current manuscript");

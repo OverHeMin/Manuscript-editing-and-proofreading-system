@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
+  describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
@@ -514,6 +515,38 @@ test("describeHistoryEntryOriginLabel distinguishes current manuscript from broa
     describeHistoryEntryOriginLabel({
       runId: "run-2",
       matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: false,
+      scope: "suite",
+    }),
+    null,
+  );
+});
+
+test("describeHistoryOriginSummary counts manuscript and broader-suite runs", () => {
+  assert.equal(
+    describeHistoryOriginSummary({
+      runIds: ["run-2", "run-3", "run-1"],
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: true,
+      scope: "suite",
+    }),
+    "Current manuscript runs: 2 | Broader suite references: 1",
+  );
+
+  assert.equal(
+    describeHistoryOriginSummary({
+      runIds: ["run-2", "run-1"],
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: true,
+      scope: "manuscript",
+    }),
+    "Matched manuscript runs: 2",
+  );
+
+  assert.equal(
+    describeHistoryOriginSummary({
+      runIds: ["run-2"],
+      matchedRunIds: ["run-2"],
       hasManuscriptContext: false,
       scope: "suite",
     }),

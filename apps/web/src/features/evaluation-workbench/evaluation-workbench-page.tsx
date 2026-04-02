@@ -199,6 +199,12 @@ export function EvaluationWorkbenchPage({
     visibleFinalizedRunHistory,
     historySortMode,
   );
+  const historyOriginSummary = describeHistoryOriginSummary({
+    runIds: sortedVisibleFinalizedRunHistory.map((entry) => entry.run.id),
+    matchedRunIds: matchedHistoryRunIds,
+    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
+    scope: effectiveHistoryScope,
+  });
   const isSelectedRunHiddenByHistoryControls = isSelectedRunHiddenFromHistoryList(
     sortedVisibleFinalizedRunHistory,
     selectedRun?.id ?? null,
@@ -496,6 +502,11 @@ export function EvaluationWorkbenchPage({
                   <dd>{historyCounts.rejected}</dd>
                 </div>
               </dl>
+              {historyOriginSummary ? (
+                <div className="evaluation-workbench-history-compare">
+                  <span>{historyOriginSummary}</span>
+                </div>
+              ) : null}
               {normalizedPrefilledManuscriptId.length > 0 ? (
                 <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history scope">
                   {createHistoryScopeOptions(matchedHistoryRunIds.length).map((option) => {
@@ -1655,6 +1666,24 @@ export function describeHistoryEntryOriginLabel(input: {
 
   const matchedRunIdSet = new Set(input.matchedRunIds);
   return matchedRunIdSet.has(input.runId) ? "Current manuscript" : "Broader suite";
+}
+
+export function describeHistoryOriginSummary(input: {
+  runIds: readonly string[];
+  matchedRunIds: readonly string[];
+  hasManuscriptContext: boolean;
+  scope: EvaluationWorkbenchHistoryScope;
+}) {
+  if (!input.hasManuscriptContext) return null;
+  if (input.runIds.length === 0) return null;
+  if (input.scope === "manuscript") {
+    return `Matched manuscript runs: ${input.runIds.length}`;
+  }
+
+  const matchedRunIdSet = new Set(input.matchedRunIds);
+  const manuscriptCount = input.runIds.filter((runId) => matchedRunIdSet.has(runId)).length;
+  const broaderSuiteCount = input.runIds.length - manuscriptCount;
+  return `Current manuscript runs: ${manuscriptCount} | Broader suite references: ${broaderSuiteCount}`;
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {
