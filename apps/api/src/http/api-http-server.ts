@@ -195,6 +195,7 @@ import {
 } from "../modules/screening/index.ts";
 import {
   createTemplateApi,
+  TemplateFamilyActiveConflictError,
   ModuleTemplateDraftNotEditableError,
   InMemoryModuleTemplateRepository,
   InMemoryTemplateFamilyRepository,
@@ -3915,6 +3916,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackTargetMismatchError ||
     error instanceof LearningWritebackStatusTransitionError ||
     error instanceof LearningGovernanceConflictError ||
+    error instanceof TemplateFamilyActiveConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ModuleTemplateDraftNotEditableError ||
     error instanceof ModuleTemplateStatusTransitionError ||

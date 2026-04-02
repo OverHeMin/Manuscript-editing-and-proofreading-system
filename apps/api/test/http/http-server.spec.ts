@@ -725,6 +725,78 @@ test("http server lets admin create template governance and prompt skill drafts"
   }
 });
 
+test("http server rejects activating a second template family for the same manuscript type", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const firstFamilyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "review",
+        name: "Review governance family A",
+      }),
+    });
+    const firstFamily = (await firstFamilyResponse.json()) as { id: string };
+
+    const secondFamilyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "review",
+        name: "Review governance family B",
+      }),
+    });
+    const secondFamily = (await secondFamilyResponse.json()) as { id: string };
+
+    const activateFirstResponse = await fetch(
+      `${baseUrl}/api/v1/templates/families/${firstFamily.id}`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "active",
+        }),
+      },
+    );
+
+    const activateSecondResponse = await fetch(
+      `${baseUrl}/api/v1/templates/families/${secondFamily.id}`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "active",
+        }),
+      },
+    );
+    const activateSecondBody = (await activateSecondResponse.json()) as {
+      error: string;
+      message: string;
+    };
+
+    assert.equal(activateFirstResponse.status, 200);
+    assert.equal(activateSecondResponse.status, 409);
+    assert.equal(activateSecondBody.error, "state_conflict");
+    assert.match(activateSecondBody.message, /already active/i);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server lets admin manage model registry entries and routing policy", async () => {
   const { server, baseUrl } = await startServer();
 

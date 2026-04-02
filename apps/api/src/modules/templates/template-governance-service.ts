@@ -113,6 +113,19 @@ export class TemplateFamilyManuscriptTypeMismatchError extends Error {
   }
 }
 
+export class TemplateFamilyActiveConflictError extends Error {
+  constructor(
+    manuscriptType: string,
+    templateFamilyId: string,
+    activeTemplateFamilyId: string,
+  ) {
+    super(
+      `Template family ${templateFamilyId} cannot be activated for manuscript type ${manuscriptType} while template family ${activeTemplateFamilyId} is already active.`,
+    );
+    this.name = "TemplateFamilyActiveConflictError";
+  }
+}
+
 export class TemplateGovernanceService {
   private readonly templateFamilyRepository: TemplateFamilyRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
@@ -296,22 +309,44 @@ export class TemplateGovernanceService {
     templateFamilyId: string,
     input: UpdateTemplateFamilyInput,
   ): Promise<TemplateFamilyRecord> {
-    const templateFamily = await this.templateFamilyRepository.findById(
-      templateFamilyId,
+    return this.transactionManager.withTransaction(
+      async ({ templateFamilyRepository }) => {
+        const templateFamily = await templateFamilyRepository.findById(
+          templateFamilyId,
+        );
+
+        if (!templateFamily) {
+          throw new TemplateFamilyNotFoundError(templateFamilyId);
+        }
+
+        const nextStatus = input.status ?? templateFamily.status;
+        if (nextStatus === "active" && templateFamily.status !== "active") {
+          const activeFamily = (await templateFamilyRepository.list()).find(
+            (family) =>
+              family.id !== templateFamilyId &&
+              family.manuscript_type === templateFamily.manuscript_type &&
+              family.status === "active",
+          );
+
+          if (activeFamily) {
+            throw new TemplateFamilyActiveConflictError(
+              templateFamily.manuscript_type,
+              templateFamilyId,
+              activeFamily.id,
+            );
+          }
+        }
+
+        const updatedFamily: TemplateFamilyRecord = {
+          ...templateFamily,
+          name: input.name ?? templateFamily.name,
+          status: nextStatus,
+        };
+
+        await templateFamilyRepository.save(updatedFamily);
+        return updatedFamily;
+      },
     );
-
-    if (!templateFamily) {
-      throw new TemplateFamilyNotFoundError(templateFamilyId);
-    }
-
-    const updatedFamily: TemplateFamilyRecord = {
-      ...templateFamily,
-      name: input.name ?? templateFamily.name,
-      status: input.status ?? templateFamily.status,
-    };
-
-    await this.templateFamilyRepository.save(updatedFamily);
-    return updatedFamily;
   }
 
   async listModuleTemplatesByTemplateFamilyId(

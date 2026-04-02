@@ -340,6 +340,58 @@ test("postgres template governance updates draft content in place without changi
   });
 });
 
+test("postgres template governance rejects activating a second family for the same manuscript type", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const { service } = createPostgresTemplateHarness(pool, {
+      issuedIds: [
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab",
+      ],
+    });
+    const firstFamily = await service.createTemplateFamily({
+      manuscriptType: "review",
+      name: "Review Family A",
+    });
+    const secondFamily = await service.createTemplateFamily({
+      manuscriptType: "review",
+      name: "Review Family B",
+    });
+
+    await service.updateTemplateFamily(firstFamily.id, {
+      status: "active",
+    });
+
+    await assert.rejects(
+      () =>
+        service.updateTemplateFamily(secondFamily.id, {
+          status: "active",
+        }),
+      /active/i,
+    );
+
+    const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+      client: pool,
+    });
+    const listedFamilies = await templateFamilyRepository.list();
+    assert.deepEqual(
+      listedFamilies.map((family) => ({
+        id: family.id,
+        status: family.status,
+      })),
+      [
+        {
+          id: firstFamily.id,
+          status: "active",
+        },
+        {
+          id: secondFamily.id,
+          status: "draft",
+        },
+      ],
+    );
+  });
+});
+
 test("postgres template governance rolls back archived prior versions when the publish write fails", async () => {
   await withMigratedTemplatePool(async (pool) => {
     let failOnTemplateId: string | undefined;

@@ -28,10 +28,13 @@ class FailingModuleTemplateRepository extends InMemoryModuleTemplateRepository {
 
 function createTemplateHarness(
   moduleTemplateRepository: InMemoryModuleTemplateRepository = new InMemoryModuleTemplateRepository(),
+  options: {
+    issuedIds?: string[];
+  } = {},
 ) {
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
-  const issuedIds = ["family-1", "template-1", "template-2"];
+  const issuedIds = [...(options.issuedIds ?? ["family-1", "template-1", "template-2"])];
   const nextId = () => {
     const value = issuedIds.shift();
     assert.ok(value, "Expected a template test id to be available.");
@@ -256,6 +259,57 @@ test("template families can be updated and listed while drafts are being prepare
   assert.equal(listed.status, 200);
   assert.equal(listed.body.length, 1);
   assert.equal(listed.body[0]?.id, family.body.id);
+});
+
+test("only one active template family is allowed per manuscript type", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "family-2"],
+  });
+
+  const firstFamily = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review Family A",
+  });
+  const secondFamily = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review Family B",
+  });
+
+  await api.updateTemplateFamily({
+    templateFamilyId: firstFamily.body.id,
+    input: {
+      status: "active",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      api.updateTemplateFamily({
+        templateFamilyId: secondFamily.body.id,
+        input: {
+          status: "active",
+        },
+      }),
+    /active/i,
+  );
+
+  const listed = await api.listTemplateFamilies();
+  assert.deepEqual(
+    listed.body.map((family) => ({
+      id: family.id,
+      status: family.status,
+    })),
+    [
+      {
+        id: firstFamily.body.id,
+        status: "active",
+      },
+      {
+        id: secondFamily.body.id,
+        status: "draft",
+      },
+    ],
+  );
 });
 
 test("module template manuscript type must match its parent template family", async () => {
