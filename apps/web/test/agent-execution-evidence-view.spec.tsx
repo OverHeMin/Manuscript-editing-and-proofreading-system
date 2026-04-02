@@ -110,6 +110,23 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
             created_at: "2026-03-31T08:00:30.000Z",
           },
         ],
+        verificationEvidence: [
+          {
+            id: "evidence-1",
+            kind: "url",
+            label: "Editing browser QA",
+            uri: "https://example.test/evidence/editing-browser-qa",
+            created_at: "2026-03-31T08:00:50.000Z",
+          },
+          {
+            id: "evidence-2",
+            kind: "artifact",
+            label: "Editing artifact evidence",
+            artifact_asset_id: "asset-1",
+            created_at: "2026-03-31T08:00:55.000Z",
+          },
+        ],
+        unresolvedVerificationEvidenceIds: ["evidence-legacy-1"],
       }}
     />,
   );
@@ -128,7 +145,11 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /\/api\/v1\/document-assets\/asset-1\/download/);
   assert.match(html, /Required by editing profile/);
   assert.match(html, /Matched discussion terminology/);
-  assert.match(html, /evidence-1/);
+  assert.match(html, /Editing browser QA/);
+  assert.match(html, /https:\/\/example\.test\/evidence\/editing-browser-qa/);
+  assert.match(html, /Editing artifact evidence/);
+  assert.match(html, /\/api\/v1\/document-assets\/asset-1\/download/);
+  assert.match(html, /evidence-legacy-1/);
 });
 
 test("agent execution evidence view renders a snapshot-pending state for running logs", () => {
@@ -155,6 +176,8 @@ test("agent execution evidence view renders a snapshot-pending state for running
         createdAssets: [],
         snapshot: null,
         knowledgeHitLogs: [],
+        verificationEvidence: [],
+        unresolvedVerificationEvidenceIds: [],
       }}
     />,
   );

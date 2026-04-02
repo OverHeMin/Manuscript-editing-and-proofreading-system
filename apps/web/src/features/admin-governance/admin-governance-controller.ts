@@ -102,6 +102,10 @@ import type {
   UpdateModelRoutingPolicyInput,
 } from "../model-registry/index.ts";
 import type { PromptTemplateViewModel, SkillPackageViewModel } from "../prompt-skill-registry/index.ts";
+import {
+  getVerificationEvidence,
+} from "../verification-ops/index.ts";
+import type { VerificationEvidenceViewModel } from "../verification-ops/index.ts";
 import type {
   CreateModuleTemplateDraftInput,
   ModuleTemplateViewModel,
@@ -144,6 +148,8 @@ export interface AdminGovernanceExecutionEvidence {
   createdAssets: DocumentAssetViewModel[];
   snapshot: ModuleExecutionSnapshotViewModel | null;
   knowledgeHitLogs: KnowledgeHitLogViewModel[];
+  verificationEvidence: VerificationEvidenceViewModel[];
+  unresolvedVerificationEvidenceIds: string[];
 }
 
 export interface AdminGovernanceWorkbenchController {
@@ -456,11 +462,19 @@ export async function loadAdminGovernanceExecutionEvidence(
   logId: string,
 ): Promise<AdminGovernanceExecutionEvidence> {
   const log = (await getAgentExecutionLog(client, logId)).body;
-  const [manuscript, manuscriptAssets] = await Promise.all([
+  const [manuscript, manuscriptAssets, verificationEvidenceResults] = await Promise.all([
     loadOptional(() => getManuscript(client, log.manuscript_id).then((response) => response.body)),
     loadOptional(() =>
       listManuscriptAssets(client, log.manuscript_id).then((response) => response.body),
       [] as DocumentAssetViewModel[],
+    ),
+    Promise.all(
+      log.verification_evidence_ids.map(async (evidenceId) => ({
+        evidenceId,
+        record: await loadOptional(() =>
+          getVerificationEvidence(client, evidenceId).then((response) => response.body),
+        ),
+      })),
     ),
   ]);
   const snapshotId = log.execution_snapshot_id;
@@ -473,6 +487,12 @@ export async function loadAdminGovernanceExecutionEvidence(
       createdAssets: [],
       snapshot: null,
       knowledgeHitLogs: [],
+      verificationEvidence: verificationEvidenceResults
+        .map((result) => result.record)
+        .filter((record): record is VerificationEvidenceViewModel => record != null),
+      unresolvedVerificationEvidenceIds: verificationEvidenceResults
+        .filter((result) => result.record == null)
+        .map((result) => result.evidenceId),
     };
   }
 
@@ -500,6 +520,12 @@ export async function loadAdminGovernanceExecutionEvidence(
           ),
     snapshot,
     knowledgeHitLogs: knowledgeHitResponse.body,
+    verificationEvidence: verificationEvidenceResults
+      .map((result) => result.record)
+      .filter((record): record is VerificationEvidenceViewModel => record != null),
+    unresolvedVerificationEvidenceIds: verificationEvidenceResults
+      .filter((result) => result.record == null)
+      .map((result) => result.evidenceId),
   };
 }
 

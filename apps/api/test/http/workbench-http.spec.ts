@@ -819,6 +819,24 @@ test("verification ops http routes support an admin evaluation flow and learning
     assert.equal(runEvidence[0]?.label, "Demo evaluation browser QA");
     assert.equal(runEvidence[0]?.uri, "https://example.test/evidence/browser-qa");
 
+    const evidenceByIdResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evidence/${evidence.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(evidenceByIdResponse.status, 200);
+    const evidenceById = (await evidenceByIdResponse.json()) as {
+      id: string;
+      label: string;
+      uri?: string;
+    };
+    assert.equal(evidenceById.id, evidence.id);
+    assert.equal(evidenceById.label, "Demo evaluation browser QA");
+    assert.equal(evidenceById.uri, "https://example.test/evidence/browser-qa");
+
     const createLearningCandidateResponse = await fetch(
       `${baseUrl}/api/v1/verification-ops/evaluation-runs/${run.id}/learning-candidates`,
       {

@@ -722,6 +722,15 @@ export class VerificationOpsService {
     return this.repository.listEvaluationRunItemsByRunId(runId);
   }
 
+  async getVerificationEvidence(
+    actorRole: RoleKey,
+    evidenceId: string,
+  ): Promise<VerificationEvidenceRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.requireVerificationEvidence(evidenceId);
+  }
+
   async listEvaluationRunEvidence(
     actorRole: RoleKey,
     runId: string,

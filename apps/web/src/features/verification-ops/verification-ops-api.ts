@@ -219,6 +219,16 @@ export function recordVerificationEvidence(
   });
 }
 
+export function getVerificationEvidence(
+  client: VerificationOpsHttpClient,
+  evidenceId: string,
+) {
+  return client.request<VerificationEvidenceViewModel>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evidence/${evidenceId}`,
+  });
+}
+
 export function createEvaluationRun(
   client: VerificationOpsHttpClient,
   input: CreateEvaluationRunInput,

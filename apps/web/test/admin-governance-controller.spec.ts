@@ -1308,7 +1308,7 @@ test("admin governance controller loads execution evidence with snapshot and kno
             tool_permission_policy_id: "policy-1",
             execution_snapshot_id: "snapshot-1",
             knowledge_item_ids: ["knowledge-1", "knowledge-2"],
-            verification_evidence_ids: ["evidence-1"],
+            verification_evidence_ids: ["evidence-1", "evidence-missing"],
             status: "completed",
             started_at: "2026-03-31T08:00:00.000Z",
             finished_at: "2026-03-31T08:01:00.000Z",
@@ -1402,6 +1402,23 @@ test("admin governance controller loads execution evidence with snapshot and kno
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evidence/evidence-1") {
+        return {
+          status: 200,
+          body: {
+            id: "evidence-1",
+            kind: "url",
+            label: "Editing browser QA",
+            uri: "https://example.test/evidence/editing-browser-qa",
+            created_at: "2026-03-31T08:00:50.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evidence/evidence-missing") {
+        throw new Error("not found");
+      }
+
       return {
         status: 200,
         body: [
@@ -1456,11 +1473,28 @@ test("admin governance controller loads execution evidence with snapshot and kno
     ],
   );
   assert.deepEqual(
+    evidence.verificationEvidence.map((record) => ({
+      id: record.id,
+      label: record.label,
+      kind: record.kind,
+    })),
+    [
+      {
+        id: "evidence-1",
+        label: "Editing browser QA",
+        kind: "url",
+      },
+    ],
+  );
+  assert.deepEqual(evidence.unresolvedVerificationEvidenceIds, ["evidence-missing"]);
+  assert.deepEqual(
     requests.map((request) => request.url),
     [
       "/api/v1/agent-execution/log-1",
       "/api/v1/manuscripts/manuscript-1",
       "/api/v1/manuscripts/manuscript-1/assets",
+      "/api/v1/verification-ops/evidence/evidence-1",
+      "/api/v1/verification-ops/evidence/evidence-missing",
       "/api/v1/execution-tracking/snapshots/snapshot-1",
       "/api/v1/execution-tracking/snapshots/snapshot-1/knowledge-hit-logs",
       "/api/v1/jobs/job-1",
@@ -1620,6 +1654,19 @@ test("admin governance controller joins manuscript, job, and created asset outpu
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evidence/evidence-1") {
+        return {
+          status: 200,
+          body: {
+            id: "evidence-1",
+            kind: "artifact",
+            label: "Editing final QA checklist",
+            artifact_asset_id: "asset-edited-1",
+            created_at: "2026-04-02T08:00:50.000Z",
+          } as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -1643,11 +1690,27 @@ test("admin governance controller joins manuscript, job, and created asset outpu
     ],
   );
   assert.deepEqual(
+    evidence.verificationEvidence.map((record) => ({
+      id: record.id,
+      kind: record.kind,
+      artifactAssetId: record.artifact_asset_id,
+    })),
+    [
+      {
+        id: "evidence-1",
+        kind: "artifact",
+        artifactAssetId: "asset-edited-1",
+      },
+    ],
+  );
+  assert.deepEqual(evidence.unresolvedVerificationEvidenceIds, []);
+  assert.deepEqual(
     requests.map((request) => request.url),
     [
       "/api/v1/agent-execution/log-output-1",
       "/api/v1/manuscripts/manuscript-9",
       "/api/v1/manuscripts/manuscript-9/assets",
+      "/api/v1/verification-ops/evidence/evidence-1",
       "/api/v1/execution-tracking/snapshots/snapshot-output-1",
       "/api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs",
       "/api/v1/jobs/job-output-1",

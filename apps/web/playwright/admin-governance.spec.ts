@@ -116,10 +116,17 @@ test("admin can inspect governed execution outputs from the governance console",
   await expect(evidencePanel).toContainText(prepared.assetFileName);
   await expect(evidencePanel).toContainText(prepared.assetId);
   await expect(evidencePanel).toContainText("current");
+  await expect(evidencePanel).toContainText("Verification Evidence");
+  await expect(evidencePanel).toContainText(prepared.evidenceLabel);
   const downloadLink = evidencePanel.getByRole("link", {
     name: `Download ${prepared.assetFileName}`,
   });
   await expect(downloadLink).toBeVisible();
+  const evidenceLink = evidencePanel.getByRole("link", {
+    name: "Open evidence link",
+  });
+  await expect(evidenceLink).toBeVisible();
+  await expect(evidenceLink).toHaveAttribute("href", prepared.evidenceUri);
   const downloadPromise = page.waitForEvent("download");
   await downloadLink.click();
   const download = await downloadPromise;
@@ -182,6 +189,8 @@ interface PreparedExecutionEvidenceScenario {
   jobId: string;
   assetId: string;
   assetFileName: string;
+  evidenceLabel: string;
+  evidenceUri: string;
 }
 
 interface PreparedExecutionFilterScenario {
@@ -354,6 +363,8 @@ async function prepareExecutionEvidenceScenario(
   const manuscriptTitle = `${input.label} Governed Output Manuscript`;
   const sourceFileName = `${slug}-source.docx`;
   const assetFileName = `${slug}-editing-final.docx`;
+  const evidenceLabel = `${input.label} browser QA`;
+  const evidenceUri = `https://example.test/evidence/${slug}/browser-qa`;
 
   const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
@@ -392,12 +403,40 @@ async function prepareExecutionEvidenceScenario(
   expect(editingRun.agent_execution_log_id).toBeTruthy();
   expect(editingRun.snapshot_id).toBeTruthy();
 
+  const evidenceResponse = await request.post(`${apiBaseUrl}/api/v1/verification-ops/evidence`, {
+    data: {
+      actorRole: "admin",
+      input: {
+        kind: "url",
+        label: evidenceLabel,
+        uri: evidenceUri,
+      },
+    },
+  });
+  expect(evidenceResponse.ok()).toBeTruthy();
+  const evidence = (await evidenceResponse.json()) as {
+    id: string;
+  };
+
+  const completeLogResponse = await request.post(
+    `${apiBaseUrl}/api/v1/agent-execution/${editingRun.agent_execution_log_id}/complete`,
+    {
+      data: {
+        executionSnapshotId: editingRun.snapshot_id,
+        verificationEvidenceIds: [evidence.id],
+      },
+    },
+  );
+  expect(completeLogResponse.ok()).toBeTruthy();
+
   return {
     manuscriptId: uploaded.manuscript.id,
     manuscriptTitle,
     jobId: editingRun.job.id,
     assetId: editingRun.asset.id,
     assetFileName,
+    evidenceLabel,
+    evidenceUri,
   };
 }
 

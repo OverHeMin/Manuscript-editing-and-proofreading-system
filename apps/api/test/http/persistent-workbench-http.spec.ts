@@ -1496,6 +1496,27 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
             "https://example.test/persistent/browser-qa",
           );
 
+          const evidenceByIdResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evidence/${evidence.id}`,
+            {
+              headers: {
+                Cookie: adminCookie,
+              },
+            },
+          );
+          assert.equal(evidenceByIdResponse.status, 200);
+          const evidenceById = (await evidenceByIdResponse.json()) as {
+            id: string;
+            label: string;
+            uri?: string;
+          };
+          assert.equal(evidenceById.id, evidence.id);
+          assert.equal(evidenceById.label, "Persistent browser QA");
+          assert.equal(
+            evidenceById.uri,
+            "https://example.test/persistent/browser-qa",
+          );
+
           const persistedRunsResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
             {

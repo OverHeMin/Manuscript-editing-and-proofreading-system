@@ -650,6 +650,10 @@ type HttpRouteMatch =
       route: "verification-ops-record-evidence";
     }
   | {
+      route: "verification-ops-get-evidence";
+      evidenceId: string;
+    }
+  | {
       route: "verification-ops-create-evaluation-run";
     }
   | {
@@ -2779,6 +2783,14 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "verification-ops-get-evidence": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.getVerificationEvidence({
+        evidenceId: routeMatch.evidenceId,
+        actorRole: session.user.role,
+      });
+    }
     case "verification-ops-create-evaluation-run": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3534,6 +3546,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/verification-ops/evidence") {
     return { route: "verification-ops-record-evidence" };
+  }
+
+  const getVerificationEvidenceMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evidence\/([^/]+)$/,
+  );
+  if (method === "GET" && getVerificationEvidenceMatch) {
+    return {
+      route: "verification-ops-get-evidence",
+      evidenceId: getVerificationEvidenceMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/verification-ops/evaluation-runs") {

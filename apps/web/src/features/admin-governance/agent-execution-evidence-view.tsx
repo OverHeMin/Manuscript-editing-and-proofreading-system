@@ -8,7 +8,16 @@ export interface AgentExecutionEvidenceViewProps {
 export function AgentExecutionEvidenceView({
   evidence,
 }: AgentExecutionEvidenceViewProps) {
-  const { createdAssets, job, knowledgeHitLogs, log, manuscript, snapshot } = evidence;
+  const {
+    createdAssets,
+    job,
+    knowledgeHitLogs,
+    log,
+    manuscript,
+    snapshot,
+    unresolvedVerificationEvidenceIds,
+    verificationEvidence,
+  } = evidence;
   const currentModuleAssetId = manuscript ? resolveCurrentModuleAssetId(manuscript, log.module) : null;
 
   return (
@@ -192,11 +201,46 @@ export function AgentExecutionEvidenceView({
 
       <article className="admin-governance-panel admin-governance-panel-tight">
         <h5>Verification Evidence</h5>
-        {log.verification_evidence_ids.length > 0 ? (
-          <ul className="admin-governance-list">
-            {log.verification_evidence_ids.map((evidenceId) => (
+        {verificationEvidence.length > 0 || unresolvedVerificationEvidenceIds.length > 0 ? (
+          <ul className="admin-governance-list admin-governance-list-spaced">
+            {verificationEvidence.map((record) => (
+              <li key={record.id} className="admin-governance-template-row">
+                <div>
+                  <strong>{record.label}</strong>
+                  <p>
+                    {record.kind} / {record.id}
+                  </p>
+                </div>
+                <div className="admin-governance-template-actions">
+                  <small>{record.created_at}</small>
+                  {record.check_profile_id ? (
+                    <span className="admin-governance-badge">{record.check_profile_id}</span>
+                  ) : null}
+                  {record.kind === "url" && record.uri ? (
+                    <a
+                      className="workbench-secondary-action"
+                      href={record.uri}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open evidence link
+                    </a>
+                  ) : null}
+                  {record.kind === "artifact" && record.artifact_asset_id ? (
+                    <a
+                      className="workbench-secondary-action"
+                      href={`/api/v1/document-assets/${record.artifact_asset_id}/download`}
+                    >
+                      Download evidence artifact
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+            {unresolvedVerificationEvidenceIds.map((evidenceId) => (
               <li key={evidenceId} className="admin-governance-asset-row">
                 <span>{evidenceId}</span>
+                <small>Evidence record unavailable; showing raw ID for audit traceability.</small>
               </li>
             ))}
           </ul>

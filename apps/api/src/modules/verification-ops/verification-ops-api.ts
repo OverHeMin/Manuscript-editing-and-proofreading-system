@@ -216,6 +216,22 @@ export function createVerificationOpsApi(
       };
     },
 
+    async getVerificationEvidence({
+      actorRole,
+      evidenceId,
+    }: {
+      actorRole: RoleKey;
+      evidenceId: string;
+    }): Promise<RouteResponse<VerificationEvidenceRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.getVerificationEvidence(
+          actorRole,
+          evidenceId,
+        ),
+      };
+    },
+
     async createEvaluationRun({
       actorRole,
       input,
