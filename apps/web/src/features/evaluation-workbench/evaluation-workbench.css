@@ -336,6 +336,10 @@
   min-width: 0;
 }
 
+.evaluation-workbench-history-empty-state {
+  align-items: flex-start;
+}
+
 .evaluation-workbench-finalized {
   border-color: #bfdbfe;
   background: #eff6ff;

@@ -467,6 +467,58 @@ test("admin can search finalized run history by model binding and run id", async
   await expect(historyList).toContainText(secondRunId);
 });
 
+test("admin can search history by regression summary and reset an empty result set", async ({
+  page,
+  request,
+}) => {
+  const uniqueLabel = `Phase 9L ${Date.now()}`;
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: uniqueLabel,
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const rejectedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "57",
+    diffSummary: "Rejected run seeds regression-summary search coverage.",
+    evidenceLabel: "Phase 9L rejected evidence",
+    evidenceUrl: "https://example.test/evidence/phase9l-rejected",
+    hardGatePassed: false,
+    failureKind: "regression_failed",
+    failureReason: "Phase 9L rejected run tripped the hard gate.",
+    finalizeStatus: "failed",
+  });
+
+  const recommendedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "96",
+    diffSummary: "Recommended run verifies empty-state reset restores the list.",
+    evidenceLabel: "Phase 9L recommended evidence",
+    evidenceUrl: "https://example.test/evidence/phase9l-recommended",
+  });
+
+  const historyList = page.locator(".evaluation-workbench-history-list");
+  await page.getByLabel("Search History").fill("regression-failed item");
+  await expect(historyList).toContainText(rejectedRunId);
+  await expect(historyList).not.toContainText(recommendedRunId);
+
+  await page.getByLabel("Search History").fill("phase9l-no-matches");
+  const emptyState = page.locator(".evaluation-workbench-history-empty-state");
+  await expect(emptyState).toContainText("No finalized runs match the current history controls.");
+  await expect(emptyState).toContainText("Search: phase9l-no-matches");
+  await page.getByRole("button", { name: "Reset History Controls" }).click();
+  await expect(emptyState).toBeHidden();
+  await expect(page.getByLabel("Search History")).toHaveValue("");
+  await expect(historyList).toContainText(rejectedRunId);
+  await expect(historyList).toContainText(recommendedRunId);
+});
+
 test("admin can recover a selected run hidden by history search", async ({
   page,
   request,

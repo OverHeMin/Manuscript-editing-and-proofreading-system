@@ -441,7 +441,9 @@ test("searchFinalizedRunHistory matches run ids, model bindings, and decision te
       },
       finalized: {
         evidence_pack: {
+          id: "pack-alpha",
           score_summary: "Alpha score summary",
+          regression_summary: "No regression failures were recorded.",
           failure_summary: "None",
         },
         recommendation: {
@@ -458,7 +460,9 @@ test("searchFinalizedRunHistory matches run ids, model bindings, and decision te
       },
       finalized: {
         evidence_pack: {
+          id: "pack-beta",
           score_summary: "Beta score summary",
+          regression_summary: "1 regression-failed item(s) detected.",
           failure_summary: "Hard gate failure",
         },
         recommendation: {
@@ -479,6 +483,14 @@ test("searchFinalizedRunHistory matches run ids, model bindings, and decision te
   );
   assert.deepEqual(
     searchFinalizedRunHistory(entries as never, "run-beta").map((entry) => entry.run.id),
+    ["run-beta"],
+  );
+  assert.deepEqual(
+    searchFinalizedRunHistory(entries as never, "pack-beta").map((entry) => entry.run.id),
+    ["run-beta"],
+  );
+  assert.deepEqual(
+    searchFinalizedRunHistory(entries as never, "regression-failed item").map((entry) => entry.run.id),
     ["run-beta"],
   );
 });

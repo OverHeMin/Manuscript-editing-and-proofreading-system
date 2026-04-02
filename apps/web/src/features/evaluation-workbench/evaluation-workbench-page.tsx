@@ -432,7 +432,7 @@ export function EvaluationWorkbenchPage({
               <Field label="Search History" wide>
                 <input
                   value={historySearchQuery}
-                  placeholder="Run ID, model, or decision text"
+                  placeholder="Run ID, model, decision, regression, or evidence pack"
                   onChange={(event) => setHistorySearchQuery(event.target.value)}
                 />
               </Field>
@@ -511,9 +511,25 @@ export function EvaluationWorkbenchPage({
                   ))}
                 </ul>
               ) : (
-                <p className="evaluation-workbench-empty">
-                  No finalized runs match the current history filter and search.
-                </p>
+                <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
+                  <strong>No finalized runs match the current history controls.</strong>
+                  <div className="evaluation-workbench-history-compare">
+                    <span>Filter: {historyFilter}</span>
+                    <span>Search: {historySearchQuery || "None"}</span>
+                    <span>Sort: {historySortMode}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="evaluation-workbench-action"
+                    onClick={() => {
+                      setHistoryFilter("all");
+                      setHistorySearchQuery("");
+                      setHistorySortMode("newest");
+                    }}
+                  >
+                    Reset History Controls
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -1403,7 +1419,11 @@ function createHistorySearchHaystack(
     entry.run.id,
     entry.finalized.recommendation.status,
     entry.finalized.recommendation.decision_reason,
+    entry.finalized.recommendation.evidence_pack_id,
+    entry.finalized.evidence_pack.id,
+    entry.finalized.evidence_pack.summary_status,
     entry.finalized.evidence_pack.score_summary,
+    entry.finalized.evidence_pack.regression_summary,
     entry.finalized.evidence_pack.failure_summary,
     entry.run.baseline_binding?.model_id,
     entry.run.baseline_binding?.runtime_id,
