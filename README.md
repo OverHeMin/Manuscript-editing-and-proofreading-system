@@ -16,7 +16,7 @@
 - Manuscript workbench 的上传、查稿、模块执行、导出控制区已重组为运营面板式布局
 - Manuscript workbench 现已提供顶部成功/错误状态横幅和面板内输入校验提示
 - Evaluation Workbench 已可加载 verification-ops 的 suites / runs / run items / sample-set context，并支持在浏览器中激活 draft suite、创建 evaluation run、录入 run item 结果、finalize evidence/recommendation、以及基于联动 snapshot 发起 learning handoff
-- Admin Governance Console 已可在浏览器中查看 execution snapshot、知识命中证据，以及 manuscript / job / output asset 下钻结果
+- Admin Governance Console 已可在浏览器中查看 execution snapshot、知识命中证据，以及 manuscript / job / output asset 下钻结果，并直接跳转到对应 workbench 或下载可导出的输出资产
 - 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行稿件 handoff、learning review、knowledge review 真实浏览器 smoke
 - PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理/追踪，以及 verification-ops 评测资产 runtime
 - 本地运维、迁移、交付文档基线

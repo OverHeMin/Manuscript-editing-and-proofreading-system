@@ -77,7 +77,7 @@
 - Tool Gateway、Sandbox Profile、Agent Profile、Agent Runtime
 - Tool Permission Policy、Runtime Binding
 - execution bundle preview、最近 Agent Execution 日志查看，以及 execution snapshot / knowledge-hit 证据下钻
-- Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻
+- Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻，以及跳转到对应 workbench / 下载可导出资产
 
 ## 3. 本地依赖服务
 

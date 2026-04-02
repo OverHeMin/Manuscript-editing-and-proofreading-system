@@ -1,3 +1,4 @@
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type { AdminGovernanceExecutionEvidence } from "./admin-governance-controller.ts";
 
 export interface AgentExecutionEvidenceViewProps {
@@ -76,6 +77,15 @@ export function AgentExecutionEvidenceView({
           </article>
         </div>
 
+        <div className="auth-actions">
+          <a
+            className="auth-primary-action"
+            href={formatWorkbenchHash(log.module, log.manuscript_id)}
+          >
+            {`Open ${formatModuleWorkbenchLabel(log.module)} Workbench`}
+          </a>
+        </div>
+
         {createdAssets.length > 0 ? (
           <ul className="admin-governance-list admin-governance-list-spaced">
             {createdAssets.map((asset) => (
@@ -89,6 +99,15 @@ export function AgentExecutionEvidenceView({
                 <div className="admin-governance-template-actions">
                   <span className="admin-governance-badge">{asset.status}</span>
                   <small>{asset.is_current ? "current" : `v${asset.version_no}`}</small>
+                  {isDownloadableExecutionAsset(asset.asset_type) ? (
+                    <a
+                      className="workbench-secondary-action"
+                      download={asset.file_name ?? asset.id}
+                      href={`/api/v1/document-assets/${asset.id}/download`}
+                    >
+                      {`Download ${asset.file_name ?? asset.id}`}
+                    </a>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -209,4 +228,32 @@ function resolveCurrentModuleAssetId(
     default:
       return null;
   }
+}
+
+function formatModuleWorkbenchLabel(
+  module: AdminGovernanceExecutionEvidence["log"]["module"],
+) {
+  switch (module) {
+    case "screening":
+      return "Screening";
+    case "editing":
+      return "Editing";
+    case "proofreading":
+      return "Proofreading";
+  }
+}
+
+function isDownloadableExecutionAsset(assetType: string) {
+  return (
+    assetType === "original" ||
+    assetType === "normalized_docx" ||
+    assetType === "edited_docx" ||
+    assetType === "final_proof_annotated_docx" ||
+    assetType === "human_final_docx" ||
+    assetType === "screening_report" ||
+    assetType === "proofreading_draft_report" ||
+    assetType === "final_proof_issue_report" ||
+    assetType === "pdf_consistency_report" ||
+    assetType === "learning_snapshot_attachment"
+  );
 }

@@ -122,6 +122,10 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /Execution evidence manuscript/);
   assert.match(html, /job-1/);
   assert.match(html, /editing-final\.docx/);
+  assert.match(html, /Open Editing Workbench/);
+  assert.match(html, /#editing\?manuscriptId=manuscript-1/);
+  assert.match(html, /Download editing-final\.docx/);
+  assert.match(html, /\/api\/v1\/document-assets\/asset-1\/download/);
   assert.match(html, /Required by editing profile/);
   assert.match(html, /Matched discussion terminology/);
   assert.match(html, /evidence-1/);

@@ -116,6 +116,18 @@ test("admin can inspect governed execution outputs from the governance console",
   await expect(evidencePanel).toContainText(prepared.assetFileName);
   await expect(evidencePanel).toContainText(prepared.assetId);
   await expect(evidencePanel).toContainText("current");
+  const downloadLink = evidencePanel.getByRole("link", {
+    name: `Download ${prepared.assetFileName}`,
+  });
+  await expect(downloadLink).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await downloadLink.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(prepared.assetFileName);
+
+  await evidencePanel.getByRole("link", { name: "Open Editing Workbench" }).click();
+  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await expect(page.locator("body")).toContainText(prepared.manuscriptId);
 });
 
 interface PrepareExecutionPreviewScenarioInput {
