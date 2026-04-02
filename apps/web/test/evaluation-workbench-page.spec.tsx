@@ -7,6 +7,7 @@ import {
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
+  describeComparisonTriageHint,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -248,6 +249,7 @@ test("evaluation workbench comparison card renders binding deltas between finali
     markup,
     /Operator summary: Improved over broader suite history by 6\.0 weighted points while holding recommended\./,
   );
+  assert.match(markup, /Suggested action: Promote candidate/);
   assert.match(markup, /Comparison scope: Broader suite history/);
   assert.match(markup, /Selected origin: Current manuscript/);
   assert.match(markup, /Previous origin: Broader suite/);
@@ -591,6 +593,44 @@ test("describeComparisonOperatorSummary summarizes compare outcomes for operator
       previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
     }),
     "Operator summary: Held steady against matched manuscript history at recommended.",
+  );
+});
+
+test("describeComparisonTriageHint recommends next operator action", () => {
+  assert.equal(
+    describeComparisonTriageHint({
+      selectedStatus: "recommended",
+      previousStatus: "recommended",
+      scoreDelta: 6,
+    }),
+    "Suggested action: Promote candidate",
+  );
+
+  assert.equal(
+    describeComparisonTriageHint({
+      selectedStatus: "recommended",
+      previousStatus: "recommended",
+      scoreDelta: 0,
+    }),
+    "Suggested action: Monitor before promote",
+  );
+
+  assert.equal(
+    describeComparisonTriageHint({
+      selectedStatus: "needs_review",
+      previousStatus: "recommended",
+      scoreDelta: -8,
+    }),
+    "Suggested action: Review manually",
+  );
+
+  assert.equal(
+    describeComparisonTriageHint({
+      selectedStatus: "rejected",
+      previousStatus: "recommended",
+      scoreDelta: -39,
+    }),
+    "Suggested action: Investigate regression",
   );
 });
 

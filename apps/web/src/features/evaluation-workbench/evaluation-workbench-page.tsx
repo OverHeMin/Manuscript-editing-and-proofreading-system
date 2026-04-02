@@ -1085,12 +1085,22 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
     selectedScoreSummary: props.selectedEntry.finalized.evidence_pack.score_summary,
     previousScoreSummary: props.previousEntry.finalized.evidence_pack.score_summary,
   });
+  const selectedScore = parseAverageWeightedScore(props.selectedEntry.finalized.evidence_pack.score_summary);
+  const previousScore = parseAverageWeightedScore(props.previousEntry.finalized.evidence_pack.score_summary);
+  const scoreDelta =
+    selectedScore != null && previousScore != null ? selectedScore - previousScore : null;
+  const triageHint = describeComparisonTriageHint({
+    selectedStatus: props.selectedEntry.finalized.recommendation.status,
+    previousStatus: props.previousEntry.finalized.recommendation.status,
+    scoreDelta,
+  });
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
         <span>{operatorSummary}</span>
+        <span>{triageHint}</span>
         <span>Comparison scope: {props.comparisonScopeLabel}</span>
         {props.selectedOriginLabel ? (
           <span>Selected origin: {props.selectedOriginLabel}</span>
@@ -1635,6 +1645,30 @@ export function describeComparisonOperatorSummary(input: {
       ? ` and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points`
       : "";
   return `Operator summary: Regressed against ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+}
+
+export function describeComparisonTriageHint(input: {
+  selectedStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"];
+  previousStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"];
+  scoreDelta: number | null;
+}) {
+  if (input.selectedStatus === "rejected") {
+    return "Suggested action: Investigate regression";
+  }
+
+  if (input.selectedStatus === "needs_review") {
+    return "Suggested action: Review manually";
+  }
+
+  if (input.previousStatus !== "recommended") {
+    return "Suggested action: Promote candidate";
+  }
+
+  if (input.scoreDelta != null && input.scoreDelta > 0.05) {
+    return "Suggested action: Promote candidate";
+  }
+
+  return "Suggested action: Monitor before promote";
 }
 
 function describeEvidenceCountChange(

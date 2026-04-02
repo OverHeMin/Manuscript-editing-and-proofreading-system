@@ -269,6 +269,7 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText(
     "Operator summary: Improved over entire suite history by 6.0 weighted points while holding recommended.",
   );
+  await expect(historyPanel).toContainText("Suggested action: Promote candidate");
   await expect(historyPanel).toContainText("Comparison scope: Entire suite history");
   await expect(historyPanel).toContainText("Selected recommendation");
   await expect(historyPanel).toContainText("recommended");
@@ -648,6 +649,7 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
   await expect(historyPanel).toContainText(
     "Operator summary: Improved over broader suite history by 11.0 weighted points while holding recommended.",
   );
+  await expect(historyPanel).toContainText("Suggested action: Promote candidate");
   await expect(historyPanel).toContainText("Comparison scope: Broader suite history");
   await expect(historyPanel).toContainText("Selected origin: Current manuscript");
   await expect(historyPanel).toContainText("Previous origin: Broader suite");
