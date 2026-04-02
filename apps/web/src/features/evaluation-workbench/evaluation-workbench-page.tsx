@@ -227,6 +227,18 @@ export function EvaluationWorkbenchPage({
     selectedRunId: selectedRun?.id ?? null,
     selectedRunHidden: isSelectedRunHiddenByHistoryControls,
   });
+  const historyCompareStatusSummary = describeHistoryCompareStatusSummary({
+    selectedRunHistoryEntry,
+    previousRunHistoryEntry,
+    historyComparisonGuidance,
+    historyComparisonGuidanceSummary,
+  });
+  const historyControlSummaryLines = describeHistoryControlSummaryLines({
+    scope: effectiveHistoryScope,
+    filter: historyFilter,
+    searchQuery: historySearchQuery,
+    sortMode: historySortMode,
+  });
   const sampleSetItems = overview?.sampleSetItems ?? [];
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
@@ -586,11 +598,14 @@ export function EvaluationWorkbenchPage({
                 <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
                   <strong>Selected run is currently hidden by history controls.</strong>
                   <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
+                  {historyCompareStatusSummary ? (
+                    <p className="evaluation-workbench-empty">{historyCompareStatusSummary}</p>
+                  ) : null}
                   <div className="evaluation-workbench-history-compare">
                     <span>Selected run: {selectedRun?.id}</span>
-                    <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
-                    <span>Filter: {historyFilter}</span>
-                    <span>Search: {historySearchQuery || "None"}</span>
+                    {historyControlSummaryLines.map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
                   </div>
                   <button
                     type="button"
@@ -729,11 +744,13 @@ export function EvaluationWorkbenchPage({
                 <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
                   <strong>No finalized runs match the current history controls.</strong>
                   <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
+                  {historyCompareStatusSummary ? (
+                    <p className="evaluation-workbench-empty">{historyCompareStatusSummary}</p>
+                  ) : null}
                   <div className="evaluation-workbench-history-compare">
-                    <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
-                    <span>Filter: {historyFilter}</span>
-                    <span>Search: {historySearchQuery || "None"}</span>
-                    <span>Sort: {historySortMode}</span>
+                    {historyControlSummaryLines.map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
                   </div>
                   <button
                     type="button"
@@ -1932,6 +1949,38 @@ export function describeHistoryVisibilitySummary(input: {
     .join(" ");
 }
 
+export function describeHistoryControlSummaryLines(input: {
+  scope: EvaluationWorkbenchHistoryScope;
+  filter: EvaluationWorkbenchHistoryFilter;
+  searchQuery: string;
+  sortMode: EvaluationWorkbenchHistorySortMode;
+}) {
+  return [
+    `Scope: ${describeHistoryScopeSummaryLabel(input.scope)}`,
+    `Filter: ${describeHistoryFilterSummaryLabel(input.filter)}`,
+    `Search: ${input.searchQuery.trim() || "None"}`,
+    `Sort: ${describeHistorySortModeSummaryLabel(input.sortMode)}`,
+  ];
+}
+
+export function describeHistoryCompareStatusSummary(input: {
+  selectedRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  previousRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  historyComparisonGuidance: string | null;
+  historyComparisonGuidanceSummary: string | null;
+}) {
+  if (input.selectedRunHistoryEntry && input.previousRunHistoryEntry) {
+    return "Compare status: Current compare summary remains available for the selected run and compare baseline.";
+  }
+  const fallback = input.historyComparisonGuidanceSummary ?? input.historyComparisonGuidance;
+  return fallback ? `Compare status: ${fallback}` : null;
+}
+
+function describeHistoryScopeSummaryLabel(scope: EvaluationWorkbenchHistoryScope) {
+  if (scope === "manuscript") return "Matched manuscript runs";
+  return "Entire suite history";
+}
+
 function describeHistoryFilterLabel(filter: EvaluationWorkbenchHistoryFilter) {
   if (filter === "needs_review") return "needs review";
   return filter;
@@ -1940,6 +1989,22 @@ function describeHistoryFilterLabel(filter: EvaluationWorkbenchHistoryFilter) {
 function describeHistorySortModeLabel(sortMode: EvaluationWorkbenchHistorySortMode) {
   if (sortMode === "failures_first") return "failures first";
   return "newest first";
+}
+
+function describeHistoryFilterSummaryLabel(filter: EvaluationWorkbenchHistoryFilter) {
+  if (filter === "all") return "All finalized runs";
+  if (filter === "needs_review") return "Needs review only";
+  return `${capitalizeLabel(filter)} only`;
+}
+
+function describeHistorySortModeSummaryLabel(sortMode: EvaluationWorkbenchHistorySortMode) {
+  if (sortMode === "failures_first") return "Failures first";
+  return "Newest first";
+}
+
+function capitalizeLabel(value: string) {
+  if (!value) return value;
+  return `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {

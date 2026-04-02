@@ -13,6 +13,8 @@ import {
   describeComparisonBaselinePolicy,
   describeComparisonTriageHint,
   describeHistoryVisibilitySummary,
+  describeHistoryControlSummaryLines,
+  describeHistoryCompareStatusSummary,
   summarizeEvidencePackChanges,
   summarizeFinalizedEntry,
   EvaluationWorkbenchEvidenceList,
@@ -831,6 +833,61 @@ test("describeHistoryVisibilitySummary explains how current controls narrow hist
       selectedRunHidden: false,
     }),
     'Visibility summary: 0 of 3 finalized runs visible in manuscript-scoped history. Active controls: filter rejected, search "delta", sort failures first.',
+  );
+});
+
+test("describeHistoryControlSummaryLines formats readable labels for history controls", () => {
+  assert.deepEqual(
+    describeHistoryControlSummaryLines({
+      scope: "suite",
+      filter: "all",
+      searchQuery: "",
+      sortMode: "newest",
+    }),
+    [
+      "Scope: Entire suite history",
+      "Filter: All finalized runs",
+      "Search: None",
+      "Sort: Newest first",
+    ],
+  );
+
+  assert.deepEqual(
+    describeHistoryControlSummaryLines({
+      scope: "manuscript",
+      filter: "rejected",
+      searchQuery: "delta",
+      sortMode: "failures_first",
+    }),
+    [
+      "Scope: Matched manuscript runs",
+      "Filter: Rejected only",
+      "Search: delta",
+      "Sort: Failures first",
+    ],
+  );
+});
+
+test("describeHistoryCompareStatusSummary explains whether compare remains available", () => {
+  assert.equal(
+    describeHistoryCompareStatusSummary({
+      selectedRunHistoryEntry: { run: { id: "run-2" } },
+      previousRunHistoryEntry: { run: { id: "run-1" } },
+      historyComparisonGuidance: null,
+      historyComparisonGuidanceSummary: null,
+    } as never),
+    "Compare status: Current compare summary remains available for the selected run and compare baseline.",
+  );
+
+  assert.equal(
+    describeHistoryCompareStatusSummary({
+      selectedRunHistoryEntry: null,
+      previousRunHistoryEntry: null,
+      historyComparisonGuidance: "Select a finalized run from the suite to compare it against prior history.",
+      historyComparisonGuidanceSummary:
+        "Visible suite history currently has 2 finalized runs ready for compare selection.",
+    } as never),
+    "Compare status: Visible suite history currently has 2 finalized runs ready for compare selection.",
   );
 });
 

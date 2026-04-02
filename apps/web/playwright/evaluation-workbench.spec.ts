@@ -834,7 +834,13 @@ test("admin can search history by regression summary and reset an empty result s
   await expect(emptyState).toContainText(
     'Visibility summary: 0 of 2 finalized runs visible in suite-scoped history. Active controls: search "phase9l-no-matches".',
   );
+  await expect(emptyState).toContainText(
+    "Compare status: Current compare summary remains available for the selected run and compare baseline.",
+  );
+  await expect(emptyState).toContainText("Scope: Entire suite history");
+  await expect(emptyState).toContainText("Filter: All finalized runs");
   await expect(emptyState).toContainText("Search: phase9l-no-matches");
+  await expect(emptyState).toContainText("Sort: Newest first");
   await page.getByRole("button", { name: "Reset History Controls" }).click();
   await expect(emptyState).toBeHidden();
   await expect(page.getByLabel("Search History")).toHaveValue("");
@@ -882,6 +888,13 @@ test("admin can recover a selected run hidden by history search", async ({
   await expect(hiddenNotice).toContainText(
     `Visibility summary: 1 of 2 finalized runs visible in suite-scoped history. Active controls: search "${firstRunId}". Selected run ${secondRunId} is outside the current result set.`,
   );
+  await expect(hiddenNotice).toContainText(
+    "Compare status: Current compare summary remains available for the selected run and compare baseline.",
+  );
+  await expect(hiddenNotice).toContainText("Scope: Entire suite history");
+  await expect(hiddenNotice).toContainText("Filter: All finalized runs");
+  await expect(hiddenNotice).toContainText(`Search: ${firstRunId}`);
+  await expect(hiddenNotice).toContainText("Sort: Newest first");
   await expect(page.locator(".evaluation-workbench-history-list")).toContainText(firstRunId);
   await expect(page.locator(".evaluation-workbench-history-list")).not.toContainText(secondRunId);
 
