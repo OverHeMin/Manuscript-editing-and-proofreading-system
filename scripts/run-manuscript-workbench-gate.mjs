@@ -66,6 +66,19 @@ const steps = [
     ],
   },
   {
+    label: "Browser admin governance smoke",
+    command: pnpmCommand,
+    args: [
+      "--filter",
+      "@medsys/web",
+      "run",
+      "test:browser",
+      "--",
+      "--browser=chromium",
+      "playwright/admin-governance.spec.ts",
+    ],
+  },
+  {
     label: "Browser manuscript handoff smoke",
     command: pnpmCommand,
     args: [
