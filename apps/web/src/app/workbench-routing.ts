@@ -7,6 +7,7 @@ export type WorkbenchRenderKind =
   | "learning-review"
   | "admin-governance"
   | "evaluation-workbench"
+  | "template-governance"
   | "placeholder";
 
 export interface WorkbenchLocation {
@@ -35,8 +36,12 @@ export function resolveWorkbenchRenderKind(
     return "learning-review";
   }
 
-  if (workbenchId === "admin-console" || workbenchId === "template-governance") {
+  if (workbenchId === "admin-console") {
     return "admin-governance";
+  }
+
+  if (workbenchId === "template-governance") {
+    return "template-governance";
   }
 
   if (workbenchId === "evaluation-workbench") {

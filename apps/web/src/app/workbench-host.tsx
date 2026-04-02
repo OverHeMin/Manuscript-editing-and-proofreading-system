@@ -12,6 +12,7 @@ import {
   ManuscriptWorkbenchPage,
   type ManuscriptWorkbenchMode,
 } from "../features/manuscript-workbench/index.ts";
+import { TemplateGovernanceWorkbenchPage } from "../features/template-governance/index.ts";
 import {
   formatWorkbenchHash,
   isManuscriptWorkbenchId,
@@ -194,6 +195,8 @@ export function WorkbenchHost({
             prefilledManuscriptId={routeState.manuscriptId}
           />
         );
+      case "template-governance":
+        return <TemplateGovernanceWorkbenchPage actorRole={session.role} />;
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">
