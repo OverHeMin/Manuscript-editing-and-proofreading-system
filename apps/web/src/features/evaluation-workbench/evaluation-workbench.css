@@ -297,6 +297,29 @@
   gap: 6px;
 }
 
+.evaluation-workbench-history-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.evaluation-workbench-history-signals span {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #d7dee8;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.evaluation-workbench-history-signals strong {
+  font-size: 0.78rem;
+}
+
 .evaluation-workbench-finalized {
   border-color: #bfdbfe;
   background: #eff6ff;

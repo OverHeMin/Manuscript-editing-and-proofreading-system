@@ -494,18 +494,21 @@ export function EvaluationWorkbenchPage({
                 <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
                   {sortedVisibleFinalizedRunHistory.map((entry) => (
                     <li key={entry.run.id}>
-                    <button
-                      type="button"
-                      aria-label={`History run ${entry.run.id}`}
-                      className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
-                      onClick={() => void handleSelectRun(entry.run.id)}
-                    >
-                      <strong>{entry.run.id}</strong>
-                      <span>{entry.finalized.recommendation.status} 路 {entry.finalized.evidence_pack.summary_status}</span>
-                      <span>{summarizeFinalizedEntry(entry)}</span>
-                    </button>
-                  </li>
-                ))}
+                      <button
+                        type="button"
+                        aria-label={`History run ${entry.run.id}`}
+                        className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
+                        onClick={() => void handleSelectRun(entry.run.id)}
+                      >
+                        <strong>{entry.run.id}</strong>
+                        <span>{entry.finalized.recommendation.status} 路 {entry.finalized.evidence_pack.summary_status}</span>
+                        <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
+                        {summarizeFinalizedEntry(entry) ? (
+                          <span>{summarizeFinalizedEntry(entry)}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               ) : (
                 <p className="evaluation-workbench-empty">
@@ -977,6 +980,30 @@ export function EvaluationWorkbenchEvidencePackSummary(props: {
   );
 }
 
+export function EvaluationWorkbenchHistoryEntrySignals(props: {
+  entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number];
+}) {
+  const summaryRows = [
+    { label: "Score", value: props.entry.finalized.evidence_pack.score_summary },
+    { label: "Regression", value: props.entry.finalized.evidence_pack.regression_summary },
+    { label: "Failure", value: props.entry.finalized.evidence_pack.failure_summary },
+  ].filter((row): row is { label: string; value: string } => Boolean(row.value));
+
+  if (summaryRows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="evaluation-workbench-history-signals">
+      {summaryRows.map((row) => (
+        <span key={row.label}>
+          <strong>{row.label}:</strong> {row.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
   selectedRun: EvaluationWorkbenchOverview["runs"][number];
   selectedRunItem: EvaluationWorkbenchOverview["runItems"][number];
@@ -1197,8 +1224,6 @@ function summarizeFinalizedEntry(
   entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
 ) {
   return [
-    entry.finalized.evidence_pack.score_summary,
-    entry.finalized.evidence_pack.failure_summary,
     entry.finalized.recommendation.decision_reason,
     entry.run.finished_at ? `Finished ${entry.run.finished_at}` : undefined,
   ]

@@ -547,6 +547,15 @@ test("admin can prioritize failed history runs to the top of the list", async ({
 
   const historyItems = page.locator(".evaluation-workbench-history-list li");
   await expect(historyItems.first()).toContainText(recommendedRunId);
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText("Score:");
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText("Regression:");
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(
+    "1 regression-failed item(s) detected.",
+  );
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText("Failure:");
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(
+    "Phase 9J rejected run tripped the hard gate.",
+  );
 
   await page.getByRole("button", { name: "Failures First" }).click();
   await expect(historyItems.first()).toContainText(rejectedRunId);

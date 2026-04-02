@@ -6,6 +6,7 @@ import {
   describeHistoryComparisonGuidance,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
+  EvaluationWorkbenchHistoryEntrySignals,
   EvaluationWorkbenchPage,
   sortFinalizedRunHistory,
   EvaluationWorkbenchRunComparisonCard,
@@ -292,6 +293,35 @@ test("evaluation workbench evidence pack summary renders labeled outcome fields"
   assert.match(markup, /No failure annotations were recorded\./);
   assert.match(markup, /Cost Summary/);
   assert.match(markup, /Latency Summary/);
+});
+
+test("evaluation workbench history entry signals render structured list summaries", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchHistoryEntrySignals
+      entry={{
+        run: {
+          id: "run-history-1",
+        },
+        finalized: {
+          recommendation: {
+            status: "rejected",
+          },
+          evidence_pack: {
+            score_summary: "Average weighted score 52.0 across 1 item(s).",
+            regression_summary: "1 regression-failed item(s) detected.",
+            failure_summary: "Structure regression triggered the hard gate.",
+          },
+        },
+      } as never}
+    />,
+  );
+
+  assert.match(markup, /Score:/);
+  assert.match(markup, /Average weighted score 52.0 across 1 item\(s\)\./);
+  assert.match(markup, /Regression:/);
+  assert.match(markup, /1 regression-failed item\(s\) detected\./);
+  assert.match(markup, /Failure:/);
+  assert.match(markup, /Structure regression triggered the hard gate\./);
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
