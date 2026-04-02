@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
+  describeHistoryEntryOriginLabel,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -473,6 +474,48 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
           id: "run-1",
         },
       } as never,
+    }),
+    null,
+  );
+});
+
+test("describeHistoryEntryOriginLabel distinguishes current manuscript from broader suite history", () => {
+  assert.equal(
+    describeHistoryEntryOriginLabel({
+      runId: "run-2",
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: true,
+      scope: "suite",
+    }),
+    "Current manuscript",
+  );
+
+  assert.equal(
+    describeHistoryEntryOriginLabel({
+      runId: "run-3",
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: true,
+      scope: "suite",
+    }),
+    "Broader suite",
+  );
+
+  assert.equal(
+    describeHistoryEntryOriginLabel({
+      runId: "run-2",
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: true,
+      scope: "manuscript",
+    }),
+    "Matched manuscript",
+  );
+
+  assert.equal(
+    describeHistoryEntryOriginLabel({
+      runId: "run-2",
+      matchedRunIds: ["run-2", "run-1"],
+      hasManuscriptContext: false,
+      scope: "suite",
     }),
     null,
   );

@@ -602,6 +602,9 @@ export function EvaluationWorkbenchPage({
                   <strong>Selected History Detail</strong>
                   <div className="evaluation-workbench-history-compare">
                     <span>Run: {selectedRunHistoryEntry.run.id}</span>
+                    {selectedComparisonOriginLabel ? (
+                      <span>Origin: {selectedComparisonOriginLabel}</span>
+                    ) : null}
                     <span>Recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
                     <span>Evidence Pack: {selectedRunHistoryEntry.finalized.evidence_pack.id}</span>
                     {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
@@ -642,6 +645,17 @@ export function EvaluationWorkbenchPage({
                       >
                         <strong>{entry.run.id}</strong>
                         <span>{entry.finalized.recommendation.status} 路 {entry.finalized.evidence_pack.summary_status}</span>
+                        {(() => {
+                          const historyEntryOriginLabel = describeHistoryEntryOriginLabel({
+                            runId: entry.run.id,
+                            matchedRunIds: matchedHistoryRunIds,
+                            hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
+                            scope: effectiveHistoryScope,
+                          });
+                          return historyEntryOriginLabel ? (
+                            <span>Origin: {historyEntryOriginLabel}</span>
+                          ) : null;
+                        })()}
                         <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
                         {summarizeFinalizedEntry(entry) ? (
                           <span>{summarizeFinalizedEntry(entry)}</span>
@@ -1630,7 +1644,7 @@ function describeComparisonScopeLabel(input: {
   return input.hasManuscriptContext ? "Broader suite history" : "Entire suite history";
 }
 
-function describeHistoryEntryOriginLabel(input: {
+export function describeHistoryEntryOriginLabel(input: {
   runId: string | null;
   matchedRunIds: readonly string[];
   hasManuscriptContext: boolean;
