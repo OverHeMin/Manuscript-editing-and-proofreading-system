@@ -153,6 +153,14 @@ test("admin can finalize a run with artifact evidence from the selected result a
 
   const finalizedCard = page.locator(".evaluation-workbench-finalized");
   await expect(finalizedCard).toContainText("recommended");
+  const finalizedArtifactLink = finalizedCard.getByRole("link", {
+    name: "Download evidence artifact",
+  });
+  await expect(finalizedArtifactLink).toBeVisible();
+  await expect(finalizedArtifactLink).toHaveAttribute(
+    "href",
+    /\/api\/v1\/document-assets\/human-final-demo-1\/download$/,
+  );
 
   const historyDetail = page.locator(".evaluation-workbench-history-detail");
   await expect(historyDetail).toContainText("Phase 9L artifact evidence");

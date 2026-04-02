@@ -487,18 +487,10 @@ export function EvaluationWorkbenchPage({
                       <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
                     ) : null}
                   </div>
-                  {selectedRunEvidence.length > 0 ? (
-                    <ul className="evaluation-workbench-inline-list">
-                      {selectedRunEvidence.map((evidence) => (
-                        <li key={evidence.id}>
-                          <strong>{evidence.label}</strong>
-                          <span>{evidence.uri ?? evidence.artifact_asset_id ?? evidence.kind}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="evaluation-workbench-empty">No persisted verification evidence is attached to this run.</p>
-                  )}
+                  <EvaluationWorkbenchEvidenceList
+                    evidence={selectedRunEvidence}
+                    emptyMessage="No persisted verification evidence is attached to this run."
+                  />
                 </div>
               ) : null}
               {sortedVisibleFinalizedRunHistory.length > 0 ? (
@@ -667,6 +659,7 @@ export function EvaluationWorkbenchPage({
                     <span>Recommendation: {effectiveFinalizedResult.recommendation.status}</span>
                     {effectiveFinalizedResult.recommendation.decision_reason ? <span>{effectiveFinalizedResult.recommendation.decision_reason}</span> : null}
                   </div>
+                  <EvaluationWorkbenchEvidenceList evidence={selectedRunEvidence} />
                 </div>
               ) : (
                 <p className="evaluation-workbench-empty">Finalize the run to produce a governed recommendation.</p>
@@ -916,6 +909,39 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
         <span>Previous evidence: {summarizeEvidenceLabels(props.previousEvidence)}</span>
       </div>
     </div>
+  );
+}
+
+export function EvaluationWorkbenchEvidenceList(props: {
+  evidence: VerificationEvidenceViewModel[];
+  emptyMessage?: string;
+}) {
+  const { evidence, emptyMessage = "No persisted verification evidence is attached yet." } = props;
+
+  if (evidence.length === 0) {
+    return <p className="evaluation-workbench-empty">{emptyMessage}</p>;
+  }
+
+  return (
+    <ul className="evaluation-workbench-inline-list">
+      {evidence.map((item) => (
+        <li key={item.id}>
+          <strong>{item.label}</strong>
+          <span>{item.kind}</span>
+          <span>{item.uri ?? item.artifact_asset_id ?? item.id}</span>
+          {item.kind === "url" && item.uri ? (
+            <a href={item.uri} target="_blank" rel="noreferrer">
+              Open evidence link
+            </a>
+          ) : null}
+          {item.kind === "artifact" && item.artifact_asset_id ? (
+            <a href={`/api/v1/document-assets/${item.artifact_asset_id}/download`}>
+              Download evidence artifact
+            </a>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 

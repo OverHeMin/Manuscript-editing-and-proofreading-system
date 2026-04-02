@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
+  EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchPage,
   sortFinalizedRunHistory,
   EvaluationWorkbenchRunComparisonCard,
@@ -231,6 +232,36 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
   assert.match(markup, /Selected evidence: Latest browser QA/);
   assert.match(markup, /Previous evidence: Rejected browser QA/);
+});
+
+test("evaluation workbench evidence list renders actionable links for url and artifact evidence", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchEvidenceList
+      evidence={[
+        {
+          id: "evidence-url-1",
+          kind: "url",
+          label: "Browser QA evidence",
+          uri: "https://example.test/evidence/browser-qa",
+          created_at: "2026-04-02T08:10:00.000Z",
+        },
+        {
+          id: "evidence-artifact-1",
+          kind: "artifact",
+          label: "Proof artifact evidence",
+          artifact_asset_id: "asset-proof-1",
+          created_at: "2026-04-02T08:11:00.000Z",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /Browser QA evidence/);
+  assert.match(markup, /Open evidence link/);
+  assert.match(markup, /https:\/\/example\.test\/evidence\/browser-qa/);
+  assert.match(markup, /Proof artifact evidence/);
+  assert.match(markup, /Download evidence artifact/);
+  assert.match(markup, /\/api\/v1\/document-assets\/asset-proof-1\/download/);
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
