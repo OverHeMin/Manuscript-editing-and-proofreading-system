@@ -11,6 +11,7 @@ import {
   describeComparisonBaselinePolicy,
   describeComparisonTriageHint,
   describeHistoryVisibilitySummary,
+  summarizeEvidencePackChanges,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -261,12 +262,17 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(markup, /Selected origin: Current manuscript/);
   assert.match(markup, /Previous origin: Broader suite/);
   assert.match(markup, /Binding Changes/);
+  assert.match(markup, /Evidence Pack Changes/);
   assert.match(markup, /Recommendation shift: unchanged at recommended/);
   assert.match(markup, /Evidence count: 1 \(was 1\)/);
   assert.match(markup, /Baseline model changed: baseline-model-2 \(was baseline-model-1\)/);
   assert.match(markup, /Candidate model changed: candidate-model-2 \(was candidate-model-1\)/);
   assert.match(markup, /Candidate prompt changed: prompt-2 \(was prompt-1\)/);
   assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
+  assert.match(
+    markup,
+    /Score summary changed: Average weighted score 97\.0 across 1 item\(s\)\. \(was Average weighted score 91\.0 across 1 item\(s\)\.\)/,
+  );
   assert.match(markup, /Selected evidence: Latest browser QA/);
   assert.match(markup, /Previous evidence: Rejected browser QA/);
   assert.match(markup, /Selected evidence pack/);
@@ -707,6 +713,37 @@ test("describeComparisonBaselinePolicy explains how the compare baseline is chos
   assert.equal(
     describeComparisonBaselinePolicy("Matched manuscript history"),
     "Baseline policy: Chronological previous finalized run within matched manuscript history.",
+  );
+});
+
+test("summarizeEvidencePackChanges lists only changed evidence-pack fields", () => {
+  assert.deepEqual(
+    summarizeEvidencePackChanges(
+      {
+        summary_status: "needs_review",
+        score_summary: "Average weighted score 84.0 across 1 item(s).",
+        regression_summary: "Regression drift detected in terminology consistency.",
+        failure_summary: "One hard gate warning remains open.",
+        cost_summary: "Average cost $0.18 per item.",
+        latency_summary: "Average latency 7.2 seconds.",
+      } as never,
+      {
+        summary_status: "recommended",
+        score_summary: "Average weighted score 91.0 across 1 item(s).",
+        regression_summary: "No regression failures were recorded.",
+        failure_summary: "No failure annotations were recorded.",
+        cost_summary: "Average cost $0.12 per item.",
+        latency_summary: "Average latency 5.1 seconds.",
+      } as never,
+    ),
+    [
+      "Summary status changed: needs_review (was recommended)",
+      "Score summary changed: Average weighted score 84.0 across 1 item(s). (was Average weighted score 91.0 across 1 item(s).)",
+      "Regression summary changed: Regression drift detected in terminology consistency. (was No regression failures were recorded.)",
+      "Failure summary changed: One hard gate warning remains open. (was No failure annotations were recorded.)",
+      "Cost summary changed: Average cost $0.18 per item. (was Average cost $0.12 per item.)",
+      "Latency summary changed: Average latency 7.2 seconds. (was Average latency 5.1 seconds.)",
+    ],
   );
 });
 

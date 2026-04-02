@@ -1103,6 +1103,10 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
   previousEvidence: VerificationEvidenceViewModel[];
 }) {
   const bindingChanges = summarizeBindingChanges(props.selectedEntry.run, props.previousEntry.run);
+  const evidencePackChanges = summarizeEvidencePackChanges(
+    props.selectedEntry.finalized.evidence_pack,
+    props.previousEntry.finalized.evidence_pack,
+  );
   const recommendationShift = describeRecommendationShift(
     props.selectedEntry.finalized.recommendation.status,
     props.previousEntry.finalized.recommendation.status,
@@ -1159,6 +1163,14 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
         )}
         <span>Selected evidence: {summarizeEvidenceLabels(props.selectedEvidence)}</span>
         <span>Previous evidence: {summarizeEvidenceLabels(props.previousEvidence)}</span>
+      </div>
+      <div className="evaluation-workbench-history-compare">
+        <strong>Evidence Pack Changes</strong>
+        {evidencePackChanges.length > 0 ? (
+          evidencePackChanges.map((change) => <span key={change}>{change}</span>)
+        ) : (
+          <span>Evidence-pack summaries unchanged from the previous finalized run.</span>
+        )}
       </div>
       <div className="evaluation-workbench-history-summary-grid">
         <div className="evaluation-workbench-history-summary-card">
@@ -1918,6 +1930,37 @@ function summarizeBindingChanges(
   ];
 }
 
+export function summarizeEvidencePackChanges(
+  selectedPack: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["evidence_pack"],
+  previousPack: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["evidence_pack"],
+) {
+  const changes: string[] = [];
+
+  pushOptionalChange(changes, "Summary status", selectedPack.summary_status, previousPack.summary_status);
+  pushOptionalChange(changes, "Score summary", selectedPack.score_summary, previousPack.score_summary);
+  pushOptionalChange(
+    changes,
+    "Regression summary",
+    selectedPack.regression_summary,
+    previousPack.regression_summary,
+  );
+  pushOptionalChange(
+    changes,
+    "Failure summary",
+    selectedPack.failure_summary,
+    previousPack.failure_summary,
+  );
+  pushOptionalChange(changes, "Cost summary", selectedPack.cost_summary, previousPack.cost_summary);
+  pushOptionalChange(
+    changes,
+    "Latency summary",
+    selectedPack.latency_summary,
+    previousPack.latency_summary,
+  );
+
+  return changes;
+}
+
 function compareBindingFields(
   label: "Baseline" | "Candidate",
   selectedBinding: EvaluationWorkbenchOverview["runs"][number]["baseline_binding"],
@@ -1966,6 +2009,18 @@ function pushBindingChange(
 ) {
   if (selectedValue === previousValue) return;
   changes.push(`${label} changed: ${selectedValue} (was ${previousValue})`);
+}
+
+function pushOptionalChange(
+  changes: string[],
+  label: string,
+  selectedValue: string | undefined,
+  previousValue: string | undefined,
+) {
+  const normalizedSelectedValue = selectedValue ?? "None recorded";
+  const normalizedPreviousValue = previousValue ?? "None recorded";
+  if (normalizedSelectedValue === normalizedPreviousValue) return;
+  changes.push(`${label} changed: ${normalizedSelectedValue} (was ${normalizedPreviousValue})`);
 }
 
 function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
