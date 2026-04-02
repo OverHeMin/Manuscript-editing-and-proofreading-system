@@ -115,6 +115,50 @@ test("admin can complete a manual evaluation loop and hand off a governed learni
   ).toBeTruthy();
 });
 
+test("admin can finalize a run with artifact evidence from the selected result asset", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9L",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
+
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await page.getByLabel("Sample Set").selectOption(prepared.sampleSetId);
+  await page.getByRole("button", { name: "Create Evaluation Run" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Created evaluation run",
+  );
+
+  await page.getByLabel("Weighted Score").fill("94");
+  await page
+    .getByLabel("Diff Summary")
+    .fill("Artifact evidence path reuses the selected result asset.");
+  await page.getByRole("button", { name: "Save Run Item Result" }).click();
+  await expect(page.locator(".evaluation-workbench-status")).toContainText(
+    "Saved run item result",
+  );
+
+  await page.getByLabel("Evidence Type").selectOption("artifact");
+  await page.getByLabel("Evidence Label").fill("Phase 9L artifact evidence");
+  await page.getByLabel("Artifact Asset ID").fill("human-final-demo-1");
+  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+
+  const finalizedCard = page.locator(".evaluation-workbench-finalized");
+  await expect(finalizedCard).toContainText("recommended");
+
+  const historyDetail = page.locator(".evaluation-workbench-history-detail");
+  await expect(historyDetail).toContainText("Phase 9L artifact evidence");
+  await expect(historyDetail).toContainText("human-final-demo-1");
+});
+
 test("admin can reload a finalized evaluation run and still see the persisted recommendation", async ({
   page,
   request,

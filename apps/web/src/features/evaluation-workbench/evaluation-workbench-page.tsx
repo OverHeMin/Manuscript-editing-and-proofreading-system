@@ -5,6 +5,7 @@ import type { AuthRole } from "../auth/index.ts";
 import type { LearningCandidateType } from "../learning-review/types.ts";
 import type {
   EvaluationRunItemFailureKind,
+  VerificationEvidenceKind,
   VerificationEvidenceViewModel,
 } from "../verification-ops/index.ts";
 import {
@@ -50,8 +51,10 @@ const baseRunItemForm = {
 };
 const baseFinalizeForm = {
   status: "passed" as "passed" | "failed",
+  evidenceKind: "url" as VerificationEvidenceKind,
   evidenceLabel: "Browser QA evidence",
   evidenceUrl: "https://example.test/evidence/browser-qa",
+  artifactAssetId: "",
 };
 const baseLearningForm = {
   reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
@@ -160,6 +163,10 @@ export function EvaluationWorkbenchPage({
     selectedRunItem == null
       ? null
       : overview?.sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ?? null;
+  const finalizeArtifactOptions = createFinalizeArtifactOptions(
+    selectedRunItem,
+    linkedSampleSetItem,
+  );
   const learningReviewHash = createdLearningCandidate ? formatWorkbenchHash("learning-review") : null;
 
   useEffect(() => {
@@ -597,9 +604,58 @@ export function EvaluationWorkbenchPage({
                     <option value="failed">failed</option>
                   </select>
                 </Field>
+                <Field label="Evidence Type">
+                  <select
+                    value={finalizeForm.evidenceKind}
+                    onChange={(event) =>
+                      setFinalizeForm((current) => {
+                        const nextEvidenceKind = event.target.value as VerificationEvidenceKind;
+                        return {
+                          ...current,
+                          evidenceKind: nextEvidenceKind,
+                          artifactAssetId:
+                            nextEvidenceKind === "artifact" && !current.artifactAssetId
+                              ? resolvePreferredFinalizeArtifactAssetId(finalizeArtifactOptions)
+                              : current.artifactAssetId,
+                        };
+                      })}
+                  >
+                    <option value="url">url</option>
+                    <option value="artifact">artifact</option>
+                  </select>
+                </Field>
                 <Field label="Evidence Label"><input value={finalizeForm.evidenceLabel} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceLabel: event.target.value }))} /></Field>
-                <Field label="Evidence URL" wide><input value={finalizeForm.evidenceUrl} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceUrl: event.target.value }))} /></Field>
+                {finalizeForm.evidenceKind === "url" ? (
+                  <Field label="Evidence URL" wide><input value={finalizeForm.evidenceUrl} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceUrl: event.target.value }))} /></Field>
+                ) : (
+                  <Field label="Artifact Asset ID" wide><input value={finalizeForm.artifactAssetId} onChange={(event) => setFinalizeForm((current) => ({ ...current, artifactAssetId: event.target.value }))} /></Field>
+                )}
               </div>
+              {finalizeForm.evidenceKind === "artifact" ? (
+                finalizeArtifactOptions.length > 0 ? (
+                  <div className="evaluation-workbench-inline-list" role="group" aria-label="Artifact evidence suggestions">
+                    {finalizeArtifactOptions.map((option) => (
+                      <button
+                        key={`${option.source}-${option.assetId}`}
+                        type="button"
+                        className="evaluation-workbench-action"
+                        onClick={() =>
+                          setFinalizeForm((current) => ({
+                            ...current,
+                            artifactAssetId: option.assetId,
+                          }))
+                        }
+                      >
+                        {option.actionLabel}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="evaluation-workbench-empty">
+                    Save a run-item result or load linked sample context to reuse an internal artifact as evidence.
+                  </p>
+                )
+              ) : null}
               <button type="button" onClick={() => void handleCompleteAndFinalizeRun()} disabled={isBusy}>Complete And Finalize Run</button>
               {effectiveFinalizedResult ? (
                 <div className="evaluation-workbench-result evaluation-workbench-finalized">
@@ -753,8 +809,14 @@ export function EvaluationWorkbenchPage({
 
   async function handleCompleteAndFinalizeRun() {
     if (!selectedSuite || !selectedRun) return setErrorMessage("Select a run before finalizing it.");
-    if (!finalizeForm.evidenceLabel.trim() || !finalizeForm.evidenceUrl.trim()) {
-      return setErrorMessage("Evidence label and URL are required before finalization.");
+    if (!finalizeForm.evidenceLabel.trim()) {
+      return setErrorMessage("Evidence label is required before finalization.");
+    }
+    if (finalizeForm.evidenceKind === "url" && !finalizeForm.evidenceUrl.trim()) {
+      return setErrorMessage("Evidence URL is required when recording URL evidence.");
+    }
+    if (finalizeForm.evidenceKind === "artifact" && !finalizeForm.artifactAssetId.trim()) {
+      return setErrorMessage("Artifact asset ID is required when recording artifact evidence.");
     }
     await runBusyTask(async () => {
       const result = await controller.completeRunWithEvidenceAndFinalize({
@@ -763,7 +825,18 @@ export function EvaluationWorkbenchPage({
         runId: selectedRun.id,
         status: finalizeForm.status,
         existingEvidenceIds: selectedRun.evidence_ids,
-        evidence: { kind: "url", label: finalizeForm.evidenceLabel.trim(), uri: finalizeForm.evidenceUrl.trim() },
+        evidence:
+          finalizeForm.evidenceKind === "artifact"
+            ? {
+                kind: "artifact",
+                label: finalizeForm.evidenceLabel.trim(),
+                artifactAssetId: finalizeForm.artifactAssetId.trim(),
+              }
+            : {
+                kind: "url",
+                label: finalizeForm.evidenceLabel.trim(),
+                uri: finalizeForm.evidenceUrl.trim(),
+              },
       });
       setOverview(result.overview);
       setFinalizedResult(result.finalized);
@@ -1186,6 +1259,44 @@ function pushBindingChange(
 
 function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
   return evidence.length > 0 ? evidence.map((item) => item.label).join(", ") : "None recorded";
+}
+
+function createFinalizeArtifactOptions(
+  selectedRunItem: EvaluationWorkbenchOverview["runItems"][number] | null,
+  linkedSampleSetItem: EvaluationWorkbenchOverview["sampleSetItems"][number] | null,
+) {
+  const options: Array<{
+    source: "result_asset" | "sample_snapshot";
+    assetId: string;
+    actionLabel: string;
+  }> = [];
+
+  if (selectedRunItem?.result_asset_id) {
+    options.push({
+      source: "result_asset",
+      assetId: selectedRunItem.result_asset_id,
+      actionLabel: `Use Result Asset (${selectedRunItem.result_asset_id})`,
+    });
+  }
+
+  if (
+    linkedSampleSetItem?.snapshot_asset_id &&
+    linkedSampleSetItem.snapshot_asset_id !== selectedRunItem?.result_asset_id
+  ) {
+    options.push({
+      source: "sample_snapshot",
+      assetId: linkedSampleSetItem.snapshot_asset_id,
+      actionLabel: `Use Sample Snapshot (${linkedSampleSetItem.snapshot_asset_id})`,
+    });
+  }
+
+  return options;
+}
+
+function resolvePreferredFinalizeArtifactAssetId(
+  options: ReturnType<typeof createFinalizeArtifactOptions>,
+) {
+  return options[0]?.assetId ?? "";
 }
 
 function createHistorySearchHaystack(

@@ -1372,6 +1372,291 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
   );
 });
 
+test("evaluation workbench controller records artifact evidence before finalizing the run", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/verification-ops/evidence") {
+        return {
+          status: 201,
+          body: {
+            id: "evidence-artifact-1",
+            kind: "artifact",
+            label: "Result asset evidence",
+            artifact_asset_id: "human-final-demo-1",
+            created_at: "2026-03-31T13:15:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-2/complete"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "run-2",
+            suite_id: "suite-1",
+            sample_set_id: "sample-set-1",
+            run_item_count: 1,
+            status: "passed",
+            evidence_ids: ["evidence-artifact-1"],
+            started_at: "2026-03-31T13:00:00.000Z",
+            finished_at: "2026-03-31T13:18:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalize"
+      ) {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-artifact-1"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-artifact-1",
+              experiment_run_id: "run-2",
+              summary_status: "recommended",
+              score_summary: "Artifact-backed verification remained stable.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-artifact-1",
+              experiment_run_id: "run-2",
+              evidence_pack_id: "pack-artifact-1",
+              status: "recommended",
+              decision_reason: "Artifact evidence confirms the governed output.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-artifact-1"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+              result_asset_id: "human-final-demo-1",
+              hard_gate_passed: true,
+              weighted_score: 97,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-artifact-1",
+              kind: "artifact",
+              label: "Result asset evidence",
+              artifact_asset_id: "human-final-demo-1",
+              created_at: "2026-03-31T13:15:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result") {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-2",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: ["evidence-artifact-1"],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:18:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-artifact-1",
+              experiment_run_id: "run-2",
+              summary_status: "recommended",
+              score_summary: "Artifact-backed verification remained stable.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+            recommendation: {
+              id: "recommendation-artifact-1",
+              experiment_run_id: "run-2",
+              evidence_pack_id: "pack-artifact-1",
+              status: "recommended",
+              decision_reason: "Artifact evidence confirms the governed output.",
+              created_at: "2026-03-31T13:18:30.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+        return {
+          status: 200,
+          body: [
+            {
+              run: {
+                id: "run-2",
+                suite_id: "suite-1",
+                sample_set_id: "sample-set-1",
+                run_item_count: 1,
+                status: "passed",
+                evidence_ids: ["evidence-artifact-1"],
+                started_at: "2026-03-31T13:00:00.000Z",
+                finished_at: "2026-03-31T13:18:00.000Z",
+              },
+              evidence_pack: {
+                id: "pack-artifact-1",
+                experiment_run_id: "run-2",
+                summary_status: "recommended",
+                score_summary: "Artifact-backed verification remained stable.",
+                created_at: "2026-03-31T13:18:30.000Z",
+              },
+              recommendation: {
+                id: "recommendation-artifact-1",
+                experiment_run_id: "run-2",
+                evidence_pack_id: "pack-artifact-1",
+                status: "recommended",
+                decision_reason: "Artifact evidence confirms the governed output.",
+                created_at: "2026-03-31T13:18:30.000Z",
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-2",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-2",
+              snapshot_asset_id: "snapshot-asset-2",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-2",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.completeRunWithEvidenceAndFinalize({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    runId: "run-2",
+    status: "passed",
+    evidence: {
+      kind: "artifact",
+      label: "Result asset evidence",
+      artifactAssetId: "human-final-demo-1",
+    },
+  });
+
+  assert.equal(result.evidence?.id, "evidence-artifact-1");
+  assert.equal(result.evidence?.kind, "artifact");
+  assert.equal(result.evidence?.artifact_asset_id, "human-final-demo-1");
+  assert.equal(result.overview.selectedRunEvidence[0]?.artifact_asset_id, "human-final-demo-1");
+  assert.deepEqual(requests[0]?.body, {
+    actorRole: "admin",
+    input: {
+      kind: "artifact",
+      label: "Result asset evidence",
+      uri: undefined,
+      artifactAssetId: "human-final-demo-1",
+      checkProfileId: undefined,
+    },
+  });
+});
+
 test("evaluation workbench controller creates a governed learning candidate from a finalized run", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createEvaluationWorkbenchController({
