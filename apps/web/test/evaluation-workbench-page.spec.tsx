@@ -8,6 +8,7 @@ import {
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
   describeComparisonTriageHint,
+  describeHistoryVisibilitySummary,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -631,6 +632,36 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       scoreDelta: -39,
     }),
     "Suggested action: Investigate regression",
+  );
+});
+
+test("describeHistoryVisibilitySummary explains how current controls narrow history", () => {
+  assert.equal(
+    describeHistoryVisibilitySummary({
+      visibleCount: 1,
+      totalCount: 2,
+      scope: "suite",
+      filter: "all",
+      searchQuery: "run-1",
+      sortMode: "newest",
+      selectedRunId: "run-2",
+      selectedRunHidden: true,
+    }),
+    'Visibility summary: 1 of 2 finalized runs visible in suite-scoped history. Active controls: search "run-1". Selected run run-2 is outside the current result set.',
+  );
+
+  assert.equal(
+    describeHistoryVisibilitySummary({
+      visibleCount: 0,
+      totalCount: 3,
+      scope: "manuscript",
+      filter: "rejected",
+      searchQuery: "delta",
+      sortMode: "failures_first",
+      selectedRunId: null,
+      selectedRunHidden: false,
+    }),
+    'Visibility summary: 0 of 3 finalized runs visible in manuscript-scoped history. Active controls: filter rejected, search "delta", sort failures first.',
   );
 });
 

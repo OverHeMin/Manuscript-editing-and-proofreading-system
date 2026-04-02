@@ -209,6 +209,16 @@ export function EvaluationWorkbenchPage({
     sortedVisibleFinalizedRunHistory,
     selectedRun?.id ?? null,
   );
+  const historyVisibilitySummary = describeHistoryVisibilitySummary({
+    visibleCount: sortedVisibleFinalizedRunHistory.length,
+    totalCount: scopedFinalizedRunHistory.length,
+    scope: effectiveHistoryScope,
+    filter: historyFilter,
+    searchQuery: historySearchQuery,
+    sortMode: historySortMode,
+    selectedRunId: selectedRun?.id ?? null,
+    selectedRunHidden: isSelectedRunHiddenByHistoryControls,
+  });
   const sampleSetItems = overview?.sampleSetItems ?? [];
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
@@ -562,6 +572,7 @@ export function EvaluationWorkbenchPage({
               {isSelectedRunHiddenByHistoryControls ? (
                 <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
                   <strong>Selected run is currently hidden by history controls.</strong>
+                  <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
                   <div className="evaluation-workbench-history-compare">
                     <span>Selected run: {selectedRun?.id}</span>
                     <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
@@ -678,6 +689,7 @@ export function EvaluationWorkbenchPage({
               ) : (
                 <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
                   <strong>No finalized runs match the current history controls.</strong>
+                  <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
                   <div className="evaluation-workbench-history-compare">
                     <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
                     <span>Filter: {historyFilter}</span>
@@ -1773,6 +1785,52 @@ export function describeHistoryOriginSummary(input: {
   const manuscriptCount = input.runIds.filter((runId) => matchedRunIdSet.has(runId)).length;
   const broaderSuiteCount = input.runIds.length - manuscriptCount;
   return `Current manuscript runs: ${manuscriptCount} | Broader suite references: ${broaderSuiteCount}`;
+}
+
+export function describeHistoryVisibilitySummary(input: {
+  visibleCount: number;
+  totalCount: number;
+  scope: EvaluationWorkbenchHistoryScope;
+  filter: EvaluationWorkbenchHistoryFilter;
+  searchQuery: string;
+  sortMode: EvaluationWorkbenchHistorySortMode;
+  selectedRunId: string | null;
+  selectedRunHidden: boolean;
+}) {
+  const scopeLabel = input.scope === "manuscript" ? "manuscript-scoped" : "suite-scoped";
+  const controls: string[] = [];
+
+  if (input.filter !== "all") {
+    controls.push(`filter ${describeHistoryFilterLabel(input.filter)}`);
+  }
+
+  if (input.searchQuery.trim()) {
+    controls.push(`search "${input.searchQuery.trim()}"`);
+  }
+
+  if (input.sortMode !== "newest") {
+    controls.push(`sort ${describeHistorySortModeLabel(input.sortMode)}`);
+  }
+
+  return [
+    `Visibility summary: ${input.visibleCount} of ${input.totalCount} finalized runs visible in ${scopeLabel} history.`,
+    controls.length > 0 ? `Active controls: ${controls.join(", ")}.` : null,
+    input.selectedRunHidden && input.selectedRunId
+      ? `Selected run ${input.selectedRunId} is outside the current result set.`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+}
+
+function describeHistoryFilterLabel(filter: EvaluationWorkbenchHistoryFilter) {
+  if (filter === "needs_review") return "needs review";
+  return filter;
+}
+
+function describeHistorySortModeLabel(sortMode: EvaluationWorkbenchHistorySortMode) {
+  if (sortMode === "failures_first") return "failures first";
+  return "newest first";
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {

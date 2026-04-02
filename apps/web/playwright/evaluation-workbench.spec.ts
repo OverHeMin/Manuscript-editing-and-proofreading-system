@@ -809,6 +809,9 @@ test("admin can search history by regression summary and reset an empty result s
   await page.getByLabel("Search History").fill("phase9l-no-matches");
   const emptyState = page.locator(".evaluation-workbench-history-empty-state");
   await expect(emptyState).toContainText("No finalized runs match the current history controls.");
+  await expect(emptyState).toContainText(
+    'Visibility summary: 0 of 2 finalized runs visible in suite-scoped history. Active controls: search "phase9l-no-matches".',
+  );
   await expect(emptyState).toContainText("Search: phase9l-no-matches");
   await page.getByRole("button", { name: "Reset History Controls" }).click();
   await expect(emptyState).toBeHidden();
@@ -854,6 +857,9 @@ test("admin can recover a selected run hidden by history search", async ({
 
   const hiddenNotice = page.locator(".evaluation-workbench-history-hidden-selection");
   await expect(hiddenNotice).toContainText("currently hidden");
+  await expect(hiddenNotice).toContainText(
+    `Visibility summary: 1 of 2 finalized runs visible in suite-scoped history. Active controls: search "${firstRunId}". Selected run ${secondRunId} is outside the current result set.`,
+  );
   await expect(page.locator(".evaluation-workbench-history-list")).toContainText(firstRunId);
   await expect(page.locator(".evaluation-workbench-history-list")).not.toContainText(secondRunId);
 
