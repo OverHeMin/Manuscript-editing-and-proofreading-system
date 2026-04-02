@@ -322,6 +322,9 @@ test("admin sees explicit compare guidance while the current run is still runnin
       `Current run ${runId} is still [a-z_]+\\. Complete and finalize it to compare against history\\.`,
     ),
   );
+  await expect(historyPanel).toContainText(
+    "Comparison unlocks after this run reaches a finalized recommendation with persisted evidence.",
+  );
 });
 
 test("admin can inspect rejected history details for a prior finalized run", async ({
@@ -638,6 +641,9 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
   );
   await expect(historyPanel).toContainText(
     "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.",
+  );
+  await expect(historyPanel).toContainText(
+    "Broader suite history already has 1 additional finalized run available for comparison.",
   );
 
   await historyPanel.getByRole("button", { name: "Compare Against Entire Suite History" }).click();

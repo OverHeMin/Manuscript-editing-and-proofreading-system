@@ -165,6 +165,14 @@ export function EvaluationWorkbenchPage({
     totalFinalizedCount: finalizedRunHistory.length,
     scopedCount: scopedFinalizedRunHistory.length,
   });
+  const historyComparisonGuidanceSummary = describeHistoryComparisonGuidanceSummary({
+    selectedRun,
+    selectedRunHistoryEntry,
+    previousRunHistoryEntry,
+    scope: effectiveHistoryScope,
+    totalFinalizedCount: finalizedRunHistory.length,
+    scopedCount: scopedFinalizedRunHistory.length,
+  });
   const canSwitchToSuiteHistoryForComparison =
     effectiveHistoryScope === "manuscript" &&
     selectedRunHistoryEntry != null &&
@@ -488,7 +496,12 @@ export function EvaluationWorkbenchPage({
             <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
           ) : scopedFinalizedRunHistory.length === 0 ? (
             selectedRun && !selectedRunHistoryEntry ? (
-              <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+              <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+                <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+                {historyComparisonGuidanceSummary ? (
+                  <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
+                ) : null}
+              </div>
             ) : (
               <p className="evaluation-workbench-empty">
                 {effectiveHistoryScope === "manuscript"
@@ -608,6 +621,9 @@ export function EvaluationWorkbenchPage({
                 <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
                   <strong>History Compare Guidance</strong>
                   <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+                  {historyComparisonGuidanceSummary ? (
+                    <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
+                  ) : null}
                   <button
                     type="button"
                     className="evaluation-workbench-action"
@@ -617,7 +633,12 @@ export function EvaluationWorkbenchPage({
                   </button>
                 </div>
               ) : historyComparisonGuidance ? (
-                <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+                <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+                  <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+                  {historyComparisonGuidanceSummary ? (
+                    <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
+                  ) : null}
+                </div>
               ) : null}
               {selectedRunHistoryEntry ? (
                 <div className="evaluation-workbench-result evaluation-workbench-history-detail">
@@ -1590,6 +1611,36 @@ export function describeHistoryComparisonGuidance(input: {
     return "Select a finalized run from this manuscript to compare it against prior manuscript history.";
   }
   return "Select a finalized run from the suite to compare it against prior history.";
+}
+
+export function describeHistoryComparisonGuidanceSummary(input: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
+  selectedRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  previousRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  scope?: EvaluationWorkbenchHistoryScope;
+  totalFinalizedCount?: number;
+  scopedCount?: number;
+}) {
+  const { previousRunHistoryEntry, selectedRun, selectedRunHistoryEntry } = input;
+  const scope = input.scope ?? "suite";
+  const totalFinalizedCount = input.totalFinalizedCount ?? input.scopedCount ?? 0;
+  const scopedCount = input.scopedCount ?? totalFinalizedCount;
+
+  if (selectedRunHistoryEntry && previousRunHistoryEntry) return null;
+  if (selectedRun && !selectedRunHistoryEntry) {
+    return "Comparison unlocks after this run reaches a finalized recommendation with persisted evidence.";
+  }
+  if (selectedRunHistoryEntry) {
+    if (scope === "manuscript" && totalFinalizedCount > scopedCount) {
+      const additionalRunCount = totalFinalizedCount - scopedCount;
+      return `Broader suite history already has ${additionalRunCount} additional finalized run${additionalRunCount === 1 ? "" : "s"} available for comparison.`;
+    }
+    return `Current ${scope} history only contains this finalized run, so there is no earlier baseline yet.`;
+  }
+  if (scopedCount > 0) {
+    return `Visible ${scope} history currently has ${scopedCount} finalized run${scopedCount === 1 ? "" : "s"} ready for compare selection.`;
+  }
+  return null;
 }
 
 function compareHistoryRecency(

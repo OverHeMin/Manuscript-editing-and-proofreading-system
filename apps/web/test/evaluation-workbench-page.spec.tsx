@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
+  describeHistoryComparisonGuidanceSummary,
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
@@ -485,6 +486,58 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       } as never,
     }),
     null,
+  );
+});
+
+test("describeHistoryComparisonGuidanceSummary explains the next compare recovery step", () => {
+  assert.equal(
+    describeHistoryComparisonGuidanceSummary({
+      selectedRun: {
+        id: "run-2",
+        status: "running",
+      } as never,
+      selectedRunHistoryEntry: null,
+      previousRunHistoryEntry: null,
+    }),
+    "Comparison unlocks after this run reaches a finalized recommendation with persisted evidence.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidanceSummary({
+      selectedRun: {
+        id: "run-2",
+        status: "passed",
+      } as never,
+      selectedRunHistoryEntry: {
+        run: {
+          id: "run-2",
+        },
+      } as never,
+      previousRunHistoryEntry: null,
+      scope: "manuscript",
+      totalFinalizedCount: 3,
+      scopedCount: 1,
+    }),
+    "Broader suite history already has 2 additional finalized runs available for comparison.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidanceSummary({
+      selectedRun: {
+        id: "run-2",
+        status: "passed",
+      } as never,
+      selectedRunHistoryEntry: {
+        run: {
+          id: "run-2",
+        },
+      } as never,
+      previousRunHistoryEntry: null,
+      scope: "suite",
+      totalFinalizedCount: 1,
+      scopedCount: 1,
+    }),
+    "Current suite history only contains this finalized run, so there is no earlier baseline yet.",
   );
 });
 
