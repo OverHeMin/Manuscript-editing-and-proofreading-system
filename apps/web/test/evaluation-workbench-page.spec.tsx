@@ -161,6 +161,11 @@ test("evaluation workbench comparison card renders binding deltas between finali
             id: "pack-2",
             experiment_run_id: "run-2",
             summary_status: "recommended",
+            score_summary: "Average weighted score 97.0 across 1 item(s).",
+            regression_summary: "No regression failures were recorded.",
+            failure_summary: "No failure annotations were recorded.",
+            cost_summary: "Cost tracking is not recorded in Phase 6A v1.",
+            latency_summary: "Latency tracking is not recorded in Phase 6A v1.",
             created_at: "2026-04-01T08:20:00.000Z",
           },
           recommendation: {
@@ -211,6 +216,11 @@ test("evaluation workbench comparison card renders binding deltas between finali
             id: "pack-1",
             experiment_run_id: "run-1",
             summary_status: "recommended",
+            score_summary: "Average weighted score 91.0 across 1 item(s).",
+            regression_summary: "No regression failures were recorded.",
+            failure_summary: "No failure annotations were recorded.",
+            cost_summary: "Cost tracking is not recorded in Phase 6A v1.",
+            latency_summary: "Latency tracking is not recorded in Phase 6A v1.",
             created_at: "2026-04-01T07:20:00.000Z",
           },
           recommendation: {
@@ -234,6 +244,10 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
   assert.match(markup, /Selected evidence: Latest browser QA/);
   assert.match(markup, /Previous evidence: Rejected browser QA/);
+  assert.match(markup, /Selected evidence pack/);
+  assert.match(markup, /Previous evidence pack/);
+  assert.match(markup, /Average weighted score 97.0 across 1 item\(s\)\./);
+  assert.match(markup, /Average weighted score 91.0 across 1 item\(s\)\./);
 });
 
 test("evaluation workbench evidence list renders actionable links for url and artifact evidence", () => {

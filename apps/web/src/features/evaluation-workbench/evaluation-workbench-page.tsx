@@ -911,6 +911,20 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
         <span>Selected evidence: {summarizeEvidenceLabels(props.selectedEvidence)}</span>
         <span>Previous evidence: {summarizeEvidenceLabels(props.previousEvidence)}</span>
       </div>
+      <div className="evaluation-workbench-history-summary-grid">
+        <div className="evaluation-workbench-history-summary-card">
+          <strong>Selected evidence pack</strong>
+          <EvaluationWorkbenchEvidencePackSummary
+            evidencePack={props.selectedEntry.finalized.evidence_pack}
+          />
+        </div>
+        <div className="evaluation-workbench-history-summary-card">
+          <strong>Previous evidence pack</strong>
+          <EvaluationWorkbenchEvidencePackSummary
+            evidencePack={props.previousEntry.finalized.evidence_pack}
+          />
+        </div>
+      </div>
     </div>
   );
 }

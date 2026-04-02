@@ -284,6 +284,10 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText(
     "Previous evidence: Phase 9E baseline evidence",
   );
+  await expect(historyPanel).toContainText("Selected evidence pack");
+  await expect(historyPanel).toContainText("Previous evidence pack");
+  await expect(historyPanel).toContainText("Average weighted score 97.0 across 1 item(s).");
+  await expect(historyPanel).toContainText("Average weighted score 91.0 across 1 item(s).");
 });
 
 test("admin sees explicit compare guidance while the current run is still running", async ({
