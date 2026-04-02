@@ -28,7 +28,7 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "pnpm run dev -- --host 127.0.0.1 --port 4173",
+      command: "pnpm exec vite --host 127.0.0.1 --port 4173",
       cwd: webRoot,
       url: webBaseUrl,
       reuseExistingServer,
