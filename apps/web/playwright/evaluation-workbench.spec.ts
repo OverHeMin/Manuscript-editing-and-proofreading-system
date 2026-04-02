@@ -520,6 +520,70 @@ test("admin can jump from manuscript workbench back into manuscript-scoped evalu
   await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
 });
 
+test("admin defaults history to manuscript-scoped runs after manuscript handoff and can switch back to the entire suite", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9P ${Date.now()}`,
+  });
+  const unrelatedSampleSet = await createPublishedEditingSampleSet(request, prepared.cookie, {
+    label: `Phase 9P unrelated ${Date.now()}`,
+    manuscriptId: "manuscript-seeded-1",
+    manuscriptType: "clinical_study",
+    parentAssetId: "original-seeded-1",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const matchedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "94",
+    diffSummary: "Matched manuscript run should stay visible in manuscript-scoped history.",
+    evidenceLabel: "Phase 9P matched evidence",
+    evidenceUrl: "https://example.test/evidence/phase9p-matched",
+  });
+
+  const unrelatedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: unrelatedSampleSet.sampleSetId,
+    weightedScore: "87",
+    diffSummary: "Unrelated manuscript run should stay hidden until the suite scope is restored.",
+    evidenceLabel: "Phase 9P unrelated evidence",
+    evidenceUrl: "https://example.test/evidence/phase9p-unrelated",
+  });
+
+  await page.goto("/#evaluation-workbench?manuscriptId=manuscript-demo-1", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    "Context manuscript: manuscript-demo-1",
+  );
+  const historyPanel = page.locator(".evaluation-workbench-history");
+  const historyList = historyPanel.locator(".evaluation-workbench-history-list");
+
+  await expect(historyPanel.getByRole("button", { name: "Matched Manuscript Runs (1)" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(historyList).toContainText(matchedRunId);
+  await expect(historyList).not.toContainText(unrelatedRunId);
+
+  await historyPanel.getByRole("button", { name: "Entire Suite History" }).click();
+  await expect(historyPanel.getByRole("button", { name: "Entire Suite History" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(historyList).toContainText(matchedRunId);
+  await expect(historyList).toContainText(unrelatedRunId);
+});
+
 test("admin can filter finalized run history by recommendation status", async ({
   page,
   request,
@@ -1062,6 +1126,164 @@ async function prepareActiveEvaluationScenario(
     sampleSetId: sampleSet.id,
     snapshotId: snapshots[0]?.id ?? "",
     snapshotIds: snapshots.map((snapshot) => snapshot.id),
+  };
+}
+
+async function createPublishedEditingSampleSet(
+  request: APIRequestContext,
+  cookie: string,
+  input: {
+    label: string;
+    manuscriptId: string;
+    manuscriptType: string;
+    parentAssetId?: string;
+  },
+): Promise<{ sampleSetId: string; snapshotId: string }> {
+  const storagePrefix = input.label.toLowerCase().replace(/\s+/g, "-");
+  const manuscriptId = input.manuscriptId;
+  const parentAssetId = input.parentAssetId;
+  if (!parentAssetId) {
+    throw new Error("createPublishedEditingSampleSet requires a parent asset id.");
+  }
+  const draftResponse = await request.post(`${apiBaseUrl}/api/v1/modules/proofreading/draft`, {
+    headers: {
+      Cookie: cookie,
+    },
+    data: {
+      manuscriptId,
+      parentAssetId,
+      requestedBy: "ignored-by-server",
+      actorRole: "admin",
+      storageKey: `runs/${manuscriptId}/proofreading/${storagePrefix}-draft.md`,
+      fileName: `${storagePrefix}-draft.md`,
+    },
+  });
+  if (!draftResponse.ok()) {
+    throw new Error(
+      `create proofreading draft failed (${draftResponse.status()}): ${await draftResponse.text()}`,
+    );
+  }
+  const draft = (await draftResponse.json()) as {
+    asset: { id: string };
+  };
+  const finalizeResponse = await request.post(`${apiBaseUrl}/api/v1/modules/proofreading/finalize`, {
+    headers: {
+      Cookie: cookie,
+    },
+    data: {
+      manuscriptId,
+      draftAssetId: draft.asset.id,
+      requestedBy: "ignored-by-server",
+      actorRole: "admin",
+      storageKey: `runs/${manuscriptId}/proofreading/${storagePrefix}-final.docx`,
+      fileName: `${storagePrefix}-final.docx`,
+    },
+  });
+  if (!finalizeResponse.ok()) {
+    throw new Error(
+      `create proofreading final failed (${finalizeResponse.status()}): ${await finalizeResponse.text()}`,
+    );
+  }
+  const finalized = (await finalizeResponse.json()) as {
+    asset: { id: string };
+  };
+  const publishResponse = await request.post(
+    `${apiBaseUrl}/api/v1/modules/proofreading/publish-human-final`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        manuscriptId,
+        finalAssetId: finalized.asset.id,
+        requestedBy: "ignored-by-server",
+        actorRole: "admin",
+        storageKey: `runs/${manuscriptId}/proofreading/${storagePrefix}-human-final.docx`,
+        fileName: `${storagePrefix}-human-final.docx`,
+      },
+    },
+  );
+  if (!publishResponse.ok()) {
+    throw new Error(
+      `publish human final failed (${publishResponse.status()}): ${await publishResponse.text()}`,
+    );
+  }
+  const published = (await publishResponse.json()) as {
+    asset: { id: string };
+  };
+
+  const snapshotResponse = await request.post(
+    `${apiBaseUrl}/api/v1/learning/reviewed-case-snapshots`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        manuscriptId,
+        module: "editing",
+        manuscriptType: input.manuscriptType,
+        humanFinalAssetId: published.asset.id,
+        deidentificationPassed: true,
+        requestedBy: "ignored-by-server",
+        storageKey: `learning/${storagePrefix}/snapshot-1.bin`,
+      },
+    },
+  );
+  if (!snapshotResponse.ok()) {
+    throw new Error(
+      `create reviewed snapshot failed (${snapshotResponse.status()}): ${await snapshotResponse.text()}`,
+    );
+  }
+  const snapshot = (await snapshotResponse.json()) as { id: string };
+
+  const sampleSetResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+        input: {
+          name: `${input.label} Editing Samples`,
+          module: "editing",
+          sampleItemInputs: [
+            {
+              reviewedCaseSnapshotId: snapshot.id,
+              riskTags: ["secondary-manuscript"],
+            },
+          ],
+        },
+      },
+    },
+  );
+  if (!sampleSetResponse.ok()) {
+    throw new Error(
+      `create sample set failed (${sampleSetResponse.status()}): ${await sampleSetResponse.text()}`,
+    );
+  }
+  const sampleSet = (await sampleSetResponse.json()) as { id: string };
+
+  const publishSampleSetResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets/${sampleSet.id}/publish`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  if (!publishSampleSetResponse.ok()) {
+    throw new Error(
+      `publish sample set failed (${publishSampleSetResponse.status()}): ${await publishSampleSetResponse.text()}`,
+    );
+  }
+
+  return {
+    sampleSetId: sampleSet.id,
+    snapshotId: snapshot.id,
   };
 }
 

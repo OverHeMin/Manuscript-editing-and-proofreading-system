@@ -71,6 +71,14 @@ export interface EvaluationWorkbenchManuscriptContext {
   manuscriptId: string;
   matchedSuiteId: string | null;
   matchedRunId: string | null;
+  matchedHistoryRunIds: string[];
+}
+
+interface ResolvedEvaluationManuscriptContext {
+  manuscriptId: string;
+  matchedSuiteId: string | null;
+  matchedRunId: string | null;
+  matchedRunIdsBySuiteId: Record<string, string[]>;
 }
 
 export interface EvaluationWorkbenchController {
@@ -242,17 +250,18 @@ async function loadEvaluationWorkbenchOverview(
   const suites = suitesResponse.body;
   const manuscriptId = input?.manuscriptId?.trim() ?? "";
   let manuscriptContext: EvaluationWorkbenchManuscriptContext | null = null;
+  let resolvedManuscriptContext: ResolvedEvaluationManuscriptContext | null = null;
   let preferredSuiteId = input?.selectedSuiteId ?? null;
   let preferredRunId = input?.selectedRunId ?? null;
 
   if (manuscriptId.length > 0) {
-    manuscriptContext = await resolveEvaluationManuscriptContext(
+    resolvedManuscriptContext = await resolveEvaluationManuscriptContext(
       client,
       suites,
       manuscriptId,
     );
-    preferredSuiteId ??= manuscriptContext.matchedSuiteId;
-    preferredRunId ??= manuscriptContext.matchedRunId;
+    preferredSuiteId ??= resolvedManuscriptContext.matchedSuiteId;
+    preferredRunId ??= resolvedManuscriptContext.matchedRunId;
   }
 
   const selectedSuiteId = resolveSelectedId(
@@ -324,6 +333,18 @@ async function loadEvaluationWorkbenchOverview(
       finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
   }
 
+  if (resolvedManuscriptContext) {
+    manuscriptContext = {
+      manuscriptId: resolvedManuscriptContext.manuscriptId,
+      matchedSuiteId: resolvedManuscriptContext.matchedSuiteId,
+      matchedRunId: resolvedManuscriptContext.matchedRunId,
+      matchedHistoryRunIds:
+        selectedSuiteId == null
+          ? []
+          : resolvedManuscriptContext.matchedRunIdsBySuiteId[selectedSuiteId] ?? [],
+    };
+  }
+
   return {
     checkProfiles: checkProfilesResponse.body,
     releaseCheckProfiles: releaseCheckProfilesResponse.body,
@@ -346,7 +367,7 @@ async function resolveEvaluationManuscriptContext(
   client: EvaluationWorkbenchHttpClient,
   suites: EvaluationSuiteViewModel[],
   manuscriptId: string,
-): Promise<EvaluationWorkbenchManuscriptContext> {
+): Promise<ResolvedEvaluationManuscriptContext> {
   type SampleSetItemsEntry = readonly [string, EvaluationSampleSetItemViewModel[]];
   const suiteRuns = await Promise.all(
     suites.map(async (suite) => ({
@@ -393,11 +414,22 @@ async function resolveEvaluationManuscriptContext(
   );
   const latestMatch =
     matchingRuns.sort((left, right) => compareRunRecency(right.run, left.run))[0] ?? null;
+  const matchedRunIdsBySuiteId = matchingRuns.reduce<Record<string, string[]>>(
+    (summary, entry) => {
+      if (!summary[entry.suiteId]) {
+        summary[entry.suiteId] = [];
+      }
+      summary[entry.suiteId]?.push(entry.run.id);
+      return summary;
+    },
+    {},
+  );
 
   return {
     manuscriptId,
     matchedSuiteId: latestMatch?.suiteId ?? null,
     matchedRunId: latestMatch?.run.id ?? null,
+    matchedRunIdsBySuiteId,
   };
 }
 

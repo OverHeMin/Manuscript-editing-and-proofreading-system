@@ -1821,6 +1821,16 @@ test("evaluation workbench controller can preselect the newest run for a handed-
           status: 200,
           body: [
             {
+              id: "run-3",
+              suite_id: "suite-2",
+              sample_set_id: "sample-set-2",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: [],
+              started_at: "2026-03-31T14:00:00.000Z",
+              finished_at: "2026-03-31T14:20:00.000Z",
+            },
+            {
               id: "run-2",
               suite_id: "suite-2",
               sample_set_id: "sample-set-2",
@@ -1886,6 +1896,24 @@ test("evaluation workbench controller can preselect the newest run for a handed-
         };
       }
 
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-3/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-3",
+              evaluation_run_id: "run-3",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+              result_asset_id: "asset-3",
+              hard_gate_passed: true,
+              weighted_score: 98,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results") {
         return {
           status: 200,
@@ -1909,9 +1937,10 @@ test("evaluation workbench controller can preselect the newest run for a handed-
   }).manuscriptContext;
 
   assert.equal(overview.selectedSuiteId, "suite-2");
-  assert.equal(overview.selectedRunId, "run-2");
+  assert.equal(overview.selectedRunId, "run-3");
   assert.equal(overview.sampleSetItems[0]?.manuscript_id, "manuscript-target-1");
   assert.equal(manuscriptContext?.manuscriptId, "manuscript-target-1");
   assert.equal(manuscriptContext?.matchedSuiteId, "suite-2");
-  assert.equal(manuscriptContext?.matchedRunId, "run-2");
+  assert.equal(manuscriptContext?.matchedRunId, "run-3");
+  assert.deepEqual(manuscriptContext?.matchedHistoryRunIds, ["run-3", "run-2"]);
 });

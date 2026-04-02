@@ -70,6 +70,7 @@ export type EvaluationWorkbenchHistoryFilter =
   | "recommended"
   | "needs_review"
   | "rejected";
+export type EvaluationWorkbenchHistoryScope = "suite" | "manuscript";
 export type EvaluationWorkbenchHistorySortMode = "newest" | "failures_first";
 
 export interface EvaluationWorkbenchPageProps {
@@ -91,6 +92,7 @@ export function EvaluationWorkbenchPage({
   const [isBusy, setIsBusy] = useState(false);
   const [isActivatingSuiteId, setIsActivatingSuiteId] = useState<string | null>(null);
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
+  const [historyScope, setHistoryScope] = useState<EvaluationWorkbenchHistoryScope>("suite");
   const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [historySortMode, setHistorySortMode] =
@@ -137,21 +139,34 @@ export function EvaluationWorkbenchPage({
       ? finalizedResult
       : overview?.selectedRunFinalization ?? null;
   const finalizedRunHistory = overview?.finalizedRunHistory ?? [];
+  const matchedHistoryRunIds = overview?.manuscriptContext?.matchedHistoryRunIds ?? [];
+  const canScopeHistoryToManuscript =
+    normalizedPrefilledManuscriptId.length > 0 && matchedHistoryRunIds.length > 0;
+  const effectiveHistoryScope =
+    historyScope === "manuscript" && canScopeHistoryToManuscript ? "manuscript" : "suite";
+  const scopedFinalizedRunHistory = filterFinalizedRunHistoryByScope(
+    finalizedRunHistory,
+    effectiveHistoryScope,
+    matchedHistoryRunIds,
+  );
   const selectedRunHistoryEntry =
     selectedRun == null
       ? null
-      : finalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
+      : scopedFinalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
   const previousRunHistoryEntry =
     selectedRun == null
       ? null
-      : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
+      : findPreviousFinalizedRunHistoryEntry(scopedFinalizedRunHistory, selectedRun.id);
   const historyComparisonGuidance = describeHistoryComparisonGuidance({
     selectedRun,
     selectedRunHistoryEntry,
     previousRunHistoryEntry,
   });
-  const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
-  const filteredFinalizedRunHistory = filterFinalizedRunHistory(finalizedRunHistory, historyFilter);
+  const historyCounts = summarizeHistoryCounts(scopedFinalizedRunHistory);
+  const filteredFinalizedRunHistory = filterFinalizedRunHistory(
+    scopedFinalizedRunHistory,
+    historyFilter,
+  );
   const visibleFinalizedRunHistory = searchFinalizedRunHistory(
     filteredFinalizedRunHistory,
     historySearchQuery,
@@ -219,6 +234,21 @@ export function EvaluationWorkbenchPage({
     setHistorySearchQuery("");
     setHistorySortMode("newest");
   }, [overview?.selectedSuiteId]);
+
+  useEffect(() => {
+    if (!overview) return;
+    if (normalizedPrefilledManuscriptId.length === 0) {
+      setHistoryScope("suite");
+      return;
+    }
+    setHistoryScope(
+      overview.manuscriptContext?.matchedHistoryRunIds.length ? "manuscript" : "suite",
+    );
+  }, [
+    overview?.selectedSuiteId,
+    overview?.manuscriptContext?.manuscriptId,
+    normalizedPrefilledManuscriptId,
+  ]);
 
   if (loadStatus === "error" && !overview) {
     return (
@@ -404,20 +434,27 @@ export function EvaluationWorkbenchPage({
           <div className="evaluation-workbench-panel-header">
             <h3>Run History</h3>
             <span>
-              {historyFilter === "all"
-                ? historySearchQuery.trim()
-                  ? `${visibleFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`
-                  : `${finalizedRunHistory.length} finalized runs`
-                : `${visibleFinalizedRunHistory.length} of ${finalizedRunHistory.length} finalized runs`}
+              {describeHistoryResultCount({
+                totalFinalizedCount: finalizedRunHistory.length,
+                scopedCount: scopedFinalizedRunHistory.length,
+                visibleCount: visibleFinalizedRunHistory.length,
+                filter: historyFilter,
+                query: historySearchQuery,
+                scope: effectiveHistoryScope,
+              })}
             </span>
           </div>
           {selectedSuite == null ? (
             <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
-          ) : finalizedRunHistory.length === 0 ? (
+          ) : scopedFinalizedRunHistory.length === 0 ? (
             selectedRun && !selectedRunHistoryEntry ? (
               <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
             ) : (
-              <p className="evaluation-workbench-empty">Finalize at least one run to unlock suite-level history.</p>
+              <p className="evaluation-workbench-empty">
+                {effectiveHistoryScope === "manuscript"
+                  ? "Finalize at least one run for this manuscript to unlock manuscript-scoped history."
+                  : "Finalize at least one run to unlock suite-level history."}
+              </p>
             )
           ) : (
             <>
@@ -435,8 +472,27 @@ export function EvaluationWorkbenchPage({
                   <dd>{historyCounts.rejected}</dd>
                 </div>
               </dl>
+              {normalizedPrefilledManuscriptId.length > 0 ? (
+                <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history scope">
+                  {createHistoryScopeOptions(matchedHistoryRunIds.length).map((option) => {
+                    const isSelected = effectiveHistoryScope === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`evaluation-workbench-action${isSelected ? " is-selected" : ""}`}
+                        aria-pressed={isSelected}
+                        disabled={option.value === "manuscript" && !canScopeHistoryToManuscript}
+                        onClick={() => setHistoryScope(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
               <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history filters">
-                {createHistoryFilterOptions(historyCounts, finalizedRunHistory.length).map((option) => (
+                {createHistoryFilterOptions(historyCounts, scopedFinalizedRunHistory.length).map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -473,6 +529,7 @@ export function EvaluationWorkbenchPage({
                   <strong>Selected run is currently hidden by history controls.</strong>
                   <div className="evaluation-workbench-history-compare">
                     <span>Selected run: {selectedRun?.id}</span>
+                    <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
                     <span>Filter: {historyFilter}</span>
                     <span>Search: {historySearchQuery || "None"}</span>
                   </div>
@@ -480,6 +537,9 @@ export function EvaluationWorkbenchPage({
                     type="button"
                     className="evaluation-workbench-action"
                     onClick={() => {
+                      if (effectiveHistoryScope === "manuscript") {
+                        setHistoryScope("suite");
+                      }
                       setHistoryFilter("all");
                       setHistorySearchQuery("");
                     }}
@@ -555,6 +615,7 @@ export function EvaluationWorkbenchPage({
                 <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
                   <strong>No finalized runs match the current history controls.</strong>
                   <div className="evaluation-workbench-history-compare">
+                    <span>Scope: {effectiveHistoryScope === "manuscript" ? "manuscript" : "suite"}</span>
                     <span>Filter: {historyFilter}</span>
                     <span>Search: {historySearchQuery || "None"}</span>
                     <span>Sort: {historySortMode}</span>
@@ -1300,11 +1361,52 @@ function createHistoryFilterOptions(
   ];
 }
 
+function createHistoryScopeOptions(manuscriptRunCount: number) {
+  return [
+    { value: "suite" as const, label: "Entire Suite History" },
+    {
+      value: "manuscript" as const,
+      label: `Matched Manuscript Runs (${manuscriptRunCount})`,
+    },
+  ];
+}
+
 function createHistorySortOptions() {
   return [
     { value: "newest" as const, label: "Newest" },
     { value: "failures_first" as const, label: "Failures First" },
   ];
+}
+
+function filterFinalizedRunHistoryByScope(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  scope: EvaluationWorkbenchHistoryScope,
+  matchedRunIds: readonly string[],
+) {
+  if (scope === "suite") return entries;
+
+  const matchedRunIdSet = new Set(matchedRunIds);
+  return entries.filter((entry) => matchedRunIdSet.has(entry.run.id));
+}
+
+function describeHistoryResultCount(input: {
+  totalFinalizedCount: number;
+  scopedCount: number;
+  visibleCount: number;
+  filter: EvaluationWorkbenchHistoryFilter;
+  query: string;
+  scope: EvaluationWorkbenchHistoryScope;
+}) {
+  const scopeLabel =
+    input.scope === "manuscript" ? "manuscript-scoped finalized runs" : "finalized runs";
+  const hasSecondaryControls =
+    input.filter !== "all" || input.query.trim().length > 0 || input.scope === "manuscript";
+
+  if (!hasSecondaryControls) {
+    return `${input.totalFinalizedCount} ${scopeLabel}`;
+  }
+
+  return `${input.visibleCount} of ${input.scopedCount} ${scopeLabel}`;
 }
 
 export function filterFinalizedRunHistory(
