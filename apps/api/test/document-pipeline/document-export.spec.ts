@@ -21,6 +21,10 @@ function createDocumentExportHarness() {
     "asset-original-1",
     "job-upload-1",
     "asset-normalized-1",
+    "asset-screening-1",
+    "asset-editing-1",
+    "asset-proof-draft-1",
+    "asset-proof-final-1",
   ];
   const nextId = () => {
     const value = issuedIds.shift();
@@ -52,11 +56,13 @@ function createDocumentExportHarness() {
     workflowService,
     exportService: new DocumentExportService({
       assetRepository,
+      manuscriptRepository,
     }),
   });
 
   return {
     manuscriptService,
+    assetService,
     workflowService,
     documentPipelineApi,
   };
@@ -95,5 +101,76 @@ test("export returns the latest authoritative asset instead of the preview sessi
   assert.equal(
     response.body.download.storage_key,
     normalizationResult.normalized_asset?.storage_key,
+  );
+});
+
+test("export without a preferred type follows the manuscript current asset pointers", async () => {
+  const { manuscriptService, assetService, documentPipelineApi } =
+    createDocumentExportHarness();
+  const uploadResult = await manuscriptService.upload({
+    title: "Proofreading Export",
+    manuscriptType: "review",
+    createdBy: "editor-1",
+    fileName: "proofreading-export.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/proofreading-export.docx",
+  });
+
+  const screeningAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "screening_report",
+    storageKey: "runs/proofreading-export/screening/output",
+    mimeType: "text/markdown",
+    createdBy: "screener-1",
+    fileName: "screening-output.md",
+    parentAssetId: uploadResult.asset.id,
+    sourceModule: "screening",
+    sourceJobId: "job-screening-1",
+  });
+  const editingAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "edited_docx",
+    storageKey: "runs/proofreading-export/editing/output",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "editing-output.docx",
+    parentAssetId: screeningAsset.id,
+    sourceModule: "editing",
+    sourceJobId: "job-editing-1",
+  });
+  await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "proofreading_draft_report",
+    storageKey: "runs/proofreading-export/proofreading/draft",
+    mimeType: "text/markdown",
+    createdBy: "proofreader-1",
+    fileName: "proofreading-draft.md",
+    parentAssetId: editingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: "job-proof-draft-1",
+  });
+  const finalProofAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/proofreading-export/proofreading/final",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "proofreader-1",
+    fileName: "proofreading-final.docx",
+    parentAssetId: editingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: "job-proof-final-1",
+  });
+
+  const response = await documentPipelineApi.exportCurrentAsset({
+    manuscriptId: uploadResult.manuscript.id,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.asset.id, finalProofAsset.id);
+  assert.equal(response.body.asset.asset_type, "final_proof_annotated_docx");
+  assert.equal(response.body.download.file_name, "proofreading-final.docx");
+  assert.equal(
+    response.body.download.storage_key,
+    "runs/proofreading-export/proofreading/final",
   );
 });

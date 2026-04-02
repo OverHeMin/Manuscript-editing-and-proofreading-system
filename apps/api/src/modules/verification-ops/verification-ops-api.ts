@@ -216,6 +216,22 @@ export function createVerificationOpsApi(
       };
     },
 
+    async getVerificationEvidence({
+      actorRole,
+      evidenceId,
+    }: {
+      actorRole: RoleKey;
+      evidenceId: string;
+    }): Promise<RouteResponse<VerificationEvidenceRecord>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.getVerificationEvidence(
+          actorRole,
+          evidenceId,
+        ),
+      };
+    },
+
     async createEvaluationRun({
       actorRole,
       input,
@@ -279,6 +295,35 @@ export function createVerificationOpsApi(
       };
     },
 
+    async getEvaluationRunFinalization({
+      actorRole,
+      runId,
+    }: {
+      actorRole: RoleKey;
+      runId: string;
+    }): Promise<RouteResponse<FinalizeEvaluationRunResult | null>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.getEvaluationRunFinalization(actorRole, runId),
+      };
+    },
+
+    async listEvaluationSuiteFinalizations({
+      actorRole,
+      suiteId,
+    }: {
+      actorRole: RoleKey;
+      suiteId: string;
+    }): Promise<RouteResponse<FinalizeEvaluationRunResult[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationSuiteFinalizations(
+          actorRole,
+          suiteId,
+        ),
+      };
+    },
+
     async createLearningCandidateFromEvaluation({
       actorRole,
       input,
@@ -314,6 +359,19 @@ export function createVerificationOpsApi(
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationRunItemsByRunId(runId),
+      };
+    },
+
+    async listEvaluationRunEvidence({
+      actorRole,
+      runId,
+    }: {
+      actorRole: RoleKey;
+      runId: string;
+    }): Promise<RouteResponse<VerificationEvidenceRecord[]>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.listEvaluationRunEvidence(actorRole, runId),
       };
     },
   };

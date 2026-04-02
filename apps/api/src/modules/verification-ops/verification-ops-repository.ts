@@ -57,7 +57,13 @@ export interface VerificationOpsRepository {
   findEvaluationEvidencePackById(
     id: string,
   ): Promise<EvaluationEvidencePackRecord | undefined>;
+  findLatestEvaluationEvidencePackByRunId(
+    runId: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined>;
   saveEvaluationPromotionRecommendation(
     record: EvaluationPromotionRecommendationRecord,
   ): Promise<void>;
+  findLatestEvaluationPromotionRecommendationByRunId(
+    runId: string,
+  ): Promise<EvaluationPromotionRecommendationRecord | undefined>;
 }

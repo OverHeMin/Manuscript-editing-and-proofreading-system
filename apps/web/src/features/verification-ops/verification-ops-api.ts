@@ -219,6 +219,16 @@ export function recordVerificationEvidence(
   });
 }
 
+export function getVerificationEvidence(
+  client: VerificationOpsHttpClient,
+  evidenceId: string,
+) {
+  return client.request<VerificationEvidenceViewModel>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evidence/${evidenceId}`,
+  });
+}
+
 export function createEvaluationRun(
   client: VerificationOpsHttpClient,
   input: CreateEvaluationRunInput,
@@ -290,6 +300,26 @@ export function finalizeEvaluationRun(
   });
 }
 
+export function getEvaluationRunFinalizedResult(
+  client: VerificationOpsHttpClient,
+  runId: string,
+) {
+  return client.request<FinalizeEvaluationRunResultViewModel | null>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evaluation-runs/${runId}/finalized-result`,
+  });
+}
+
+export function listEvaluationSuiteFinalizedResults(
+  client: VerificationOpsHttpClient,
+  suiteId: string,
+) {
+  return client.request<FinalizeEvaluationRunResultViewModel[]>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evaluation-suites/${suiteId}/finalized-results`,
+  });
+}
+
 export function createLearningCandidateFromEvaluation(
   client: VerificationOpsHttpClient,
   input: CreateLearningCandidateFromEvaluationInput,
@@ -322,6 +352,16 @@ export function listEvaluationRunsBySuiteId(
   return client.request<EvaluationRunViewModel[]>({
     method: "GET",
     url: `/api/v1/verification-ops/evaluation-suites/${suiteId}/runs`,
+  });
+}
+
+export function listEvaluationRunEvidenceByRunId(
+  client: VerificationOpsHttpClient,
+  runId: string,
+) {
+  return client.request<VerificationEvidenceViewModel[]>({
+    method: "GET",
+    url: `/api/v1/verification-ops/evaluation-runs/${runId}/evidence`,
   });
 }
 

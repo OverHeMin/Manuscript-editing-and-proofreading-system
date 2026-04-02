@@ -3,6 +3,7 @@ import type {
   DocumentAssetType,
 } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
+import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 
 export interface ExportCurrentDocumentAssetInput {
   manuscriptId: string;
@@ -16,11 +17,13 @@ export interface DocumentExportResult {
     storage_key: string;
     file_name?: string;
     mime_type: string;
+    url: string;
   };
 }
 
 export interface DocumentExportServiceOptions {
   assetRepository: DocumentAssetRepository;
+  manuscriptRepository: ManuscriptRepository;
 }
 
 export class DocumentExportAssetNotFoundError extends Error {
@@ -51,9 +54,11 @@ function sortAssetsByRecency(
 
 export class DocumentExportService {
   private readonly assetRepository: DocumentAssetRepository;
+  private readonly manuscriptRepository: ManuscriptRepository;
 
   constructor(options: DocumentExportServiceOptions) {
     this.assetRepository = options.assetRepository;
+    this.manuscriptRepository = options.manuscriptRepository;
   }
 
   async exportCurrentAsset(
@@ -68,6 +73,7 @@ export class DocumentExportService {
         storage_key: asset.storage_key,
         file_name: asset.file_name,
         mime_type: asset.mime_type,
+        url: `/api/v1/document-assets/${asset.id}/download`,
       },
     };
   }
@@ -82,9 +88,34 @@ export class DocumentExportService {
         )
       : await this.assetRepository.listByManuscriptId(input.manuscriptId);
 
-    const currentAsset = candidates.find(
-      (asset) => asset.is_current && asset.status !== "archived",
-    );
+    if (input.preferredAssetType) {
+      return this.resolveLatestUsableAsset(candidates, input);
+    }
+
+    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+    const preferredAssetIds = [
+      manuscript?.current_proofreading_asset_id,
+      manuscript?.current_editing_asset_id,
+      manuscript?.current_screening_asset_id,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+
+    for (const assetId of preferredAssetIds) {
+      const asset = await this.assetRepository.findById(assetId);
+      if (asset && asset.manuscript_id === input.manuscriptId && asset.status !== "archived") {
+        return asset;
+      }
+    }
+
+    return this.resolveLatestUsableAsset(candidates, input);
+  }
+
+  private resolveLatestUsableAsset(
+    candidates: readonly DocumentAssetRecord[],
+    input: ExportCurrentDocumentAssetInput,
+  ): DocumentAssetRecord {
+    const currentAsset = [...candidates]
+      .filter((asset) => asset.is_current && asset.status !== "archived")
+      .sort(sortAssetsByRecency)[0];
 
     if (currentAsset) {
       return currentAsset;

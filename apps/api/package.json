@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm run dev:demo",
+    "dev": "pnpm run dev:persistent",
     "dev:demo": "tsx watch ./src/http/dev-server.ts",
     "dev:persistent": "tsx watch ./src/http/prod-server.ts",
     "lint": "pnpm run typecheck",

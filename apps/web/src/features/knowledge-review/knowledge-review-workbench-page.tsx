@@ -28,6 +28,7 @@ import "./knowledge-review-workbench.css";
 export interface KnowledgeReviewWorkbenchPageProps {
   controller?: KnowledgeReviewWorkbenchController;
   actorRole?: AuthRole;
+  prefilledKnowledgeItemId?: string;
 }
 
 const defaultWorkbenchController = createKnowledgeReviewWorkbenchController(
@@ -37,8 +38,10 @@ const defaultWorkbenchController = createKnowledgeReviewWorkbenchController(
 export function KnowledgeReviewWorkbenchPage({
   controller,
   actorRole = "knowledge_reviewer",
+  prefilledKnowledgeItemId,
 }: KnowledgeReviewWorkbenchPageProps) {
   const workbenchController = controller ?? defaultWorkbenchController;
+  const normalizedPrefilledKnowledgeItemId = prefilledKnowledgeItemId?.trim() ?? "";
   const [filters, setFilters] = useState(() => createKnowledgeReviewFilterState());
   const [desk, setDesk] = useState<KnowledgeReviewDeskLoadResult | null>(null);
   const [queueLoadStatus, setQueueLoadStatus] = useState<"initial" | "loading" | "ready" | "error">(
@@ -63,8 +66,14 @@ export function KnowledgeReviewWorkbenchPage({
   const selectedItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void loadDesk({ showLoading: true });
-  }, [workbenchController]);
+    void loadDesk({
+      showLoading: true,
+      activeItemId:
+        normalizedPrefilledKnowledgeItemId.length > 0
+          ? normalizedPrefilledKnowledgeItemId
+          : undefined,
+    });
+  }, [normalizedPrefilledKnowledgeItemId, workbenchController]);
 
   const effectiveSelectedItem = resolveDetailSelection(
     queueLoadStatus,
@@ -108,6 +117,7 @@ export function KnowledgeReviewWorkbenchPage({
   async function loadDesk(input: {
     filters?: Partial<KnowledgeReviewFilterState>;
     showLoading?: boolean;
+    activeItemId?: string;
   }): Promise<void> {
     const requestId = ++queueRequestIdRef.current;
     if (input.showLoading ?? true) {
@@ -119,6 +129,7 @@ export function KnowledgeReviewWorkbenchPage({
       const nextDesk = await workbenchController.loadDesk({
         state: desk?.state,
         filters: input.filters,
+        activeItemId: input.activeItemId,
       });
       if (requestId !== queueRequestIdRef.current) {
         return;

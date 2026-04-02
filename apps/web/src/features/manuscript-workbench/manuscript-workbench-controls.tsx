@@ -52,8 +52,10 @@ export interface ManuscriptWorkbenchActionPanelProps {
 export interface ManuscriptWorkbenchUtilitiesPanelProps {
   canExport: boolean;
   canRefreshLatestJob: boolean;
+  canPublishHumanFinal?: boolean;
   onExport(): void;
   onRefreshLatestJob(): void;
+  onPublishHumanFinal?(): void;
 }
 
 export interface ManuscriptWorkbenchControlsProps {
@@ -313,6 +315,15 @@ export function ManuscriptWorkbenchControls({
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row">
+                {utilities.canPublishHumanFinal && utilities.onPublishHumanFinal ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => utilities.onPublishHumanFinal?.()}
+                  >
+                    Publish Human Final
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={busy || !utilities.canExport}

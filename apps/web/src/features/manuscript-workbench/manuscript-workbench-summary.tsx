@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
-import type { JobViewModel, DocumentAssetViewModel } from "../manuscripts/index.ts";
+import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
+import type {
+  DocumentAssetExportViewModel,
+  DocumentAssetViewModel,
+  JobViewModel,
+} from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
   ManuscriptWorkbenchMode,
@@ -24,15 +29,19 @@ export interface WorkbenchActionResultViewModel {
 export interface ManuscriptWorkbenchSummaryProps {
   mode: ManuscriptWorkbenchMode;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
+  canOpenLearningReview?: boolean;
+  canOpenEvaluationWorkbench?: boolean;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
-  latestExport: string;
+  latestExport: DocumentAssetExportViewModel | null;
   latestActionResult?: WorkbenchActionResultViewModel | null;
 }
 
 export function ManuscriptWorkbenchSummary({
   mode,
   accessibleHandoffModes = [],
+  canOpenLearningReview = false,
+  canOpenEvaluationWorkbench = false,
   workspace,
   latestJob,
   latestExport,
@@ -43,6 +52,7 @@ export function ManuscriptWorkbenchSummary({
     workspace,
     latestJob,
     latestExport,
+    canOpenLearningReview,
   );
 
   return (
@@ -86,8 +96,15 @@ export function ManuscriptWorkbenchSummary({
               value={detail.value}
             />
           ))}
-          {recommendedNextStep.targetMode &&
-          accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
+          {recommendedNextStep.targetHref && recommendedNextStep.targetLabel ? (
+            <a
+              className="manuscript-workbench-shortcut"
+              href={recommendedNextStep.targetHref}
+            >
+              {recommendedNextStep.targetLabel}
+            </a>
+          ) : recommendedNextStep.targetMode &&
+            accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
             <a
               className="manuscript-workbench-shortcut"
               href={formatWorkbenchHash(recommendedNextStep.targetMode, workspace.manuscript.id)}
@@ -117,6 +134,19 @@ export function ManuscriptWorkbenchSummary({
             label="Last Updated"
             value={formatTimestamp(workspace.manuscript.updated_at)}
           />
+          {canOpenEvaluationWorkbench ? (
+            <SummaryMetric
+              label="Evaluation Context"
+              value={
+                <a
+                  className="manuscript-workbench-shortcut"
+                  href={formatWorkbenchHash("evaluation-workbench", workspace.manuscript.id)}
+                >
+                  Open Evaluation Workbench
+                </a>
+              }
+            />
+          ) : null}
         </SummaryCard>
 
         <SummaryCard title="Current Asset">
@@ -186,7 +216,34 @@ export function ManuscriptWorkbenchSummary({
             <>
               <SummaryMetric
                 label="Export Storage Key"
-                value={<code>{latestExport}</code>}
+                value={<code>{latestExport.download.storage_key}</code>}
+              />
+              <SummaryMetric
+                label="Export File Name"
+                value={
+                  latestExport.download.file_name ??
+                  latestExport.asset.file_name ??
+                  "Not provided"
+                }
+              />
+              <SummaryMetric
+                label="Download MIME Type"
+                value={latestExport.download.mime_type}
+              />
+              <SummaryMetric
+                label="Source Asset"
+                value={renderAssetIdentity(latestExport.asset)}
+              />
+              <SummaryMetric
+                label="Download"
+                value={
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={resolveBrowserApiUrl(latestExport.download.url)}
+                  >
+                    Download Latest Export
+                  </a>
+                }
               />
               <SummaryMetric label="Ready State" value="Prepared for downstream delivery" />
             </>
@@ -328,13 +385,15 @@ interface RecommendedNextStepViewModel {
   details: WorkbenchActionResultDetail[];
   targetMode?: ManuscriptWorkbenchMode;
   targetLabel?: string;
+  targetHref?: string;
 }
 
 function buildRecommendedNextStep(
   mode: ManuscriptWorkbenchMode,
   workspace: ManuscriptWorkbenchWorkspace,
   latestJob: AnyWorkbenchJob | null,
-  latestExport: string,
+  latestExport: DocumentAssetExportViewModel | null,
+  canOpenLearningReview: boolean,
 ): RecommendedNextStepViewModel {
   if (mode === "submission") {
     if (latestExport) {
@@ -348,7 +407,7 @@ function buildRecommendedNextStep(
           },
           {
             label: "Export",
-            value: latestExport,
+            value: latestExport.download.storage_key,
           },
         ],
       };
@@ -442,21 +501,42 @@ function buildRecommendedNextStep(
     };
   }
 
-  if (isFinalProofAsset(workspace.currentAsset)) {
+  if (workspace.currentAsset?.asset_type === "human_final_docx") {
     return {
-      focus: "Export or hand off the finalized proofreading output",
-      guidance: "The proofreading final is active and ready for downstream delivery.",
+      focus: "Hand off this manuscript into learning review",
+      guidance: "The human-final manuscript is ready for governed learning snapshot creation.",
       details: [
+        {
+          label: "Manuscript",
+          value: workspace.manuscript.id,
+        },
         {
           label: "Current Asset",
           value: describeAsset(workspace.currentAsset),
         },
-        {
-          label: "Export",
-          value: latestExport || "Prepare export from Workspace Utilities",
-        },
       ],
+      targetLabel: canOpenLearningReview ? "Open Learning Review" : undefined,
+      targetHref: canOpenLearningReview
+        ? formatWorkbenchHash("learning-review", workspace.manuscript.id)
+        : undefined,
     };
+  }
+
+  if (isFinalProofAsset(workspace.currentAsset)) {
+    return {
+      focus: "Export or hand off the finalized proofreading output",
+      guidance: "The proofreading final is active and ready for downstream delivery.",
+        details: [
+          {
+            label: "Current Asset",
+            value: describeAsset(workspace.currentAsset),
+          },
+          {
+            label: "Export",
+            value: latestExport?.download.storage_key ?? "Prepare export from Workspace Utilities",
+          },
+        ],
+      };
   }
 
   if (workspace.latestProofreadingDraftAsset) {
@@ -507,8 +587,7 @@ function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
 
   return (
     asset.asset_type === "final_proof_issue_report" ||
-    asset.asset_type === "final_proof_annotated_docx" ||
-    asset.asset_type === "human_final_docx"
+    asset.asset_type === "final_proof_annotated_docx"
   );
 }
 

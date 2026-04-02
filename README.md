@@ -15,7 +15,10 @@
 - Manuscript workbench 已将原始 JSON 输出升级为结构化的稿件、资产、作业摘要视图，并保留可折叠调试快照
 - Manuscript workbench 的上传、查稿、模块执行、导出控制区已重组为运营面板式布局
 - Manuscript workbench 现已提供顶部成功/错误状态横幅和面板内输入校验提示
-- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理与执行追踪 runtime
+- Evaluation Workbench 已可加载 verification-ops 的 suites / runs / run items / sample-set context，并支持在浏览器中激活 draft suite、创建 evaluation run、录入 run item 结果、finalize evidence/recommendation、以及基于联动 snapshot 发起 learning handoff
+- Admin Governance Console 已可在浏览器中查看 execution snapshot、知识命中证据，以及 manuscript / job / output asset 下钻结果，并直接跳转到对应 workbench、下载可导出的输出资产，并用 Recent Agent Executions 的状态筛选/搜索快速分诊运行记录
+- 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行稿件 handoff、learning review、knowledge review 真实浏览器 smoke
+- PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理/追踪，以及 verification-ops 评测资产 runtime
 - 本地运维、迁移、交付文档基线
 
 ## 当前状态
@@ -31,7 +34,7 @@
   - 用户认证、登录失败窗口、服务端会话、审计日志
   - 知识库条目与知识审稿动作
   - 模板家族与模块模板版本治理
-  - 学习回写记录
+  - 学习回写记录、reviewed-case snapshots、人工反馈记录与 governed provenance source links
   - Prompt 模板与 Skill 包注册表
   - 模型注册表与路由策略
   - Agent Runtime / Tool Gateway / Sandbox Profile / Agent Profile 注册表
@@ -42,7 +45,7 @@
 
 当前仍然是 mixed-mode，不应误判为“整套业务都已完全生产持久化”。仍未完成真实持久化或仍属基础实现的部分包括：
 
-- 学习快照、反馈溯源与完整学习主流程
+- 完整学习主流程的更深自动化、评测闭环与策略持续优化
 - 评测、验证与 agent 执行编排等后续阶段模块
 - 更完整的 Worker 编排、运维观测与生产级部署闭环
 
@@ -52,9 +55,13 @@
 - `apps/web` 已经能从 submission / screening / editing / proofreading workbench 直接触发真实稿件主链路与模块执行
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
+- `apps/api run serve` 已经能持久化 learning review 的 reviewed-case snapshots、人工反馈记录、governed provenance，knowledge review 的队列 / 历史治理数据，以及 verification-ops 的 sample sets / check profiles / suites / runs / evidence packs
 - `apps/api` 的稿件 intake 路由已经支持 `fileContentBase64` 直传，本地文件默认写入 `.local-data/uploads/<app-env>`，也可通过 `UPLOAD_ROOT_DIR` 改到独立数据目录
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
-- 但 `serve` 当前仍是“稿件主链路 + 认证 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
+- `apps/web` 里的 admin-console 现在还可以把 Recent Agent Executions 直接下钻到 manuscript、job 与 created asset 输出明细，并通过状态筛选/搜索快速聚焦 running / failed / completed 执行，方便治理台追踪运行结果
+- `apps/web` 里的 evaluation-workbench 已不再是占位页，当前可以直接查看 verification-ops 的 suite/run/run-item/sample-set 概览，并在浏览器中完成 run 创建、run-item 录入、evidence finalize、以及带 snapshot 自动联动的 learning candidate handoff
+- `pnpm verify:manuscript-workbench` 当前已经覆盖 manuscript handoff、learning review flow、knowledge review handoff + approve/reject terminal actions、admin governance execution observability + Recent Agent Executions triage、evaluation workbench suite activation + manual evaluation loop 的真实浏览器门禁，并包含 verification-ops 持久化 HTTP 路由回归
+- 但 `serve` 当前仍是“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
 
 ## 环境要求
 
@@ -75,6 +82,8 @@
    `pnpm --filter @medical/api run serve:demo`
 5. 启动 PostgreSQL 持久化 API
    `pnpm --filter @medical/api run serve`
+   - For watch mode, use `pnpm --filter @medical/api run dev`
+   - For watch + demo runtime, use `pnpm --filter @medical/api run dev:demo`
 6. 启动 Web workbench
    `pnpm --filter @medsys/web run dev`
    - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调
@@ -86,6 +95,8 @@
    `pnpm --filter @medical/worker-py run smoke:boot`
 9. 跑全仓校验
    `pnpm lint && pnpm typecheck && pnpm test`
+10. 跑 Manuscript workbench 发布门禁
+   `pnpm verify:manuscript-workbench`
 
 ## Runtime 契约
 
@@ -100,7 +111,7 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
-- 当前持久化范围已覆盖“稿件主链路 + 认证 + 治理注册表 + agent-tooling governance + execution governance/tracking”
+- 当前持久化范围已覆盖“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + agent-tooling governance + execution governance/tracking + verification-ops persistence”
 - 不会自动注入 demo 审稿数据
 
 ### Web Workbench Shell
@@ -144,4 +155,5 @@
 - 模型执行治理、评测与路由策略联动
 - agent 执行编排、运行证据与更深层治理运营能力
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
+- 更深的 Evaluation Workbench 运营能力，例如 sample-set item 详情联动、历史 evidence pack 检索、以及多 run 对比视图
 - 部署、监控、回滚、远程维护标准化

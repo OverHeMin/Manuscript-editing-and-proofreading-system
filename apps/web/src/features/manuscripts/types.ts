@@ -88,6 +88,7 @@ export interface DocumentAssetExportViewModel {
     storage_key: string;
     file_name?: string;
     mime_type: string;
+    url: string;
   };
 }
 

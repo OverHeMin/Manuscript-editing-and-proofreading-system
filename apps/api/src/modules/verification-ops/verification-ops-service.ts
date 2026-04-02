@@ -722,6 +722,31 @@ export class VerificationOpsService {
     return this.repository.listEvaluationRunItemsByRunId(runId);
   }
 
+  async getVerificationEvidence(
+    actorRole: RoleKey,
+    evidenceId: string,
+  ): Promise<VerificationEvidenceRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.requireVerificationEvidence(evidenceId);
+  }
+
+  async listEvaluationRunEvidence(
+    actorRole: RoleKey,
+    runId: string,
+  ): Promise<VerificationEvidenceRecord[]> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const run = await this.requireEvaluationRun(runId);
+    const evidenceRecords = await Promise.all(
+      run.evidence_ids.map(async (evidenceId) =>
+        this.requireVerificationEvidence(evidenceId),
+      ),
+    );
+
+    return evidenceRecords;
+  }
+
   async finalizeEvaluationRun(
     actorRole: RoleKey,
     runId: string,
@@ -766,6 +791,33 @@ export class VerificationOpsService {
       evidence_pack: evidencePack,
       recommendation,
     };
+  }
+
+  async getEvaluationRunFinalization(
+    actorRole: RoleKey,
+    runId: string,
+  ): Promise<FinalizeEvaluationRunResult | null> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const run = await this.requireEvaluationRun(runId);
+    return this.buildFinalizationForRun(run);
+  }
+
+  async listEvaluationSuiteFinalizations(
+    actorRole: RoleKey,
+    suiteId: string,
+  ): Promise<FinalizeEvaluationRunResult[]> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    await this.requireEvaluationSuite(suiteId);
+    const runs = await this.repository.listEvaluationRunsBySuiteId(suiteId);
+    const finalizedRuns = await Promise.all(
+      runs.map((run) => this.buildFinalizationForRun(run)),
+    );
+
+    return finalizedRuns
+      .filter((result): result is FinalizeEvaluationRunResult => result != null)
+      .sort(compareFinalizationRecencyDesc);
   }
 
   async createLearningCandidateFromEvaluation(
@@ -916,6 +968,54 @@ export class VerificationOpsService {
 
     return record;
   }
+
+  private async requireVerificationEvidence(
+    evidenceId: string,
+  ): Promise<VerificationEvidenceRecord> {
+    const record = await this.repository.findVerificationEvidenceById(evidenceId);
+    if (!record) {
+      throw new VerificationEvidenceNotFoundError(evidenceId);
+    }
+
+    return record;
+  }
+
+  private async buildFinalizationForRun(
+    run: EvaluationRunRecord,
+  ): Promise<FinalizeEvaluationRunResult | null> {
+    const recommendation =
+      await this.repository.findLatestEvaluationPromotionRecommendationByRunId(run.id);
+    if (!recommendation) {
+      return null;
+    }
+
+    const evidencePack = await this.repository.findEvaluationEvidencePackById(
+      recommendation.evidence_pack_id,
+    );
+    if (!evidencePack) {
+      return null;
+    }
+
+    return {
+      run,
+      evidence_pack: evidencePack,
+      recommendation,
+    };
+  }
+}
+
+function compareFinalizationRecencyDesc(
+  left: FinalizeEvaluationRunResult,
+  right: FinalizeEvaluationRunResult,
+) {
+  const leftTimestamp = left.run.finished_at ?? left.run.started_at;
+  const rightTimestamp = right.run.finished_at ?? right.run.started_at;
+
+  if (leftTimestamp !== rightTimestamp) {
+    return rightTimestamp.localeCompare(leftTimestamp);
+  }
+
+  return right.run.id.localeCompare(left.run.id);
 }
 
 function createVerificationOpsTransactionManager(

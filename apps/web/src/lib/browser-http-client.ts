@@ -69,6 +69,10 @@ export function createBrowserHttpClient(
   };
 }
 
+export function resolveBrowserApiUrl(pathOrUrl: string, apiBaseUrl?: string): string {
+  return resolveRequestUrl(pathOrUrl, apiBaseUrl);
+}
+
 function resolveRequestUrl(pathOrUrl: string, apiBaseUrl?: string): string {
   if (isAbsoluteUrl(pathOrUrl)) {
     return pathOrUrl;
@@ -79,7 +83,10 @@ function resolveRequestUrl(pathOrUrl: string, apiBaseUrl?: string): string {
 }
 
 function resolveApiBaseUrl(apiBaseUrl?: string): string {
-  const configuredBaseUrl = apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL;
+  const configuredBaseUrl =
+    apiBaseUrl ??
+    (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+      ?.VITE_API_BASE_URL;
 
   if (typeof configuredBaseUrl === "string" && configuredBaseUrl.trim().length > 0) {
     return ensureTrailingSlash(configuredBaseUrl.trim());

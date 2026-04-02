@@ -7,6 +7,7 @@ import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import type { TemplateFamilyRepository } from "../templates/template-repository.ts";
 import type { ManuscriptRecord, ManuscriptType } from "./manuscript-record.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
@@ -29,6 +30,7 @@ export interface ManuscriptLifecycleServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
   jobRepository: JobRepository;
+  templateFamilyRepository?: TemplateFamilyRepository;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
   now?: () => Date;
@@ -38,6 +40,7 @@ export class ManuscriptLifecycleService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly assetRepository: DocumentAssetRepository;
   private readonly jobRepository: JobRepository;
+  private readonly templateFamilyRepository?: TemplateFamilyRepository;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
   private readonly now: () => Date;
@@ -46,6 +49,7 @@ export class ManuscriptLifecycleService {
     this.manuscriptRepository = options.manuscriptRepository;
     this.assetRepository = options.assetRepository;
     this.jobRepository = options.jobRepository;
+    this.templateFamilyRepository = options.templateFamilyRepository;
     this.transactionManager =
       options.transactionManager ??
       createWriteTransactionManager({
@@ -58,6 +62,10 @@ export class ManuscriptLifecycleService {
   }
 
   async upload(input: UploadManuscriptInput): Promise<UploadManuscriptResult> {
+    const templateFamilyId = await this.resolveDefaultTemplateFamilyId(
+      input.manuscriptType,
+    );
+
     return this.transactionManager.withTransaction(
       async ({ manuscriptRepository, assetRepository, jobRepository }) => {
         if (!jobRepository) {
@@ -78,7 +86,7 @@ export class ManuscriptLifecycleService {
           current_screening_asset_id: undefined,
           current_editing_asset_id: undefined,
           current_proofreading_asset_id: undefined,
-          current_template_family_id: undefined,
+          current_template_family_id: templateFamilyId,
           created_at: timestamp,
           updated_at: timestamp,
         };
@@ -130,6 +138,25 @@ export class ManuscriptLifecycleService {
         };
       },
     );
+  }
+
+  private async resolveDefaultTemplateFamilyId(
+    manuscriptType: ManuscriptType,
+  ): Promise<string | undefined> {
+    if (!this.templateFamilyRepository) {
+      return undefined;
+    }
+
+    const matchingFamilies = (await this.templateFamilyRepository.list()).filter(
+      (family) =>
+        family.manuscript_type === manuscriptType && family.status === "active",
+    );
+
+    if (matchingFamilies.length !== 1) {
+      return undefined;
+    }
+
+    return matchingFamilies[0]?.id;
   }
 
   getManuscript(manuscriptId: string): Promise<ManuscriptRecord | undefined> {

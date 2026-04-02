@@ -481,3 +481,229 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
     ],
   );
 });
+
+test("manuscript workbench controller exports the current asset through the document pipeline route", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/document-pipeline/export-current-asset"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-1",
+            asset: {
+              id: "asset-proof-final-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "final_proof_annotated_docx",
+              status: "active",
+              storage_key: "runs/manuscript-1/proofreading/final",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-draft-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-final-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "proofreading-final.docx",
+              created_at: "2026-03-31T10:02:00.000Z",
+              updated_at: "2026-03-31T10:02:00.000Z",
+            },
+            download: {
+              storage_key: "runs/manuscript-1/proofreading/final",
+              file_name: "proofreading-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              url: "/api/v1/document-assets/asset-proof-final-1/download",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const exported = await controller.exportCurrentAsset({
+    manuscriptId: "manuscript-1",
+  });
+
+  assert.equal(exported.asset.id, "asset-proof-final-1");
+  assert.equal(exported.download.file_name, "proofreading-final.docx");
+  assert.equal(
+    exported.download.mime_type,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.equal(
+    exported.download.url,
+    "/api/v1/document-assets/asset-proof-final-1/download",
+  );
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/document-pipeline/export-current-asset",
+      body: {
+        manuscriptId: "manuscript-1",
+      },
+    },
+  ]);
+});
+
+test("manuscript workbench controller publishes a proofreading human-final asset and reloads the workspace", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/modules/proofreading/publish-human-final"
+      ) {
+        return {
+          status: 201,
+          body: {
+            job: {
+              id: "job-human-final-1",
+              manuscript_id: "manuscript-1",
+              module: "manual",
+              job_type: "publish_human_final",
+              status: "completed",
+              requested_by: "proofreader-1",
+              attempt_count: 1,
+              payload: {
+                sourceAssetId: "asset-proof-final-1",
+              },
+              created_at: "2026-03-31T10:05:00.000Z",
+              updated_at: "2026-03-31T10:05:00.000Z",
+            },
+            asset: {
+              id: "asset-human-final-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "human_final_docx",
+              status: "active",
+              storage_key: "runs/manuscript-1/proofreading/human-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-final-1",
+              source_module: "manual",
+              source_job_id: "job-human-final-1",
+              created_by: "proofreader-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "human-final.docx",
+              created_at: "2026-03-31T10:05:00.000Z",
+              updated_at: "2026-03-31T10:05:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Proofreading candidate",
+            manuscript_type: "review",
+            status: "completed",
+            created_by: "editor-1",
+            current_proofreading_asset_id: "asset-human-final-1",
+            created_at: "2026-03-31T09:00:00.000Z",
+            updated_at: "2026-03-31T10:05:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-human-final-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "human_final_docx",
+              status: "active",
+              storage_key: "runs/manuscript-1/proofreading/human-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-final-1",
+              source_module: "manual",
+              source_job_id: "job-human-final-1",
+              created_by: "proofreader-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "human-final.docx",
+              created_at: "2026-03-31T10:05:00.000Z",
+              updated_at: "2026-03-31T10:05:00.000Z",
+            },
+            {
+              id: "asset-proof-final-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "final_proof_annotated_docx",
+              status: "superseded",
+              storage_key: "runs/manuscript-1/proofreading/final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-draft-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-final-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "proofreading-final.docx",
+              created_at: "2026-03-31T10:03:00.000Z",
+              updated_at: "2026-03-31T10:03:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.publishHumanFinalAndLoad({
+    manuscriptId: "manuscript-1",
+    finalAssetId: "asset-proof-final-1",
+    actorRole: "proofreader",
+    storageKey: "runs/manuscript-1/proofreading/human-final.docx",
+    fileName: "human-final.docx",
+  });
+
+  assert.equal(result.runResult.job.id, "job-human-final-1");
+  assert.equal(result.runResult.job.module, "manual");
+  assert.equal(result.runResult.asset.id, "asset-human-final-1");
+  assert.equal(result.workspace.currentAsset?.id, "asset-human-final-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/modules/proofreading/publish-human-final",
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+    ],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-1",
+    finalAssetId: "asset-proof-final-1",
+    requestedBy: "web-workbench",
+    actorRole: "proofreader",
+    storageKey: "runs/manuscript-1/proofreading/human-final.docx",
+    fileName: "human-final.docx",
+  });
+});

@@ -100,7 +100,32 @@ test("manuscript workbench summary renders operator-facing overview cards and th
         created_at: "2026-03-31T09:45:00.000Z",
         updated_at: "2026-03-31T09:46:00.000Z",
       }}
-      latestExport="exports/manuscript-1/current.docx"
+      latestExport={{
+        manuscript_id: "manuscript-1",
+        asset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          source_job_id: "job-edit-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "editing-final.docx",
+          created_at: "2026-03-31T09:45:00.000Z",
+          updated_at: "2026-03-31T09:45:00.000Z",
+        },
+        download: {
+          storage_key: "exports/manuscript-1/current.docx",
+          file_name: "editing-final.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url: "/api/v1/document-assets/asset-edited-1/download",
+        },
+      }}
       latestActionResult={{
         tone: "success",
         actionLabel: "Run Editing",
@@ -133,9 +158,47 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /completed/);
   assert.match(markup, /Latest Export/);
   assert.match(markup, /exports\/manuscript-1\/current\.docx/);
+  assert.match(markup, /Download Latest Export/);
+  assert.match(
+    markup,
+    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
+  );
   assert.match(markup, /Asset Chain/);
   assert.match(markup, /asset-original-1/);
   assert.match(markup, /Debug Snapshot/);
+});
+
+test("manuscript workbench summary exposes an evaluation shortcut when governance access is available", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        canOpenEvaluationWorkbench: true,
+        workspace: {
+          manuscript: {
+            id: "manuscript-eval-1",
+            title: "Cardiology evaluation candidate",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "editor-1",
+            created_at: "2026-03-31T09:00:00.000Z",
+            updated_at: "2026-03-31T10:00:00.000Z",
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: null,
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Open Evaluation Workbench/);
+  assert.match(markup, /href="#evaluation-workbench\?manuscriptId=manuscript-eval-1"/);
 });
 
 test("manuscript workbench summary guides screening operators toward the next governed run", () => {
@@ -203,7 +266,7 @@ test("manuscript workbench summary guides screening operators toward the next go
         latestProofreadingDraftAsset: null,
       }}
       latestJob={null}
-      latestExport=""
+      latestExport={null}
       latestActionResult={null}
     />,
   );
@@ -322,7 +385,7 @@ test("manuscript workbench summary guides proofreading operators to finalize an 
         created_at: "2026-03-31T09:45:00.000Z",
         updated_at: "2026-03-31T09:46:00.000Z",
       }}
-      latestExport=""
+      latestExport={null}
       latestActionResult={null}
     />,
   );
@@ -330,4 +393,105 @@ test("manuscript workbench summary guides proofreading operators to finalize an 
   assert.match(markup, /Finalize the reviewed proofreading draft/);
   assert.match(markup, /Human confirmation is still required before producing the proofreading final\./);
   assert.match(markup, /proofreading-draft\.docx/);
+});
+
+test("manuscript workbench summary guides human-final proofreading output into learning review", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      accessibleHandoffModes={["proofreading"]}
+      canOpenLearningReview
+      workspace={{
+        manuscript: {
+          id: "manuscript-learning-1",
+          title: "Neurology learning handoff",
+          manuscript_type: "clinical_study",
+          status: "completed",
+          created_by: "proofreader-1",
+          current_proofreading_asset_id: "asset-human-final-1",
+          created_at: "2026-03-31T09:00:00.000Z",
+          updated_at: "2026-03-31T10:10:00.000Z",
+        },
+        assets: [
+          {
+            id: "asset-human-final-1",
+            manuscript_id: "manuscript-learning-1",
+            asset_type: "human_final_docx",
+            status: "active",
+            storage_key: "runs/manuscript-learning-1/proofreading/human-final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-proof-final-1",
+            source_module: "manual",
+            source_job_id: "job-human-final-1",
+            created_by: "proofreader-1",
+            version_no: 1,
+            is_current: true,
+            file_name: "human-final.docx",
+            created_at: "2026-03-31T10:10:00.000Z",
+            updated_at: "2026-03-31T10:10:00.000Z",
+          },
+          {
+            id: "asset-proof-final-1",
+            manuscript_id: "manuscript-learning-1",
+            asset_type: "final_proof_annotated_docx",
+            status: "superseded",
+            storage_key: "runs/manuscript-learning-1/proofreading/final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-proof-draft-1",
+            source_module: "proofreading",
+            source_job_id: "job-proof-final-1",
+            created_by: "proofreader-1",
+            version_no: 4,
+            is_current: true,
+            file_name: "proofreading-final.docx",
+            created_at: "2026-03-31T10:05:00.000Z",
+            updated_at: "2026-03-31T10:05:00.000Z",
+          },
+        ],
+        currentAsset: {
+          id: "asset-human-final-1",
+          manuscript_id: "manuscript-learning-1",
+          asset_type: "human_final_docx",
+          status: "active",
+          storage_key: "runs/manuscript-learning-1/proofreading/human-final.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-proof-final-1",
+          source_module: "manual",
+          source_job_id: "job-human-final-1",
+          created_by: "proofreader-1",
+          version_no: 1,
+          is_current: true,
+          file_name: "human-final.docx",
+          created_at: "2026-03-31T10:10:00.000Z",
+          updated_at: "2026-03-31T10:10:00.000Z",
+        },
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={{
+        id: "job-human-final-1",
+        manuscript_id: "manuscript-learning-1",
+        module: "manual",
+        job_type: "publish_human_final",
+        status: "completed",
+        requested_by: "proofreader-1",
+        attempt_count: 1,
+        created_at: "2026-03-31T10:10:00.000Z",
+        updated_at: "2026-03-31T10:10:00.000Z",
+      }}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /Hand off this manuscript into learning review/);
+  assert.match(
+    markup,
+    /The human-final manuscript is ready for governed learning snapshot creation\./,
+  );
+  assert.match(markup, /Open Learning Review/);
+  assert.match(markup, /href="#learning-review\?manuscriptId=manuscript-learning-1"/);
 });

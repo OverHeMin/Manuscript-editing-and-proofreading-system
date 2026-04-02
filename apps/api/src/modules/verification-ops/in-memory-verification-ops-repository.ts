@@ -131,6 +131,10 @@ function compareById<T extends { id: string }>(left: T, right: T): number {
   return left.id.localeCompare(right.id);
 }
 
+function compareCreatedAtDesc(left: string, right: string): number {
+  return right.localeCompare(left);
+}
+
 export class InMemoryVerificationOpsRepository
   implements
     VerificationOpsRepository,
@@ -306,6 +310,19 @@ export class InMemoryVerificationOpsRepository
     return record ? cloneEvaluationEvidencePack(record) : undefined;
   }
 
+  async findLatestEvaluationEvidencePackByRunId(
+    runId: string,
+  ): Promise<EvaluationEvidencePackRecord | undefined> {
+    const record = [...this.evidencePacks.values()]
+      .filter((candidate) => candidate.experiment_run_id === runId)
+      .sort(
+        (left, right) =>
+          compareCreatedAtDesc(left.created_at, right.created_at) ||
+          compareById(right, left),
+      )[0];
+    return record ? cloneEvaluationEvidencePack(record) : undefined;
+  }
+
   async saveEvaluationPromotionRecommendation(
     record: EvaluationPromotionRecommendationRecord,
   ): Promise<void> {
@@ -313,6 +330,19 @@ export class InMemoryVerificationOpsRepository
       record.id,
       cloneEvaluationPromotionRecommendation(record),
     );
+  }
+
+  async findLatestEvaluationPromotionRecommendationByRunId(
+    runId: string,
+  ): Promise<EvaluationPromotionRecommendationRecord | undefined> {
+    const record = [...this.recommendations.values()]
+      .filter((candidate) => candidate.experiment_run_id === runId)
+      .sort(
+        (left, right) =>
+          compareCreatedAtDesc(left.created_at, right.created_at) ||
+          compareById(right, left),
+      )[0];
+    return record ? cloneEvaluationPromotionRecommendation(record) : undefined;
   }
 
   snapshotState(): {

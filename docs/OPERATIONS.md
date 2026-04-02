@@ -9,12 +9,16 @@
 - demo runtime
   本地联调专用，内存态，允许 demo 数据
 - persistent runtime
-  当前用于 PostgreSQL-backed 认证、治理注册表、agent-tooling 治理与模型路由
+  当前用于 PostgreSQL-backed 稿件主链路、认证、学习/知识治理主干、治理注册表、agent-tooling 治理、执行治理/追踪、模型路由与 verification-ops 评测资产
 
 ## 2. 当前持久化边界
 
 `pnpm --filter @medical/api run serve` 当前已经持久化：
 
+- 稿件
+- 稿件资产
+- 作业记录
+- 当前资产导出主链路
 - 用户认证
 - 登录失败窗口
 - 服务端会话
@@ -24,6 +28,9 @@
 - 模板家族
 - 模块模板版本
 - 学习回写记录
+- reviewed-case snapshots
+- 人工反馈记录
+- governed learning provenance source links
 - Prompt 模板
 - Skill 包
 - 模型注册表
@@ -38,12 +45,21 @@
 - 执行治理配置
 - 执行追踪快照
 - 知识命中日志
+- Evaluation Sample Sets
+- Evaluation Sample Set Items
+- Verification Check Profiles
+- Release Check Profiles
+- Evaluation Suites
+- Verification Evidence
+- Evaluation Runs
+- Evaluation Run Items
+- Evaluation Evidence Packs
+- Evaluation Promotion Recommendations
 
 当前仍然不是完整生产持久化的部分：
 
-- 稿件、稿件资产、导出主链路
-- 学习快照与反馈溯源主链路
-- 评测、验证与 agent 执行编排等后续模块
+- 完整学习主流程的更深自动化、评测闭环与策略优化
+- 更完整的评测运营 UI、验证与 agent 执行编排等后续模块
 
 因此，persistent runtime 当前应被视为：
 
@@ -61,6 +77,7 @@
 - Tool Gateway、Sandbox Profile、Agent Profile、Agent Runtime
 - Tool Permission Policy、Runtime Binding
 - execution bundle preview、最近 Agent Execution 日志查看，以及 execution snapshot / knowledge-hit 证据下钻
+- Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻、跳转到对应 workbench / 下载可导出资产，以及按状态筛选/搜索的执行分诊
 
 ## 3. 本地依赖服务
 
@@ -143,6 +160,8 @@ Web 关键环境变量：
 ### 5.2 应用基线
 
 - `pnpm --filter @medical/api run smoke:boot`
+- `pnpm --filter @medical/api run dev`
+- `pnpm --filter @medical/api run dev:demo`
 - `pnpm --filter @medical/api run serve:demo`
 - `pnpm --filter @medical/api run serve`
 - `pnpm --filter @medsys/web run smoke:boot`
@@ -154,16 +173,30 @@ Web 关键环境变量：
 - `pnpm typecheck`
 - `pnpm test`
 
+### 5.4 Manuscript Workbench Release Gate
+
+- `pnpm verify:manuscript-workbench`
+
+说明：
+
+- 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 smoke
+- 当前浏览器门禁已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions
+- 当前浏览器门禁已经覆盖 admin governance console 的模板治理、execution bundle preview，以及 execution observability 输出下钻与 Recent Agent Executions triage
+- 当前浏览器门禁也覆盖 evaluation workbench 中 draft suite 的真实激活链路，以及 create run -> save run item result -> finalize -> create learning candidate 的手动评测闭环
+- 同一条门禁也覆盖 verification-ops 持久化 HTTP 回归，确保评测资产、run/evidence/evidence-pack 与 learning handoff 在重启后仍可读取和继续流转
+- `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
+
 ## 6. 启动顺序
 
 1. `pnpm install`
 2. `docker compose -f infra/docker-compose.yml up -d`
 3. 如需预览联调，再启动 ONLYOFFICE profile
 4. 跑三端 `smoke:boot`
-5. 本地联调用 `serve:demo`
-6. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
-7. 持久化验证用 `serve`
+5. 本地 in-memory/demo 联调用 `serve:demo`，如需 watch mode 用 `dev:demo`
+6. 持久化开发默认用 `dev`，持久化非 watch 启动用 `serve`
+7. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
 8. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
+9. 如需在发布前补一条贴近运营链路的回归，执行 `pnpm verify:manuscript-workbench`
 
 ## 7. 迁移、备份与回滚
 
@@ -187,6 +220,10 @@ Web 关键环境变量：
   - Tool Permission Policy Registry
   - Agent Execution Logs
   - Prompt / Skill Registry
+  - Verification Sample Sets / Sample Set Items
+  - Verification Check Profiles / Release Check Profiles
+  - Evaluation Suites / Runs / Run Items
+  - Verification Evidence / Evidence Packs / Promotion Recommendations
 
 回滚原则：
 

@@ -53,6 +53,15 @@ export interface ConfirmProofreadingFinalInput {
   fileName?: string;
 }
 
+export interface PublishProofreadingHumanFinalInput {
+  manuscriptId: string;
+  finalAssetId: string;
+  requestedBy: string;
+  actorRole: RoleKey;
+  storageKey: string;
+  fileName?: string;
+}
+
 export interface ProofreadingServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
@@ -81,6 +90,11 @@ export type ProofreadingRunResult = ModuleExecutionResult<
   DocumentAssetRecord
 >;
 
+export interface ProofreadingHumanFinalPublishResult {
+  job: JobRecord;
+  asset: DocumentAssetRecord;
+}
+
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -95,6 +109,13 @@ export class ProofreadingDraftContextNotFoundError extends Error {
   constructor(assetId: string) {
     super(`Proofreading draft asset ${assetId} does not have a reusable draft context.`);
     this.name = "ProofreadingDraftContextNotFoundError";
+  }
+}
+
+export class ProofreadingFinalAssetRequiredError extends Error {
+  constructor(assetId: string) {
+    super(`Asset ${assetId} is not a proofreading final asset.`);
+    this.name = "ProofreadingFinalAssetRequiredError";
   }
 }
 
@@ -203,6 +224,86 @@ export class ProofreadingService {
       mimeType: DOCX_MIME,
       jobType: "proofreading_confirm",
       pinnedContext,
+    });
+  }
+
+  async publishHumanFinal(
+    input: PublishProofreadingHumanFinalInput,
+  ): Promise<ProofreadingHumanFinalPublishResult> {
+    this.permissionGuard.assert(input.actorRole, "workbench.proofreading");
+
+    return this.transactionManager.withTransaction(async (context) => {
+      const { jobRepository, assetRepository, manuscriptRepository } = context;
+      if (!jobRepository) {
+        throw new Error("Human-final publication requires a job repository.");
+      }
+
+      const finalAsset = await assetRepository.findById(input.finalAssetId);
+      if (
+        !finalAsset ||
+        finalAsset.manuscript_id !== input.manuscriptId ||
+        finalAsset.asset_type !== "final_proof_annotated_docx"
+      ) {
+        throw new ProofreadingFinalAssetRequiredError(input.finalAssetId);
+      }
+
+      const documentAssetService = this.documentAssetService.createScoped({
+        manuscriptRepository,
+        assetRepository,
+      });
+      const timestamp = this.now().toISOString();
+      const jobId = this.createId();
+
+      const queuedJob: JobRecord = {
+        id: jobId,
+        manuscript_id: input.manuscriptId,
+        module: "manual",
+        job_type: "publish_human_final",
+        status: "queued",
+        requested_by: input.requestedBy,
+        payload: {
+          sourceAssetId: input.finalAssetId,
+        },
+        attempt_count: 0,
+        started_at: undefined,
+        finished_at: undefined,
+        error_message: undefined,
+        created_at: timestamp,
+        updated_at: timestamp,
+      };
+      await jobRepository.save(queuedJob);
+
+      const asset = await documentAssetService.createAsset({
+        manuscriptId: input.manuscriptId,
+        assetType: "human_final_docx",
+        storageKey: input.storageKey,
+        mimeType: DOCX_MIME,
+        createdBy: input.requestedBy,
+        fileName: input.fileName,
+        parentAssetId: input.finalAssetId,
+        sourceModule: "manual",
+        sourceJobId: jobId,
+      });
+
+      const job: JobRecord = {
+        ...queuedJob,
+        status: "completed",
+        payload: {
+          ...queuedJob.payload,
+          outputAssetId: asset.id,
+          outputAssetType: asset.asset_type,
+        },
+        attempt_count: 1,
+        started_at: timestamp,
+        finished_at: timestamp,
+        updated_at: timestamp,
+      };
+      await jobRepository.save(job);
+
+      return {
+        job,
+        asset,
+      };
     });
   }
 

@@ -26,6 +26,11 @@ import {
   storeInlineUpload,
 } from "./local-upload-storage.ts";
 import {
+  DocumentAssetDownloadNotFoundError,
+  DocumentAssetDownloadUnsupportedError,
+  LocalAssetMaterializationService,
+} from "./local-asset-materialization.ts";
+import {
   AgentProfileNotFoundError,
   AgentProfileService,
   createAgentProfileApi,
@@ -167,6 +172,7 @@ import {
   createProofreadingApi,
   ProofreadingDraftAssetRequiredError,
   ProofreadingDraftContextNotFoundError,
+  ProofreadingFinalAssetRequiredError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import {
@@ -198,6 +204,31 @@ import {
   TemplateGovernanceService,
 } from "../modules/templates/index.ts";
 import {
+  createVerificationOpsApi,
+  EvaluationEvidencePackNotFoundError,
+  EvaluationEvidencePackRunMismatchError,
+  EvaluationExperimentBindingError,
+  EvaluationLearningCandidateTypeError,
+  EvaluationLearningSnapshotNotInRunError,
+  EvaluationRunItemNotFoundError,
+  EvaluationRunNotFoundError,
+  EvaluationSampleSetNotFoundError,
+  EvaluationSampleSetSourceEligibilityError,
+  EvaluationSampleSetSourceSnapshotNotFoundError,
+  EvaluationSuiteNotActiveError,
+  EvaluationSuiteNotFoundError,
+  InMemoryVerificationOpsRepository,
+  ReleaseCheckProfileDependencyError,
+  ReleaseCheckProfileNotFoundError,
+  ReviewedCaseSnapshotRepositoryRequiredError,
+  VerificationCheckProfileDependencyError,
+  VerificationCheckProfileNotFoundError,
+  VerificationEvidenceNotFoundError,
+  VerificationOpsLearningServiceRequiredError,
+  VerificationOpsService,
+  VerificationToolDependencyError,
+} from "../modules/verification-ops/index.ts";
+import {
   createToolGatewayApi,
   InMemoryToolGatewayRepository,
   ToolGatewayService,
@@ -216,6 +247,7 @@ type RouteResponse<TBody> = {
   status: number;
   body: TBody;
   headers?: Record<string, string>;
+  rawBody?: Buffer;
 };
 
 export type AppEnv = "local" | "test" | "development" | "staging" | "production";
@@ -252,6 +284,10 @@ type HttpRouteMatch =
       route: "document-pipeline-export-current-asset";
     }
   | {
+      route: "document-assets-download";
+      assetId: string;
+    }
+  | {
       route: "modules-screening-run";
     }
   | {
@@ -262,6 +298,9 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-proofreading-finalize";
+    }
+  | {
+      route: "modules-proofreading-publish-human-final";
     }
   | {
       route: "agent-runtime-create";
@@ -558,6 +597,96 @@ type HttpRouteMatch =
   | {
       route: "learning-governance-list-writebacks";
       candidateId: string;
+    }
+  | {
+      route: "verification-ops-create-check-profile";
+    }
+  | {
+      route: "verification-ops-list-check-profiles";
+    }
+  | {
+      route: "verification-ops-publish-check-profile";
+      profileId: string;
+    }
+  | {
+      route: "verification-ops-create-release-check-profile";
+    }
+  | {
+      route: "verification-ops-list-release-check-profiles";
+    }
+  | {
+      route: "verification-ops-publish-release-check-profile";
+      profileId: string;
+    }
+  | {
+      route: "verification-ops-create-evaluation-suite";
+    }
+  | {
+      route: "verification-ops-list-evaluation-suites";
+    }
+  | {
+      route: "verification-ops-activate-evaluation-suite";
+      suiteId: string;
+    }
+  | {
+      route: "verification-ops-list-suite-runs";
+      suiteId: string;
+    }
+  | {
+      route: "verification-ops-create-evaluation-sample-set";
+    }
+  | {
+      route: "verification-ops-list-evaluation-sample-sets";
+    }
+  | {
+      route: "verification-ops-publish-evaluation-sample-set";
+      sampleSetId: string;
+    }
+  | {
+      route: "verification-ops-list-evaluation-sample-set-items";
+      sampleSetId: string;
+    }
+  | {
+      route: "verification-ops-record-evidence";
+    }
+  | {
+      route: "verification-ops-get-evidence";
+      evidenceId: string;
+    }
+  | {
+      route: "verification-ops-create-evaluation-run";
+    }
+  | {
+      route: "verification-ops-complete-evaluation-run";
+      runId: string;
+    }
+  | {
+      route: "verification-ops-finalize-evaluation-run";
+      runId: string;
+    }
+  | {
+      route: "verification-ops-list-run-items";
+      runId: string;
+    }
+  | {
+      route: "verification-ops-list-run-evidence";
+      runId: string;
+    }
+  | {
+      route: "verification-ops-get-finalized-run-result";
+      runId: string;
+    }
+  | {
+      route: "verification-ops-list-suite-finalized-results";
+      suiteId: string;
+    }
+  | {
+      route: "verification-ops-record-run-item-result";
+      runItemId: string;
+    }
+  | {
+      route: "verification-ops-create-learning-candidate";
+      runId: string;
     };
 
 export interface CreateApiHttpServerOptions {
@@ -592,8 +721,18 @@ export interface ApiServerRuntime {
           storage_key: string;
           file_name?: string;
           mime_type: string;
+          url: string;
         };
       }>
+    >;
+    downloadAsset: (input: {
+      assetId: string;
+      uploadRootDir: string;
+    }) => Promise<
+      RouteResponse<null> & {
+        rawBody: Buffer;
+        headers: Record<string, string>;
+      }
     >;
   };
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
@@ -602,6 +741,7 @@ export interface ApiServerRuntime {
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
+  verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
@@ -655,7 +795,7 @@ export function createApiHttpServer(
       writeResponse(res, routeResponse.status, routeResponse.body, {
         ...corsHeaders,
         ...(routeResponse.headers ?? {}),
-      });
+      }, routeResponse.rawBody);
     } catch (error) {
       const [status, body, extraHeaders = {}] = mapErrorToHttpResponse(error);
       writeResponse(res, status, body, {
@@ -707,6 +847,7 @@ export function createInMemoryApiRuntime(input: {
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const auditService = new InMemoryAuditService();
 
   const documentAssetService = new DocumentAssetService({
@@ -726,6 +867,12 @@ export function createInMemoryApiRuntime(input: {
     candidateRepository: learningCandidateRepository,
     documentAssetService,
     feedbackGovernanceService,
+  });
+  const verificationOpsService = new VerificationOpsService({
+    repository: verificationOpsRepository,
+    reviewedCaseSnapshotRepository,
+    learningService,
+    toolGatewayRepository,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -777,9 +924,11 @@ export function createInMemoryApiRuntime(input: {
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
   });
   const exportService = new DocumentExportService({
     assetRepository,
+    manuscriptRepository,
   });
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,
@@ -825,6 +974,7 @@ export function createInMemoryApiRuntime(input: {
     seedDemoWorkbenchData({
       manuscriptRepository,
       assetRepository,
+      templateFamilyRepository,
       knowledgeRepository,
       moduleTemplateRepository,
       promptSkillRegistryRepository,
@@ -925,6 +1075,21 @@ export function createInMemoryApiRuntime(input: {
           body: await exportService.exportCurrentAsset(input),
         };
       },
+      async downloadAsset(input) {
+        const downloadService = new LocalAssetMaterializationService({
+          assetRepository,
+          manuscriptRepository,
+          rootDir: input.uploadRootDir,
+        });
+        const download = await downloadService.downloadAsset(input.assetId);
+
+        return {
+          status: 200,
+          body: null,
+          rawBody: download.bytes,
+          headers: buildDownloadHeaders(download.fileName, download.mimeType, download.bytes),
+        };
+      },
     },
     executionGovernanceApi: createExecutionGovernanceApi({
       executionGovernanceService,
@@ -939,6 +1104,9 @@ export function createInMemoryApiRuntime(input: {
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+    }),
+    verificationOpsApi: createVerificationOpsApi({
+      verificationOpsService,
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
@@ -1234,6 +1402,7 @@ function seedDemoLearningData(input: {
 function seedDemoWorkbenchData(input: {
   manuscriptRepository: InMemoryManuscriptRepository;
   assetRepository: InMemoryDocumentAssetRepository;
+  templateFamilyRepository: InMemoryTemplateFamilyRepository;
   knowledgeRepository: InMemoryKnowledgeRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
@@ -1276,6 +1445,12 @@ function seedDemoWorkbenchData(input: {
     file_name: "seeded-original.docx",
     created_at: "2026-03-31T07:56:00.000Z",
     updated_at: "2026-03-31T07:56:00.000Z",
+  });
+  void input.templateFamilyRepository.save({
+    id: "family-seeded-1",
+    manuscript_type: "clinical_study",
+    name: "Seeded Clinical Study Family",
+    status: "active",
   });
 
   void input.moduleTemplateRepository.save({
@@ -1742,6 +1917,12 @@ async function handleRoute(
       >[0];
       return runtime.documentPipelineApi.exportCurrentAsset(body);
     }
+    case "document-assets-download":
+      await runtime.authRuntime.requireSession(req);
+      return runtime.documentPipelineApi.downloadAsset({
+        assetId: routeMatch.assetId,
+        uploadRootDir,
+      });
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -1785,6 +1966,18 @@ async function handleRoute(
       >[0];
 
       return runtime.proofreadingApi.confirmFinal({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-publish-human-final": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.proofreadingApi.publishHumanFinal
+      >[0];
+
+      return runtime.proofreadingApi.publishHumanFinal({
         ...body,
         requestedBy: session.user.id,
         actorRole: session.user.role,
@@ -2481,6 +2674,222 @@ async function handleRoute(
       return runtime.learningGovernanceApi.listWritebacksByCandidate({
         learningCandidateId: routeMatch.candidateId,
       });
+    case "verification-ops-create-check-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.createVerificationCheckProfile
+      >[0];
+
+      return runtime.verificationOpsApi.createVerificationCheckProfile({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-check-profiles":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listVerificationCheckProfiles();
+    case "verification-ops-publish-check-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.publishVerificationCheckProfile({
+        profileId: routeMatch.profileId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-create-release-check-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.createReleaseCheckProfile
+      >[0];
+
+      return runtime.verificationOpsApi.createReleaseCheckProfile({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-release-check-profiles":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listReleaseCheckProfiles();
+    case "verification-ops-publish-release-check-profile": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.publishReleaseCheckProfile({
+        profileId: routeMatch.profileId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-create-evaluation-suite": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.createEvaluationSuite
+      >[0];
+
+      return runtime.verificationOpsApi.createEvaluationSuite({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-evaluation-suites":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listEvaluationSuites();
+    case "verification-ops-activate-evaluation-suite": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.activateEvaluationSuite({
+        suiteId: routeMatch.suiteId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-suite-runs":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listEvaluationRunsBySuiteId({
+        suiteId: routeMatch.suiteId,
+      });
+    case "verification-ops-create-evaluation-sample-set": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.createEvaluationSampleSet
+      >[0];
+
+      return runtime.verificationOpsApi.createEvaluationSampleSet({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-evaluation-sample-sets":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listEvaluationSampleSets();
+    case "verification-ops-publish-evaluation-sample-set": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.publishEvaluationSampleSet({
+        sampleSetId: routeMatch.sampleSetId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-evaluation-sample-set-items":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listEvaluationSampleSetItems({
+        sampleSetId: routeMatch.sampleSetId,
+      });
+    case "verification-ops-record-evidence": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.recordVerificationEvidence
+      >[0];
+
+      return runtime.verificationOpsApi.recordVerificationEvidence({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-get-evidence": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.getVerificationEvidence({
+        evidenceId: routeMatch.evidenceId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-create-evaluation-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.verificationOpsApi.createEvaluationRun
+      >[0];
+
+      return runtime.verificationOpsApi.createEvaluationRun({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-complete-evaluation-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        status: Parameters<typeof runtime.verificationOpsApi.completeEvaluationRun>[0]["status"];
+        evidenceIds: string[];
+      };
+
+      return runtime.verificationOpsApi.completeEvaluationRun({
+        runId: routeMatch.runId,
+        actorRole: session.user.role,
+        status: body.status,
+        evidenceIds: body.evidenceIds,
+      });
+    }
+    case "verification-ops-finalize-evaluation-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.finalizeEvaluationRun({
+        runId: routeMatch.runId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-run-items":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.verificationOpsApi.listEvaluationRunItemsByRunId({
+        runId: routeMatch.runId,
+      });
+    case "verification-ops-list-run-evidence": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.listEvaluationRunEvidence({
+        runId: routeMatch.runId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-get-finalized-run-result": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.getEvaluationRunFinalization({
+        runId: routeMatch.runId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-list-suite-finalized-results": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.verificationOpsApi.listEvaluationSuiteFinalizations({
+        suiteId: routeMatch.suiteId,
+        actorRole: session.user.role,
+      });
+    }
+    case "verification-ops-record-run-item-result": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<typeof runtime.verificationOpsApi.recordEvaluationRunItemResult>[0]["input"],
+          "runItemId"
+        >;
+      };
+
+      return runtime.verificationOpsApi.recordEvaluationRunItemResult({
+        actorRole: session.user.role,
+        input: {
+          ...body.input,
+          runItemId: routeMatch.runItemId,
+        },
+      });
+    }
+    case "verification-ops-create-learning-candidate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<
+            typeof runtime.verificationOpsApi.createLearningCandidateFromEvaluation
+          >[0]["input"],
+          "runId" | "createdBy"
+        >;
+      };
+
+      return runtime.verificationOpsApi.createLearningCandidateFromEvaluation({
+        actorRole: session.user.role,
+        input: {
+          ...body.input,
+          runId: routeMatch.runId,
+          createdBy: session.user.id,
+        },
+      });
+    }
   }
 }
 
@@ -2513,6 +2922,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "document-pipeline-export-current-asset" };
   }
 
+  const documentAssetDownloadMatch = path.match(
+    /^\/api\/v1\/document-assets\/([^/]+)\/download$/,
+  );
+  if (method === "GET" && documentAssetDownloadMatch) {
+    return {
+      route: "document-assets-download",
+      assetId: documentAssetDownloadMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/modules/screening/run") {
     return { route: "modules-screening-run" };
   }
@@ -2527,6 +2946,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/modules/proofreading/finalize") {
     return { route: "modules-proofreading-finalize" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/proofreading/publish-human-final") {
+    return { route: "modules-proofreading-publish-human-final" };
   }
 
   if (method === "POST" && path === "/api/v1/agent-runtime") {
@@ -3007,6 +3430,208 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "POST" && path === "/api/v1/verification-ops/check-profiles") {
+    return { route: "verification-ops-create-check-profile" };
+  }
+
+  if (method === "GET" && path === "/api/v1/verification-ops/check-profiles") {
+    return { route: "verification-ops-list-check-profiles" };
+  }
+
+  const publishVerificationCheckProfileMatch = path.match(
+    /^\/api\/v1\/verification-ops\/check-profiles\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishVerificationCheckProfileMatch) {
+    return {
+      route: "verification-ops-publish-check-profile",
+      profileId: publishVerificationCheckProfileMatch[1],
+    };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/release-check-profiles"
+  ) {
+    return { route: "verification-ops-create-release-check-profile" };
+  }
+
+  if (
+    method === "GET" &&
+    path === "/api/v1/verification-ops/release-check-profiles"
+  ) {
+    return { route: "verification-ops-list-release-check-profiles" };
+  }
+
+  const publishReleaseCheckProfileMatch = path.match(
+    /^\/api\/v1\/verification-ops\/release-check-profiles\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishReleaseCheckProfileMatch) {
+    return {
+      route: "verification-ops-publish-release-check-profile",
+      profileId: publishReleaseCheckProfileMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/verification-ops/evaluation-suites") {
+    return { route: "verification-ops-create-evaluation-suite" };
+  }
+
+  if (method === "GET" && path === "/api/v1/verification-ops/evaluation-suites") {
+    return { route: "verification-ops-list-evaluation-suites" };
+  }
+
+  const activateEvaluationSuiteMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-suites\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && activateEvaluationSuiteMatch) {
+    return {
+      route: "verification-ops-activate-evaluation-suite",
+      suiteId: activateEvaluationSuiteMatch[1],
+    };
+  }
+
+  const listSuiteRunsMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-suites\/([^/]+)\/runs$/,
+  );
+  if (method === "GET" && listSuiteRunsMatch) {
+    return {
+      route: "verification-ops-list-suite-runs",
+      suiteId: listSuiteRunsMatch[1],
+    };
+  }
+
+  const listSuiteFinalizedResultsMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-suites\/([^/]+)\/finalized-results$/,
+  );
+  if (method === "GET" && listSuiteFinalizedResultsMatch) {
+    return {
+      route: "verification-ops-list-suite-finalized-results",
+      suiteId: listSuiteFinalizedResultsMatch[1],
+    };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/evaluation-sample-sets"
+  ) {
+    return { route: "verification-ops-create-evaluation-sample-set" };
+  }
+
+  if (
+    method === "GET" &&
+    path === "/api/v1/verification-ops/evaluation-sample-sets"
+  ) {
+    return { route: "verification-ops-list-evaluation-sample-sets" };
+  }
+
+  const publishEvaluationSampleSetMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-sample-sets\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishEvaluationSampleSetMatch) {
+    return {
+      route: "verification-ops-publish-evaluation-sample-set",
+      sampleSetId: publishEvaluationSampleSetMatch[1],
+    };
+  }
+
+  const listEvaluationSampleSetItemsMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-sample-sets\/([^/]+)\/items$/,
+  );
+  if (method === "GET" && listEvaluationSampleSetItemsMatch) {
+    return {
+      route: "verification-ops-list-evaluation-sample-set-items",
+      sampleSetId: listEvaluationSampleSetItemsMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/verification-ops/evidence") {
+    return { route: "verification-ops-record-evidence" };
+  }
+
+  const getVerificationEvidenceMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evidence\/([^/]+)$/,
+  );
+  if (method === "GET" && getVerificationEvidenceMatch) {
+    return {
+      route: "verification-ops-get-evidence",
+      evidenceId: getVerificationEvidenceMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/verification-ops/evaluation-runs") {
+    return { route: "verification-ops-create-evaluation-run" };
+  }
+
+  const completeEvaluationRunMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/complete$/,
+  );
+  if (method === "POST" && completeEvaluationRunMatch) {
+    return {
+      route: "verification-ops-complete-evaluation-run",
+      runId: completeEvaluationRunMatch[1],
+    };
+  }
+
+  const finalizeEvaluationRunMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/finalize$/,
+  );
+  if (method === "POST" && finalizeEvaluationRunMatch) {
+    return {
+      route: "verification-ops-finalize-evaluation-run",
+      runId: finalizeEvaluationRunMatch[1],
+    };
+  }
+
+  const listEvaluationRunItemsMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/items$/,
+  );
+  if (method === "GET" && listEvaluationRunItemsMatch) {
+    return {
+      route: "verification-ops-list-run-items",
+      runId: listEvaluationRunItemsMatch[1],
+    };
+  }
+
+  const listEvaluationRunEvidenceMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/evidence$/,
+  );
+  if (method === "GET" && listEvaluationRunEvidenceMatch) {
+    return {
+      route: "verification-ops-list-run-evidence",
+      runId: listEvaluationRunEvidenceMatch[1],
+    };
+  }
+
+  const getFinalizedEvaluationRunMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/finalized-result$/,
+  );
+  if (method === "GET" && getFinalizedEvaluationRunMatch) {
+    return {
+      route: "verification-ops-get-finalized-run-result",
+      runId: getFinalizedEvaluationRunMatch[1],
+    };
+  }
+
+  const recordEvaluationRunItemResultMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-run-items\/([^/]+)\/result$/,
+  );
+  if (method === "POST" && recordEvaluationRunItemResultMatch) {
+    return {
+      route: "verification-ops-record-run-item-result",
+      runItemId: recordEvaluationRunItemResultMatch[1],
+    };
+  }
+
+  const createEvaluationLearningCandidateMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/learning-candidates$/,
+  );
+  if (method === "POST" && createEvaluationLearningCandidateMatch) {
+    return {
+      route: "verification-ops-create-learning-candidate",
+      runId: createEvaluationLearningCandidateMatch[1],
+    };
+  }
+
   if (method === "GET" && path === "/api/v1/knowledge") {
     return { route: "knowledge-list" };
   }
@@ -3195,10 +3820,17 @@ function writeResponse(
   status: number,
   body: unknown,
   extraHeaders: Record<string, string> = {},
+  rawBody?: Buffer,
 ): void {
   if (status === 204) {
     res.writeHead(status, extraHeaders);
     res.end();
+    return;
+  }
+
+  if (rawBody) {
+    res.writeHead(status, extraHeaders);
+    res.end(rawBody);
     return;
   }
 
@@ -3224,6 +3856,7 @@ function mapErrorToHttpResponse(
     error instanceof FeedbackGovernanceReviewedSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
+    error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
@@ -3239,7 +3872,16 @@ function mapErrorToHttpResponse(
     error instanceof ActiveExecutionProfileNotFoundError ||
     error instanceof ExecutionResolutionProfileAssetNotFoundError ||
     error instanceof ExecutionResolutionKnowledgeItemNotFoundError ||
-    error instanceof ProofreadingDraftContextNotFoundError
+    error instanceof ProofreadingDraftContextNotFoundError ||
+    error instanceof VerificationCheckProfileNotFoundError ||
+    error instanceof ReleaseCheckProfileNotFoundError ||
+    error instanceof EvaluationSuiteNotFoundError ||
+    error instanceof EvaluationSampleSetNotFoundError ||
+    error instanceof EvaluationRunNotFoundError ||
+    error instanceof EvaluationRunItemNotFoundError ||
+    error instanceof VerificationEvidenceNotFoundError ||
+    error instanceof EvaluationEvidencePackNotFoundError ||
+    error instanceof EvaluationSampleSetSourceSnapshotNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -3264,7 +3906,13 @@ function mapErrorToHttpResponse(
     error instanceof ExecutionProfileKnowledgeItemNotApprovedError ||
     error instanceof ExecutionProfileCompatibilityError ||
     error instanceof ExecutionResolutionModelNotFoundError ||
-    error instanceof ExecutionResolutionModelIncompatibleError
+    error instanceof ExecutionResolutionModelIncompatibleError ||
+    error instanceof VerificationCheckProfileDependencyError ||
+    error instanceof ReleaseCheckProfileDependencyError ||
+    error instanceof EvaluationSuiteNotActiveError ||
+    error instanceof EvaluationEvidencePackRunMismatchError ||
+    error instanceof EvaluationLearningSnapshotNotInRunError ||
+    error instanceof EvaluationExperimentBindingError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -3280,8 +3928,15 @@ function mapErrorToHttpResponse(
     error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
     error instanceof ToolPermissionPolicyUnknownToolError ||
     error instanceof ProofreadingDraftAssetRequiredError ||
+    error instanceof ProofreadingFinalAssetRequiredError ||
     error instanceof InlineUploadStorageReferenceRequiredError ||
-    error instanceof InlineUploadPayloadInvalidError
+    error instanceof InlineUploadPayloadInvalidError ||
+    error instanceof DocumentAssetDownloadUnsupportedError ||
+    error instanceof VerificationToolDependencyError ||
+    error instanceof EvaluationLearningCandidateTypeError ||
+    error instanceof VerificationOpsLearningServiceRequiredError ||
+    error instanceof ReviewedCaseSnapshotRepositoryRequiredError ||
+    error instanceof EvaluationSampleSetSourceEligibilityError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }
@@ -3354,4 +4009,21 @@ async function resolveUploadStorageKey(input: {
 
 function resolveDefaultUploadRootDir(appEnv: AppEnv): string {
   return path.resolve(process.cwd(), ".local-data", "uploads", appEnv);
+}
+
+function buildDownloadHeaders(
+  fileName: string,
+  mimeType: string,
+  bytes: Buffer,
+): Record<string, string> {
+  return {
+    "Content-Type": mimeType,
+    "Content-Length": String(bytes.byteLength),
+    "Content-Disposition": `attachment; filename="${sanitizeDownloadFileName(fileName)}"`,
+    "Cache-Control": "no-store",
+  };
+}
+
+function sanitizeDownloadFileName(fileName: string): string {
+  return fileName.replace(/["\\]/g, "-");
 }

@@ -21,6 +21,7 @@ import {
 export interface LoadKnowledgeReviewDeskInput {
   state?: KnowledgeReviewWorkbenchState;
   filters?: Partial<KnowledgeReviewFilterState>;
+  activeItemId?: string | null;
 }
 
 export interface KnowledgeReviewDeskLoadResult {
@@ -91,13 +92,18 @@ export async function loadKnowledgeReviewDesk(
   input: LoadKnowledgeReviewDeskInput = {},
 ): Promise<KnowledgeReviewDeskLoadResult> {
   const request = await listPendingKnowledgeReviewItems(client);
-  const baselineState = input.state ?? createKnowledgeReviewWorkbenchState();
+  const baselineState =
+    input.state ??
+    createKnowledgeReviewWorkbenchState({
+      activeItemId: input.activeItemId ?? null,
+    });
   const nextState: KnowledgeReviewWorkbenchState = {
     ...baselineState,
     filters: createKnowledgeReviewFilterState({
       ...baselineState.filters,
       ...(input.filters ?? {}),
     }),
+    activeItemId: input.activeItemId ?? baselineState.activeItemId,
   };
   const refreshedState = receiveKnowledgeReviewQueueRefresh(nextState, {
     queue: request.body,

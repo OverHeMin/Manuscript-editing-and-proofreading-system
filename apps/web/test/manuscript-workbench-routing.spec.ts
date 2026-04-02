@@ -12,6 +12,7 @@ test("workbench routing exposes manuscript processing surfaces as implemented", 
   assert.equal(isWorkbenchImplemented("screening"), true);
   assert.equal(isWorkbenchImplemented("editing"), true);
   assert.equal(isWorkbenchImplemented("proofreading"), true);
+  assert.equal(isWorkbenchImplemented("evaluation-workbench"), true);
 });
 
 test("workbench routing maps manuscript processing surfaces to the manuscript workbench", () => {
@@ -20,6 +21,7 @@ test("workbench routing maps manuscript processing surfaces to the manuscript wo
   assert.equal(resolveWorkbenchRenderKind("editing"), "manuscript-workbench");
   assert.equal(resolveWorkbenchRenderKind("proofreading"), "manuscript-workbench");
   assert.equal(resolveWorkbenchRenderKind("knowledge-review"), "knowledge-review");
+  assert.equal(resolveWorkbenchRenderKind("evaluation-workbench"), "evaluation-workbench");
 });
 
 test("workbench routing formats and resolves manuscript handoff hashes", () => {
@@ -29,5 +31,17 @@ test("workbench routing formats and resolves manuscript handoff hashes", () => {
   assert.deepEqual(resolveWorkbenchLocation(hash), {
     workbenchId: "proofreading",
     manuscriptId: "manuscript-42",
+  });
+});
+
+test("workbench routing formats and resolves knowledge review handoff hashes", () => {
+  const hash = formatWorkbenchHash("knowledge-review", {
+    knowledgeItemId: "knowledge-42",
+  });
+
+  assert.equal(hash, "#knowledge-review?knowledgeItemId=knowledge-42");
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "knowledge-review",
+    knowledgeItemId: "knowledge-42",
   });
 });

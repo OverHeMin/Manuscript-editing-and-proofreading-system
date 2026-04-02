@@ -202,6 +202,42 @@
   gap: 12px;
 }
 
+.admin-governance-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-governance-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-governance-filter-button.is-selected {
+  border-color: #0f766e;
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.admin-governance-inline-notice {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-governance-inline-notice p {
+  margin: 0;
+  color: #475569;
+}
+
 .admin-governance-template-row,
 .admin-governance-asset-row {
   padding: 14px;
@@ -284,6 +320,7 @@
 @media (max-width: 1024px) {
   .admin-governance-summary,
   .admin-governance-grid,
+  .admin-governance-toolbar,
   .admin-governance-form-grid,
   .admin-governance-policy-grid,
   .admin-governance-resolution-grid {
@@ -297,5 +334,10 @@
 
   .admin-governance-template-actions {
     justify-items: stretch;
+  }
+
+  .admin-governance-inline-notice {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

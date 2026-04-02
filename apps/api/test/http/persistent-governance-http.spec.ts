@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import type { AddressInfo } from "node:net";
 import { Pool } from "pg";
 import {
   createApiHttpServer,
@@ -16,6 +14,10 @@ import {
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
+import {
+  startHttpTestServer,
+  stopHttpTestServer,
+} from "./support/http-test-server.ts";
 
 test("persistent governance runtime serves review state from PostgreSQL across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
@@ -1229,26 +1231,11 @@ async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
   server.on("close", () => {
     void pool.end();
   });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
 
-  const address = server.address();
-  assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
-
-  return {
-    server,
-    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
-  };
+  return startHttpTestServer(server);
 }
 
-async function stopServer(server: ApiHttpServer): Promise<void> {
-  if (!server.listening) {
-    return;
-  }
-
-  server.close();
-  await once(server, "close");
-}
+const stopServer = stopHttpTestServer;
 
 async function loginAsPersistentReviewer(baseUrl: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {

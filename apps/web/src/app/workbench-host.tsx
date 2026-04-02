@@ -5,6 +5,7 @@ import type {
   WorkbenchId,
 } from "../features/auth/index.ts";
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
+import { EvaluationWorkbenchPage } from "../features/evaluation-workbench/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
 import {
@@ -39,6 +40,12 @@ export function WorkbenchHost({
   const accessibleManuscriptWorkbenchModes = visibleEntries
     .map((entry) => entry.id)
     .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
+  const canOpenLearningReview = visibleEntries.some(
+    (entry) => entry.id === "learning-review",
+  );
+  const canOpenEvaluationWorkbench = visibleEntries.some(
+    (entry) => entry.id === "evaluation-workbench",
+  );
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -160,14 +167,33 @@ export function WorkbenchHost({
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
             prefilledManuscriptId={routeState.manuscriptId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
+            canOpenLearningReview={canOpenLearningReview}
+            canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
           />
         );
       case "knowledge-review":
-        return <KnowledgeReviewWorkbenchPage actorRole={session.role} />;
+        return (
+          <KnowledgeReviewWorkbenchPage
+            actorRole={session.role}
+            prefilledKnowledgeItemId={routeState.knowledgeItemId}
+          />
+        );
       case "learning-review":
-        return <LearningReviewWorkbenchPage actorRole={session.role} />;
+        return (
+          <LearningReviewWorkbenchPage
+            actorRole={session.role}
+            prefilledManuscriptId={routeState.manuscriptId}
+          />
+        );
       case "admin-governance":
         return <AdminGovernanceWorkbenchPage actorRole={session.role} />;
+      case "evaluation-workbench":
+        return (
+          <EvaluationWorkbenchPage
+            actorRole={session.role}
+            prefilledManuscriptId={routeState.manuscriptId}
+          />
+        );
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">
@@ -181,14 +207,18 @@ export function WorkbenchHost({
     }
   }
 
-  function navigateToWorkbench(workbenchId: WorkbenchId, manuscriptId?: string) {
+  function navigateToWorkbench(
+    workbenchId: WorkbenchId,
+    handoff?: { manuscriptId?: string; knowledgeItemId?: string },
+  ) {
     setRouteState({
       activeWorkbenchId: workbenchId,
-      manuscriptId,
+      manuscriptId: handoff?.manuscriptId,
+      knowledgeItemId: handoff?.knowledgeItemId,
     });
 
     if (typeof window !== "undefined") {
-      window.location.hash = formatWorkbenchHash(workbenchId, manuscriptId);
+      window.location.hash = formatWorkbenchHash(workbenchId, handoff);
     }
   }
 }
@@ -211,6 +241,7 @@ function resolveInitialWorkbenchRoute(
 ): {
   activeWorkbenchId: WorkbenchId;
   manuscriptId?: string;
+  knowledgeItemId?: string;
 } {
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
@@ -223,6 +254,7 @@ function resolveInitialWorkbenchRoute(
     return {
       activeWorkbenchId: location.workbenchId,
       manuscriptId: location.manuscriptId,
+      knowledgeItemId: location.knowledgeItemId,
     };
   }
 

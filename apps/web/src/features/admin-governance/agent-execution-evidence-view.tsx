@@ -1,3 +1,4 @@
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type { AdminGovernanceExecutionEvidence } from "./admin-governance-controller.ts";
 
 export interface AgentExecutionEvidenceViewProps {
@@ -7,7 +8,17 @@ export interface AgentExecutionEvidenceViewProps {
 export function AgentExecutionEvidenceView({
   evidence,
 }: AgentExecutionEvidenceViewProps) {
-  const { log, snapshot, knowledgeHitLogs } = evidence;
+  const {
+    createdAssets,
+    job,
+    knowledgeHitLogs,
+    log,
+    manuscript,
+    snapshot,
+    unresolvedVerificationEvidenceIds,
+    verificationEvidence,
+  } = evidence;
+  const currentModuleAssetId = manuscript ? resolveCurrentModuleAssetId(manuscript, log.module) : null;
 
   return (
     <section className="admin-governance-evidence" aria-label="Execution evidence">
@@ -51,6 +62,73 @@ export function AgentExecutionEvidenceView({
           <small>{log.tool_permission_policy_id}</small>
         </article>
       </div>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Execution Outputs</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Manuscript Title</span>
+            <small>{manuscript?.title ?? "Unavailable"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Manuscript Status</span>
+            <small>{manuscript?.status ?? "Unavailable"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Job</span>
+            <small>
+              {job ? `${job.id} / ${job.status}` : snapshot ? "Unavailable" : "Pending snapshot"}
+            </small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Current Module Asset</span>
+            <small>{currentModuleAssetId ?? "Unassigned"}</small>
+          </article>
+        </div>
+
+        <div className="auth-actions">
+          <a
+            className="auth-primary-action"
+            href={formatWorkbenchHash(log.module, log.manuscript_id)}
+          >
+            {`Open ${formatModuleWorkbenchLabel(log.module)} Workbench`}
+          </a>
+        </div>
+
+        {createdAssets.length > 0 ? (
+          <ul className="admin-governance-list admin-governance-list-spaced">
+            {createdAssets.map((asset) => (
+              <li key={asset.id} className="admin-governance-template-row">
+                <div>
+                  <strong>{asset.file_name ?? asset.id}</strong>
+                  <p>
+                    {asset.asset_type} / {asset.id}
+                  </p>
+                </div>
+                <div className="admin-governance-template-actions">
+                  <span className="admin-governance-badge">{asset.status}</span>
+                  <small>{asset.is_current ? "current" : `v${asset.version_no}`}</small>
+                  {isDownloadableExecutionAsset(asset.asset_type) ? (
+                    <a
+                      className="workbench-secondary-action"
+                      download={asset.file_name ?? asset.id}
+                      href={`/api/v1/document-assets/${asset.id}/download`}
+                    >
+                      {`Download ${asset.file_name ?? asset.id}`}
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="admin-governance-empty">
+            {snapshot
+              ? "No created output assets were recorded for this execution."
+              : "Output assets will appear after a frozen snapshot records them."}
+          </p>
+        )}
+      </article>
 
       {snapshot ? (
         <>
@@ -123,11 +201,46 @@ export function AgentExecutionEvidenceView({
 
       <article className="admin-governance-panel admin-governance-panel-tight">
         <h5>Verification Evidence</h5>
-        {log.verification_evidence_ids.length > 0 ? (
-          <ul className="admin-governance-list">
-            {log.verification_evidence_ids.map((evidenceId) => (
+        {verificationEvidence.length > 0 || unresolvedVerificationEvidenceIds.length > 0 ? (
+          <ul className="admin-governance-list admin-governance-list-spaced">
+            {verificationEvidence.map((record) => (
+              <li key={record.id} className="admin-governance-template-row">
+                <div>
+                  <strong>{record.label}</strong>
+                  <p>
+                    {record.kind} / {record.id}
+                  </p>
+                </div>
+                <div className="admin-governance-template-actions">
+                  <small>{record.created_at}</small>
+                  {record.check_profile_id ? (
+                    <span className="admin-governance-badge">{record.check_profile_id}</span>
+                  ) : null}
+                  {record.kind === "url" && record.uri ? (
+                    <a
+                      className="workbench-secondary-action"
+                      href={record.uri}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open evidence link
+                    </a>
+                  ) : null}
+                  {record.kind === "artifact" && record.artifact_asset_id ? (
+                    <a
+                      className="workbench-secondary-action"
+                      href={`/api/v1/document-assets/${record.artifact_asset_id}/download`}
+                    >
+                      Download evidence artifact
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+            {unresolvedVerificationEvidenceIds.map((evidenceId) => (
               <li key={evidenceId} className="admin-governance-asset-row">
                 <span>{evidenceId}</span>
+                <small>Evidence record unavailable; showing raw ID for audit traceability.</small>
               </li>
             ))}
           </ul>
@@ -138,5 +251,53 @@ export function AgentExecutionEvidenceView({
         )}
       </article>
     </section>
+  );
+}
+
+function resolveCurrentModuleAssetId(
+  manuscript: AdminGovernanceExecutionEvidence["manuscript"],
+  module: AdminGovernanceExecutionEvidence["log"]["module"],
+) {
+  if (!manuscript) {
+    return null;
+  }
+
+  switch (module) {
+    case "screening":
+      return manuscript.current_screening_asset_id ?? null;
+    case "editing":
+      return manuscript.current_editing_asset_id ?? null;
+    case "proofreading":
+      return manuscript.current_proofreading_asset_id ?? null;
+    default:
+      return null;
+  }
+}
+
+function formatModuleWorkbenchLabel(
+  module: AdminGovernanceExecutionEvidence["log"]["module"],
+) {
+  switch (module) {
+    case "screening":
+      return "Screening";
+    case "editing":
+      return "Editing";
+    case "proofreading":
+      return "Proofreading";
+  }
+}
+
+function isDownloadableExecutionAsset(assetType: string) {
+  return (
+    assetType === "original" ||
+    assetType === "normalized_docx" ||
+    assetType === "edited_docx" ||
+    assetType === "final_proof_annotated_docx" ||
+    assetType === "human_final_docx" ||
+    assetType === "screening_report" ||
+    assetType === "proofreading_draft_report" ||
+    assetType === "final_proof_issue_report" ||
+    assetType === "pdf_consistency_report" ||
+    assetType === "learning_snapshot_attachment"
   );
 }

@@ -109,6 +109,7 @@ export function AdminGovernanceWorkbenchPage({
     setModuleDraftForm((current) => ({
       ...current,
       templateFamilyId: overview.selectedTemplateFamilyId ?? "",
+      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
     }));
     setExecutionPreviewForm((current) => ({
       ...current,

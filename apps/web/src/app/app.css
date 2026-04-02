@@ -1,4 +1,5 @@
 @import "../features/manuscript-workbench/manuscript-workbench.css";
+@import "../features/evaluation-workbench/evaluation-workbench.css";
 
 :root {
   font-family: "Segoe UI", Tahoma, sans-serif;

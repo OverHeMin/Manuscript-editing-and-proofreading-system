@@ -19,6 +19,8 @@ import {
 import {
   confirmProofreadingFinal,
   createProofreadingDraft,
+  publishProofreadingHumanFinal,
+  type ProofreadingHumanFinalPublishResultViewModel,
   type ProofreadingRunResultViewModel,
 } from "../proofreading/index.ts";
 import {
@@ -84,8 +86,21 @@ export interface FinalizeProofreadingAndLoadInput {
   fileName?: string;
 }
 
+export interface PublishHumanFinalAndLoadInput {
+  manuscriptId: string;
+  finalAssetId: string;
+  actorRole: AuthRole;
+  storageKey: string;
+  fileName?: string;
+}
+
 export interface RunModuleAndLoadResult {
   runResult: ManuscriptWorkbenchRunResult;
+  workspace: ManuscriptWorkbenchWorkspace;
+}
+
+export interface PublishHumanFinalAndLoadResult {
+  runResult: ProofreadingHumanFinalPublishResultViewModel;
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
@@ -98,6 +113,9 @@ export interface ManuscriptWorkbenchController {
   finalizeProofreadingAndLoad(
     input: FinalizeProofreadingAndLoadInput,
   ): Promise<RunModuleAndLoadResult>;
+  publishHumanFinalAndLoad(
+    input: PublishHumanFinalAndLoadInput,
+  ): Promise<PublishHumanFinalAndLoadResult>;
   loadJob(jobId: string): Promise<JobViewModel>;
   exportCurrentAsset(input: {
     manuscriptId: string;
@@ -134,6 +152,22 @@ export function createManuscriptWorkbenchController(
       const response = await confirmProofreadingFinal(client, {
         manuscriptId: input.manuscriptId,
         draftAssetId: input.draftAssetId,
+        requestedBy: "web-workbench",
+        actorRole: input.actorRole,
+        storageKey: input.storageKey,
+        fileName: input.fileName,
+      });
+      const workspace = await loadWorkspace(client, input.manuscriptId);
+
+      return {
+        runResult: response.body,
+        workspace,
+      };
+    },
+    async publishHumanFinalAndLoad(input) {
+      const response = await publishProofreadingHumanFinal(client, {
+        manuscriptId: input.manuscriptId,
+        finalAssetId: input.finalAssetId,
         requestedBy: "web-workbench",
         actorRole: input.actorRole,
         storageKey: input.storageKey,
