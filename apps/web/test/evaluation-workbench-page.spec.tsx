@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   describeHistoryComparisonGuidance,
   describeHistoryComparisonGuidanceSummary,
+  describeHistoryComparisonRoleLabels,
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
@@ -549,6 +550,35 @@ test("describeHistoryComparisonGuidanceSummary explains the next compare recover
       scopedCount: 1,
     }),
     "Current suite history only contains this finalized run, so there is no earlier baseline yet.",
+  );
+});
+
+test("describeHistoryComparisonRoleLabels marks selected and baseline history runs", () => {
+  assert.deepEqual(
+    describeHistoryComparisonRoleLabels({
+      entryRunId: "run-2",
+      selectedRunId: "run-2",
+      previousRunId: "run-1",
+    }),
+    ["Selected run"],
+  );
+
+  assert.deepEqual(
+    describeHistoryComparisonRoleLabels({
+      entryRunId: "run-1",
+      selectedRunId: "run-2",
+      previousRunId: "run-1",
+    }),
+    ["Compare baseline"],
+  );
+
+  assert.deepEqual(
+    describeHistoryComparisonRoleLabels({
+      entryRunId: "run-3",
+      selectedRunId: "run-2",
+      previousRunId: "run-1",
+    }),
+    [],
   );
 });
 

@@ -680,6 +680,14 @@ export function EvaluationWorkbenchPage({
                 <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
                   {sortedVisibleFinalizedRunHistory.map((entry) => (
                     <li key={entry.run.id}>
+                      {(() => {
+                        const roleLabels = describeHistoryComparisonRoleLabels({
+                          entryRunId: entry.run.id,
+                          selectedRunId: selectedRun?.id ?? null,
+                          previousRunId: previousRunHistoryEntry?.run.id ?? null,
+                        });
+
+                        return (
                       <button
                         type="button"
                         aria-label={`History run ${entry.run.id}`}
@@ -703,7 +711,12 @@ export function EvaluationWorkbenchPage({
                         {summarizeFinalizedEntry(entry) ? (
                           <span>{summarizeFinalizedEntry(entry)}</span>
                         ) : null}
+                        {roleLabels.map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
                       </button>
+                        );
+                      })()}
                     </li>
                   ))}
                 </ul>
@@ -1655,6 +1668,21 @@ export function describeHistoryComparisonGuidanceSummary(input: {
     return `Visible ${scope} history currently has ${scopedCount} finalized run${scopedCount === 1 ? "" : "s"} ready for compare selection.`;
   }
   return null;
+}
+
+export function describeHistoryComparisonRoleLabels(input: {
+  entryRunId: string;
+  selectedRunId: string | null;
+  previousRunId: string | null;
+}) {
+  const labels: string[] = [];
+  if (input.entryRunId === input.selectedRunId) {
+    labels.push("Selected run");
+  }
+  if (input.entryRunId === input.previousRunId) {
+    labels.push("Compare baseline");
+  }
+  return labels;
 }
 
 function compareHistoryRecency(

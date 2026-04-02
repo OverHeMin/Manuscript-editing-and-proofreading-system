@@ -300,6 +300,9 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText("Previous evidence pack");
   await expect(historyPanel).toContainText("Average weighted score 97.0 across 1 item(s).");
   await expect(historyPanel).toContainText("Average weighted score 91.0 across 1 item(s).");
+  const historyList = historyPanel.locator(".evaluation-workbench-history-list");
+  await expect(historyList).toContainText("Selected run");
+  await expect(historyList).toContainText("Compare baseline");
 });
 
 test("admin sees explicit compare guidance while the current run is still running", async ({
@@ -677,6 +680,8 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
   await expect(historyList).toContainText("Origin: Current manuscript");
   await expect(historyList).toContainText(unrelatedRunId);
   await expect(historyList).toContainText("Origin: Broader suite");
+  await expect(historyList).toContainText("Selected run");
+  await expect(historyList).toContainText("Compare baseline");
   await expect(historyPanel.locator(".evaluation-workbench-history-detail")).toContainText(
     "Origin: Current manuscript",
   );
