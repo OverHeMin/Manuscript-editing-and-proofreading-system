@@ -266,6 +266,7 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText(firstRunId);
   await expect(historyPanel).toContainText(secondRunId);
   await expect(historyPanel).toContainText(`Comparing against ${firstRunId}`);
+  await expect(historyPanel).toContainText("Comparison scope: Entire suite history");
   await expect(historyPanel).toContainText("Selected recommendation");
   await expect(historyPanel).toContainText("recommended");
   await expect(historyPanel).toContainText("Binding Changes");
@@ -641,6 +642,7 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
     "true",
   );
   await expect(historyPanel).toContainText(`Comparing against ${unrelatedRunId}`);
+  await expect(historyPanel).toContainText("Comparison scope: Broader suite history");
   await expect(historyPanel.locator(".evaluation-workbench-history-list")).toContainText(matchedRunId);
   await expect(historyPanel.locator(".evaluation-workbench-history-list")).toContainText(unrelatedRunId);
 });

@@ -170,6 +170,10 @@ export function EvaluationWorkbenchPage({
     selectedRunHistoryEntry != null &&
     previousRunHistoryEntry == null &&
     finalizedRunHistory.length > scopedFinalizedRunHistory.length;
+  const comparisonScopeLabel = describeComparisonScopeLabel({
+    scope: effectiveHistoryScope,
+    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
+  });
   const historyCounts = summarizeHistoryCounts(scopedFinalizedRunHistory);
   const filteredFinalizedRunHistory = filterFinalizedRunHistory(
     scopedFinalizedRunHistory,
@@ -558,6 +562,7 @@ export function EvaluationWorkbenchPage({
               ) : null}
               {selectedRunHistoryEntry && previousRunHistoryEntry ? (
                 <EvaluationWorkbenchRunComparisonCard
+                  comparisonScopeLabel={comparisonScopeLabel}
                   selectedEntry={selectedRunHistoryEntry}
                   previousEntry={previousRunHistoryEntry}
                   selectedEvidence={selectedRunEvidence}
@@ -1017,6 +1022,7 @@ export function EvaluationWorkbenchPage({
 }
 
 export function EvaluationWorkbenchRunComparisonCard(props: {
+  comparisonScopeLabel: string;
   selectedEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
   previousEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
   selectedEvidence: VerificationEvidenceViewModel[];
@@ -1036,6 +1042,7 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
     <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
+        <span>Comparison scope: {props.comparisonScopeLabel}</span>
         <span>{recommendationShift}</span>
         <span>{evidenceCountSummary}</span>
         <span>Selected recommendation: {props.selectedEntry.finalized.recommendation.status}</span>
@@ -1591,6 +1598,14 @@ function optional(value: string) {
 function describeHardGate(hardGatePassed: boolean | undefined) {
   if (hardGatePassed == null) return "Pending";
   return hardGatePassed ? "Passed" : "Failed";
+}
+
+function describeComparisonScopeLabel(input: {
+  scope: EvaluationWorkbenchHistoryScope;
+  hasManuscriptContext: boolean;
+}) {
+  if (input.scope === "manuscript") return "Matched manuscript history";
+  return input.hasManuscriptContext ? "Broader suite history" : "Entire suite history";
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {

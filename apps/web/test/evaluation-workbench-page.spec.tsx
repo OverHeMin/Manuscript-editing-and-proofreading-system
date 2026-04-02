@@ -107,6 +107,7 @@ test("evaluation workbench run-item detail card renders linked sample context an
 test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchRunComparisonCard
+      comparisonScopeLabel="Broader suite history"
       selectedEvidence={[
         {
           id: "evidence-2",
@@ -238,6 +239,7 @@ test("evaluation workbench comparison card renders binding deltas between finali
     />,
   );
 
+  assert.match(markup, /Comparison scope: Broader suite history/);
   assert.match(markup, /Binding Changes/);
   assert.match(markup, /Recommendation shift: unchanged at recommended/);
   assert.match(markup, /Evidence count: 1 \(was 1\)/);
