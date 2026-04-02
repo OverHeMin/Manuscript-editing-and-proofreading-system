@@ -174,6 +174,18 @@ export function EvaluationWorkbenchPage({
     scope: effectiveHistoryScope,
     hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
   });
+  const selectedComparisonOriginLabel = describeHistoryEntryOriginLabel({
+    runId: selectedRunHistoryEntry?.run.id ?? null,
+    matchedRunIds: matchedHistoryRunIds,
+    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
+    scope: effectiveHistoryScope,
+  });
+  const previousComparisonOriginLabel = describeHistoryEntryOriginLabel({
+    runId: previousRunHistoryEntry?.run.id ?? null,
+    matchedRunIds: matchedHistoryRunIds,
+    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
+    scope: effectiveHistoryScope,
+  });
   const historyCounts = summarizeHistoryCounts(scopedFinalizedRunHistory);
   const filteredFinalizedRunHistory = filterFinalizedRunHistory(
     scopedFinalizedRunHistory,
@@ -563,6 +575,8 @@ export function EvaluationWorkbenchPage({
               {selectedRunHistoryEntry && previousRunHistoryEntry ? (
                 <EvaluationWorkbenchRunComparisonCard
                   comparisonScopeLabel={comparisonScopeLabel}
+                  selectedOriginLabel={selectedComparisonOriginLabel}
+                  previousOriginLabel={previousComparisonOriginLabel}
                   selectedEntry={selectedRunHistoryEntry}
                   previousEntry={previousRunHistoryEntry}
                   selectedEvidence={selectedRunEvidence}
@@ -1023,6 +1037,8 @@ export function EvaluationWorkbenchPage({
 
 export function EvaluationWorkbenchRunComparisonCard(props: {
   comparisonScopeLabel: string;
+  selectedOriginLabel?: string | null;
+  previousOriginLabel?: string | null;
   selectedEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
   previousEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
   selectedEvidence: VerificationEvidenceViewModel[];
@@ -1043,6 +1059,12 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
         <span>Comparison scope: {props.comparisonScopeLabel}</span>
+        {props.selectedOriginLabel ? (
+          <span>Selected origin: {props.selectedOriginLabel}</span>
+        ) : null}
+        {props.previousOriginLabel ? (
+          <span>Previous origin: {props.previousOriginLabel}</span>
+        ) : null}
         <span>{recommendationShift}</span>
         <span>{evidenceCountSummary}</span>
         <span>Selected recommendation: {props.selectedEntry.finalized.recommendation.status}</span>
@@ -1606,6 +1628,19 @@ function describeComparisonScopeLabel(input: {
 }) {
   if (input.scope === "manuscript") return "Matched manuscript history";
   return input.hasManuscriptContext ? "Broader suite history" : "Entire suite history";
+}
+
+function describeHistoryEntryOriginLabel(input: {
+  runId: string | null;
+  matchedRunIds: readonly string[];
+  hasManuscriptContext: boolean;
+  scope: EvaluationWorkbenchHistoryScope;
+}) {
+  if (!input.hasManuscriptContext || input.runId == null) return null;
+  if (input.scope === "manuscript") return "Matched manuscript";
+
+  const matchedRunIdSet = new Set(input.matchedRunIds);
+  return matchedRunIdSet.has(input.runId) ? "Current manuscript" : "Broader suite";
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {

@@ -108,6 +108,8 @@ test("evaluation workbench comparison card renders binding deltas between finali
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchRunComparisonCard
       comparisonScopeLabel="Broader suite history"
+      selectedOriginLabel="Current manuscript"
+      previousOriginLabel="Broader suite"
       selectedEvidence={[
         {
           id: "evidence-2",
@@ -240,6 +242,8 @@ test("evaluation workbench comparison card renders binding deltas between finali
   );
 
   assert.match(markup, /Comparison scope: Broader suite history/);
+  assert.match(markup, /Selected origin: Current manuscript/);
+  assert.match(markup, /Previous origin: Broader suite/);
   assert.match(markup, /Binding Changes/);
   assert.match(markup, /Recommendation shift: unchanged at recommended/);
   assert.match(markup, /Evidence count: 1 \(was 1\)/);
