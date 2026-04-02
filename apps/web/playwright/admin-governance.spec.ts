@@ -81,6 +81,43 @@ test("admin can preview a governed execution bundle from the governance console"
   await expect(resolutionGrid).toContainText(prepared.promptName);
 });
 
+test("admin can inspect governed execution outputs from the governance console", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareExecutionEvidenceScenario(request, {
+    label: "Phase 8AG",
+  });
+
+  await page.goto("/#admin-console", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
+
+  const recentExecutionsPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
+  const targetExecutionRow = recentExecutionsPanel
+    .locator(".admin-governance-template-row")
+    .filter({ hasText: prepared.manuscriptId });
+
+  await expect(targetExecutionRow).toContainText("editing");
+  const selectionButton = targetExecutionRow.getByRole("button");
+  await expect(selectionButton).toBeVisible();
+  if ((await selectionButton.textContent())?.trim() === "Inspect") {
+    await selectionButton.click();
+  }
+
+  const evidencePanel = page.locator(".admin-governance-evidence");
+  await expect(evidencePanel).toContainText("Execution Outputs");
+  await expect(evidencePanel).toContainText(prepared.manuscriptTitle);
+  await expect(evidencePanel).toContainText(prepared.jobId);
+  await expect(evidencePanel).toContainText(prepared.assetFileName);
+  await expect(evidencePanel).toContainText(prepared.assetId);
+  await expect(evidencePanel).toContainText("current");
+});
+
 interface PrepareExecutionPreviewScenarioInput {
   label: string;
 }
@@ -90,6 +127,18 @@ interface PreparedExecutionPreviewScenario {
   modelName: string;
   promptName: string;
   profileId: string;
+}
+
+interface PrepareExecutionEvidenceScenarioInput {
+  label: string;
+}
+
+interface PreparedExecutionEvidenceScenario {
+  manuscriptId: string;
+  manuscriptTitle: string;
+  jobId: string;
+  assetId: string;
+  assetFileName: string;
 }
 
 async function prepareExecutionPreviewScenario(
@@ -244,6 +293,63 @@ async function prepareExecutionPreviewScenario(
     modelName,
     promptName,
     profileId: profile.id,
+  };
+}
+
+async function prepareExecutionEvidenceScenario(
+  request: APIRequestContext,
+  input: PrepareExecutionEvidenceScenarioInput,
+): Promise<PreparedExecutionEvidenceScenario> {
+  await loginAsDemoUser(request, "dev.admin");
+
+  const slug = slugify(input.label);
+  const manuscriptTitle = `${input.label} Governed Output Manuscript`;
+  const sourceFileName = `${slug}-source.docx`;
+  const assetFileName = `${slug}-editing-final.docx`;
+
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    data: {
+      title: manuscriptTitle,
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: sourceFileName,
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      storageKey: `uploads/${slug}/${sourceFileName}`,
+    },
+  });
+  expect(uploadResponse.ok()).toBeTruthy();
+  const uploaded = (await uploadResponse.json()) as {
+    manuscript: { id: string };
+    asset: { id: string };
+  };
+
+  const editingResponse = await request.post(`${apiBaseUrl}/api/v1/modules/editing/run`, {
+    data: {
+      manuscriptId: uploaded.manuscript.id,
+      parentAssetId: uploaded.asset.id,
+      requestedBy: "ignored-by-server",
+      actorRole: "admin",
+      storageKey: `runs/${uploaded.manuscript.id}/editing/${assetFileName}`,
+      fileName: assetFileName,
+    },
+  });
+  expect(editingResponse.ok()).toBeTruthy();
+  const editingRun = (await editingResponse.json()) as {
+    job: { id: string };
+    asset: { id: string };
+    agent_execution_log_id?: string;
+    snapshot_id?: string;
+  };
+  expect(editingRun.agent_execution_log_id).toBeTruthy();
+  expect(editingRun.snapshot_id).toBeTruthy();
+
+  return {
+    manuscriptId: uploaded.manuscript.id,
+    manuscriptTitle,
+    jobId: editingRun.job.id,
+    assetId: editingRun.asset.id,
+    assetFileName,
   };
 }
 

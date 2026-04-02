@@ -27,6 +27,50 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
           started_at: "2026-03-31T08:00:00.000Z",
           finished_at: "2026-03-31T08:01:00.000Z",
         },
+        manuscript: {
+          id: "manuscript-1",
+          title: "Execution evidence manuscript",
+          manuscript_type: "review",
+          status: "completed",
+          created_by: "dev.admin",
+          current_editing_asset_id: "asset-1",
+          current_template_family_id: "family-1",
+          created_at: "2026-03-31T07:45:00.000Z",
+          updated_at: "2026-03-31T08:01:00.000Z",
+        },
+        job: {
+          id: "job-1",
+          manuscript_id: "manuscript-1",
+          module: "editing",
+          job_type: "governed_execution",
+          status: "completed",
+          requested_by: "dev.admin",
+          attempt_count: 1,
+          started_at: "2026-03-31T08:00:00.000Z",
+          finished_at: "2026-03-31T08:01:00.000Z",
+          created_at: "2026-03-31T08:00:00.000Z",
+          updated_at: "2026-03-31T08:01:00.000Z",
+        },
+        createdAssets: [
+          {
+            id: "asset-1",
+            manuscript_id: "manuscript-1",
+            asset_type: "edited_docx",
+            status: "active",
+            storage_key: "runs/manuscript-1/editing/final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-source-1",
+            source_module: "editing",
+            source_job_id: "job-1",
+            created_by: "dev.admin",
+            version_no: 2,
+            is_current: true,
+            file_name: "editing-final.docx",
+            created_at: "2026-03-31T08:00:45.000Z",
+            updated_at: "2026-03-31T08:01:00.000Z",
+          },
+        ],
         snapshot: {
           id: "snapshot-1",
           manuscript_id: "manuscript-1",
@@ -74,6 +118,10 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /snapshot-1/);
   assert.match(html, /model-1/);
   assert.match(html, /prompt-1/);
+  assert.match(html, /Execution Outputs/);
+  assert.match(html, /Execution evidence manuscript/);
+  assert.match(html, /job-1/);
+  assert.match(html, /editing-final\.docx/);
   assert.match(html, /Required by editing profile/);
   assert.match(html, /Matched discussion terminology/);
   assert.match(html, /evidence-1/);
@@ -98,6 +146,9 @@ test("agent execution evidence view renders a snapshot-pending state for running
           status: "running",
           started_at: "2026-03-31T09:00:00.000Z",
         },
+        manuscript: null,
+        job: null,
+        createdAssets: [],
         snapshot: null,
         knowledgeHitLogs: [],
       }}

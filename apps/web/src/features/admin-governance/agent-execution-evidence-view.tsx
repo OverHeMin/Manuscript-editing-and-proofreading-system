@@ -7,7 +7,8 @@ export interface AgentExecutionEvidenceViewProps {
 export function AgentExecutionEvidenceView({
   evidence,
 }: AgentExecutionEvidenceViewProps) {
-  const { log, snapshot, knowledgeHitLogs } = evidence;
+  const { createdAssets, job, knowledgeHitLogs, log, manuscript, snapshot } = evidence;
+  const currentModuleAssetId = manuscript ? resolveCurrentModuleAssetId(manuscript, log.module) : null;
 
   return (
     <section className="admin-governance-evidence" aria-label="Execution evidence">
@@ -51,6 +52,55 @@ export function AgentExecutionEvidenceView({
           <small>{log.tool_permission_policy_id}</small>
         </article>
       </div>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Execution Outputs</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Manuscript Title</span>
+            <small>{manuscript?.title ?? "Unavailable"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Manuscript Status</span>
+            <small>{manuscript?.status ?? "Unavailable"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Job</span>
+            <small>
+              {job ? `${job.id} / ${job.status}` : snapshot ? "Unavailable" : "Pending snapshot"}
+            </small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Current Module Asset</span>
+            <small>{currentModuleAssetId ?? "Unassigned"}</small>
+          </article>
+        </div>
+
+        {createdAssets.length > 0 ? (
+          <ul className="admin-governance-list admin-governance-list-spaced">
+            {createdAssets.map((asset) => (
+              <li key={asset.id} className="admin-governance-template-row">
+                <div>
+                  <strong>{asset.file_name ?? asset.id}</strong>
+                  <p>
+                    {asset.asset_type} / {asset.id}
+                  </p>
+                </div>
+                <div className="admin-governance-template-actions">
+                  <span className="admin-governance-badge">{asset.status}</span>
+                  <small>{asset.is_current ? "current" : `v${asset.version_no}`}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="admin-governance-empty">
+            {snapshot
+              ? "No created output assets were recorded for this execution."
+              : "Output assets will appear after a frozen snapshot records them."}
+          </p>
+        )}
+      </article>
 
       {snapshot ? (
         <>
@@ -139,4 +189,24 @@ export function AgentExecutionEvidenceView({
       </article>
     </section>
   );
+}
+
+function resolveCurrentModuleAssetId(
+  manuscript: AdminGovernanceExecutionEvidence["manuscript"],
+  module: AdminGovernanceExecutionEvidence["log"]["module"],
+) {
+  if (!manuscript) {
+    return null;
+  }
+
+  switch (module) {
+    case "screening":
+      return manuscript.current_screening_asset_id ?? null;
+    case "editing":
+      return manuscript.current_editing_asset_id ?? null;
+    case "proofreading":
+      return manuscript.current_proofreading_asset_id ?? null;
+    default:
+      return null;
+  }
 }

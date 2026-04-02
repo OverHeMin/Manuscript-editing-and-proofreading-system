@@ -1316,6 +1316,49 @@ test("admin governance controller loads execution evidence with snapshot and kno
         };
       }
 
+      if (input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Evidence inspection manuscript",
+            manuscript_type: "review",
+            status: "completed",
+            created_by: "dev.admin",
+            current_editing_asset_id: "asset-1",
+            current_template_family_id: "family-1",
+            created_at: "2026-03-31T07:45:00.000Z",
+            updated_at: "2026-03-31T08:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/manuscripts/manuscript-1/assets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/manuscript-1/editing/final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-source-1",
+              source_module: "editing",
+              source_job_id: "job-1",
+              created_by: "dev.admin",
+              version_no: 2,
+              is_current: true,
+              file_name: "editing-final.docx",
+              created_at: "2026-03-31T08:00:45.000Z",
+              updated_at: "2026-03-31T08:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/execution-tracking/snapshots/snapshot-1") {
         return {
           status: 200,
@@ -1336,6 +1379,25 @@ test("admin governance controller loads execution evidence with snapshot and kno
             knowledge_item_ids: ["knowledge-1", "knowledge-2"],
             created_asset_ids: ["asset-1"],
             created_at: "2026-03-31T08:00:30.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/jobs/job-1") {
+        return {
+          status: 200,
+          body: {
+            id: "job-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_type: "governed_execution",
+            status: "completed",
+            requested_by: "dev.admin",
+            attempt_count: 1,
+            started_at: "2026-03-31T08:00:00.000Z",
+            finished_at: "2026-03-31T08:01:00.000Z",
+            created_at: "2026-03-31T08:00:00.000Z",
+            updated_at: "2026-03-31T08:01:00.000Z",
           } as TResponse,
         };
       }
@@ -1370,7 +1432,13 @@ test("admin governance controller loads execution evidence with snapshot and kno
   const evidence = await controller.loadExecutionEvidence("log-1");
 
   assert.equal(evidence.log.id, "log-1");
+  assert.equal(evidence.manuscript?.title, "Evidence inspection manuscript");
+  assert.equal(evidence.job?.id, "job-1");
   assert.equal(evidence.snapshot?.id, "snapshot-1");
+  assert.deepEqual(
+    evidence.createdAssets.map((asset) => asset.id),
+    ["asset-1"],
+  );
   assert.deepEqual(
     evidence.knowledgeHitLogs.map((record) => ({
       id: record.id,
@@ -1391,8 +1459,198 @@ test("admin governance controller loads execution evidence with snapshot and kno
     requests.map((request) => request.url),
     [
       "/api/v1/agent-execution/log-1",
+      "/api/v1/manuscripts/manuscript-1",
+      "/api/v1/manuscripts/manuscript-1/assets",
       "/api/v1/execution-tracking/snapshots/snapshot-1",
       "/api/v1/execution-tracking/snapshots/snapshot-1/knowledge-hit-logs",
+      "/api/v1/jobs/job-1",
+    ],
+  );
+});
+
+test("admin governance controller joins manuscript, job, and created asset outputs into execution evidence", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/agent-execution/log-output-1") {
+        return {
+          status: 200,
+          body: {
+            id: "log-output-1",
+            manuscript_id: "manuscript-9",
+            module: "editing",
+            triggered_by: "dev.admin",
+            runtime_id: "runtime-1",
+            sandbox_profile_id: "sandbox-1",
+            agent_profile_id: "agent-profile-1",
+            runtime_binding_id: "binding-1",
+            tool_permission_policy_id: "policy-1",
+            execution_snapshot_id: "snapshot-output-1",
+            knowledge_item_ids: ["knowledge-1"],
+            verification_evidence_ids: ["evidence-1"],
+            status: "completed",
+            started_at: "2026-04-02T08:00:00.000Z",
+            finished_at: "2026-04-02T08:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/manuscripts/manuscript-9") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-9",
+            title: "Governed editing output manuscript",
+            manuscript_type: "clinical_study",
+            status: "completed",
+            created_by: "dev.admin",
+            current_editing_asset_id: "asset-edited-1",
+            current_template_family_id: "family-1",
+            created_at: "2026-04-02T07:30:00.000Z",
+            updated_at: "2026-04-02T08:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/manuscripts/manuscript-9/assets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-9",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/manuscript-9/source.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "dev.admin",
+              version_no: 1,
+              is_current: false,
+              file_name: "source.docx",
+              created_at: "2026-04-02T07:30:00.000Z",
+              updated_at: "2026-04-02T07:30:00.000Z",
+            },
+            {
+              id: "asset-edited-1",
+              manuscript_id: "manuscript-9",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/manuscript-9/editing/final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-original-1",
+              source_module: "editing",
+              source_job_id: "job-output-1",
+              created_by: "dev.admin",
+              version_no: 2,
+              is_current: true,
+              file_name: "editing-final.docx",
+              created_at: "2026-04-02T08:00:45.000Z",
+              updated_at: "2026-04-02T08:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/execution-tracking/snapshots/snapshot-output-1") {
+        return {
+          status: 200,
+          body: {
+            id: "snapshot-output-1",
+            manuscript_id: "manuscript-9",
+            module: "editing",
+            job_id: "job-output-1",
+            execution_profile_id: "profile-1",
+            module_template_id: "template-1",
+            module_template_version_no: 3,
+            prompt_template_id: "prompt-1",
+            prompt_template_version: "1.2.0",
+            skill_package_ids: ["skill-1"],
+            skill_package_versions: ["1.0.0"],
+            model_id: "model-1",
+            model_version: "2026-03-01",
+            knowledge_item_ids: ["knowledge-1"],
+            created_asset_ids: ["asset-edited-1"],
+            created_at: "2026-04-02T08:00:30.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/jobs/job-output-1") {
+        return {
+          status: 200,
+          body: {
+            id: "job-output-1",
+            manuscript_id: "manuscript-9",
+            module: "editing",
+            job_type: "governed_execution",
+            status: "completed",
+            requested_by: "dev.admin",
+            attempt_count: 1,
+            started_at: "2026-04-02T08:00:00.000Z",
+            finished_at: "2026-04-02T08:01:00.000Z",
+            created_at: "2026-04-02T08:00:00.000Z",
+            updated_at: "2026-04-02T08:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "hit-output-1",
+              snapshot_id: "snapshot-output-1",
+              knowledge_item_id: "knowledge-1",
+              match_source: "binding_rule",
+              binding_rule_id: "rule-1",
+              match_reasons: ["Bound by editing family"],
+              created_at: "2026-04-02T08:00:30.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const evidence = await controller.loadExecutionEvidence("log-output-1");
+
+  assert.equal(evidence.manuscript?.title, "Governed editing output manuscript");
+  assert.equal(evidence.job?.id, "job-output-1");
+  assert.deepEqual(
+    evidence.createdAssets.map((asset) => ({
+      id: asset.id,
+      assetType: asset.asset_type,
+      isCurrent: asset.is_current,
+    })),
+    [
+      {
+        id: "asset-edited-1",
+        assetType: "edited_docx",
+        isCurrent: true,
+      },
+    ],
+  );
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/agent-execution/log-output-1",
+      "/api/v1/manuscripts/manuscript-9",
+      "/api/v1/manuscripts/manuscript-9/assets",
+      "/api/v1/execution-tracking/snapshots/snapshot-output-1",
+      "/api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs",
+      "/api/v1/jobs/job-output-1",
     ],
   );
 });
@@ -1406,6 +1664,28 @@ test("admin governance controller returns log-only execution evidence when a sna
       body?: unknown;
     }) => {
       requests.push(input);
+      if (input.url === "/api/v1/manuscripts/manuscript-2") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-2",
+            title: "Running execution manuscript",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "dev.admin",
+            created_at: "2026-03-31T08:55:00.000Z",
+            updated_at: "2026-03-31T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/manuscripts/manuscript-2/assets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
       return {
         status: 200,
         body: {
@@ -1430,11 +1710,18 @@ test("admin governance controller returns log-only execution evidence when a sna
   const evidence = await controller.loadExecutionEvidence("log-running-1");
 
   assert.equal(evidence.log.status, "running");
+  assert.equal(evidence.manuscript?.title, "Running execution manuscript");
+  assert.equal(evidence.job, null);
+  assert.deepEqual(evidence.createdAssets, []);
   assert.equal(evidence.snapshot, null);
   assert.deepEqual(evidence.knowledgeHitLogs, []);
   assert.deepEqual(
     requests.map((request) => request.url),
-    ["/api/v1/agent-execution/log-running-1"],
+    [
+      "/api/v1/agent-execution/log-running-1",
+      "/api/v1/manuscripts/manuscript-2",
+      "/api/v1/manuscripts/manuscript-2/assets",
+    ],
   );
 });
 

@@ -39,6 +39,14 @@ import type {
   ModuleExecutionSnapshotViewModel,
 } from "../execution-tracking/index.ts";
 import {
+  type DocumentAssetViewModel,
+  getJob,
+  getManuscript,
+  type JobViewModel,
+  listManuscriptAssets,
+  type ManuscriptViewModel,
+} from "../manuscripts/index.ts";
+import {
   createModelRegistryEntry,
   getModelRoutingPolicy,
   listModelRegistryEntries,
@@ -131,6 +139,9 @@ export interface AdminGovernanceOverview {
 
 export interface AdminGovernanceExecutionEvidence {
   log: AgentExecutionLogViewModel;
+  manuscript: ManuscriptViewModel | null;
+  job: JobViewModel | null;
+  createdAssets: DocumentAssetViewModel[];
   snapshot: ModuleExecutionSnapshotViewModel | null;
   knowledgeHitLogs: KnowledgeHitLogViewModel[];
 }
@@ -445,11 +456,21 @@ export async function loadAdminGovernanceExecutionEvidence(
   logId: string,
 ): Promise<AdminGovernanceExecutionEvidence> {
   const log = (await getAgentExecutionLog(client, logId)).body;
+  const [manuscript, manuscriptAssets] = await Promise.all([
+    loadOptional(() => getManuscript(client, log.manuscript_id).then((response) => response.body)),
+    loadOptional(() =>
+      listManuscriptAssets(client, log.manuscript_id).then((response) => response.body),
+      [] as DocumentAssetViewModel[],
+    ),
+  ]);
   const snapshotId = log.execution_snapshot_id;
 
   if (!snapshotId) {
     return {
       log,
+      manuscript,
+      job: null,
+      createdAssets: [],
       snapshot: null,
       knowledgeHitLogs: [],
     };
@@ -459,12 +480,38 @@ export async function loadAdminGovernanceExecutionEvidence(
     getExecutionSnapshot(client, snapshotId),
     listKnowledgeHitLogsBySnapshotId(client, snapshotId),
   ]);
+  const snapshot = snapshotResponse.body ?? null;
+  const job =
+    snapshot == null
+      ? null
+      : await loadOptional(
+          () => getJob(client, snapshot.job_id).then((response) => response.body),
+        );
 
   return {
     log,
-    snapshot: snapshotResponse.body ?? null,
+    manuscript,
+    job,
+    createdAssets:
+      snapshot == null
+        ? []
+        : (manuscriptAssets ?? []).filter((asset) =>
+            snapshot.created_asset_ids.includes(asset.id),
+          ),
+    snapshot,
     knowledgeHitLogs: knowledgeHitResponse.body,
   };
+}
+
+async function loadOptional<TValue>(
+  load: () => Promise<TValue>,
+  fallback: TValue | null = null,
+): Promise<TValue | null> {
+  try {
+    return await load();
+  } catch {
+    return fallback;
+  }
 }
 
 function resolveSelectedTemplateFamilyId(
