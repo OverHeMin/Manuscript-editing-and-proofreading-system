@@ -80,6 +80,8 @@
    `pnpm --filter @medical/api run serve:demo`
 5. 启动 PostgreSQL 持久化 API
    `pnpm --filter @medical/api run serve`
+   - For watch mode, use `pnpm --filter @medical/api run dev`
+   - For watch + demo runtime, use `pnpm --filter @medical/api run dev:demo`
 6. 启动 Web workbench
    `pnpm --filter @medsys/web run dev`
    - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调

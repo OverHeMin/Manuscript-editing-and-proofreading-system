@@ -159,6 +159,8 @@ Web 关键环境变量：
 ### 5.2 应用基线
 
 - `pnpm --filter @medical/api run smoke:boot`
+- `pnpm --filter @medical/api run dev`
+- `pnpm --filter @medical/api run dev:demo`
 - `pnpm --filter @medical/api run serve:demo`
 - `pnpm --filter @medical/api run serve`
 - `pnpm --filter @medsys/web run smoke:boot`
@@ -188,9 +190,9 @@ Web 关键环境变量：
 2. `docker compose -f infra/docker-compose.yml up -d`
 3. 如需预览联调，再启动 ONLYOFFICE profile
 4. 跑三端 `smoke:boot`
-5. 本地联调用 `serve:demo`
-6. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
-7. 持久化验证用 `serve`
+5. 本地 in-memory/demo 联调用 `serve:demo`，如需 watch mode 用 `dev:demo`
+6. 持久化开发默认用 `dev`，持久化非 watch 启动用 `serve`
+7. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
 8. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
 9. 如需在发布前补一条贴近运营链路的回归，执行 `pnpm verify:manuscript-workbench`
 
