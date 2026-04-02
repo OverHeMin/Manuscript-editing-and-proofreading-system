@@ -1118,6 +1118,7 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
     selectedScoreSummary: props.selectedEntry.finalized.evidence_pack.score_summary,
     previousScoreSummary: props.previousEntry.finalized.evidence_pack.score_summary,
   });
+  const baselinePolicy = describeComparisonBaselinePolicy(props.comparisonScopeLabel);
   const selectedScore = parseAverageWeightedScore(props.selectedEntry.finalized.evidence_pack.score_summary);
   const previousScore = parseAverageWeightedScore(props.previousEntry.finalized.evidence_pack.score_summary);
   const scoreDelta =
@@ -1133,6 +1134,7 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
         <span>{operatorSummary}</span>
+        <span>{baselinePolicy}</span>
         <span>{triageHint}</span>
         <span>Comparison scope: {props.comparisonScopeLabel}</span>
         {props.selectedOriginLabel ? (
@@ -1708,6 +1710,10 @@ export function describeComparisonOperatorSummary(input: {
       ? ` and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points`
       : "";
   return `Operator summary: Regressed against ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+}
+
+export function describeComparisonBaselinePolicy(comparisonScopeLabel: string) {
+  return `Baseline policy: Chronological previous finalized run within ${comparisonScopeLabel.toLowerCase()}.`;
 }
 
 export function describeComparisonTriageHint(input: {

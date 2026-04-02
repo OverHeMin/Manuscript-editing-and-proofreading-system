@@ -8,6 +8,7 @@ import {
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
+  describeComparisonBaselinePolicy,
   describeComparisonTriageHint,
   describeHistoryVisibilitySummary,
   EvaluationWorkbenchEvidenceList,
@@ -250,6 +251,10 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(
     markup,
     /Operator summary: Improved over broader suite history by 6\.0 weighted points while holding recommended\./,
+  );
+  assert.match(
+    markup,
+    /Baseline policy: Chronological previous finalized run within broader suite history\./,
   );
   assert.match(markup, /Suggested action: Promote candidate/);
   assert.match(markup, /Comparison scope: Broader suite history/);
@@ -685,6 +690,23 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       scoreDelta: -39,
     }),
     "Suggested action: Investigate regression",
+  );
+});
+
+test("describeComparisonBaselinePolicy explains how the compare baseline is chosen", () => {
+  assert.equal(
+    describeComparisonBaselinePolicy("Entire suite history"),
+    "Baseline policy: Chronological previous finalized run within entire suite history.",
+  );
+
+  assert.equal(
+    describeComparisonBaselinePolicy("Broader suite history"),
+    "Baseline policy: Chronological previous finalized run within broader suite history.",
+  );
+
+  assert.equal(
+    describeComparisonBaselinePolicy("Matched manuscript history"),
+    "Baseline policy: Chronological previous finalized run within matched manuscript history.",
   );
 });
 

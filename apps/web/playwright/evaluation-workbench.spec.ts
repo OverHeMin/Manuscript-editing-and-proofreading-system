@@ -269,6 +269,9 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText(
     "Operator summary: Improved over entire suite history by 6.0 weighted points while holding recommended.",
   );
+  await expect(historyPanel).toContainText(
+    "Baseline policy: Chronological previous finalized run within entire suite history.",
+  );
   await expect(historyPanel).toContainText("Suggested action: Promote candidate");
   await expect(historyPanel).toContainText("Comparison scope: Entire suite history");
   await expect(historyPanel).toContainText("Selected recommendation");
@@ -654,6 +657,9 @@ test("admin gets a compare handoff when manuscript-scoped history only has one f
   await expect(historyPanel).toContainText(`Comparing against ${unrelatedRunId}`);
   await expect(historyPanel).toContainText(
     "Operator summary: Improved over broader suite history by 11.0 weighted points while holding recommended.",
+  );
+  await expect(historyPanel).toContainText(
+    "Baseline policy: Chronological previous finalized run within broader suite history.",
   );
   await expect(historyPanel).toContainText("Suggested action: Promote candidate");
   await expect(historyPanel).toContainText("Comparison scope: Broader suite history");
