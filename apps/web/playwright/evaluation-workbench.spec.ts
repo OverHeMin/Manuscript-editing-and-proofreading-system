@@ -366,6 +366,10 @@ test("admin can inspect rejected history details for a prior finalized run", asy
   await expect(historyDetail).toContainText("Failure Summary");
   await expect(historyDetail).toContainText("Regression Summary");
   await expect(historyDetail).toContainText("1 regression-failed item(s) detected.");
+  await expect(historyDetail).toContainText("Linked Sample Context");
+  await expect(historyDetail).toContainText("Sample Item:");
+  await expect(historyDetail).toContainText("clinical_study");
+  await expect(historyDetail).toContainText("Weighted Score:");
 });
 
 test("admin can filter finalized run history by recommendation status", async ({

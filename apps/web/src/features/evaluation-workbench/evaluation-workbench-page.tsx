@@ -156,13 +156,14 @@ export function EvaluationWorkbenchPage({
     sortedVisibleFinalizedRunHistory,
     selectedRun?.id ?? null,
   );
+  const sampleSetItems = overview?.sampleSetItems ?? [];
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
   const linkedSampleSetItem =
     selectedRunItem == null
       ? null
-      : overview?.sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ?? null;
+      : sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ?? null;
   const finalizeArtifactOptions = createFinalizeArtifactOptions(
     selectedRunItem,
     linkedSampleSetItem,
@@ -483,6 +484,10 @@ export function EvaluationWorkbenchPage({
                   </div>
                   <EvaluationWorkbenchEvidencePackSummary
                     evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
+                  />
+                  <EvaluationWorkbenchLinkedSampleContextList
+                    runItems={overview.runItems}
+                    sampleSetItems={sampleSetItems}
                   />
                   <EvaluationWorkbenchEvidenceList
                     evidence={selectedRunEvidence}
@@ -1030,6 +1035,50 @@ export function EvaluationWorkbenchHistoryEntrySignals(props: {
           <strong>{row.label}:</strong> {row.value}
         </span>
       ))}
+    </div>
+  );
+}
+
+export function EvaluationWorkbenchLinkedSampleContextList(props: {
+  runItems: EvaluationWorkbenchOverview["runItems"];
+  sampleSetItems: EvaluationWorkbenchOverview["sampleSetItems"];
+}) {
+  if (props.runItems.length === 0) {
+    return (
+      <p className="evaluation-workbench-empty">
+        No run-item sample context is available for this history selection.
+      </p>
+    );
+  }
+
+  return (
+    <div className="evaluation-workbench-history-compare">
+      <strong>Linked Sample Context</strong>
+      <ul className="evaluation-workbench-inline-list evaluation-workbench-linked-sample-list">
+        {props.runItems.map((runItem) => {
+          const sampleSetItem =
+            props.sampleSetItems.find((item) => item.id === runItem.sample_set_item_id) ?? null;
+          return (
+            <li key={runItem.id}>
+              <strong>Run Item: {runItem.id}</strong>
+              <span>Lane: {runItem.lane}</span>
+              <span>Weighted Score: {runItem.weighted_score ?? "Not scored"}</span>
+              {runItem.failure_reason ? <span>Failure: {runItem.failure_reason}</span> : null}
+              {sampleSetItem ? (
+                <>
+                  <span>Sample Item: {sampleSetItem.id}</span>
+                  <span>Module: {sampleSetItem.module}</span>
+                  <span>Manuscript Type: {sampleSetItem.manuscript_type}</span>
+                  <span>Reviewed Snapshot: {sampleSetItem.reviewed_case_snapshot_id}</span>
+                  <span>Manuscript: {sampleSetItem.manuscript_id}</span>
+                </>
+              ) : (
+                <span>No linked sample-set item is available for this run item.</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

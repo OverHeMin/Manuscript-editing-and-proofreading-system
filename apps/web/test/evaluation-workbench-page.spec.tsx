@@ -6,6 +6,7 @@ import {
   describeHistoryComparisonGuidance,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
+  EvaluationWorkbenchLinkedSampleContextList,
   EvaluationWorkbenchHistoryEntrySignals,
   EvaluationWorkbenchPage,
   sortFinalizedRunHistory,
@@ -335,6 +336,42 @@ test("evaluation workbench history entry signals render structured list summarie
   assert.match(markup, /Regression:/);
   assert.match(markup, /1 regression-failed item\(s\) detected\./);
   assert.match(markup, /Failure:/);
+  assert.match(markup, /Structure regression triggered the hard gate\./);
+});
+
+test("evaluation workbench linked sample context list renders run-item sample mappings", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchLinkedSampleContextList
+      runItems={[
+        {
+          id: "run-item-1",
+          lane: "candidate",
+          sample_set_item_id: "sample-item-1",
+          weighted_score: 91,
+          failure_kind: "regression_failed",
+          failure_reason: "Structure regression triggered the hard gate.",
+        },
+      ] as never}
+      sampleSetItems={[
+        {
+          id: "sample-item-1",
+          module: "structure",
+          manuscript_type: "clinical_study",
+          reviewed_case_snapshot_id: "snapshot-1",
+          manuscript_id: "manuscript-1",
+        },
+      ] as never}
+    />,
+  );
+
+  assert.match(markup, /Linked Sample Context/);
+  assert.match(markup, /Run Item: run-item-1/);
+  assert.match(markup, /candidate/);
+  assert.match(markup, /Sample Item: sample-item-1/);
+  assert.match(markup, /structure/);
+  assert.match(markup, /clinical_study/);
+  assert.match(markup, /snapshot-1/);
+  assert.match(markup, /Weighted Score: 91/);
   assert.match(markup, /Structure regression triggered the hard gate\./);
 });
 

@@ -340,6 +340,13 @@
   align-items: flex-start;
 }
 
+.evaluation-workbench-linked-sample-list li {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d7dee8;
+  background: #ffffff;
+}
+
 .evaluation-workbench-finalized {
   border-color: #bfdbfe;
   background: #eff6ff;
