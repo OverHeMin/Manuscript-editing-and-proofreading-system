@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "lint": "pnpm run typecheck",
     "smoke:boot": "node ./scripts/smoke-boot.mjs",
-    "test:browser": "playwright test -c playwright.config.ts",
-    "test:browser:install": "playwright install chromium",
+    "test:browser": "pnpm exec playwright test -c playwright.config.ts",
+    "test:browser:install": "pnpm exec playwright install chromium",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm run smoke:boot && node --import tsx --test ./test/**/*.spec.ts"
   },
