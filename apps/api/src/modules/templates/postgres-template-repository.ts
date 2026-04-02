@@ -7,6 +7,7 @@ import type {
   TemplateFamilyRecord,
   TemplateModule,
 } from "./template-record.ts";
+import { TemplateFamilyActiveConflictError } from "./template-governance-service.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -37,30 +38,49 @@ interface ModuleTemplateRow {
   created_at: Date;
 }
 
+const activeTemplateFamilyConstraintName =
+  "template_families_active_manuscript_type_uidx";
+
+interface PostgresConstraintError {
+  code?: string;
+  constraint?: string;
+}
+
 export class PostgresTemplateFamilyRepository
   implements TemplateFamilyRepository
 {
   constructor(private readonly dependencies: { client: QueryableClient }) {}
 
   async save(record: TemplateFamilyRecord): Promise<void> {
-    await this.dependencies.client.query(
-      `
-        insert into template_families (
-          id,
-          manuscript_type,
-          name,
-          status
-        )
-        values ($1, $2, $3, $4)
-        on conflict (id) do update
-        set
-          manuscript_type = excluded.manuscript_type,
-          name = excluded.name,
-          status = excluded.status,
-          updated_at = now()
-      `,
-      [record.id, record.manuscript_type, record.name, record.status],
-    );
+    try {
+      await this.dependencies.client.query(
+        `
+          insert into template_families (
+            id,
+            manuscript_type,
+            name,
+            status
+          )
+          values ($1, $2, $3, $4)
+          on conflict (id) do update
+          set
+            manuscript_type = excluded.manuscript_type,
+            name = excluded.name,
+            status = excluded.status,
+            updated_at = now()
+        `,
+        [record.id, record.manuscript_type, record.name, record.status],
+      );
+    } catch (error) {
+      if (isActiveTemplateFamilyConstraintError(error)) {
+        throw new TemplateFamilyActiveConflictError(
+          record.manuscript_type,
+          record.id,
+        );
+      }
+
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<TemplateFamilyRecord | undefined> {
@@ -310,4 +330,16 @@ function decodeTextArray(value: string[] | string): string[] {
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
     .map((item) => item.replace(/^"(.*)"$/, "$1"));
+}
+
+function isActiveTemplateFamilyConstraintError(
+  error: unknown,
+): error is PostgresConstraintError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as PostgresConstraintError).code === "23505" &&
+    (error as PostgresConstraintError).constraint ===
+      activeTemplateFamilyConstraintName
+  );
 }

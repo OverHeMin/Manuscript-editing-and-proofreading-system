@@ -117,10 +117,12 @@ export class TemplateFamilyActiveConflictError extends Error {
   constructor(
     manuscriptType: string,
     templateFamilyId: string,
-    activeTemplateFamilyId: string,
+    activeTemplateFamilyId?: string,
   ) {
     super(
-      `Template family ${templateFamilyId} cannot be activated for manuscript type ${manuscriptType} while template family ${activeTemplateFamilyId} is already active.`,
+      activeTemplateFamilyId
+        ? `Template family ${templateFamilyId} cannot be activated for manuscript type ${manuscriptType} while template family ${activeTemplateFamilyId} is already active.`
+        : `Template family ${templateFamilyId} cannot be activated for manuscript type ${manuscriptType} because another template family is already active.`,
     );
     this.name = "TemplateFamilyActiveConflictError";
   }
