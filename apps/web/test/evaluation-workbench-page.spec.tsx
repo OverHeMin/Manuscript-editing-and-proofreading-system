@@ -348,6 +348,7 @@ test("evaluation workbench linked sample context list renders run-item sample ma
           id: "run-item-1",
           lane: "candidate",
           sample_set_item_id: "sample-item-1",
+          result_asset_id: "result-asset-1",
           weighted_score: 91,
           failure_kind: "regression_failed",
           failure_reason: "Structure regression triggered the hard gate.",
@@ -358,6 +359,7 @@ test("evaluation workbench linked sample context list renders run-item sample ma
           id: "sample-item-1",
           module: "structure",
           manuscript_type: "clinical_study",
+          snapshot_asset_id: "snapshot-asset-1",
           reviewed_case_snapshot_id: "snapshot-1",
           manuscript_id: "manuscript-1",
         },
@@ -380,6 +382,10 @@ test("evaluation workbench linked sample context list renders run-item sample ma
   assert.match(markup, /Structure regression triggered the hard gate\./);
   assert.match(markup, /Focused/);
   assert.match(markup, /Focus Run Item run-item-1/);
+  assert.match(markup, /Download Result Asset/);
+  assert.match(markup, /\/api\/v1\/document-assets\/result-asset-1\/download/);
+  assert.match(markup, /Download Sample Snapshot/);
+  assert.match(markup, /\/api\/v1\/document-assets\/snapshot-asset-1\/download/);
   assert.deepEqual(focusedRunItems, []);
 });
 

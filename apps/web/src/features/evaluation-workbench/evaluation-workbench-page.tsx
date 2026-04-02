@@ -1081,6 +1081,16 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
               ) : (
                 <span>No linked sample-set item is available for this run item.</span>
               )}
+              {runItem.result_asset_id ? (
+                <a href={`/api/v1/document-assets/${runItem.result_asset_id}/download`}>
+                  Download Result Asset
+                </a>
+              ) : null}
+              {sampleSetItem?.snapshot_asset_id ? (
+                <a href={`/api/v1/document-assets/${sampleSetItem.snapshot_asset_id}/download`}>
+                  Download Sample Snapshot
+                </a>
+              ) : null}
               {props.onFocusRunItem ? (
                 <button
                   type="button"

@@ -370,6 +370,8 @@ test("admin can inspect rejected history details for a prior finalized run", asy
   await expect(historyDetail).toContainText("Sample Item:");
   await expect(historyDetail).toContainText("clinical_study");
   await expect(historyDetail).toContainText("Weighted Score:");
+  await expect(historyDetail).toContainText("Download Result Asset");
+  await expect(historyDetail).toContainText("Download Sample Snapshot");
 });
 
 test("admin can focus a specific run item from linked sample context", async ({
