@@ -3,6 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  describeHistoryComparisonGuidance,
   EvaluationWorkbenchPage,
   sortFinalizedRunHistory,
   EvaluationWorkbenchRunComparisonCard,
@@ -222,12 +223,73 @@ test("evaluation workbench comparison card renders binding deltas between finali
   );
 
   assert.match(markup, /Binding Changes/);
+  assert.match(markup, /Recommendation shift: unchanged at recommended/);
+  assert.match(markup, /Evidence count: 1 \(was 1\)/);
   assert.match(markup, /Baseline model changed: baseline-model-2 \(was baseline-model-1\)/);
   assert.match(markup, /Candidate model changed: candidate-model-2 \(was candidate-model-1\)/);
   assert.match(markup, /Candidate prompt changed: prompt-2 \(was prompt-1\)/);
   assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
   assert.match(markup, /Selected evidence: Latest browser QA/);
   assert.match(markup, /Previous evidence: Rejected browser QA/);
+});
+
+test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
+  assert.equal(
+    describeHistoryComparisonGuidance({
+      selectedRun: {
+        id: "run-2",
+        status: "running",
+      } as never,
+      selectedRunHistoryEntry: null,
+      previousRunHistoryEntry: null,
+    }),
+    "Current run run-2 is still running. Complete and finalize it to compare against history.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidance({
+      selectedRun: {
+        id: "run-2",
+        status: "passed",
+      } as never,
+      selectedRunHistoryEntry: {
+        run: {
+          id: "run-2",
+        },
+      } as never,
+      previousRunHistoryEntry: null,
+    }),
+    "Finalize one more run in this suite to compare the current result against history.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidance({
+      selectedRun: null,
+      selectedRunHistoryEntry: null,
+      previousRunHistoryEntry: null,
+    }),
+    "Select a finalized run from the suite to compare it against prior history.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidance({
+      selectedRun: {
+        id: "run-2",
+        status: "passed",
+      } as never,
+      selectedRunHistoryEntry: {
+        run: {
+          id: "run-2",
+        },
+      } as never,
+      previousRunHistoryEntry: {
+        run: {
+          id: "run-1",
+        },
+      } as never,
+    }),
+    null,
+  );
 });
 
 test("filterFinalizedRunHistory narrows finalized runs by recommendation status", () => {

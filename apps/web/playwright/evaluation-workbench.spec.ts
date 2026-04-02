@@ -231,6 +231,35 @@ test("admin can compare the latest finalized run against prior finalized history
   );
 });
 
+test("admin sees explicit compare guidance while the current run is still running", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9K",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await page.getByLabel("Sample Set").selectOption(prepared.sampleSetId);
+  await page.getByRole("button", { name: "Create Evaluation Run" }).click();
+
+  const createStatus = await page.locator(".evaluation-workbench-status").textContent();
+  const runId = createStatus?.match(/Created evaluation run ([^.]+)\./)?.[1] ?? null;
+  expect(runId).toBeTruthy();
+
+  const historyPanel = page.locator(".evaluation-workbench-history");
+  await expect(historyPanel).toContainText(
+    new RegExp(
+      `Current run ${runId} is still [a-z_]+\\. Complete and finalize it to compare against history\\.`,
+    ),
+  );
+});
+
 test("admin can inspect rejected history details for a prior finalized run", async ({
   page,
   request,

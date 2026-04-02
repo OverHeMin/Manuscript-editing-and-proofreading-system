@@ -134,6 +134,11 @@ export function EvaluationWorkbenchPage({
     selectedRun == null
       ? null
       : findPreviousFinalizedRunHistoryEntry(finalizedRunHistory, selectedRun.id);
+  const historyComparisonGuidance = describeHistoryComparisonGuidance({
+    selectedRun,
+    selectedRunHistoryEntry,
+    previousRunHistoryEntry,
+  });
   const historyCounts = summarizeHistoryCounts(finalizedRunHistory);
   const filteredFinalizedRunHistory = filterFinalizedRunHistory(finalizedRunHistory, historyFilter);
   const visibleFinalizedRunHistory = searchFinalizedRunHistory(
@@ -370,7 +375,11 @@ export function EvaluationWorkbenchPage({
           {selectedSuite == null ? (
             <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
           ) : finalizedRunHistory.length === 0 ? (
-            <p className="evaluation-workbench-empty">Finalize at least one run to unlock suite-level history.</p>
+            selectedRun && !selectedRunHistoryEntry ? (
+              <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+            ) : (
+              <p className="evaluation-workbench-empty">Finalize at least one run to unlock suite-level history.</p>
+            )
           ) : (
             <>
               <dl className="evaluation-workbench-metadata">
@@ -440,24 +449,16 @@ export function EvaluationWorkbenchPage({
                   </button>
                 </div>
               ) : null}
-              {selectedRunHistoryEntry ? (
-                previousRunHistoryEntry ? (
-                  <EvaluationWorkbenchRunComparisonCard
-                    selectedEntry={selectedRunHistoryEntry}
-                    previousEntry={previousRunHistoryEntry}
-                    selectedEvidence={selectedRunEvidence}
-                    previousEvidence={previousRunEvidence}
-                  />
-                ) : (
-                  <p className="evaluation-workbench-empty">
-                    Finalize one more run in this suite to compare the current result against history.
-                  </p>
-                )
-              ) : (
-                <p className="evaluation-workbench-empty">
-                  Select a finalized run from the suite to compare it against prior history.
-                </p>
-              )}
+              {selectedRunHistoryEntry && previousRunHistoryEntry ? (
+                <EvaluationWorkbenchRunComparisonCard
+                  selectedEntry={selectedRunHistoryEntry}
+                  previousEntry={previousRunHistoryEntry}
+                  selectedEvidence={selectedRunEvidence}
+                  previousEvidence={previousRunEvidence}
+                />
+              ) : historyComparisonGuidance ? (
+                <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
+              ) : null}
               {selectedRunHistoryEntry ? (
                 <div className="evaluation-workbench-result evaluation-workbench-history-detail">
                   <strong>Selected History Detail</strong>
@@ -811,11 +812,21 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
   previousEvidence: VerificationEvidenceViewModel[];
 }) {
   const bindingChanges = summarizeBindingChanges(props.selectedEntry.run, props.previousEntry.run);
+  const recommendationShift = describeRecommendationShift(
+    props.selectedEntry.finalized.recommendation.status,
+    props.previousEntry.finalized.recommendation.status,
+  );
+  const evidenceCountSummary = describeEvidenceCountChange(
+    props.selectedEvidence,
+    props.previousEvidence,
+  );
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
       <strong>Comparing against {props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
+        <span>{recommendationShift}</span>
+        <span>{evidenceCountSummary}</span>
         <span>Selected recommendation: {props.selectedEntry.finalized.recommendation.status}</span>
         <span>Previous recommendation: {props.previousEntry.finalized.recommendation.status}</span>
         <span>Selected summary: {summarizeFinalizedEntry(props.selectedEntry)}</span>
@@ -992,6 +1003,22 @@ export function isSelectedRunHiddenFromHistoryList(
   return !entries.some((entry) => entry.run.id === selectedRunId);
 }
 
+export function describeHistoryComparisonGuidance(input: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
+  selectedRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+  previousRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
+}) {
+  const { previousRunHistoryEntry, selectedRun, selectedRunHistoryEntry } = input;
+  if (selectedRunHistoryEntry && previousRunHistoryEntry) return null;
+  if (selectedRun && !selectedRunHistoryEntry) {
+    return `Current run ${selectedRun.id} is still ${selectedRun.status}. Complete and finalize it to compare against history.`;
+  }
+  if (selectedRunHistoryEntry) {
+    return "Finalize one more run in this suite to compare the current result against history.";
+  }
+  return "Select a finalized run from the suite to compare it against prior history.";
+}
+
 function compareHistoryRecency(
   left: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
   right: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
@@ -1007,6 +1034,23 @@ function getRecommendationSeverity(
   if (status === "rejected") return 0;
   if (status === "needs_review") return 1;
   return 2;
+}
+
+function describeRecommendationShift(
+  selectedStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"],
+  previousStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"],
+) {
+  if (selectedStatus === previousStatus) {
+    return `Recommendation shift: unchanged at ${selectedStatus}`;
+  }
+  return `Recommendation shift: ${selectedStatus} (was ${previousStatus})`;
+}
+
+function describeEvidenceCountChange(
+  selectedEvidence: VerificationEvidenceViewModel[],
+  previousEvidence: VerificationEvidenceViewModel[],
+) {
+  return `Evidence count: ${selectedEvidence.length} (was ${previousEvidence.length})`;
 }
 
 function findPreviousFinalizedRunHistoryEntry(
