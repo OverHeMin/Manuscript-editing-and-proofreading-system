@@ -423,6 +423,49 @@ test("admin can recover a selected run hidden by history search", async ({
   await expect(page.locator(".evaluation-workbench-history-list")).toContainText(secondRunId);
 });
 
+test("admin can prioritize failed history runs to the top of the list", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: "Phase 9J",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const rejectedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "52",
+    diffSummary: "Rejected run should bubble to the top in failure sort mode.",
+    evidenceLabel: "Phase 9J rejected evidence",
+    evidenceUrl: "https://example.test/evidence/phase9j-rejected",
+    hardGatePassed: false,
+    failureKind: "regression_failed",
+    failureReason: "Phase 9J rejected run tripped the hard gate.",
+    finalizeStatus: "failed",
+  });
+
+  const recommendedRunId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "96",
+    diffSummary: "Recommended run stays newest but should move below failures.",
+    evidenceLabel: "Phase 9J recommended evidence",
+    evidenceUrl: "https://example.test/evidence/phase9j-recommended",
+  });
+
+  const historyItems = page.locator(".evaluation-workbench-history-list li");
+  await expect(historyItems.first()).toContainText(recommendedRunId);
+
+  await page.getByRole("button", { name: "Failures First" }).click();
+  await expect(historyItems.first()).toContainText(rejectedRunId);
+  await expect(page.locator(".evaluation-workbench-history-list")).toContainText(recommendedRunId);
+});
+
 interface PrepareDraftEvaluationSuiteInput {
   label: string;
 }

@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   EvaluationWorkbenchPage,
+  sortFinalizedRunHistory,
   EvaluationWorkbenchRunComparisonCard,
   EvaluationWorkbenchSelectedRunItemDetailCard,
   filterFinalizedRunHistory,
@@ -324,4 +325,30 @@ test("isSelectedRunHiddenFromHistoryList detects when filters hide the current r
   assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, "run-two"), false);
   assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, "run-three"), true);
   assert.equal(isSelectedRunHiddenFromHistoryList(entries as never, null), false);
+});
+
+test("sortFinalizedRunHistory can prioritize failures ahead of recommendations", () => {
+  const entries = [
+    {
+      run: { id: "run-recommended", finished_at: "2026-04-01T10:00:00.000Z" },
+      finalized: { recommendation: { status: "recommended" } },
+    },
+    {
+      run: { id: "run-needs-review", finished_at: "2026-04-01T09:00:00.000Z" },
+      finalized: { recommendation: { status: "needs_review" } },
+    },
+    {
+      run: { id: "run-rejected", finished_at: "2026-04-01T08:00:00.000Z" },
+      finalized: { recommendation: { status: "rejected" } },
+    },
+  ] as const;
+
+  assert.deepEqual(
+    sortFinalizedRunHistory(entries as never, "newest").map((entry) => entry.run.id),
+    ["run-recommended", "run-needs-review", "run-rejected"],
+  );
+  assert.deepEqual(
+    sortFinalizedRunHistory(entries as never, "failures_first").map((entry) => entry.run.id),
+    ["run-rejected", "run-needs-review", "run-recommended"],
+  );
 });

@@ -66,6 +66,7 @@ export type EvaluationWorkbenchHistoryFilter =
   | "recommended"
   | "needs_review"
   | "rejected";
+export type EvaluationWorkbenchHistorySortMode = "newest" | "failures_first";
 
 export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
@@ -85,6 +86,8 @@ export function EvaluationWorkbenchPage({
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historySortMode, setHistorySortMode] =
+    useState<EvaluationWorkbenchHistorySortMode>("newest");
   const [runForm, setRunForm] = useState(baseRunForm);
   const [runItemForm, setRunItemForm] = useState(baseRunItemForm);
   const [finalizeForm, setFinalizeForm] = useState(baseFinalizeForm);
@@ -137,8 +140,12 @@ export function EvaluationWorkbenchPage({
     filteredFinalizedRunHistory,
     historySearchQuery,
   );
-  const isSelectedRunHiddenByHistoryControls = isSelectedRunHiddenFromHistoryList(
+  const sortedVisibleFinalizedRunHistory = sortFinalizedRunHistory(
     visibleFinalizedRunHistory,
+    historySortMode,
+  );
+  const isSelectedRunHiddenByHistoryControls = isSelectedRunHiddenFromHistoryList(
+    sortedVisibleFinalizedRunHistory,
     selectedRun?.id ?? null,
   );
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
@@ -185,6 +192,7 @@ export function EvaluationWorkbenchPage({
   useEffect(() => {
     setHistoryFilter("all");
     setHistorySearchQuery("");
+    setHistorySortMode("newest");
   }, [overview?.selectedSuiteId]);
 
   if (loadStatus === "error" && !overview) {
@@ -392,6 +400,19 @@ export function EvaluationWorkbenchPage({
                   </button>
                 ))}
               </div>
+              <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history sort">
+                {createHistorySortOptions().map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`evaluation-workbench-action${historySortMode === option.value ? " is-selected" : ""}`}
+                    aria-pressed={historySortMode === option.value}
+                    onClick={() => setHistorySortMode(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <Field label="Search History" wide>
                 <input
                   value={historySearchQuery}
@@ -472,9 +493,9 @@ export function EvaluationWorkbenchPage({
                   )}
                 </div>
               ) : null}
-              {visibleFinalizedRunHistory.length > 0 ? (
+              {sortedVisibleFinalizedRunHistory.length > 0 ? (
                 <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
-                  {visibleFinalizedRunHistory.map((entry) => (
+                  {sortedVisibleFinalizedRunHistory.map((entry) => (
                     <li key={entry.run.id}>
                     <button
                       type="button"
@@ -916,12 +937,37 @@ function createHistoryFilterOptions(
   ];
 }
 
+function createHistorySortOptions() {
+  return [
+    { value: "newest" as const, label: "Newest" },
+    { value: "failures_first" as const, label: "Failures First" },
+  ];
+}
+
 export function filterFinalizedRunHistory(
   entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
   filter: EvaluationWorkbenchHistoryFilter,
 ) {
   if (filter === "all") return entries;
   return entries.filter((entry) => entry.finalized.recommendation.status === filter);
+}
+
+export function sortFinalizedRunHistory(
+  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  sortMode: EvaluationWorkbenchHistorySortMode,
+) {
+  const nextEntries = [...entries];
+  if (sortMode === "newest") {
+    return nextEntries.sort((left, right) => compareHistoryRecency(left, right));
+  }
+
+  return nextEntries.sort((left, right) => {
+    const severityDelta =
+      getRecommendationSeverity(left.finalized.recommendation.status) -
+      getRecommendationSeverity(right.finalized.recommendation.status);
+    if (severityDelta !== 0) return severityDelta;
+    return compareHistoryRecency(left, right);
+  });
 }
 
 export function searchFinalizedRunHistory(
@@ -944,6 +990,23 @@ export function isSelectedRunHiddenFromHistoryList(
 ) {
   if (selectedRunId == null) return false;
   return !entries.some((entry) => entry.run.id === selectedRunId);
+}
+
+function compareHistoryRecency(
+  left: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
+  right: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
+) {
+  const leftTimestamp = left.run.finished_at ?? left.run.started_at ?? "";
+  const rightTimestamp = right.run.finished_at ?? right.run.started_at ?? "";
+  return rightTimestamp.localeCompare(leftTimestamp);
+}
+
+function getRecommendationSeverity(
+  status: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"],
+) {
+  if (status === "rejected") return 0;
+  if (status === "needs_review") return 1;
+  return 2;
 }
 
 function findPreviousFinalizedRunHistoryEntry(
