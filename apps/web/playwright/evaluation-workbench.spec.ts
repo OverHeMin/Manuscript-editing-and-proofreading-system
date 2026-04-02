@@ -301,6 +301,7 @@ test("admin can compare the latest finalized run against prior finalized history
   await expect(historyPanel).toContainText("Average weighted score 97.0 across 1 item(s).");
   await expect(historyPanel).toContainText("Average weighted score 91.0 across 1 item(s).");
   const historyList = historyPanel.locator(".evaluation-workbench-history-list");
+  await expect(historyList).toContainText("recommended / recommended");
   await expect(historyList).toContainText("Selected run");
   await expect(historyList).toContainText("Compare baseline");
 });

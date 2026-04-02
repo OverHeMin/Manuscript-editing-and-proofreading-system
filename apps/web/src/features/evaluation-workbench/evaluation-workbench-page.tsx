@@ -379,7 +379,7 @@ export function EvaluationWorkbenchPage({
             {overview.sampleSets.map((sampleSet) => (
               <li key={sampleSet.id}>
                 <strong>{sampleSet.name}</strong>
-                <span>{sampleSet.module} 路 {sampleSet.sample_count} samples 路 {sampleSet.status}</span>
+                <span>{sampleSet.module} 璺?{sampleSet.sample_count} samples 璺?{sampleSet.status}</span>
               </li>
             ))}
           </ul>
@@ -402,7 +402,7 @@ export function EvaluationWorkbenchPage({
                     onClick={() => void handleSelectSuite(suite.id)}
                   >
                     <strong>{suite.name}</strong>
-                    <span>{suite.suite_type} 路 {suite.status}</span>
+                    <span>{suite.suite_type} 璺?{suite.status}</span>
                   </button>
                   {suite.status === "draft" ? (
                     <button
@@ -470,7 +470,7 @@ export function EvaluationWorkbenchPage({
                     onClick={() => void handleSelectRun(run.id)}
                   >
                     <strong>{run.id}</strong>
-                    <span>{run.status} 路 {run.run_item_count ?? 0} items</span>
+                    <span>{run.status} 璺?{run.run_item_count ?? 0} items</span>
                   </button>
                 </li>
               ))}
@@ -695,7 +695,12 @@ export function EvaluationWorkbenchPage({
                         onClick={() => void handleSelectRun(entry.run.id)}
                       >
                         <strong>{entry.run.id}</strong>
-                        <span>{entry.finalized.recommendation.status} 路 {entry.finalized.evidence_pack.summary_status}</span>
+                        <span>
+                          {describeHistoryStatusPair(
+                            entry.finalized.recommendation.status,
+                            entry.finalized.evidence_pack.summary_status,
+                          )}
+                        </span>
                         {(() => {
                           const historyEntryOriginLabel = describeHistoryEntryOriginLabel({
                             runId: entry.run.id,
@@ -766,7 +771,7 @@ export function EvaluationWorkbenchPage({
                       className={`evaluation-workbench-select${item.id === selectedRunItemId ? " is-selected" : ""}`}
                       onClick={() => setSelectedRunItemId(item.id)}
                     >
-                      <strong>{item.id} 路 {item.lane}</strong>
+                      <strong>{item.id} 璺?{item.lane}</strong>
                       <span>{formatRunItemSummary(item)}</span>
                     </button>
                   </li>
@@ -1478,7 +1483,7 @@ function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][numb
     item.hard_gate_passed == null ? "Hard gate pending" : item.hard_gate_passed ? "Hard gate passed" : "Hard gate failed",
     item.weighted_score == null ? "Score pending" : `Score ${item.weighted_score}`,
     item.requires_human_review ? "Needs review" : "No manual review flag",
-  ].join(" 路 ");
+  ].join(" 璺?");
 }
 
 function summarizeHistoryCounts(
@@ -1685,6 +1690,13 @@ export function describeHistoryComparisonRoleLabels(input: {
   return labels;
 }
 
+export function describeHistoryStatusPair(
+  recommendationStatus: string,
+  summaryStatus: string,
+) {
+  return `${recommendationStatus} / ${summaryStatus}`;
+}
+
 function compareHistoryRecency(
   left: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
   right: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
@@ -1803,7 +1815,7 @@ function findPreviousFinalizedRunHistoryEntry(
   return entries.slice(selectedIndex + 1).find((entry) => entry != null) ?? null;
 }
 
-function summarizeFinalizedEntry(
+export function summarizeFinalizedEntry(
   entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
 ) {
   return [
@@ -1811,7 +1823,7 @@ function summarizeFinalizedEntry(
     entry.run.finished_at ? `Finished ${entry.run.finished_at}` : undefined,
   ]
     .filter((value) => Boolean(value))
-    .join(" 路 ");
+    .join(" | ");
 }
 
 function resolveSampleSetId(overview: EvaluationWorkbenchOverview, preferredId: string, selectedSuite: EvaluationWorkbenchOverview["suites"][number] | null) {

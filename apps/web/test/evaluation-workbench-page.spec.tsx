@@ -6,6 +6,7 @@ import {
   describeHistoryComparisonGuidance,
   describeHistoryComparisonGuidanceSummary,
   describeHistoryComparisonRoleLabels,
+  describeHistoryStatusPair,
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
   describeComparisonOperatorSummary,
@@ -13,6 +14,7 @@ import {
   describeComparisonTriageHint,
   describeHistoryVisibilitySummary,
   summarizeEvidencePackChanges,
+  summarizeFinalizedEntry,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchLinkedSampleContextList,
@@ -262,6 +264,8 @@ test("evaluation workbench comparison card renders binding deltas between finali
   assert.match(markup, /Comparison scope: Broader suite history/);
   assert.match(markup, /Selected origin: Current manuscript/);
   assert.match(markup, /Previous origin: Broader suite/);
+  assert.match(markup, /Selected summary: Finished 2026-04-01T08:20:00.000Z/);
+  assert.match(markup, /Previous summary: Finished 2026-04-01T07:20:00.000Z/);
   assert.match(markup, /Binding Changes/);
   assert.match(markup, /Evidence Pack Changes/);
   assert.match(markup, /Recommendation shift: unchanged at recommended/);
@@ -579,6 +583,29 @@ test("describeHistoryComparisonRoleLabels marks selected and baseline history ru
       previousRunId: "run-1",
     }),
     [],
+  );
+});
+
+test("describeHistoryStatusPair formats recommendation and summary status with a readable separator", () => {
+  assert.equal(
+    describeHistoryStatusPair("recommended", "needs_review"),
+    "recommended / needs_review",
+  );
+});
+
+test("summarizeFinalizedEntry joins fields with a readable separator", () => {
+  assert.equal(
+    summarizeFinalizedEntry({
+      run: {
+        finished_at: "2026-04-01T07:20:00.000Z",
+      },
+      finalized: {
+        recommendation: {
+          decision_reason: "Accepted output",
+        },
+      },
+    } as never),
+    "Accepted output | Finished 2026-04-01T07:20:00.000Z",
   );
 });
 
