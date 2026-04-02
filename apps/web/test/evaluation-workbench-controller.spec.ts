@@ -1712,3 +1712,206 @@ test("evaluation workbench controller creates a governed learning candidate from
     ["POST /api/v1/verification-ops/evaluation-runs/run-2/learning-candidates"],
   );
 });
+
+test("evaluation workbench controller can preselect the newest run for a handed-off manuscript", async () => {
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Screening Samples",
+              module: "screening",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+            {
+              id: "sample-set-2",
+              name: "Editing Samples",
+              module: "editing",
+              manuscript_types: ["clinical_study"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Screening Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["screening"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+            {
+              id: "suite-2",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: [],
+              started_at: "2026-03-31T12:00:00.000Z",
+              finished_at: "2026-03-31T12:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-2/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-2",
+              suite_id: "suite-2",
+              sample_set_id: "sample-set-2",
+              run_item_count: 1,
+              status: "passed",
+              evidence_ids: [],
+              started_at: "2026-03-31T13:00:00.000Z",
+              finished_at: "2026-03-31T13:20:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-other-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "screening",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-2",
+              sample_set_id: "sample-set-2",
+              manuscript_id: "manuscript-target-1",
+              snapshot_asset_id: "snapshot-asset-2",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-2",
+              module: "editing",
+              manuscript_type: "clinical_study",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-item-2",
+              evaluation_run_id: "run-2",
+              sample_set_item_id: "sample-item-2",
+              lane: "candidate",
+              result_asset_id: "asset-2",
+              hard_gate_passed: true,
+              weighted_score: 97,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    manuscriptId: "manuscript-target-1",
+  } as never);
+  const manuscriptContext = (overview as never as {
+    manuscriptContext?: {
+      manuscriptId?: string;
+      matchedSuiteId?: string | null;
+      matchedRunId?: string | null;
+    } | null;
+  }).manuscriptContext;
+
+  assert.equal(overview.selectedSuiteId, "suite-2");
+  assert.equal(overview.selectedRunId, "run-2");
+  assert.equal(overview.sampleSetItems[0]?.manuscript_id, "manuscript-target-1");
+  assert.equal(manuscriptContext?.manuscriptId, "manuscript-target-1");
+  assert.equal(manuscriptContext?.matchedSuiteId, "suite-2");
+  assert.equal(manuscriptContext?.matchedRunId, "run-2");
+});

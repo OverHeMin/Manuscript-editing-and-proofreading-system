@@ -168,6 +168,39 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /Debug Snapshot/);
 });
 
+test("manuscript workbench summary exposes an evaluation shortcut when governance access is available", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        canOpenEvaluationWorkbench: true,
+        workspace: {
+          manuscript: {
+            id: "manuscript-eval-1",
+            title: "Cardiology evaluation candidate",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "editor-1",
+            created_at: "2026-03-31T09:00:00.000Z",
+            updated_at: "2026-03-31T10:00:00.000Z",
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: null,
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Open Evaluation Workbench/);
+  assert.match(markup, /href="#evaluation-workbench\?manuscriptId=manuscript-eval-1"/);
+});
+
 test("manuscript workbench summary guides screening operators toward the next governed run", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary

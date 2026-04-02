@@ -30,6 +30,7 @@ export interface ManuscriptWorkbenchSummaryProps {
   mode: ManuscriptWorkbenchMode;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
+  canOpenEvaluationWorkbench?: boolean;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: DocumentAssetExportViewModel | null;
@@ -40,6 +41,7 @@ export function ManuscriptWorkbenchSummary({
   mode,
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
+  canOpenEvaluationWorkbench = false,
   workspace,
   latestJob,
   latestExport,
@@ -132,6 +134,19 @@ export function ManuscriptWorkbenchSummary({
             label="Last Updated"
             value={formatTimestamp(workspace.manuscript.updated_at)}
           />
+          {canOpenEvaluationWorkbench ? (
+            <SummaryMetric
+              label="Evaluation Context"
+              value={
+                <a
+                  className="manuscript-workbench-shortcut"
+                  href={formatWorkbenchHash("evaluation-workbench", workspace.manuscript.id)}
+                >
+                  Open Evaluation Workbench
+                </a>
+              }
+            />
+          ) : null}
         </SummaryCard>
 
         <SummaryCard title="Current Asset">

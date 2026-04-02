@@ -59,6 +59,7 @@ export interface EvaluationWorkbenchOverview {
   previousRunEvidence: VerificationEvidenceViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
   finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
+  manuscriptContext: EvaluationWorkbenchManuscriptContext | null;
 }
 
 export interface EvaluationWorkbenchFinalizedRunHistoryEntry {
@@ -66,10 +67,17 @@ export interface EvaluationWorkbenchFinalizedRunHistoryEntry {
   finalized: FinalizeEvaluationRunResultViewModel;
 }
 
+export interface EvaluationWorkbenchManuscriptContext {
+  manuscriptId: string;
+  matchedSuiteId: string | null;
+  matchedRunId: string | null;
+}
+
 export interface EvaluationWorkbenchController {
   loadOverview(input?: {
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
+    manuscriptId?: string | null;
   }): Promise<EvaluationWorkbenchOverview>;
   activateSuiteAndReload(input: {
     suiteId: string;
@@ -216,6 +224,7 @@ async function loadEvaluationWorkbenchOverview(
   input?: {
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
+    manuscriptId?: string | null;
   },
 ): Promise<EvaluationWorkbenchOverview> {
   const [
@@ -231,9 +240,24 @@ async function loadEvaluationWorkbenchOverview(
   ]);
 
   const suites = suitesResponse.body;
+  const manuscriptId = input?.manuscriptId?.trim() ?? "";
+  let manuscriptContext: EvaluationWorkbenchManuscriptContext | null = null;
+  let preferredSuiteId = input?.selectedSuiteId ?? null;
+  let preferredRunId = input?.selectedRunId ?? null;
+
+  if (manuscriptId.length > 0) {
+    manuscriptContext = await resolveEvaluationManuscriptContext(
+      client,
+      suites,
+      manuscriptId,
+    );
+    preferredSuiteId ??= manuscriptContext.matchedSuiteId;
+    preferredRunId ??= manuscriptContext.matchedRunId;
+  }
+
   const selectedSuiteId = resolveSelectedId(
     suites.map((suite) => suite.id),
-    input?.selectedSuiteId ?? null,
+    preferredSuiteId,
   );
 
   let runs: EvaluationRunViewModel[] = [];
@@ -249,7 +273,7 @@ async function loadEvaluationWorkbenchOverview(
     runs = (await listEvaluationRunsBySuiteId(client, selectedSuiteId)).body;
     selectedRunId = resolveSelectedId(
       runs.map((run) => run.id),
-      input?.selectedRunId ?? null,
+      preferredRunId,
     );
 
     if (selectedRunId != null) {
@@ -314,6 +338,66 @@ async function loadEvaluationWorkbenchOverview(
     previousRunEvidence,
     selectedRunFinalization,
     finalizedRunHistory,
+    manuscriptContext,
+  };
+}
+
+async function resolveEvaluationManuscriptContext(
+  client: EvaluationWorkbenchHttpClient,
+  suites: EvaluationSuiteViewModel[],
+  manuscriptId: string,
+): Promise<EvaluationWorkbenchManuscriptContext> {
+  type SampleSetItemsEntry = readonly [string, EvaluationSampleSetItemViewModel[]];
+  const suiteRuns = await Promise.all(
+    suites.map(async (suite) => ({
+      suiteId: suite.id,
+      runs: (await listEvaluationRunsBySuiteId(client, suite.id)).body,
+    })),
+  );
+
+  const sampleSetIds: string[] = Array.from(
+    new Set(
+      suiteRuns.flatMap((entry) =>
+        entry.runs
+          .flatMap((run) =>
+            typeof run.sample_set_id === "string" && run.sample_set_id.trim().length > 0
+              ? [run.sample_set_id]
+              : [],
+          ),
+      ),
+    ),
+  );
+  const sampleSetItemsEntries: SampleSetItemsEntry[] = await Promise.all(
+    sampleSetIds.map(async (sampleSetId): Promise<SampleSetItemsEntry> => [
+      sampleSetId,
+      (await listEvaluationSampleSetItems(client, sampleSetId)).body,
+    ]),
+  );
+  const sampleSetItemsById = new Map<string, EvaluationSampleSetItemViewModel[]>(
+    await Promise.all(
+      sampleSetItemsEntries,
+    ),
+  );
+
+  const matchingRuns = suiteRuns.flatMap((entry) =>
+    entry.runs
+      .filter((run) =>
+        (run.sample_set_id ? sampleSetItemsById.get(run.sample_set_id) : [])?.some(
+          (item) => item.manuscript_id === manuscriptId,
+        ),
+      )
+      .map((run) => ({
+        suiteId: entry.suiteId,
+        run,
+      })),
+  );
+  const latestMatch =
+    matchingRuns.sort((left, right) => compareRunRecency(right.run, left.run))[0] ?? null;
+
+  return {
+    manuscriptId,
+    matchedSuiteId: latestMatch?.suiteId ?? null,
+    matchedRunId: latestMatch?.run.id ?? null,
   };
 }
 

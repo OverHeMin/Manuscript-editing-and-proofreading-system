@@ -31,6 +31,7 @@ export interface ManuscriptWorkbenchPageProps {
   prefilledManuscriptId?: string;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
+  canOpenEvaluationWorkbench?: boolean;
 }
 
 export async function loadPrefilledWorkbenchWorkspace(
@@ -75,6 +76,7 @@ export function ManuscriptWorkbenchPage({
   prefilledManuscriptId,
   accessibleHandoffModes,
   canOpenLearningReview = false,
+  canOpenEvaluationWorkbench = false,
 }: ManuscriptWorkbenchPageProps) {
   const canUpload = mode === "submission" || actorRole === "admin";
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
@@ -572,6 +574,7 @@ export function ManuscriptWorkbenchPage({
           mode={mode}
           accessibleHandoffModes={accessibleHandoffModes}
           canOpenLearningReview={canOpenLearningReview}
+          canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}

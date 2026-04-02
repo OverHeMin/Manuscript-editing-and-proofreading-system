@@ -474,6 +474,52 @@ test("admin can open the editing workbench from linked sample context", async ({
   );
 });
 
+test("admin can jump from manuscript workbench back into manuscript-scoped evaluation context", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9O ${Date.now()}`,
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const runId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: prepared.sampleSetId,
+    weightedScore: "93",
+    diffSummary: "Round-trip handoff should reopen the manuscript-specific evaluation context.",
+    evidenceLabel: "Phase 9O evaluation evidence",
+    evidenceUrl: "https://example.test/evidence/phase9o-roundtrip",
+  });
+
+  await page.goto("/#editing?manuscriptId=manuscript-demo-1", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  const evaluationLink = page.getByRole("link", { name: "Open Evaluation Workbench" });
+  await expect(evaluationLink).toBeVisible();
+  await expect(evaluationLink).toHaveAttribute(
+    "href",
+    /#evaluation-workbench\?manuscriptId=manuscript-demo-1$/,
+  );
+
+  await evaluationLink.click();
+
+  await expect(page).toHaveURL(/#evaluation-workbench\?manuscriptId=manuscript-demo-1$/);
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    "Context manuscript: manuscript-demo-1",
+  );
+  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
+  await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
+});
+
 test("admin can filter finalized run history by recommendation status", async ({
   page,
   request,

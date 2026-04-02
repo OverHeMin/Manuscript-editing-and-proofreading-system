@@ -75,12 +75,15 @@ export type EvaluationWorkbenchHistorySortMode = "newest" | "failures_first";
 export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
   actorRole?: AuthRole;
+  prefilledManuscriptId?: string;
 }
 
 export function EvaluationWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
+  prefilledManuscriptId,
 }: EvaluationWorkbenchPageProps) {
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
   const [overview, setOverview] = useState<EvaluationWorkbenchOverview | null>(null);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -104,8 +107,12 @@ export function EvaluationWorkbenchPage({
   > | null>(null);
 
   useEffect(() => {
-    void loadOverview();
-  }, [controller]);
+    void loadOverview(
+      normalizedPrefilledManuscriptId.length > 0
+        ? { manuscriptId: normalizedPrefilledManuscriptId }
+        : undefined,
+    );
+  }, [controller, normalizedPrefilledManuscriptId]);
 
   useEffect(() => {
     if (!overview) return;
@@ -241,6 +248,25 @@ export function EvaluationWorkbenchPage({
         </div>
         {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
       </header>
+
+      {normalizedPrefilledManuscriptId.length > 0 ? (
+        <div className="evaluation-workbench-result">
+          <strong>Manuscript Handoff</strong>
+          <div className="evaluation-workbench-history-compare">
+            <span>Context manuscript: {normalizedPrefilledManuscriptId}</span>
+            <span>
+              {overview.manuscriptContext?.matchedRunId
+                ? `Matched run: ${overview.manuscriptContext.matchedRunId}`
+                : "No matched evaluation run yet"}
+            </span>
+            <span>
+              {overview.manuscriptContext?.matchedSuiteId
+                ? `Matched suite: ${overview.manuscriptContext.matchedSuiteId}`
+                : "Showing the default evaluation suite"}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       <section className="evaluation-workbench-summary">
         <SummaryCard label="Check Profiles" value={overview.checkProfiles.length} />
@@ -749,7 +775,11 @@ export function EvaluationWorkbenchPage({
     </section>
   );
 
-  async function loadOverview(input?: { selectedSuiteId?: string | null; selectedRunId?: string | null }) {
+  async function loadOverview(input?: {
+    selectedSuiteId?: string | null;
+    selectedRunId?: string | null;
+    manuscriptId?: string | null;
+  }) {
     setLoadStatus("loading");
     setErrorMessage(null);
     try {
