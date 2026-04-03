@@ -43,6 +43,12 @@ test("postgres agent execution repository persists running and completed logs", 
         runtime_binding_id: "binding-1",
         tool_permission_policy_id: "policy-1",
         execution_snapshot_id: "snapshot-1",
+        routing_policy_version_id: "00000000-0000-0000-0000-000000000201",
+        routing_policy_scope_kind: "template_family",
+        routing_policy_scope_value: "family-1",
+        resolved_model_id: "00000000-0000-0000-0000-000000000301",
+        fallback_model_id: "00000000-0000-0000-0000-000000000302",
+        fallback_trigger: "rate_limit",
         knowledge_item_ids: ["knowledge-1"],
         verification_check_profile_ids: ["check-profile-1"],
         evaluation_suite_ids: ["suite-1"],
@@ -58,6 +64,21 @@ test("postgres agent execution repository persists running and completed logs", 
 
       assert.equal(loaded?.status, "completed");
       assert.equal(loaded?.execution_snapshot_id, "snapshot-1");
+      assert.equal(
+        loaded?.routing_policy_version_id,
+        "00000000-0000-0000-0000-000000000201",
+      );
+      assert.equal(loaded?.routing_policy_scope_kind, "template_family");
+      assert.equal(loaded?.routing_policy_scope_value, "family-1");
+      assert.equal(
+        loaded?.resolved_model_id,
+        "00000000-0000-0000-0000-000000000301",
+      );
+      assert.equal(
+        loaded?.fallback_model_id,
+        "00000000-0000-0000-0000-000000000302",
+      );
+      assert.equal(loaded?.fallback_trigger, "rate_limit");
       assert.deepEqual(loaded?.verification_check_profile_ids, [
         "check-profile-1",
       ]);

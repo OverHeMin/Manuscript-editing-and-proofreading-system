@@ -11,9 +11,11 @@ import type {
 import type { ModuleTemplateRecord } from "../templates/template-record.ts";
 
 export type ExecutionResolutionModelSource =
-  | "template_override"
-  | "module_default"
-  | "system_default";
+  | "template_family_policy"
+  | "module_policy"
+  | "legacy_template_override"
+  | "legacy_module_default"
+  | "legacy_system_default";
 
 export interface ResolvedExecutionBundleRecord {
   profile: ModuleExecutionProfileRecord;

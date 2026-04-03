@@ -1,5 +1,7 @@
 import type { AuditService } from "../../audit/audit-service.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { ModelRoutingPolicyScopeKind } from "../model-routing-governance/model-routing-governance-record.ts";
+import type { ModelRoutingGovernanceService } from "../model-routing-governance/model-routing-governance-service.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { ModelRegistryRecord } from "../model-registry/model-record.ts";
 import type {
@@ -9,6 +11,7 @@ import type {
 
 export interface ResolveModelSelectionInput {
   module: TemplateModule;
+  templateFamilyId?: string;
   moduleTemplateId?: string;
   taskId?: string;
   taskOverrideModelId?: string;
@@ -17,17 +20,38 @@ export interface ResolveModelSelectionInput {
   actorRole?: RoleKey;
 }
 
+export type ResolvedModelSelectionLayer =
+  | "template_family_policy"
+  | "module_policy"
+  | "legacy_template_override"
+  | "legacy_module_default"
+  | "legacy_system_default"
+  | "task_override";
+
 export interface ResolvedModelSelection {
-  layer: "system_default" | "module_default" | "template_override" | "task_override";
+  layer: ResolvedModelSelectionLayer;
   model: ModelRegistryRecord;
-  fallback?: ModelRegistryRecord;
+  fallback_chain: ModelRegistryRecord[];
+  policy_version_id?: string;
+  policy_scope_kind?: ModelRoutingPolicyScopeKind;
+  policy_scope_value?: string;
 }
 
 export interface AiGatewayServiceOptions {
   repository: ModelRegistryRepository;
   routingPolicyRepository: ModelRoutingPolicyRepository;
+  modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   auditService: AuditService;
   now?: () => Date;
+}
+
+interface ModelSelectionDecision {
+  layer: ResolvedModelSelectionLayer;
+  modelId: string;
+  fallbackModelIds: string[];
+  policyVersionId?: string;
+  policyScopeKind?: ModelRoutingPolicyScopeKind;
+  policyScopeValue?: string;
 }
 
 export class NoModelRouteConfiguredError extends Error {
@@ -47,12 +71,14 @@ export class ModelSelectionNotAllowedError extends Error {
 export class AiGatewayService {
   private readonly repository: ModelRegistryRepository;
   private readonly routingPolicyRepository: ModelRoutingPolicyRepository;
+  private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   private readonly auditService: AuditService;
   private readonly now: () => Date;
 
   constructor(options: AiGatewayServiceOptions) {
     this.repository = options.repository;
     this.routingPolicyRepository = options.routingPolicyRepository;
+    this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
     this.auditService = options.auditService;
     this.now = options.now ?? (() => new Date());
   }
@@ -61,47 +87,54 @@ export class AiGatewayService {
     input: ResolveModelSelectionInput,
   ): Promise<ResolvedModelSelection> {
     const occurredAt = this.now().toISOString();
-    let decision:
-      | {
-          layer: ResolvedModelSelection["layer"];
-          modelId: string;
-        }
-      | undefined;
+    let decision: ModelSelectionDecision | undefined;
     let model: ModelRegistryRecord | undefined;
-    let fallback: ModelRegistryRecord | undefined;
+    let fallbackChain: ModelRegistryRecord[] = [];
 
     try {
       decision = await this.selectLayer(input);
       model = await this.requireAllowedModel(decision.modelId, input.module);
-      fallback = model.fallback_model_id
-        ? await this.requireAllowedModel(model.fallback_model_id, input.module)
-        : undefined;
+      fallbackChain =
+        decision.layer === "task_override" && model.fallback_model_id
+          ? [await this.requireAllowedModel(model.fallback_model_id, input.module)]
+          : await Promise.all(
+              decision.fallbackModelIds.map((modelId) =>
+                this.requireAllowedModel(modelId, input.module),
+              ),
+            );
 
       await this.recordAudit({
         input,
         occurredAt,
         decision,
         model,
-        fallback,
+        fallback: fallbackChain[0],
       });
 
       return {
         layer: decision.layer,
         model,
-        fallback,
+        fallback_chain: fallbackChain,
+        ...(decision.policyVersionId
+          ? { policy_version_id: decision.policyVersionId }
+          : {}),
+        ...(decision.policyScopeKind
+          ? { policy_scope_kind: decision.policyScopeKind }
+          : {}),
+        ...(decision.policyScopeValue
+          ? { policy_scope_value: decision.policyScopeValue }
+          : {}),
       };
     } catch (error) {
       const rejectedModel =
-        fallback ??
-        model ??
-        (decision ? await this.repository.findById(decision.modelId) : undefined);
+        model ?? (decision ? await this.repository.findById(decision.modelId) : undefined);
 
       await this.recordAudit({
         input,
         occurredAt,
         decision,
         model: rejectedModel,
-        fallback,
+        fallback: fallbackChain[0],
         outcome: "rejected",
         error: error instanceof Error ? error.message : String(error),
       });
@@ -110,10 +143,9 @@ export class AiGatewayService {
     }
   }
 
-  private async selectLayer(input: ResolveModelSelectionInput): Promise<{
-    layer: ResolvedModelSelection["layer"];
-    modelId: string;
-  }> {
+  private async selectLayer(
+    input: ResolveModelSelectionInput,
+  ): Promise<ModelSelectionDecision> {
     const policy = await this.routingPolicyRepository.get();
 
     if (input.taskOverrideModelId) {
@@ -126,15 +158,54 @@ export class AiGatewayService {
       return {
         layer: "task_override",
         modelId: input.taskOverrideModelId,
+        fallbackModelIds: [],
       };
+    }
+
+    if (input.templateFamilyId && this.modelRoutingGovernanceService) {
+      const policyRecord =
+        await this.modelRoutingGovernanceService.findActivePolicy(
+          "template_family",
+          input.templateFamilyId,
+        );
+      const activeVersion = policyRecord?.active_version;
+      if (activeVersion) {
+        return {
+          layer: "template_family_policy",
+          modelId: activeVersion.primary_model_id,
+          fallbackModelIds: [...activeVersion.fallback_model_ids],
+          policyVersionId: activeVersion.id,
+          policyScopeKind: "template_family",
+          policyScopeValue: activeVersion.scope_value,
+        };
+      }
+    }
+
+    if (this.modelRoutingGovernanceService) {
+      const policyRecord = await this.modelRoutingGovernanceService.findActivePolicy(
+        "module",
+        input.module,
+      );
+      const activeVersion = policyRecord?.active_version;
+      if (activeVersion) {
+        return {
+          layer: "module_policy",
+          modelId: activeVersion.primary_model_id,
+          fallbackModelIds: [...activeVersion.fallback_model_ids],
+          policyVersionId: activeVersion.id,
+          policyScopeKind: "module",
+          policyScopeValue: activeVersion.scope_value,
+        };
+      }
     }
 
     if (input.moduleTemplateId) {
       const templateOverride = policy.template_overrides[input.moduleTemplateId];
       if (templateOverride) {
         return {
-          layer: "template_override",
+          layer: "legacy_template_override",
           modelId: templateOverride,
+          fallbackModelIds: [],
         };
       }
     }
@@ -142,15 +213,17 @@ export class AiGatewayService {
     const moduleDefault = policy.module_defaults[input.module];
     if (moduleDefault) {
       return {
-        layer: "module_default",
+        layer: "legacy_module_default",
         modelId: moduleDefault,
+        fallbackModelIds: [],
       };
     }
 
     if (policy.system_default_model_id) {
       return {
-        layer: "system_default",
+        layer: "legacy_system_default",
         modelId: policy.system_default_model_id,
+        fallbackModelIds: [],
       };
     }
 
@@ -187,10 +260,7 @@ export class AiGatewayService {
   private async recordAudit(input: {
     input: ResolveModelSelectionInput;
     occurredAt: string;
-    decision?: {
-      layer: ResolvedModelSelection["layer"];
-      modelId: string;
-    };
+    decision?: ModelSelectionDecision;
     model?: ModelRegistryRecord;
     fallback?: ModelRegistryRecord;
     outcome?: "rejected";
@@ -212,6 +282,15 @@ export class AiGatewayService {
         modelName: input.model?.model_name,
         modelVersion: input.model?.model_version,
         fallbackModelId: input.fallback?.id,
+        ...(input.decision?.policyVersionId
+          ? { policyVersionId: input.decision.policyVersionId }
+          : {}),
+        ...(input.decision?.policyScopeKind
+          ? { policyScopeKind: input.decision.policyScopeKind }
+          : {}),
+        ...(input.decision?.policyScopeValue
+          ? { policyScopeValue: input.decision.policyScopeValue }
+          : {}),
         ...(input.outcome ? { outcome: input.outcome } : {}),
         ...(input.error ? { error: input.error } : {}),
       },

@@ -1,4 +1,5 @@
 import type { TemplateModule } from "../templates/template-record.ts";
+import type { ModelRoutingPolicyScopeKind } from "../model-routing-governance/model-routing-governance-record.ts";
 
 export type AgentExecutionStatus =
   | "queued"
@@ -17,6 +18,12 @@ export interface AgentExecutionLogRecord {
   runtime_binding_id: string;
   tool_permission_policy_id: string;
   execution_snapshot_id?: string;
+  routing_policy_version_id?: string;
+  routing_policy_scope_kind?: ModelRoutingPolicyScopeKind;
+  routing_policy_scope_value?: string;
+  resolved_model_id?: string;
+  fallback_model_id?: string;
+  fallback_trigger?: string;
   knowledge_item_ids: string[];
   verification_check_profile_ids: string[];
   evaluation_suite_ids: string[];

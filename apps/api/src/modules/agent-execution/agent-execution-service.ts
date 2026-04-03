@@ -7,6 +7,7 @@ import {
 import {
   InMemoryAgentExecutionRepository,
 } from "./in-memory-agent-execution-repository.ts";
+import type { ModelRoutingPolicyScopeKind } from "../model-routing-governance/model-routing-governance-record.ts";
 import type { AgentExecutionLogRecord } from "./agent-execution-record.ts";
 import type { AgentExecutionRepository } from "./agent-execution-repository.ts";
 
@@ -23,6 +24,12 @@ export interface CreateAgentExecutionLogInput {
   verificationCheckProfileIds?: string[];
   evaluationSuiteIds?: string[];
   releaseCheckProfileId?: string;
+  routingPolicyVersionId?: string;
+  routingPolicyScopeKind?: ModelRoutingPolicyScopeKind;
+  routingPolicyScopeValue?: string;
+  resolvedModelId?: string;
+  fallbackModelId?: string;
+  fallbackTrigger?: string;
 }
 
 export interface CompleteAgentExecutionLogInput {
@@ -85,6 +92,12 @@ export class AgentExecutionService {
         agent_profile_id: input.agentProfileId,
         runtime_binding_id: input.runtimeBindingId,
         tool_permission_policy_id: input.toolPermissionPolicyId,
+        routing_policy_version_id: input.routingPolicyVersionId,
+        routing_policy_scope_kind: input.routingPolicyScopeKind,
+        routing_policy_scope_value: input.routingPolicyScopeValue,
+        resolved_model_id: input.resolvedModelId,
+        fallback_model_id: input.fallbackModelId,
+        fallback_trigger: input.fallbackTrigger,
         knowledge_item_ids: dedupePreserveOrder(input.knowledgeItemIds),
         verification_check_profile_ids: dedupePreserveOrder(
           input.verificationCheckProfileIds ?? [],

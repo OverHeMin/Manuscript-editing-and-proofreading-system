@@ -86,3 +86,11 @@ create index if not exists model_routing_policy_decisions_policy_scope_created_a
 alter table if exists model_routing_policy_scopes
   add constraint model_routing_policy_scopes_active_version_id_fkey
     foreign key (active_version_id) references model_routing_policy_versions(id) on delete set null;
+
+alter table if exists agent_execution_logs
+  add column if not exists routing_policy_version_id uuid,
+  add column if not exists routing_policy_scope_kind text,
+  add column if not exists routing_policy_scope_value text,
+  add column if not exists resolved_model_id uuid,
+  add column if not exists fallback_model_id uuid,
+  add column if not exists fallback_trigger text;

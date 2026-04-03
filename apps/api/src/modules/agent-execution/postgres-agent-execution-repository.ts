@@ -19,6 +19,12 @@ interface AgentExecutionLogRow {
   runtime_binding_id: string;
   tool_permission_policy_id: string;
   execution_snapshot_id: string | null;
+  routing_policy_version_id: string | null;
+  routing_policy_scope_kind: AgentExecutionLogRecord["routing_policy_scope_kind"] | null;
+  routing_policy_scope_value: string | null;
+  resolved_model_id: string | null;
+  fallback_model_id: string | null;
+  fallback_trigger: string | null;
   knowledge_item_ids: string[] | string;
   verification_check_profile_ids: string[] | string;
   evaluation_suite_ids: string[] | string;
@@ -46,6 +52,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           runtime_binding_id,
           tool_permission_policy_id,
           execution_snapshot_id,
+          routing_policy_version_id,
+          routing_policy_scope_kind,
+          routing_policy_scope_value,
+          resolved_model_id,
+          fallback_model_id,
+          fallback_trigger,
           knowledge_item_ids,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -66,14 +78,20 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           $8,
           $9,
           $10,
-          $11::text[],
-          $12::text[],
-          $13::text[],
+          $11,
+          $12,
+          $13,
           $14,
-          $15::text[],
+          $15,
           $16,
-          $17,
-          $18
+          $17::text[],
+          $18::text[],
+          $19::text[],
+          $20,
+          $21::text[],
+          $22,
+          $23,
+          $24
         )
         on conflict (id) do update
         set
@@ -86,6 +104,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           runtime_binding_id = excluded.runtime_binding_id,
           tool_permission_policy_id = excluded.tool_permission_policy_id,
           execution_snapshot_id = excluded.execution_snapshot_id,
+          routing_policy_version_id = excluded.routing_policy_version_id,
+          routing_policy_scope_kind = excluded.routing_policy_scope_kind,
+          routing_policy_scope_value = excluded.routing_policy_scope_value,
+          resolved_model_id = excluded.resolved_model_id,
+          fallback_model_id = excluded.fallback_model_id,
+          fallback_trigger = excluded.fallback_trigger,
           knowledge_item_ids = excluded.knowledge_item_ids,
           verification_check_profile_ids = excluded.verification_check_profile_ids,
           evaluation_suite_ids = excluded.evaluation_suite_ids,
@@ -106,6 +130,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
         record.runtime_binding_id,
         record.tool_permission_policy_id,
         record.execution_snapshot_id ?? null,
+        record.routing_policy_version_id ?? null,
+        record.routing_policy_scope_kind ?? null,
+        record.routing_policy_scope_value ?? null,
+        record.resolved_model_id ?? null,
+        record.fallback_model_id ?? null,
+        record.fallback_trigger ?? null,
         record.knowledge_item_ids,
         record.verification_check_profile_ids,
         record.evaluation_suite_ids,
@@ -132,6 +162,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           runtime_binding_id,
           tool_permission_policy_id,
           execution_snapshot_id,
+          routing_policy_version_id,
+          routing_policy_scope_kind,
+          routing_policy_scope_value,
+          resolved_model_id,
+          fallback_model_id,
+          fallback_trigger,
           knowledge_item_ids,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -163,6 +199,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           runtime_binding_id,
           tool_permission_policy_id,
           execution_snapshot_id,
+          routing_policy_version_id,
+          routing_policy_scope_kind,
+          routing_policy_scope_value,
+          resolved_model_id,
+          fallback_model_id,
+          fallback_trigger,
           knowledge_item_ids,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -194,6 +236,12 @@ function mapAgentExecutionLogRow(
     runtime_binding_id: row.runtime_binding_id,
     tool_permission_policy_id: row.tool_permission_policy_id,
     execution_snapshot_id: row.execution_snapshot_id ?? undefined,
+    routing_policy_version_id: row.routing_policy_version_id ?? undefined,
+    routing_policy_scope_kind: row.routing_policy_scope_kind ?? undefined,
+    routing_policy_scope_value: row.routing_policy_scope_value ?? undefined,
+    resolved_model_id: row.resolved_model_id ?? undefined,
+    fallback_model_id: row.fallback_model_id ?? undefined,
+    fallback_trigger: row.fallback_trigger ?? undefined,
     knowledge_item_ids: decodeTextArray(row.knowledge_item_ids),
     verification_check_profile_ids: decodeTextArray(
       row.verification_check_profile_ids,

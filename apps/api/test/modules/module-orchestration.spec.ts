@@ -26,6 +26,10 @@ import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repo
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
 import {
+  InMemoryModelRoutingGovernanceRepository,
+} from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
+import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
@@ -68,6 +72,8 @@ function createModuleHarness() {
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const modelRoutingGovernanceRepository =
+    new InMemoryModelRoutingGovernanceRepository();
   const auditService = new InMemoryAuditService();
 
   const assetIds = [
@@ -147,9 +153,30 @@ function createModuleHarness() {
     routingPolicyRepository,
     createId: () => nextValue(modelIds, "model"),
   });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository: modelRepository,
+    createId: (() => {
+      const ids = [
+        "governance-id-1",
+        "governance-id-2",
+        "governance-id-3",
+        "governance-id-4",
+        "governance-id-5",
+        "governance-id-6",
+      ];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a model routing governance id to be available.");
+        return value;
+      };
+    })(),
+    now: () => new Date("2026-03-27T09:00:00.000Z"),
+  });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
     routingPolicyRepository,
+    modelRoutingGovernanceService,
     auditService,
     now: () => new Date("2026-03-27T09:00:00.000Z"),
   });
@@ -295,12 +322,43 @@ function createModuleHarness() {
     toolPermissionPolicyService,
     runtimeBindingService,
     agentExecutionRepository,
+    modelRoutingGovernanceRepository,
     documentAssetService,
     modelRegistryService,
     screeningApi,
     editingApi,
     proofreadingApi,
   };
+}
+
+async function saveActivePolicy(input: {
+  repository: InMemoryModelRoutingGovernanceRepository;
+  policyId: string;
+  versionId: string;
+  scopeValue: "screening" | "editing" | "proofreading";
+  primaryModelId: string;
+}) {
+  await input.repository.saveScope({
+    id: input.policyId,
+    scope_kind: "module",
+    scope_value: input.scopeValue,
+    active_version_id: input.versionId,
+    created_at: "2026-03-27T09:00:00.000Z",
+    updated_at: "2026-03-27T09:00:00.000Z",
+  });
+  await input.repository.saveVersion({
+    id: input.versionId,
+    policy_scope_id: input.policyId,
+    scope_kind: "module",
+    scope_value: input.scopeValue,
+    version_no: 1,
+    primary_model_id: input.primaryModelId,
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+    status: "active",
+    created_at: "2026-03-27T09:00:00.000Z",
+    updated_at: "2026-03-27T09:00:00.000Z",
+  });
 }
 
 async function seedWorkflowContext() {
@@ -558,6 +616,27 @@ async function seedWorkflowContext() {
       editing: editingModel.id,
       proofreading: proofreadingModel.id,
     },
+  });
+  await saveActivePolicy({
+    repository: harness.modelRoutingGovernanceRepository,
+    policyId: "policy-scope-screening-1",
+    versionId: "policy-version-screening-1",
+    scopeValue: "screening",
+    primaryModelId: screeningModel.id,
+  });
+  await saveActivePolicy({
+    repository: harness.modelRoutingGovernanceRepository,
+    policyId: "policy-scope-editing-1",
+    versionId: "policy-version-editing-1",
+    scopeValue: "editing",
+    primaryModelId: editingModel.id,
+  });
+  await saveActivePolicy({
+    repository: harness.modelRoutingGovernanceRepository,
+    policyId: "policy-scope-proofreading-1",
+    versionId: "policy-version-proofreading-1",
+    scopeValue: "proofreading",
+    primaryModelId: proofreadingModel.id,
   });
 
   const screeningTool = await harness.toolGatewayService.createTool("admin", {
@@ -958,6 +1037,15 @@ test("screening produces a final report asset with routed template, knowledge, a
     response.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
+  assert.equal(
+    executionLog?.routing_policy_version_id,
+    "policy-version-screening-1",
+  );
+  assert.equal(executionLog?.routing_policy_scope_kind, "module");
+  assert.equal(executionLog?.routing_policy_scope_value, "screening");
+  assert.equal(executionLog?.resolved_model_id, "model-2");
+  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-screening-1",
   ]);
@@ -1083,6 +1171,15 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     response.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
+  assert.equal(
+    executionLog?.routing_policy_version_id,
+    "policy-version-editing-1",
+  );
+  assert.equal(executionLog?.routing_policy_scope_kind, "module");
+  assert.equal(executionLog?.routing_policy_scope_value, "editing");
+  assert.equal(executionLog?.resolved_model_id, "model-3");
+  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-editing-1",
   ]);
@@ -1177,6 +1274,15 @@ test("proofreading produces a draft first and only advances the final pointer af
   const draftExecutionLog = await agentExecutionRepository.findById(
     draftResponse.body.agent_execution_log_id,
   );
+  assert.equal(
+    draftExecutionLog?.routing_policy_version_id,
+    "policy-version-proofreading-1",
+  );
+  assert.equal(draftExecutionLog?.routing_policy_scope_kind, "module");
+  assert.equal(draftExecutionLog?.routing_policy_scope_value, "proofreading");
+  assert.equal(draftExecutionLog?.resolved_model_id, "model-4");
+  assert.equal(draftExecutionLog?.fallback_model_id, undefined);
+  assert.equal(draftExecutionLog?.fallback_trigger, undefined);
   assert.deepEqual(draftExecutionLog?.verification_evidence_ids, []);
   assert.deepEqual(
     await verificationOpsRepository.listEvaluationRunsBySuiteId(
@@ -1256,6 +1362,15 @@ test("proofreading produces a draft first and only advances the final pointer af
     draftResponse.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, draftResponse.body.snapshot_id);
+  assert.equal(
+    executionLog?.routing_policy_version_id,
+    "policy-version-proofreading-1",
+  );
+  assert.equal(executionLog?.routing_policy_scope_kind, "module");
+  assert.equal(executionLog?.routing_policy_scope_value, "proofreading");
+  assert.equal(executionLog?.resolved_model_id, "model-4");
+  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-proofreading-1",
   ]);

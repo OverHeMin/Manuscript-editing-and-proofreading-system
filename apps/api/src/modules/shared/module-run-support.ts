@@ -188,6 +188,7 @@ export async function prepareModuleExecution(
 
   const modelSelection = await input.aiGatewayService.resolveModelSelection({
     module: input.module,
+    templateFamilyId: manuscript.current_template_family_id,
     moduleTemplateId: template.id,
     taskId: input.jobId,
     actorId: input.actorId,

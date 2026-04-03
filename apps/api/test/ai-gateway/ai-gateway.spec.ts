@@ -11,6 +11,10 @@ import {
   ModelSelectionNotAllowedError,
 } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
 import {
+  InMemoryModelRoutingGovernanceRepository,
+} from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
+import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
@@ -20,6 +24,8 @@ import { ModelRegistryService } from "../../src/modules/model-registry/model-reg
 function createAiGatewayHarness() {
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const modelRoutingGovernanceRepository =
+    new InMemoryModelRoutingGovernanceRepository();
   const auditService = new InMemoryAuditService();
   const issuedIds = [
     "model-1",
@@ -28,10 +34,27 @@ function createAiGatewayHarness() {
     "model-4",
     "model-5",
     "model-6",
+    "model-7",
+    "model-8",
+    "model-9",
+    "model-10",
+    "model-11",
+    "model-12",
   ];
   const nextId = () => {
     const value = issuedIds.shift();
     assert.ok(value, "Expected an AI gateway test id to be available.");
+    return value;
+  };
+  const governanceIds = [
+    "governance-id-1",
+    "governance-id-2",
+    "governance-id-3",
+    "governance-id-4",
+  ];
+  const nextGovernanceId = () => {
+    const value = governanceIds.shift();
+    assert.ok(value, "Expected a governance id to be available.");
     return value;
   };
 
@@ -41,9 +64,16 @@ function createAiGatewayHarness() {
     permissionGuard: new PermissionGuard(),
     createId: nextId,
   });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository: modelRepository,
+    createId: nextGovernanceId,
+    now: () => new Date("2026-03-27T08:00:00.000Z"),
+  });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
     routingPolicyRepository,
+    modelRoutingGovernanceService,
     auditService,
     now: () => new Date("2026-03-27T08:00:00.000Z"),
   });
@@ -55,8 +85,41 @@ function createAiGatewayHarness() {
     aiGatewayApi: createAiGatewayApi({
       aiGatewayService,
     }),
+    modelRoutingGovernanceRepository,
     auditService,
   };
+}
+
+async function saveActivePolicy(input: {
+  repository: InMemoryModelRoutingGovernanceRepository;
+  policyId: string;
+  versionId: string;
+  scopeKind: "module" | "template_family";
+  scopeValue: string;
+  primaryModelId: string;
+  fallbackModelIds?: string[];
+}) {
+  await input.repository.saveScope({
+    id: input.policyId,
+    scope_kind: input.scopeKind,
+    scope_value: input.scopeValue,
+    active_version_id: input.versionId,
+    created_at: "2026-03-27T08:00:00.000Z",
+    updated_at: "2026-03-27T08:00:00.000Z",
+  });
+  await input.repository.saveVersion({
+    id: input.versionId,
+    policy_scope_id: input.policyId,
+    scope_kind: input.scopeKind,
+    scope_value: input.scopeValue,
+    version_no: 1,
+    primary_model_id: input.primaryModelId,
+    fallback_model_ids: [...(input.fallbackModelIds ?? [])],
+    evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+    status: "active",
+    created_at: "2026-03-27T08:00:00.000Z",
+    updated_at: "2026-03-27T08:00:00.000Z",
+  });
 }
 
 test("admin can create update and list model registry entries for governed model switching", async () => {
@@ -177,7 +240,234 @@ test("routing policy rejects models that are invalid for governed production rou
   );
 });
 
-test("ai gateway resolves the module default model when no template override exists", async () => {
+test("ai gateway resolves an active template family policy before module policy and legacy defaults", async () => {
+  const {
+    modelRegistryApi,
+    aiGatewayApi,
+    modelRoutingGovernanceRepository,
+  } = createAiGatewayHarness();
+
+  const systemModel = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-mini",
+      modelVersion: "2026-03",
+      allowedModules: ["screening", "editing", "proofreading"],
+      isProdAllowed: true,
+    },
+  });
+  const legacyTemplateOverride = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "google",
+      modelName: "gemini-editing-legacy-template",
+      modelVersion: "2.5",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  const legacyModuleDefault = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "anthropic",
+      modelName: "claude-editing-legacy-module",
+      modelVersion: "4.0",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  const governedModulePrimary = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-editing-module",
+      modelVersion: "2026-03",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  const governedTemplatePrimary = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-editing-family",
+      modelVersion: "2026-04",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  const fallbackOne = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "azure_openai",
+      modelName: "gpt-5-editing-fallback-1",
+      modelVersion: "2026-03",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  const fallbackTwo = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-editing-fallback-2",
+      modelVersion: "2026-03",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+
+  await modelRegistryApi.updateRoutingPolicy({
+    actorRole: "admin",
+    input: {
+      systemDefaultModelId: systemModel.body.id,
+      templateOverrides: {
+        "template-editing-1": legacyTemplateOverride.body.id,
+      },
+      moduleDefaults: {
+        editing: legacyModuleDefault.body.id,
+      },
+    },
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "module",
+    scopeValue: "editing",
+    primaryModelId: governedModulePrimary.body.id,
+    fallbackModelIds: [fallbackOne.body.id],
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-2",
+    versionId: "policy-version-2",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: governedTemplatePrimary.body.id,
+    fallbackModelIds: [fallbackOne.body.id, fallbackTwo.body.id],
+  });
+
+  const resolved = await aiGatewayApi.resolveModelSelection({
+    module: "editing",
+    moduleTemplateId: "template-editing-1",
+    templateFamilyId: "family-1",
+    taskId: "task-governed-1",
+  });
+
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.layer, "template_family_policy");
+  assert.equal(resolved.body.policy_version_id, "policy-version-2");
+  assert.equal(resolved.body.policy_scope_kind, "template_family");
+  assert.equal(resolved.body.policy_scope_value, "family-1");
+  assert.equal(resolved.body.model.id, governedTemplatePrimary.body.id);
+  assert.deepEqual(
+    resolved.body.fallback_chain.map((model) => model.id),
+    [fallbackOne.body.id, fallbackTwo.body.id],
+  );
+});
+
+test("ai gateway resolves an active module policy before legacy defaults when no template family policy exists", async () => {
+  const {
+    modelRegistryApi,
+    aiGatewayApi,
+    modelRoutingGovernanceRepository,
+  } = createAiGatewayHarness();
+
+  const systemModel = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-mini",
+      modelVersion: "2026-03",
+      allowedModules: ["screening", "editing", "proofreading"],
+      isProdAllowed: true,
+    },
+  });
+  const legacyTemplateOverride = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "google",
+      modelName: "gemini-screening-legacy-template",
+      modelVersion: "2.5",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    },
+  });
+  const legacyModuleDefault = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "anthropic",
+      modelName: "claude-screening-legacy-module",
+      modelVersion: "4.0",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    },
+  });
+  const governedModulePrimary = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "gpt-5-screening-governed",
+      modelVersion: "2026-04",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    },
+  });
+  const governedFallback = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "azure_openai",
+      modelName: "gpt-5-screening-fallback",
+      modelVersion: "2026-03",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    },
+  });
+
+  await modelRegistryApi.updateRoutingPolicy({
+    actorRole: "admin",
+    input: {
+      systemDefaultModelId: systemModel.body.id,
+      moduleDefaults: {
+        screening: legacyModuleDefault.body.id,
+      },
+      templateOverrides: {
+        "template-1": legacyTemplateOverride.body.id,
+      },
+    },
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "module",
+    scopeValue: "screening",
+    primaryModelId: governedModulePrimary.body.id,
+    fallbackModelIds: [governedFallback.body.id],
+  });
+
+  const resolved = await aiGatewayApi.resolveModelSelection({
+    module: "screening",
+    moduleTemplateId: "template-1",
+    templateFamilyId: "family-1",
+    taskId: "task-governed-2",
+  });
+
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.layer, "module_policy");
+  assert.equal(resolved.body.policy_version_id, "policy-version-1");
+  assert.equal(resolved.body.policy_scope_kind, "module");
+  assert.equal(resolved.body.policy_scope_value, "screening");
+  assert.equal(resolved.body.model.id, governedModulePrimary.body.id);
+  assert.deepEqual(
+    resolved.body.fallback_chain.map((model) => model.id),
+    [governedFallback.body.id],
+  );
+});
+
+test("ai gateway resolves the legacy module default model when no governed policy or template override exists", async () => {
   const { modelRegistryApi, aiGatewayApi } = createAiGatewayHarness();
 
   const systemModel = await modelRegistryApi.createModelEntry({
@@ -213,15 +503,15 @@ test("ai gateway resolves the module default model when no template override exi
 
   const resolved = await aiGatewayApi.resolveModelSelection({
     module: "editing",
-    taskId: "task-1",
+    taskId: "task-legacy-1",
   });
 
   assert.equal(resolved.status, 200);
-  assert.equal(resolved.body.layer, "module_default");
+  assert.equal(resolved.body.layer, "legacy_module_default");
   assert.equal(resolved.body.model.id, editingModel.body.id);
 });
 
-test("ai gateway resolves a template override before the module default", async () => {
+test("ai gateway resolves the legacy template override before the legacy module default", async () => {
   const { modelRegistryApi, aiGatewayApi } = createAiGatewayHarness();
 
   const systemModel = await modelRegistryApi.createModelEntry({
@@ -271,11 +561,11 @@ test("ai gateway resolves a template override before the module default", async 
   const resolved = await aiGatewayApi.resolveModelSelection({
     module: "screening",
     moduleTemplateId: "template-1",
-    taskId: "task-2",
+    taskId: "task-legacy-2",
   });
 
   assert.equal(resolved.status, 200);
-  assert.equal(resolved.body.layer, "template_override");
+  assert.equal(resolved.body.layer, "legacy_template_override");
   assert.equal(resolved.body.model.id, templateOverride.body.id);
 });
 
@@ -482,7 +772,7 @@ test("ai gateway writes an audit record for each model resolution", async () => 
       targetId: "model-1",
       occurredAt: "2026-03-27T08:00:00.000Z",
       metadata: {
-        layer: "system_default",
+        layer: "legacy_system_default",
         module: "proofreading",
         moduleTemplateId: "template-proof-1",
         taskId: "task-4",

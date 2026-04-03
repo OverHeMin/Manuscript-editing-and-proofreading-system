@@ -43,6 +43,10 @@ test("agent execution logs capture governed runtime metadata and can be complete
     verificationCheckProfileIds: ["check-profile-1"],
     evaluationSuiteIds: ["suite-1"],
     releaseCheckProfileId: "release-profile-1",
+    routingPolicyVersionId: "policy-version-2",
+    routingPolicyScopeKind: "template_family",
+    routingPolicyScopeValue: "family-1",
+    resolvedModelId: "model-primary-1",
   };
 
   const created = await api.createLog({
@@ -60,6 +64,12 @@ test("agent execution logs capture governed runtime metadata and can be complete
   ]);
   assert.deepEqual(created.body.evaluation_suite_ids, ["suite-1"]);
   assert.equal(created.body.release_check_profile_id, "release-profile-1");
+  assert.equal(created.body.routing_policy_version_id, "policy-version-2");
+  assert.equal(created.body.routing_policy_scope_kind, "template_family");
+  assert.equal(created.body.routing_policy_scope_value, "family-1");
+  assert.equal(created.body.resolved_model_id, "model-primary-1");
+  assert.equal(created.body.fallback_model_id, undefined);
+  assert.equal(created.body.fallback_trigger, undefined);
   assert.deepEqual(created.body.verification_evidence_ids, []);
 
   const completed = await api.completeLog({
@@ -91,6 +101,12 @@ test("agent execution logs can append governed verification evidence after compl
     runtimeBindingId: "binding-1",
     toolPermissionPolicyId: "policy-1",
     knowledgeItemIds: [],
+    routingPolicyVersionId: "policy-version-3",
+    routingPolicyScopeKind: "module",
+    routingPolicyScopeValue: "screening",
+    resolvedModelId: "model-primary-2",
+    fallbackModelId: "model-fallback-2",
+    fallbackTrigger: "rate_limit",
   });
 
   await service.completeLog({
@@ -113,6 +129,12 @@ test("agent execution logs can append governed verification evidence after compl
     "evidence-machine-1",
     "evidence-machine-2",
   ]);
+  assert.equal(updated.routing_policy_version_id, "policy-version-3");
+  assert.equal(updated.routing_policy_scope_kind, "module");
+  assert.equal(updated.routing_policy_scope_value, "screening");
+  assert.equal(updated.resolved_model_id, "model-primary-2");
+  assert.equal(updated.fallback_model_id, "model-fallback-2");
+  assert.equal(updated.fallback_trigger, "rate_limit");
   assert.equal(updated.status, "completed");
   assert.equal(updated.execution_snapshot_id, "snapshot-1");
   assert.equal(updated.finished_at, "2026-03-28T13:00:00.000Z");
