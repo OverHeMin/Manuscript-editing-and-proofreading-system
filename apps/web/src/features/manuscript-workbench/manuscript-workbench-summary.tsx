@@ -31,6 +31,8 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
+  prefilledReviewedCaseSnapshotId?: string;
+  prefilledSampleSetItemId?: string;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: DocumentAssetExportViewModel | null;
@@ -42,11 +44,16 @@ export function ManuscriptWorkbenchSummary({
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
+  prefilledReviewedCaseSnapshotId,
+  prefilledSampleSetItemId,
   workspace,
   latestJob,
   latestExport,
   latestActionResult = null,
 }: ManuscriptWorkbenchSummaryProps) {
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+  const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -140,7 +147,11 @@ export function ManuscriptWorkbenchSummary({
               value={
                 <a
                   className="manuscript-workbench-shortcut"
-                  href={formatWorkbenchHash("evaluation-workbench", workspace.manuscript.id)}
+                  href={formatWorkbenchHash("evaluation-workbench", {
+                    manuscriptId: workspace.manuscript.id,
+                    reviewedCaseSnapshotId: normalizedPrefilledReviewedCaseSnapshotId,
+                    sampleSetItemId: normalizedPrefilledSampleSetItemId,
+                  })}
                 >
                   Open Evaluation Workbench
                 </a>
