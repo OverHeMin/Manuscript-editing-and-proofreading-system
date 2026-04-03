@@ -364,6 +364,196 @@ test("persistent governance runtime keeps model registry entries and routing pol
   });
 });
 
+test("persistent governance runtime keeps model routing governance policies across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+
+        const createModel = async (input: {
+          provider: string;
+          modelName: string;
+          modelVersion: string;
+          allowedModules: string[];
+        }) => {
+          const response = await fetch(`${firstServer.baseUrl}/api/v1/model-registry`, {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              provider: input.provider,
+              modelName: input.modelName,
+              modelVersion: input.modelVersion,
+              allowedModules: input.allowedModules,
+              isProdAllowed: true,
+            }),
+          });
+          const body = (await response.json()) as { id: string };
+
+          assert.equal(response.status, 201);
+          return body;
+        };
+
+        const primaryModel = await createModel({
+          provider: "openai",
+          modelName: "persistent-routing-primary",
+          modelVersion: "2026-04-03",
+          allowedModules: ["screening", "editing", "proofreading"],
+        });
+        const fallbackModel = await createModel({
+          provider: "google",
+          modelName: "persistent-routing-fallback",
+          modelVersion: "2026-04-03",
+          allowedModules: ["screening", "editing", "proofreading"],
+        });
+
+        const createPolicyResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-routing-governance/policies`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              input: {
+                scopeKind: "template_family",
+                scopeValue: "persistent-routing-family-1",
+                primaryModelId: primaryModel.id,
+                fallbackModelIds: [fallbackModel.id],
+                evidenceLinks: [
+                  { kind: "evaluation_run", id: "persistent-routing-run-1" },
+                ],
+                notes: "Persist the initial routing governance draft.",
+              },
+            }),
+          },
+        );
+        const createdDraft = (await createPolicyResponse.json()) as {
+          policy_id: string;
+          version: {
+            id: string;
+          };
+        };
+
+        assert.equal(createPolicyResponse.status, 201);
+
+        const submitResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/submit`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              reason: "Submit the persistent routing draft.",
+            }),
+          },
+        );
+        const approveResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/approve`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              reason: "Approve the persistent routing draft.",
+            }),
+          },
+        );
+        const activateResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              reason: "Activate the persistent routing draft.",
+            }),
+          },
+        );
+
+        assert.equal(submitResponse.status, 200);
+        assert.equal(approveResponse.status, 200);
+        assert.equal(activateResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const listResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/model-routing-governance/policies`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const policies = (await listResponse.json()) as Array<{
+            policy_id: string;
+            scope_kind: string;
+            scope_value: string;
+            active_version?: {
+              status: string;
+              primary_model_id: string;
+              scope_kind: string;
+              fallback_model_ids: string[];
+            };
+          }>;
+          const persistedPolicy = policies.find(
+            (policy) => policy.policy_id === createdDraft.policy_id,
+          );
+
+          assert.equal(listResponse.status, 200);
+          assert.equal(persistedPolicy?.scope_kind, "template_family");
+          assert.equal(persistedPolicy?.scope_value, "persistent-routing-family-1");
+          assert.equal(persistedPolicy?.active_version?.status, "active");
+          assert.equal(
+            persistedPolicy?.active_version?.primary_model_id,
+            primaryModel.id,
+          );
+          assert.equal(
+            persistedPolicy?.active_version?.scope_kind,
+            "template_family",
+          );
+          assert.deepEqual(persistedPolicy?.active_version?.fallback_model_ids, [
+            fallbackModel.id,
+          ]);
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime keeps execution profiles and snapshots across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
