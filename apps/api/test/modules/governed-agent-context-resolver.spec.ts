@@ -29,6 +29,7 @@ import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in
 import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 
 async function createResolverHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -43,6 +44,7 @@ async function createResolverHarness() {
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
     moduleTemplateRepository,
@@ -133,6 +135,7 @@ async function createResolverHarness() {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
     createId: (() => {
       const ids = ["binding-1"];
       return () => {
@@ -241,6 +244,46 @@ async function createResolverHarness() {
   });
   await toolPermissionPolicyService.activatePolicy(policy.id, "admin");
 
+  await verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-1",
+    name: "Editing Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [tool.id],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-1",
+    name: "Editing Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-1"],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-1",
+    name: "Editing Regression Suite",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-1"],
+    module_scope: ["editing"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+
   const sandboxProfile = await sandboxProfileService.createProfile("admin", {
     name: "Editing Sandbox",
     sandboxMode: "workspace_write",
@@ -277,6 +320,9 @@ async function createResolverHarness() {
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: ["skill-editing-1"],
     executionProfileId: "profile-1",
+    verificationCheckProfileIds: ["check-profile-1"],
+    evaluationSuiteIds: ["suite-1"],
+    releaseCheckProfileId: "release-profile-1",
   });
   await runtimeBindingService.activateBinding(runtimeBinding.id, "admin");
 
@@ -323,6 +369,11 @@ test("resolver returns the active runtime binding with profile runtime sandbox a
   assert.equal(context.toolPolicy.id, "policy-1");
   assert.equal(context.runtimeBinding.id, "binding-1");
   assert.equal(context.moduleContext.executionProfile.id, "profile-1");
+  assert.deepEqual(context.verificationExpectations, {
+    verification_check_profile_ids: ["check-profile-1"],
+    evaluation_suite_ids: ["suite-1"],
+    release_check_profile_id: "release-profile-1",
+  });
 });
 
 test("resolver fails when no active runtime binding exists for the governed module scope", async () => {

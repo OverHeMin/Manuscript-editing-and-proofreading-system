@@ -25,6 +25,9 @@ test("postgres agent execution repository persists running and completed logs", 
         runtime_binding_id: "binding-1",
         tool_permission_policy_id: "policy-1",
         knowledge_item_ids: ["knowledge-1"],
+        verification_check_profile_ids: ["check-profile-1"],
+        evaluation_suite_ids: ["suite-1"],
+        release_check_profile_id: "release-profile-1",
         verification_evidence_ids: [],
         status: "running",
         started_at: "2026-03-30T08:00:00.000Z",
@@ -41,6 +44,9 @@ test("postgres agent execution repository persists running and completed logs", 
         tool_permission_policy_id: "policy-1",
         execution_snapshot_id: "snapshot-1",
         knowledge_item_ids: ["knowledge-1"],
+        verification_check_profile_ids: ["check-profile-1"],
+        evaluation_suite_ids: ["suite-1"],
+        release_check_profile_id: "release-profile-1",
         verification_evidence_ids: ["evidence-1"],
         status: "completed",
         started_at: "2026-03-30T08:00:00.000Z",
@@ -52,6 +58,11 @@ test("postgres agent execution repository persists running and completed logs", 
 
       assert.equal(loaded?.status, "completed");
       assert.equal(loaded?.execution_snapshot_id, "snapshot-1");
+      assert.deepEqual(loaded?.verification_check_profile_ids, [
+        "check-profile-1",
+      ]);
+      assert.deepEqual(loaded?.evaluation_suite_ids, ["suite-1"]);
+      assert.equal(loaded?.release_check_profile_id, "release-profile-1");
       assert.deepEqual(loaded?.verification_evidence_ids, ["evidence-1"]);
       assert.deepEqual(list.map((record) => record.id), ["log-1"]);
     } finally {

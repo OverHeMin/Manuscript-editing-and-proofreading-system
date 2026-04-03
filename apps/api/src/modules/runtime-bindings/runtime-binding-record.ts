@@ -15,6 +15,9 @@ export interface RuntimeBindingRecord {
   prompt_template_id: string;
   skill_package_ids: string[];
   execution_profile_id?: string;
+  verification_check_profile_ids: string[];
+  evaluation_suite_ids: string[];
+  release_check_profile_id?: string;
   status: RuntimeBindingStatus;
   version: number;
 }

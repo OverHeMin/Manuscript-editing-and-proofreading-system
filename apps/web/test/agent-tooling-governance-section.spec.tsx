@@ -58,6 +58,77 @@ test("agent tooling governance section renders execution triage filters and sort
   assert.ok(runningIndex < completedIndex, "running executions should be shown before completed ones");
 });
 
+test("agent tooling governance section renders runtime binding verification expectations", () => {
+  const html = renderToStaticMarkup(
+    <AgentToolingGovernanceSection
+      actorRole="admin"
+      controller={{} as AdminGovernanceWorkbenchController}
+      overview={createOverview({
+        verificationCheckProfiles: [
+          {
+            id: "check-profile-1",
+            name: "Editing Browser QA",
+            check_type: "browser_qa",
+            status: "published",
+            admin_only: true,
+          },
+        ],
+        releaseCheckProfiles: [
+          {
+            id: "release-profile-1",
+            name: "Editing Release Gate",
+            check_type: "deploy_verification",
+            status: "published",
+            verification_check_profile_ids: ["check-profile-1"],
+            admin_only: true,
+          },
+        ],
+        evaluationSuites: [
+          {
+            id: "suite-1",
+            name: "Editing Regression Suite",
+            suite_type: "regression",
+            status: "active",
+            verification_check_profile_ids: ["check-profile-1"],
+            module_scope: ["editing"],
+            admin_only: true,
+          },
+        ],
+        runtimeBindings: [
+          {
+            id: "binding-1",
+            module: "editing",
+            manuscript_type: "review",
+            template_family_id: "family-1",
+            runtime_id: "runtime-1",
+            sandbox_profile_id: "sandbox-1",
+            agent_profile_id: "agent-profile-1",
+            tool_permission_policy_id: "policy-1",
+            prompt_template_id: "prompt-1",
+            skill_package_ids: ["skill-1"],
+            execution_profile_id: "profile-1",
+            verification_check_profile_ids: ["check-profile-1"],
+            evaluation_suite_ids: ["suite-1"],
+            release_check_profile_id: "release-profile-1",
+            status: "active",
+            version: 1,
+          },
+        ],
+      })}
+      isMutating={false}
+      runMutation={async () => {}}
+      onOverviewChange={() => {}}
+    />,
+  );
+
+  assert.match(html, /Verification Check Profiles/i);
+  assert.match(html, /Evaluation Suites/i);
+  assert.match(html, /Release Check Profile/i);
+  assert.match(html, /Editing Browser QA/);
+  assert.match(html, /Editing Regression Suite/);
+  assert.match(html, /Editing Release Gate/);
+});
+
 function createOverview(
   overrides: Partial<AdminGovernanceOverview> = {},
 ): AdminGovernanceOverview {
@@ -80,6 +151,9 @@ function createOverview(
     agentProfiles: [],
     agentRuntimes: [],
     toolPermissionPolicies: [],
+    verificationCheckProfiles: [],
+    releaseCheckProfiles: [],
+    evaluationSuites: [],
     runtimeBindings: [],
     agentExecutionLogs: [],
     ...overrides,
@@ -103,6 +177,9 @@ function createExecutionLog(input: {
     runtime_binding_id: "binding-1",
     tool_permission_policy_id: "policy-1",
     knowledge_item_ids: [],
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     verification_evidence_ids: [],
     status: input.status,
     started_at: input.startedAt,

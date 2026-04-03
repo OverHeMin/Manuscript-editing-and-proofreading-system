@@ -37,6 +37,9 @@ export function createRuntimeBinding(
         promptTemplateId: input.promptTemplateId,
         skillPackageIds: input.skillPackageIds,
         executionProfileId: input.executionProfileId,
+        verificationCheckProfileIds: input.verificationCheckProfileIds,
+        evaluationSuiteIds: input.evaluationSuiteIds,
+        releaseCheckProfileId: input.releaseCheckProfileId,
       },
     },
   });

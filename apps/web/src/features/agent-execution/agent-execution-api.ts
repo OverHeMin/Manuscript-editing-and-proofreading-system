@@ -33,6 +33,9 @@ export function createAgentExecutionLog(
         runtimeBindingId: input.runtimeBindingId,
         toolPermissionPolicyId: input.toolPermissionPolicyId,
         knowledgeItemIds: input.knowledgeItemIds,
+        verificationCheckProfileIds: input.verificationCheckProfileIds,
+        evaluationSuiteIds: input.evaluationSuiteIds,
+        releaseCheckProfileId: input.releaseCheckProfileId,
       },
     },
   });

@@ -913,6 +913,7 @@ export function createInMemoryApiRuntime(input: {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
@@ -1743,6 +1744,9 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     execution_profile_id: "profile-screening-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
@@ -1758,6 +1762,9 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     execution_profile_id: "profile-editing-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
@@ -1773,6 +1780,9 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     execution_profile_id: "profile-proofreading-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });

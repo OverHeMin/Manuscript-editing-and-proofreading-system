@@ -104,8 +104,16 @@ import type {
 import type { PromptTemplateViewModel, SkillPackageViewModel } from "../prompt-skill-registry/index.ts";
 import {
   getVerificationEvidence,
+  listEvaluationSuites,
+  listReleaseCheckProfiles,
+  listVerificationCheckProfiles,
 } from "../verification-ops/index.ts";
-import type { VerificationEvidenceViewModel } from "../verification-ops/index.ts";
+import type {
+  EvaluationSuiteViewModel,
+  ReleaseCheckProfileViewModel,
+  VerificationCheckProfileViewModel,
+  VerificationEvidenceViewModel,
+} from "../verification-ops/index.ts";
 import type {
   CreateModuleTemplateDraftInput,
   ModuleTemplateViewModel,
@@ -137,6 +145,9 @@ export interface AdminGovernanceOverview {
   agentProfiles: AgentProfileViewModel[];
   agentRuntimes: AgentRuntimeViewModel[];
   toolPermissionPolicies: ToolPermissionPolicyViewModel[];
+  verificationCheckProfiles: VerificationCheckProfileViewModel[];
+  releaseCheckProfiles: ReleaseCheckProfileViewModel[];
+  evaluationSuites: EvaluationSuiteViewModel[];
   runtimeBindings: RuntimeBindingViewModel[];
   agentExecutionLogs: AgentExecutionLogViewModel[];
 }
@@ -405,6 +416,9 @@ export async function loadAdminGovernanceOverview(
     agentProfileResponse,
     agentRuntimeResponse,
     toolPermissionPolicyResponse,
+    verificationCheckProfileResponse,
+    releaseCheckProfileResponse,
+    evaluationSuiteResponse,
     runtimeBindingResponse,
     agentExecutionResponse,
   ] = await Promise.all([
@@ -419,6 +433,9 @@ export async function loadAdminGovernanceOverview(
     listAgentProfiles(client),
     listAgentRuntimes(client),
     listToolPermissionPolicies(client),
+    listVerificationCheckProfiles(client),
+    listReleaseCheckProfiles(client),
+    listEvaluationSuites(client),
     listRuntimeBindings(client),
     listAgentExecutionLogs(client),
   ]);
@@ -452,6 +469,9 @@ export async function loadAdminGovernanceOverview(
     agentProfiles: agentProfileResponse.body,
     agentRuntimes: agentRuntimeResponse.body,
     toolPermissionPolicies: toolPermissionPolicyResponse.body,
+    verificationCheckProfiles: verificationCheckProfileResponse.body,
+    releaseCheckProfiles: releaseCheckProfileResponse.body,
+    evaluationSuites: evaluationSuiteResponse.body,
     runtimeBindings: runtimeBindingResponse.body,
     agentExecutionLogs: agentExecutionResponse.body,
   };

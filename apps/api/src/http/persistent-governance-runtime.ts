@@ -380,6 +380,7 @@ export function createPersistentGovernanceRuntime(
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,

@@ -7,6 +7,7 @@ import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/pro
 import type { SandboxProfileRepository } from "../sandbox-profiles/sandbox-profile-repository.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { ToolPermissionPolicyRepository } from "../tool-permission-policies/tool-permission-policy-repository.ts";
+import type { VerificationOpsRepository } from "../verification-ops/verification-ops-repository.ts";
 import type { AgentRuntimeRepository } from "../agent-runtime/agent-runtime-repository.ts";
 import type { RuntimeBindingRecord } from "./runtime-binding-record.ts";
 import type { RuntimeBindingRepository } from "./runtime-binding-repository.ts";
@@ -22,6 +23,9 @@ export interface CreateRuntimeBindingInput {
   promptTemplateId: string;
   skillPackageIds: string[];
   executionProfileId?: string;
+  verificationCheckProfileIds?: string[];
+  evaluationSuiteIds?: string[];
+  releaseCheckProfileId?: string;
 }
 
 export interface RuntimeBindingServiceOptions {
@@ -31,6 +35,7 @@ export interface RuntimeBindingServiceOptions {
   agentProfileRepository: AgentProfileRepository;
   toolPermissionPolicyRepository: ToolPermissionPolicyRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
+  verificationOpsRepository: VerificationOpsRepository;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -63,6 +68,7 @@ export class RuntimeBindingService {
   private readonly agentProfileRepository: AgentProfileRepository;
   private readonly toolPermissionPolicyRepository: ToolPermissionPolicyRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
+  private readonly verificationOpsRepository: VerificationOpsRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
@@ -73,6 +79,7 @@ export class RuntimeBindingService {
     this.agentProfileRepository = options.agentProfileRepository;
     this.toolPermissionPolicyRepository = options.toolPermissionPolicyRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
+    this.verificationOpsRepository = options.verificationOpsRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -103,6 +110,11 @@ export class RuntimeBindingService {
       prompt_template_id: input.promptTemplateId,
       skill_package_ids: [...new Set(input.skillPackageIds)],
       execution_profile_id: input.executionProfileId,
+      verification_check_profile_ids: dedupePreserveOrder(
+        input.verificationCheckProfileIds ?? [],
+      ),
+      evaluation_suite_ids: dedupePreserveOrder(input.evaluationSuiteIds ?? []),
+      release_check_profile_id: input.releaseCheckProfileId,
       status: "draft",
       version,
     };
@@ -155,6 +167,9 @@ export class RuntimeBindingService {
       promptTemplateId: binding.prompt_template_id,
       skillPackageIds: binding.skill_package_ids,
       executionProfileId: binding.execution_profile_id,
+      verificationCheckProfileIds: binding.verification_check_profile_ids,
+      evaluationSuiteIds: binding.evaluation_suite_ids,
+      releaseCheckProfileId: binding.release_check_profile_id,
     });
 
     const activeBindings = await this.repository.listByScope(
@@ -309,6 +324,41 @@ export class RuntimeBindingService {
         );
       }
     }
+
+    for (const verificationCheckProfileId of input.verificationCheckProfileIds ?? []) {
+      const checkProfile =
+        await this.verificationOpsRepository.findVerificationCheckProfileById(
+          verificationCheckProfileId,
+        );
+      if (!checkProfile || checkProfile.status !== "published") {
+        throw new RuntimeBindingDependencyStateError(
+          `Runtime binding requires published verification check profile ${verificationCheckProfileId}.`,
+        );
+      }
+    }
+
+    for (const evaluationSuiteId of input.evaluationSuiteIds ?? []) {
+      const suite = await this.verificationOpsRepository.findEvaluationSuiteById(
+        evaluationSuiteId,
+      );
+      if (!suite || suite.status !== "active") {
+        throw new RuntimeBindingDependencyStateError(
+          `Runtime binding requires active evaluation suite ${evaluationSuiteId}.`,
+        );
+      }
+    }
+
+    if (input.releaseCheckProfileId) {
+      const releaseCheckProfile =
+        await this.verificationOpsRepository.findReleaseCheckProfileById(
+          input.releaseCheckProfileId,
+        );
+      if (!releaseCheckProfile || releaseCheckProfile.status !== "published") {
+        throw new RuntimeBindingDependencyStateError(
+          `Runtime binding requires published release check profile ${input.releaseCheckProfileId}.`,
+        );
+      }
+    }
   }
 
   private async requireBinding(bindingId: string): Promise<RuntimeBindingRecord> {
@@ -326,4 +376,20 @@ function matchesManuscriptType(
   manuscriptType: ManuscriptType,
 ): boolean {
   return manuscriptTypes === "any" || manuscriptTypes.includes(manuscriptType);
+}
+
+function dedupePreserveOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    result.push(value);
+  }
+
+  return result;
 }

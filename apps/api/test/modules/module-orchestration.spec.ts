@@ -44,6 +44,7 @@ import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-
 import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 
 function createModuleHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -62,6 +63,7 @@ function createModuleHarness() {
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
@@ -178,6 +180,7 @@ function createModuleHarness() {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
     createId: () => nextValue(runtimeBindingIds, "runtime binding"),
   });
   const agentExecutionService = new AgentExecutionService({
@@ -263,6 +266,7 @@ function createModuleHarness() {
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     executionTrackingRepository,
+    verificationOpsRepository,
     sandboxProfileService,
     agentProfileService,
     agentRuntimeService,
@@ -583,6 +587,124 @@ async function seedWorkflowContext() {
     "admin",
   );
 
+  await harness.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-screening-1",
+    name: "Screening Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [screeningTool.id],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-editing-1",
+    name: "Editing Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [editingTool.id],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-proofreading-1",
+    name: "Proofreading Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [proofreadingTool.id],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-screening-1",
+    name: "Screening Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-editing-1",
+    name: "Editing Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-proofreading-1",
+    name: "Proofreading Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-screening-1",
+    name: "Screening Regression Suite",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    module_scope: ["screening"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-editing-1",
+    name: "Editing Regression Suite",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    module_scope: ["editing"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  await harness.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-proofreading-1",
+    name: "Proofreading Regression Suite",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    module_scope: ["proofreading"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+
   const screeningSandbox = await harness.sandboxProfileService.createProfile(
     "admin",
     {
@@ -707,6 +829,9 @@ async function seedWorkflowContext() {
       promptTemplateId: "prompt-screening-1",
       skillPackageIds: ["skill-screening-1"],
       executionProfileId: "profile-screening-1",
+      verificationCheckProfileIds: ["check-profile-screening-1"],
+      evaluationSuiteIds: ["suite-screening-1"],
+      releaseCheckProfileId: "release-profile-screening-1",
     },
   );
   await harness.runtimeBindingService.activateBinding(
@@ -726,6 +851,9 @@ async function seedWorkflowContext() {
       promptTemplateId: "prompt-editing-1",
       skillPackageIds: ["skill-editing-1"],
       executionProfileId: "profile-editing-1",
+      verificationCheckProfileIds: ["check-profile-editing-1"],
+      evaluationSuiteIds: ["suite-editing-1"],
+      releaseCheckProfileId: "release-profile-editing-1",
     },
   );
   await harness.runtimeBindingService.activateBinding(editingBinding.id, "admin");
@@ -742,6 +870,9 @@ async function seedWorkflowContext() {
       promptTemplateId: "prompt-proofreading-1",
       skillPackageIds: ["skill-proofreading-1"],
       executionProfileId: "profile-proofreading-1",
+      verificationCheckProfileIds: ["check-profile-proofreading-1"],
+      evaluationSuiteIds: ["suite-proofreading-1"],
+      releaseCheckProfileId: "release-profile-proofreading-1",
     },
   );
   await harness.runtimeBindingService.activateBinding(
@@ -805,6 +936,14 @@ test("screening produces a final report asset with routed template, knowledge, a
     response.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
+  assert.deepEqual(executionLog?.verification_check_profile_ids, [
+    "check-profile-screening-1",
+  ]);
+  assert.deepEqual(executionLog?.evaluation_suite_ids, ["suite-screening-1"]);
+  assert.equal(
+    executionLog?.release_check_profile_id,
+    "release-profile-screening-1",
+  );
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_screening_asset_id,
@@ -889,6 +1028,14 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     response.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
+  assert.deepEqual(executionLog?.verification_check_profile_ids, [
+    "check-profile-editing-1",
+  ]);
+  assert.deepEqual(executionLog?.evaluation_suite_ids, ["suite-editing-1"]);
+  assert.equal(
+    executionLog?.release_check_profile_id,
+    "release-profile-editing-1",
+  );
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))?.current_editing_asset_id,
     response.body.asset.id,
@@ -1012,6 +1159,16 @@ test("proofreading produces a draft first and only advances the final pointer af
     draftResponse.body.agent_execution_log_id,
   );
   assert.equal(executionLog?.execution_snapshot_id, draftResponse.body.snapshot_id);
+  assert.deepEqual(executionLog?.verification_check_profile_ids, [
+    "check-profile-proofreading-1",
+  ]);
+  assert.deepEqual(executionLog?.evaluation_suite_ids, [
+    "suite-proofreading-1",
+  ]);
+  assert.equal(
+    executionLog?.release_check_profile_id,
+    "release-profile-proofreading-1",
+  );
   assert.equal(
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_proofreading_asset_id,

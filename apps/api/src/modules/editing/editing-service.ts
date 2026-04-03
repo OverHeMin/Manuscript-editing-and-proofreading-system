@@ -160,6 +160,12 @@ export class EditingService {
         knowledgeItemIds: moduleContext.knowledgeSelections.map(
           (selection) => selection.knowledgeItem.id,
         ),
+        verificationCheckProfileIds:
+          governedContext.verificationExpectations.verification_check_profile_ids,
+        evaluationSuiteIds:
+          governedContext.verificationExpectations.evaluation_suite_ids,
+        releaseCheckProfileId:
+          governedContext.verificationExpectations.release_check_profile_id,
       });
 
       const queuedJob: JobRecord = {

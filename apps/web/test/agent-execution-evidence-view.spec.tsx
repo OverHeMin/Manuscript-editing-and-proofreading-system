@@ -22,6 +22,9 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
           tool_permission_policy_id: "policy-1",
           execution_snapshot_id: "snapshot-1",
           knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+          verification_check_profile_ids: ["check-profile-1"],
+          evaluation_suite_ids: ["suite-1"],
+          release_check_profile_id: "release-profile-1",
           verification_evidence_ids: ["evidence-1", "evidence-2"],
           status: "completed",
           started_at: "2026-03-31T08:00:00.000Z",
@@ -136,6 +139,10 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /model-1/);
   assert.match(html, /prompt-1/);
   assert.match(html, /Execution Outputs/);
+  assert.match(html, /Verification Expectations/);
+  assert.match(html, /check-profile-1/);
+  assert.match(html, /suite-1/);
+  assert.match(html, /release-profile-1/);
   assert.match(html, /Execution evidence manuscript/);
   assert.match(html, /job-1/);
   assert.match(html, /editing-final\.docx/);
@@ -167,6 +174,9 @@ test("agent execution evidence view renders a snapshot-pending state for running
           runtime_binding_id: "binding-1",
           tool_permission_policy_id: "policy-1",
           knowledge_item_ids: [],
+          verification_check_profile_ids: [],
+          evaluation_suite_ids: [],
+          release_check_profile_id: undefined,
           verification_evidence_ids: [],
           status: "running",
           started_at: "2026-03-31T09:00:00.000Z",

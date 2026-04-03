@@ -20,6 +20,9 @@ interface AgentExecutionLogRow {
   tool_permission_policy_id: string;
   execution_snapshot_id: string | null;
   knowledge_item_ids: string[] | string;
+  verification_check_profile_ids: string[] | string;
+  evaluation_suite_ids: string[] | string;
+  release_check_profile_id: string | null;
   verification_evidence_ids: string[] | string;
   status: AgentExecutionLogRecord["status"];
   started_at: Date | string;
@@ -44,6 +47,9 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           tool_permission_policy_id,
           execution_snapshot_id,
           knowledge_item_ids,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           verification_evidence_ids,
           status,
           started_at,
@@ -62,9 +68,12 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           $10,
           $11::text[],
           $12::text[],
-          $13,
+          $13::text[],
           $14,
-          $15
+          $15::text[],
+          $16,
+          $17,
+          $18
         )
         on conflict (id) do update
         set
@@ -78,6 +87,9 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           tool_permission_policy_id = excluded.tool_permission_policy_id,
           execution_snapshot_id = excluded.execution_snapshot_id,
           knowledge_item_ids = excluded.knowledge_item_ids,
+          verification_check_profile_ids = excluded.verification_check_profile_ids,
+          evaluation_suite_ids = excluded.evaluation_suite_ids,
+          release_check_profile_id = excluded.release_check_profile_id,
           verification_evidence_ids = excluded.verification_evidence_ids,
           status = excluded.status,
           started_at = excluded.started_at,
@@ -95,6 +107,9 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
         record.tool_permission_policy_id,
         record.execution_snapshot_id ?? null,
         record.knowledge_item_ids,
+        record.verification_check_profile_ids,
+        record.evaluation_suite_ids,
+        record.release_check_profile_id ?? null,
         record.verification_evidence_ids,
         record.status,
         record.started_at,
@@ -118,6 +133,9 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           tool_permission_policy_id,
           execution_snapshot_id,
           knowledge_item_ids,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           verification_evidence_ids,
           status,
           started_at,
@@ -146,6 +164,9 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           tool_permission_policy_id,
           execution_snapshot_id,
           knowledge_item_ids,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           verification_evidence_ids,
           status,
           started_at,
@@ -174,6 +195,11 @@ function mapAgentExecutionLogRow(
     tool_permission_policy_id: row.tool_permission_policy_id,
     execution_snapshot_id: row.execution_snapshot_id ?? undefined,
     knowledge_item_ids: decodeTextArray(row.knowledge_item_ids),
+    verification_check_profile_ids: decodeTextArray(
+      row.verification_check_profile_ids,
+    ),
+    evaluation_suite_ids: decodeTextArray(row.evaluation_suite_ids),
+    release_check_profile_id: row.release_check_profile_id ?? undefined,
     verification_evidence_ids: decodeTextArray(row.verification_evidence_ids),
     status: row.status,
     started_at: toIsoString(row.started_at),

@@ -2011,6 +2011,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     prompt_template_id: "11111111-2222-4333-8444-555555555555",
     skill_package_ids: ["66666666-7777-4888-8999-aaaaaaaaaaaa"],
     execution_profile_id: "bbbb1111-2222-4333-8444-555555555555",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
@@ -2026,6 +2029,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     prompt_template_id: "12121212-2222-4333-8444-555555555555",
     skill_package_ids: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
     execution_profile_id: "12121212-1111-4333-8444-555555555555",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });

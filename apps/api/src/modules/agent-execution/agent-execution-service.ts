@@ -20,6 +20,9 @@ export interface CreateAgentExecutionLogInput {
   runtimeBindingId: string;
   toolPermissionPolicyId: string;
   knowledgeItemIds: string[];
+  verificationCheckProfileIds?: string[];
+  evaluationSuiteIds?: string[];
+  releaseCheckProfileId?: string;
 }
 
 export interface CompleteAgentExecutionLogInput {
@@ -78,6 +81,11 @@ export class AgentExecutionService {
         runtime_binding_id: input.runtimeBindingId,
         tool_permission_policy_id: input.toolPermissionPolicyId,
         knowledge_item_ids: dedupePreserveOrder(input.knowledgeItemIds),
+        verification_check_profile_ids: dedupePreserveOrder(
+          input.verificationCheckProfileIds ?? [],
+        ),
+        evaluation_suite_ids: dedupePreserveOrder(input.evaluationSuiteIds ?? []),
+        release_check_profile_id: input.releaseCheckProfileId,
         verification_evidence_ids: [],
         status: "running",
         started_at: this.now().toISOString(),
@@ -101,6 +109,11 @@ export class AgentExecutionService {
       const completed: AgentExecutionLogRecord = {
         ...existing,
         knowledge_item_ids: [...existing.knowledge_item_ids],
+        verification_check_profile_ids: [
+          ...existing.verification_check_profile_ids,
+        ],
+        evaluation_suite_ids: [...existing.evaluation_suite_ids],
+        release_check_profile_id: existing.release_check_profile_id,
         execution_snapshot_id: input.executionSnapshotId,
         verification_evidence_ids: dedupePreserveOrder(
           input.verificationEvidenceIds ?? [],

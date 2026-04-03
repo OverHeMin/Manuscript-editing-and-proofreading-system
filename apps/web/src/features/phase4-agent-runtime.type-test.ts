@@ -184,6 +184,9 @@ const runtimeBindingViewModelCheck: RuntimeBindingViewModel = {
   prompt_template_id: "prompt-1",
   skill_package_ids: ["skill-1"],
   execution_profile_id: "profile-1",
+  verification_check_profile_ids: ["check-profile-1"],
+  evaluation_suite_ids: ["evaluation-suite-1"],
+  release_check_profile_id: "release-profile-1",
   status: runtimeBindingStatusCheck,
   version: 2,
 };
@@ -199,6 +202,9 @@ const runtimeBindingInputCheck: CreateRuntimeBindingInput = {
   promptTemplateId: "prompt-1",
   skillPackageIds: ["skill-1"],
   executionProfileId: "profile-1",
+  verificationCheckProfileIds: ["check-profile-1"],
+  evaluationSuiteIds: ["evaluation-suite-1"],
+  releaseCheckProfileId: "release-profile-1",
 };
 
 const toolPolicyStatusCheck: ToolPermissionPolicyStatus = "active";
@@ -232,6 +238,9 @@ const executionViewModelCheck: AgentExecutionLogViewModel = {
   tool_permission_policy_id: "policy-1",
   execution_snapshot_id: "snapshot-1",
   knowledge_item_ids: ["knowledge-1"],
+  verification_check_profile_ids: ["check-profile-1"],
+  evaluation_suite_ids: ["evaluation-suite-1"],
+  release_check_profile_id: "release-profile-1",
   verification_evidence_ids: ["evidence-1"],
   status: executionStatusCheck,
   started_at: "2026-03-28T14:00:00.000Z",
@@ -247,6 +256,9 @@ const executionInputCheck: CreateAgentExecutionLogInput = {
   runtimeBindingId: "binding-1",
   toolPermissionPolicyId: "policy-1",
   knowledgeItemIds: ["knowledge-1"],
+  verificationCheckProfileIds: ["check-profile-1"],
+  evaluationSuiteIds: ["evaluation-suite-1"],
+  releaseCheckProfileId: "release-profile-1",
 };
 const completeExecutionInputCheck: CompleteAgentExecutionLogInput = {
   logId: "execution-log-1",

@@ -355,6 +355,10 @@ export class ProofreadingService {
               knowledgeItemIds: resolvedContext.knowledgeHits.map(
                 (hit) => hit.knowledgeItemId,
               ),
+              verificationCheckProfileIds:
+                resolvedContext.verificationCheckProfileIds,
+              evaluationSuiteIds: resolvedContext.evaluationSuiteIds,
+              releaseCheckProfileId: resolvedContext.releaseCheckProfileId,
             });
       const agentExecutionLogId =
         input.pinnedContext?.agentExecutionLogId ?? executionLog?.id;
@@ -515,6 +519,12 @@ export class ProofreadingService {
       agentProfileId: governedContext.agentProfile.id,
       runtimeBindingId: governedContext.runtimeBinding.id,
       toolPermissionPolicyId: governedContext.toolPolicy.id,
+      verificationCheckProfileIds:
+        governedContext.verificationExpectations.verification_check_profile_ids,
+      evaluationSuiteIds:
+        governedContext.verificationExpectations.evaluation_suite_ids,
+      releaseCheckProfileId:
+        governedContext.verificationExpectations.release_check_profile_id,
     };
   }
 
@@ -563,6 +573,11 @@ export class ProofreadingService {
       agentProfileId: draftExecutionLog.agent_profile_id,
       runtimeBindingId: draftExecutionLog.runtime_binding_id,
       toolPermissionPolicyId: draftExecutionLog.tool_permission_policy_id,
+      verificationCheckProfileIds: [
+        ...draftExecutionLog.verification_check_profile_ids,
+      ],
+      evaluationSuiteIds: [...draftExecutionLog.evaluation_suite_ids],
+      releaseCheckProfileId: draftExecutionLog.release_check_profile_id,
       agentExecutionLogId: draftExecutionLog.id,
     };
   }
@@ -604,6 +619,9 @@ interface ResolvedProofreadingGovernedContext {
   agentProfileId: string;
   runtimeBindingId: string;
   toolPermissionPolicyId: string;
+  verificationCheckProfileIds: string[];
+  evaluationSuiteIds: string[];
+  releaseCheckProfileId?: string;
   agentExecutionLogId?: string;
 }
 

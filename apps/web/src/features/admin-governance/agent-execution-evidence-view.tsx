@@ -64,6 +64,24 @@ export function AgentExecutionEvidenceView({
       </div>
 
       <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Verification Expectations</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Check Profiles</span>
+            <small>{log.verification_check_profile_ids.join(", ") || "none"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Evaluation Suites</span>
+            <small>{log.evaluation_suite_ids.join(", ") || "none"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Release Check Profile</span>
+            <small>{log.release_check_profile_id ?? "none"}</small>
+          </article>
+        </div>
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
         <h5>Execution Outputs</h5>
         <div className="admin-governance-resolution-grid">
           <article className="admin-governance-asset-row">

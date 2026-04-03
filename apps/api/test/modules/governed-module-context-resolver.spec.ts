@@ -20,6 +20,7 @@ import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bind
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 import {
   ActiveRuntimeBindingNotFoundError,
   resolveGovernedAgentContext,
@@ -42,6 +43,7 @@ async function createResolverHarness() {
   const agentProfileRepository = new InMemoryAgentProfileRepository();
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
   const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
@@ -143,6 +145,7 @@ async function createResolverHarness() {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
     createId: (() => {
       const ids = ["binding-1"];
       return () => {

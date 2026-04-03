@@ -39,6 +39,9 @@ test("agent execution logs capture governed runtime metadata and can be complete
     runtimeBindingId: "binding-1",
     toolPermissionPolicyId: "policy-1",
     knowledgeItemIds: ["knowledge-editing-1"],
+    verificationCheckProfileIds: ["check-profile-1"],
+    evaluationSuiteIds: ["suite-1"],
+    releaseCheckProfileId: "release-profile-1",
   };
 
   const created = await api.createLog({
@@ -51,6 +54,11 @@ test("agent execution logs capture governed runtime metadata and can be complete
   assert.equal(created.body.agent_profile_id, "agent-profile-1");
   assert.equal(created.body.runtime_binding_id, "binding-1");
   assert.equal(created.body.tool_permission_policy_id, "policy-1");
+  assert.deepEqual(created.body.verification_check_profile_ids, [
+    "check-profile-1",
+  ]);
+  assert.deepEqual(created.body.evaluation_suite_ids, ["suite-1"]);
+  assert.equal(created.body.release_check_profile_id, "release-profile-1");
   assert.deepEqual(created.body.verification_evidence_ids, []);
 
   const completed = await api.completeLog({

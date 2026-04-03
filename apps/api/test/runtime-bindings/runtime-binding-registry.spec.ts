@@ -22,6 +22,9 @@ import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-
 import { createToolPermissionPolicyApi } from "../../src/modules/tool-permission-policies/tool-permission-policy-api.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
+import { createVerificationOpsApi } from "../../src/modules/verification-ops/verification-ops-api.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
+import { VerificationOpsService } from "../../src/modules/verification-ops/verification-ops-service.ts";
 
 function createRuntimeBindingHarness() {
   const ids = {
@@ -32,6 +35,14 @@ function createRuntimeBindingHarness() {
     toolPolicy: ["tool-policy-1"],
     tool: ["tool-1", "tool-2"],
     promptSkill: ["skill-1", "prompt-1"],
+    verificationOps: [
+      "check-profile-1",
+      "release-profile-1",
+      "suite-1",
+      "draft-check-profile-1",
+      "draft-release-profile-1",
+      "draft-suite-1",
+    ],
   };
 
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
@@ -42,6 +53,7 @@ function createRuntimeBindingHarness() {
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
 
   const runtimeBindingService = new RuntimeBindingService({
     repository: new InMemoryRuntimeBindingRepository(),
@@ -50,6 +62,7 @@ function createRuntimeBindingHarness() {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
     createId: () => {
       const value = ids.runtimeBinding.shift();
       assert.ok(value, "Expected a runtime binding id to be available.");
@@ -115,6 +128,17 @@ function createRuntimeBindingHarness() {
         createId: () => {
           const value = ids.toolPolicy.shift();
           assert.ok(value, "Expected a tool permission policy id to be available.");
+          return value;
+        },
+      }),
+    }),
+    verificationOpsApi: createVerificationOpsApi({
+      verificationOpsService: new VerificationOpsService({
+        repository: verificationOpsRepository,
+        toolGatewayRepository,
+        createId: () => {
+          const value = ids.verificationOps.shift();
+          assert.ok(value, "Expected a verification-ops id to be available.");
           return value;
         },
       }),
@@ -219,6 +243,46 @@ async function seedPublishableBindingDependencies() {
     promptTemplateId: promptTemplate.body.id,
   });
 
+  const checkProfile = await harness.verificationOpsApi.createVerificationCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Editing Browser QA",
+      checkType: "browser_qa",
+      toolIds: [tool.body.id],
+    },
+  });
+  await harness.verificationOpsApi.publishVerificationCheckProfile({
+    actorRole: "admin",
+    profileId: checkProfile.body.id,
+  });
+
+  const releaseProfile = await harness.verificationOpsApi.createReleaseCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Editing Release Gate",
+      checkType: "deploy_verification",
+      verificationCheckProfileIds: [checkProfile.body.id],
+    },
+  });
+  await harness.verificationOpsApi.publishReleaseCheckProfile({
+    actorRole: "admin",
+    profileId: releaseProfile.body.id,
+  });
+
+  const suite = await harness.verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Editing Regression Suite",
+      suiteType: "regression",
+      verificationCheckProfileIds: [checkProfile.body.id],
+      moduleScope: ["editing"],
+    },
+  });
+  await harness.verificationOpsApi.activateEvaluationSuite({
+    actorRole: "admin",
+    suiteId: suite.body.id,
+  });
+
   return {
     ...harness,
     runtimeId: runtime.body.id,
@@ -227,6 +291,9 @@ async function seedPublishableBindingDependencies() {
     toolPermissionPolicyId: policy.body.id,
     promptTemplateId: promptTemplate.body.id,
     skillPackageId: skillPackage.body.id,
+    verificationCheckProfileId: checkProfile.body.id,
+    evaluationSuiteId: suite.body.id,
+    releaseCheckProfileId: releaseProfile.body.id,
   };
 }
 
@@ -247,6 +314,9 @@ test("only admin can create and activate runtime bindings", async () => {
           toolPermissionPolicyId: harness.toolPermissionPolicyId,
           promptTemplateId: harness.promptTemplateId,
           skillPackageIds: [harness.skillPackageId],
+          verificationCheckProfileIds: [harness.verificationCheckProfileId],
+          evaluationSuiteIds: [harness.evaluationSuiteId],
+          releaseCheckProfileId: harness.releaseCheckProfileId,
         },
       }),
     AuthorizationError,
@@ -264,11 +334,22 @@ test("only admin can create and activate runtime bindings", async () => {
       toolPermissionPolicyId: harness.toolPermissionPolicyId,
       promptTemplateId: harness.promptTemplateId,
       skillPackageIds: [harness.skillPackageId],
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
     },
   });
 
   assert.equal(created.status, 201);
   assert.equal(created.body.status, "draft");
+  assert.deepEqual(created.body.verification_check_profile_ids, [
+    harness.verificationCheckProfileId,
+  ]);
+  assert.deepEqual(created.body.evaluation_suite_ids, [harness.evaluationSuiteId]);
+  assert.equal(
+    created.body.release_check_profile_id,
+    harness.releaseCheckProfileId,
+  );
 
   const activated = await harness.runtimeBindingApi.activateBinding({
     actorRole: "admin",
@@ -294,6 +375,9 @@ test("runtime bindings archive the previous active binding for the same module m
       toolPermissionPolicyId: harness.toolPermissionPolicyId,
       promptTemplateId: harness.promptTemplateId,
       skillPackageIds: [harness.skillPackageId],
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
     },
   });
   await harness.runtimeBindingApi.activateBinding({
@@ -313,6 +397,9 @@ test("runtime bindings archive the previous active binding for the same module m
       toolPermissionPolicyId: harness.toolPermissionPolicyId,
       promptTemplateId: harness.promptTemplateId,
       skillPackageIds: [harness.skillPackageId],
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
     },
   });
   await harness.runtimeBindingApi.activateBinding({
@@ -383,6 +470,31 @@ test("runtime bindings reject draft dependencies and require active or published
       highRiskToolIds: [],
     },
   });
+  const draftCheckProfile = await harness.verificationOpsApi.createVerificationCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Draft Browser QA",
+      checkType: "browser_qa",
+      toolIds: [],
+    },
+  });
+  const draftReleaseProfile = await harness.verificationOpsApi.createReleaseCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Draft Release Gate",
+      checkType: "deploy_verification",
+      verificationCheckProfileIds: [],
+    },
+  });
+  const draftSuite = await harness.verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Draft Regression Suite",
+      suiteType: "regression",
+      verificationCheckProfileIds: [],
+      moduleScope: ["editing"],
+    },
+  });
 
   await assert.rejects(
     () =>
@@ -398,6 +510,9 @@ test("runtime bindings reject draft dependencies and require active or published
           toolPermissionPolicyId: policy.body.id,
           promptTemplateId: promptTemplate.body.id,
           skillPackageIds: [skillPackage.body.id],
+          verificationCheckProfileIds: [draftCheckProfile.body.id],
+          evaluationSuiteIds: [draftSuite.body.id],
+          releaseCheckProfileId: draftReleaseProfile.body.id,
         },
       }),
     /active|published/i,

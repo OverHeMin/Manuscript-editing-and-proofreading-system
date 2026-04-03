@@ -113,6 +113,9 @@ export function AgentToolingGovernanceSection({
     promptTemplateId: "",
     skillPackageIds: [] as string[],
     executionProfileId: "",
+    verificationCheckProfileIds: [] as string[],
+    evaluationSuiteIds: [] as string[],
+    releaseCheckProfileId: "",
   });
   const [selectedExecutionLogId, setSelectedExecutionLogId] = useState("");
   const [executionStatusFilter, setExecutionStatusFilter] =
@@ -181,20 +184,73 @@ export function AgentToolingGovernanceSection({
     const eligiblePromptTemplates = getEligiblePromptTemplates(overview, bindingForm.module, bindingForm.templateFamilyId);
     const eligibleSkillPackages = getEligibleSkillPackages(overview, bindingForm.module);
     const eligibleExecutionProfiles = getEligibleExecutionProfiles(overview, bindingForm.module, bindingForm.templateFamilyId);
+    const eligibleVerificationCheckProfiles = getEligibleVerificationCheckProfiles(overview);
+    const eligibleEvaluationSuites = getEligibleEvaluationSuites(overview, bindingForm.module);
+    const eligibleReleaseCheckProfiles = getEligibleReleaseCheckProfiles(
+      overview,
+      bindingForm.verificationCheckProfileIds,
+    );
 
-    setBindingForm((current) => ({
-      ...current,
-      promptTemplateId: syncSingleSelection(current.promptTemplateId, eligiblePromptTemplates, eligiblePromptTemplates[0]?.id ?? ""),
-      skillPackageIds: syncMultiSelection(current.skillPackageIds, eligibleSkillPackages),
-      executionProfileId: syncSingleSelection(current.executionProfileId, eligibleExecutionProfiles, eligibleExecutionProfiles[0]?.id ?? ""),
-    }));
+    setBindingForm((current) => {
+      const promptTemplateId = syncSingleSelection(
+        current.promptTemplateId,
+        eligiblePromptTemplates,
+        eligiblePromptTemplates[0]?.id ?? "",
+      );
+      const skillPackageIds = syncMultiSelection(
+        current.skillPackageIds,
+        eligibleSkillPackages,
+      );
+      const executionProfileId = syncSingleSelection(
+        current.executionProfileId,
+        eligibleExecutionProfiles,
+        eligibleExecutionProfiles[0]?.id ?? "",
+      );
+      const verificationCheckProfileIds = syncMultiSelection(
+        current.verificationCheckProfileIds,
+        eligibleVerificationCheckProfiles,
+      );
+      const evaluationSuiteIds = syncMultiSelection(
+        current.evaluationSuiteIds,
+        eligibleEvaluationSuites,
+      );
+      const releaseCheckProfileId = syncSingleSelection(
+        current.releaseCheckProfileId,
+        eligibleReleaseCheckProfiles,
+      );
+
+      if (
+        promptTemplateId === current.promptTemplateId &&
+        skillPackageIds === current.skillPackageIds &&
+        executionProfileId === current.executionProfileId &&
+        verificationCheckProfileIds === current.verificationCheckProfileIds &&
+        evaluationSuiteIds === current.evaluationSuiteIds &&
+        releaseCheckProfileId === current.releaseCheckProfileId
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        promptTemplateId,
+        skillPackageIds,
+        executionProfileId,
+        verificationCheckProfileIds,
+        evaluationSuiteIds,
+        releaseCheckProfileId,
+      };
+    });
   }, [
     bindingForm.module,
     bindingForm.templateFamilyId,
+    bindingForm.verificationCheckProfileIds,
+    overview.evaluationSuites,
     overview.executionProfiles,
     overview.promptTemplates,
+    overview.releaseCheckProfiles,
     overview.skillPackages,
     overview.templateFamilies,
+    overview.verificationCheckProfiles,
   ]);
 
   useEffect(() => {
@@ -384,6 +440,9 @@ export function AgentToolingGovernanceSection({
         promptTemplateId: bindingForm.promptTemplateId,
         skillPackageIds: bindingForm.skillPackageIds,
         executionProfileId: normalizeOptionalText(bindingForm.executionProfileId),
+        verificationCheckProfileIds: bindingForm.verificationCheckProfileIds,
+        evaluationSuiteIds: bindingForm.evaluationSuiteIds,
+        releaseCheckProfileId: normalizeOptionalText(bindingForm.releaseCheckProfileId),
       });
 
       onOverviewChange(result.overview, `Created runtime binding: ${result.createdBinding.id}`);
@@ -422,6 +481,15 @@ export function AgentToolingGovernanceSection({
     bindingForm.templateFamilyId,
   );
   const eligibleSkillPackages = getEligibleSkillPackages(overview, bindingForm.module);
+  const eligibleVerificationCheckProfiles = getEligibleVerificationCheckProfiles(overview);
+  const eligibleEvaluationSuites = getEligibleEvaluationSuites(
+    overview,
+    bindingForm.module,
+  );
+  const eligibleReleaseCheckProfiles = getEligibleReleaseCheckProfiles(
+    overview,
+    bindingForm.verificationCheckProfileIds,
+  );
   const eligibleExecutionProfiles = getEligibleExecutionProfiles(
     overview,
     bindingForm.module,
@@ -1281,6 +1349,26 @@ export function AgentToolingGovernanceSection({
               ))}
             </select>
           </label>
+          <label className="admin-governance-field">
+            <span>Release Check Profile</span>
+            <select
+              value={bindingForm.releaseCheckProfileId}
+              onChange={(event) =>
+                setBindingForm((current) => ({
+                  ...current,
+                  releaseCheckProfileId: event.target.value,
+                }))
+              }
+              disabled={isMutating}
+            >
+              <option value="">Optional</option>
+              {eligibleReleaseCheckProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <fieldset className="admin-governance-module-selector">
@@ -1300,6 +1388,54 @@ export function AgentToolingGovernanceSection({
                   disabled={isMutating}
                 />
                 <span>{skillPackage.name}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="admin-governance-module-selector">
+          <legend>Verification Check Profiles</legend>
+          <div className="admin-governance-module-options">
+            {eligibleVerificationCheckProfiles.map((profile) => (
+              <label key={profile.id} className="admin-governance-module-option">
+                <input
+                  type="checkbox"
+                  checked={bindingForm.verificationCheckProfileIds.includes(profile.id)}
+                  onChange={() =>
+                    setBindingForm((current) => ({
+                      ...current,
+                      verificationCheckProfileIds: toggleSelection(
+                        current.verificationCheckProfileIds,
+                        profile.id,
+                      ),
+                    }))
+                  }
+                  disabled={isMutating}
+                />
+                <span>{profile.name}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="admin-governance-module-selector">
+          <legend>Evaluation Suites</legend>
+          <div className="admin-governance-module-options">
+            {eligibleEvaluationSuites.map((suite) => (
+              <label key={suite.id} className="admin-governance-module-option">
+                <input
+                  type="checkbox"
+                  checked={bindingForm.evaluationSuiteIds.includes(suite.id)}
+                  onChange={() =>
+                    setBindingForm((current) => ({
+                      ...current,
+                      evaluationSuiteIds: toggleSelection(
+                        current.evaluationSuiteIds,
+                        suite.id,
+                      ),
+                    }))
+                  }
+                  disabled={isMutating}
+                />
+                <span>{suite.name}</span>
               </label>
             ))}
           </div>
@@ -1335,6 +1471,27 @@ export function AgentToolingGovernanceSection({
                   <p>
                     runtime {binding.runtime_id} / sandbox {binding.sandbox_profile_id} / agent{" "}
                     {binding.agent_profile_id}
+                  </p>
+                  <p>
+                    checks{" "}
+                    {formatIdList(
+                      resolveNamedItems(
+                        binding.verification_check_profile_ids,
+                        overview.verificationCheckProfiles,
+                      ),
+                    )}{" "}
+                    / suites{" "}
+                    {formatIdList(
+                      resolveNamedItems(
+                        binding.evaluation_suite_ids,
+                        overview.evaluationSuites,
+                      ),
+                    )}{" "}
+                    / release{" "}
+                    {resolveNamedItem(
+                      binding.release_check_profile_id,
+                      overview.releaseCheckProfiles,
+                    ) ?? "none"}
                   </p>
                 </div>
                 <div className="admin-governance-template-actions">
@@ -1511,6 +1668,43 @@ function getEligibleSkillPackages(overview: AdminGovernanceOverview, module: Tem
   );
 }
 
+function getEligibleVerificationCheckProfiles(overview: AdminGovernanceOverview) {
+  return overview.verificationCheckProfiles.filter(
+    (profile) => profile.status === "published",
+  );
+}
+
+function getEligibleEvaluationSuites(
+  overview: AdminGovernanceOverview,
+  module: TemplateModule,
+) {
+  return overview.evaluationSuites.filter(
+    (suite) =>
+      suite.status === "active" &&
+      (suite.module_scope === "any" || suite.module_scope.includes(module)),
+  );
+}
+
+function getEligibleReleaseCheckProfiles(
+  overview: AdminGovernanceOverview,
+  selectedCheckProfileIds: readonly string[],
+) {
+  const selectedChecks = new Set(selectedCheckProfileIds);
+  return overview.releaseCheckProfiles.filter((profile) => {
+    if (profile.status !== "published") {
+      return false;
+    }
+
+    if (selectedChecks.size === 0) {
+      return true;
+    }
+
+    return profile.verification_check_profile_ids.every((id) =>
+      selectedChecks.has(id),
+    );
+  });
+}
+
 function getEligibleExecutionProfiles(
   overview: AdminGovernanceOverview,
   module: TemplateModule,
@@ -1559,6 +1753,13 @@ function syncMultiSelection<TRecord extends { id: string }>(
   const validIds = currentIds.filter((currentId) =>
     records.some((record) => record.id === currentId),
   );
+
+  if (
+    validIds.length === currentIds.length &&
+    validIds.every((currentId, index) => currentId === currentIds[index])
+  ) {
+    return currentIds as string[];
+  }
 
   if (validIds.length > 0 || !fallbackId) {
     return validIds;
@@ -1653,10 +1854,35 @@ function formatAgentExecutionSearchHaystack(log: AgentExecutionLogViewModel) {
     log.agent_profile_id,
     log.sandbox_profile_id,
     log.tool_permission_policy_id,
+    ...log.verification_check_profile_ids,
+    ...log.evaluation_suite_ids,
+    log.release_check_profile_id ?? "",
     log.status,
   ]
     .join(" ")
     .toLowerCase();
+}
+
+function resolveNamedItems<TRecord extends { id: string; name: string }>(
+  ids: readonly string[],
+  records: readonly TRecord[],
+) {
+  return ids.map((id) => resolveNamedItem(id, records) ?? id);
+}
+
+function resolveNamedItem<TRecord extends { id: string; name: string }>(
+  id: string | undefined,
+  records: readonly TRecord[],
+) {
+  if (!id) {
+    return undefined;
+  }
+
+  return records.find((record) => record.id === id)?.name ?? id;
+}
+
+function formatIdList(values: readonly string[]) {
+  return values.length > 0 ? values.join(", ") : "none";
 }
 
 function formatExecutionStatusFilterLabel(

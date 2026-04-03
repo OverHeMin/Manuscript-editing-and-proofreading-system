@@ -10,6 +10,9 @@ const agentToolingOverviewUrls = [
   "/api/v1/agent-profiles",
   "/api/v1/agent-runtime",
   "/api/v1/tool-permission-policies",
+  "/api/v1/verification-ops/check-profiles",
+  "/api/v1/verification-ops/release-check-profiles",
+  "/api/v1/verification-ops/evaluation-suites",
   "/api/v1/runtime-bindings",
   "/api/v1/agent-execution",
 ] as const;

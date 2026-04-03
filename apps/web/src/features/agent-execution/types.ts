@@ -18,6 +18,9 @@ export interface AgentExecutionLogViewModel {
   tool_permission_policy_id: string;
   execution_snapshot_id?: string;
   knowledge_item_ids: string[];
+  verification_check_profile_ids: string[];
+  evaluation_suite_ids: string[];
+  release_check_profile_id?: string;
   verification_evidence_ids: string[];
   status: AgentExecutionStatus;
   started_at: string;
@@ -34,6 +37,9 @@ export interface CreateAgentExecutionLogInput {
   runtimeBindingId: string;
   toolPermissionPolicyId: string;
   knowledgeItemIds: string[];
+  verificationCheckProfileIds?: string[];
+  evaluationSuiteIds?: string[];
+  releaseCheckProfileId?: string;
 }
 
 export interface CompleteAgentExecutionLogInput {

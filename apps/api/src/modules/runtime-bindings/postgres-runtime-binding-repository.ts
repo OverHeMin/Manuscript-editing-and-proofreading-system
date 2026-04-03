@@ -20,6 +20,9 @@ interface RuntimeBindingRow {
   prompt_template_id: string;
   skill_package_ids: string[] | string;
   execution_profile_id: string | null;
+  verification_check_profile_ids: string[] | string;
+  evaluation_suite_ids: string[] | string;
+  release_check_profile_id: string | null;
   status: RuntimeBindingRecord["status"];
   version: number;
 }
@@ -42,6 +45,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           prompt_template_id,
           skill_package_ids,
           execution_profile_id,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           status,
           version
         )
@@ -57,8 +63,11 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           $9,
           $10::text[],
           $11,
-          $12,
-          $13
+          $12::text[],
+          $13::text[],
+          $14,
+          $15,
+          $16
         )
         on conflict (id) do update
         set
@@ -72,6 +81,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           prompt_template_id = excluded.prompt_template_id,
           skill_package_ids = excluded.skill_package_ids,
           execution_profile_id = excluded.execution_profile_id,
+          verification_check_profile_ids = excluded.verification_check_profile_ids,
+          evaluation_suite_ids = excluded.evaluation_suite_ids,
+          release_check_profile_id = excluded.release_check_profile_id,
           status = excluded.status,
           version = excluded.version,
           updated_at = now()
@@ -88,6 +100,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
         record.prompt_template_id,
         record.skill_package_ids,
         record.execution_profile_id ?? null,
+        record.verification_check_profile_ids,
+        record.evaluation_suite_ids,
+        record.release_check_profile_id ?? null,
         record.status,
         record.version,
       ],
@@ -109,6 +124,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           prompt_template_id,
           skill_package_ids,
           execution_profile_id,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           status,
           version
         from runtime_bindings
@@ -135,6 +153,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           prompt_template_id,
           skill_package_ids,
           execution_profile_id,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           status,
           version
         from runtime_bindings
@@ -165,6 +186,9 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           prompt_template_id,
           skill_package_ids,
           execution_profile_id,
+          verification_check_profile_ids,
+          evaluation_suite_ids,
+          release_check_profile_id,
           status,
           version
         from runtime_bindings
@@ -220,6 +244,11 @@ function mapRuntimeBindingRow(row: RuntimeBindingRow): RuntimeBindingRecord {
     prompt_template_id: row.prompt_template_id,
     skill_package_ids: decodeTextArray(row.skill_package_ids),
     execution_profile_id: row.execution_profile_id ?? undefined,
+    verification_check_profile_ids: decodeTextArray(
+      row.verification_check_profile_ids,
+    ),
+    evaluation_suite_ids: decodeTextArray(row.evaluation_suite_ids),
+    release_check_profile_id: row.release_check_profile_id ?? undefined,
     status: row.status,
     version: Number(row.version),
   };

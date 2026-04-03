@@ -137,6 +137,51 @@ test("admin can inspect governed execution outputs from the governance console",
   await expect(page.locator("body")).toContainText(prepared.manuscriptId);
 });
 
+test("admin can inspect runtime-binding verification linkage from the governance console", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareRuntimeBindingVerificationScenario(request, {
+    label: "Phase 9R",
+  });
+
+  await page.goto("/#admin-console", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
+
+  const runtimeBindingsPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Runtime Bindings" }) });
+  const targetBindingRow = runtimeBindingsPanel
+    .locator(".admin-governance-template-row")
+    .filter({ hasText: prepared.checkProfileName });
+
+  await expect(targetBindingRow).toContainText(prepared.suiteName);
+  await expect(targetBindingRow).toContainText(prepared.releaseProfileName);
+
+  const recentExecutionsPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
+  const targetExecutionRow = recentExecutionsPanel
+    .locator(".admin-governance-template-row")
+    .filter({ hasText: prepared.manuscriptId });
+
+  const selectionButton = targetExecutionRow.getByRole("button");
+  await expect(selectionButton).toBeVisible();
+  if ((await selectionButton.textContent())?.trim() === "Inspect") {
+    await selectionButton.click();
+  }
+
+  const evidencePanel = page.locator(".admin-governance-evidence");
+  await expect(evidencePanel).toContainText("Verification Expectations");
+  await expect(evidencePanel).toContainText(prepared.checkProfileId);
+  await expect(evidencePanel).toContainText(prepared.suiteId);
+  await expect(evidencePanel).toContainText(prepared.releaseProfileId);
+  await expect(evidencePanel).toContainText(prepared.evidenceLabel);
+});
+
 test("admin can triage recent agent executions with filters and search", async ({
   page,
   request,
@@ -191,6 +236,17 @@ interface PreparedExecutionEvidenceScenario {
   assetFileName: string;
   evidenceLabel: string;
   evidenceUri: string;
+}
+
+interface PreparedRuntimeBindingVerificationScenario {
+  manuscriptId: string;
+  checkProfileId: string;
+  checkProfileName: string;
+  suiteId: string;
+  suiteName: string;
+  releaseProfileId: string;
+  releaseProfileName: string;
+  evidenceLabel: string;
 }
 
 interface PreparedExecutionFilterScenario {
@@ -437,6 +493,202 @@ async function prepareExecutionEvidenceScenario(
     assetFileName,
     evidenceLabel,
     evidenceUri,
+  };
+}
+
+async function prepareRuntimeBindingVerificationScenario(
+  request: APIRequestContext,
+  input: PrepareExecutionEvidenceScenarioInput,
+): Promise<PreparedRuntimeBindingVerificationScenario> {
+  await loginAsDemoUser(request, "dev.admin");
+
+  const slug = slugify(input.label);
+  const checkProfileName = `${input.label} Browser QA`;
+  const releaseProfileName = `${input.label} Release Gate`;
+  const suiteName = `${input.label} Regression Suite`;
+  const evidenceLabel = `${input.label} linked evidence`;
+  const manuscriptTitle = `${input.label} Verification Manuscript`;
+
+  const checkProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          name: checkProfileName,
+          checkType: "browser_qa",
+        },
+      },
+    },
+  );
+  expect(checkProfileResponse.ok()).toBeTruthy();
+  const checkProfile = (await checkProfileResponse.json()) as { id: string };
+
+  const publishCheckProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(publishCheckProfileResponse.ok()).toBeTruthy();
+
+  const releaseProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          name: releaseProfileName,
+          checkType: "deploy_verification",
+          verificationCheckProfileIds: [checkProfile.id],
+        },
+      },
+    },
+  );
+  expect(releaseProfileResponse.ok()).toBeTruthy();
+  const releaseProfile = (await releaseProfileResponse.json()) as { id: string };
+
+  const publishReleaseProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles/${releaseProfile.id}/publish`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(publishReleaseProfileResponse.ok()).toBeTruthy();
+
+  const suiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          name: suiteName,
+          suiteType: "regression",
+          verificationCheckProfileIds: [checkProfile.id],
+          moduleScope: ["editing"],
+        },
+      },
+    },
+  );
+  expect(suiteResponse.ok()).toBeTruthy();
+  const suite = (await suiteResponse.json()) as { id: string };
+
+  const activateSuiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(activateSuiteResponse.ok()).toBeTruthy();
+
+  const bindingResponse = await request.post(`${apiBaseUrl}/api/v1/runtime-bindings`, {
+    data: {
+      actorRole: "admin",
+      input: {
+        module: "editing",
+        manuscriptType: "clinical_study",
+        templateFamilyId: "family-seeded-1",
+        runtimeId: "runtime-editing-1",
+        sandboxProfileId: "sandbox-editing-1",
+        agentProfileId: "agent-profile-editing-1",
+        toolPermissionPolicyId: "policy-editing-1",
+        promptTemplateId: "prompt-editing-1",
+        skillPackageIds: ["skill-editing-1"],
+        executionProfileId: "profile-editing-1",
+        verificationCheckProfileIds: [checkProfile.id],
+        evaluationSuiteIds: [suite.id],
+        releaseCheckProfileId: releaseProfile.id,
+      },
+    },
+  });
+  expect(bindingResponse.ok()).toBeTruthy();
+  const binding = (await bindingResponse.json()) as { id: string };
+
+  const activateBindingResponse = await request.post(
+    `${apiBaseUrl}/api/v1/runtime-bindings/${binding.id}/activate`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(activateBindingResponse.ok()).toBeTruthy();
+
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    data: {
+      title: manuscriptTitle,
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: `${slug}-source.docx`,
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      storageKey: `uploads/${slug}/${slug}-source.docx`,
+    },
+  });
+  expect(uploadResponse.ok()).toBeTruthy();
+  const uploaded = (await uploadResponse.json()) as {
+    manuscript: { id: string };
+    asset: { id: string };
+  };
+
+  const editingResponse = await request.post(`${apiBaseUrl}/api/v1/modules/editing/run`, {
+    data: {
+      manuscriptId: uploaded.manuscript.id,
+      parentAssetId: uploaded.asset.id,
+      requestedBy: "ignored-by-server",
+      actorRole: "admin",
+      storageKey: `runs/${uploaded.manuscript.id}/editing/${slug}-final.docx`,
+      fileName: `${slug}-final.docx`,
+    },
+  });
+  expect(editingResponse.ok()).toBeTruthy();
+  const editingRun = (await editingResponse.json()) as {
+    agent_execution_log_id?: string;
+    snapshot_id?: string;
+  };
+  expect(editingRun.agent_execution_log_id).toBeTruthy();
+  expect(editingRun.snapshot_id).toBeTruthy();
+
+  const evidenceResponse = await request.post(`${apiBaseUrl}/api/v1/verification-ops/evidence`, {
+    data: {
+      actorRole: "admin",
+      input: {
+        kind: "url",
+        label: evidenceLabel,
+        uri: `https://example.test/evidence/${slug}/linked`,
+        checkProfileId: checkProfile.id,
+      },
+    },
+  });
+  expect(evidenceResponse.ok()).toBeTruthy();
+  const evidence = (await evidenceResponse.json()) as { id: string };
+
+  const completeLogResponse = await request.post(
+    `${apiBaseUrl}/api/v1/agent-execution/${editingRun.agent_execution_log_id}/complete`,
+    {
+      data: {
+        executionSnapshotId: editingRun.snapshot_id,
+        verificationEvidenceIds: [evidence.id],
+      },
+    },
+  );
+  expect(completeLogResponse.ok()).toBeTruthy();
+
+  return {
+    manuscriptId: uploaded.manuscript.id,
+    checkProfileId: checkProfile.id,
+    checkProfileName,
+    suiteId: suite.id,
+    suiteName,
+    releaseProfileId: releaseProfile.id,
+    releaseProfileName,
+    evidenceLabel,
   };
 }
 

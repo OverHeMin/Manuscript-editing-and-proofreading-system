@@ -117,8 +117,11 @@ export async function resolveGovernedAgentContext(
     agentProfile,
     toolPolicy,
     verificationExpectations: {
-      verification_check_profile_ids: [],
-      evaluation_suite_ids: [],
+      verification_check_profile_ids: [
+        ...activeBinding.verification_check_profile_ids,
+      ],
+      evaluation_suite_ids: [...activeBinding.evaluation_suite_ids],
+      release_check_profile_id: activeBinding.release_check_profile_id,
     },
   };
 }

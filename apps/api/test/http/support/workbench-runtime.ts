@@ -49,6 +49,7 @@ import { ScreeningService } from "../../../src/modules/screening/screening-servi
 import { InMemoryModuleTemplateRepository } from "../../../src/modules/templates/in-memory-template-family-repository.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
+import { InMemoryVerificationOpsRepository } from "../../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 
 export interface WorkbenchSeededIds {
   manuscriptId: string;
@@ -178,6 +179,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
@@ -215,6 +217,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     agentProfileRepository,
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
+    verificationOpsRepository,
   });
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -720,6 +723,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     execution_profile_id: "profile-screening-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
@@ -735,6 +741,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     execution_profile_id: "profile-editing-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
@@ -750,6 +759,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     execution_profile_id: "profile-proofreading-1",
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
     status: "active",
     version: 1,
   });
