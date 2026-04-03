@@ -85,24 +85,28 @@
    `docker compose -f infra/docker-compose.yml up -d`
 3. 验证 API 基线
    `pnpm --filter @medical/api run smoke:boot`
-4. 启动本地 demo API
+4. 在启动 persistent API 前执行共享 preflight
+   `pnpm --filter @medical/api run preflight:persistent`
+5. 启动本地 demo API
    `pnpm --filter @medical/api run serve:demo`
-5. 启动 PostgreSQL 持久化 API
+6. 启动 PostgreSQL 持久化 API
    `pnpm --filter @medical/api run serve`
    - For watch mode, use `pnpm --filter @medical/api run dev`
    - For watch + demo runtime, use `pnpm --filter @medical/api run dev:demo`
-6. 启动 Web workbench
+7. 启动 Web workbench
    `pnpm --filter @medsys/web run dev`
    - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调
    - `VITE_APP_ENV=dev|staging|prod`：走 persistent login shell，调用后端真实会话接口
    - 可选：设置 `UPLOAD_ROOT_DIR` 为独立磁盘/目录，用于保存 submission workbench 的本地直传文件
-7. 验证 Web 基线
+8. 验证 Web 基线
    `pnpm --filter @medsys/web run smoke:boot`
-8. 验证 Worker 基线
+9. 验证 Worker 基线
    `pnpm --filter @medical/worker-py run smoke:boot`
-9. 跑全仓校验
+10. 跑全仓校验
    `pnpm lint && pnpm typecheck && pnpm test`
-10. 跑 Manuscript workbench 发布门禁
+11. 跑仓库级生产前门禁
+   `pnpm verify:production-preflight`
+12. 跑 Manuscript workbench 发布门禁
    `pnpm verify:manuscript-workbench`
 
 ## Runtime 契约
@@ -118,8 +122,18 @@
 
 - `APP_ENV=development|test|staging|production`
 - 必须提供 `DATABASE_URL`
+- `serve` / `serve:persistent` 在 listen 前会统一执行 runtime contract + startup preflight；如需单独验证可运行 `pnpm --filter @medical/api run preflight:persistent`
+- `APP_ENV=staging|production` 不允许继续使用占位值 `ONLYOFFICE_JWT_SECRET=change-me-in-prod`
+- 未显式设置 `UPLOAD_ROOT_DIR` 时，稿件上传根目录默认落在 `.local-data/uploads/<APP_ENV>`
+- `GET /healthz` 只表示进程存活；`GET /readyz` 才表示 runtime contract、数据库和 upload root 已通过部署门禁
 - 当前持久化范围已覆盖“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + agent-tooling governance + execution governance/tracking + verification-ops persistence”
 - 不会自动注入 demo 审稿数据
+
+## Production Release Contract
+
+- 发布前统一运行 `pnpm verify:production-preflight`。该脚本会按固定顺序执行 `lint`、`typecheck`、`test`、API/Web/Worker `smoke:boot`，以及 `pnpm verify:manuscript-workbench`。
+- 持久化 API 启动后，用 `pnpm verify:production-postdeploy -- --base-url http://127.0.0.1:3001` 检查 `/healthz` 和 `/readyz`。其中 `/readyz` 是发布是否可放量的真门禁。
+- 每次 staging / production 发布都应先基于 `docs/operations/release-manifest-template.md` 记录环境、操作人、commit SHA、备份件、schema 决策、发布后检查与回滚结果。
 
 ### Web Workbench Shell
 
@@ -147,6 +161,8 @@
 
 - `docs/OPERATIONS.md`
   运行、迁移、备份/回滚、远程维护、密钥安全与升级流程
+- `docs/operations/release-manifest-template.md`
+  staging / production 发布记录模板，覆盖备份、schema gate、发布后验证与回滚决策
 - `docs/CODE_QUALITY.md`
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`
