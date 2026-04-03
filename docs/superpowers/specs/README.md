@@ -17,9 +17,11 @@
 - [10-integrations-flags-and-extensibility.md](C:\医学稿件处理系统V1\docs\superpowers\specs\10-integrations-flags-and-extensibility.md)
 - [11-agent-runtime-and-portable-skills.md](C:\医学稿件处理系统V1\docs\superpowers\specs\11-agent-runtime-and-portable-skills.md)
 - [2026-03-28-phase3-governed-execution-and-learning-traceability-design.md](C:\医学稿件处理系统V1\docs\superpowers\specs\2026-03-28-phase3-governed-execution-and-learning-traceability-design.md)
+- [2026-04-03-tooling-capability-review-decision.md](C:\医学稿件处理系统V1\docs\superpowers\specs\2026-04-03-tooling-capability-review-decision.md)
 
 ## 说明
 
 - [2026-03-25-medical-manuscript-system-v1-design.md](C:\医学稿件处理系统V1\docs\superpowers\specs\2026-03-25-medical-manuscript-system-v1-design.md) 作为总设计稿保留。
 - [2026-03-28-phase3-governed-execution-and-learning-traceability-design.md](C:\医学稿件处理系统V1\docs\superpowers\specs\2026-03-28-phase3-governed-execution-and-learning-traceability-design.md) 作为 Phase 3 治理闭环与学习可追溯设计基线。
+- [2026-04-03-tooling-capability-review-decision.md](C:\医学稿件处理系统V1\docs\superpowers\specs\2026-04-03-tooling-capability-review-decision.md) 作为工具与平台能力保留决议基线。
 - 上述分拆 spec 应视为后续实现与维护的主文档。
