@@ -1,10 +1,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { getAdminDatabaseUrl, getDatabaseName, getDatabaseUrl } from "../config.ts";
 import { createMigrationChecksum } from "../migration-checksum.ts";
 import { seedRoles } from "../seeds/roles.seed.ts";
+import { loadAppEnvDefaults } from "../../ops/env-defaults.ts";
 
 const packageRoot = path.resolve(import.meta.dirname, "../../..");
 const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
@@ -14,6 +16,10 @@ const LEGACY_MIGRATION_CHECKSUMS = new Map<string, Set<string>>([
   [
     "0001_initial.sql",
     new Set(["6140ea1d2280a0712aae27ae1f284131bf1eeb239446ea46ef49298fb8b30920"]),
+  ],
+  [
+    "0009_agent_tooling_persistence.sql",
+    new Set(["f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd"]),
   ],
 ]);
 
@@ -151,7 +157,8 @@ async function applyPendingMigrations(client: Client): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+export async function runMigrationCli(): Promise<void> {
+  loadAppEnvDefaults(packageRoot);
   runPrismaValidate();
   await ensureDatabaseExists();
 
@@ -169,7 +176,18 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (isDirectExecution()) {
+  runMigrationCli().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+function isDirectExecution(): boolean {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return false;
+  }
+
+  return fileURLToPath(import.meta.url) === path.resolve(entrypoint);
+}
