@@ -114,7 +114,10 @@ test("evaluation workbench run-item detail card renders linked sample context an
   assert.match(markup, /skill-prod-1, skill-prod-2/);
   assert.match(markup, /skill-candidate-1/);
   assert.match(markup, /Open Editing Workbench/);
-  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
+  assert.match(
+    markup,
+    /#editing\?manuscriptId=manuscript-1&amp;reviewedCaseSnapshotId=reviewed-case-snapshot-1&amp;sampleSetItemId=sample-item-1/,
+  );
 });
 
 test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
@@ -397,7 +400,7 @@ test("evaluation workbench linked sample context list renders run-item sample ma
           module: "structure",
           manuscript_type: "clinical_study",
           snapshot_asset_id: "snapshot-asset-1",
-          reviewed_case_snapshot_id: "snapshot-1",
+          reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
           manuscript_id: "manuscript-1",
         },
       ] as never}
@@ -415,7 +418,7 @@ test("evaluation workbench linked sample context list renders run-item sample ma
   assert.match(markup, /Sample Item: sample-item-1/);
   assert.match(markup, /structure/);
   assert.match(markup, /clinical_study/);
-  assert.match(markup, /snapshot-1/);
+  assert.match(markup, /reviewed-case-snapshot-1/);
   assert.match(markup, /Weighted Score: 91/);
   assert.match(markup, /Structure regression triggered the hard gate\./);
   assert.match(markup, /Focused/);
@@ -425,8 +428,44 @@ test("evaluation workbench linked sample context list renders run-item sample ma
   assert.match(markup, /Download Sample Snapshot/);
   assert.match(markup, /\/api\/v1\/document-assets\/snapshot-asset-1\/download/);
   assert.match(markup, /Open Editing Workbench/);
-  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
+  assert.match(
+    markup,
+    /#editing\?manuscriptId=manuscript-1&amp;reviewedCaseSnapshotId=reviewed-case-snapshot-1&amp;sampleSetItemId=sample-item-1/,
+  );
   assert.deepEqual(focusedRunItems, []);
+});
+
+test("evaluation workbench linked sample context falls back to manuscript-only handoff when sample context is unavailable", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchLinkedSampleContextList
+      runItems={[
+        {
+          id: "run-item-1",
+          lane: "candidate",
+          sample_set_item_id: "",
+          result_asset_id: "result-asset-1",
+          weighted_score: 91,
+        },
+      ] as never}
+      sampleSetItems={[
+        {
+          id: "",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          snapshot_asset_id: "snapshot-asset-1",
+          reviewed_case_snapshot_id: "  ",
+          manuscript_id: "manuscript-1",
+        },
+      ] as never}
+      selectedRunItemId="run-item-1"
+      defaultWorkbenchMode="editing"
+    />,
+  );
+
+  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
+  assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
+  assert.doesNotMatch(markup, /sampleSetItemId=/);
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
