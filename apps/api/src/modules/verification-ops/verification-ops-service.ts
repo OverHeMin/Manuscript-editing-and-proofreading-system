@@ -10,6 +10,7 @@ import type {
 } from "../learning/learning-record.ts";
 import type { ReviewedCaseSnapshotRepository } from "../learning/learning-repository.ts";
 import type { ToolGatewayRepository } from "../tool-gateway/tool-gateway-repository.ts";
+import type { TemplateModule } from "../templates/template-record.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
@@ -231,6 +232,15 @@ export class EvaluationSuiteNotActiveError extends Error {
   constructor(suiteId: string) {
     super(`Evaluation suite ${suiteId} is not active.`);
     this.name = "EvaluationSuiteNotActiveError";
+  }
+}
+
+export class EvaluationSuiteModuleScopeMismatchError extends Error {
+  constructor(suiteId: string, sourceModule: TemplateModule) {
+    super(
+      `Evaluation suite ${suiteId} does not support governed source module ${sourceModule}.`,
+    );
+    this.name = "EvaluationSuiteModuleScopeMismatchError";
   }
 }
 
@@ -662,46 +672,53 @@ export class VerificationOpsService {
   ): Promise<EvaluationRunRecord[]> {
     this.permissionGuard.assert(actorRole, "permissions.manage");
 
-    const suiteIds = dedupePreserveOrder(input.suiteIds);
-    if (suiteIds.length === 0) {
-      return [];
-    }
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const suiteIds = dedupePreserveOrder(input.suiteIds);
+      if (suiteIds.length === 0) {
+        return [];
+      }
 
-    if (input.releaseCheckProfileId) {
-      const releaseProfile = await this.requireReleaseCheckProfile(
-        input.releaseCheckProfileId,
-      );
-      if (releaseProfile.status !== "published") {
-        throw new ReleaseCheckProfileDependencyError(
-          `Evaluation runs require published release check profile ${releaseProfile.id}.`,
+      if (input.releaseCheckProfileId) {
+        const releaseProfile = await this.requireReleaseCheckProfileFrom(
+          repository,
+          input.releaseCheckProfileId,
         );
-      }
-    }
-
-    const seededRuns: EvaluationRunRecord[] = [];
-
-    for (const suiteId of suiteIds) {
-      const suite = await this.requireEvaluationSuite(suiteId);
-      if (suite.status !== "active") {
-        throw new EvaluationSuiteNotActiveError(suiteId);
+        if (releaseProfile.status !== "published") {
+          throw new ReleaseCheckProfileDependencyError(
+            `Evaluation runs require published release check profile ${releaseProfile.id}.`,
+          );
+        }
       }
 
-      const record: EvaluationRunRecord = {
-        id: this.createId(),
-        suite_id: suite.id,
-        governed_source: { ...input.governedSource },
-        release_check_profile_id: input.releaseCheckProfileId,
-        run_item_count: 0,
-        status: "queued",
-        evidence_ids: [],
-        started_at: this.now().toISOString(),
-      };
+      const seededRuns: EvaluationRunRecord[] = [];
 
-      await this.repository.saveEvaluationRun(record);
-      seededRuns.push(record);
-    }
+      for (const suiteId of suiteIds) {
+        const suite = await this.requireEvaluationSuiteFrom(repository, suiteId);
+        if (suite.status !== "active") {
+          throw new EvaluationSuiteNotActiveError(suiteId);
+        }
+        assertSuiteSupportsGovernedSourceModule(
+          suite,
+          input.governedSource.source_module,
+        );
 
-    return seededRuns;
+        const record: EvaluationRunRecord = {
+          id: this.createId(),
+          suite_id: suite.id,
+          governed_source: { ...input.governedSource },
+          release_check_profile_id: input.releaseCheckProfileId,
+          run_item_count: 0,
+          status: "queued",
+          evidence_ids: [],
+          started_at: this.now().toISOString(),
+        };
+
+        await repository.saveEvaluationRun(record);
+        seededRuns.push(record);
+      }
+
+      return seededRuns;
+    });
   }
 
   async completeEvaluationRun(
@@ -972,7 +989,20 @@ export class VerificationOpsService {
   private async requireReleaseCheckProfile(
     profileId: string,
   ): Promise<ReleaseCheckProfileRecord> {
-    const record = await this.repository.findReleaseCheckProfileById(profileId);
+    return this.requireReleaseCheckProfileFrom(this.repository, profileId);
+  }
+
+  private async requireEvaluationSuite(
+    suiteId: string,
+  ): Promise<EvaluationSuiteRecord> {
+    return this.requireEvaluationSuiteFrom(this.repository, suiteId);
+  }
+
+  private async requireReleaseCheckProfileFrom(
+    repository: VerificationOpsRepository,
+    profileId: string,
+  ): Promise<ReleaseCheckProfileRecord> {
+    const record = await repository.findReleaseCheckProfileById(profileId);
     if (!record) {
       throw new ReleaseCheckProfileNotFoundError(profileId);
     }
@@ -980,10 +1010,11 @@ export class VerificationOpsService {
     return record;
   }
 
-  private async requireEvaluationSuite(
+  private async requireEvaluationSuiteFrom(
+    repository: VerificationOpsRepository,
     suiteId: string,
   ): Promise<EvaluationSuiteRecord> {
-    const record = await this.repository.findEvaluationSuiteById(suiteId);
+    const record = await repository.findEvaluationSuiteById(suiteId);
     if (!record) {
       throw new EvaluationSuiteNotFoundError(suiteId);
     }
@@ -1101,6 +1132,17 @@ function dedupePreserveOrder<T extends string>(values: T[]): T[] {
   }
 
   return result;
+}
+
+function assertSuiteSupportsGovernedSourceModule(
+  suite: EvaluationSuiteRecord,
+  sourceModule: TemplateModule,
+): void {
+  if (suite.module_scope === "any" || suite.module_scope.includes(sourceModule)) {
+    return;
+  }
+
+  throw new EvaluationSuiteModuleScopeMismatchError(suite.id, sourceModule);
 }
 
 function flattenOptionalTags(

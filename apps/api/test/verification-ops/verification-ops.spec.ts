@@ -347,18 +347,18 @@ test("verification ops seed governed execution runs without sample-set run items
     suiteId: editingSuite.body.id,
   });
 
-  const proofreadingSuite = await verificationOpsApi.createEvaluationSuite({
+  const crossModuleSuite = await verificationOpsApi.createEvaluationSuite({
     actorRole: "admin",
     input: {
-      name: "Proofreading Governed Evaluation",
+      name: "Cross-Module Governed Evaluation",
       suiteType: "release_gate",
       verificationCheckProfileIds: [publishedCheckProfile.body.id],
-      moduleScope: ["proofreading"],
+      moduleScope: ["editing", "proofreading"],
     },
   });
-  const activeProofreadingSuite = await verificationOpsApi.activateEvaluationSuite({
+  const activeCrossModuleSuite = await verificationOpsApi.activateEvaluationSuite({
     actorRole: "admin",
-    suiteId: proofreadingSuite.body.id,
+    suiteId: crossModuleSuite.body.id,
   });
 
   const seedGovernedExecutionRuns = (
@@ -404,7 +404,7 @@ test("verification ops seed governed execution runs without sample-set run items
     verificationOpsService,
     "admin",
     {
-      suiteIds: [activeEditingSuite.body.id, activeProofreadingSuite.body.id],
+      suiteIds: [activeEditingSuite.body.id, activeCrossModuleSuite.body.id],
       releaseCheckProfileId: publishedReleaseProfile.body.id,
       governedSource: {
         source_kind: "governed_module_execution",
@@ -419,7 +419,7 @@ test("verification ops seed governed execution runs without sample-set run items
 
   assert.deepEqual(
     seededRuns.map((run) => run.suite_id),
-    [activeEditingSuite.body.id, activeProofreadingSuite.body.id],
+    [activeEditingSuite.body.id, activeCrossModuleSuite.body.id],
   );
   assert.deepEqual(
     seededRuns.map((run) => run.release_check_profile_id),
@@ -505,4 +505,238 @@ test("verification ops return no governed execution runs when no suite ids are c
   );
 
   assert.deepEqual(seededRuns, []);
+});
+
+test("verification ops reject governed execution runs when suite scope excludes the source module", async () => {
+  const {
+    toolGatewayApi,
+    verificationOpsApi,
+    verificationOpsService,
+  } = createVerificationOpsHarness();
+
+  const browserTool = await toolGatewayApi.createTool({
+    actorRole: "admin",
+    input: {
+      name: "gstack.browser.qa",
+      scope: "browser_qa",
+    },
+  });
+
+  const checkProfile = await verificationOpsApi.createVerificationCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Published Browser QA",
+      checkType: "browser_qa",
+      toolIds: [browserTool.body.id],
+    },
+  });
+  const publishedCheckProfile = await verificationOpsApi.publishVerificationCheckProfile({
+    actorRole: "admin",
+    profileId: checkProfile.body.id,
+  });
+
+  const releaseProfile = await verificationOpsApi.createReleaseCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Published Release Gate",
+      checkType: "deploy_verification",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+    },
+  });
+  const publishedReleaseProfile = await verificationOpsApi.publishReleaseCheckProfile({
+    actorRole: "admin",
+    profileId: releaseProfile.body.id,
+  });
+
+  const editingSuite = await verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Editing Governed Evaluation",
+      suiteType: "release_gate",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+      moduleScope: ["editing"],
+    },
+  });
+  const activeEditingSuite = await verificationOpsApi.activateEvaluationSuite({
+    actorRole: "admin",
+    suiteId: editingSuite.body.id,
+  });
+
+  const proofreadingSuite = await verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Proofreading Governed Evaluation",
+      suiteType: "release_gate",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+      moduleScope: ["proofreading"],
+    },
+  });
+  const activeProofreadingSuite = await verificationOpsApi.activateEvaluationSuite({
+    actorRole: "admin",
+    suiteId: proofreadingSuite.body.id,
+  });
+
+  const seedGovernedExecutionRuns = (
+    verificationOpsService as VerificationOpsService & {
+      seedGovernedExecutionRuns?: (
+        actorRole: "admin",
+        input: {
+          suiteIds: string[];
+          releaseCheckProfileId?: string;
+          governedSource: {
+            source_kind: "governed_module_execution";
+            manuscript_id: string;
+            source_module: "editing";
+            agent_execution_log_id: string;
+            execution_snapshot_id: string;
+            output_asset_id: string;
+          };
+        },
+      ) => Promise<unknown[]>;
+    }
+  ).seedGovernedExecutionRuns;
+
+  assert.equal(typeof seedGovernedExecutionRuns, "function");
+
+  await assert.rejects(
+    () =>
+      seedGovernedExecutionRuns!.call(verificationOpsService, "admin", {
+        suiteIds: [activeEditingSuite.body.id, activeProofreadingSuite.body.id],
+        releaseCheckProfileId: publishedReleaseProfile.body.id,
+        governedSource: {
+          source_kind: "governed_module_execution",
+          manuscript_id: "manuscript-1",
+          source_module: "editing",
+          agent_execution_log_id: "execution-log-1",
+          execution_snapshot_id: "snapshot-1",
+          output_asset_id: "asset-1",
+        },
+      }),
+    /does not support governed source module/i,
+  );
+
+  assert.deepEqual(
+    await verificationOpsService.listEvaluationRunsBySuiteId(activeEditingSuite.body.id),
+    [],
+  );
+  assert.deepEqual(
+    await verificationOpsService.listEvaluationRunsBySuiteId(
+      activeProofreadingSuite.body.id,
+    ),
+    [],
+  );
+});
+
+test("verification ops roll back governed execution run seeding when a later suite is inactive", async () => {
+  const {
+    toolGatewayApi,
+    verificationOpsApi,
+    verificationOpsService,
+  } = createVerificationOpsHarness();
+
+  const browserTool = await toolGatewayApi.createTool({
+    actorRole: "admin",
+    input: {
+      name: "gstack.browser.qa",
+      scope: "browser_qa",
+    },
+  });
+
+  const checkProfile = await verificationOpsApi.createVerificationCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Published Browser QA",
+      checkType: "browser_qa",
+      toolIds: [browserTool.body.id],
+    },
+  });
+  const publishedCheckProfile = await verificationOpsApi.publishVerificationCheckProfile({
+    actorRole: "admin",
+    profileId: checkProfile.body.id,
+  });
+
+  const releaseProfile = await verificationOpsApi.createReleaseCheckProfile({
+    actorRole: "admin",
+    input: {
+      name: "Published Release Gate",
+      checkType: "deploy_verification",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+    },
+  });
+  const publishedReleaseProfile = await verificationOpsApi.publishReleaseCheckProfile({
+    actorRole: "admin",
+    profileId: releaseProfile.body.id,
+  });
+
+  const editingSuite = await verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Editing Governed Evaluation",
+      suiteType: "release_gate",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+      moduleScope: ["editing"],
+    },
+  });
+  const activeEditingSuite = await verificationOpsApi.activateEvaluationSuite({
+    actorRole: "admin",
+    suiteId: editingSuite.body.id,
+  });
+
+  const inactiveEditingSuite = await verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Editing Governed Evaluation Draft",
+      suiteType: "release_gate",
+      verificationCheckProfileIds: [publishedCheckProfile.body.id],
+      moduleScope: ["editing"],
+    },
+  });
+
+  const seedGovernedExecutionRuns = (
+    verificationOpsService as VerificationOpsService & {
+      seedGovernedExecutionRuns?: (
+        actorRole: "admin",
+        input: {
+          suiteIds: string[];
+          releaseCheckProfileId?: string;
+          governedSource: {
+            source_kind: "governed_module_execution";
+            manuscript_id: string;
+            source_module: "editing";
+            agent_execution_log_id: string;
+            execution_snapshot_id: string;
+            output_asset_id: string;
+          };
+        },
+      ) => Promise<unknown[]>;
+    }
+  ).seedGovernedExecutionRuns;
+
+  assert.equal(typeof seedGovernedExecutionRuns, "function");
+
+  await assert.rejects(
+    () =>
+      seedGovernedExecutionRuns!.call(verificationOpsService, "admin", {
+        suiteIds: [activeEditingSuite.body.id, inactiveEditingSuite.body.id],
+        releaseCheckProfileId: publishedReleaseProfile.body.id,
+        governedSource: {
+          source_kind: "governed_module_execution",
+          manuscript_id: "manuscript-1",
+          source_module: "editing",
+          agent_execution_log_id: "execution-log-1",
+          execution_snapshot_id: "snapshot-1",
+          output_asset_id: "asset-1",
+        },
+      }),
+    EvaluationSuiteNotActiveError,
+  );
+
+  assert.deepEqual(
+    await verificationOpsService.listEvaluationRunsBySuiteId(activeEditingSuite.body.id),
+    [],
+  );
+  assert.deepEqual(
+    await verificationOpsService.listEvaluationRunsBySuiteId(inactiveEditingSuite.body.id),
+    [],
+  );
 });

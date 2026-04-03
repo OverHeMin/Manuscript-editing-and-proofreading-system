@@ -214,6 +214,7 @@ import {
   EvaluationLearningSnapshotNotInRunError,
   EvaluationRunItemNotFoundError,
   EvaluationRunNotFoundError,
+  EvaluationSuiteModuleScopeMismatchError,
   EvaluationSampleSetNotFoundError,
   EvaluationSampleSetSourceEligibilityError,
   EvaluationSampleSetSourceSnapshotNotFoundError,
@@ -3949,6 +3950,7 @@ function mapErrorToHttpResponse(
     error instanceof VerificationCheckProfileDependencyError ||
     error instanceof ReleaseCheckProfileDependencyError ||
     error instanceof EvaluationSuiteNotActiveError ||
+    error instanceof EvaluationSuiteModuleScopeMismatchError ||
     error instanceof EvaluationEvidencePackRunMismatchError ||
     error instanceof EvaluationLearningSnapshotNotInRunError ||
     error instanceof EvaluationExperimentBindingError
