@@ -50,10 +50,15 @@ import { InMemoryModuleTemplateRepository } from "../../../src/modules/templates
 import { InMemoryToolPermissionPolicyRepository } from "../../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { InMemoryVerificationOpsRepository } from "../../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
+import { createVerificationOpsApi } from "../../../src/modules/verification-ops/verification-ops-api.ts";
+import { VerificationOpsService } from "../../../src/modules/verification-ops/verification-ops-service.ts";
 
 export interface WorkbenchSeededIds {
   manuscriptId: string;
   originalAssetId: string;
+  screeningSuiteId: string;
+  editingSuiteId: string;
+  proofreadingSuiteId: string;
   screeningKnowledgeId: string;
   editingKnowledgeId: string;
   proofreadingKnowledgeId: string;
@@ -101,6 +106,7 @@ export interface WorkbenchRuntimeBundle {
   screeningApi: ReturnType<typeof createScreeningApi>;
   editingApi: ReturnType<typeof createEditingApi>;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
+  verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   seededIds: WorkbenchSeededIds;
 }
 
@@ -261,6 +267,17 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     createId: () => nextId("execution"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
+  const verificationOpsService = new VerificationOpsService({
+    repository: verificationOpsRepository,
+    toolGatewayRepository: {
+      save: async () => undefined,
+      findById: async () => undefined,
+      list: async () => [],
+      listByScope: async () => [],
+    },
+    createId: () => nextId("evaluation-run"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
 
   seedWorkbenchGovernance({
     manuscriptRepository,
@@ -274,6 +291,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     agentRuntimeRepository,
     runtimeBindingRepository,
     toolPermissionPolicyRepository,
+    verificationOpsRepository,
     modelRepository,
     routingPolicyRepository,
   });
@@ -331,6 +349,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
+        verificationOpsService,
         createId: () => nextId("job-screening"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -353,6 +372,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
+        verificationOpsService,
         createId: () => nextId("job-editing"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -375,13 +395,20 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
+        verificationOpsService,
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
     }),
+    verificationOpsApi: createVerificationOpsApi({
+      verificationOpsService,
+    }),
     seededIds: {
       manuscriptId: "manuscript-seeded-1",
       originalAssetId: "original-seeded-1",
+      screeningSuiteId: "suite-screening-1",
+      editingSuiteId: "suite-editing-1",
+      proofreadingSuiteId: "suite-proofreading-1",
       screeningKnowledgeId: "knowledge-screening-1",
       editingKnowledgeId: "knowledge-editing-1",
       proofreadingKnowledgeId: "knowledge-proofreading-1",
@@ -404,6 +431,7 @@ function seedWorkbenchGovernance(input: {
   agentRuntimeRepository: InMemoryAgentRuntimeRepository;
   runtimeBindingRepository: InMemoryRuntimeBindingRepository;
   toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
+  verificationOpsRepository: InMemoryVerificationOpsRepository;
   modelRepository: InMemoryModelRegistryRepository;
   routingPolicyRepository: InMemoryModelRoutingPolicyRepository;
 }): void {
@@ -590,6 +618,124 @@ function seedWorkbenchGovernance(input: {
     version: 1,
   });
 
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-screening-1",
+    name: "Screening Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-editing-1",
+    name: "Editing Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-proofreading-1",
+    name: "Proofreading Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-screening-1",
+    name: "Screening Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-editing-1",
+    name: "Editing Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-proofreading-1",
+    name: "Proofreading Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-screening-1",
+    name: "Screening Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    module_scope: ["screening"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-editing-1",
+    name: "Editing Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    module_scope: ["editing"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-proofreading-1",
+    name: "Proofreading Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    module_scope: ["proofreading"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+
   void input.sandboxProfileRepository.save({
     id: "sandbox-screening-1",
     name: "Screening Sandbox",
@@ -723,9 +869,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     execution_profile_id: "profile-screening-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    evaluation_suite_ids: ["suite-screening-1"],
+    release_check_profile_id: "release-profile-screening-1",
     status: "active",
     version: 1,
   });
@@ -741,9 +887,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     execution_profile_id: "profile-editing-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    evaluation_suite_ids: ["suite-editing-1"],
+    release_check_profile_id: "release-profile-editing-1",
     status: "active",
     version: 1,
   });
@@ -759,9 +905,9 @@ function seedWorkbenchGovernance(input: {
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     execution_profile_id: "profile-proofreading-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    evaluation_suite_ids: ["suite-proofreading-1"],
+    release_check_profile_id: "release-profile-proofreading-1",
     status: "active",
     version: 1,
   });

@@ -7,6 +7,7 @@ import type {
   EvaluationSampleSetRecord,
   FrozenExperimentBindingRecord,
   EvaluationSuiteRecord,
+  GovernedExecutionEvaluationSourceRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
@@ -91,6 +92,7 @@ interface EvaluationRunRow {
   sample_set_id: string | null;
   baseline_binding: FrozenExperimentBindingRecord | string | null;
   candidate_binding: FrozenExperimentBindingRecord | string | null;
+  governed_source: GovernedExecutionEvaluationSourceRecord | string | null;
   release_check_profile_id: string | null;
   run_item_count: number;
   status: EvaluationRunRecord["status"];
@@ -626,6 +628,7 @@ export class PostgresVerificationOpsRepository
           sample_set_id,
           baseline_binding,
           candidate_binding,
+          governed_source,
           release_check_profile_id,
           run_item_count,
           status,
@@ -639,12 +642,13 @@ export class PostgresVerificationOpsRepository
           $3,
           $4::jsonb,
           $5::jsonb,
-          $6,
+          $6::jsonb,
           $7,
           $8,
-          $9::text[],
-          $10,
-          $11
+          $9,
+          $10::text[],
+          $11,
+          $12
         )
         on conflict (id) do update
         set
@@ -652,6 +656,7 @@ export class PostgresVerificationOpsRepository
           sample_set_id = excluded.sample_set_id,
           baseline_binding = excluded.baseline_binding,
           candidate_binding = excluded.candidate_binding,
+          governed_source = excluded.governed_source,
           release_check_profile_id = excluded.release_check_profile_id,
           run_item_count = excluded.run_item_count,
           status = excluded.status,
@@ -665,6 +670,7 @@ export class PostgresVerificationOpsRepository
         record.sample_set_id ?? null,
         record.baseline_binding ? JSON.stringify(record.baseline_binding) : null,
         record.candidate_binding ? JSON.stringify(record.candidate_binding) : null,
+        record.governed_source ? JSON.stringify(record.governed_source) : null,
         record.release_check_profile_id ?? null,
         record.run_item_count,
         record.status,
@@ -686,6 +692,7 @@ export class PostgresVerificationOpsRepository
           sample_set_id,
           baseline_binding,
           candidate_binding,
+          governed_source,
           release_check_profile_id,
           run_item_count,
           status,
@@ -710,6 +717,7 @@ export class PostgresVerificationOpsRepository
           sample_set_id,
           baseline_binding,
           candidate_binding,
+          governed_source,
           release_check_profile_id,
           run_item_count,
           status,
@@ -1101,6 +1109,10 @@ function mapEvaluationRunRow(row: EvaluationRunRow): EvaluationRunRecord {
   const candidateBinding = decodeNullableJsonValue<FrozenExperimentBindingRecord>(
     row.candidate_binding,
   );
+  const governedSource =
+    decodeNullableJsonValue<GovernedExecutionEvaluationSourceRecord>(
+      row.governed_source,
+    );
 
   return {
     id: row.id,
@@ -1116,6 +1128,7 @@ function mapEvaluationRunRow(row: EvaluationRunRow): EvaluationRunRecord {
     ...(candidateBinding != null
       ? { candidate_binding: normalizeFrozenExperimentBinding(candidateBinding) }
       : {}),
+    ...(governedSource != null ? { governed_source: governedSource } : {}),
     ...(row.release_check_profile_id != null
       ? { release_check_profile_id: row.release_check_profile_id }
       : {}),

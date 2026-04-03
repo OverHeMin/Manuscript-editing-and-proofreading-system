@@ -421,6 +421,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
     transactionManager: workbenchTransactionManager,
   });
   const editingService = new EditingService({
@@ -440,6 +441,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
     transactionManager: workbenchTransactionManager,
   });
   const proofreadingService = new ProofreadingService({
@@ -459,6 +461,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
     transactionManager: workbenchTransactionManager,
   });
 

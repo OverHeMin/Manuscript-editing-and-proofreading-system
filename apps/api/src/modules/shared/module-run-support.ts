@@ -10,6 +10,7 @@ import type {
   TemplateModule,
 } from "../templates/template-record.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
+import type { SeedGovernedExecutionRunsInput } from "../verification-ops/verification-ops-service.ts";
 
 export interface PrepareModuleExecutionInput {
   manuscriptId: string;
@@ -50,6 +51,13 @@ export interface ModuleExecutionResult<TJob, TAsset> {
   agent_runtime_id?: string;
   agent_profile_id?: string;
   agent_execution_log_id?: string;
+}
+
+export interface GovernedEvaluationRunSeeder {
+  seedGovernedExecutionRuns(
+    actorRole: RoleKey,
+    input: SeedGovernedExecutionRunsInput,
+  ): Promise<unknown>;
 }
 
 export class ModuleTemplateFamilyNotConfiguredError extends Error {
@@ -178,4 +186,33 @@ export async function prepareModuleExecution(
     knowledgeItems,
     modelSelection,
   };
+}
+
+export async function seedGovernedRunsForModuleExecution(input: {
+  verificationOpsService: GovernedEvaluationRunSeeder;
+  actorRole: RoleKey;
+  suiteIds: string[];
+  releaseCheckProfileId?: string;
+  manuscriptId: string;
+  sourceModule: TemplateModule;
+  agentExecutionLogId: string;
+  executionSnapshotId: string;
+  outputAssetId: string;
+}): Promise<void> {
+  if (input.suiteIds.length === 0) {
+    return;
+  }
+
+  await input.verificationOpsService.seedGovernedExecutionRuns(input.actorRole, {
+    suiteIds: input.suiteIds,
+    releaseCheckProfileId: input.releaseCheckProfileId,
+    governedSource: {
+      source_kind: "governed_module_execution",
+      manuscript_id: input.manuscriptId,
+      source_module: input.sourceModule,
+      agent_execution_log_id: input.agentExecutionLogId,
+      execution_snapshot_id: input.executionSnapshotId,
+      output_asset_id: input.outputAssetId,
+    },
+  });
 }

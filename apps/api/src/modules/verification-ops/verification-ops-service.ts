@@ -38,6 +38,7 @@ import type {
   EvaluationSampleSetRecord,
   EvaluationSuiteRecord,
   FrozenExperimentBindingRecord,
+  GovernedExecutionEvaluationSourceRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
@@ -100,6 +101,12 @@ export interface CreateEvaluationRunInput {
   baselineBinding?: FrozenExperimentBindingInput;
   candidateBinding?: FrozenExperimentBindingInput;
   releaseCheckProfileId?: string;
+}
+
+export interface SeedGovernedExecutionRunsInput {
+  suiteIds: string[];
+  releaseCheckProfileId?: string;
+  governedSource: GovernedExecutionEvaluationSourceRecord;
 }
 
 export interface CompleteEvaluationRunInput {
@@ -647,6 +654,54 @@ export class VerificationOpsService {
     }
 
     return record;
+  }
+
+  async seedGovernedExecutionRuns(
+    actorRole: RoleKey,
+    input: SeedGovernedExecutionRunsInput,
+  ): Promise<EvaluationRunRecord[]> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const suiteIds = dedupePreserveOrder(input.suiteIds);
+    if (suiteIds.length === 0) {
+      return [];
+    }
+
+    if (input.releaseCheckProfileId) {
+      const releaseProfile = await this.requireReleaseCheckProfile(
+        input.releaseCheckProfileId,
+      );
+      if (releaseProfile.status !== "published") {
+        throw new ReleaseCheckProfileDependencyError(
+          `Evaluation runs require published release check profile ${releaseProfile.id}.`,
+        );
+      }
+    }
+
+    const seededRuns: EvaluationRunRecord[] = [];
+
+    for (const suiteId of suiteIds) {
+      const suite = await this.requireEvaluationSuite(suiteId);
+      if (suite.status !== "active") {
+        throw new EvaluationSuiteNotActiveError(suiteId);
+      }
+
+      const record: EvaluationRunRecord = {
+        id: this.createId(),
+        suite_id: suite.id,
+        governed_source: { ...input.governedSource },
+        release_check_profile_id: input.releaseCheckProfileId,
+        run_item_count: 0,
+        status: "queued",
+        evidence_ids: [],
+        started_at: this.now().toISOString(),
+      };
+
+      await this.repository.saveEvaluationRun(record);
+      seededRuns.push(record);
+    }
+
+    return seededRuns;
   }
 
   async completeEvaluationRun(

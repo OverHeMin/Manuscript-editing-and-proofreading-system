@@ -45,6 +45,7 @@ import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-p
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
 import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
+import { VerificationOpsService } from "../../src/modules/verification-ops/verification-ops-service.ts";
 
 function createModuleHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -81,6 +82,11 @@ function createModuleHarness() {
   const screeningJobIds = ["job-screening-1"];
   const editingJobIds = ["job-editing-1"];
   const proofreadingJobIds = ["job-proofreading-1", "job-proofreading-2"];
+  const evaluationRunIds = [
+    "evaluation-run-1",
+    "evaluation-run-2",
+    "evaluation-run-3",
+  ];
   const sandboxIds = [
     "sandbox-screening-1",
     "sandbox-editing-1",
@@ -188,6 +194,12 @@ function createModuleHarness() {
     createId: () => nextValue(agentExecutionIds, "agent execution"),
     now: () => new Date("2026-03-27T09:00:00.000Z"),
   });
+  const verificationOpsService = new VerificationOpsService({
+    repository: verificationOpsRepository,
+    toolGatewayRepository,
+    createId: () => nextValue(evaluationRunIds, "verification run"),
+    now: () => new Date("2026-03-27T09:00:00.000Z"),
+  });
 
   const screeningApi = createScreeningApi({
     screeningService: new ScreeningService({
@@ -207,6 +219,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
+      verificationOpsService,
       createId: () => nextValue(screeningJobIds, "screening job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -229,6 +242,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
+      verificationOpsService,
       createId: () => nextValue(editingJobIds, "editing job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -251,6 +265,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
+      verificationOpsService,
       createId: () => nextValue(proofreadingJobIds, "proofreading job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -902,6 +917,7 @@ test("screening produces a final report asset with routed template, knowledge, a
     screeningApi,
     manuscriptRepository,
     agentExecutionRepository,
+    verificationOpsRepository,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -948,6 +964,26 @@ test("screening produces a final report asset with routed template, knowledge, a
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_screening_asset_id,
     response.body.asset.id,
+  );
+  const seededRuns =
+    await verificationOpsRepository.listEvaluationRunsBySuiteId("suite-screening-1");
+  assert.equal(seededRuns.length, 1);
+  assert.deepEqual(seededRuns[0]?.governed_source, {
+    source_kind: "governed_module_execution",
+    manuscript_id: "manuscript-1",
+    source_module: "screening",
+    agent_execution_log_id: response.body.agent_execution_log_id,
+    execution_snapshot_id: response.body.snapshot_id,
+    output_asset_id: response.body.asset.id,
+  });
+  assert.equal(seededRuns[0]?.release_check_profile_id, "release-profile-screening-1");
+  assert.equal(seededRuns[0]?.run_item_count, 0);
+  assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.deepEqual(
+    await verificationOpsRepository.listEvaluationRunItemsByRunId(
+      seededRuns[0]!.id,
+    ),
+    [],
   );
 });
 
@@ -997,6 +1033,7 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     editingApi,
     manuscriptRepository,
     agentExecutionRepository,
+    verificationOpsRepository,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -1040,6 +1077,26 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     (await manuscriptRepository.findById("manuscript-1"))?.current_editing_asset_id,
     response.body.asset.id,
   );
+  const seededRuns =
+    await verificationOpsRepository.listEvaluationRunsBySuiteId("suite-editing-1");
+  assert.equal(seededRuns.length, 1);
+  assert.deepEqual(seededRuns[0]?.governed_source, {
+    source_kind: "governed_module_execution",
+    manuscript_id: "manuscript-1",
+    source_module: "editing",
+    agent_execution_log_id: response.body.agent_execution_log_id,
+    execution_snapshot_id: response.body.snapshot_id,
+    output_asset_id: response.body.asset.id,
+  });
+  assert.equal(seededRuns[0]?.release_check_profile_id, "release-profile-editing-1");
+  assert.equal(seededRuns[0]?.run_item_count, 0);
+  assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.deepEqual(
+    await verificationOpsRepository.listEvaluationRunItemsByRunId(
+      seededRuns[0]!.id,
+    ),
+    [],
+  );
 });
 
 test("proofreading produces a draft first and only advances the final pointer after confirmation", async () => {
@@ -1051,6 +1108,7 @@ test("proofreading produces a draft first and only advances the final pointer af
     modelRegistryService,
     agentExecutionRepository,
     executionTrackingRepository,
+    verificationOpsRepository,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -1086,6 +1144,12 @@ test("proofreading produces a draft first and only advances the final pointer af
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_proofreading_asset_id,
     undefined,
+  );
+  assert.deepEqual(
+    await verificationOpsRepository.listEvaluationRunsBySuiteId(
+      "suite-proofreading-1",
+    ),
+    [],
   );
 
   await moduleTemplateRepository.save({
@@ -1173,5 +1237,30 @@ test("proofreading produces a draft first and only advances the final pointer af
     (await manuscriptRepository.findById("manuscript-1"))
       ?.current_proofreading_asset_id,
     finalResponse.body.asset.id,
+  );
+  const seededRuns =
+    await verificationOpsRepository.listEvaluationRunsBySuiteId(
+      "suite-proofreading-1",
+    );
+  assert.equal(seededRuns.length, 1);
+  assert.deepEqual(seededRuns[0]?.governed_source, {
+    source_kind: "governed_module_execution",
+    manuscript_id: "manuscript-1",
+    source_module: "proofreading",
+    agent_execution_log_id: draftResponse.body.agent_execution_log_id,
+    execution_snapshot_id: finalResponse.body.snapshot_id,
+    output_asset_id: finalResponse.body.asset.id,
+  });
+  assert.equal(
+    seededRuns[0]?.release_check_profile_id,
+    "release-profile-proofreading-1",
+  );
+  assert.equal(seededRuns[0]?.run_item_count, 0);
+  assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.deepEqual(
+    await verificationOpsRepository.listEvaluationRunItemsByRunId(
+      seededRuns[0]!.id,
+    ),
+    [],
   );
 });

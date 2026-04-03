@@ -243,6 +243,7 @@ export function EvaluationWorkbenchPage({
   const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
   const previousRunEvidence = overview?.previousRunEvidence ?? [];
   const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
+  const selectedRunGovernedSource = selectedRun?.governed_source ?? null;
   const selectedSampleSet =
     selectedRun == null || overview == null
       ? null
@@ -254,8 +255,16 @@ export function EvaluationWorkbenchPage({
   const finalizeArtifactOptions = createFinalizeArtifactOptions(
     selectedRunItem,
     linkedSampleSetItem,
+    selectedRunGovernedSource,
   );
+  const governedLearningHandoffGuidance = describeGovernedLearningHandoffGuidance({
+    hasFinalizedResult: effectiveFinalizedResult != null,
+    hasLinkedSampleContext: linkedSampleSetItem != null,
+    hasGovernedSource: selectedRunGovernedSource != null,
+  });
   const learningReviewHash = createdLearningCandidate ? formatWorkbenchHash("learning-review") : null;
+  const activeManuscriptContextId =
+    normalizedPrefilledManuscriptId.length > 0 ? normalizedPrefilledManuscriptId : null;
 
   useEffect(() => {
     if (!selectedRunItem) return;
@@ -671,20 +680,47 @@ export function EvaluationWorkbenchPage({
                     {selectedRunItem?.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
                     {linkedSampleSetItem ? (
                       <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
+                    ) : selectedRunHistoryEntry.run.governed_source ? (
+                      <span>
+                        Governed Source: {selectedRunHistoryEntry.run.governed_source.source_module} /{" "}
+                        {selectedRunHistoryEntry.run.governed_source.manuscript_id}
+                      </span>
                     ) : null}
                   </div>
                   <EvaluationWorkbenchEvidencePackSummary
                     evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
                   />
-                  <EvaluationWorkbenchLinkedSampleContextList
-                    runItems={overview.runItems}
-                    sampleSetItems={sampleSetItems}
-                    selectedRunItemId={selectedRunItemId}
-                    defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
-                      selectedSampleSet?.module,
-                    )}
-                    onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
-                  />
+                  {selectedRunHistoryEntry.run.governed_source ? (
+                    <EvaluationWorkbenchGovernedSourceDetailCard
+                      selectedRun={selectedRunHistoryEntry.run}
+                    />
+                  ) : null}
+                  {overview.runItems.length > 0 ? (
+                    <EvaluationWorkbenchLinkedSampleContextList
+                      runItems={overview.runItems}
+                      sampleSetItems={sampleSetItems}
+                      selectedRunItemId={selectedRunItemId}
+                      defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
+                        selectedSampleSet?.module,
+                      )}
+                      onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
+                    />
+                  ) : selectedRunHistoryEntry.run.governed_source ? (
+                    <p className="evaluation-workbench-empty">
+                      This governed run was seeded from a live module execution and does not
+                      include sample-backed run items.
+                    </p>
+                  ) : (
+                    <EvaluationWorkbenchLinkedSampleContextList
+                      runItems={overview.runItems}
+                      sampleSetItems={sampleSetItems}
+                      selectedRunItemId={selectedRunItemId}
+                      defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
+                        selectedSampleSet?.module,
+                      )}
+                      onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
+                    />
+                  )}
                   <EvaluationWorkbenchEvidenceList
                     evidence={selectedRunEvidence}
                     emptyMessage="No persisted verification evidence is attached to this run."
@@ -777,7 +813,16 @@ export function EvaluationWorkbenchPage({
           {selectedRun == null ? (
             <p className="evaluation-workbench-empty">Pick a run to review run-item outcomes.</p>
           ) : overview.runItems.length === 0 ? (
-            <p className="evaluation-workbench-empty">This run has no recorded run-item results yet.</p>
+            <>
+              {selectedRun.governed_source ? (
+                <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
+              ) : null}
+              <p className="evaluation-workbench-empty">
+                {selectedRun.governed_source
+                  ? "This governed run was seeded from a live module execution and does not include sample-backed run items."
+                  : "This run has no recorded run-item results yet."}
+              </p>
+            </>
           ) : (
             <>
               <ul className="evaluation-workbench-stack">
@@ -928,6 +973,11 @@ export function EvaluationWorkbenchPage({
           </div>
           {!effectiveFinalizedResult ? (
             <p className="evaluation-workbench-empty">The learning handoff stays gated until the evaluation run is finalized.</p>
+          ) : governedLearningHandoffGuidance ? (
+            <div className="evaluation-workbench-result">
+              <strong>Learning Handoff Unavailable</strong>
+              <p className="evaluation-workbench-empty">{governedLearningHandoffGuidance}</p>
+            </div>
           ) : (
             <>
               {linkedSampleSetItem ? (
@@ -988,7 +1038,11 @@ export function EvaluationWorkbenchPage({
     setStatusMessage(null);
     setFinalizedResult(null);
     setCreatedLearningCandidate(null);
-    await loadOverview({ selectedSuiteId: suiteId, selectedRunId: null });
+    await loadOverview({
+      selectedSuiteId: suiteId,
+      selectedRunId: null,
+      manuscriptId: activeManuscriptContextId,
+    });
   }
 
   async function handleSelectRun(runId: string) {
@@ -996,14 +1050,22 @@ export function EvaluationWorkbenchPage({
     setStatusMessage(null);
     setFinalizedResult(null);
     setCreatedLearningCandidate(null);
-    await loadOverview({ selectedSuiteId: overview.selectedSuiteId, selectedRunId: runId });
+    await loadOverview({
+      selectedSuiteId: overview.selectedSuiteId,
+      selectedRunId: runId,
+      manuscriptId: activeManuscriptContextId,
+    });
   }
 
   async function handleActivateSuite(suiteId: string) {
     setIsActivatingSuiteId(suiteId);
     setErrorMessage(null);
     try {
-      const nextOverview = await controller.activateSuiteAndReload({ suiteId, actorRole });
+      const nextOverview = await controller.activateSuiteAndReload({
+        suiteId,
+        actorRole,
+        manuscriptId: activeManuscriptContextId,
+      });
       setOverview(nextOverview);
       setStatusMessage(`Activated evaluation suite ${suiteId}.`);
     } catch (error) {
@@ -1020,6 +1082,7 @@ export function EvaluationWorkbenchPage({
       const result = await controller.createRunAndReload({
         actorRole,
         suiteId: selectedSuite.id,
+        manuscriptId: activeManuscriptContextId,
         sampleSetId: runForm.sampleSetId.trim(),
         baselineBinding: createBinding("baseline", runForm.baselineModelId, runForm),
         candidateBinding: createBinding("candidate", runForm.candidateModelId, runForm),
@@ -1041,6 +1104,7 @@ export function EvaluationWorkbenchPage({
         actorRole,
         suiteId: selectedSuite.id,
         runId: selectedRun.id,
+        manuscriptId: activeManuscriptContextId,
         runItemId: selectedRunItem.id,
         resultAssetId: optional(runItemForm.resultAssetId),
         hardGatePassed: runItemForm.hardGatePassed,
@@ -1073,6 +1137,7 @@ export function EvaluationWorkbenchPage({
         actorRole,
         suiteId: selectedSuite.id,
         runId: selectedRun.id,
+        manuscriptId: activeManuscriptContextId,
         status: finalizeForm.status,
         existingEvidenceIds: selectedRun.evidence_ids,
         evidence:
@@ -1440,6 +1505,8 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
               <a href={manuscriptWorkbenchHash}>{manuscriptWorkbenchLabel}</a>
             ) : null}
           </>
+        ) : selectedRun.governed_source ? (
+          <EvaluationWorkbenchGovernedSourceInlineDetails selectedRun={selectedRun} />
         ) : (
           <span>No linked sample-set item is available for this run item.</span>
         )}
@@ -1455,6 +1522,79 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
         </li>
       </ul>
     </div>
+  );
+}
+
+export function EvaluationWorkbenchGovernedSourceDetailCard(props: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number];
+}) {
+  if (!props.selectedRun.governed_source) {
+    return (
+      <p className="evaluation-workbench-empty">
+        No governed source is attached to this run.
+      </p>
+    );
+  }
+
+  return (
+    <div className="evaluation-workbench-result evaluation-workbench-run-item-detail">
+      <strong>Governed Source Detail</strong>
+      <div className="evaluation-workbench-history-compare">
+        <span>Run: {props.selectedRun.id}</span>
+        <EvaluationWorkbenchGovernedSourceInlineDetails selectedRun={props.selectedRun} />
+      </div>
+      <ul className="evaluation-workbench-inline-list">
+        <li>
+          <strong>Baseline Binding</strong>
+          <span>{summarizeBinding(props.selectedRun.baseline_binding)}</span>
+        </li>
+        <li>
+          <strong>Candidate Binding</strong>
+          <span>{summarizeBinding(props.selectedRun.candidate_binding)}</span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+function EvaluationWorkbenchGovernedSourceInlineDetails(props: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number];
+}) {
+  const governedSource = props.selectedRun.governed_source;
+  if (!governedSource) {
+    return null;
+  }
+
+  const manuscriptWorkbenchMode = resolveLinkedSampleWorkbenchMode(
+    governedSource.source_module,
+  );
+  const manuscriptWorkbenchHash = createLinkedSampleWorkbenchHash({
+    mode: manuscriptWorkbenchMode,
+    manuscriptId: governedSource.manuscript_id,
+  });
+  const outputAssetDownloadHref = createDocumentAssetDownloadHref(
+    governedSource.output_asset_id,
+  );
+
+  return (
+    <>
+      <span>Source Module: {governedSource.source_module}</span>
+      <span>Manuscript: {governedSource.manuscript_id}</span>
+      <span>Execution Snapshot: {governedSource.execution_snapshot_id}</span>
+      <span>Agent Execution Log: {governedSource.agent_execution_log_id}</span>
+      <span>Output Asset: {governedSource.output_asset_id}</span>
+      {props.selectedRun.release_check_profile_id ? (
+        <span>Release Check Profile: {props.selectedRun.release_check_profile_id}</span>
+      ) : null}
+      {outputAssetDownloadHref ? (
+        <a href={outputAssetDownloadHref}>Download Governed Output Asset</a>
+      ) : null}
+      {manuscriptWorkbenchHash ? (
+        <a href={manuscriptWorkbenchHash}>
+          {createLinkedSampleWorkbenchLabel(manuscriptWorkbenchMode)}
+        </a>
+      ) : null}
+    </>
   );
 }
 
@@ -1992,6 +2132,22 @@ export function describeHistoryCompareStatusSummary(input: {
   return fallback ? `Compare status: ${fallback}` : null;
 }
 
+export function describeGovernedLearningHandoffGuidance(input: {
+  hasFinalizedResult: boolean;
+  hasLinkedSampleContext: boolean;
+  hasGovernedSource: boolean;
+}) {
+  if (!input.hasFinalizedResult) {
+    return null;
+  }
+
+  if (input.hasLinkedSampleContext || !input.hasGovernedSource) {
+    return null;
+  }
+
+  return "Learning handoff is unavailable for governed-source runs until a reviewed snapshot is linked.";
+}
+
 function describeHistoryScopeSummaryLabel(scope: EvaluationWorkbenchHistoryScope) {
   if (scope === "manuscript") return "Matched manuscript runs";
   return "Entire suite history";
@@ -2148,12 +2304,21 @@ function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
   return evidence.length > 0 ? evidence.map((item) => item.label).join(", ") : "None recorded";
 }
 
+function createDocumentAssetDownloadHref(assetId: string | null | undefined) {
+  if (!assetId?.trim()) {
+    return null;
+  }
+
+  return `/api/v1/document-assets/${assetId}/download`;
+}
+
 function createFinalizeArtifactOptions(
   selectedRunItem: EvaluationWorkbenchOverview["runItems"][number] | null,
   linkedSampleSetItem: EvaluationWorkbenchOverview["sampleSetItems"][number] | null,
+  governedSource: EvaluationWorkbenchOverview["runs"][number]["governed_source"] | null,
 ) {
   const options: Array<{
-    source: "result_asset" | "sample_snapshot";
+    source: "result_asset" | "sample_snapshot" | "governed_output";
     assetId: string;
     actionLabel: string;
   }> = [];
@@ -2174,6 +2339,18 @@ function createFinalizeArtifactOptions(
       source: "sample_snapshot",
       assetId: linkedSampleSetItem.snapshot_asset_id,
       actionLabel: `Use Sample Snapshot (${linkedSampleSetItem.snapshot_asset_id})`,
+    });
+  }
+
+  if (
+    governedSource?.output_asset_id &&
+    governedSource.output_asset_id !== selectedRunItem?.result_asset_id &&
+    governedSource.output_asset_id !== linkedSampleSetItem?.snapshot_asset_id
+  ) {
+    options.push({
+      source: "governed_output",
+      assetId: governedSource.output_asset_id,
+      actionLabel: `Use Governed Output (${governedSource.output_asset_id})`,
     });
   }
 

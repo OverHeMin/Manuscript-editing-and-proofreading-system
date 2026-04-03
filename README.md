@@ -61,6 +61,7 @@
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
 - `apps/web` 里的 admin-console 现在还可以把 Recent Agent Executions 直接下钻到 manuscript、job 与 created asset 输出明细，并通过状态筛选/搜索快速聚焦 running / failed / completed 执行，方便治理台追踪运行结果
 - `apps/web` 里的 evaluation-workbench 已不再是占位页，当前可以直接查看 verification-ops 的 suite/run/run-item/sample-set 概览，并在浏览器中完成 run 创建、run-item 录入、evidence finalize、以及带 snapshot 自动联动的 learning candidate handoff
+- `apps/web` 里的 evaluation-workbench 现在也能按 manuscript 重新打开由 runtime binding 自动 seed 的 governed evaluation runs；这类无 sample-set 上下文的 run 会显示 governed source 明细、输出资产下载入口，并明确保持 learning handoff 为人工补齐 reviewed snapshot 后再处理
 - `apps/web` 里的 template-governance 已不再是占位页，当前可以直接查看模板家族与模块模板版本、筛选知识条目、围绕选中模板族维护 template bindings，并把知识草稿推进到 review lane
 - `pnpm verify:manuscript-workbench` 当前已经覆盖 manuscript handoff、learning review flow、knowledge review handoff + approve/reject terminal actions、admin governance execution observability + Recent Agent Executions triage、evaluation workbench suite activation + manual evaluation loop 的真实浏览器门禁，并包含 verification-ops 持久化 HTTP 路由回归
 - 但 `serve` 当前仍是“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统

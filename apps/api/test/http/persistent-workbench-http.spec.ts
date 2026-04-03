@@ -42,6 +42,7 @@ import {
 import {
   PostgresToolPermissionPolicyRepository,
 } from "../../src/modules/tool-permission-policies/index.ts";
+import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -55,6 +56,8 @@ interface PersistentWorkbenchSeededIds {
   originalAssetId: string;
   humanFinalAssetId: string;
   reviewedCaseSnapshotId: string;
+  screeningSuiteId: string;
+  proofreadingSuiteId: string;
   screeningKnowledgeId: string;
   proofreadingKnowledgeId: string;
   screeningModelId: string;
@@ -66,6 +69,8 @@ const seededIds: PersistentWorkbenchSeededIds = {
   originalAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   humanFinalAssetId: "abababab-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   reviewedCaseSnapshotId: "cdcdcdcd-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  screeningSuiteId: "aaaaaaaa-1111-4333-8444-555555555555",
+  proofreadingSuiteId: "12121212-9999-4333-8444-555555555555",
   screeningKnowledgeId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   proofreadingKnowledgeId: "eeeeeeee-cccc-4ccc-8ccc-cccccccccccc",
   screeningModelId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
@@ -319,6 +324,10 @@ test("persistent workbench screening routes keep governed execution evidence acr
 
         const secondServer = await startPersistentWorkbenchServer(databaseUrl);
         try {
+          const restartedAdminCookie = await loginAsPersistentUser(
+            secondServer.baseUrl,
+            "persistent.admin",
+          );
           const manuscriptResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
             {
@@ -381,6 +390,49 @@ test("persistent workbench screening routes keep governed execution evidence acr
           assert.equal(job.id, screening.job.id);
           assert.equal(job.payload?.outputAssetId, screening.asset.id);
           assert.equal(exported.asset.id, screening.asset.id);
+
+          const runsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.screeningSuiteId}/runs`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          const runs = (await runsResponse.json()) as Array<{
+            id: string;
+            release_check_profile_id?: string;
+            sample_set_id?: string;
+            run_item_count: number;
+            governed_source?: {
+              source_kind: string;
+              manuscript_id: string;
+              source_module: string;
+              agent_execution_log_id: string;
+              execution_snapshot_id: string;
+              output_asset_id: string;
+            };
+          }>;
+          assert.equal(runsResponse.status, 200);
+          assert.equal(runs.length, 1);
+          assert.equal(runs[0]?.release_check_profile_id, "cccccccc-9999-4333-8444-555555555555");
+          assert.equal(runs[0]?.sample_set_id, undefined);
+          assert.equal(runs[0]?.run_item_count, 0);
+          assert.deepEqual(runs[0]?.governed_source, {
+            source_kind: "governed_module_execution",
+            manuscript_id: seededIds.manuscriptId,
+            source_module: "screening",
+            agent_execution_log_id: screening.agent_execution_log_id,
+            execution_snapshot_id: screening.snapshot_id,
+            output_asset_id: screening.asset.id,
+          });
+
+          const runItemsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/items`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          assert.equal(runItemsResponse.status, 200);
+          assert.deepEqual(await runItemsResponse.json(), []);
         } finally {
           await stopServer(secondServer.server);
         }
@@ -412,6 +464,10 @@ test("persistent proofreading publish-human-final route survives restart and bec
           firstServer.baseUrl,
           "persistent.proofreader",
         );
+        const adminCookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.admin",
+        );
 
         const draftResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
@@ -435,8 +491,19 @@ test("persistent proofreading publish-human-final route survives restart and bec
           asset: {
             id: string;
           };
+          snapshot_id?: string;
+          agent_execution_log_id?: string;
         };
         assert.equal(draftResponse.status, 201);
+
+        const draftRunsResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
+          {
+            headers: { Cookie: adminCookie },
+          },
+        );
+        assert.equal(draftRunsResponse.status, 200);
+        assert.deepEqual(await draftRunsResponse.json(), []);
 
         const finalizeResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/modules/proofreading/finalize`,
@@ -460,6 +527,8 @@ test("persistent proofreading publish-human-final route survives restart and bec
           asset: {
             id: string;
           };
+          snapshot_id?: string;
+          agent_execution_log_id?: string;
         };
         assert.equal(finalizeResponse.status, 201);
 
@@ -492,6 +561,10 @@ test("persistent proofreading publish-human-final route survives restart and bec
 
         const secondServer = await startPersistentWorkbenchServer(databaseUrl);
         try {
+          const restartedAdminCookie = await loginAsPersistentUser(
+            secondServer.baseUrl,
+            "persistent.admin",
+          );
           const manuscriptResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
             {
@@ -560,6 +633,49 @@ test("persistent proofreading publish-human-final route survives restart and bec
           assert.equal(exportResponse.status, 200);
           assert.equal(exported.asset.id, published.asset.id);
           assert.equal(exported.asset.asset_type, "human_final_docx");
+
+          const runsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          const runs = (await runsResponse.json()) as Array<{
+            id: string;
+            release_check_profile_id?: string;
+            sample_set_id?: string;
+            run_item_count: number;
+            governed_source?: {
+              source_kind: string;
+              manuscript_id: string;
+              source_module: string;
+              agent_execution_log_id: string;
+              execution_snapshot_id: string;
+              output_asset_id: string;
+            };
+          }>;
+          assert.equal(runsResponse.status, 200);
+          assert.equal(runs.length, 1);
+          assert.equal(runs[0]?.release_check_profile_id, "12121212-7777-4333-8444-555555555555");
+          assert.equal(runs[0]?.sample_set_id, undefined);
+          assert.equal(runs[0]?.run_item_count, 0);
+          assert.deepEqual(runs[0]?.governed_source, {
+            source_kind: "governed_module_execution",
+            manuscript_id: seededIds.manuscriptId,
+            source_module: "proofreading",
+            agent_execution_log_id: draft.agent_execution_log_id,
+            execution_snapshot_id: finalized.snapshot_id,
+            output_asset_id: finalized.asset.id,
+          });
+
+          const runItemsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/items`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          assert.equal(runItemsResponse.status, 200);
+          assert.deepEqual(await runItemsResponse.json(), []);
         } finally {
           await stopServer(secondServer.server);
         }
@@ -1648,6 +1764,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     new PostgresToolPermissionPolicyRepository({
       client: pool,
     });
+  const verificationOpsRepository = new PostgresVerificationOpsRepository({
+    client: pool,
+  });
   const modelRegistryRepository = new PostgresModelRegistryRepository({
     client: pool,
   });
@@ -1799,6 +1918,84 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     knowledge_binding_mode: "profile_plus_dynamic",
     status: "active",
     version: 1,
+  });
+  await verificationOpsRepository.saveVerificationCheckProfile({
+    id: "bbbbbbbb-9999-4333-8444-555555555555",
+    name: "Persistent Screening Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveVerificationCheckProfile({
+    id: "12121212-8888-4333-8444-555555555555",
+    name: "Persistent Proofreading Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveReleaseCheckProfile({
+    id: "cccccccc-9999-4333-8444-555555555555",
+    name: "Persistent Screening Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["bbbbbbbb-9999-4333-8444-555555555555"],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveReleaseCheckProfile({
+    id: "12121212-7777-4333-8444-555555555555",
+    name: "Persistent Proofreading Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["12121212-8888-4333-8444-555555555555"],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSuite({
+    id: seededIds.screeningSuiteId,
+    name: "Persistent Screening Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["bbbbbbbb-9999-4333-8444-555555555555"],
+    module_scope: ["screening"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSuite({
+    id: seededIds.proofreadingSuiteId,
+    name: "Persistent Proofreading Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["12121212-8888-4333-8444-555555555555"],
+    module_scope: ["proofreading"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
   });
   await sandboxProfileRepository.save({
     id: "bbbbbbbb-1111-4222-8333-444444444444",
@@ -2011,9 +2208,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     prompt_template_id: "11111111-2222-4333-8444-555555555555",
     skill_package_ids: ["66666666-7777-4888-8999-aaaaaaaaaaaa"],
     execution_profile_id: "bbbb1111-2222-4333-8444-555555555555",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["bbbbbbbb-9999-4333-8444-555555555555"],
+    evaluation_suite_ids: [seededIds.screeningSuiteId],
+    release_check_profile_id: "cccccccc-9999-4333-8444-555555555555",
     status: "active",
     version: 1,
   });
@@ -2029,9 +2226,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     prompt_template_id: "12121212-2222-4333-8444-555555555555",
     skill_package_ids: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
     execution_profile_id: "12121212-1111-4333-8444-555555555555",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["12121212-8888-4333-8444-555555555555"],
+    evaluation_suite_ids: [seededIds.proofreadingSuiteId],
+    release_check_profile_id: "12121212-7777-4333-8444-555555555555",
     status: "active",
     version: 1,
   });

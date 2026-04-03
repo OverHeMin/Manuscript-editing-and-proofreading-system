@@ -20,7 +20,11 @@ import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-
 import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
-import type { ModuleExecutionResult } from "../shared/module-run-support.ts";
+import {
+  seedGovernedRunsForModuleExecution,
+  type GovernedEvaluationRunSeeder,
+  type ModuleExecutionResult,
+} from "../shared/module-run-support.ts";
 import {
   createWriteTransactionManager,
   type WriteTransactionManager,
@@ -54,6 +58,7 @@ export interface ScreeningServiceOptions {
   runtimeBindingService: RuntimeBindingService;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
+  verificationOpsService: GovernedEvaluationRunSeeder;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -81,6 +86,7 @@ export class ScreeningService {
   private readonly runtimeBindingService: RuntimeBindingService;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
+  private readonly verificationOpsService: GovernedEvaluationRunSeeder;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -102,6 +108,7 @@ export class ScreeningService {
     this.runtimeBindingService = options.runtimeBindingService;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
+    this.verificationOpsService = options.verificationOpsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -256,6 +263,19 @@ export class ScreeningService {
         updated_at: timestamp,
       };
       await jobRepository.save(completedJob);
+
+      await seedGovernedRunsForModuleExecution({
+        verificationOpsService: this.verificationOpsService,
+        actorRole: "admin",
+        suiteIds: governedContext.verificationExpectations.evaluation_suite_ids,
+        releaseCheckProfileId:
+          governedContext.verificationExpectations.release_check_profile_id,
+        manuscriptId: input.manuscriptId,
+        sourceModule: "screening",
+        agentExecutionLogId: executionLog.id,
+        executionSnapshotId: snapshot.id,
+        outputAssetId: asset.id,
+      });
 
       return {
         job: completedJob,

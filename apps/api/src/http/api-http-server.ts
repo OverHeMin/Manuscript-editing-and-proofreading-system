@@ -1013,6 +1013,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -1031,6 +1032,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -1049,6 +1051,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
 
   return {

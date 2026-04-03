@@ -7,6 +7,7 @@ import type {
   EvaluationSampleSetItemRecord,
   EvaluationSampleSetRecord,
   FrozenExperimentBindingRecord,
+  GovernedExecutionEvaluationSourceRecord,
   EvaluationSuiteRecord,
   ReleaseCheckProfileRecord,
   VerificationCheckProfileRecord,
@@ -106,6 +107,14 @@ function cloneFrozenExperimentBinding(
   };
 }
 
+function cloneGovernedExecutionEvaluationSource(
+  record: GovernedExecutionEvaluationSourceRecord,
+): GovernedExecutionEvaluationSourceRecord {
+  return {
+    ...record,
+  };
+}
+
 function cloneEvaluationRun(record: EvaluationRunRecord): EvaluationRunRecord {
   return {
     ...record,
@@ -114,6 +123,9 @@ function cloneEvaluationRun(record: EvaluationRunRecord): EvaluationRunRecord {
       : undefined,
     candidate_binding: record.candidate_binding
       ? cloneFrozenExperimentBinding(record.candidate_binding)
+      : undefined,
+    governed_source: record.governed_source
+      ? cloneGovernedExecutionEvaluationSource(record.governed_source)
       : undefined,
     evidence_ids: [...record.evidence_ids],
   };

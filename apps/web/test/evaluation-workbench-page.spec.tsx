@@ -9,6 +9,7 @@ import {
   describeHistoryStatusPair,
   describeHistoryOriginSummary,
   describeHistoryEntryOriginLabel,
+  describeGovernedLearningHandoffGuidance,
   describeComparisonOperatorSummary,
   describeComparisonBaselinePolicy,
   describeComparisonTriageHint,
@@ -19,6 +20,7 @@ import {
   summarizeFinalizedEntry,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
+  EvaluationWorkbenchGovernedSourceDetailCard,
   EvaluationWorkbenchLinkedSampleContextList,
   EvaluationWorkbenchHistoryEntrySignals,
   EvaluationWorkbenchPage,
@@ -118,6 +120,44 @@ test("evaluation workbench run-item detail card renders linked sample context an
     markup,
     /#editing\?manuscriptId=manuscript-1&amp;reviewedCaseSnapshotId=reviewed-case-snapshot-1&amp;sampleSetItemId=sample-item-1/,
   );
+});
+
+test("evaluation workbench governed-source detail card renders execution trace and manuscript navigation", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchGovernedSourceDetailCard
+      selectedRun={{
+        id: "run-governed-1",
+        suite_id: "suite-1",
+        governed_source: {
+          source_kind: "governed_module_execution",
+          manuscript_id: "manuscript-1",
+          source_module: "editing",
+          agent_execution_log_id: "execution-log-1",
+          execution_snapshot_id: "execution-snapshot-1",
+          output_asset_id: "output-asset-1",
+        },
+        release_check_profile_id: "release-1",
+        run_item_count: 0,
+        status: "queued",
+        evidence_ids: [],
+        started_at: "2026-04-03T08:00:00.000Z",
+      }}
+    />,
+  );
+
+  assert.match(markup, /Governed Source Detail/);
+  assert.match(markup, /Source Module: editing/);
+  assert.match(markup, /Manuscript: manuscript-1/);
+  assert.match(markup, /Execution Snapshot: execution-snapshot-1/);
+  assert.match(markup, /Agent Execution Log: execution-log-1/);
+  assert.match(markup, /Output Asset: output-asset-1/);
+  assert.match(markup, /Release Check Profile: release-1/);
+  assert.match(markup, /Download Governed Output Asset/);
+  assert.match(markup, /\/api\/v1\/document-assets\/output-asset-1\/download/);
+  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
+  assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
+  assert.doesNotMatch(markup, /sampleSetItemId=/);
 });
 
 test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
@@ -466,6 +506,26 @@ test("evaluation workbench linked sample context falls back to manuscript-only h
   assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
   assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
   assert.doesNotMatch(markup, /sampleSetItemId=/);
+});
+
+test("describeGovernedLearningHandoffGuidance explains why learning handoff is unavailable without reviewed snapshot context", () => {
+  assert.equal(
+    describeGovernedLearningHandoffGuidance({
+      hasFinalizedResult: true,
+      hasLinkedSampleContext: false,
+      hasGovernedSource: true,
+    }),
+    "Learning handoff is unavailable for governed-source runs until a reviewed snapshot is linked.",
+  );
+
+  assert.equal(
+    describeGovernedLearningHandoffGuidance({
+      hasFinalizedResult: true,
+      hasLinkedSampleContext: true,
+      hasGovernedSource: true,
+    }),
+    null,
+  );
 });
 
 test("describeHistoryComparisonGuidance explains why history compare is unavailable", () => {
