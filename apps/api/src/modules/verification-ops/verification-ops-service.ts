@@ -817,6 +817,10 @@ export class VerificationOpsService {
         return next;
       },
     );
+    const governedSource = running.governed_source;
+    if (!governedSource) {
+      throw new GovernedEvaluationRunSourceMissingError(input.runId);
+    }
 
     const evidenceIds = [...running.evidence_ids];
     let status: Extract<EvaluationRunRecord["status"], "passed" | "failed"> = "passed";
@@ -827,7 +831,7 @@ export class VerificationOpsService {
           run: running,
           suite,
           checkProfile,
-          governedSource: running.governed_source,
+          governedSource,
         });
         const evidence = await this.recordVerificationEvidence(actorRole, {
           kind: result.evidence.kind,
@@ -851,7 +855,7 @@ export class VerificationOpsService {
         const evidence = await this.recordVerificationEvidence(actorRole, {
           kind: "artifact",
           label: failureLabel,
-          artifactAssetId: running.governed_source.output_asset_id,
+          artifactAssetId: governedSource.output_asset_id,
           checkProfileId: checkProfile.id,
         });
         evidenceIds.push(evidence.id);

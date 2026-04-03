@@ -678,12 +678,12 @@ test("admin preserves sample context across manuscript next-step shortcuts befor
   await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
 });
 
-test("admin can inspect and finalize a seeded governed run without sample-set context", async ({
+test("admin can inspect and finalize a machine-completed seeded governed run without sample-set context", async ({
   page,
   request,
 }) => {
   const prepared = await prepareGovernedSeededEvaluationScenario(request, {
-    label: `Phase 9S ${Date.now()}`,
+    label: `Phase 9T ${Date.now()}`,
   });
 
   await page.goto(`/#evaluation-workbench?manuscriptId=${prepared.manuscriptId}`, {
@@ -728,21 +728,31 @@ test("admin can inspect and finalize a seeded governed run without sample-set co
     new RegExp(`#editing\\?manuscriptId=${prepared.manuscriptId}$`),
   );
 
-  await page.getByLabel("Evidence Type").selectOption("artifact");
-  await page
-    .getByRole("button", {
-      name: `Use Governed Output (${prepared.outputAssetId})`,
-    })
-    .click();
-  await expect(page.getByLabel("Artifact Asset ID")).toHaveValue(prepared.outputAssetId);
-  await page.getByLabel("Evidence Label").fill("Phase 9S governed output evidence");
-  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+  const finalizePanel = page
+    .locator(".evaluation-workbench-panel")
+    .filter({ has: page.getByRole("heading", { name: "Finalize Run" }) });
+  await expect(finalizePanel).toContainText(
+    "Automatic governed checks completed. Review machine evidence before finalizing.",
+  );
+  await expect(finalizePanel).toContainText("Automatic governed browser_qa passed");
+  await expect(finalizePanel).toContainText(
+    `/api/v1/document-assets/${prepared.outputAssetId}/download`,
+  );
+  await expect(
+    finalizePanel.getByRole("button", { name: "Finalize Recommendation" }),
+  ).toBeVisible();
+  await expect(
+    finalizePanel.getByRole("button", { name: "Complete And Finalize Run" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Finalize Recommendation" }).click();
 
   const finalizedCard = page.locator(".evaluation-workbench-finalized");
   await expect(finalizedCard).toContainText("needs_review");
   await expect(finalizedCard).toContainText(
     "Run scoring is incomplete, so human review is required before any recommendation.",
   );
+  await expect(finalizedCard).toContainText("Automatic governed browser_qa passed");
 
   const historyPanel = page.locator(".evaluation-workbench-history");
   await expect(
