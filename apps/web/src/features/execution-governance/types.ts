@@ -12,9 +12,12 @@ export type ExecutionProfileStatus = "draft" | "active" | "archived";
 export type KnowledgeBindingMode = "profile_only" | "profile_plus_dynamic";
 export type KnowledgeBindingRuleStatus = "draft" | "active" | "archived";
 export type ExecutionResolutionModelSource =
-  | "template_override"
-  | "module_default"
-  | "system_default";
+  | "template_family_policy"
+  | "module_policy"
+  | "legacy_template_override"
+  | "legacy_module_default"
+  | "legacy_system_default"
+  | "task_override";
 export type KnowledgeBindingPurpose =
   | "required"
   | "recommended"
@@ -104,4 +107,23 @@ export interface ResolvedExecutionBundleViewModel {
   model_source: ExecutionResolutionModelSource;
   knowledge_binding_rules: KnowledgeBindingRuleViewModel[];
   knowledge_items: KnowledgeItemViewModel[];
+}
+
+export function formatExecutionResolutionModelSourceLabel(
+  source: ExecutionResolutionModelSource,
+): string {
+  switch (source) {
+    case "template_family_policy":
+      return "Template Family Policy";
+    case "module_policy":
+      return "Module Policy";
+    case "legacy_template_override":
+      return "Legacy Template Override";
+    case "legacy_module_default":
+      return "Legacy Module Default";
+    case "legacy_system_default":
+      return "Legacy System Default";
+    case "task_override":
+      return "Task Override";
+  }
 }

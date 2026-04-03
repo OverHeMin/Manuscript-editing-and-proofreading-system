@@ -53,6 +53,16 @@ import {
   updateModelRoutingPolicy,
 } from "../model-registry/index.ts";
 import {
+  activateModelRoutingPolicyVersion,
+  approveModelRoutingPolicyVersion,
+  createModelRoutingPolicy,
+  createModelRoutingPolicyDraftVersion,
+  listModelRoutingPolicies,
+  rollbackModelRoutingPolicy,
+  saveModelRoutingPolicyDraft,
+  submitModelRoutingPolicyVersion,
+} from "../model-routing-governance/index.ts";
+import {
   activateRuntimeBinding,
   createRuntimeBinding,
   listRuntimeBindings,
@@ -101,6 +111,14 @@ import type {
   ModelRoutingPolicyViewModel,
   UpdateModelRoutingPolicyInput,
 } from "../model-registry/index.ts";
+import type {
+  CreateModelRoutingPolicyInput,
+  CreateModelRoutingPolicyDraftVersionInput,
+  ModelRoutingPolicyViewModel as GovernedModelRoutingPolicyViewModel,
+  ModelRoutingPolicyVersionEnvelopeViewModel,
+  RollbackModelRoutingPolicyInput,
+  SaveModelRoutingPolicyDraftInput,
+} from "../model-routing-governance/index.ts";
 import type { PromptTemplateViewModel, SkillPackageViewModel } from "../prompt-skill-registry/index.ts";
 import {
   getVerificationEvidence,
@@ -140,6 +158,7 @@ export interface AdminGovernanceOverview {
   executionProfiles: ModuleExecutionProfileViewModel[];
   modelRegistryEntries: ModelRegistryEntryViewModel[];
   modelRoutingPolicy: ModelRoutingPolicyViewModel;
+  routingPolicies: GovernedModelRoutingPolicyViewModel[];
   toolGatewayTools: ToolGatewayToolViewModel[];
   sandboxProfiles: SandboxProfileViewModel[];
   agentProfiles: AgentProfileViewModel[];
@@ -185,6 +204,37 @@ export interface AdminGovernanceWorkbenchController {
     createdModel: ModelRegistryEntryViewModel;
     overview: AdminGovernanceOverview;
   }>;
+  createRoutingPolicyAndReload(input: CreateModelRoutingPolicyInput): Promise<{
+    createdPolicy: ModelRoutingPolicyVersionEnvelopeViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  createRoutingPolicyDraftVersionAndReload(
+    input: CreateModelRoutingPolicyDraftVersionInput,
+  ): Promise<AdminGovernanceOverview>;
+  saveRoutingPolicyDraftAndReload(
+    input: SaveModelRoutingPolicyDraftInput,
+  ): Promise<AdminGovernanceOverview>;
+  submitRoutingPolicyVersionAndReload(input: {
+    actorRole: AuthRole;
+    versionId: string;
+    actorId?: string;
+    reason?: string;
+  }): Promise<AdminGovernanceOverview>;
+  approveRoutingPolicyVersionAndReload(input: {
+    actorRole: AuthRole;
+    versionId: string;
+    actorId?: string;
+    reason?: string;
+  }): Promise<AdminGovernanceOverview>;
+  activateRoutingPolicyVersionAndReload(input: {
+    actorRole: AuthRole;
+    versionId: string;
+    actorId?: string;
+    reason?: string;
+  }): Promise<AdminGovernanceOverview>;
+  rollbackRoutingPolicyAndReload(
+    input: RollbackModelRoutingPolicyInput,
+  ): Promise<AdminGovernanceOverview>;
   createToolGatewayToolAndReload(input: CreateToolGatewayToolInput): Promise<{
     createdTool: ToolGatewayToolViewModel;
     overview: AdminGovernanceOverview;
@@ -288,6 +338,38 @@ export function createAdminGovernanceWorkbenchController(
         createdModel,
         overview: await loadAdminGovernanceOverview(client),
       };
+    },
+    async createRoutingPolicyAndReload(input) {
+      const createdPolicy = (await createModelRoutingPolicy(client, input)).body;
+
+      return {
+        createdPolicy,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async createRoutingPolicyDraftVersionAndReload(input) {
+      await createModelRoutingPolicyDraftVersion(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
+    async saveRoutingPolicyDraftAndReload(input) {
+      await saveModelRoutingPolicyDraft(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
+    async submitRoutingPolicyVersionAndReload(input) {
+      await submitModelRoutingPolicyVersion(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
+    async approveRoutingPolicyVersionAndReload(input) {
+      await approveModelRoutingPolicyVersion(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
+    async activateRoutingPolicyVersionAndReload(input) {
+      await activateModelRoutingPolicyVersion(client, input);
+      return loadAdminGovernanceOverview(client);
+    },
+    async rollbackRoutingPolicyAndReload(input) {
+      await rollbackModelRoutingPolicy(client, input);
+      return loadAdminGovernanceOverview(client);
     },
     async createToolGatewayToolAndReload(input) {
       const createdTool = (await createToolGatewayTool(client, input)).body;
@@ -410,6 +492,7 @@ export async function loadAdminGovernanceOverview(
     skillResponse,
     modelRegistryResponse,
     modelRoutingPolicyResponse,
+    routingPoliciesResponse,
     executionProfileResponse,
     toolGatewayResponse,
     sandboxProfileResponse,
@@ -427,6 +510,7 @@ export async function loadAdminGovernanceOverview(
     listSkillPackages(client),
     listModelRegistryEntries(client),
     getModelRoutingPolicy(client),
+    listModelRoutingPolicies(client),
     listExecutionProfiles(client),
     listToolGatewayTools(client),
     listSandboxProfiles(client),
@@ -464,6 +548,7 @@ export async function loadAdminGovernanceOverview(
     executionProfiles: executionProfileResponse.body,
     modelRegistryEntries: modelRegistryResponse.body,
     modelRoutingPolicy: modelRoutingPolicyResponse.body,
+    routingPolicies: routingPoliciesResponse.body,
     toolGatewayTools: toolGatewayResponse.body,
     sandboxProfiles: sandboxProfileResponse.body,
     agentProfiles: agentProfileResponse.body,

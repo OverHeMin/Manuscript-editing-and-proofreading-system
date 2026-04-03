@@ -16,6 +16,7 @@ const agentToolingOverviewUrls = [
   "/api/v1/runtime-bindings",
   "/api/v1/agent-execution",
 ] as const;
+const routingGovernanceOverviewUrl = "/api/v1/model-routing-governance/policies";
 
 test("admin governance controller loads families, prompts, skills, and the selected family module templates", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
@@ -110,6 +111,7 @@ test("admin governance controller loads families, prompts, skills, and the selec
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
@@ -274,8 +276,448 @@ test("admin governance controller loads model registry entries and routing polic
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+    ],
+  );
+});
+
+test("admin governance controller loads versioned routing policies alongside registry assets", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/skill-packages") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-primary-1",
+              provider: "openai",
+              model_name: "gpt-5.4",
+              model_version: "2026-04-01",
+              allowed_modules: ["screening", "editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+            {
+              id: "model-fallback-1",
+              provider: "google",
+              model_name: "gemini-2.5-pro",
+              model_version: "2026-04-01",
+              allowed_modules: ["screening", "editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-primary-1",
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === routingGovernanceOverviewUrl) {
+        return {
+          status: 200,
+          body: [
+            {
+              policy_id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              active_version: {
+                id: "policy-version-1",
+                policy_scope_id: "policy-1",
+                scope_kind: "template_family",
+                scope_value: "family-1",
+                version_no: 1,
+                primary_model_id: "model-primary-1",
+                fallback_model_ids: ["model-fallback-1"],
+                evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+                status: "active",
+                created_at: "2026-04-03T08:00:00.000Z",
+                updated_at: "2026-04-03T08:05:00.000Z",
+              },
+              versions: [],
+              decisions: [],
+            },
+          ] as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.routingPolicies[0]?.scope_kind, "template_family");
+  assert.equal(overview.routingPolicies[0]?.active_version?.status, "active");
+  assert.equal(
+    overview.routingPolicies[0]?.active_version?.primary_model_id,
+    "model-primary-1",
+  );
+  assert.deepEqual(
+    overview.routingPolicies[0]?.active_version?.fallback_model_ids,
+    ["model-fallback-1"],
+  );
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
+      "/api/v1/execution-governance/profiles",
+      ...agentToolingOverviewUrls,
+    ],
+  );
+});
+
+test("admin governance controller runs the routing policy lifecycle and reloads overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  let latestStatus = "draft";
+  let latestPrimaryModelId = "model-primary-1";
+  let latestNotes = "Routing governance lifecycle test";
+  let latestVersionId = "policy-version-1";
+  let latestVersionNo = 1;
+  let latestPolicyActive = false;
+
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (
+        input.url === "/api/v1/prompt-skill-registry/prompt-templates" ||
+        input.url === "/api/v1/prompt-skill-registry/skill-packages" ||
+        input.url === "/api/v1/model-registry"
+      ) {
+        return {
+          status: 200,
+          body:
+            input.url === "/api/v1/model-registry"
+              ? ([
+                  {
+                    id: "model-primary-1",
+                    provider: "openai",
+                    model_name: "gpt-5.4",
+                    model_version: "2026-04-01",
+                    allowed_modules: ["screening", "editing", "proofreading"],
+                    is_prod_allowed: true,
+                  },
+                  {
+                    id: "model-fallback-1",
+                    provider: "google",
+                    model_name: "gemini-2.5-pro",
+                    model_version: "2026-04-01",
+                    allowed_modules: ["screening", "editing", "proofreading"],
+                    is_prod_allowed: true,
+                  },
+                ] as TResponse)
+              : ([] as TResponse),
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: undefined,
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === routingGovernanceOverviewUrl) {
+        return {
+          status: 200,
+          body: [
+            {
+              policy_id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              active_version: latestPolicyActive
+                ? {
+                    id: latestVersionId,
+                    policy_scope_id: "policy-1",
+                    scope_kind: "template_family",
+                    scope_value: "family-1",
+                    version_no: latestVersionNo,
+                    primary_model_id: latestPrimaryModelId,
+                    fallback_model_ids: ["model-fallback-1"],
+                    evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+                    notes: latestNotes,
+                    status: latestStatus,
+                    created_at: "2026-04-03T08:00:00.000Z",
+                    updated_at: "2026-04-03T08:05:00.000Z",
+                  }
+                : undefined,
+              versions: [
+                {
+                  id: latestVersionId,
+                  policy_scope_id: "policy-1",
+                  scope_kind: "template_family",
+                  scope_value: "family-1",
+                  version_no: latestVersionNo,
+                  primary_model_id: latestPrimaryModelId,
+                  fallback_model_ids: ["model-fallback-1"],
+                  evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+                  notes: latestNotes,
+                  status: latestStatus,
+                  created_at: "2026-04-03T08:00:00.000Z",
+                  updated_at: "2026-04-03T08:05:00.000Z",
+                },
+              ],
+              decisions: [],
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "POST" && input.url === "/api/v1/model-routing-governance/policies") {
+        latestStatus = "draft";
+        latestPolicyActive = false;
+        latestVersionId = "policy-version-1";
+        latestVersionNo = 1;
+        latestNotes = "Create policy";
+        return {
+          status: 201,
+          body: {
+            policy_id: "policy-1",
+            scope: {
+              id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              created_at: "2026-04-03T08:00:00.000Z",
+              updated_at: "2026-04-03T08:00:00.000Z",
+            },
+            version: {
+              id: latestVersionId,
+              policy_scope_id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              version_no: latestVersionNo,
+              primary_model_id: latestPrimaryModelId,
+              fallback_model_ids: ["model-fallback-1"],
+              evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+              notes: latestNotes,
+              status: latestStatus,
+              created_at: "2026-04-03T08:00:00.000Z",
+              updated_at: "2026-04-03T08:00:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/versions/policy-version-1/draft"
+      ) {
+        latestNotes = "Saved draft updates.";
+        return {
+          status: 200,
+          body: {
+            policy_id: "policy-1",
+            scope: {
+              id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              created_at: "2026-04-03T08:00:00.000Z",
+              updated_at: "2026-04-03T08:00:00.000Z",
+            },
+            version: {
+              id: latestVersionId,
+              policy_scope_id: "policy-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              version_no: latestVersionNo,
+              primary_model_id: latestPrimaryModelId,
+              fallback_model_ids: ["model-fallback-1"],
+              evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+              notes: latestNotes,
+              status: latestStatus,
+              created_at: "2026-04-03T08:00:00.000Z",
+              updated_at: "2026-04-03T08:02:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/versions/policy-version-1/submit"
+      ) {
+        latestStatus = "pending_review";
+        return { status: 200, body: {} as TResponse };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/versions/policy-version-1/approve"
+      ) {
+        latestStatus = "approved";
+        return { status: 200, body: {} as TResponse };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/versions/policy-version-1/activate"
+      ) {
+        latestStatus = "active";
+        latestPolicyActive = true;
+        return { status: 200, body: {} as TResponse };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/policies/policy-1/versions"
+      ) {
+        latestStatus = "draft";
+        latestVersionId = "policy-version-2";
+        latestVersionNo = 2;
+        latestPrimaryModelId = "model-primary-1";
+        latestNotes = "New Draft Version";
+        return { status: 201, body: {} as TResponse };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/model-routing-governance/policies/policy-1/rollback"
+      ) {
+        latestStatus = "rolled_back";
+        latestPolicyActive = false;
+        return { status: 200, body: {} as TResponse };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const created = await controller.createRoutingPolicyAndReload({
+    actorRole: "admin",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-primary-1",
+    fallbackModelIds: ["model-fallback-1"],
+    evidenceLinks: [{ kind: "evaluation_run", id: "run-1" }],
+    notes: "Create policy",
+  });
+  const savedOverview = await controller.saveRoutingPolicyDraftAndReload({
+    actorRole: "admin",
+    versionId: "policy-version-1",
+    input: {
+      notes: "Saved draft updates.",
+    },
+  });
+  const submittedOverview = await controller.submitRoutingPolicyVersionAndReload({
+    actorRole: "admin",
+    versionId: "policy-version-1",
+    reason: "Submit for review",
+  });
+  const approvedOverview = await controller.approveRoutingPolicyVersionAndReload({
+    actorRole: "admin",
+    versionId: "policy-version-1",
+    reason: "Approve",
+  });
+  const activatedOverview = await controller.activateRoutingPolicyVersionAndReload({
+    actorRole: "admin",
+    versionId: "policy-version-1",
+    reason: "Activate",
+  });
+  const nextDraftOverview = await controller.createRoutingPolicyDraftVersionAndReload({
+    actorRole: "admin",
+    policyId: "policy-1",
+    input: {
+      primaryModelId: "model-primary-1",
+      fallbackModelIds: ["model-fallback-1"],
+      evidenceLinks: [{ kind: "evaluation_run", id: "run-1" }],
+      notes: "New Draft Version",
+    },
+  });
+  const rolledBackOverview = await controller.rollbackRoutingPolicyAndReload({
+    actorRole: "admin",
+    policyId: "policy-1",
+    reason: "Rollback",
+  });
+
+  assert.equal(created.createdPolicy.version.id, "policy-version-1");
+  assert.equal(savedOverview.routingPolicies[0]?.versions[0]?.notes, "Saved draft updates.");
+  assert.equal(submittedOverview.routingPolicies[0]?.versions[0]?.status, "pending_review");
+  assert.equal(approvedOverview.routingPolicies[0]?.versions[0]?.status, "approved");
+  assert.equal(activatedOverview.routingPolicies[0]?.active_version?.status, "active");
+  assert.equal(nextDraftOverview.routingPolicies[0]?.versions[0]?.version_no, 2);
+  assert.equal(rolledBackOverview.routingPolicies[0]?.active_version, undefined);
+  assert.deepEqual(
+    requests
+      .filter((request) => request.method === "POST")
+      .map((request) => request.url),
+    [
+      "/api/v1/model-routing-governance/policies",
+      "/api/v1/model-routing-governance/versions/policy-version-1/draft",
+      "/api/v1/model-routing-governance/versions/policy-version-1/submit",
+      "/api/v1/model-routing-governance/versions/policy-version-1/approve",
+      "/api/v1/model-routing-governance/versions/policy-version-1/activate",
+      "/api/v1/model-routing-governance/policies/policy-1/versions",
+      "/api/v1/model-routing-governance/policies/policy-1/rollback",
     ],
   );
 });
@@ -363,6 +805,7 @@ test("admin governance controller creates a model entry and reloads governance o
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
     ],
@@ -459,6 +902,7 @@ test("admin governance controller updates routing policy and reloads governance 
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
     ],
@@ -634,6 +1078,7 @@ test("admin governance controller loads execution profiles and resolves executio
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
@@ -881,6 +1326,7 @@ test("admin governance controller loads agent-tooling registries and recent exec
       "/api/v1/prompt-skill-registry/skill-packages",
       "/api/v1/model-registry",
       "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
@@ -1792,6 +2238,13 @@ test("admin governance controller returns log-only execution evidence when a sna
 });
 
 function createEmptyAgentToolingListResponse<TResponse>(url: string) {
+  if (url === routingGovernanceOverviewUrl) {
+    return {
+      status: 200,
+      body: [] as TResponse,
+    };
+  }
+
   if (agentToolingOverviewUrls.includes(url as (typeof agentToolingOverviewUrls)[number])) {
     return {
       status: 200,

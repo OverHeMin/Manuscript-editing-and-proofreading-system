@@ -4,6 +4,12 @@ import type { AuthRole } from "../auth/index.ts";
 import type { AgentProfileRoleKey } from "../agent-profiles/index.ts";
 import type { AgentRuntimeAdapter } from "../agent-runtime/index.ts";
 import type { ManuscriptType } from "../manuscripts/index.ts";
+import {
+  formatRoutingPolicyScopeKindLabel,
+  type ModelRoutingPolicyEvidenceLinkViewModel,
+  type ModelRoutingPolicyScopeKind,
+  type ModelRoutingPolicyVersionViewModel,
+} from "../model-routing-governance/index.ts";
 import type { SandboxMode } from "../sandbox-profiles/index.ts";
 import type { TemplateModule } from "../templates/index.ts";
 import type {
@@ -118,6 +124,25 @@ export function AgentToolingGovernanceSection({
     releaseCheckProfileId: "",
   });
   const [selectedExecutionLogId, setSelectedExecutionLogId] = useState("");
+  const [routingDraftForm, setRoutingDraftForm] = useState({
+    scopeKind: "template_family" as ModelRoutingPolicyScopeKind,
+    scopeValue: "",
+    primaryModelId: "",
+    fallbackModelIds: [] as string[],
+    evidenceLinksText: "evaluation_run:run-1",
+    notes: "Evidence-linked routing governance draft.",
+  });
+  const [routingDraftEditors, setRoutingDraftEditors] = useState<
+    Record<
+      string,
+      {
+        primaryModelId: string;
+        fallbackModelIds: string[];
+        evidenceLinksText: string;
+        notes: string;
+      }
+    >
+  >({});
   const [executionStatusFilter, setExecutionStatusFilter] =
     useState<AgentExecutionStatusFilter>("all");
   const [executionSearchValue, setExecutionSearchValue] = useState("");
@@ -151,6 +176,59 @@ export function AgentToolingGovernanceSection({
       syncSingleSelection(current, overview.agentExecutionLogs, firstExecutionLogId),
     );
   }, [overview.agentExecutionLogs]);
+
+  useEffect(() => {
+    const firstModelId = overview.modelRegistryEntries[0]?.id ?? "";
+    setRoutingDraftForm((current) => ({
+      ...current,
+      scopeValue:
+        current.scopeKind === "template_family"
+          ? current.scopeValue || overview.selectedTemplateFamilyId || overview.templateFamilies[0]?.id || ""
+          : current.scopeValue || "editing",
+      primaryModelId: syncSingleSelection(
+        current.primaryModelId,
+        overview.modelRegistryEntries,
+        firstModelId,
+      ),
+      fallbackModelIds: syncMultiSelection(
+        current.fallbackModelIds,
+        overview.modelRegistryEntries,
+      ),
+    }));
+  }, [
+    overview.modelRegistryEntries,
+    overview.selectedTemplateFamilyId,
+    overview.templateFamilies,
+  ]);
+
+  useEffect(() => {
+    setRoutingDraftEditors((current) => {
+      const next: typeof current = {};
+
+      for (const policy of overview.routingPolicies) {
+        const latestVersion = getLatestRoutingPolicyVersion(policy);
+        if (!latestVersion) {
+          continue;
+        }
+
+        const existing = current[latestVersion.id];
+        next[latestVersion.id] =
+          existing ??
+          buildRoutingDraftEditorState(latestVersion);
+      }
+
+      const currentKeys = Object.keys(current);
+      const nextKeys = Object.keys(next);
+      if (
+        currentKeys.length === nextKeys.length &&
+        currentKeys.every((key) => nextKeys.includes(key))
+      ) {
+        return current;
+      }
+
+      return next;
+    });
+  }, [overview.routingPolicies]);
 
   useEffect(() => {
     const firstSandboxId = overview.sandboxProfiles[0]?.id ?? "";
@@ -475,6 +553,118 @@ export function AgentToolingGovernanceSection({
     });
   }
 
+  async function handleCreateRoutingPolicyDraft() {
+    await runMutation(async () => {
+      const result = await controller.createRoutingPolicyAndReload({
+        actorRole,
+        scopeKind: routingDraftForm.scopeKind,
+        scopeValue: routingDraftForm.scopeValue.trim(),
+        primaryModelId: routingDraftForm.primaryModelId,
+        fallbackModelIds: routingDraftForm.fallbackModelIds,
+        evidenceLinks: parseRoutingEvidenceLinks(routingDraftForm.evidenceLinksText),
+        notes: normalizeOptionalText(routingDraftForm.notes),
+      });
+
+      onOverviewChange(
+        result.overview,
+        `Created routing policy draft: ${result.createdPolicy.scope.scope_kind} / ${result.createdPolicy.scope.scope_value}`,
+      );
+    });
+  }
+
+  async function handleCreateRoutingPolicyVersion(policyId: string) {
+    const policy = overview.routingPolicies.find((record) => record.policy_id === policyId);
+    const sourceVersion = policy ? getLatestRoutingPolicyVersion(policy) : undefined;
+    if (!sourceVersion) {
+      return;
+    }
+
+    await runMutation(async () => {
+      const nextOverview = await controller.createRoutingPolicyDraftVersionAndReload({
+        actorRole,
+        policyId,
+        input: {
+          primaryModelId: sourceVersion.primary_model_id,
+          fallbackModelIds: sourceVersion.fallback_model_ids,
+          evidenceLinks: sourceVersion.evidence_links,
+          notes: sourceVersion.notes,
+        },
+      });
+
+      onOverviewChange(nextOverview, `Created new routing draft version: ${policyId}`);
+    });
+  }
+
+  async function handleSaveRoutingDraft(versionId: string) {
+    const editor = routingDraftEditors[versionId];
+    if (!editor) {
+      return;
+    }
+
+    await runMutation(async () => {
+      const nextOverview = await controller.saveRoutingPolicyDraftAndReload({
+        actorRole,
+        versionId,
+        input: {
+          primaryModelId: normalizeOptionalText(editor.primaryModelId),
+          fallbackModelIds: editor.fallbackModelIds,
+          evidenceLinks: parseRoutingEvidenceLinks(editor.evidenceLinksText),
+          notes: normalizeOptionalText(editor.notes),
+        },
+      });
+
+      onOverviewChange(nextOverview, `Saved routing policy draft: ${versionId}`);
+    });
+  }
+
+  async function handleSubmitRoutingDraft(versionId: string) {
+    await runMutation(async () => {
+      const nextOverview = await controller.submitRoutingPolicyVersionAndReload({
+        actorRole,
+        versionId,
+        reason: "Submit for review from Admin Governance Console.",
+      });
+
+      onOverviewChange(nextOverview, `Submitted routing policy draft: ${versionId}`);
+    });
+  }
+
+  async function handleApproveRoutingVersion(versionId: string) {
+    await runMutation(async () => {
+      const nextOverview = await controller.approveRoutingPolicyVersionAndReload({
+        actorRole,
+        versionId,
+        reason: "Approved in Admin Governance Console.",
+      });
+
+      onOverviewChange(nextOverview, `Approved routing policy version: ${versionId}`);
+    });
+  }
+
+  async function handleActivateRoutingVersion(versionId: string) {
+    await runMutation(async () => {
+      const nextOverview = await controller.activateRoutingPolicyVersionAndReload({
+        actorRole,
+        versionId,
+        reason: "Activated in Admin Governance Console.",
+      });
+
+      onOverviewChange(nextOverview, `Activated routing policy version: ${versionId}`);
+    });
+  }
+
+  async function handleRollbackRoutingPolicy(policyId: string) {
+    await runMutation(async () => {
+      const nextOverview = await controller.rollbackRoutingPolicyAndReload({
+        actorRole,
+        policyId,
+        reason: "Rollback initiated from Admin Governance Console.",
+      });
+
+      onOverviewChange(nextOverview, `Rolled back routing policy: ${policyId}`);
+    });
+  }
+
   const eligiblePromptTemplates = getEligiblePromptTemplates(
     overview,
     bindingForm.module,
@@ -498,6 +688,368 @@ export function AgentToolingGovernanceSection({
 
   return (
     <>
+      <article className="admin-governance-panel admin-governance-panel-wide">
+        <h3>Routing Policy Draft</h3>
+        {overview.modelRegistryEntries.length > 0 ? (
+          <>
+            <div className="admin-governance-form-grid">
+              <label className="admin-governance-field">
+                <span>Scope Kind</span>
+                <select
+                  value={routingDraftForm.scopeKind}
+                  onChange={(event) =>
+                    setRoutingDraftForm((current) => ({
+                      ...current,
+                      scopeKind: event.target.value as ModelRoutingPolicyScopeKind,
+                      scopeValue:
+                        event.target.value === "module"
+                          ? current.scopeValue || "editing"
+                          : current.scopeValue ||
+                            overview.selectedTemplateFamilyId ||
+                            overview.templateFamilies[0]?.id ||
+                            "",
+                    }))
+                  }
+                  disabled={isMutating}
+                >
+                  <option value="template_family">template_family</option>
+                  <option value="module">module</option>
+                </select>
+              </label>
+              <label className="admin-governance-field">
+                <span>Scope Value</span>
+                {routingDraftForm.scopeKind === "module" ? (
+                  <select
+                    value={routingDraftForm.scopeValue}
+                    onChange={(event) =>
+                      setRoutingDraftForm((current) => ({
+                        ...current,
+                        scopeValue: event.target.value,
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    {templateModules.map((module) => (
+                      <option key={module} value={module}>
+                        {module}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={routingDraftForm.scopeValue}
+                    onChange={(event) =>
+                      setRoutingDraftForm((current) => ({
+                        ...current,
+                        scopeValue: event.target.value,
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    <option value="">Select family</option>
+                    {overview.templateFamilies.map((family) => (
+                      <option key={family.id} value={family.id}>
+                        {family.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </label>
+              <label className="admin-governance-field">
+                <span>Primary Model</span>
+                <select
+                  value={routingDraftForm.primaryModelId}
+                  onChange={(event) =>
+                    setRoutingDraftForm((current) => ({
+                      ...current,
+                      primaryModelId: event.target.value,
+                    }))
+                  }
+                  disabled={isMutating}
+                >
+                  <option value="">Select model</option>
+                  {overview.modelRegistryEntries.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.provider} / {model.model_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="admin-governance-field admin-governance-field-full">
+                <span>Evidence References</span>
+                <input
+                  type="text"
+                  value={routingDraftForm.evidenceLinksText}
+                  onChange={(event) =>
+                    setRoutingDraftForm((current) => ({
+                      ...current,
+                      evidenceLinksText: event.target.value,
+                    }))
+                  }
+                  disabled={isMutating}
+                  placeholder="evaluation_run:run-1, evidence_pack:pack-1"
+                />
+              </label>
+              <label className="admin-governance-field admin-governance-field-full">
+                <span>Notes</span>
+                <textarea
+                  rows={3}
+                  value={routingDraftForm.notes}
+                  onChange={(event) =>
+                    setRoutingDraftForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  disabled={isMutating}
+                />
+              </label>
+            </div>
+
+            <fieldset className="admin-governance-module-selector">
+              <legend>Fallback Models</legend>
+              <div className="admin-governance-module-options">
+                {overview.modelRegistryEntries.map((model) => (
+                  <label key={model.id} className="admin-governance-module-option">
+                    <input
+                      type="checkbox"
+                      checked={routingDraftForm.fallbackModelIds.includes(model.id)}
+                      onChange={() =>
+                        setRoutingDraftForm((current) => ({
+                          ...current,
+                          fallbackModelIds: toggleSelection(
+                            current.fallbackModelIds,
+                            model.id,
+                          ),
+                        }))
+                      }
+                      disabled={isMutating || routingDraftForm.primaryModelId === model.id}
+                    />
+                    <span>{model.model_name}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="auth-actions">
+              <button
+                type="button"
+                className="auth-primary-action"
+                onClick={() => void handleCreateRoutingPolicyDraft()}
+                disabled={
+                  isMutating ||
+                  routingDraftForm.scopeValue.trim().length === 0 ||
+                  routingDraftForm.primaryModelId.length === 0
+                }
+              >
+                Create Routing Policy Draft
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="admin-governance-empty">
+            Create production-approved model entries first. Routing governance drafts cite model
+            registry assets rather than duplicating model metadata.
+          </p>
+        )}
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-wide">
+        <h3>Governed Routing Policies</h3>
+        {(["template_family", "module"] as const).map((scopeKind) => {
+          const policies = overview.routingPolicies.filter(
+            (policy) => policy.scope_kind === scopeKind,
+          );
+
+          return (
+            <section key={scopeKind} className="admin-governance-panel admin-governance-panel-tight">
+              <h4>{scopeKind}</h4>
+              {policies.length > 0 ? (
+                <ul className="admin-governance-list admin-governance-list-spaced">
+                  {policies.map((policy) => {
+                    const latestVersion = getLatestRoutingPolicyVersion(policy);
+                    const editor = latestVersion
+                      ? routingDraftEditors[latestVersion.id] ??
+                        buildRoutingDraftEditorState(latestVersion)
+                      : undefined;
+
+                    return (
+                      <li key={policy.policy_id} className="admin-governance-template-row">
+                        <div>
+                          <strong>
+                            {formatRoutingPolicyScopeKindLabel(policy.scope_kind)}
+                          </strong>
+                          <p>
+                            <code>{policy.scope_kind}</code> / {policy.scope_value}
+                          </p>
+                          {policy.active_version ? (
+                            <p>
+                              Active Policy: {policy.active_version.primary_model_id} / fallback{" "}
+                              {policy.active_version.fallback_model_ids.join(", ") || "none"}
+                            </p>
+                          ) : (
+                            <p>No active version. Legacy fallback path remains in effect.</p>
+                          )}
+                          {latestVersion ? (
+                            <>
+                              <p>
+                                Version {latestVersion.version_no} / status {latestVersion.status}
+                              </p>
+                              <div className="admin-governance-module-options">
+                                {latestVersion.evidence_links.map((link) => (
+                                  <span
+                                    key={`${latestVersion.id}-${link.kind}-${link.id}`}
+                                    className="admin-governance-badge"
+                                  >
+                                    {link.kind}:{link.id}
+                                  </span>
+                                ))}
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+
+                        <div className="admin-governance-template-actions">
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() => void handleCreateRoutingPolicyVersion(policy.policy_id)}
+                            disabled={isMutating || latestVersion == null}
+                          >
+                            New Draft Version
+                          </button>
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() =>
+                              latestVersion
+                                ? void handleSaveRoutingDraft(latestVersion.id)
+                                : undefined
+                            }
+                            disabled={isMutating || latestVersion?.status !== "draft"}
+                          >
+                            Save Draft
+                          </button>
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() =>
+                              latestVersion
+                                ? void handleSubmitRoutingDraft(latestVersion.id)
+                                : undefined
+                            }
+                            disabled={isMutating || latestVersion?.status !== "draft"}
+                          >
+                            Submit For Review
+                          </button>
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() =>
+                              latestVersion
+                                ? void handleApproveRoutingVersion(latestVersion.id)
+                                : undefined
+                            }
+                            disabled={isMutating || latestVersion?.status !== "pending_review"}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() =>
+                              latestVersion
+                                ? void handleActivateRoutingVersion(latestVersion.id)
+                                : undefined
+                            }
+                            disabled={isMutating || latestVersion?.status !== "approved"}
+                          >
+                            Activate
+                          </button>
+                          <button
+                            type="button"
+                            className="workbench-secondary-action"
+                            onClick={() => void handleRollbackRoutingPolicy(policy.policy_id)}
+                            disabled={isMutating || policy.active_version == null}
+                          >
+                            Rollback
+                          </button>
+                        </div>
+
+                        {latestVersion && editor ? (
+                          <div className="admin-governance-form-grid">
+                            <label className="admin-governance-field">
+                              <span>Primary Model</span>
+                              <select
+                                value={editor.primaryModelId}
+                                onChange={(event) =>
+                                  setRoutingDraftEditors((current) => ({
+                                    ...current,
+                                    [latestVersion.id]: {
+                                      ...editor,
+                                      primaryModelId: event.target.value,
+                                    },
+                                  }))
+                                }
+                                disabled={isMutating || latestVersion.status !== "draft"}
+                              >
+                                {overview.modelRegistryEntries.map((model) => (
+                                  <option key={model.id} value={model.id}>
+                                    {model.provider} / {model.model_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="admin-governance-field admin-governance-field-full">
+                              <span>Evidence References</span>
+                              <input
+                                type="text"
+                                value={editor.evidenceLinksText}
+                                onChange={(event) =>
+                                  setRoutingDraftEditors((current) => ({
+                                    ...current,
+                                    [latestVersion.id]: {
+                                      ...editor,
+                                      evidenceLinksText: event.target.value,
+                                    },
+                                  }))
+                                }
+                                disabled={isMutating || latestVersion.status !== "draft"}
+                              />
+                            </label>
+                            <label className="admin-governance-field admin-governance-field-full">
+                              <span>Notes</span>
+                              <textarea
+                                rows={2}
+                                value={editor.notes}
+                                onChange={(event) =>
+                                  setRoutingDraftEditors((current) => ({
+                                    ...current,
+                                    [latestVersion.id]: {
+                                      ...editor,
+                                      notes: event.target.value,
+                                    },
+                                  }))
+                                }
+                                disabled={isMutating || latestVersion.status !== "draft"}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="admin-governance-empty">
+                  No {scopeKind} routing policies yet.
+                </p>
+              )}
+            </section>
+          );
+        })}
+      </article>
+
       <article className="admin-governance-panel">
         <h3>Tool Gateway Registry</h3>
         <div className="admin-governance-form-grid">
@@ -1901,4 +2453,75 @@ function formatExecutionStatusFilterLabel(
     case "queued":
       return `Queued (${count})`;
   }
+}
+
+function getLatestRoutingPolicyVersion(
+  policy: AdminGovernanceOverview["routingPolicies"][number],
+): ModelRoutingPolicyVersionViewModel | undefined {
+  const uniqueVersions = new Map<string, ModelRoutingPolicyVersionViewModel>();
+
+  for (const version of policy.versions) {
+    uniqueVersions.set(version.id, version);
+  }
+
+  if (policy.active_version) {
+    uniqueVersions.set(policy.active_version.id, policy.active_version);
+  }
+
+  return [...uniqueVersions.values()].sort((left, right) => {
+    if (left.version_no !== right.version_no) {
+      return right.version_no - left.version_no;
+    }
+
+    return Date.parse(right.updated_at) - Date.parse(left.updated_at);
+  })[0];
+}
+
+function buildRoutingDraftEditorState(version: ModelRoutingPolicyVersionViewModel) {
+  return {
+    primaryModelId: version.primary_model_id,
+    fallbackModelIds: [...version.fallback_model_ids],
+    evidenceLinksText: version.evidence_links
+      .map((link) => `${link.kind}:${link.id}`)
+      .join(", "),
+    notes: version.notes ?? "",
+  };
+}
+
+function parseRoutingEvidenceLinks(
+  input: string,
+): ModelRoutingPolicyEvidenceLinkViewModel[] {
+  const supportedKinds = new Set<ModelRoutingPolicyEvidenceLinkViewModel["kind"]>([
+    "evaluation_suite",
+    "evaluation_run",
+    "evidence_pack",
+    "recommendation_summary",
+  ]);
+
+  return input
+    .split(/[\r\n,]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .flatMap((entry) => {
+      const separatorIndex = entry.indexOf(":");
+      if (separatorIndex <= 0 || separatorIndex === entry.length - 1) {
+        return [];
+      }
+
+      const kind = entry.slice(0, separatorIndex).trim();
+      const id = entry.slice(separatorIndex + 1).trim();
+      if (
+        id.length === 0 ||
+        !supportedKinds.has(kind as ModelRoutingPolicyEvidenceLinkViewModel["kind"])
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          kind: kind as ModelRoutingPolicyEvidenceLinkViewModel["kind"],
+          id,
+        },
+      ];
+    });
 }

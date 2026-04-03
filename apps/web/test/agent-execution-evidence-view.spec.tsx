@@ -21,6 +21,12 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
           runtime_binding_id: "binding-1",
           tool_permission_policy_id: "policy-1",
           execution_snapshot_id: "snapshot-1",
+          routing_policy_version_id: "policy-version-1",
+          routing_policy_scope_kind: "template_family",
+          routing_policy_scope_value: "family-1",
+          resolved_model_id: "model-primary-1",
+          fallback_model_id: "model-fallback-1",
+          fallback_trigger: "provider_timeout",
           knowledge_item_ids: ["knowledge-1", "knowledge-2"],
           verification_check_profile_ids: ["check-profile-1"],
           evaluation_suite_ids: ["suite-1"],
@@ -143,6 +149,15 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /check-profile-1/);
   assert.match(html, /suite-1/);
   assert.match(html, /release-profile-1/);
+  assert.match(html, /Routing Policy Hit/);
+  assert.match(html, /Template Family Policy/);
+  assert.match(html, /policy-version-1/);
+  assert.match(html, /family-1/);
+  assert.match(html, /Resolved Model/);
+  assert.match(html, /model-primary-1/);
+  assert.match(html, /Fallback Outcome/);
+  assert.match(html, /model-fallback-1/);
+  assert.match(html, /provider_timeout/);
   assert.match(html, /Execution evidence manuscript/);
   assert.match(html, /job-1/);
   assert.match(html, /editing-final\.docx/);

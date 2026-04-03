@@ -75,7 +75,7 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
     allowed_modules: ["editing"],
     is_prod_allowed: true,
   },
-  model_source: "module_default",
+  model_source: "legacy_module_default",
   knowledge_binding_rules: [
     {
       id: "rule-1",
