@@ -27,7 +27,11 @@ import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-
 import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
-import type { ModuleExecutionResult } from "../shared/module-run-support.ts";
+import {
+  seedGovernedRunsForModuleExecution,
+  type GovernedEvaluationRunSeeder,
+  type ModuleExecutionResult,
+} from "../shared/module-run-support.ts";
 import {
   createWriteTransactionManager,
   type WriteTransactionManager,
@@ -79,6 +83,7 @@ export interface ProofreadingServiceOptions {
   runtimeBindingService: RuntimeBindingService;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
+  verificationOpsService: GovernedEvaluationRunSeeder;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -136,6 +141,7 @@ export class ProofreadingService {
   private readonly runtimeBindingService: RuntimeBindingService;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
+  private readonly verificationOpsService: GovernedEvaluationRunSeeder;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -158,6 +164,7 @@ export class ProofreadingService {
     this.runtimeBindingService = options.runtimeBindingService;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
+    this.verificationOpsService = options.verificationOpsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -449,6 +456,20 @@ export class ProofreadingService {
         updated_at: timestamp,
       };
       await jobRepository.save(completedJob);
+
+      if (input.jobType === "proofreading_confirm" && agentExecutionLogId) {
+        await seedGovernedRunsForModuleExecution({
+          verificationOpsService: this.verificationOpsService,
+          actorRole: "admin",
+          suiteIds: resolvedContext.evaluationSuiteIds,
+          releaseCheckProfileId: resolvedContext.releaseCheckProfileId,
+          manuscriptId: input.manuscriptId,
+          sourceModule: "proofreading",
+          agentExecutionLogId,
+          executionSnapshotId: snapshot.id,
+          outputAssetId: asset.id,
+        });
+      }
 
       return {
         job: completedJob,

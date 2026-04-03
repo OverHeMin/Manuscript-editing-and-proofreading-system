@@ -1944,3 +1944,183 @@ test("evaluation workbench controller can preselect the newest run for a handed-
   assert.equal(manuscriptContext?.matchedRunId, "run-3");
   assert.deepEqual(manuscriptContext?.matchedHistoryRunIds, ["run-3", "run-2"]);
 });
+
+test("evaluation workbench controller matches governed-source runs for handed-off manuscripts", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-governed",
+              name: "Editing Governed Runs",
+              suite_type: "release_gate",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+            {
+              id: "suite-other",
+              name: "Screening Governed Runs",
+              suite_type: "release_gate",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["screening"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-governed/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-governed-newest",
+              suite_id: "suite-governed",
+              governed_source: {
+                source_kind: "governed_module_execution",
+                manuscript_id: "manuscript-target-1",
+                source_module: "editing",
+                agent_execution_log_id: "execution-log-2",
+                execution_snapshot_id: "execution-snapshot-2",
+                output_asset_id: "output-asset-2",
+              },
+              run_item_count: 0,
+              status: "queued",
+              evidence_ids: [],
+              started_at: "2026-04-03T04:10:00.000Z",
+            },
+            {
+              id: "run-governed-older",
+              suite_id: "suite-governed",
+              governed_source: {
+                source_kind: "governed_module_execution",
+                manuscript_id: "manuscript-target-1",
+                source_module: "editing",
+                agent_execution_log_id: "execution-log-1",
+                execution_snapshot_id: "execution-snapshot-1",
+                output_asset_id: "output-asset-1",
+              },
+              run_item_count: 0,
+              status: "queued",
+              evidence_ids: [],
+              started_at: "2026-04-03T03:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-other/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-other",
+              suite_id: "suite-other",
+              governed_source: {
+                source_kind: "governed_module_execution",
+                manuscript_id: "manuscript-other-1",
+                source_module: "screening",
+                agent_execution_log_id: "execution-log-other",
+                execution_snapshot_id: "execution-snapshot-other",
+                output_asset_id: "output-asset-other",
+              },
+              run_item_count: 0,
+              status: "queued",
+              evidence_ids: [],
+              started_at: "2026-04-03T02:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-governed-newest/items") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    manuscriptId: "manuscript-target-1",
+  } as never);
+  const manuscriptContext = (overview as never as {
+    manuscriptContext?: {
+      manuscriptId?: string;
+      matchedSuiteId?: string | null;
+      matchedRunId?: string | null;
+      matchedHistoryRunIds?: string[];
+    } | null;
+  }).manuscriptContext;
+
+  assert.equal(overview.selectedSuiteId, "suite-governed");
+  assert.equal(overview.selectedRunId, "run-governed-newest");
+  assert.equal(overview.runItems.length, 0);
+  assert.equal(overview.sampleSetItems.length, 0);
+  assert.equal(manuscriptContext?.manuscriptId, "manuscript-target-1");
+  assert.equal(manuscriptContext?.matchedSuiteId, "suite-governed");
+  assert.equal(manuscriptContext?.matchedRunId, "run-governed-newest");
+  assert.deepEqual(manuscriptContext?.matchedHistoryRunIds, [
+    "run-governed-newest",
+    "run-governed-older",
+  ]);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/runs",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-other/runs",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/runs",
+      "GET /api/v1/verification-ops/evaluation-runs/run-governed-newest/items",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results",
+    ],
+  );
+});

@@ -157,6 +157,7 @@ test("workbench http screening route runs with the authenticated screener contex
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.screener");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const response = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
       method: "POST",
       headers: {
@@ -178,6 +179,7 @@ test("workbench http screening route runs with the authenticated screener contex
         requested_by: string;
       };
       asset: {
+        id: string;
         asset_type: string;
         created_by: string;
         parent_asset_id?: string;
@@ -198,6 +200,49 @@ test("workbench http screening route runs with the authenticated screener contex
     assert.equal(body.model_id, seededIds.screeningModelId);
     assert.ok(body.agent_execution_log_id);
     assert.ok(body.snapshot_id);
+
+    const runsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.screeningSuiteId}/runs`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    const runs = (await runsResponse.json()) as Array<{
+      id: string;
+      sample_set_id?: string;
+      release_check_profile_id?: string;
+      run_item_count: number;
+      governed_source?: {
+        source_kind: string;
+        manuscript_id: string;
+        source_module: string;
+        agent_execution_log_id: string;
+        execution_snapshot_id: string;
+        output_asset_id: string;
+      };
+    }>;
+    assert.equal(runsResponse.status, 200);
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]?.sample_set_id, undefined);
+    assert.equal(runs[0]?.release_check_profile_id, "release-profile-screening-1");
+    assert.equal(runs[0]?.run_item_count, 0);
+    assert.deepEqual(runs[0]?.governed_source, {
+      source_kind: "governed_module_execution",
+      manuscript_id: seededIds.manuscriptId,
+      source_module: "screening",
+      agent_execution_log_id: body.agent_execution_log_id,
+      execution_snapshot_id: body.snapshot_id,
+      output_asset_id: body.asset.id,
+    });
+
+    const runItemsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/items`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    assert.equal(runItemsResponse.status, 200);
+    assert.deepEqual(await runItemsResponse.json(), []);
   } finally {
     await stopServer(server);
   }
@@ -208,6 +253,7 @@ test("workbench http editing route runs with the authenticated editor context", 
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.editor");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const response = await fetch(`${baseUrl}/api/v1/modules/editing/run`, {
       method: "POST",
       headers: {
@@ -229,6 +275,7 @@ test("workbench http editing route runs with the authenticated editor context", 
         requested_by: string;
       };
       asset: {
+        id: string;
         asset_type: string;
         created_by: string;
         parent_asset_id?: string;
@@ -249,6 +296,49 @@ test("workbench http editing route runs with the authenticated editor context", 
     assert.equal(body.model_id, seededIds.editingModelId);
     assert.ok(body.agent_execution_log_id);
     assert.ok(body.snapshot_id);
+
+    const runsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.editingSuiteId}/runs`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    const runs = (await runsResponse.json()) as Array<{
+      id: string;
+      sample_set_id?: string;
+      release_check_profile_id?: string;
+      run_item_count: number;
+      governed_source?: {
+        source_kind: string;
+        manuscript_id: string;
+        source_module: string;
+        agent_execution_log_id: string;
+        execution_snapshot_id: string;
+        output_asset_id: string;
+      };
+    }>;
+    assert.equal(runsResponse.status, 200);
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]?.sample_set_id, undefined);
+    assert.equal(runs[0]?.release_check_profile_id, "release-profile-editing-1");
+    assert.equal(runs[0]?.run_item_count, 0);
+    assert.deepEqual(runs[0]?.governed_source, {
+      source_kind: "governed_module_execution",
+      manuscript_id: seededIds.manuscriptId,
+      source_module: "editing",
+      agent_execution_log_id: body.agent_execution_log_id,
+      execution_snapshot_id: body.snapshot_id,
+      output_asset_id: body.asset.id,
+    });
+
+    const runItemsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/items`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    assert.equal(runItemsResponse.status, 200);
+    assert.deepEqual(await runItemsResponse.json(), []);
   } finally {
     await stopServer(server);
   }
@@ -259,6 +349,7 @@ test("workbench http proofreading routes create a draft and then finalize agains
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const draftResponse = await fetch(
       `${baseUrl}/api/v1/modules/proofreading/draft`,
       {
@@ -295,6 +386,15 @@ test("workbench http proofreading routes create a draft and then finalize agains
     assert.ok(draft.snapshot_id);
     assert.ok(draft.agent_execution_log_id);
 
+    const draftRunsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    assert.equal(draftRunsResponse.status, 200);
+    assert.deepEqual(await draftRunsResponse.json(), []);
+
     const finalizeResponse = await fetch(
       `${baseUrl}/api/v1/modules/proofreading/finalize`,
       {
@@ -315,6 +415,7 @@ test("workbench http proofreading routes create a draft and then finalize agains
     );
     const finalized = (await finalizeResponse.json()) as {
       asset: {
+        id: string;
         asset_type: string;
         parent_asset_id?: string;
       };
@@ -340,6 +441,52 @@ test("workbench http proofreading routes create a draft and then finalize agains
       draft.agent_execution_log_id,
     );
     assert.equal(finalized.job.payload?.draftSnapshotId, draft.snapshot_id);
+
+    const finalizedRunsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    const finalizedRuns = (await finalizedRunsResponse.json()) as Array<{
+      id: string;
+      sample_set_id?: string;
+      release_check_profile_id?: string;
+      run_item_count: number;
+      governed_source?: {
+        source_kind: string;
+        manuscript_id: string;
+        source_module: string;
+        agent_execution_log_id: string;
+        execution_snapshot_id: string;
+        output_asset_id: string;
+      };
+    }>;
+    assert.equal(finalizedRunsResponse.status, 200);
+    assert.equal(finalizedRuns.length, 1);
+    assert.equal(
+      finalizedRuns[0]?.release_check_profile_id,
+      "release-profile-proofreading-1",
+    );
+    assert.equal(finalizedRuns[0]?.sample_set_id, undefined);
+    assert.equal(finalizedRuns[0]?.run_item_count, 0);
+    assert.deepEqual(finalizedRuns[0]?.governed_source, {
+      source_kind: "governed_module_execution",
+      manuscript_id: seededIds.manuscriptId,
+      source_module: "proofreading",
+      agent_execution_log_id: draft.agent_execution_log_id,
+      execution_snapshot_id: finalized.snapshot_id,
+      output_asset_id: finalized.asset.id,
+    });
+
+    const finalizedRunItemsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-runs/${finalizedRuns[0]!.id}/items`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    assert.equal(finalizedRunItemsResponse.status, 200);
+    assert.deepEqual(await finalizedRunItemsResponse.json(), []);
   } finally {
     await stopServer(server);
   }

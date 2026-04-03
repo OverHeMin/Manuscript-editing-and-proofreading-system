@@ -214,6 +214,7 @@ import {
   EvaluationLearningSnapshotNotInRunError,
   EvaluationRunItemNotFoundError,
   EvaluationRunNotFoundError,
+  EvaluationSuiteModuleScopeMismatchError,
   EvaluationSampleSetNotFoundError,
   EvaluationSampleSetSourceEligibilityError,
   EvaluationSampleSetSourceSnapshotNotFoundError,
@@ -1013,6 +1014,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -1031,6 +1033,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -1049,6 +1052,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
+    verificationOpsService,
   });
 
   return {
@@ -3946,6 +3950,7 @@ function mapErrorToHttpResponse(
     error instanceof VerificationCheckProfileDependencyError ||
     error instanceof ReleaseCheckProfileDependencyError ||
     error instanceof EvaluationSuiteNotActiveError ||
+    error instanceof EvaluationSuiteModuleScopeMismatchError ||
     error instanceof EvaluationEvidencePackRunMismatchError ||
     error instanceof EvaluationLearningSnapshotNotInRunError ||
     error instanceof EvaluationExperimentBindingError

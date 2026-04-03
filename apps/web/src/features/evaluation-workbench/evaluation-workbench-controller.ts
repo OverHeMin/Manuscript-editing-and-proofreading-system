@@ -90,9 +90,12 @@ export interface EvaluationWorkbenchController {
   activateSuiteAndReload(input: {
     suiteId: string;
     actorRole: AuthRole;
+    manuscriptId?: string | null;
   }): Promise<EvaluationWorkbenchOverview>;
   createRunAndReload(
-    input: CreateEvaluationRunInput,
+    input: CreateEvaluationRunInput & {
+      manuscriptId?: string | null;
+    },
   ): Promise<EvaluationWorkbenchCreateRunResult>;
   recordRunItemResultAndReload(
     input: EvaluationWorkbenchRecordRunItemResultInput,
@@ -114,6 +117,7 @@ export interface EvaluationWorkbenchRecordRunItemResultInput
   extends RecordEvaluationRunItemResultInput {
   suiteId: string;
   runId: string;
+  manuscriptId?: string | null;
 }
 
 export interface EvaluationWorkbenchRecordRunItemResultResult {
@@ -125,6 +129,7 @@ export interface EvaluationWorkbenchCompleteRunInput {
   actorRole: AuthRole;
   suiteId: string;
   runId: string;
+  manuscriptId?: string | null;
   status: "passed" | "failed";
   evidence?: {
     kind: VerificationEvidenceKind;
@@ -156,6 +161,7 @@ export function createEvaluationWorkbenchController(
 
       return loadEvaluationWorkbenchOverview(client, {
         selectedSuiteId: input.suiteId,
+        manuscriptId: input.manuscriptId,
       });
     },
     async createRunAndReload(input) {
@@ -166,6 +172,7 @@ export function createEvaluationWorkbenchController(
         overview: await loadEvaluationWorkbenchOverview(client, {
           selectedSuiteId: input.suiteId,
           selectedRunId: run.id,
+          manuscriptId: input.manuscriptId,
         }),
       };
     },
@@ -177,6 +184,7 @@ export function createEvaluationWorkbenchController(
         overview: await loadEvaluationWorkbenchOverview(client, {
           selectedSuiteId: input.suiteId,
           selectedRunId: input.runId,
+          manuscriptId: input.manuscriptId,
         }),
       };
     },
@@ -218,6 +226,7 @@ export function createEvaluationWorkbenchController(
         overview: await loadEvaluationWorkbenchOverview(client, {
           selectedSuiteId: input.suiteId,
           selectedRunId: input.runId,
+          manuscriptId: input.manuscriptId,
         }),
       };
     },
@@ -403,9 +412,12 @@ async function resolveEvaluationManuscriptContext(
   const matchingRuns = suiteRuns.flatMap((entry) =>
     entry.runs
       .filter((run) =>
-        (run.sample_set_id ? sampleSetItemsById.get(run.sample_set_id) : [])?.some(
-          (item) => item.manuscript_id === manuscriptId,
-        ),
+        doesRunMatchManuscript({
+          run,
+          manuscriptId,
+          sampleSetItems:
+            run.sample_set_id != null ? sampleSetItemsById.get(run.sample_set_id) : undefined,
+        }),
       )
       .map((run) => ({
         suiteId: entry.suiteId,
@@ -431,6 +443,20 @@ async function resolveEvaluationManuscriptContext(
     matchedRunId: latestMatch?.run.id ?? null,
     matchedRunIdsBySuiteId,
   };
+}
+
+function doesRunMatchManuscript(input: {
+  run: EvaluationRunViewModel;
+  manuscriptId: string;
+  sampleSetItems?: EvaluationSampleSetItemViewModel[];
+}) {
+  if (input.run.governed_source?.manuscript_id === input.manuscriptId) {
+    return true;
+  }
+
+  return (
+    input.sampleSetItems?.some((item) => item.manuscript_id === input.manuscriptId) ?? false
+  );
 }
 
 function compareFinalizedRunHistory(

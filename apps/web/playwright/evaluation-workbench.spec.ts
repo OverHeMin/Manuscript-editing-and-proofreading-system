@@ -678,6 +678,97 @@ test("admin preserves sample context across manuscript next-step shortcuts befor
   await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
 });
 
+test("admin can inspect and finalize a seeded governed run without sample-set context", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareGovernedSeededEvaluationScenario(request, {
+    label: `Phase 9S ${Date.now()}`,
+  });
+
+  await page.goto(`/#evaluation-workbench?manuscriptId=${prepared.manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    `Context manuscript: ${prepared.manuscriptId}`,
+  );
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    `Matched suite: ${prepared.suiteId}`,
+  );
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    `Matched run: ${prepared.runId}`,
+  );
+  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
+
+  const runItemsPanel = page
+    .locator(".evaluation-workbench-panel")
+    .filter({ has: page.getByRole("heading", { name: "Run Items" }) });
+  await expect(runItemsPanel).toContainText("Governed Source Detail");
+  await expect(runItemsPanel).toContainText("Source Module: editing");
+  await expect(runItemsPanel).toContainText(`Manuscript: ${prepared.manuscriptId}`);
+  await expect(runItemsPanel).toContainText(
+    `Execution Snapshot: ${prepared.executionSnapshotId}`,
+  );
+  await expect(runItemsPanel).toContainText(
+    `Agent Execution Log: ${prepared.agentExecutionLogId}`,
+  );
+  await expect(runItemsPanel).toContainText(`Output Asset: ${prepared.outputAssetId}`);
+  await expect(
+    runItemsPanel.getByRole("link", { name: "Download Governed Output Asset" }),
+  ).toHaveAttribute(
+    "href",
+    new RegExp(`/api/v1/document-assets/${prepared.outputAssetId}/download$`),
+  );
+  await expect(
+    runItemsPanel.getByRole("link", { name: "Open Editing Workbench" }),
+  ).toHaveAttribute(
+    "href",
+    new RegExp(`#editing\\?manuscriptId=${prepared.manuscriptId}$`),
+  );
+
+  await page.getByLabel("Evidence Type").selectOption("artifact");
+  await page
+    .getByRole("button", {
+      name: `Use Governed Output (${prepared.outputAssetId})`,
+    })
+    .click();
+  await expect(page.getByLabel("Artifact Asset ID")).toHaveValue(prepared.outputAssetId);
+  await page.getByLabel("Evidence Label").fill("Phase 9S governed output evidence");
+  await page.getByRole("button", { name: "Complete And Finalize Run" }).click();
+
+  const finalizedCard = page.locator(".evaluation-workbench-finalized");
+  await expect(finalizedCard).toContainText("needs_review");
+  await expect(finalizedCard).toContainText(
+    "Run scoring is incomplete, so human review is required before any recommendation.",
+  );
+
+  const historyPanel = page.locator(".evaluation-workbench-history");
+  await expect(
+    historyPanel.getByRole("button", { name: "Matched Manuscript Runs (1)", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(historyPanel.locator(".evaluation-workbench-history-list")).toContainText(
+    prepared.runId,
+  );
+  const historyDetail = historyPanel.locator(".evaluation-workbench-history-detail");
+  await expect(historyDetail).toContainText("Governed Source Detail");
+  await expect(historyDetail).toContainText(prepared.executionSnapshotId);
+  await expect(historyDetail).toContainText(prepared.agentExecutionLogId);
+  await expect(historyDetail).toContainText(prepared.outputAssetId);
+
+  const learningPanel = page
+    .locator(".evaluation-workbench-panel")
+    .filter({ has: page.getByRole("heading", { name: "Learning Handoff" }) });
+  await expect(learningPanel).toContainText("Learning Handoff Unavailable");
+  await expect(learningPanel).toContainText(
+    "Learning handoff is unavailable for governed-source runs until a reviewed snapshot is linked.",
+  );
+  await expect(
+    learningPanel.getByRole("button", { name: "Create Learning Candidate" }),
+  ).toHaveCount(0);
+});
+
 test("admin defaults history to manuscript-scoped runs after manuscript handoff and can switch back to the entire suite", async ({
   page,
   request,
@@ -1107,6 +1198,17 @@ interface PreparedDraftEvaluationSuite {
   suiteName: string;
 }
 
+interface PreparedGovernedSeededEvaluationScenario {
+  cookie: string;
+  manuscriptId: string;
+  suiteId: string;
+  suiteName: string;
+  runId: string;
+  agentExecutionLogId: string;
+  executionSnapshotId: string;
+  outputAssetId: string;
+}
+
 interface EvaluationSuiteRecord {
   id: string;
   name: string;
@@ -1423,6 +1525,272 @@ async function prepareActiveEvaluationScenario(
     sampleSetItemId: primarySampleSetItem.id,
     snapshotId: primarySnapshotId,
     snapshotIds: snapshots.map((snapshot) => snapshot.id),
+  };
+}
+
+async function prepareGovernedSeededEvaluationScenario(
+  request: APIRequestContext,
+  input: PrepareDraftEvaluationSuiteInput,
+): Promise<PreparedGovernedSeededEvaluationScenario> {
+  const cookie = await loginAsDemoUser(request, "dev.admin");
+  const slug = input.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const checkProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+        input: {
+          name: `${input.label} Governed Browser QA`,
+          checkType: "browser_qa",
+        },
+      },
+    },
+  );
+  if (!checkProfileResponse.ok()) {
+    throw new Error(
+      `create check profile failed (${checkProfileResponse.status()}): ${await checkProfileResponse.text()}`,
+    );
+  }
+  const checkProfile = (await checkProfileResponse.json()) as { id: string };
+
+  const publishCheckProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  if (!publishCheckProfileResponse.ok()) {
+    throw new Error(
+      `publish check profile failed (${publishCheckProfileResponse.status()}): ${await publishCheckProfileResponse.text()}`,
+    );
+  }
+
+  const releaseProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+        input: {
+          name: `${input.label} Governed Release Gate`,
+          checkType: "deploy_verification",
+          verificationCheckProfileIds: [checkProfile.id],
+        },
+      },
+    },
+  );
+  if (!releaseProfileResponse.ok()) {
+    throw new Error(
+      `create release profile failed (${releaseProfileResponse.status()}): ${await releaseProfileResponse.text()}`,
+    );
+  }
+  const releaseProfile = (await releaseProfileResponse.json()) as { id: string };
+
+  const publishReleaseProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles/${releaseProfile.id}/publish`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  if (!publishReleaseProfileResponse.ok()) {
+    throw new Error(
+      `publish release profile failed (${publishReleaseProfileResponse.status()}): ${await publishReleaseProfileResponse.text()}`,
+    );
+  }
+
+  const suiteName = `${input.label} Governed Evaluation Suite`;
+  const suiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+        input: {
+          name: suiteName,
+          suiteType: "regression",
+          verificationCheckProfileIds: [checkProfile.id],
+          moduleScope: ["editing"],
+          requiresProductionBaseline: true,
+          supportsAbComparison: true,
+        },
+      },
+    },
+  );
+  if (!suiteResponse.ok()) {
+    throw new Error(
+      `create suite failed (${suiteResponse.status()}): ${await suiteResponse.text()}`,
+    );
+  }
+  const suite = (await suiteResponse.json()) as { id: string; name: string };
+
+  const activateSuiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  if (!activateSuiteResponse.ok()) {
+    throw new Error(
+      `activate suite failed (${activateSuiteResponse.status()}): ${await activateSuiteResponse.text()}`,
+    );
+  }
+
+  const bindingResponse = await request.post(`${apiBaseUrl}/api/v1/runtime-bindings`, {
+    headers: {
+      Cookie: cookie,
+    },
+    data: {
+      actorRole: "admin",
+      input: {
+        module: "editing",
+        manuscriptType: "clinical_study",
+        templateFamilyId: "family-seeded-1",
+        runtimeId: "runtime-editing-1",
+        sandboxProfileId: "sandbox-editing-1",
+        agentProfileId: "agent-profile-editing-1",
+        toolPermissionPolicyId: "policy-editing-1",
+        promptTemplateId: "prompt-editing-1",
+        skillPackageIds: ["skill-editing-1"],
+        executionProfileId: "profile-editing-1",
+        verificationCheckProfileIds: [checkProfile.id],
+        evaluationSuiteIds: [suite.id],
+        releaseCheckProfileId: releaseProfile.id,
+      },
+    },
+  });
+  if (!bindingResponse.ok()) {
+    throw new Error(
+      `create runtime binding failed (${bindingResponse.status()}): ${await bindingResponse.text()}`,
+    );
+  }
+  const binding = (await bindingResponse.json()) as { id: string };
+
+  const activateBindingResponse = await request.post(
+    `${apiBaseUrl}/api/v1/runtime-bindings/${binding.id}/activate`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  if (!activateBindingResponse.ok()) {
+    throw new Error(
+      `activate runtime binding failed (${activateBindingResponse.status()}): ${await activateBindingResponse.text()}`,
+    );
+  }
+
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    headers: {
+      Cookie: cookie,
+    },
+    data: {
+      title: `${input.label} Governed Evaluation Manuscript`,
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: `${slug}-source.docx`,
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      storageKey: `uploads/${slug}/${slug}-source.docx`,
+    },
+  });
+  if (!uploadResponse.ok()) {
+    throw new Error(
+      `upload manuscript failed (${uploadResponse.status()}): ${await uploadResponse.text()}`,
+    );
+  }
+  const uploaded = (await uploadResponse.json()) as {
+    manuscript: { id: string };
+    asset: { id: string };
+  };
+
+  const editingResponse = await request.post(`${apiBaseUrl}/api/v1/modules/editing/run`, {
+    headers: {
+      Cookie: cookie,
+    },
+    data: {
+      manuscriptId: uploaded.manuscript.id,
+      parentAssetId: uploaded.asset.id,
+      requestedBy: "ignored-by-server",
+      actorRole: "admin",
+      storageKey: `runs/${uploaded.manuscript.id}/editing/${slug}-final.docx`,
+      fileName: `${slug}-final.docx`,
+    },
+  });
+  if (!editingResponse.ok()) {
+    throw new Error(
+      `run editing failed (${editingResponse.status()}): ${await editingResponse.text()}`,
+    );
+  }
+  const editingRun = (await editingResponse.json()) as {
+    asset: { id: string };
+    agent_execution_log_id?: string;
+    snapshot_id?: string;
+  };
+  if (!editingRun.agent_execution_log_id || !editingRun.snapshot_id) {
+    throw new Error("prepareGovernedSeededEvaluationScenario expected execution trace ids.");
+  }
+
+  const runsResponse = await request.get(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+    },
+  );
+  if (!runsResponse.ok()) {
+    throw new Error(
+      `list evaluation runs failed (${runsResponse.status()}): ${await runsResponse.text()}`,
+    );
+  }
+  const runs = (await runsResponse.json()) as Array<{
+    id: string;
+    governed_source?: {
+      manuscript_id: string;
+    };
+  }>;
+  const seededRun = runs.find(
+    (run) => run.governed_source?.manuscript_id === uploaded.manuscript.id,
+  );
+  if (!seededRun) {
+    throw new Error("prepareGovernedSeededEvaluationScenario expected a seeded evaluation run.");
+  }
+
+  return {
+    cookie,
+    manuscriptId: uploaded.manuscript.id,
+    suiteId: suite.id,
+    suiteName: suite.name,
+    runId: seededRun.id,
+    agentExecutionLogId: editingRun.agent_execution_log_id,
+    executionSnapshotId: editingRun.snapshot_id,
+    outputAssetId: editingRun.asset.id,
   };
 }
 

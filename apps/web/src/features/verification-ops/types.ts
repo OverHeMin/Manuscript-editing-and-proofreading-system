@@ -16,6 +16,8 @@ export type EvaluationSuiteType = "regression" | "release_gate";
 export type VerificationEvidenceKind = "url" | "artifact";
 export type EvaluationRunStatus = "queued" | "running" | "passed" | "failed";
 export type EvaluationSampleSetSourceKind = "reviewed_case_snapshot";
+export type GovernedExecutionEvaluationSourceKind =
+  "governed_module_execution";
 export type FrozenExperimentLane = "baseline" | "candidate";
 export type EvaluationDecisionStatus =
   | "recommended"
@@ -121,12 +123,22 @@ export interface EvaluationSampleSetItemViewModel {
   risk_tags?: string[];
 }
 
+export interface GovernedExecutionEvaluationSourceViewModel {
+  source_kind: GovernedExecutionEvaluationSourceKind;
+  manuscript_id: string;
+  source_module: TemplateModule;
+  agent_execution_log_id: string;
+  execution_snapshot_id: string;
+  output_asset_id: string;
+}
+
 export interface EvaluationRunViewModel {
   id: string;
   suite_id: string;
   sample_set_id?: string;
   baseline_binding?: FrozenExperimentBindingViewModel;
   candidate_binding?: FrozenExperimentBindingViewModel;
+  governed_source?: GovernedExecutionEvaluationSourceViewModel;
   release_check_profile_id?: string;
   run_item_count?: number;
   status: EvaluationRunStatus;
