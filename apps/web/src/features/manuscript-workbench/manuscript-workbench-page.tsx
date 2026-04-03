@@ -92,6 +92,10 @@ export function ManuscriptWorkbenchPage({
     normalizedPrefilledSampleSetItemId.length > 0;
   const [lookupId, setLookupId] = useState(normalizedPrefilledManuscriptId);
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
+  const shouldShowEvaluationHandoffContext =
+    hasEvaluationHandoffContext &&
+    normalizedPrefilledManuscriptId.length > 0 &&
+    (workspace ? workspace.manuscript.id === normalizedPrefilledManuscriptId : true);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<DocumentAssetExportViewModel | null>(null);
   const [latestActionResult, setLatestActionResult] =
@@ -278,7 +282,7 @@ export function ManuscriptWorkbenchPage({
           This workbench was prefilled from the previous manuscript handoff.
         </p>
       ) : null}
-      {hasEvaluationHandoffContext ? (
+      {shouldShowEvaluationHandoffContext ? (
         <section className="manuscript-workbench-evaluation-context-card" aria-live="polite">
           <div className="manuscript-workbench-evaluation-context-copy">
             <span className="manuscript-workbench-evaluation-context-eyebrow">
@@ -612,6 +616,7 @@ export function ManuscriptWorkbenchPage({
           accessibleHandoffModes={accessibleHandoffModes}
           canOpenLearningReview={canOpenLearningReview}
           canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+          prefilledManuscriptId={normalizedPrefilledManuscriptId}
           prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
           prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
           workspace={workspace}

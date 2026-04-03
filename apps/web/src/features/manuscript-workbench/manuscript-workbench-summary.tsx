@@ -31,6 +31,7 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
+  prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   prefilledSampleSetItemId?: string;
   workspace: ManuscriptWorkbenchWorkspace;
@@ -44,6 +45,7 @@ export function ManuscriptWorkbenchSummary({
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
+  prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   prefilledSampleSetItemId,
   workspace,
@@ -51,9 +53,13 @@ export function ManuscriptWorkbenchSummary({
   latestExport,
   latestActionResult = null,
 }: ManuscriptWorkbenchSummaryProps) {
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
   const normalizedPrefilledReviewedCaseSnapshotId =
     prefilledReviewedCaseSnapshotId?.trim() ?? "";
   const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
+  const shouldPreserveEvaluationSampleContextIds =
+    normalizedPrefilledManuscriptId.length > 0 &&
+    normalizedPrefilledManuscriptId === workspace.manuscript.id;
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -149,8 +155,12 @@ export function ManuscriptWorkbenchSummary({
                   className="manuscript-workbench-shortcut"
                   href={formatWorkbenchHash("evaluation-workbench", {
                     manuscriptId: workspace.manuscript.id,
-                    reviewedCaseSnapshotId: normalizedPrefilledReviewedCaseSnapshotId,
-                    sampleSetItemId: normalizedPrefilledSampleSetItemId,
+                    reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
+                      ? normalizedPrefilledReviewedCaseSnapshotId
+                      : undefined,
+                    sampleSetItemId: shouldPreserveEvaluationSampleContextIds
+                      ? normalizedPrefilledSampleSetItemId
+                      : undefined,
                   })}
                 >
                   Open Evaluation Workbench
