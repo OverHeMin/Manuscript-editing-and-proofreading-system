@@ -34,9 +34,9 @@ export function createDefaultGovernedRunCheckExecutor(): GovernedRunCheckExecuto
   return async ({ checkProfile, governedSource }) => ({
     outcome: "passed",
     evidence: {
-      kind: "artifact",
+      kind: "url",
       label: `Automatic governed ${checkProfile.check_type} passed for ${checkProfile.name}`,
-      artifactAssetId: governedSource.output_asset_id,
+      uri: `/api/v1/document-assets/${governedSource.output_asset_id}/download`,
     },
   });
 }

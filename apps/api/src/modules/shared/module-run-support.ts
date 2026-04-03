@@ -11,6 +11,7 @@ import type {
 } from "../templates/template-record.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { SeedGovernedExecutionRunsInput } from "../verification-ops/verification-ops-service.ts";
+import type { EvaluationRunRecord } from "../verification-ops/verification-ops-record.ts";
 
 export interface PrepareModuleExecutionInput {
   manuscriptId: string;
@@ -57,7 +58,20 @@ export interface GovernedEvaluationRunSeeder {
   seedGovernedExecutionRuns(
     actorRole: RoleKey,
     input: SeedGovernedExecutionRunsInput,
-  ): Promise<unknown>;
+  ): Promise<EvaluationRunRecord[]>;
+  executeSeededGovernedRunChecks(
+    actorRole: RoleKey,
+    input: {
+      runId: string;
+    },
+  ): Promise<EvaluationRunRecord>;
+}
+
+export interface AgentExecutionEvidenceAppender {
+  appendVerificationEvidence(input: {
+    logId: string;
+    evidenceIds: string[];
+  }): Promise<unknown>;
 }
 
 export class ModuleTemplateFamilyNotConfiguredError extends Error {
@@ -190,6 +204,7 @@ export async function prepareModuleExecution(
 
 export async function seedGovernedRunsForModuleExecution(input: {
   verificationOpsService: GovernedEvaluationRunSeeder;
+  agentExecutionService: AgentExecutionEvidenceAppender;
   actorRole: RoleKey;
   suiteIds: string[];
   releaseCheckProfileId?: string;
@@ -203,16 +218,36 @@ export async function seedGovernedRunsForModuleExecution(input: {
     return;
   }
 
-  await input.verificationOpsService.seedGovernedExecutionRuns(input.actorRole, {
-    suiteIds: input.suiteIds,
-    releaseCheckProfileId: input.releaseCheckProfileId,
-    governedSource: {
-      source_kind: "governed_module_execution",
-      manuscript_id: input.manuscriptId,
-      source_module: input.sourceModule,
-      agent_execution_log_id: input.agentExecutionLogId,
-      execution_snapshot_id: input.executionSnapshotId,
-      output_asset_id: input.outputAssetId,
+  const seededRuns = await input.verificationOpsService.seedGovernedExecutionRuns(
+    input.actorRole,
+    {
+      suiteIds: input.suiteIds,
+      releaseCheckProfileId: input.releaseCheckProfileId,
+      governedSource: {
+        source_kind: "governed_module_execution",
+        manuscript_id: input.manuscriptId,
+        source_module: input.sourceModule,
+        agent_execution_log_id: input.agentExecutionLogId,
+        execution_snapshot_id: input.executionSnapshotId,
+        output_asset_id: input.outputAssetId,
+      },
     },
+  );
+
+  const evidenceIds: string[] = [];
+  for (const run of seededRuns) {
+    const completedRun =
+      await input.verificationOpsService.executeSeededGovernedRunChecks(
+        input.actorRole,
+        {
+          runId: run.id,
+        },
+      );
+    evidenceIds.push(...completedRun.evidence_ids);
+  }
+
+  await input.agentExecutionService.appendVerificationEvidence({
+    logId: input.agentExecutionLogId,
+    evidenceIds,
   });
 }

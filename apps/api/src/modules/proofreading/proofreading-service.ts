@@ -460,6 +460,7 @@ export class ProofreadingService {
       if (input.jobType === "proofreading_confirm" && agentExecutionLogId) {
         await seedGovernedRunsForModuleExecution({
           verificationOpsService: this.verificationOpsService,
+          agentExecutionService: this.agentExecutionService,
           actorRole: "admin",
           suiteIds: resolvedContext.evaluationSuiteIds,
           releaseCheckProfileId: resolvedContext.releaseCheckProfileId,
