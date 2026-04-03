@@ -1,11 +1,13 @@
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
-import { Client } from "pg";
 import { resolveDemoServerConfig } from "../http/demo-server-config.ts";
-import { resolvePersistentServerConfig } from "../http/persistent-server-config.ts";
 import { getDatabaseUrl } from "../database/config.ts";
 import { loadAppEnvDefaults } from "./env-defaults.ts";
+import { resolvePersistentRuntimeContract } from "./persistent-runtime-contract.ts";
+import {
+  runPersistentStartupPreflight,
+} from "./persistent-startup-preflight.ts";
 
 const appRoot = path.resolve(import.meta.dirname, "../..");
 
@@ -15,7 +17,7 @@ const runtimeMode = resolveApiRuntimeMode(process.env);
 const databaseUrl =
   runtimeMode === "demo"
     ? getDatabaseUrl()
-    : resolvePersistentServerConfig(process.env).databaseUrl;
+    : resolvePersistentRuntimeContract(process.env).databaseUrl;
 
 await assertTcpReachable("Postgres", new URL(databaseUrl));
 await assertTcpReachable("Redis", new URL(requireEnv("REDIS_URL")));
@@ -26,7 +28,28 @@ await assertTcpReachable(
 requireOptionalUrl("ONLYOFFICE_URL");
 requireOptionalValue("ONLYOFFICE_JWT_SECRET");
 requireOptionalValue("LIBREOFFICE_BINARY");
-await assertDatabaseReachable(databaseUrl);
+
+if (runtimeMode === "persistent-auth-runtime") {
+  const contract = resolvePersistentRuntimeContract(process.env);
+  const preflight = await runPersistentStartupPreflight({
+    contract,
+  });
+
+  if (preflight.status !== "ready") {
+    const databaseMessage =
+      preflight.components.database.status === "failed"
+        ? preflight.components.database.message
+        : "";
+    const uploadRootMessage =
+      preflight.components.uploadRoot.status === "failed"
+        ? preflight.components.uploadRoot.message
+        : "";
+
+    throw new Error(
+      [databaseMessage, uploadRootMessage].filter((message) => message.length > 0).join(" "),
+    );
+  }
+}
 
 console.log(`[api] smoke boot OK (${runtimeMode})`);
 
@@ -39,7 +62,7 @@ function resolveApiRuntimeMode(
     return "demo";
   }
 
-  resolvePersistentServerConfig(env);
+  resolvePersistentRuntimeContract(env);
   return "persistent-auth-runtime";
 }
 
@@ -65,17 +88,6 @@ function requireOptionalValue(name: string): void {
   const value = process.env[name];
   if (value !== undefined && value.trim() === "") {
     throw new Error(`Environment variable ${name} must not be empty when set.`);
-  }
-}
-
-async function assertDatabaseReachable(connectionString: string): Promise<void> {
-  const client = new Client({ connectionString });
-  await client.connect();
-
-  try {
-    await client.query("select 1");
-  } finally {
-    await client.end();
   }
 }
 

@@ -149,56 +149,98 @@ Web 关键环境变量：
 - 生产环境必须使用真实数据库与对象存储凭据
 - 稿件本地直传文件默认会写到 `.local-data/uploads/<APP_ENV>`；如需独立数据盘、跨平台迁移或集中备份，应显式设置 `UPLOAD_ROOT_DIR`
 
-## 5. Smoke Checklist
+## 5. Release Contract 与 Smoke Checklist
 
-### 5.1 基础依赖
+### 5.1 健康检查语义
+
+- `GET /healthz`
+  只表示 API 进程仍然存活，适合最轻量的 liveness check。
+- `GET /readyz`
+  是真正的部署门禁；只有当 runtime contract、数据库连通性、upload root 可写性都通过时才应返回 `200`。
+- 不要把 `healthz` 当成可放量信号。发布、扩容、切流、回滚完成后的确认都以 `readyz` 为准。
+
+### 5.2 基础依赖
 
 - `docker compose -f infra/docker-compose.yml exec postgres pg_isready -U postgres -d medical_api`
 - `docker compose -f infra/docker-compose.yml exec redis redis-cli ping`
 - `curl http://127.0.0.1:59000/minio/health/ready`
 
-### 5.2 应用基线
+### 5.3 Repo-owned pre-deploy validation
 
-- `pnpm --filter @medical/api run smoke:boot`
-- `pnpm --filter @medical/api run dev`
-- `pnpm --filter @medical/api run dev:demo`
-- `pnpm --filter @medical/api run serve:demo`
-- `pnpm --filter @medical/api run serve`
-- `pnpm --filter @medsys/web run smoke:boot`
-- `pnpm --filter @medical/worker-py run smoke:boot`
+- `pnpm verify:production-preflight`
 
-### 5.3 全仓校验
+该命令会按固定顺序串行执行：
 
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-
-### 5.4 Manuscript Workbench Release Gate
-
-- `pnpm verify:manuscript-workbench`
+1. `pnpm lint`
+2. `pnpm typecheck`
+3. `pnpm test`
+4. `pnpm --filter @medical/api run smoke:boot`
+5. `pnpm --filter @medsys/web run smoke:boot`
+6. `pnpm --filter @medical/worker-py run smoke:boot`
+7. `pnpm verify:manuscript-workbench`
 
 说明：
 
-- 该命令会串行执行 API/Web typecheck、稿件 workbench 相关 HTTP/页面测试，以及 Playwright 真实浏览器 smoke
-- 当前浏览器门禁已经覆盖 manuscript handoff、learning review flow，以及 knowledge review handoff + approve/reject terminal actions
-- 当前浏览器门禁已经覆盖 admin governance console 的模板治理、execution bundle preview，以及 execution observability 输出下钻与 Recent Agent Executions triage
-- 当前浏览器门禁也覆盖 evaluation workbench 中 draft suite 的真实激活链路，以及 create run -> save run item result -> finalize -> create learning candidate 的手动评测闭环
-- 同一条门禁也覆盖 verification-ops 持久化 HTTP 回归，确保评测资产、run/evidence/evidence-pack 与 learning handoff 在重启后仍可读取和继续流转
-- `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令
+- 任一步失败都应立即停止发布。
+- `pnpm verify:manuscript-workbench` 仍是 repo 内最贴近运营主链路的浏览器门禁，覆盖 manuscript handoff、learning review、knowledge review、admin governance、evaluation workbench 与 verification-ops 持久化 HTTP 回归。
+- `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令。
 
-## 6. 启动顺序
+### 5.4 Release manifest 记录
+
+- 每次 staging / production 发布前，都应先复制并填写 `docs/operations/release-manifest-template.md`。
+- Manifest 至少要记录：
+  - environment
+  - operator
+  - commit SHA
+  - schema change yes/no
+  - backup artifact references
+  - restore point
+  - pre-deploy checks
+  - post-deploy checks
+  - rollback decision and outcome
+
+### 5.5 持久化启动前验证
+
+- `pnpm --filter @medical/api run preflight:persistent`
+- `pnpm --filter @medical/api run db:migrate`
+- `pnpm --filter @medical/api run serve`
+
+说明：
+
+- `preflight:persistent` 与 `serve` 复用同一套 persistent runtime contract 与 startup preflight，不允许再依赖第二套口头校验路径。
+- `serve` 会在 listen 前完成 contract 解析、数据库可达性检查和 upload root 可写性检查；任一失败都应直接阻断启动。
+- `APP_ENV=staging|production` 时必须替换 `ONLYOFFICE_JWT_SECRET=change-me-in-prod`，否则 preflight 会失败。
+
+### 5.6 Post-deploy health confirmation
+
+- `pnpm verify:production-postdeploy -- --base-url http://127.0.0.1:3001`
+- `curl http://127.0.0.1:3001/healthz`
+- `curl http://127.0.0.1:3001/readyz`
+
+说明：
+
+- `verify:production-postdeploy` 会同时请求 `/healthz` 和 `/readyz`，并输出 compact JSON summary。
+- 只要任一端点不是 `200`，脚本都会以非零退出。
+- 即使 `healthz=200`，只要 `readyz!=200`，也必须视为部署未完成或需要回滚/修复。
+
+## 6. 启动与发布顺序
 
 1. `pnpm install`
 2. `docker compose -f infra/docker-compose.yml up -d`
 3. 如需预览联调，再启动 ONLYOFFICE profile
 4. 跑三端 `smoke:boot`
-5. 本地 in-memory/demo 联调用 `serve:demo`，如需 watch mode 用 `dev:demo`
-6. 持久化开发默认用 `dev`，持久化非 watch 启动用 `serve`
-7. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
-8. 最后执行 `pnpm lint && pnpm typecheck && pnpm test`
-9. 如需在发布前补一条贴近运营链路的回归，执行 `pnpm verify:manuscript-workbench`
+5. 在 persistent runtime 上线前执行 `pnpm --filter @medical/api run preflight:persistent`
+6. 本地 in-memory/demo 联调用 `serve:demo`，如需 watch mode 用 `dev:demo`
+7. 持久化开发默认用 `dev`，持久化非 watch 启动用 `serve`
+8. 如需验证真实登录，设置 `apps/web/.env` 中的 `VITE_APP_ENV=dev` 后再启动 `pnpm --filter @medsys/web run dev`
+9. staging / production 发布前填写 `docs/operations/release-manifest-template.md`
+10. 执行 `pnpm verify:production-preflight`
+11. 执行 `pnpm --filter @medical/api run db:migrate` 与部署动作
+12. API 启动后执行 `pnpm verify:production-postdeploy -- --base-url <base-url>`
 
 ## 7. 迁移、备份与回滚
+
+发布前先基于 `docs/operations/release-manifest-template.md` 记录本次环境、操作人、commit SHA、备份件与 schema change 决策。没有 manifest，就不应进入正式发布动作。
 
 至少需要覆盖以下资产：
 
@@ -229,8 +271,9 @@ Web 关键环境变量：
 
 - 代码版本、数据库 schema、对象存储版本必须一起评估
 - 迁移前先备份数据库与对象存储
+- 先判断 schema change 是否存在、是否可逆，再决定能否只做代码回滚
 - 模板、知识、技能包、提示词模板必须保留版本历史
-- 回滚后重新执行 smoke checklist
+- 回滚后至少重新执行 `pnpm verify:production-postdeploy -- --base-url <base-url>`；如有疑问，再补跑 `pnpm verify:production-preflight` 与 `pnpm verify:manuscript-workbench`
 
 ### 7.1 最小备份清单
 
@@ -256,6 +299,7 @@ Web 关键环境变量：
 - 操作人
 - 备份覆盖的环境
 - 对应发布单或变更原因
+- 对应 restore point / snapshot ID
 
 ### 7.2 最小回滚执行顺序
 
@@ -265,13 +309,15 @@ Web 关键环境变量：
 2. 如果有 schema 变化，先确认迁移是否可逆，再决定是否执行数据回滚
 3. 恢复数据库与对象存储后，再恢复代码版本
 4. 恢复完成后立即执行 smoke checklist
-5. 最后再恢复外部访问或通知业务恢复
+5. 恢复完成后立即执行 `pnpm verify:production-postdeploy -- --base-url <base-url>`
+6. 如仍有疑问，再补跑 `pnpm verify:manuscript-workbench`
+7. 最后再恢复外部访问或通知业务恢复
 
 不建议：
 
 - 只回滚代码而忽略已变更的 schema
 - 在没有备份可验证的情况下直接覆盖生产数据
-- 跳过 `pnpm verify:manuscript-workbench` 就宣称回滚完成
+- 在 `readyz` 未恢复为 `200` 前就宣称回滚完成
 
 ## 8. 平台迁移
 
@@ -401,10 +447,13 @@ Codex 的推荐使用方式：
 推荐升级流程：
 
 1. 在独立分支或 worktree 中完成升级
-2. 先跑 `smoke:boot`
-3. 再跑 `pnpm verify:manuscript-workbench`
-4. 记录升级前后的关键版本变化
-5. 确认回滚点存在后再发布
+2. 填写 `docs/operations/release-manifest-template.md`，确认是否包含 schema change、备份件与 restore point
+3. 运行 `pnpm verify:production-preflight`
+4. 如涉及持久化 API，先执行 `pnpm --filter @medical/api run preflight:persistent`
+5. 执行迁移、部署与 `pnpm --filter @medical/api run serve`
+6. 运行 `pnpm verify:production-postdeploy -- --base-url <base-url>`
+7. 记录升级前后的关键版本变化，并把结果补回 manifest
+8. 只有 `readyz=200` 且 rollback decision 明确后才算发布完成
 
 尤其要注意：
 

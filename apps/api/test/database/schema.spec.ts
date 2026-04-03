@@ -244,6 +244,9 @@ const expectedTableColumns: Record<string, string[]> = {
     "prompt_template_id",
     "skill_package_ids",
     "execution_profile_id",
+    "verification_check_profile_ids",
+    "evaluation_suite_ids",
+    "release_check_profile_id",
     "status",
     "version",
   ],
@@ -269,6 +272,9 @@ const expectedTableColumns: Record<string, string[]> = {
     "tool_permission_policy_id",
     "execution_snapshot_id",
     "knowledge_item_ids",
+    "verification_check_profile_ids",
+    "evaluation_suite_ids",
+    "release_check_profile_id",
     "verification_evidence_ids",
     "status",
     "started_at",
@@ -315,6 +321,26 @@ const expectedRoleKeys = [
   "screener",
   "user",
 ];
+
+const expectedMigrationFiles = [
+  "0001_initial.sql",
+  "0002_model_registry_version_guard.sql",
+  "0003_document_assets_file_name.sql",
+  "0004_auth_persistence.sql",
+  "0005_governed_registry_persistence.sql",
+  "0006_prompt_skill_registry_persistence.sql",
+  "0007_model_routing_policy_persistence.sql",
+  "0008_execution_runtime_persistence.sql",
+  "0009_agent_tooling_persistence.sql",
+  "0010_learning_review_persistence.sql",
+  "0011_verification_ops_persistence.sql",
+  "0012_template_family_active_uniqueness.sql",
+  "0013_governed_evaluation_run_seeding.sql",
+  "0014_agent_tooling_verification_expectations.sql",
+] as const;
+
+const legacyAgentToolingChecksum =
+  "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
@@ -409,56 +435,10 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
     );
     assert.deepEqual(
       migrationResult.rows,
-      [
-        {
-          version: "0001_initial.sql",
-          checksum: getMigrationChecksum("0001_initial.sql"),
-        },
-        {
-          version: "0002_model_registry_version_guard.sql",
-          checksum: getMigrationChecksum("0002_model_registry_version_guard.sql"),
-        },
-        {
-          version: "0003_document_assets_file_name.sql",
-          checksum: getMigrationChecksum("0003_document_assets_file_name.sql"),
-        },
-        {
-          version: "0004_auth_persistence.sql",
-          checksum: getMigrationChecksum("0004_auth_persistence.sql"),
-        },
-        {
-          version: "0005_governed_registry_persistence.sql",
-          checksum: getMigrationChecksum("0005_governed_registry_persistence.sql"),
-        },
-        {
-          version: "0006_prompt_skill_registry_persistence.sql",
-          checksum: getMigrationChecksum("0006_prompt_skill_registry_persistence.sql"),
-        },
-        {
-          version: "0007_model_routing_policy_persistence.sql",
-          checksum: getMigrationChecksum("0007_model_routing_policy_persistence.sql"),
-        },
-        {
-          version: "0008_execution_runtime_persistence.sql",
-          checksum: getMigrationChecksum("0008_execution_runtime_persistence.sql"),
-        },
-        {
-          version: "0009_agent_tooling_persistence.sql",
-          checksum: getMigrationChecksum("0009_agent_tooling_persistence.sql"),
-        },
-        {
-          version: "0010_learning_review_persistence.sql",
-          checksum: getMigrationChecksum("0010_learning_review_persistence.sql"),
-        },
-        {
-          version: "0011_verification_ops_persistence.sql",
-          checksum: getMigrationChecksum("0011_verification_ops_persistence.sql"),
-        },
-        {
-          version: "0012_template_family_active_uniqueness.sql",
-          checksum: getMigrationChecksum("0012_template_family_active_uniqueness.sql"),
-        },
-      ],
+      expectedMigrationFiles.map((version) => ({
+        version,
+        checksum: getMigrationChecksum(version),
+      })),
       "Expected migration bookkeeping for all applied database migrations.",
     );
   });
@@ -570,20 +550,7 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
     await client.connect();
 
     try {
-      for (const fileName of [
-        "0001_initial.sql",
-        "0002_model_registry_version_guard.sql",
-        "0003_document_assets_file_name.sql",
-        "0004_auth_persistence.sql",
-        "0005_governed_registry_persistence.sql",
-        "0006_prompt_skill_registry_persistence.sql",
-        "0007_model_routing_policy_persistence.sql",
-        "0008_execution_runtime_persistence.sql",
-        "0009_agent_tooling_persistence.sql",
-        "0010_learning_review_persistence.sql",
-        "0011_verification_ops_persistence.sql",
-        "0012_template_family_active_uniqueness.sql",
-      ]) {
+      for (const fileName of expectedMigrationFiles) {
         await client.query(
           `
             update schema_migrations
@@ -603,6 +570,110 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
       0,
       `Expected migrate to accept equivalent line-ending-only checksum changes.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
     );
+  });
+});
+
+test("migrate repairs legacy 0009 agent-tooling databases by backfilling verification expectation columns", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        alter table runtime_bindings
+          drop column if exists verification_check_profile_ids,
+          drop column if exists evaluation_suite_ids,
+          drop column if exists release_check_profile_id
+      `);
+      await client.query(`
+        alter table agent_execution_logs
+          drop column if exists verification_check_profile_ids,
+          drop column if exists evaluation_suite_ids,
+          drop column if exists release_check_profile_id
+      `);
+      await client.query(
+        `
+          delete from schema_migrations
+          where version = '0014_agent_tooling_verification_expectations.sql'
+        `,
+      );
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = $1
+          where version = '0009_agent_tooling_persistence.sql'
+        `,
+        [legacyAgentToolingChecksum],
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to repair legacy 0009 agent-tooling databases.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const columnsResult = await verificationClient.query<{
+        table_name: string;
+        column_name: string;
+      }>(
+        `
+          select table_name, column_name
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name in ('runtime_bindings', 'agent_execution_logs')
+            and column_name in (
+              'verification_check_profile_ids',
+              'evaluation_suite_ids',
+              'release_check_profile_id'
+            )
+          order by table_name, column_name
+        `,
+      );
+
+      assert.deepEqual(
+        columnsResult.rows,
+        [
+          {
+            table_name: "agent_execution_logs",
+            column_name: "evaluation_suite_ids",
+          },
+          {
+            table_name: "agent_execution_logs",
+            column_name: "release_check_profile_id",
+          },
+          {
+            table_name: "agent_execution_logs",
+            column_name: "verification_check_profile_ids",
+          },
+          {
+            table_name: "runtime_bindings",
+            column_name: "evaluation_suite_ids",
+          },
+          {
+            table_name: "runtime_bindings",
+            column_name: "release_check_profile_id",
+          },
+          {
+            table_name: "runtime_bindings",
+            column_name: "verification_check_profile_ids",
+          },
+        ],
+        "Expected migrate to restore verification expectation columns for legacy 0009 databases.",
+      );
+    } finally {
+      await verificationClient.end();
+    }
   });
 });
 
