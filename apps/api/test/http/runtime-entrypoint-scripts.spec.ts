@@ -14,4 +14,8 @@ test("api package defaults dev and serve entrypoints to the persistent runtime",
   assert.equal(packageJson.scripts?.serve, "pnpm run serve:persistent");
   assert.equal(packageJson.scripts?.["dev:demo"], "tsx watch ./src/http/dev-server.ts");
   assert.equal(packageJson.scripts?.["serve:demo"], "tsx ./src/http/dev-server.ts");
+  assert.equal(
+    packageJson.scripts?.["preflight:persistent"],
+    "tsx ./src/ops/persistent-startup-preflight.ts",
+  );
 });
