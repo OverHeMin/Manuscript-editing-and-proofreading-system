@@ -103,6 +103,9 @@ export interface EvaluationWorkbenchController {
   completeRunWithEvidenceAndFinalize(
     input: EvaluationWorkbenchCompleteRunInput,
   ): Promise<EvaluationWorkbenchFinalizeRunResult>;
+  finalizeCompletedRun(
+    input: EvaluationWorkbenchFinalizeCompletedRunInput,
+  ): Promise<EvaluationWorkbenchFinalizeRunResult>;
   createLearningCandidateFromEvaluation(
     input: CreateLearningCandidateFromEvaluationInput,
   ): Promise<EvaluationLearningCandidateViewModel>;
@@ -145,6 +148,13 @@ export interface EvaluationWorkbenchFinalizeRunResult {
   overview: EvaluationWorkbenchOverview;
   evidence: VerificationEvidenceViewModel | null;
   finalized: FinalizeEvaluationRunResultViewModel;
+}
+
+export interface EvaluationWorkbenchFinalizeCompletedRunInput {
+  actorRole: AuthRole;
+  suiteId: string;
+  runId: string;
+  manuscriptId?: string | null;
 }
 
 export function createEvaluationWorkbenchController(
@@ -222,6 +232,24 @@ export function createEvaluationWorkbenchController(
 
       return {
         evidence,
+        finalized,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: input.runId,
+          manuscriptId: input.manuscriptId,
+        }),
+      };
+    },
+    async finalizeCompletedRun(input) {
+      const finalized = (
+        await finalizeEvaluationRun(client, {
+          actorRole: input.actorRole,
+          runId: input.runId,
+        })
+      ).body;
+
+      return {
+        evidence: null,
         finalized,
         overview: await loadEvaluationWorkbenchOverview(client, {
           selectedSuiteId: input.suiteId,
