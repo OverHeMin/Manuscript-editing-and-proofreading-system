@@ -487,6 +487,7 @@ test("admin can open the editing workbench from linked sample context", async ({
 
   await handoffLink.click();
 
+  await expect(page).toHaveURL(/#editing\?/);
   const editingUrl = new URL(page.url());
   const editingParams = new URLSearchParams(editingUrl.hash.split("?")[1] ?? "");
   expect(editingParams.get("manuscriptId")).toBe("manuscript-demo-1");
@@ -549,6 +550,7 @@ test("admin can jump from manuscript workbench back into manuscript-scoped evalu
 
   await evaluationLink.click();
 
+  await expect(page).toHaveURL(/#evaluation-workbench\?/);
   const evaluationWorkbenchUrl = new URL(page.url());
   const evaluationWorkbenchParams = new URLSearchParams(
     evaluationWorkbenchUrl.hash.split("?")[1] ?? "",
@@ -1201,9 +1203,21 @@ async function prepareActiveEvaluationScenario(
       `list sample set items failed (${sampleSetItemsResponse.status()}): ${await sampleSetItemsResponse.text()}`,
     );
   }
-  const sampleSetItems = (await sampleSetItemsResponse.json()) as Array<{ id: string }>;
+  const sampleSetItems = (await sampleSetItemsResponse.json()) as Array<{
+    id: string;
+    reviewed_case_snapshot_id: string;
+  }>;
   if (sampleSetItems.length === 0) {
     throw new Error("prepareActiveEvaluationScenario expected at least one sample set item.");
+  }
+  const primarySnapshotId = snapshots[0]?.id ?? "";
+  const primarySampleSetItem = sampleSetItems.find(
+    (sampleSetItem) => sampleSetItem.reviewed_case_snapshot_id === primarySnapshotId,
+  );
+  if (!primarySampleSetItem) {
+    throw new Error(
+      `prepareActiveEvaluationScenario could not find a sample set item for snapshot ${primarySnapshotId}.`,
+    );
   }
 
   const checkProfileResponse = await request.post(
@@ -1294,8 +1308,8 @@ async function prepareActiveEvaluationScenario(
     suiteId: suite.id,
     suiteName: suite.name,
     sampleSetId: sampleSet.id,
-    sampleSetItemId: sampleSetItems[0]?.id ?? "",
-    snapshotId: snapshots[0]?.id ?? "",
+    sampleSetItemId: primarySampleSetItem.id,
+    snapshotId: primarySnapshotId,
     snapshotIds: snapshots.map((snapshot) => snapshot.id),
   };
 }
