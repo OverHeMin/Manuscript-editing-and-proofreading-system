@@ -5,6 +5,10 @@ import { createPersistentGovernanceRuntime } from "./persistent-governance-runti
 import { createPersistentHttpAuthRuntime } from "./persistent-auth-runtime.ts";
 import { resolvePersistentServerConfig } from "./persistent-server-config.ts";
 import {
+  createPersistentServiceHealthProvider,
+  type HttpServiceHealthProvider,
+} from "./service-health.ts";
+import {
   formatPersistentStartupPreflightFailure,
   runPersistentStartupPreflight,
   type PersistentStartupPreflightResult,
@@ -27,6 +31,7 @@ export interface PersistentServerBootstrapResult<
   config: ReturnType<typeof resolvePersistentServerConfig>;
   pool: TPool;
   preflight: PersistentStartupPreflightResult;
+  serviceHealth: HttpServiceHealthProvider;
   authRuntime: unknown;
   runtime: unknown;
   server: TServer;
@@ -55,6 +60,7 @@ export interface StartPersistentServerOptions<
     config: ReturnType<typeof resolvePersistentServerConfig>;
     authRuntime: unknown;
     runtime: unknown;
+    serviceHealth: HttpServiceHealthProvider;
   }) => TServer;
   listenServer?: (input: {
     config: ReturnType<typeof resolvePersistentServerConfig>;
@@ -123,16 +129,23 @@ export async function startPersistentServer<
         >[0]["authRuntime"],
       });
 
+    const serviceHealth = createPersistentServiceHealthProvider({
+      contract,
+      startupPreflight: preflight,
+    });
+
     const server =
       options.createServer?.({
         config,
         authRuntime,
         runtime,
+        serviceHealth,
       }) ??
       ((createApiHttpServer({
         appEnv: config.appEnv,
         allowedOrigins: config.allowedOrigins,
         seedDemoKnowledgeReviewData: false,
+        serviceHealth,
         uploadRootDir: config.uploadRootDir,
         runtime: runtime as NonNullable<
           Parameters<typeof createApiHttpServer>[0]
@@ -165,6 +178,7 @@ export async function startPersistentServer<
       config,
       pool,
       preflight,
+      serviceHealth,
       authRuntime,
       runtime,
       server,

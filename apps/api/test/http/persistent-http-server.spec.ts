@@ -2,10 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
 import {
+  createPersistentServiceHealthProvider,
+  type HttpServiceHealthProvider,
+} from "../../src/http/service-health.ts";
+import {
   createApiHttpServer,
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { runPersistentStartupPreflight } from "../../src/ops/persistent-startup-preflight.ts";
+import { resolvePersistentRuntimeContract } from "../../src/ops/persistent-runtime-contract.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -155,10 +161,116 @@ test("persistent auth runtime restores the server-side user identity on protecte
   });
 });
 
+test("persistent readiness returns ready after startup preflight succeeds", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const contract = resolvePersistentRuntimeContract({
+      APP_ENV: "development",
+      DATABASE_URL: databaseUrl,
+    });
+    const startupPreflight = await runPersistentStartupPreflight({
+      contract,
+    });
+
+    assert.equal(startupPreflight.status, "ready");
+
+    await withPersistentServer(
+      async ({ baseUrl }) => {
+        const healthResponse = await fetch(`${baseUrl}/healthz`);
+        const readyResponse = await fetch(`${baseUrl}/readyz`);
+        const readyBody = (await readyResponse.json()) as {
+          status: string;
+          components: Record<string, string>;
+        };
+
+        assert.equal(healthResponse.status, 200);
+        assert.equal(readyResponse.status, 200);
+        assert.deepEqual(readyBody, {
+          status: "ready",
+          components: {
+            runtimeContract: "ok",
+            database: "ok",
+            uploadRoot: "ok",
+          },
+        });
+      },
+      {
+        databaseUrl,
+        serviceHealth: createPersistentServiceHealthProvider({
+          contract,
+          startupPreflight,
+        }),
+      },
+    );
+  });
+});
+
+test("persistent readiness returns not_ready without dropping liveness", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const contract = resolvePersistentRuntimeContract({
+      APP_ENV: "development",
+      DATABASE_URL: databaseUrl,
+    });
+
+    await withPersistentServer(
+      async ({ baseUrl }) => {
+        const healthResponse = await fetch(`${baseUrl}/healthz`);
+        const readyResponse = await fetch(`${baseUrl}/readyz`);
+        const readyBody = (await readyResponse.json()) as {
+          status: string;
+          components: Record<string, string>;
+        };
+
+        assert.equal(healthResponse.status, 200);
+        assert.equal(readyResponse.status, 503);
+        assert.deepEqual(readyBody, {
+          status: "not_ready",
+          components: {
+            runtimeContract: "ok",
+            database: "failed",
+            uploadRoot: "ok",
+          },
+        });
+      },
+      {
+        databaseUrl,
+        serviceHealth: createPersistentServiceHealthProvider({
+          contract,
+          startupPreflight: {
+            status: "ready",
+            components: {
+              runtimeContract: { status: "ok" },
+              database: { status: "ok" },
+              uploadRoot: { status: "ok", path: contract.uploadRootDir },
+            },
+          },
+          runPreflight: async () => ({
+            status: "not_ready",
+            components: {
+              runtimeContract: { status: "ok" },
+              database: {
+                status: "failed",
+                message: "Database is not reachable.",
+              },
+              uploadRoot: {
+                status: "ok",
+                path: contract.uploadRootDir,
+              },
+            },
+          }),
+        }),
+      },
+    );
+  });
+});
+
 async function withPersistentServer(
   run: (context: { server: ApiHttpServer; baseUrl: string; client: Client }) => Promise<void>,
+  options: {
+    databaseUrl?: string;
+    serviceHealth?: HttpServiceHealthProvider;
+  } = {},
 ): Promise<void> {
-  await withTemporaryDatabase(async (databaseUrl) => {
+  const runWithDatabase = async (databaseUrl: string) => {
     const migrate = runMigrateProcess(databaseUrl);
     assert.equal(
       migrate.status,
@@ -186,6 +298,7 @@ async function withPersistentServer(
       authRuntime: createPersistentHttpAuthRuntime({
         client,
       }),
+      serviceHealth: options.serviceHealth,
     });
 
     try {
@@ -199,7 +312,14 @@ async function withPersistentServer(
       await stopHttpTestServer(server);
       await client.end();
     }
-  });
+  };
+
+  if (options.databaseUrl) {
+    await runWithDatabase(options.databaseUrl);
+    return;
+  }
+
+  await withTemporaryDatabase(runWithDatabase);
 }
 
 async function loginAsPersistentUser(baseUrl: string): Promise<string> {

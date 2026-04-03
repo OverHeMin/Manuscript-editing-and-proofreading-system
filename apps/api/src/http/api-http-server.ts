@@ -20,6 +20,10 @@ import {
   type HttpAuthenticatedSession,
 } from "./demo-auth-runtime.ts";
 import {
+  createAlwaysReadyServiceHealthProvider,
+  type HttpServiceHealthProvider,
+} from "./service-health.ts";
+import {
   InlineUploadPayloadInvalidError,
   InlineUploadPayloadTooLargeError,
   InlineUploadStorageReferenceRequiredError,
@@ -258,6 +262,9 @@ export type AppEnv = "local" | "test" | "development" | "staging" | "production"
 type HttpRouteMatch =
   | {
       route: "healthz";
+    }
+  | {
+      route: "readyz";
     }
   | {
       route: "auth-local-login";
@@ -702,6 +709,7 @@ export interface CreateApiHttpServerOptions {
   seedDemoKnowledgeReviewData?: boolean;
   authRuntime?: HttpAuthRuntime;
   runtime?: ApiServerRuntime;
+  serviceHealth?: HttpServiceHealthProvider;
   uploadRootDir?: string;
 }
 
@@ -772,6 +780,8 @@ export function createApiHttpServer(
     });
   const allowedOrigins =
     options.allowedOrigins?.filter((origin) => origin.trim().length > 0) ?? [];
+  const serviceHealth =
+    options.serviceHealth ?? createAlwaysReadyServiceHealthProvider();
   const uploadRootDir = options.uploadRootDir ?? resolveDefaultUploadRootDir(appEnv);
 
   return createServer(async (req, res) => {
@@ -798,7 +808,13 @@ export function createApiHttpServer(
         return;
       }
 
-      const routeResponse = await handleRoute(routeMatch, req, runtime, uploadRootDir);
+      const routeResponse = await handleRoute(
+        routeMatch,
+        req,
+        runtime,
+        uploadRootDir,
+        serviceHealth,
+      );
       writeResponse(res, routeResponse.status, routeResponse.body, {
         ...corsHeaders,
         ...(routeResponse.headers ?? {}),
@@ -1831,15 +1847,21 @@ async function handleRoute(
   req: IncomingMessage,
   runtime: ApiServerRuntime,
   uploadRootDir: string,
+  serviceHealth: HttpServiceHealthProvider,
 ): Promise<RouteResponse<unknown>> {
   switch (routeMatch.route) {
     case "healthz":
       return {
         status: 200,
-        body: {
-          status: "ok",
-        },
+        body: serviceHealth.getLiveness(),
       };
+    case "readyz": {
+      const readiness = await serviceHealth.getReadiness();
+      return {
+        status: readiness.status === "ready" ? 200 : 503,
+        body: readiness,
+      };
+    }
     case "auth-local-login": {
       const body = (await readJsonBody(req)) as {
         username: string;
@@ -2928,6 +2950,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/healthz") {
     return { route: "healthz" };
+  }
+
+  if (method === "GET" && path === "/readyz") {
+    return { route: "readyz" };
   }
 
   if (method === "POST" && path === "/api/v1/auth/local/login") {

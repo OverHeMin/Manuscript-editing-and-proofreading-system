@@ -416,10 +416,22 @@ test("http server answers preflight and health checks", async () => {
 
     const healthResponse = await fetch(`${baseUrl}/healthz`);
     const healthBody = (await healthResponse.json()) as { status: string };
+    const readyResponse = await fetch(`${baseUrl}/readyz`);
+    const readyBody = (await readyResponse.json()) as {
+      status: string;
+      components: Record<string, string>;
+    };
 
     assert.equal(healthResponse.status, 200);
     assert.deepEqual(healthBody, {
       status: "ok",
+    });
+    assert.equal(readyResponse.status, 200);
+    assert.deepEqual(readyBody, {
+      status: "ready",
+      components: {
+        runtimeContract: "ok",
+      },
     });
   } finally {
     await stopServer(server);
