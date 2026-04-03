@@ -1,0 +1,77 @@
+# Phase Boundary Index
+
+**Date:** 2026-04-03  
+**Status:** Approved for repository documentation reconciliation
+
+## Purpose
+
+This document explains how to interpret `phase` plan/spec files against the
+repository's actual delivery history.
+
+In this repository, a phase document is the canonical record of intended scope.
+A branch name, PR title, or merge commit is a delivery vehicle, not automatically
+a perfect one-to-one representation of that phase's final scope.
+
+This index exists to prevent future readers from assuming that every phase was
+delivered through one cleanly isolated branch or one PR with the same name.
+
+## Interpretation Rules
+
+- `docs/superpowers/plans/*.md` define the intended implementation slice.
+- `docs/superpowers/specs/*.md` define the design boundary for that slice.
+- Branch names and PR titles are historical implementation containers and may be
+  cumulative.
+- When a branch or merge commit includes multiple adjacent slices, the phase
+  plan/spec remains the canonical scope definition.
+- We do not rewrite Git history solely to make phase naming look cleaner after
+  the fact.
+- When historical delivery containers are misleading enough to confuse future
+  planning or handoff, we add a reconciliation document instead of renaming old
+  history.
+
+## Numbering Rules
+
+- `phase8aa`, `phase8ab`, `phase8ac`, and `phase8ad` are continuation labels
+  after `phase8z`, not child phases of `phase8a`.
+- Within the current repository, `phase8` has 29 planned slices:
+  `8a, 8b, 8c, 8d, 8f, 8g, 8h, 8i-8z, 8aa-8ad`.
+- `phase8e` is currently an unused label. It is not treated as missing work
+  unless a future document explicitly defines it.
+- `phase9` lettering is sparse by historical authoring. Missing letters between
+  `9a` and `9q` are currently unused labels, not implied lost phases.
+
+## Boundary Status
+
+| Phase | Planned Scope Source | Primary Delivery Vehicle | Boundary Status | Notes |
+|------|----------------------|--------------------------|-----------------|-------|
+| Foundation / V1 Foundation | `2026-03-25-medical-manuscript-system-v1-foundation.md` | merge `6adc467`, early mainline bootstrapping | Clean | Broad by design; not a naming problem. |
+| Phase 2 | `2026-03-27-phase2-document-mainline-and-agent-skeleton.md` | delivered cumulatively before and inside merge `51fde95` | Cumulative, acceptable | No separate misleading Phase 2 merge vehicle to reconcile. |
+| Phase 3 | `2026-03-28-phase3-governed-execution-and-learning-traceability.md` | delivered cumulatively before and inside merge `51fde95` | Cumulative, acceptable | Scope is still recoverable from plan/spec and commit content. |
+| Phase 4 | `2026-03-28-phase4-agent-runtime-integration.md` | merge `51fde95` from `codex/phase4-agent-runtime-integration` | Reconcile needed | Merge vehicle also carries substantial Phase 2 and Phase 3 delivery. |
+| Phase 5 | `2026-03-28-phase5-learning-governance-writeback-loop.md` | merge `06f8de8` from `codex/phase5-learning-governance` | Clean | Delivery vehicle aligns closely with planned scope. |
+| Phase 6A | `2026-03-28-phase6a-evaluation-and-experiment-ops.md` | delivered cumulatively before and inside merge `e0f578b` | Cumulative, acceptable | Early cumulative delivery, but not a misleading standalone Phase 6A merge label. |
+| Phase 7A | `2026-03-28-phase7a-knowledge-review-workbench-and-mini-program.md` | delivered cumulatively before and inside merge `e0f578b` | Cumulative, acceptable | Closely adjacent to 7B and carried in the same implementation window. |
+| Phase 7B | `2026-03-28-phase7b-knowledge-review-web-workbench.md` | merge `e0f578b` from `codex/phase7b-knowledge-review-web` | Reconcile needed | Delivery vehicle includes Phase 6A, 7A, and 7B work. |
+| Phase 8 family | `2026-03-30-phase8a...` through `2026-03-31-phase8z...` | merges `d61f8e1`, `b12d3ea`, plus adjacent topic merges | Reconcile needed | Historical delivery became an umbrella batch rather than one clean per-slice sequence. |
+| Phase 9A | `2026-03-31-phase9a-persistent-verification-ops-http.md` | delivered during the broader Phase 8 umbrella window | Tracked under Phase 8 reconciliation | Not treated as an independent boundary anomaly; document under Phase 8. |
+| Phase 9Q | `2026-04-03-phase9q-evaluation-sample-context-handoff.md` | PR #8 / merge `d06d0a6` | Clean | Focused scope, aligned branch naming. |
+| Phase 9R | `2026-04-03-phase9r-runtime-binding-verification-linkage.md` | focused mainline delivery around commit `b9c26c3` | Clean | Narrow, traceable slice with aligned plan/spec/implementation. |
+| Phase 9S | `2026-04-03-phase9s-governed-evaluation-run-seeding.md` | PR #9 / merge `91792a1` | Clean | Focused scope, aligned branch naming. |
+| Phase 9T | `2026-04-03-phase9t-governed-run-check-execution.md` | PR #10 / merge `098d016` | Clean | Focused scope, aligned branch naming. |
+
+## Practical Guidance For Future Work
+
+- Treat `phase4`, `phase7b`, and `phase8` as the only historical phases that
+  currently require explicit boundary reconciliation.
+- Do not create separate reconciliation tracks for `phase2`, `phase3`,
+  `phase6a`, `phase7a`, or `phase9a` unless later evidence shows that current
+  documentation remains too ambiguous.
+- When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
+  design, one plan, one focused delivery slice, and one clear verification
+  story.
+
+## Related Documents
+
+- `2026-04-03-phase4-7b-8-boundary-reconciliation.md`
+- `README.md`
+- `docs/OPERATIONS.md`

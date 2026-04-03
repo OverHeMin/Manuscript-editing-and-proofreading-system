@@ -151,17 +151,40 @@
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`
   开发与 review 清单
+- `docs/superpowers/plans/2026-04-03-phase-boundary-index.md`
+  phase 边界与历史交付容器解释索引
+- `docs/superpowers/plans/2026-04-03-phase4-7b-8-boundary-reconciliation.md`
+  phase4 / phase7b / phase8 的历史边界 reconciliation
 - `docs/superpowers/specs/README.md`
   规格文档入口
 
 ## 说明
 
-如果要把这套系统继续推进到“完整生产可用”，下一批重点工作仍然是：
+如果要把这套系统继续推进到“完整生产可用”，当前更准确的状态是：
+
+### 已有首版能力，但仍需深化
 
 - 学习主流程与反馈溯源落库
+  已具备 reviewed-case snapshots、人工反馈记录、governed provenance source links 与 learning writeback 持久化，但更深的自动化闭环、策略优化与持续学习运营仍未完成。
 - 模型执行治理、评测与路由策略联动
+  已具备模型注册表、路由策略、runtime binding、verification expectations、governed evaluation run seeding 与 Phase 9T 的 inline check execution 基础联动，但更自动的策略执行与跨层编排仍需继续完善。
 - agent 执行编排、运行证据与更深层治理运营能力
+  已具备 execution log、execution snapshot、knowledge-hit evidence、Recent Agent Executions triage 与 admin evidence drilldown，但仍缺少更成熟的异步编排、恢复机制与更深层运维能力。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
-- 更深的 Evaluation Workbench 运营能力，例如 sample-set item 详情联动、历史 evidence pack 检索、以及多 run 对比视图
-- 部署、监控、回滚、远程维护标准化
+  当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。
+- 更深的 Evaluation Workbench 运营能力
+  当前已经支持 suite/run/run-item/evidence/evidence-pack、历史对比、sample-context handoff、governed-source manuscript matching，以及 machine-completed governed run 的 finalize-only operator path；后续仍应继续深化检索效率、运营分析与长期对比视图。
+
+### 仍是后续重点
+
+- 更完整的 Worker 编排、运维观测与生产级部署闭环
+- 部署、监控、回滚、远程维护标准化自动化
 - 更细的密码/密钥安全、升级编排与平台迁移自动化
+
+### 文档解释约束
+
+- `docs/superpowers/plans/*.md` 与 `docs/superpowers/specs/*.md` 是 phase 范围的权威定义。
+- 个别历史分支或 PR 名称并不严格等于最终交付边界。
+- `phase8aa / phase8ab / phase8ac / phase8ad` 是 `phase8z` 之后的延续编号，不是 `phase8a` 的子层级。
+- Phase 9 的缺失字母当前视为未使用编号，不默认代表丢失内容。
+- 具体边界解释以 `Phase Boundary Index` 与相关 reconciliation 文档为准。
