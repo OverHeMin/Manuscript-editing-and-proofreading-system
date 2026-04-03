@@ -60,6 +60,15 @@ export function ManuscriptWorkbenchSummary({
   const shouldPreserveEvaluationSampleContextIds =
     normalizedPrefilledManuscriptId.length > 0 &&
     normalizedPrefilledManuscriptId === workspace.manuscript.id;
+  const manuscriptWorkbenchHandoff = {
+    manuscriptId: workspace.manuscript.id,
+    reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
+      ? normalizedPrefilledReviewedCaseSnapshotId
+      : undefined,
+    sampleSetItemId: shouldPreserveEvaluationSampleContextIds
+      ? normalizedPrefilledSampleSetItemId
+      : undefined,
+  };
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -120,7 +129,10 @@ export function ManuscriptWorkbenchSummary({
             accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
             <a
               className="manuscript-workbench-shortcut"
-              href={formatWorkbenchHash(recommendedNextStep.targetMode, workspace.manuscript.id)}
+              href={formatWorkbenchHash(
+                recommendedNextStep.targetMode,
+                manuscriptWorkbenchHandoff,
+              )}
             >
               {recommendedNextStep.targetLabel ??
                 `Open ${formatWorkbenchModeLabel(recommendedNextStep.targetMode)} Workbench`}
@@ -153,15 +165,7 @@ export function ManuscriptWorkbenchSummary({
               value={
                 <a
                   className="manuscript-workbench-shortcut"
-                  href={formatWorkbenchHash("evaluation-workbench", {
-                    manuscriptId: workspace.manuscript.id,
-                    reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
-                      ? normalizedPrefilledReviewedCaseSnapshotId
-                      : undefined,
-                    sampleSetItemId: shouldPreserveEvaluationSampleContextIds
-                      ? normalizedPrefilledSampleSetItemId
-                      : undefined,
-                  })}
+                  href={formatWorkbenchHash("evaluation-workbench", manuscriptWorkbenchHandoff)}
                 >
                   Open Evaluation Workbench
                 </a>

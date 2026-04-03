@@ -566,6 +566,118 @@ test("admin can jump from manuscript workbench back into manuscript-scoped evalu
   await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
 });
 
+test("admin preserves sample context across manuscript next-step shortcuts before returning to evaluation", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareActiveEvaluationScenario(request, {
+    label: `Phase 9Q ${Date.now()}`,
+  });
+  const seededSampleSet = await createPublishedEditingSampleSet(request, prepared.cookie, {
+    label: `Phase 9Q seeded ${Date.now()}`,
+    manuscriptId: "manuscript-seeded-1",
+    manuscriptType: "clinical_study",
+    parentAssetId: "original-seeded-1",
+  });
+
+  await page.goto("/#evaluation-workbench", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: prepared.suiteName }).click();
+
+  const runId = await createAndFinalizeRunFromWorkbench(page, {
+    sampleSetId: seededSampleSet.sampleSetId,
+    weightedScore: "94",
+    diffSummary:
+      "Sample context should stay attached through manuscript next-step shortcuts.",
+    evidenceLabel: "Phase 9Q evaluation evidence",
+    evidenceUrl: "https://example.test/evidence/phase9q-roundtrip",
+  });
+
+  const historyDetail = page.locator(".evaluation-workbench-history-detail");
+  const editingLink = historyDetail.getByRole("link", { name: "Open Editing Workbench" });
+  await expect(editingLink).toBeVisible();
+  await editingLink.click();
+
+  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  const editingUrl = new URL(page.url());
+  const editingParams = new URLSearchParams(editingUrl.hash.split("?")[1] ?? "");
+  expect(editingParams.get("manuscriptId")).toBe("manuscript-seeded-1");
+  expect(editingParams.get("reviewedCaseSnapshotId")).toBe(seededSampleSet.snapshotId);
+  expect(editingParams.get("sampleSetItemId")).toBe(seededSampleSet.sampleSetItemId);
+
+  const evaluationContextCard = page.locator(".manuscript-workbench-evaluation-context-card");
+  await expect(evaluationContextCard).toContainText("Evaluation Handoff Context");
+  await expect(evaluationContextCard).toContainText(seededSampleSet.snapshotId);
+  await expect(evaluationContextCard).toContainText(seededSampleSet.sampleSetItemId);
+
+  const runEditingButton = page.getByRole("button", { name: "Run Editing" });
+  await expect(runEditingButton).toBeEnabled();
+  await runEditingButton.click();
+  await expect(page.locator("body")).toContainText("Created asset");
+
+  const proofreadingLink = page.getByRole("link", { name: "Open Proofreading Workbench" });
+  await expect(proofreadingLink).toBeVisible();
+  const proofreadingHref = await proofreadingLink.getAttribute("href");
+  expect(proofreadingHref).toBeTruthy();
+  const proofreadingHandoffParams = new URLSearchParams(
+    proofreadingHref?.split("?")[1] ?? "",
+  );
+  expect(proofreadingHandoffParams.get("manuscriptId")).toBe("manuscript-seeded-1");
+  expect(proofreadingHandoffParams.get("reviewedCaseSnapshotId")).toBe(
+    seededSampleSet.snapshotId,
+  );
+  expect(proofreadingHandoffParams.get("sampleSetItemId")).toBe(
+    seededSampleSet.sampleSetItemId,
+  );
+
+  await proofreadingLink.click();
+
+  await expect(page.getByRole("heading", { name: "Proofreading Workbench" })).toBeVisible();
+  const proofreadingUrl = new URL(page.url());
+  const proofreadingParams = new URLSearchParams(proofreadingUrl.hash.split("?")[1] ?? "");
+  expect(proofreadingParams.get("manuscriptId")).toBe("manuscript-seeded-1");
+  expect(proofreadingParams.get("reviewedCaseSnapshotId")).toBe(seededSampleSet.snapshotId);
+  expect(proofreadingParams.get("sampleSetItemId")).toBe(seededSampleSet.sampleSetItemId);
+  await expect(evaluationContextCard).toContainText("Evaluation Handoff Context");
+  await expect(evaluationContextCard).toContainText(seededSampleSet.snapshotId);
+  await expect(evaluationContextCard).toContainText(seededSampleSet.sampleSetItemId);
+
+  const evaluationLink = page.getByRole("link", { name: "Open Evaluation Workbench" });
+  await expect(evaluationLink).toBeVisible();
+  const evaluationHref = await evaluationLink.getAttribute("href");
+  expect(evaluationHref).toBeTruthy();
+  const evaluationHandoffParams = new URLSearchParams(evaluationHref?.split("?")[1] ?? "");
+  expect(evaluationHandoffParams.get("manuscriptId")).toBe("manuscript-seeded-1");
+  expect(evaluationHandoffParams.get("reviewedCaseSnapshotId")).toBe(
+    seededSampleSet.snapshotId,
+  );
+  expect(evaluationHandoffParams.get("sampleSetItemId")).toBe(
+    seededSampleSet.sampleSetItemId,
+  );
+
+  await evaluationLink.click();
+
+  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  const evaluationWorkbenchUrl = new URL(page.url());
+  const evaluationWorkbenchParams = new URLSearchParams(
+    evaluationWorkbenchUrl.hash.split("?")[1] ?? "",
+  );
+  expect(evaluationWorkbenchParams.get("manuscriptId")).toBe("manuscript-seeded-1");
+  expect(evaluationWorkbenchParams.get("reviewedCaseSnapshotId")).toBe(
+    seededSampleSet.snapshotId,
+  );
+  expect(evaluationWorkbenchParams.get("sampleSetItemId")).toBe(
+    seededSampleSet.sampleSetItemId,
+  );
+  await expect(page.locator(".evaluation-workbench")).toContainText(
+    "Context manuscript: manuscript-seeded-1",
+  );
+  await expect(page.locator(".evaluation-workbench-history-detail")).toContainText(runId);
+});
+
 test("admin defaults history to manuscript-scoped runs after manuscript handoff and can switch back to the entire suite", async ({
   page,
   request,
@@ -1323,7 +1435,7 @@ async function createPublishedEditingSampleSet(
     manuscriptType: string;
     parentAssetId?: string;
   },
-): Promise<{ sampleSetId: string; snapshotId: string }> {
+): Promise<{ sampleSetId: string; sampleSetItemId: string; snapshotId: string }> {
   const storagePrefix = input.label.toLowerCase().replace(/\s+/g, "-");
   const manuscriptId = input.manuscriptId;
   const parentAssetId = input.parentAssetId;
@@ -1466,8 +1578,35 @@ async function createPublishedEditingSampleSet(
     );
   }
 
+  const sampleSetItemsResponse = await request.get(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets/${sampleSet.id}/items`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+    },
+  );
+  if (!sampleSetItemsResponse.ok()) {
+    throw new Error(
+      `list sample set items failed (${sampleSetItemsResponse.status()}): ${await sampleSetItemsResponse.text()}`,
+    );
+  }
+  const sampleSetItems = (await sampleSetItemsResponse.json()) as Array<{
+    id: string;
+    reviewed_case_snapshot_id: string;
+  }>;
+  const primarySampleSetItem = sampleSetItems.find(
+    (sampleSetItem) => sampleSetItem.reviewed_case_snapshot_id === snapshot.id,
+  );
+  if (!primarySampleSetItem) {
+    throw new Error(
+      `createPublishedEditingSampleSet could not find a sample set item for snapshot ${snapshot.id}.`,
+    );
+  }
+
   return {
     sampleSetId: sampleSet.id,
+    sampleSetItemId: primarySampleSetItem.id,
     snapshotId: snapshot.id,
   };
 }
