@@ -31,6 +31,11 @@ export interface CompleteAgentExecutionLogInput {
   verificationEvidenceIds?: string[];
 }
 
+export interface AppendVerificationEvidenceInput {
+  logId: string;
+  evidenceIds: string[];
+}
+
 interface AgentExecutionWriteContext {
   repository: AgentExecutionRepository;
 }
@@ -124,6 +129,33 @@ export class AgentExecutionService {
 
       await repository.save(completed);
       return completed;
+    });
+  }
+
+  async appendVerificationEvidence(
+    input: AppendVerificationEvidenceInput,
+  ): Promise<AgentExecutionLogRecord> {
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const existing = await repository.findById(input.logId);
+      if (!existing) {
+        throw new AgentExecutionLogNotFoundError(input.logId);
+      }
+
+      const updated: AgentExecutionLogRecord = {
+        ...existing,
+        knowledge_item_ids: [...existing.knowledge_item_ids],
+        verification_check_profile_ids: [
+          ...existing.verification_check_profile_ids,
+        ],
+        evaluation_suite_ids: [...existing.evaluation_suite_ids],
+        verification_evidence_ids: dedupePreserveOrder([
+          ...existing.verification_evidence_ids,
+          ...input.evidenceIds,
+        ]),
+      };
+
+      await repository.save(updated);
+      return updated;
     });
   }
 
