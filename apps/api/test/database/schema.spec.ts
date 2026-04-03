@@ -187,6 +187,37 @@ const expectedTableColumns: Record<string, string[]> = {
     "module_defaults",
     "template_overrides",
   ],
+  model_routing_policy_scopes: [
+    "id",
+    "scope_kind",
+    "scope_value",
+    "active_version_id",
+    "created_at",
+    "updated_at",
+  ],
+  model_routing_policy_versions: [
+    "id",
+    "policy_scope_id",
+    "version_no",
+    "primary_model_id",
+    "fallback_model_ids",
+    "evidence_links",
+    "notes",
+    "status",
+    "created_at",
+    "updated_at",
+  ],
+  model_routing_policy_decisions: [
+    "id",
+    "policy_scope_id",
+    "policy_version_id",
+    "decision_kind",
+    "actor_id",
+    "actor_role",
+    "reason",
+    "evidence_links",
+    "created_at",
+  ],
   model_registry: [
     "id",
     "provider",
@@ -303,6 +334,11 @@ const expectedIndexes = [
   "knowledge_hit_logs_snapshot_created_at_idx",
   "module_templates_manuscript_type_module_idx",
   "module_templates_template_family_id_module_status_idx",
+  "model_routing_policy_scopes_scope_kind_scope_value_key",
+  "model_routing_policy_versions_policy_scope_id_version_no_key",
+  "model_routing_policy_versions_policy_scope_status_version_idx",
+  "model_routing_policy_versions_active_policy_scope_uidx",
+  "model_routing_policy_decisions_policy_scope_created_at_idx",
   "agent_runtimes_allowed_modules_gin_idx",
   "agent_runtimes_status_adapter_runtime_slot_idx",
   "tool_gateway_tools_scope_name_idx",
@@ -337,6 +373,7 @@ const expectedMigrationFiles = [
   "0012_template_family_active_uniqueness.sql",
   "0013_governed_evaluation_run_seeding.sql",
   "0014_agent_tooling_verification_expectations.sql",
+  "0015_model_routing_governance_persistence.sql",
 ] as const;
 
 const legacyAgentToolingChecksum =
@@ -673,6 +710,144 @@ test("migrate repairs legacy 0009 agent-tooling databases by backfilling verific
       );
     } finally {
       await verificationClient.end();
+    }
+  });
+});
+
+test("model routing governance schema enforces unique scope identity and only one active version per scope", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(migrate.status, 0, migrate.stderr || migrate.stdout);
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(
+        `
+          insert into model_registry (
+            id,
+            provider,
+            model_name,
+            model_version,
+            allowed_modules,
+            is_prod_allowed
+          )
+          values
+            (
+              '00000000-0000-0000-0000-000000000101',
+              'openai',
+              'gpt-5-primary',
+              '2026-04',
+              array['screening']::module_type[],
+              true
+            ),
+            (
+              '00000000-0000-0000-0000-000000000102',
+              'openai',
+              'gpt-5-secondary',
+              '2026-04',
+              array['screening']::module_type[],
+              true
+            )
+        `,
+      );
+
+      await client.query(
+        `
+          insert into model_routing_policy_scopes (
+            id,
+            scope_kind,
+            scope_value
+          )
+          values (
+            '00000000-0000-0000-0000-000000000201',
+            'template_family',
+            'family-1'
+          )
+        `,
+      );
+
+      await assert.rejects(
+        () =>
+          client.query(
+            `
+              insert into model_routing_policy_scopes (
+                id,
+                scope_kind,
+                scope_value
+              )
+              values (
+                '00000000-0000-0000-0000-000000000202',
+                'template_family',
+                'family-1'
+              )
+            `,
+          ),
+        (error: unknown) => {
+          assert.equal((error as { code?: string }).code, "23505");
+          return true;
+        },
+      );
+
+      await client.query(
+        `
+          insert into model_routing_policy_versions (
+            id,
+            policy_scope_id,
+            version_no,
+            primary_model_id,
+            fallback_model_ids,
+            evidence_links,
+            notes,
+            status
+          )
+          values (
+            '00000000-0000-0000-0000-000000000301',
+            '00000000-0000-0000-0000-000000000201',
+            1,
+            '00000000-0000-0000-0000-000000000101',
+            '{}'::uuid[],
+            '[{\"kind\":\"evaluation_run\",\"id\":\"run-1\"}]'::jsonb,
+            'First active version.',
+            'active'
+          )
+        `,
+      );
+
+      await assert.rejects(
+        () =>
+          client.query(
+            `
+              insert into model_routing_policy_versions (
+                id,
+                policy_scope_id,
+                version_no,
+                primary_model_id,
+                fallback_model_ids,
+                evidence_links,
+                notes,
+                status
+              )
+              values (
+                '00000000-0000-0000-0000-000000000302',
+                '00000000-0000-0000-0000-000000000201',
+                2,
+                '00000000-0000-0000-0000-000000000102',
+                '{}'::uuid[],
+                '[{\"kind\":\"evaluation_run\",\"id\":\"run-2\"}]'::jsonb,
+                'Second active version should be rejected.',
+                'active'
+              )
+            `,
+          ),
+        (error: unknown) => {
+          assert.equal((error as { code?: string }).code, "23505");
+          return true;
+        },
+      );
+    } finally {
+      await client.end();
     }
   });
 });
