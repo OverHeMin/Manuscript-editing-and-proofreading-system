@@ -478,15 +478,25 @@ test("admin can open the editing workbench from linked sample context", async ({
   const historyDetail = page.locator(".evaluation-workbench-history-detail");
   const handoffLink = historyDetail.getByRole("link", { name: "Open Editing Workbench" });
   await expect(handoffLink).toBeVisible();
-  await expect(handoffLink).toHaveAttribute(
-    "href",
-    /#editing\?manuscriptId=manuscript-demo-1$/,
-  );
+  const handoffHref = await handoffLink.getAttribute("href");
+  expect(handoffHref).toBeTruthy();
+  const handoffParams = new URLSearchParams(handoffHref?.split("?")[1] ?? "");
+  expect(handoffParams.get("manuscriptId")).toBe("manuscript-demo-1");
+  expect(handoffParams.get("reviewedCaseSnapshotId")).toBe(prepared.snapshotId);
+  expect(handoffParams.get("sampleSetItemId")).toBe(prepared.sampleSetItemId);
 
   await handoffLink.click();
 
-  await expect(page).toHaveURL(/#editing\?manuscriptId=manuscript-demo-1$/);
+  const editingUrl = new URL(page.url());
+  const editingParams = new URLSearchParams(editingUrl.hash.split("?")[1] ?? "");
+  expect(editingParams.get("manuscriptId")).toBe("manuscript-demo-1");
+  expect(editingParams.get("reviewedCaseSnapshotId")).toBe(prepared.snapshotId);
+  expect(editingParams.get("sampleSetItemId")).toBe(prepared.sampleSetItemId);
   await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  const evaluationContextCard = page.locator(".manuscript-workbench-evaluation-context-card");
+  await expect(evaluationContextCard).toContainText("Evaluation Handoff Context");
+  await expect(evaluationContextCard).toContainText(prepared.snapshotId);
+  await expect(evaluationContextCard).toContainText(prepared.sampleSetItemId);
   await expect(page.getByText("This workbench was prefilled from the previous manuscript handoff.")).toBeVisible();
   await expect(page.getByRole("status")).toContainText(
     "Auto-loaded manuscript manuscript-demo-1",
@@ -516,21 +526,36 @@ test("admin can jump from manuscript workbench back into manuscript-scoped evalu
     evidenceUrl: "https://example.test/evidence/phase9o-roundtrip",
   });
 
-  await page.goto("/#editing?manuscriptId=manuscript-demo-1", {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `/#editing?manuscriptId=manuscript-demo-1&reviewedCaseSnapshotId=${prepared.snapshotId}&sampleSetItemId=${prepared.sampleSetItemId}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
 
   await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  const evaluationContextCard = page.locator(".manuscript-workbench-evaluation-context-card");
+  await expect(evaluationContextCard).toContainText("Evaluation Handoff Context");
+  await expect(evaluationContextCard).toContainText(prepared.snapshotId);
+  await expect(evaluationContextCard).toContainText(prepared.sampleSetItemId);
   const evaluationLink = page.getByRole("link", { name: "Open Evaluation Workbench" });
   await expect(evaluationLink).toBeVisible();
-  await expect(evaluationLink).toHaveAttribute(
-    "href",
-    /#evaluation-workbench\?manuscriptId=manuscript-demo-1$/,
-  );
+  const evaluationHref = await evaluationLink.getAttribute("href");
+  expect(evaluationHref).toBeTruthy();
+  const evaluationHandoffParams = new URLSearchParams(evaluationHref?.split("?")[1] ?? "");
+  expect(evaluationHandoffParams.get("manuscriptId")).toBe("manuscript-demo-1");
+  expect(evaluationHandoffParams.get("reviewedCaseSnapshotId")).toBe(prepared.snapshotId);
+  expect(evaluationHandoffParams.get("sampleSetItemId")).toBe(prepared.sampleSetItemId);
 
   await evaluationLink.click();
 
-  await expect(page).toHaveURL(/#evaluation-workbench\?manuscriptId=manuscript-demo-1$/);
+  const evaluationWorkbenchUrl = new URL(page.url());
+  const evaluationWorkbenchParams = new URLSearchParams(
+    evaluationWorkbenchUrl.hash.split("?")[1] ?? "",
+  );
+  expect(evaluationWorkbenchParams.get("manuscriptId")).toBe("manuscript-demo-1");
+  expect(evaluationWorkbenchParams.get("reviewedCaseSnapshotId")).toBe(prepared.snapshotId);
+  expect(evaluationWorkbenchParams.get("sampleSetItemId")).toBe(prepared.sampleSetItemId);
   await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
   await expect(page.locator(".evaluation-workbench")).toContainText(
     "Context manuscript: manuscript-demo-1",
@@ -1084,7 +1109,12 @@ async function prepareActiveEvaluationScenario(
   request: APIRequestContext,
   input: PrepareDraftEvaluationSuiteInput,
 ): Promise<
-  PreparedDraftEvaluationSuite & { sampleSetId: string; snapshotId: string; snapshotIds: string[] }
+  PreparedDraftEvaluationSuite & {
+    sampleSetId: string;
+    sampleSetItemId: string;
+    snapshotId: string;
+    snapshotIds: string[];
+  }
 > {
   const cookie = await loginAsDemoUser(request, "dev.admin");
   const sampleItemCount = input.sampleItemCount ?? 1;
@@ -1157,6 +1187,23 @@ async function prepareActiveEvaluationScenario(
     throw new Error(
       `publish sample set failed (${publishSampleSetResponse.status()}): ${await publishSampleSetResponse.text()}`,
     );
+  }
+  const sampleSetItemsResponse = await request.get(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-sample-sets/${sampleSet.id}/items`,
+    {
+      headers: {
+        Cookie: cookie,
+      },
+    },
+  );
+  if (!sampleSetItemsResponse.ok()) {
+    throw new Error(
+      `list sample set items failed (${sampleSetItemsResponse.status()}): ${await sampleSetItemsResponse.text()}`,
+    );
+  }
+  const sampleSetItems = (await sampleSetItemsResponse.json()) as Array<{ id: string }>;
+  if (sampleSetItems.length === 0) {
+    throw new Error("prepareActiveEvaluationScenario expected at least one sample set item.");
   }
 
   const checkProfileResponse = await request.post(
@@ -1247,6 +1294,7 @@ async function prepareActiveEvaluationScenario(
     suiteId: suite.id,
     suiteName: suite.name,
     sampleSetId: sampleSet.id,
+    sampleSetItemId: sampleSetItems[0]?.id ?? "",
     snapshotId: snapshots[0]?.id ?? "",
     snapshotIds: snapshots.map((snapshot) => snapshot.id),
   };
