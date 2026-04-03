@@ -166,10 +166,14 @@ export function WorkbenchHost({
             key={activeWorkbenchId}
             actorRole={session.role}
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
-            prefilledManuscriptId={routeState.manuscriptId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
             canOpenLearningReview={canOpenLearningReview}
             canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+            {...{
+              prefilledManuscriptId: routeState.manuscriptId,
+              prefilledReviewedCaseSnapshotId: routeState.reviewedCaseSnapshotId,
+              prefilledSampleSetItemId: routeState.sampleSetItemId,
+            }}
           />
         );
       case "knowledge-review":
@@ -212,12 +216,19 @@ export function WorkbenchHost({
 
   function navigateToWorkbench(
     workbenchId: WorkbenchId,
-    handoff?: { manuscriptId?: string; knowledgeItemId?: string },
+    handoff?: {
+      manuscriptId?: string;
+      knowledgeItemId?: string;
+      reviewedCaseSnapshotId?: string;
+      sampleSetItemId?: string;
+    },
   ) {
     setRouteState({
       activeWorkbenchId: workbenchId,
       manuscriptId: handoff?.manuscriptId,
       knowledgeItemId: handoff?.knowledgeItemId,
+      reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
+      sampleSetItemId: handoff?.sampleSetItemId,
     });
 
     if (typeof window !== "undefined") {
@@ -245,6 +256,8 @@ function resolveInitialWorkbenchRoute(
   activeWorkbenchId: WorkbenchId;
   manuscriptId?: string;
   knowledgeItemId?: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
 } {
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
@@ -258,6 +271,8 @@ function resolveInitialWorkbenchRoute(
       activeWorkbenchId: location.workbenchId,
       manuscriptId: location.manuscriptId,
       knowledgeItemId: location.knowledgeItemId,
+      reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
+      sampleSetItemId: location.sampleSetItemId,
     };
   }
 
