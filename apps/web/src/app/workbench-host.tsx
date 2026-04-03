@@ -166,14 +166,12 @@ export function WorkbenchHost({
             key={activeWorkbenchId}
             actorRole={session.role}
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
+            prefilledManuscriptId={routeState.manuscriptId}
+            prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+            prefilledSampleSetItemId={routeState.sampleSetItemId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
             canOpenLearningReview={canOpenLearningReview}
             canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
-            {...{
-              prefilledManuscriptId: routeState.manuscriptId,
-              prefilledReviewedCaseSnapshotId: routeState.reviewedCaseSnapshotId,
-              prefilledSampleSetItemId: routeState.sampleSetItemId,
-            }}
           />
         );
       case "knowledge-review":
