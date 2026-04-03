@@ -14,6 +14,8 @@ export interface WorkbenchLocation {
   workbenchId: WorkbenchId | null;
   manuscriptId?: string;
   knowledgeItemId?: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -64,6 +66,8 @@ export function formatWorkbenchHash(
     | {
         manuscriptId?: string;
         knowledgeItemId?: string;
+        reviewedCaseSnapshotId?: string;
+        sampleSetItemId?: string;
       },
 ): string {
   const params = new URLSearchParams();
@@ -71,6 +75,10 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? handoff : handoff?.manuscriptId;
   const knowledgeItemId =
     typeof handoff === "string" ? undefined : handoff?.knowledgeItemId;
+  const reviewedCaseSnapshotId =
+    typeof handoff === "string" ? undefined : handoff?.reviewedCaseSnapshotId;
+  const sampleSetItemId =
+    typeof handoff === "string" ? undefined : handoff?.sampleSetItemId;
 
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
@@ -78,6 +86,14 @@ export function formatWorkbenchHash(
 
   if (knowledgeItemId && knowledgeItemId.trim().length > 0) {
     params.set("knowledgeItemId", knowledgeItemId.trim());
+  }
+
+  if (reviewedCaseSnapshotId && reviewedCaseSnapshotId.trim().length > 0) {
+    params.set("reviewedCaseSnapshotId", reviewedCaseSnapshotId.trim());
+  }
+
+  if (sampleSetItemId && sampleSetItemId.trim().length > 0) {
+    params.set("sampleSetItemId", sampleSetItemId.trim());
   }
 
   const query = params.toString();
@@ -102,11 +118,17 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const params = new URLSearchParams(rawQuery);
   const manuscriptId = params.get("manuscriptId")?.trim();
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
+  const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
+  const sampleSetItemId = params.get("sampleSetItemId")?.trim();
 
   return {
     workbenchId: rawWorkbenchId,
     ...(manuscriptId && manuscriptId.length > 0 ? { manuscriptId } : {}),
     ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
+    ...(reviewedCaseSnapshotId && reviewedCaseSnapshotId.length > 0
+      ? { reviewedCaseSnapshotId }
+      : {}),
+    ...(sampleSetItemId && sampleSetItemId.length > 0 ? { sampleSetItemId } : {}),
   };
 }
 

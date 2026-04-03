@@ -1341,12 +1341,12 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
             sampleSetItem?.module,
             props.defaultWorkbenchMode,
           );
-          const manuscriptWorkbenchHash =
-            sampleSetItem?.manuscript_id?.trim()
-              ? formatWorkbenchHash(manuscriptWorkbenchMode, {
-                  manuscriptId: sampleSetItem.manuscript_id,
-                })
-              : null;
+          const manuscriptWorkbenchHash = createLinkedSampleWorkbenchHash({
+            mode: manuscriptWorkbenchMode,
+            manuscriptId: sampleSetItem?.manuscript_id,
+            reviewedCaseSnapshotId: sampleSetItem?.reviewed_case_snapshot_id,
+            sampleSetItemId: sampleSetItem?.id,
+          });
           return (
             <li key={runItem.id}>
               <strong>Run Item: {runItem.id}</strong>
@@ -1403,13 +1403,12 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
   linkedSampleSetItem: EvaluationWorkbenchOverview["sampleSetItems"][number] | null;
 }) {
   const { selectedRun, selectedRunItem, linkedSampleSetItem } = props;
-  const manuscriptWorkbenchHash =
-    linkedSampleSetItem?.manuscript_id?.trim()
-      ? formatWorkbenchHash(
-          resolveLinkedSampleWorkbenchMode(linkedSampleSetItem.module),
-          { manuscriptId: linkedSampleSetItem.manuscript_id },
-        )
-      : null;
+  const manuscriptWorkbenchHash = createLinkedSampleWorkbenchHash({
+    mode: resolveLinkedSampleWorkbenchMode(linkedSampleSetItem?.module),
+    manuscriptId: linkedSampleSetItem?.manuscript_id,
+    reviewedCaseSnapshotId: linkedSampleSetItem?.reviewed_case_snapshot_id,
+    sampleSetItemId: linkedSampleSetItem?.id,
+  });
   const manuscriptWorkbenchLabel = createLinkedSampleWorkbenchLabel(
     resolveLinkedSampleWorkbenchMode(linkedSampleSetItem?.module),
   );
@@ -1493,6 +1492,23 @@ function createLinkedSampleWorkbenchLabel(mode: ManuscriptWorkbenchMode): string
   if (mode === "screening") return "Open Screening Workbench";
   if (mode === "editing") return "Open Editing Workbench";
   return "Open Proofreading Workbench";
+}
+
+function createLinkedSampleWorkbenchHash(input: {
+  mode: ManuscriptWorkbenchMode;
+  manuscriptId: string | null | undefined;
+  reviewedCaseSnapshotId?: string | null;
+  sampleSetItemId?: string | null;
+}) {
+  if (!input.manuscriptId?.trim()) {
+    return null;
+  }
+
+  return formatWorkbenchHash(input.mode, {
+    manuscriptId: input.manuscriptId,
+    reviewedCaseSnapshotId: input.reviewedCaseSnapshotId ?? undefined,
+    sampleSetItemId: input.sampleSetItemId ?? undefined,
+  });
 }
 
 function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][number]) {

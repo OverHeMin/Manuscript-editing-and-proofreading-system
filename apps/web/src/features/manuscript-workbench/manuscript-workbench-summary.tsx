@@ -31,6 +31,9 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  prefilledSampleSetItemId?: string;
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: AnyWorkbenchJob | null;
   latestExport: DocumentAssetExportViewModel | null;
@@ -42,11 +45,30 @@ export function ManuscriptWorkbenchSummary({
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
+  prefilledSampleSetItemId,
   workspace,
   latestJob,
   latestExport,
   latestActionResult = null,
 }: ManuscriptWorkbenchSummaryProps) {
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+  const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
+  const shouldPreserveEvaluationSampleContextIds =
+    normalizedPrefilledManuscriptId.length > 0 &&
+    normalizedPrefilledManuscriptId === workspace.manuscript.id;
+  const manuscriptWorkbenchHandoff = {
+    manuscriptId: workspace.manuscript.id,
+    reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
+      ? normalizedPrefilledReviewedCaseSnapshotId
+      : undefined,
+    sampleSetItemId: shouldPreserveEvaluationSampleContextIds
+      ? normalizedPrefilledSampleSetItemId
+      : undefined,
+  };
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -107,7 +129,10 @@ export function ManuscriptWorkbenchSummary({
             accessibleHandoffModes.includes(recommendedNextStep.targetMode) ? (
             <a
               className="manuscript-workbench-shortcut"
-              href={formatWorkbenchHash(recommendedNextStep.targetMode, workspace.manuscript.id)}
+              href={formatWorkbenchHash(
+                recommendedNextStep.targetMode,
+                manuscriptWorkbenchHandoff,
+              )}
             >
               {recommendedNextStep.targetLabel ??
                 `Open ${formatWorkbenchModeLabel(recommendedNextStep.targetMode)} Workbench`}
@@ -140,7 +165,7 @@ export function ManuscriptWorkbenchSummary({
               value={
                 <a
                   className="manuscript-workbench-shortcut"
-                  href={formatWorkbenchHash("evaluation-workbench", workspace.manuscript.id)}
+                  href={formatWorkbenchHash("evaluation-workbench", manuscriptWorkbenchHandoff)}
                 >
                   Open Evaluation Workbench
                 </a>

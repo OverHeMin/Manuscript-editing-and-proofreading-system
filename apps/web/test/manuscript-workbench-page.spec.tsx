@@ -76,6 +76,47 @@ test("manuscript workbench page prefills lookup state from a workbench handoff",
 
   assert.match(markup, /manuscript-9/);
   assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
+  assert.doesNotMatch(markup, /Evaluation Handoff Context/);
+});
+
+test("manuscript workbench page renders evaluation handoff context when reviewed snapshot and sample ids are provided", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="proofreading"
+      prefilledManuscriptId="manuscript-9"
+      prefilledReviewedCaseSnapshotId="reviewed-case-77"
+      prefilledSampleSetItemId="sample-set-item-22"
+      controller={{
+        loadWorkspace: async () => {
+          throw new Error("not used");
+        },
+        uploadManuscriptAndLoad: async () => {
+          throw new Error("not used");
+        },
+        runModuleAndLoad: async () => {
+          throw new Error("not used");
+        },
+        finalizeProofreadingAndLoad: async () => {
+          throw new Error("not used");
+        },
+        publishHumanFinalAndLoad: async () => {
+          throw new Error("not used");
+        },
+        loadJob: async () => {
+          throw new Error("not used");
+        },
+        exportCurrentAsset: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
+  assert.match(markup, /Evaluation Handoff Context/);
+  assert.match(markup, /Workspace auto-load remains manuscript-scoped\. These IDs identify the evaluation sample context you navigated from\./);
+  assert.match(markup, /reviewed-case-77/);
+  assert.match(markup, /sample-set-item-22/);
 });
 
 test("manuscript workbench page shows an explicit loading state while a handed-off workspace is auto-loading", () => {
@@ -134,9 +175,12 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
     latestProofreadingDraftAsset: null,
   };
 
+  let loadWorkspaceArgs: unknown[] | null = null;
   const result = await loadPrefilledWorkbenchWorkspace(
     {
-      loadWorkspace: async (manuscriptId: string) => {
+      loadWorkspace: async (...args: unknown[]) => {
+        loadWorkspaceArgs = args;
+        const manuscriptId = args[0] as string;
         assert.equal(manuscriptId, "manuscript-9");
         return workspace;
       },
@@ -164,6 +208,7 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
 
   assert.equal(result.workspace, workspace);
   assert.equal(result.status, "Auto-loaded manuscript manuscript-9");
+  assert.deepEqual(loadWorkspaceArgs, ["manuscript-9"]);
   assert.deepEqual(result.latestActionResult, {
     tone: "success",
     actionLabel: "Load Workspace",

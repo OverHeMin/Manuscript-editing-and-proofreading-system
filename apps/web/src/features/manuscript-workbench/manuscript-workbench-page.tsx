@@ -29,6 +29,8 @@ export interface ManuscriptWorkbenchPageProps {
   actorRole?: AuthRole;
   controller?: ManuscriptWorkbenchController;
   prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  prefilledSampleSetItemId?: string;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
@@ -74,14 +76,26 @@ export function ManuscriptWorkbenchPage({
   actorRole = "user",
   controller = defaultController,
   prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
+  prefilledSampleSetItemId,
   accessibleHandoffModes,
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
 }: ManuscriptWorkbenchPageProps) {
   const canUpload = mode === "submission" || actorRole === "admin";
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+  const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
+  const hasEvaluationHandoffContext =
+    normalizedPrefilledReviewedCaseSnapshotId.length > 0 ||
+    normalizedPrefilledSampleSetItemId.length > 0;
   const [lookupId, setLookupId] = useState(normalizedPrefilledManuscriptId);
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
+  const shouldShowEvaluationHandoffContext =
+    hasEvaluationHandoffContext &&
+    normalizedPrefilledManuscriptId.length > 0 &&
+    (workspace ? workspace.manuscript.id === normalizedPrefilledManuscriptId : true);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<DocumentAssetExportViewModel | null>(null);
   const [latestActionResult, setLatestActionResult] =
@@ -267,6 +281,33 @@ export function ManuscriptWorkbenchPage({
         <p className="manuscript-workbench-prefill-note">
           This workbench was prefilled from the previous manuscript handoff.
         </p>
+      ) : null}
+      {shouldShowEvaluationHandoffContext ? (
+        <section className="manuscript-workbench-evaluation-context-card" aria-live="polite">
+          <div className="manuscript-workbench-evaluation-context-copy">
+            <span className="manuscript-workbench-evaluation-context-eyebrow">
+              Evaluation Handoff Context
+            </span>
+            <p>
+              Workspace auto-load remains manuscript-scoped. These IDs identify the
+              evaluation sample context you navigated from.
+            </p>
+          </div>
+          <dl className="manuscript-workbench-evaluation-context-metrics">
+            {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
+              <>
+                <dt>Reviewed Case Snapshot ID</dt>
+                <dd>{normalizedPrefilledReviewedCaseSnapshotId}</dd>
+              </>
+            ) : null}
+            {normalizedPrefilledSampleSetItemId.length > 0 ? (
+              <>
+                <dt>Sample Set Item ID</dt>
+                <dd>{normalizedPrefilledSampleSetItemId}</dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
       ) : null}
       {error ? (
         <ManuscriptWorkbenchNotice
@@ -575,6 +616,9 @@ export function ManuscriptWorkbenchPage({
           accessibleHandoffModes={accessibleHandoffModes}
           canOpenLearningReview={canOpenLearningReview}
           canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+          prefilledManuscriptId={normalizedPrefilledManuscriptId}
+          prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
+          prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
           workspace={workspace}
           latestJob={latestJob}
           latestExport={latestExport}
