@@ -29,6 +29,11 @@ import {
 import {
   requireEligibleReviewedCaseSnapshot,
 } from "./sample-set-source-guard.ts";
+import {
+  createDefaultGovernedRunCheckExecutor,
+  mergeGovernedVerificationCheckProfileIds,
+  type GovernedRunCheckExecutor,
+} from "./governed-run-check-execution.ts";
 import type {
   EvaluationEvidencePackRecord,
   EvaluationPromotionRecommendationRecord,
@@ -116,6 +121,10 @@ export interface CompleteEvaluationRunInput {
   evidenceIds: string[];
 }
 
+export interface ExecuteSeededGovernedRunChecksInput {
+  runId: string;
+}
+
 export interface RecordEvaluationRunItemResultInput {
   runItemId: string;
   resultAssetId?: string;
@@ -159,6 +168,7 @@ export interface VerificationOpsServiceOptions {
   reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   learningService?: VerificationOpsLearningService;
   toolGatewayRepository: ToolGatewayRepository;
+  governedRunCheckExecutor?: GovernedRunCheckExecutor;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<VerificationOpsWriteContext>;
   createId?: () => string;
@@ -285,6 +295,20 @@ export class EvaluationLearningSnapshotNotInRunError extends Error {
   }
 }
 
+export class GovernedEvaluationRunSourceMissingError extends Error {
+  constructor(runId: string) {
+    super(`Evaluation run ${runId} does not have a governed source.`);
+    this.name = "GovernedEvaluationRunSourceMissingError";
+  }
+}
+
+export class GovernedEvaluationRunNotQueuedError extends Error {
+  constructor(runId: string, status: EvaluationRunRecord["status"]) {
+    super(`Evaluation run ${runId} cannot execute governed checks from status ${status}.`);
+    this.name = "GovernedEvaluationRunNotQueuedError";
+  }
+}
+
 export class VerificationOpsLearningServiceRequiredError extends Error {
   constructor() {
     super(
@@ -299,6 +323,7 @@ export class VerificationOpsService {
   private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   private readonly learningService?: VerificationOpsLearningService;
   private readonly toolGatewayRepository: ToolGatewayRepository;
+  private readonly governedRunCheckExecutor: GovernedRunCheckExecutor;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<VerificationOpsWriteContext>;
   private readonly createId: () => string;
@@ -309,6 +334,8 @@ export class VerificationOpsService {
     this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
     this.learningService = options.learningService;
     this.toolGatewayRepository = options.toolGatewayRepository;
+    this.governedRunCheckExecutor =
+      options.governedRunCheckExecutor ?? createDefaultGovernedRunCheckExecutor();
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -718,6 +745,128 @@ export class VerificationOpsService {
       }
 
       return seededRuns;
+    });
+  }
+
+  async executeSeededGovernedRunChecks(
+    actorRole: RoleKey,
+    input: ExecuteSeededGovernedRunChecksInput,
+  ): Promise<EvaluationRunRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const existing = await this.requireEvaluationRun(input.runId);
+    if (!existing.governed_source) {
+      throw new GovernedEvaluationRunSourceMissingError(input.runId);
+    }
+    if (existing.status !== "queued") {
+      throw new GovernedEvaluationRunNotQueuedError(input.runId, existing.status);
+    }
+
+    const suite = await this.requireEvaluationSuite(existing.suite_id);
+    const releaseProfile = existing.release_check_profile_id
+      ? await this.requireReleaseCheckProfile(existing.release_check_profile_id)
+      : undefined;
+    if (releaseProfile && releaseProfile.status !== "published") {
+      throw new ReleaseCheckProfileDependencyError(
+        `Evaluation runs require published release check profile ${releaseProfile.id}.`,
+      );
+    }
+
+    const profileIds = mergeGovernedVerificationCheckProfileIds({
+      suiteProfileIds: suite.verification_check_profile_ids,
+      releaseProfileIds: releaseProfile?.verification_check_profile_ids,
+    });
+    const checkProfiles = await Promise.all(
+      profileIds.map(async (profileId) => {
+        const profile = await this.requireVerificationCheckProfile(profileId);
+        if (profile.status !== "published") {
+          throw new VerificationCheckProfileDependencyError(
+            `Referenced verification check profile ${profileId} must be published.`,
+          );
+        }
+        return profile;
+      }),
+    );
+
+    const running = await this.transactionManager.withTransaction(
+      async ({ repository }) => {
+        const refreshed = await repository.findEvaluationRunById(input.runId);
+        if (!refreshed) {
+          throw new EvaluationRunNotFoundError(input.runId);
+        }
+        if (!refreshed.governed_source) {
+          throw new GovernedEvaluationRunSourceMissingError(input.runId);
+        }
+        if (refreshed.status !== "queued") {
+          throw new GovernedEvaluationRunNotQueuedError(input.runId, refreshed.status);
+        }
+
+        const next: EvaluationRunRecord = {
+          ...refreshed,
+          governed_source: { ...refreshed.governed_source },
+          baseline_binding: refreshed.baseline_binding
+            ? { ...refreshed.baseline_binding }
+            : undefined,
+          candidate_binding: refreshed.candidate_binding
+            ? { ...refreshed.candidate_binding }
+            : undefined,
+          evidence_ids: [...refreshed.evidence_ids],
+          status: "running",
+        };
+        await repository.saveEvaluationRun(next);
+        return next;
+      },
+    );
+    const governedSource = running.governed_source;
+    if (!governedSource) {
+      throw new GovernedEvaluationRunSourceMissingError(input.runId);
+    }
+
+    const evidenceIds = [...running.evidence_ids];
+    let status: Extract<EvaluationRunRecord["status"], "passed" | "failed"> = "passed";
+
+    for (const checkProfile of checkProfiles) {
+      try {
+        const result = await this.governedRunCheckExecutor({
+          run: running,
+          suite,
+          checkProfile,
+          governedSource,
+        });
+        const evidence = await this.recordVerificationEvidence(actorRole, {
+          kind: result.evidence.kind,
+          label: result.evidence.label,
+          uri: result.evidence.uri,
+          artifactAssetId: result.evidence.artifactAssetId,
+          checkProfileId: checkProfile.id,
+        });
+        evidenceIds.push(evidence.id);
+        if (result.outcome === "failed") {
+          status = "failed";
+          break;
+        }
+      } catch (error) {
+        status = "failed";
+        const failureLabel = buildGovernedRunFailureEvidenceLabel({
+          checkType: checkProfile.check_type,
+          checkName: checkProfile.name,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        const evidence = await this.recordVerificationEvidence(actorRole, {
+          kind: "artifact",
+          label: failureLabel,
+          artifactAssetId: governedSource.output_asset_id,
+          checkProfileId: checkProfile.id,
+        });
+        evidenceIds.push(evidence.id);
+        break;
+      }
+    }
+
+    return this.completeEvaluationRun(actorRole, {
+      runId: input.runId,
+      status,
+      evidenceIds,
     });
   }
 
@@ -1150,6 +1299,14 @@ function flattenOptionalTags(
 ): string[] | undefined {
   const allTags = items.flatMap((item) => item.risk_tags ?? []);
   return allTags.length > 0 ? dedupePreserveOrder(allTags) : undefined;
+}
+
+function buildGovernedRunFailureEvidenceLabel(input: {
+  checkType: VerificationCheckProfileRecord["check_type"];
+  checkName: string;
+  reason: string;
+}): string {
+  return `Automatic governed ${input.checkType} failed for ${input.checkName}: ${input.reason}`;
 }
 
 function assertSupportedEvaluationCandidateType(

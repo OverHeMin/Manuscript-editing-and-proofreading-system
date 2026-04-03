@@ -86,6 +86,12 @@ function createModuleHarness() {
     "evaluation-run-1",
     "evaluation-run-2",
     "evaluation-run-3",
+    "verification-evidence-1",
+    "verification-evidence-2",
+    "verification-evidence-3",
+    "verification-evidence-4",
+    "verification-evidence-5",
+    "verification-evidence-6",
   ];
   const sandboxIds = [
     "sandbox-screening-1",
@@ -976,9 +982,21 @@ test("screening produces a final report asset with routed template, knowledge, a
     execution_snapshot_id: response.body.snapshot_id,
     output_asset_id: response.body.asset.id,
   });
+  assert.equal(seededRuns[0]?.status, "passed");
   assert.equal(seededRuns[0]?.release_check_profile_id, "release-profile-screening-1");
   assert.equal(seededRuns[0]?.run_item_count, 0);
   assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.equal(seededRuns[0]?.evidence_ids.length, 1);
+  assert.deepEqual(executionLog?.verification_evidence_ids, seededRuns[0]?.evidence_ids);
+  const screeningEvidence =
+    await verificationOpsRepository.findVerificationEvidenceById(
+      seededRuns[0]!.evidence_ids[0]!,
+    );
+  assert.equal(screeningEvidence?.check_profile_id, "check-profile-screening-1");
+  assert.equal(
+    screeningEvidence?.uri,
+    `/api/v1/document-assets/${response.body.asset.id}/download`,
+  );
   assert.deepEqual(
     await verificationOpsRepository.listEvaluationRunItemsByRunId(
       seededRuns[0]!.id,
@@ -1088,9 +1106,20 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     execution_snapshot_id: response.body.snapshot_id,
     output_asset_id: response.body.asset.id,
   });
+  assert.equal(seededRuns[0]?.status, "passed");
   assert.equal(seededRuns[0]?.release_check_profile_id, "release-profile-editing-1");
   assert.equal(seededRuns[0]?.run_item_count, 0);
   assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.equal(seededRuns[0]?.evidence_ids.length, 1);
+  assert.deepEqual(executionLog?.verification_evidence_ids, seededRuns[0]?.evidence_ids);
+  const editingEvidence = await verificationOpsRepository.findVerificationEvidenceById(
+    seededRuns[0]!.evidence_ids[0]!,
+  );
+  assert.equal(editingEvidence?.check_profile_id, "check-profile-editing-1");
+  assert.equal(
+    editingEvidence?.uri,
+    `/api/v1/document-assets/${response.body.asset.id}/download`,
+  );
   assert.deepEqual(
     await verificationOpsRepository.listEvaluationRunItemsByRunId(
       seededRuns[0]!.id,
@@ -1145,6 +1174,10 @@ test("proofreading produces a draft first and only advances the final pointer af
       ?.current_proofreading_asset_id,
     undefined,
   );
+  const draftExecutionLog = await agentExecutionRepository.findById(
+    draftResponse.body.agent_execution_log_id,
+  );
+  assert.deepEqual(draftExecutionLog?.verification_evidence_ids, []);
   assert.deepEqual(
     await verificationOpsRepository.listEvaluationRunsBySuiteId(
       "suite-proofreading-1",
@@ -1251,12 +1284,27 @@ test("proofreading produces a draft first and only advances the final pointer af
     execution_snapshot_id: finalResponse.body.snapshot_id,
     output_asset_id: finalResponse.body.asset.id,
   });
+  assert.equal(seededRuns[0]?.status, "passed");
   assert.equal(
     seededRuns[0]?.release_check_profile_id,
     "release-profile-proofreading-1",
   );
   assert.equal(seededRuns[0]?.run_item_count, 0);
   assert.equal(seededRuns[0]?.sample_set_id, undefined);
+  assert.equal(seededRuns[0]?.evidence_ids.length, 1);
+  assert.deepEqual(executionLog?.verification_evidence_ids, seededRuns[0]?.evidence_ids);
+  const proofreadingEvidence =
+    await verificationOpsRepository.findVerificationEvidenceById(
+      seededRuns[0]!.evidence_ids[0]!,
+    );
+  assert.equal(
+    proofreadingEvidence?.check_profile_id,
+    "check-profile-proofreading-1",
+  );
+  assert.equal(
+    proofreadingEvidence?.uri,
+    `/api/v1/document-assets/${finalResponse.body.asset.id}/download`,
+  );
   assert.deepEqual(
     await verificationOpsRepository.listEvaluationRunItemsByRunId(
       seededRuns[0]!.id,

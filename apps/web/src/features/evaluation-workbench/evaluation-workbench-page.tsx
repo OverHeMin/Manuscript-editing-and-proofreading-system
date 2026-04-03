@@ -6,6 +6,7 @@ import type { LearningCandidateType } from "../learning-review/types.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
   EvaluationRunItemFailureKind,
+  FinalizeEvaluationRunResultViewModel,
   VerificationEvidenceKind,
   VerificationEvidenceViewModel,
 } from "../verification-ops/index.ts";
@@ -880,90 +881,41 @@ export function EvaluationWorkbenchPage({
             <h3>Finalize Run</h3>
             <span>{selectedRun?.id ?? "Select run first"}</span>
           </div>
-          {selectedRun == null ? (
-            <p className="evaluation-workbench-empty">Choose a run before recording evidence and finalizing it.</p>
-          ) : (
-            <>
-              <div className="evaluation-workbench-form-grid">
-                <Field label="Run Status">
-                  <select value={finalizeForm.status} onChange={(event) => setFinalizeForm((current) => ({ ...current, status: event.target.value as "passed" | "failed" }))}>
-                    <option value="passed">passed</option>
-                    <option value="failed">failed</option>
-                  </select>
-                </Field>
-                <Field label="Evidence Type">
-                  <select
-                    value={finalizeForm.evidenceKind}
-                    onChange={(event) =>
-                      setFinalizeForm((current) => {
-                        const nextEvidenceKind = event.target.value as VerificationEvidenceKind;
-                        return {
-                          ...current,
-                          evidenceKind: nextEvidenceKind,
-                          artifactAssetId:
-                            nextEvidenceKind === "artifact" && !current.artifactAssetId
-                              ? resolvePreferredFinalizeArtifactAssetId(finalizeArtifactOptions)
-                              : current.artifactAssetId,
-                        };
-                      })}
-                  >
-                    <option value="url">url</option>
-                    <option value="artifact">artifact</option>
-                  </select>
-                </Field>
-                <Field label="Evidence Label"><input value={finalizeForm.evidenceLabel} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceLabel: event.target.value }))} /></Field>
-                {finalizeForm.evidenceKind === "url" ? (
-                  <Field label="Evidence URL" wide><input value={finalizeForm.evidenceUrl} onChange={(event) => setFinalizeForm((current) => ({ ...current, evidenceUrl: event.target.value }))} /></Field>
-                ) : (
-                  <Field label="Artifact Asset ID" wide><input value={finalizeForm.artifactAssetId} onChange={(event) => setFinalizeForm((current) => ({ ...current, artifactAssetId: event.target.value }))} /></Field>
-                )}
-              </div>
-              {finalizeForm.evidenceKind === "artifact" ? (
-                finalizeArtifactOptions.length > 0 ? (
-                  <div className="evaluation-workbench-inline-list" role="group" aria-label="Artifact evidence suggestions">
-                    {finalizeArtifactOptions.map((option) => (
-                      <button
-                        key={`${option.source}-${option.assetId}`}
-                        type="button"
-                        className="evaluation-workbench-action"
-                        onClick={() =>
-                          setFinalizeForm((current) => ({
-                            ...current,
-                            artifactAssetId: option.assetId,
-                          }))
-                        }
-                      >
-                        {option.actionLabel}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="evaluation-workbench-empty">
-                    Save a run-item result or load linked sample context to reuse an internal artifact as evidence.
-                  </p>
-                )
-              ) : null}
-              <button type="button" onClick={() => void handleCompleteAndFinalizeRun()} disabled={isBusy}>Complete And Finalize Run</button>
-              {effectiveFinalizedResult ? (
-                <div className="evaluation-workbench-result evaluation-workbench-finalized">
-                  <strong>Finalized Recommendation</strong>
-                  <div>
-                    <span>Run: {effectiveFinalizedResult.run.id}</span>
-                    <span>Evidence Pack: {effectiveFinalizedResult.evidence_pack.id}</span>
-                    <span>Summary: {effectiveFinalizedResult.evidence_pack.summary_status}</span>
-                    <span>Recommendation: {effectiveFinalizedResult.recommendation.status}</span>
-                    {effectiveFinalizedResult.recommendation.decision_reason ? <span>{effectiveFinalizedResult.recommendation.decision_reason}</span> : null}
-                  </div>
-                  <EvaluationWorkbenchEvidencePackSummary
-                    evidencePack={effectiveFinalizedResult.evidence_pack}
-                  />
-                  <EvaluationWorkbenchEvidenceList evidence={selectedRunEvidence} />
-                </div>
-              ) : (
-                <p className="evaluation-workbench-empty">Finalize the run to produce a governed recommendation.</p>
-              )}
-            </>
-          )}
+          <EvaluationWorkbenchFinalizePanel
+            selectedRun={selectedRun}
+            effectiveFinalizedResult={effectiveFinalizedResult}
+            finalizeForm={finalizeForm}
+            finalizeArtifactOptions={finalizeArtifactOptions}
+            selectedRunEvidence={selectedRunEvidence}
+            isBusy={isBusy}
+            onFinalizeStatusChange={(status) =>
+              setFinalizeForm((current) => ({ ...current, status }))
+            }
+            onEvidenceKindChange={(nextEvidenceKind) =>
+              setFinalizeForm((current) => ({
+                ...current,
+                evidenceKind: nextEvidenceKind,
+                artifactAssetId:
+                  nextEvidenceKind === "artifact" && !current.artifactAssetId
+                    ? resolvePreferredFinalizeArtifactAssetId(finalizeArtifactOptions)
+                    : current.artifactAssetId,
+              }))
+            }
+            onEvidenceLabelChange={(evidenceLabel) =>
+              setFinalizeForm((current) => ({ ...current, evidenceLabel }))
+            }
+            onEvidenceUrlChange={(evidenceUrl) =>
+              setFinalizeForm((current) => ({ ...current, evidenceUrl }))
+            }
+            onArtifactAssetIdChange={(artifactAssetId) =>
+              setFinalizeForm((current) => ({ ...current, artifactAssetId }))
+            }
+            onSelectArtifactSuggestion={(artifactAssetId) =>
+              setFinalizeForm((current) => ({ ...current, artifactAssetId }))
+            }
+            onCompleteAndFinalize={() => void handleCompleteAndFinalizeRun()}
+            onFinalizeRecommendation={() => void handleFinalizeRecommendation()}
+          />
         </section>
 
         <section className="evaluation-workbench-panel">
@@ -1160,6 +1112,22 @@ export function EvaluationWorkbenchPage({
     });
   }
 
+  async function handleFinalizeRecommendation() {
+    if (!selectedSuite || !selectedRun) return setErrorMessage("Select a run before finalizing it.");
+    await runBusyTask(async () => {
+      const result = await controller.finalizeCompletedRun({
+        actorRole,
+        suiteId: selectedSuite.id,
+        runId: selectedRun.id,
+        manuscriptId: activeManuscriptContextId,
+      });
+      setOverview(result.overview);
+      setFinalizedResult(result.finalized);
+      setCreatedLearningCandidate(null);
+      setStatusMessage(`Finalized evaluation run ${result.finalized.run.id} with ${result.finalized.recommendation.status} recommendation.`);
+    });
+  }
+
   async function handleCreateLearningCandidate() {
     if (!effectiveFinalizedResult) return setErrorMessage("Finalize the evaluation run before creating a learning candidate.");
     await runBusyTask(async () => {
@@ -1287,6 +1255,171 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
         </div>
       </div>
     </div>
+  );
+}
+
+export function EvaluationWorkbenchFinalizePanel(props: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
+  effectiveFinalizedResult: FinalizeEvaluationRunResultViewModel | null;
+  finalizeForm: typeof baseFinalizeForm;
+  finalizeArtifactOptions: ReturnType<typeof createFinalizeArtifactOptions>;
+  selectedRunEvidence: VerificationEvidenceViewModel[];
+  isBusy: boolean;
+  onFinalizeStatusChange: (status: "passed" | "failed") => void;
+  onEvidenceKindChange: (kind: VerificationEvidenceKind) => void;
+  onEvidenceLabelChange: (label: string) => void;
+  onEvidenceUrlChange: (url: string) => void;
+  onArtifactAssetIdChange: (assetId: string) => void;
+  onSelectArtifactSuggestion: (assetId: string) => void;
+  onCompleteAndFinalize: () => void;
+  onFinalizeRecommendation: () => void;
+}) {
+  const finalizeMode = resolveFinalizeRunMode({
+    selectedRun: props.selectedRun,
+    hasFinalizedResult: props.effectiveFinalizedResult != null,
+  });
+
+  if (props.selectedRun == null) {
+    return (
+      <p className="evaluation-workbench-empty">
+        Choose a run before recording evidence and finalizing it.
+      </p>
+    );
+  }
+
+  if (finalizeMode === "finalize_recommendation") {
+    return (
+      <>
+        <div className="evaluation-workbench-result">
+          <strong>Machine-Completed Governed Run</strong>
+          <div className="evaluation-workbench-history-compare">
+            <span>Run Status: {props.selectedRun.status}</span>
+            {props.selectedRun.governed_source ? (
+              <span>
+                Governed Source: {props.selectedRun.governed_source.source_module} /{" "}
+                {props.selectedRun.governed_source.manuscript_id}
+              </span>
+            ) : null}
+          </div>
+          <p className="evaluation-workbench-empty">
+            Automatic governed checks completed. Review machine evidence before finalizing.
+          </p>
+          <EvaluationWorkbenchEvidenceList
+            evidence={props.selectedRunEvidence}
+            emptyMessage="No persisted machine evidence is attached to this governed run."
+          />
+        </div>
+        <button
+          type="button"
+          onClick={props.onFinalizeRecommendation}
+          disabled={props.isBusy}
+        >
+          Finalize Recommendation
+        </button>
+      </>
+    );
+  }
+
+  if (props.effectiveFinalizedResult) {
+    return (
+      <div className="evaluation-workbench-result evaluation-workbench-finalized">
+        <strong>Finalized Recommendation</strong>
+        <div>
+          <span>Run: {props.effectiveFinalizedResult.run.id}</span>
+          <span>Evidence Pack: {props.effectiveFinalizedResult.evidence_pack.id}</span>
+          <span>Summary: {props.effectiveFinalizedResult.evidence_pack.summary_status}</span>
+          <span>Recommendation: {props.effectiveFinalizedResult.recommendation.status}</span>
+          {props.effectiveFinalizedResult.recommendation.decision_reason ? (
+            <span>{props.effectiveFinalizedResult.recommendation.decision_reason}</span>
+          ) : null}
+        </div>
+        <EvaluationWorkbenchEvidencePackSummary
+          evidencePack={props.effectiveFinalizedResult.evidence_pack}
+        />
+        <EvaluationWorkbenchEvidenceList evidence={props.selectedRunEvidence} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="evaluation-workbench-form-grid">
+        <Field label="Run Status">
+          <select
+            value={props.finalizeForm.status}
+            onChange={(event) =>
+              props.onFinalizeStatusChange(event.target.value as "passed" | "failed")
+            }
+          >
+            <option value="passed">passed</option>
+            <option value="failed">failed</option>
+          </select>
+        </Field>
+        <Field label="Evidence Type">
+          <select
+            value={props.finalizeForm.evidenceKind}
+            onChange={(event) =>
+              props.onEvidenceKindChange(event.target.value as VerificationEvidenceKind)
+            }
+          >
+            <option value="url">url</option>
+            <option value="artifact">artifact</option>
+          </select>
+        </Field>
+        <Field label="Evidence Label">
+          <input
+            value={props.finalizeForm.evidenceLabel}
+            onChange={(event) => props.onEvidenceLabelChange(event.target.value)}
+          />
+        </Field>
+        {props.finalizeForm.evidenceKind === "url" ? (
+          <Field label="Evidence URL" wide>
+            <input
+              value={props.finalizeForm.evidenceUrl}
+              onChange={(event) => props.onEvidenceUrlChange(event.target.value)}
+            />
+          </Field>
+        ) : (
+          <Field label="Artifact Asset ID" wide>
+            <input
+              value={props.finalizeForm.artifactAssetId}
+              onChange={(event) => props.onArtifactAssetIdChange(event.target.value)}
+            />
+          </Field>
+        )}
+      </div>
+      {props.finalizeForm.evidenceKind === "artifact" ? (
+        props.finalizeArtifactOptions.length > 0 ? (
+          <div
+            className="evaluation-workbench-inline-list"
+            role="group"
+            aria-label="Artifact evidence suggestions"
+          >
+            {props.finalizeArtifactOptions.map((option) => (
+              <button
+                key={`${option.source}-${option.assetId}`}
+                type="button"
+                className="evaluation-workbench-action"
+                onClick={() => props.onSelectArtifactSuggestion(option.assetId)}
+              >
+                {option.actionLabel}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="evaluation-workbench-empty">
+            Save a run-item result or load linked sample context to reuse an internal artifact as
+            evidence.
+          </p>
+        )
+      ) : null}
+      <button type="button" onClick={props.onCompleteAndFinalize} disabled={props.isBusy}>
+        Complete And Finalize Run
+      </button>
+      <p className="evaluation-workbench-empty">
+        Finalize the run to produce a governed recommendation.
+      </p>
+    </>
   );
 }
 
@@ -1787,6 +1920,28 @@ export function isSelectedRunHiddenFromHistoryList(
   return !entries.some((entry) => entry.run.id === selectedRunId);
 }
 
+function resolveFinalizeRunMode(input: {
+  selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
+  hasFinalizedResult: boolean;
+}) {
+  if (input.selectedRun == null) {
+    return "unselected" as const;
+  }
+
+  if (input.hasFinalizedResult) {
+    return "finalized" as const;
+  }
+
+  if (
+    input.selectedRun.governed_source &&
+    (input.selectedRun.status === "passed" || input.selectedRun.status === "failed")
+  ) {
+    return "finalize_recommendation" as const;
+  }
+
+  return "complete_and_finalize" as const;
+}
+
 export function describeHistoryComparisonGuidance(input: {
   selectedRun: EvaluationWorkbenchOverview["runs"][number] | null;
   selectedRunHistoryEntry: EvaluationWorkbenchFinalizedRunHistoryEntry | null;
@@ -1801,6 +1956,12 @@ export function describeHistoryComparisonGuidance(input: {
   const scopedCount = input.scopedCount ?? totalFinalizedCount;
   if (selectedRunHistoryEntry && previousRunHistoryEntry) return null;
   if (selectedRun && !selectedRunHistoryEntry) {
+    if (
+      selectedRun.governed_source &&
+      (selectedRun.status === "passed" || selectedRun.status === "failed")
+    ) {
+      return `Current run ${selectedRun.id} already completed automatic governed checks. Finalize the recommendation to compare against history.`;
+    }
     return `Current run ${selectedRun.id} is still ${selectedRun.status}. Complete and finalize it to compare against history.`;
   }
   if (selectedRunHistoryEntry) {

@@ -20,6 +20,7 @@ import {
   summarizeFinalizedEntry,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
+  EvaluationWorkbenchFinalizePanel,
   EvaluationWorkbenchGovernedSourceDetailCard,
   EvaluationWorkbenchLinkedSampleContextList,
   EvaluationWorkbenchHistoryEntrySignals,
@@ -361,6 +362,116 @@ test("evaluation workbench evidence list renders actionable links for url and ar
   assert.match(markup, /\/api\/v1\/document-assets\/asset-proof-1\/download/);
 });
 
+test("evaluation workbench finalize panel shows finalize-only guidance for machine-completed governed runs", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchFinalizePanel
+      selectedRun={{
+        id: "run-governed-1",
+        suite_id: "suite-1",
+        governed_source: {
+          source_kind: "governed_module_execution",
+          manuscript_id: "manuscript-1",
+          source_module: "editing",
+          agent_execution_log_id: "execution-log-1",
+          execution_snapshot_id: "execution-snapshot-1",
+          output_asset_id: "output-asset-1",
+        },
+        release_check_profile_id: "release-1",
+        run_item_count: 0,
+        status: "passed",
+        evidence_ids: ["evidence-machine-1"],
+        started_at: "2026-04-03T08:00:00.000Z",
+        finished_at: "2026-04-03T08:05:00.000Z",
+      }}
+      effectiveFinalizedResult={null}
+      finalizeForm={{
+        status: "passed",
+        evidenceKind: "url",
+        evidenceLabel: "Browser QA evidence",
+        evidenceUrl: "https://example.test/evidence/browser-qa",
+        artifactAssetId: "",
+      }}
+      finalizeArtifactOptions={[]}
+      selectedRunEvidence={[
+        {
+          id: "evidence-machine-1",
+          kind: "url",
+          label: "Automatic governed browser QA passed for Editing Output Check",
+          uri: "/api/v1/document-assets/output-asset-1/download",
+          check_profile_id: "check-1",
+          created_at: "2026-04-03T08:04:00.000Z",
+        },
+      ]}
+      isBusy={false}
+      onFinalizeStatusChange={() => {}}
+      onEvidenceKindChange={() => {}}
+      onEvidenceLabelChange={() => {}}
+      onEvidenceUrlChange={() => {}}
+      onArtifactAssetIdChange={() => {}}
+      onSelectArtifactSuggestion={() => {}}
+      onCompleteAndFinalize={() => {}}
+      onFinalizeRecommendation={() => {}}
+    />,
+  );
+
+  assert.match(
+    markup,
+    /Automatic governed checks completed\. Review machine evidence before finalizing\./,
+  );
+  assert.match(markup, /Finalize Recommendation/);
+  assert.match(markup, /Automatic governed browser QA passed for Editing Output Check/);
+  assert.doesNotMatch(markup, /Complete And Finalize Run/);
+});
+
+test("evaluation workbench finalize panel keeps the legacy completion path for queued sample-backed runs", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchFinalizePanel
+      selectedRun={{
+        id: "run-queued-1",
+        suite_id: "suite-1",
+        sample_set_id: "sample-set-1",
+        run_item_count: 1,
+        status: "queued",
+        evidence_ids: [],
+        started_at: "2026-04-03T08:00:00.000Z",
+      }}
+      effectiveFinalizedResult={null}
+      finalizeForm={{
+        status: "failed",
+        evidenceKind: "artifact",
+        evidenceLabel: "Result asset evidence",
+        evidenceUrl: "",
+        artifactAssetId: "human-final-demo-1",
+      }}
+      finalizeArtifactOptions={[
+        {
+          source: "result_asset",
+          assetId: "human-final-demo-1",
+          actionLabel: "Use Result Asset (human-final-demo-1)",
+        },
+      ]}
+      selectedRunEvidence={[]}
+      isBusy={false}
+      onFinalizeStatusChange={() => {}}
+      onEvidenceKindChange={() => {}}
+      onEvidenceLabelChange={() => {}}
+      onEvidenceUrlChange={() => {}}
+      onArtifactAssetIdChange={() => {}}
+      onSelectArtifactSuggestion={() => {}}
+      onCompleteAndFinalize={() => {}}
+      onFinalizeRecommendation={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Run Status/);
+  assert.match(markup, /Evidence Label/);
+  assert.match(markup, /Complete And Finalize Run/);
+  assert.doesNotMatch(
+    markup,
+    /Automatic governed checks completed\. Review machine evidence before finalizing\./,
+  );
+});
+
 test("evaluation workbench evidence pack summary renders labeled outcome fields", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchEvidencePackSummary
@@ -539,6 +650,26 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       previousRunHistoryEntry: null,
     }),
     "Current run run-2 is still running. Complete and finalize it to compare against history.",
+  );
+
+  assert.equal(
+    describeHistoryComparisonGuidance({
+      selectedRun: {
+        id: "run-governed-2",
+        status: "passed",
+        governed_source: {
+          source_kind: "governed_module_execution",
+          manuscript_id: "manuscript-1",
+          source_module: "editing",
+          agent_execution_log_id: "execution-log-2",
+          execution_snapshot_id: "execution-snapshot-2",
+          output_asset_id: "output-asset-2",
+        },
+      } as never,
+      selectedRunHistoryEntry: null,
+      previousRunHistoryEntry: null,
+    }),
+    "Current run run-governed-2 already completed automatic governed checks. Finalize the recommendation to compare against history.",
   );
 
   assert.equal(

@@ -16,6 +16,7 @@
 - Manuscript workbench 的上传、查稿、模块执行、导出控制区已重组为运营面板式布局
 - Manuscript workbench 现已提供顶部成功/错误状态横幅和面板内输入校验提示
 - Evaluation Workbench 已可加载 verification-ops 的 suites / runs / run items / sample-set context，并支持在浏览器中激活 draft suite、创建 evaluation run、录入 run item 结果、finalize evidence/recommendation、以及基于联动 snapshot 发起 learning handoff
+- Evaluation Workbench 现在也支持 runtime-binding 自动 seed 的 governed evaluation run 在模块成功后直接落入 machine-completed 状态，页面会展示 machine evidence，并通过 `Finalize Recommendation` 手动完成 recommendation 收口；auto-finalize、异步 worker、自动评分仍未进入当前范围
 - Admin Governance Console 已可在浏览器中查看 execution snapshot、知识命中证据，以及 manuscript / job / output asset 下钻结果，并直接跳转到对应 workbench、下载可导出的输出资产，并用 Recent Agent Executions 的状态筛选/搜索快速分诊运行记录
 - Template Governance Workbench 已可在浏览器中管理模板家族、模块模板草稿、知识条目筛选，以及围绕模板绑定的知识草稿创建 / 编辑 / 提审 / 归档
 - 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行稿件 handoff、learning review、knowledge review 真实浏览器 smoke
@@ -57,13 +58,16 @@
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
 - `apps/api run serve` 已经能持久化 learning review 的 reviewed-case snapshots、人工反馈记录、governed provenance，knowledge review 的队列 / 历史治理数据，以及 verification-ops 的 sample sets / check profiles / suites / runs / evidence packs
+- `apps/api run serve` 现在会在 screening / editing / proofreading-final 成功后内联执行 seeded governed verification checks，并把 machine evidence 同时挂到 evaluation run 与 agent execution log；失败会落在 governed run 上，不会回滚已经产出的模块输出
 - `apps/api` 的稿件 intake 路由已经支持 `fileContentBase64` 直传，本地文件默认写入 `.local-data/uploads/<app-env>`，也可通过 `UPLOAD_ROOT_DIR` 改到独立数据目录
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
 - `apps/web` 里的 admin-console 现在还可以把 Recent Agent Executions 直接下钻到 manuscript、job 与 created asset 输出明细，并通过状态筛选/搜索快速聚焦 running / failed / completed 执行，方便治理台追踪运行结果
 - `apps/web` 里的 evaluation-workbench 已不再是占位页，当前可以直接查看 verification-ops 的 suite/run/run-item/sample-set 概览，并在浏览器中完成 run 创建、run-item 录入、evidence finalize、以及带 snapshot 自动联动的 learning candidate handoff
 - `apps/web` 里的 evaluation-workbench 现在也能按 manuscript 重新打开由 runtime binding 自动 seed 的 governed evaluation runs；这类无 sample-set 上下文的 run 会显示 governed source 明细、输出资产下载入口，并明确保持 learning handoff 为人工补齐 reviewed snapshot 后再处理
+- `apps/web` 里的 evaluation-workbench 现在也会把 machine-completed governed run 与手动 run 分开处理：前者直接展示 machine evidence 和 `Finalize Recommendation`，后者继续保留 `Complete And Finalize Run`
 - `apps/web` 里的 template-governance 已不再是占位页，当前可以直接查看模板家族与模块模板版本、筛选知识条目、围绕选中模板族维护 template bindings，并把知识草稿推进到 review lane
 - `pnpm verify:manuscript-workbench` 当前已经覆盖 manuscript handoff、learning review flow、knowledge review handoff + approve/reject terminal actions、admin governance execution observability + Recent Agent Executions triage、evaluation workbench suite activation + manual evaluation loop 的真实浏览器门禁，并包含 verification-ops 持久化 HTTP 路由回归
+- `pnpm verify:manuscript-workbench` 的 evaluation workbench smoke 现在也覆盖 machine-completed governed run 的 finalize-only 浏览器路径与 machine evidence 展示
 - 但 `serve` 当前仍是“稿件主链路 + 认证 + 学习/知识治理主干 + 治理注册表 + 模型路由 + agent-tooling governance + execution governance/tracking”的阶段性持久化 runtime，不是最终生产版完整业务系统
 
 ## 环境要求

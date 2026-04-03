@@ -1657,6 +1657,238 @@ test("evaluation workbench controller records artifact evidence before finalizin
   });
 });
 
+test("evaluation workbench controller finalizes a machine-completed governed run without re-completing it", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "check-1",
+              name: "Browser QA",
+              check_type: "browser_qa",
+              status: "published",
+              tool_ids: ["browse"],
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "release-1",
+              name: "Release Gate",
+              check_type: "deploy_verification",
+              status: "published",
+              verification_check_profile_ids: ["check-1"],
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Governed Runs",
+              suite_type: "release_gate",
+              status: "active",
+              verification_check_profile_ids: ["check-1"],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-governed-1",
+              suite_id: "suite-1",
+              governed_source: {
+                source_kind: "governed_module_execution",
+                manuscript_id: "manuscript-1",
+                source_module: "editing",
+                agent_execution_log_id: "execution-log-1",
+                execution_snapshot_id: "execution-snapshot-1",
+                output_asset_id: "output-asset-1",
+              },
+              release_check_profile_id: "release-1",
+              run_item_count: 0,
+              status: "passed",
+              evidence_ids: ["evidence-machine-1"],
+              started_at: "2026-04-03T08:00:00.000Z",
+              finished_at: "2026-04-03T08:05:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-governed-1/items") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-governed-1/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-machine-1",
+              kind: "url",
+              label: "Automatic governed browser QA passed for Editing Output Check",
+              uri: "/api/v1/document-assets/output-asset-1/download",
+              check_profile_id: "check-1",
+              created_at: "2026-04-03T08:04:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs/run-governed-1/finalize"
+      ) {
+        return {
+          status: 200,
+          body: {
+            run: {
+              id: "run-governed-1",
+              suite_id: "suite-1",
+              governed_source: {
+                source_kind: "governed_module_execution",
+                manuscript_id: "manuscript-1",
+                source_module: "editing",
+                agent_execution_log_id: "execution-log-1",
+                execution_snapshot_id: "execution-snapshot-1",
+                output_asset_id: "output-asset-1",
+              },
+              release_check_profile_id: "release-1",
+              run_item_count: 0,
+              status: "passed",
+              evidence_ids: ["evidence-machine-1"],
+              started_at: "2026-04-03T08:00:00.000Z",
+              finished_at: "2026-04-03T08:05:00.000Z",
+            },
+            evidence_pack: {
+              id: "pack-governed-1",
+              experiment_run_id: "run-governed-1",
+              summary_status: "recommended",
+              score_summary: "Automatic governed checks completed successfully.",
+              created_at: "2026-04-03T08:06:00.000Z",
+            },
+            recommendation: {
+              id: "recommendation-governed-1",
+              experiment_run_id: "run-governed-1",
+              evidence_pack_id: "pack-governed-1",
+              status: "recommended",
+              decision_reason: "Machine evidence cleared the governed release gate.",
+              created_at: "2026-04-03T08:06:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+        return {
+          status: 200,
+          body: [
+            {
+              run: {
+                id: "run-governed-1",
+                suite_id: "suite-1",
+                governed_source: {
+                  source_kind: "governed_module_execution",
+                  manuscript_id: "manuscript-1",
+                  source_module: "editing",
+                  agent_execution_log_id: "execution-log-1",
+                  execution_snapshot_id: "execution-snapshot-1",
+                  output_asset_id: "output-asset-1",
+                },
+                release_check_profile_id: "release-1",
+                run_item_count: 0,
+                status: "passed",
+                evidence_ids: ["evidence-machine-1"],
+                started_at: "2026-04-03T08:00:00.000Z",
+                finished_at: "2026-04-03T08:05:00.000Z",
+              },
+              evidence_pack: {
+                id: "pack-governed-1",
+                experiment_run_id: "run-governed-1",
+                summary_status: "recommended",
+                score_summary: "Automatic governed checks completed successfully.",
+                created_at: "2026-04-03T08:06:00.000Z",
+              },
+              recommendation: {
+                id: "recommendation-governed-1",
+                experiment_run_id: "run-governed-1",
+                evidence_pack_id: "pack-governed-1",
+                status: "recommended",
+                decision_reason: "Machine evidence cleared the governed release gate.",
+                created_at: "2026-04-03T08:06:00.000Z",
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.finalizeCompletedRun({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    runId: "run-governed-1",
+    manuscriptId: "manuscript-1",
+  });
+
+  assert.equal(result.evidence, null);
+  assert.equal(result.finalized.run.id, "run-governed-1");
+  assert.equal(result.finalized.recommendation.status, "recommended");
+  assert.equal(result.overview.selectedRunEvidence[0]?.id, "evidence-machine-1");
+  assert.equal(
+    requests.some((request) => /\/evaluation-runs\/run-governed-1\/complete$/.test(request.url)),
+    false,
+  );
+  assert.equal(
+    requests.some((request) => request.url === "/api/v1/verification-ops/verification-evidence"),
+    false,
+  );
+  assert.equal(
+    requests.some((request) => /\/evaluation-runs\/run-governed-1\/finalize$/.test(request.url)),
+    true,
+  );
+});
+
 test("evaluation workbench controller creates a governed learning candidate from a finalized run", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createEvaluationWorkbenchController({

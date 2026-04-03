@@ -399,6 +399,8 @@ test("persistent workbench screening routes keep governed execution evidence acr
           );
           const runs = (await runsResponse.json()) as Array<{
             id: string;
+            status: string;
+            evidence_ids: string[];
             release_check_profile_id?: string;
             sample_set_id?: string;
             run_item_count: number;
@@ -413,9 +415,11 @@ test("persistent workbench screening routes keep governed execution evidence acr
           }>;
           assert.equal(runsResponse.status, 200);
           assert.equal(runs.length, 1);
+          assert.equal(runs[0]?.status, "passed");
           assert.equal(runs[0]?.release_check_profile_id, "cccccccc-9999-4333-8444-555555555555");
           assert.equal(runs[0]?.sample_set_id, undefined);
           assert.equal(runs[0]?.run_item_count, 0);
+          assert.equal(runs[0]?.evidence_ids.length, 1);
           assert.deepEqual(runs[0]?.governed_source, {
             source_kind: "governed_module_execution",
             manuscript_id: seededIds.manuscriptId,
@@ -433,6 +437,29 @@ test("persistent workbench screening routes keep governed execution evidence acr
           );
           assert.equal(runItemsResponse.status, 200);
           assert.deepEqual(await runItemsResponse.json(), []);
+
+          const runEvidenceResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/evidence`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          const runEvidence = (await runEvidenceResponse.json()) as Array<{
+            id: string;
+            check_profile_id?: string;
+            uri?: string;
+          }>;
+          assert.equal(runEvidenceResponse.status, 200);
+          assert.equal(runEvidence.length, 1);
+          assert.equal(runEvidence[0]?.id, runs[0]?.evidence_ids[0]);
+          assert.equal(
+            runEvidence[0]?.check_profile_id,
+            "bbbbbbbb-9999-4333-8444-555555555555",
+          );
+          assert.equal(
+            runEvidence[0]?.uri,
+            `/api/v1/document-assets/${screening.asset.id}/download`,
+          );
         } finally {
           await stopServer(secondServer.server);
         }
@@ -642,6 +669,8 @@ test("persistent proofreading publish-human-final route survives restart and bec
           );
           const runs = (await runsResponse.json()) as Array<{
             id: string;
+            status: string;
+            evidence_ids: string[];
             release_check_profile_id?: string;
             sample_set_id?: string;
             run_item_count: number;
@@ -656,9 +685,11 @@ test("persistent proofreading publish-human-final route survives restart and bec
           }>;
           assert.equal(runsResponse.status, 200);
           assert.equal(runs.length, 1);
+          assert.equal(runs[0]?.status, "passed");
           assert.equal(runs[0]?.release_check_profile_id, "12121212-7777-4333-8444-555555555555");
           assert.equal(runs[0]?.sample_set_id, undefined);
           assert.equal(runs[0]?.run_item_count, 0);
+          assert.equal(runs[0]?.evidence_ids.length, 1);
           assert.deepEqual(runs[0]?.governed_source, {
             source_kind: "governed_module_execution",
             manuscript_id: seededIds.manuscriptId,
@@ -676,6 +707,29 @@ test("persistent proofreading publish-human-final route survives restart and bec
           );
           assert.equal(runItemsResponse.status, 200);
           assert.deepEqual(await runItemsResponse.json(), []);
+
+          const runEvidenceResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-runs/${runs[0]!.id}/evidence`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          const runEvidence = (await runEvidenceResponse.json()) as Array<{
+            id: string;
+            check_profile_id?: string;
+            uri?: string;
+          }>;
+          assert.equal(runEvidenceResponse.status, 200);
+          assert.equal(runEvidence.length, 1);
+          assert.equal(runEvidence[0]?.id, runs[0]?.evidence_ids[0]);
+          assert.equal(
+            runEvidence[0]?.check_profile_id,
+            "12121212-8888-4333-8444-555555555555",
+          );
+          assert.equal(
+            runEvidence[0]?.uri,
+            `/api/v1/document-assets/${finalized.asset.id}/download`,
+          );
         } finally {
           await stopServer(secondServer.server);
         }

@@ -24,6 +24,7 @@ function createAgentExecutionHarness() {
 
   return {
     api,
+    service,
   };
 }
 
@@ -75,4 +76,44 @@ test("agent execution logs capture governed runtime metadata and can be complete
     "evidence-2",
   ]);
   assert.equal(completed.body.finished_at, "2026-03-28T13:00:00.000Z");
+});
+
+test("agent execution logs can append governed verification evidence after completion", async () => {
+  const { service } = createAgentExecutionHarness();
+
+  const created = await service.createLog({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    triggeredBy: "tester-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+  });
+
+  await service.completeLog({
+    logId: created.id,
+    executionSnapshotId: "snapshot-1",
+    verificationEvidenceIds: ["evidence-seed-1"],
+  });
+
+  const updated = await service.appendVerificationEvidence({
+    logId: created.id,
+    evidenceIds: [
+      "evidence-seed-1",
+      "evidence-machine-1",
+      "evidence-machine-2",
+    ],
+  });
+
+  assert.deepEqual(updated.verification_evidence_ids, [
+    "evidence-seed-1",
+    "evidence-machine-1",
+    "evidence-machine-2",
+  ]);
+  assert.equal(updated.status, "completed");
+  assert.equal(updated.execution_snapshot_id, "snapshot-1");
+  assert.equal(updated.finished_at, "2026-03-28T13:00:00.000Z");
 });

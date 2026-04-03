@@ -5,5 +5,6 @@ export * from "./postgres-verification-ops-repository.ts";
 export * from "./evidence-pack-builder.ts";
 export * from "./experiment-binding-guard.ts";
 export * from "./sample-set-source-guard.ts";
+export * from "./governed-run-check-execution.ts";
 export * from "./verification-ops-service.ts";
 export * from "./verification-ops-api.ts";

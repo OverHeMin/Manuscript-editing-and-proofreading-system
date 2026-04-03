@@ -266,6 +266,7 @@ export class ScreeningService {
 
       await seedGovernedRunsForModuleExecution({
         verificationOpsService: this.verificationOpsService,
+        agentExecutionService: this.agentExecutionService,
         actorRole: "admin",
         suiteIds: governedContext.verificationExpectations.evaluation_suite_ids,
         releaseCheckProfileId:
