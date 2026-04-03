@@ -20,7 +20,7 @@
 - Template Governance Workbench 已可在浏览器中管理模板家族、模块模板草稿、知识条目筛选，以及围绕模板绑定的知识草稿创建 / 编辑 / 提审 / 归档
 - 仓库内已提供可复用的 manuscript workbench release gate，并可在 GitHub Actions 中自动执行稿件 handoff、learning review、knowledge review 真实浏览器 smoke
 - PostgreSQL 持久化的认证、会话、审计、模板治理、Prompt/Skill Registry、模型路由、agent-tooling 治理、执行治理/追踪，以及 verification-ops 评测资产 runtime
-- 本地运维、迁移、交付文档基线
+- 本地运维、迁移、备份/回滚、远程 Codex 维护与密码安全文档基线
 
 ## 当前状态
 
@@ -141,7 +141,7 @@
 ## 关键文档
 
 - `docs/OPERATIONS.md`
-  运行、迁移、备份、远程维护
+  运行、迁移、备份/回滚、远程维护、密钥安全与升级流程
 - `docs/CODE_QUALITY.md`
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`
@@ -159,3 +159,4 @@
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
 - 更深的 Evaluation Workbench 运营能力，例如 sample-set item 详情联动、历史 evidence pack 检索、以及多 run 对比视图
 - 部署、监控、回滚、远程维护标准化
+- 更细的密码/密钥安全、升级编排与平台迁移自动化
