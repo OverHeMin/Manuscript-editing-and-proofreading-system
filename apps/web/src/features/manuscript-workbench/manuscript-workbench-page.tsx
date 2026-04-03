@@ -29,6 +29,8 @@ export interface ManuscriptWorkbenchPageProps {
   actorRole?: AuthRole;
   controller?: ManuscriptWorkbenchController;
   prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  prefilledSampleSetItemId?: string;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
