@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import * as EvaluationWorkbenchPageModule from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
 import {
   describeHistoryComparisonGuidance,
   describeHistoryComparisonGuidanceSummary,
@@ -295,54 +294,17 @@ function createOperationsOverviewFixture() {
   };
 }
 
-function renderOperationsView(
+function renderLoadedPage(
   overview: ReturnType<typeof createOperationsOverviewFixture>,
 ): string {
-  const OperationsView = (
-    EvaluationWorkbenchPageModule as {
-      EvaluationWorkbenchOperationsView?: React.ComponentType<{
-        overview: typeof overview;
-        prefilledManuscriptId?: string;
-        statusMessage?: string | null;
-        errorMessage?: string | null;
-        historyFilter: "all" | "recommended" | "needs_review" | "rejected";
-        historySortMode: "newest" | "failures_first";
-        selectedRunItemId: string | null;
-        onSelectSuite: (suiteId: string) => void;
-        onSelectRun: (runId: string) => void;
-        onSelectRunItem: (runItemId: string) => void;
-        onSelectHistoryWindow: (
-          preset: "latest_10" | "last_7_days" | "last_30_days" | "all_suite",
-        ) => void;
-        onSelectHistoryFilter: (
-          filter: "all" | "recommended" | "needs_review" | "rejected",
-        ) => void;
-        onSelectHistorySortMode: (sortMode: "newest" | "failures_first") => void;
-      }>;
-    }
-  ).EvaluationWorkbenchOperationsView;
-
-  assert.equal(
-    typeof OperationsView,
-    "function",
-    "Expected EvaluationWorkbenchOperationsView to be exported for the loaded read-only page surface.",
-  );
+  const controller = {
+    loadOverview: async () => overview,
+  } as React.ComponentProps<typeof EvaluationWorkbenchPage>["controller"];
 
   return renderToStaticMarkup(
-    <OperationsView
-      overview={overview}
-      prefilledManuscriptId=""
-      statusMessage={null}
-      errorMessage={null}
-      historyFilter="all"
-      historySortMode="newest"
-      selectedRunItemId={null}
-      onSelectSuite={() => {}}
-      onSelectRun={() => {}}
-      onSelectRunItem={() => {}}
-      onSelectHistoryWindow={() => {}}
-      onSelectHistoryFilter={() => {}}
-      onSelectHistorySortMode={() => {}}
+    <EvaluationWorkbenchPage
+      controller={controller}
+      initialOverview={overview}
     />,
   );
 }
@@ -365,8 +327,8 @@ test("evaluation workbench page renders an explicit loading state for server-sid
   assert.match(markup, /Loading suites, runs, and verification assets\.\.\./);
 });
 
-test("evaluation workbench loaded operations view renders a delta-first summary with bounded read-only history", () => {
-  const markup = renderOperationsView(createOperationsOverviewFixture());
+test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
+  const markup = renderLoadedPage(createOperationsOverviewFixture());
 
   assert.match(markup, /Delta Summary/);
   assert.match(markup, /Classification: better/i);
@@ -406,7 +368,7 @@ test("evaluation workbench loaded operations view renders a delta-first summary 
   assert.doesNotMatch(markup, /Finalize Recommendation/);
 });
 
-test("evaluation workbench loaded operations view keeps selected inspection finalization outside the visible history window", () => {
+test("evaluation workbench loaded page keeps selected inspection finalization outside the visible history window", () => {
   const overview = createOperationsOverviewFixture();
   const selectedFinalized = overview.finalizedRunHistory.find((entry) => entry.run.id === "run-01");
   assert.ok(selectedFinalized);
@@ -416,7 +378,7 @@ test("evaluation workbench loaded operations view keeps selected inspection fina
     recommendation: selectedFinalized.finalized.recommendation,
   };
 
-  const markup = renderOperationsView(overview);
+  const markup = renderLoadedPage(overview);
 
   assert.match(markup, /Selected inspection run: run-01/);
   assert.match(markup, /Recommendation: rejected/);
@@ -425,7 +387,7 @@ test("evaluation workbench loaded operations view keeps selected inspection fina
   assert.match(markup, /This run is outside the finalized history slice that powers the default delta summary\./);
 });
 
-test("evaluation workbench loaded operations view renders honest degradation when fewer than two finalized runs are visible", () => {
+test("evaluation workbench loaded page renders honest degradation when fewer than two finalized runs are visible", () => {
   const overview = createOperationsOverviewFixture();
   const onlyVisibleEntry = overview.finalizedRunHistory[0];
   overview.suiteOperations = {
@@ -457,7 +419,7 @@ test("evaluation workbench loaded operations view renders honest degradation whe
     },
   };
 
-  const markup = renderOperationsView(overview);
+  const markup = renderLoadedPage(overview);
 
   assert.match(markup, /Delta Summary/);
   assert.match(
