@@ -96,6 +96,15 @@ function createSuiteHistoryFinalizedResult(input: {
       decision_reason: `Decision for ${input.id}.`,
       created_at: input.recommendationCreatedAt,
     },
+    evidence: [
+      {
+        id: `evidence-${input.id}`,
+        kind: "url",
+        label: `Evidence for ${input.id}`,
+        uri: `https://example.test/evidence/${input.id}`,
+        created_at: input.recommendationCreatedAt,
+      },
+    ],
   };
 }
 
@@ -2453,6 +2462,7 @@ test("evaluation workbench controller matches governed-source runs for handed-of
 });
 
 test("evaluation workbench controller exposes a bounded suite operations overview while preserving manual inspection evidence", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const finalizedResults = [
     createSuiteHistoryFinalizedResult({
       id: "run-11",
@@ -2534,6 +2544,8 @@ test("evaluation workbench controller exposes a bounded suite operations overvie
       url: string;
       body?: unknown;
     }) => {
+      requests.push(input);
+
       if (input.url === "/api/v1/verification-ops/check-profiles") {
         return {
           status: 200,
@@ -2704,6 +2716,21 @@ test("evaluation workbench controller exposes a bounded suite operations overvie
     runsWithRecurrenceSignals: 3,
   });
   assert.equal(suiteOperations.honestDegradation, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-5/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-5/evidence",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-runs/run-4/evidence",
+    ],
+  );
 });
 
 test("evaluation workbench controller keeps manuscript handoff while preserving the suite-first comparison default", async () => {

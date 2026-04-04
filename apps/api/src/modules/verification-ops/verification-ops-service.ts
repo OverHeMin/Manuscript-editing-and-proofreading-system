@@ -140,6 +140,7 @@ export interface FinalizeEvaluationRunResult {
   run: EvaluationRunRecord;
   evidence_pack: EvaluationEvidencePackRecord;
   recommendation: EvaluationPromotionRecommendationRecord;
+  evidence: VerificationEvidenceRecord[];
 }
 
 export interface CreateLearningCandidateFromEvaluationInput {
@@ -1011,6 +1012,7 @@ export class VerificationOpsService {
       run,
       evidence_pack: evidencePack,
       recommendation,
+      evidence: await this.listRunEvidenceRecords(run),
     };
   }
 
@@ -1231,11 +1233,24 @@ export class VerificationOpsService {
       return null;
     }
 
+    const evidence = await this.listRunEvidenceRecords(run);
+
     return {
       run,
       evidence_pack: evidencePack,
       recommendation,
+      evidence,
     };
+  }
+
+  private async listRunEvidenceRecords(
+    run: EvaluationRunRecord,
+  ): Promise<VerificationEvidenceRecord[]> {
+    return Promise.all(
+      run.evidence_ids.map(async (evidenceId) =>
+        this.requireVerificationEvidence(evidenceId),
+      ),
+    );
   }
 }
 

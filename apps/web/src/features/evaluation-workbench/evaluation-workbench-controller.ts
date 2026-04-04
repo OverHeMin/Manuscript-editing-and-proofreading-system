@@ -81,7 +81,7 @@ export interface EvaluationWorkbenchManuscriptContext {
 
 export interface EvaluationWorkbenchSuiteOperationsOverview {
   readonly defaultWindow: EvaluationWorkbenchHistoryWindowPreset;
-  readonly visibleHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
+  readonly visibleHistory: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>;
   readonly defaultComparison: EvaluationWorkbenchComparisonSnapshot | null;
   readonly defaultComparisonDetail: EvaluationWorkbenchComparisonDetailSnapshot | null;
   readonly delta: EvaluationWorkbenchSuiteOperationsDeltaSnapshot | null;
@@ -95,8 +95,8 @@ export interface EvaluationWorkbenchComparisonSnapshot {
 }
 
 export interface EvaluationWorkbenchComparisonDetailSnapshot {
-  readonly selectedEvidence: VerificationEvidenceViewModel[];
-  readonly baselineEvidence: VerificationEvidenceViewModel[];
+  readonly selectedEvidence: ReadonlyArray<VerificationEvidenceViewModel>;
+  readonly baselineEvidence: ReadonlyArray<VerificationEvidenceViewModel>;
 }
 
 export interface EvaluationWorkbenchSuiteOperationsDeltaSnapshot {
@@ -426,18 +426,10 @@ async function loadEvaluationWorkbenchOverview(
       }
     }
 
-    const defaultComparison = suiteOperationsSummary.defaultComparison;
-    const evidenceByRunId = await loadSuiteOperationEvidenceByRunId(client, {
-      selectedRunId,
-      selectedRunEvidence,
-      previousRunId,
-      previousRunEvidence,
-      defaultComparison,
-    });
-
     selectedRunFinalization =
       finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
 
+    const defaultComparison = suiteOperationsSummary.defaultComparison;
     suiteOperations = {
       defaultWindow: suiteOperationsSummary.windowPreset,
       visibleHistory: suiteOperationsSummary.visibleHistory,
@@ -446,10 +438,8 @@ async function loadEvaluationWorkbenchOverview(
         defaultComparison == null
           ? null
           : {
-              selectedEvidence:
-                evidenceByRunId.get(defaultComparison.selected.run.id) ?? [],
-              baselineEvidence:
-                evidenceByRunId.get(defaultComparison.baseline.run.id) ?? [],
+              selectedEvidence: defaultComparison.selected.finalized.evidence ?? [],
+              baselineEvidence: defaultComparison.baseline.finalized.evidence ?? [],
             },
       delta: suiteOperationsSummary.delta,
       signals: suiteOperationsSummary.signals,
@@ -505,45 +495,6 @@ function createEmptySuiteOperations(input: {
     signals: suiteOperationsSummary.signals,
     honestDegradation: suiteOperationsSummary.emptyState,
   };
-}
-
-async function loadSuiteOperationEvidenceByRunId(
-  client: EvaluationWorkbenchHttpClient,
-  input: {
-    selectedRunId: string | null;
-    selectedRunEvidence: VerificationEvidenceViewModel[];
-    previousRunId: string | null;
-    previousRunEvidence: VerificationEvidenceViewModel[];
-    defaultComparison: EvaluationWorkbenchComparisonSnapshot | null;
-  },
-): Promise<Map<string, VerificationEvidenceViewModel[]>> {
-  const evidenceByRunId = new Map<string, VerificationEvidenceViewModel[]>();
-
-  if (input.selectedRunId != null) {
-    evidenceByRunId.set(input.selectedRunId, input.selectedRunEvidence);
-  }
-
-  if (input.previousRunId != null) {
-    evidenceByRunId.set(input.previousRunId, input.previousRunEvidence);
-  }
-
-  const comparisonRunIds =
-    input.defaultComparison == null
-      ? []
-      : [
-          input.defaultComparison.selected.run.id,
-          input.defaultComparison.baseline.run.id,
-        ];
-  const missingRunIds = comparisonRunIds.filter((runId) => !evidenceByRunId.has(runId));
-
-  await Promise.all(
-    missingRunIds.map(async (runId) => {
-      const evidence = (await listEvaluationRunEvidenceByRunId(client, runId)).body;
-      evidenceByRunId.set(runId, evidence);
-    }),
-  );
-
-  return evidenceByRunId;
 }
 
 async function resolveEvaluationManuscriptContext(

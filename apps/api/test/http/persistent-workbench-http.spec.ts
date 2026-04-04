@@ -1603,6 +1603,7 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
             recommendation: {
               status: string;
             };
+            evidence: Array<{ id: string; label: string; uri?: string }>;
           };
           assert.equal(finalizedResult.evidence_pack.id, finalized.evidence_pack.id);
           assert.equal(
@@ -1612,6 +1613,13 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
           assert.equal(
             finalizedResult.recommendation.status,
             finalized.recommendation.status,
+          );
+          assert.equal(finalizedResult.evidence.length, 1);
+          assert.equal(finalizedResult.evidence[0]?.id, evidence.id);
+          assert.equal(finalizedResult.evidence[0]?.label, "Persistent browser QA");
+          assert.equal(
+            finalizedResult.evidence[0]?.uri,
+            "https://example.test/persistent/browser-qa",
           );
 
           const suiteFinalizedResultsResponse = await fetch(
@@ -1633,6 +1641,7 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
               recommendation: {
                 status: string;
               };
+              evidence: Array<{ id: string; label: string; uri?: string }>;
             }>;
           assert.equal(suiteFinalizedResults.length, 1);
           assert.equal(suiteFinalizedResults[0]?.run.id, run.id);
@@ -1643,6 +1652,16 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
           assert.equal(
             suiteFinalizedResults[0]?.recommendation.status,
             finalized.recommendation.status,
+          );
+          assert.equal(suiteFinalizedResults[0]?.evidence.length, 1);
+          assert.equal(suiteFinalizedResults[0]?.evidence[0]?.id, evidence.id);
+          assert.equal(
+            suiteFinalizedResults[0]?.evidence[0]?.label,
+            "Persistent browser QA",
+          );
+          assert.equal(
+            suiteFinalizedResults[0]?.evidence[0]?.uri,
+            "https://example.test/persistent/browser-qa",
           );
 
           const runEvidenceResponse = await fetch(

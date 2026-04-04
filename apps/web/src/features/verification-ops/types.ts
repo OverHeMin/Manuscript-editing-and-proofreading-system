@@ -187,6 +187,7 @@ export interface FinalizeEvaluationRunResultViewModel {
   run: EvaluationRunViewModel;
   evidence_pack: EvaluationEvidencePackViewModel;
   recommendation: EvaluationPromotionRecommendationViewModel;
+  evidence?: ReadonlyArray<VerificationEvidenceViewModel>;
 }
 
 export interface CreateVerificationCheckProfileInput {
