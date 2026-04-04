@@ -224,3 +224,11 @@
 - Harness capabilities are local-first and fail-open. Live manuscript execution does not depend on gold-set publication, rubric publication, or harness export success.
 - Manual export is limited to published gold-set versions only. The HTTP workbench writes under `.local-data/harness-exports/<APP_ENV>`, and the standalone scripts write under `.local-data/harness-exports/manual` unless an explicit local output directory override is provided.
 - Rubric calibration, borderline case resolution, and promotion into gold sets remain human-owned decisions. Phase 10D does not enable automatic model switching, automatic publishing, or automatic learning writeback.
+
+## Retrieval Quality Harness Governance (Phase 10E)
+
+- `knowledge-retrieval` is an additive evidence lane for retrieval index entries, reproducible retrieval snapshots, and template-scoped retrieval-quality runs. It does not replace `knowledge-review`, `verification-ops`, or the production manuscript mainline.
+- Retrieval snapshots are recorded before scoring and remain auditable evidence. Retrieval-quality runs stay local-first and can be exported from published gold sets into local dataset files for offline harness execution.
+- Local harness runners live under `apps/worker-py/src/harness_runners`, and repo-owned export/runner scripts live under `scripts/harness`. These tools are fail-open and must never become synchronous dependencies of live screening, editing, or proofreading execution.
+- Template Governance Workbench now exposes a bounded read-only retrieval view: latest retrieval-quality run, latest retrieval snapshot summary, and operator signals. Missing endpoints or missing data degrade to a fail-open evidence message instead of blocking governance actions.
+- `Evaluation Workbench` still does not become the routing control plane in Phase 10E. Retrieval metrics may inform operators, but they do not activate routing policy, auto-switch models, auto-publish templates or knowledge, or auto-write learning feedback.
