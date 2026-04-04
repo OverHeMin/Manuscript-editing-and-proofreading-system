@@ -133,6 +133,8 @@
 - 发布前统一运行 `pnpm verify:production-preflight`。该脚本会按固定顺序执行 `lint`、`typecheck`、`test`、API/Web/Worker `smoke:boot`，以及 `pnpm verify:manuscript-workbench`。
 - 进入 Phase 10G 后，发布前优先使用 `pnpm verify:production-preflight -- --manifest <path-to-manifest>`。脚本会先校验 release manifest，再在需要时串联只读的 migration doctor；如果 manifest 声明 `schema change = no` 但仓库仍有 pending migrations，predeploy 会直接失败。
 - 如需单独做 repo-owned 的 migration guard，可运行 `pnpm verify:production-preflight:strict` 或 `pnpm --filter @medical/api run db:migration-doctor -- --json`。这些检查只输出本地证据与阻断信号，不会自动部署、自动回滚或修改 release 状态。
+- 进入 Phase 10H 后，`staging` / `production` 的 persistent runtime 还会拒绝已知占位或本地默认 secret：当前包含 `ONLYOFFICE_JWT_SECRET=change-me-in-prod`、`OBJECT_STORAGE_ACCESS_KEY=minioadmin`、`OBJECT_STORAGE_SECRET_KEY=minioadmin123`。
+- 如需做 schema/storage/secret 变更的升级演练，可运行 `pnpm verify:production-upgrade-rehearsal -- --manifest <path-to-manifest>`。它只校验 manifest 并输出本地化 rehearsal steps，不会自动 deploy、rollback 或轮换 secret。
 - 持久化 API 启动后，用 `pnpm verify:production-postdeploy -- --base-url http://127.0.0.1:3001` 检查 `/healthz` 和 `/readyz`。其中 `/readyz` 是发布是否可放量的真门禁。
 - 每次 staging / production 发布都应先基于 `docs/operations/release-manifest-template.md` 记录环境、操作人、commit SHA、备份件、schema 决策、发布后检查与回滚结果。
 
@@ -243,3 +245,9 @@
 - Admin Governance now exposes a read-only harness health surface for registered adapters, latest execution state, trace sink availability, and judge calibration outcomes. This surface is additive only: it does not publish policies, activate routing, auto-switch models, or become an operations control plane.
 - Harness read/write surfaces are fail-open by design. Missing harness endpoints or unavailable adapter executions degrade to empty evidence/read-model state instead of blocking broader governance work, and operator-launched harness failures remain recorded as governed degraded results.
 - Phase 10F does not enable automatic model switching, automatic publishing, automatic release actions, or automatic learning writeback. Judge and eval outcomes remain advisory evidence for human operators.
+
+## Production Hardening And Upgrade Rehearsal (Phase 10H)
+
+- `Phase 10H` continues the repo-owned production lane from `10A` and `10G`, but keeps the boundary narrow: secret placeholder protection, secret-rotation proof, and upgrade-rehearsal proof.
+- The new rehearsal guard is local-first and operator-owned. It prints a bounded sequence built from existing repo commands such as manifest-aware predeploy, strict migration checks, persistent startup preflight, migration execution, and postdeploy readiness verification.
+- This phase still does not create a deployment control plane. It does not auto-deploy, auto-rollback, auto-rotate secrets, or grant Evaluation Workbench / Admin Governance authority over release execution.

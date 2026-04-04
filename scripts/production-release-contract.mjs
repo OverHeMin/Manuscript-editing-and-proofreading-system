@@ -22,6 +22,7 @@ const REQUIRED_CHANGE_SCOPE_FIELDS = [
   "Change Scope.Upload root or object storage impact",
   "Change Scope.Secret rotation required",
 ];
+const SECRET_ROTATION_SECTION = "Secret Rotation And Upgrade Rehearsal";
 
 export function buildPredeploySteps() {
   return [
@@ -70,6 +71,10 @@ export function validateReleaseManifest(manifestMarkdown, { manifestPath } = {})
     addMissingField(missingFields, "Change Scope.Secret rotation required");
   }
 
+  const upgradeRehearsalRequired = parseManifestBoolean(
+    fields.get(`${SECRET_ROTATION_SECTION}.Upgrade rehearsal required`),
+  );
+
   if (schemaChangeRequired) {
     for (const fieldKey of [
       "Backup And Restore Point.PostgreSQL backup artifact",
@@ -93,12 +98,45 @@ export function validateReleaseManifest(manifestMarkdown, { manifestPath } = {})
     }
   }
 
+  if (secretRotationRequired) {
+    for (const fieldKey of [
+      `${SECRET_ROTATION_SECTION}.Secret rotation notes`,
+      `${SECRET_ROTATION_SECTION}.Secret rotation verified by`,
+    ]) {
+      if (!fields.get(fieldKey)) {
+        addMissingField(missingFields, fieldKey);
+      }
+    }
+  }
+
+  const rehearsalIsMandatory =
+    schemaChangeRequired === true ||
+    storageImpactRequired === true ||
+    secretRotationRequired === true;
+
+  if (rehearsalIsMandatory && upgradeRehearsalRequired !== true) {
+    addMissingField(missingFields, `${SECRET_ROTATION_SECTION}.Upgrade rehearsal required`);
+  }
+
+  if (upgradeRehearsalRequired === true) {
+    for (const fieldKey of [
+      `${SECRET_ROTATION_SECTION}.Upgrade rehearsal environment`,
+      `${SECRET_ROTATION_SECTION}.Upgrade rehearsal evidence`,
+      `${SECRET_ROTATION_SECTION}.Upgrade rehearsal verified by`,
+    ]) {
+      if (!fields.get(fieldKey)) {
+        addMissingField(missingFields, fieldKey);
+      }
+    }
+  }
+
   return {
     status: missingFields.length === 0 ? "ok" : "error",
     manifestPath: manifestPath ?? null,
     schemaChangeRequired: schemaChangeRequired === true,
     storageImpactRequired: storageImpactRequired === true,
     secretRotationRequired: secretRotationRequired === true,
+    upgradeRehearsalRequired: upgradeRehearsalRequired === true,
     missingFields,
   };
 }
@@ -212,6 +250,91 @@ export function runPredeployVerification({
     migrationAudit,
     steps: buildPredeploySteps(),
   };
+}
+
+export function buildUpgradeRehearsalPlan({
+  manifestPath,
+  manifestMarkdown,
+  cwd = repoRoot,
+  readFileImpl = readFileSync,
+} = {}) {
+  if (!manifestPath) {
+    throw new Error("Upgrade rehearsal planning requires --manifest <path>.");
+  }
+
+  const resolvedManifestPath = path.resolve(cwd, manifestPath);
+  const markdown = manifestMarkdown ?? readFileImpl(resolvedManifestPath, "utf8");
+  const manifestValidation = validateReleaseManifest(markdown, {
+    manifestPath: resolvedManifestPath,
+  });
+
+  if (manifestValidation.status !== "ok") {
+    throw new Error(`Upgrade rehearsal manifest is incomplete: ${manifestValidation.missingFields.join(", ")}`);
+  }
+
+  const steps = [
+    {
+      label: "Manifest-aware predeploy verification",
+      command: `pnpm verify:production-preflight -- --manifest ${manifestPath}`,
+    },
+    {
+      label: "Strict predeploy reliability guard",
+      command: "pnpm verify:production-preflight:strict",
+    },
+    {
+      label: "Migration doctor snapshot",
+      command: "pnpm --filter @medical/api run db:migration-doctor -- --json",
+    },
+  ];
+
+  if (
+    manifestValidation.schemaChangeRequired ||
+    manifestValidation.storageImpactRequired ||
+    manifestValidation.secretRotationRequired
+  ) {
+    steps.push(
+      {
+        label: "Persistent startup preflight in rehearsal environment",
+        command: "pnpm --filter @medical/api run preflight:persistent",
+      },
+      {
+        label: "Migration execution in rehearsal environment",
+        command: "pnpm --filter @medical/api run db:migrate",
+      },
+      {
+        label: "Postdeploy readiness verification in rehearsal environment",
+        command: "pnpm verify:production-postdeploy -- --base-url <rehearsal-base-url>",
+      },
+    );
+  }
+
+  return {
+    status: "ready",
+    manifestPath,
+    resolvedManifestPath,
+    manifestValidation,
+    steps,
+    notes: [
+      "Operator-owned and local-first: this command does not deploy, rollback, or mutate secrets.",
+      "Replace <rehearsal-base-url> with the actual rehearsal environment URL before running postdeploy verification.",
+    ],
+  };
+}
+
+export function runUpgradeRehearsalGuard({
+  manifestPath,
+  cwd = repoRoot,
+  readFileImpl = readFileSync,
+  output = console,
+} = {}) {
+  const plan = buildUpgradeRehearsalPlan({
+    manifestPath,
+    cwd,
+    readFileImpl,
+  });
+
+  output.log(JSON.stringify(plan, null, 2));
+  return plan;
 }
 
 export async function verifyPostdeployHealth({
@@ -415,6 +538,12 @@ async function main(argv) {
     return;
   }
 
+  if (subcommand === "rehearsal") {
+    const options = parseCliOptions(args);
+    runUpgradeRehearsalGuard({ manifestPath: options.manifestPath });
+    return;
+  }
+
   if (subcommand === "postdeploy") {
     const options = parseCliOptions(args);
     const result = await verifyPostdeployHealth({ baseUrl: options.baseUrl });
@@ -457,7 +586,7 @@ function parseCliOptions(args) {
 
 function printUsage() {
   console.error(
-    "Usage: node ./scripts/production-release-contract.mjs predeploy [--manifest docs/operations/release-manifest.md] [--check-migrations]\n       node ./scripts/production-release-contract.mjs postdeploy --base-url http://127.0.0.1:3001",
+    "Usage: node ./scripts/production-release-contract.mjs predeploy [--manifest docs/operations/release-manifest.md] [--check-migrations]\n       node ./scripts/production-release-contract.mjs rehearsal --manifest docs/operations/release-manifest.md\n       node ./scripts/production-release-contract.mjs postdeploy --base-url http://127.0.0.1:3001",
   );
 }
 

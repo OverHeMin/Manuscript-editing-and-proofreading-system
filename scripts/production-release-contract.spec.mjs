@@ -110,6 +110,7 @@ test("validateReleaseManifest accepts a complete schema-changing manifest", () =
 
   assert.equal(validation.status, "ok");
   assert.equal(validation.schemaChangeRequired, true);
+  assert.equal(validation.upgradeRehearsalRequired, true);
   assert.deepEqual(validation.missingFields, []);
 });
 
@@ -164,6 +165,61 @@ test("validateReleaseManifest requires storage snapshot metadata for storage-imp
   assert.deepEqual(validation.missingFields, ["Backup And Restore Point.Storage snapshot metadata"]);
 });
 
+test("validateReleaseManifest requires secret rotation proof when secret rotation is required", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest({
+      schemaChangeRequired: "no",
+      storageImpactRequired: "no",
+      secretRotationRequired: "yes",
+      secretRotationNotes: "",
+      secretRotationVerifiedBy: "",
+    }),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, [
+    "Secret Rotation And Upgrade Rehearsal.Secret rotation notes",
+    "Secret Rotation And Upgrade Rehearsal.Secret rotation verified by",
+  ]);
+});
+
+test("validateReleaseManifest requires schema-changing releases to declare upgrade rehearsal", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest({
+      schemaChangeRequired: "yes",
+      storageImpactRequired: "no",
+      secretRotationRequired: "no",
+      upgradeRehearsalRequired: "no",
+      upgradeRehearsalEnvironment: "",
+      upgradeRehearsalEvidence: "",
+      upgradeRehearsalVerifiedBy: "",
+    }),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, [
+    "Secret Rotation And Upgrade Rehearsal.Upgrade rehearsal required",
+  ]);
+});
+
+test("validateReleaseManifest requires rehearsal proof when upgrade rehearsal is required", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest({
+      upgradeRehearsalRequired: "yes",
+      upgradeRehearsalEnvironment: "",
+      upgradeRehearsalEvidence: "",
+      upgradeRehearsalVerifiedBy: "",
+    }),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, [
+    "Secret Rotation And Upgrade Rehearsal.Upgrade rehearsal environment",
+    "Secret Rotation And Upgrade Rehearsal.Upgrade rehearsal evidence",
+    "Secret Rotation And Upgrade Rehearsal.Upgrade rehearsal verified by",
+  ]);
+});
+
 test("enforceManifestMigrationConsistency fails when a manifest says no schema change but pending migrations exist", () => {
   assert.equal(typeof releaseContract.enforceManifestMigrationConsistency, "function");
 
@@ -186,6 +242,49 @@ test("enforceManifestMigrationConsistency fails when a manifest says no schema c
         },
       }),
     /schema change.*pending migrations/i,
+  );
+});
+
+test("buildUpgradeRehearsalPlan requires a manifest path", () => {
+  assert.equal(typeof releaseContract.buildUpgradeRehearsalPlan, "function");
+
+  assert.throws(
+    () =>
+      releaseContract.buildUpgradeRehearsalPlan({
+        manifestMarkdown: createReleaseManifest(),
+      }),
+    /manifest/i,
+  );
+});
+
+test("buildUpgradeRehearsalPlan returns a bounded local-first rehearsal sequence", () => {
+  assert.equal(typeof releaseContract.buildUpgradeRehearsalPlan, "function");
+
+  const plan = releaseContract.buildUpgradeRehearsalPlan({
+    manifestPath: "docs/operations/releases/phase10h.md",
+    manifestMarkdown: createReleaseManifest(),
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.manifestPath, "docs/operations/releases/phase10h.md");
+  assert.match(plan.steps[0].command, /verify:production-preflight/);
+  assert.match(plan.steps[1].command, /verify:production-preflight:strict/);
+  assert.match(plan.steps[2].command, /db:migration-doctor/);
+});
+
+test("buildUpgradeRehearsalPlan fails when the manifest is still incomplete", () => {
+  assert.equal(typeof releaseContract.buildUpgradeRehearsalPlan, "function");
+
+  assert.throws(
+    () =>
+      releaseContract.buildUpgradeRehearsalPlan({
+        manifestPath: "docs/operations/releases/phase10h.md",
+        manifestMarkdown: createReleaseManifest({
+          upgradeRehearsalRequired: "yes",
+          upgradeRehearsalEvidence: "",
+        }),
+      }),
+    /incomplete/i,
   );
 });
 
@@ -231,6 +330,12 @@ function createReleaseManifest(overrides = {}) {
     schemaChangeRequired: "yes",
     storageImpactRequired: "no",
     secretRotationRequired: "no",
+    secretRotationNotes: "No production secret rotation in this release.",
+    secretRotationVerifiedBy: "security-operator@example.com",
+    upgradeRehearsalRequired: "yes",
+    upgradeRehearsalEnvironment: "staging-local-first",
+    upgradeRehearsalEvidence: "docs/operations/rehearsals/2026-04-05-phase10h.md",
+    upgradeRehearsalVerifiedBy: "release-operator@example.com",
     postgresqlBackupArtifact: "backups/postgres-2026-04-04.dump",
     objectStorageBackupArtifact: "backups/minio-2026-04-04.tar",
     uploadRootSnapshot: ".local-data/uploads/production-2026-04-04",
@@ -256,6 +361,15 @@ function createReleaseManifest(overrides = {}) {
 - Schema change required: \`${manifest.schemaChangeRequired}\`
 - Upload root or object storage impact: \`${manifest.storageImpactRequired}\`
 - Secret rotation required: \`${manifest.secretRotationRequired}\`
+
+## Secret Rotation And Upgrade Rehearsal
+
+- Secret rotation notes: ${manifest.secretRotationNotes}
+- Secret rotation verified by: ${manifest.secretRotationVerifiedBy}
+- Upgrade rehearsal required: \`${manifest.upgradeRehearsalRequired}\`
+- Upgrade rehearsal environment: ${manifest.upgradeRehearsalEnvironment}
+- Upgrade rehearsal evidence: ${manifest.upgradeRehearsalEvidence}
+- Upgrade rehearsal verified by: ${manifest.upgradeRehearsalVerifiedBy}
 
 ## Backup And Restore Point
 
