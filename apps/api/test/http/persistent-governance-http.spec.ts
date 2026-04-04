@@ -1917,6 +1917,26 @@ test("persistent governance runtime records governed retrieval snapshots and ret
           0.91,
         );
 
+        const latestRetrievalQualityRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/templates/families/${governedFixture.familyId}/retrieval-quality-runs/latest`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const latestRetrievalQualityRun =
+          (await latestRetrievalQualityRunResponse.json()) as {
+            id: string;
+            retrieval_snapshot_ids: string[];
+          };
+
+        assert.equal(latestRetrievalQualityRunResponse.status, 200);
+        assert.equal(latestRetrievalQualityRun.id, retrievalQualityRun.id);
+        assert.deepEqual(latestRetrievalQualityRun.retrieval_snapshot_ids, [
+          retrievalContext.retrieval_snapshot_id,
+        ]);
+
         const evidenceResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/verification-ops/evidence`,
           {

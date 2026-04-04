@@ -565,6 +565,34 @@ export class PostgresKnowledgeRetrievalRepository
     return result.rows[0] ? mapQualityRunRow(result.rows[0]) : undefined;
   }
 
+  async findLatestRetrievalQualityRunByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<KnowledgeRetrievalQualityRunRecord | undefined> {
+    const result =
+      await this.dependencies.client.query<KnowledgeRetrievalQualityRunRow>(
+        `
+          select
+            id,
+            gold_set_version_id,
+            module,
+            template_family_id,
+            retrieval_snapshot_ids,
+            retriever_config,
+            reranker_config,
+            metric_summary,
+            created_by,
+            created_at
+          from knowledge_retrieval_quality_runs
+          where template_family_id = $1
+          order by created_at desc, id desc
+          limit 1
+        `,
+        [templateFamilyId],
+      );
+
+    return result.rows[0] ? mapQualityRunRow(result.rows[0]) : undefined;
+  }
+
   async listRetrievalQualityRunsByGoldSetVersionId(
     goldSetVersionId: string,
   ): Promise<KnowledgeRetrievalQualityRunRecord[]> {

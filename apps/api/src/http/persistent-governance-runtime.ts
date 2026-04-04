@@ -341,6 +341,7 @@ export function createPersistentGovernanceRuntime(
     moduleTemplateRepository,
     learningCandidateRepository,
     harnessDatasetRepository,
+    knowledgeRetrievalRepository,
     knowledgeRetrievalService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => options.client.connect(),

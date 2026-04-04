@@ -562,6 +562,7 @@ export function TemplateGovernanceWorkbenchPage({
   const isEditingModuleTemplate = selectedModuleTemplate?.status === "draft";
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
+  const retrievalInsights = overview?.retrievalInsights ?? null;
 
   return (
     <section className="template-governance-workbench">
@@ -603,6 +604,11 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-summary-card">
           <span>Bound Knowledge</span>
           <strong>{overview?.boundKnowledgeItems.length ?? 0}</strong>
+        </article>
+        <article className="template-governance-summary-card">
+          <span>Retrieval Signals</span>
+          <strong>{retrievalInsights?.signals.length ?? 0}</strong>
+          <small>{formatRetrievalInsightStatus(retrievalInsights?.status ?? "idle")}</small>
         </article>
       </section>
 
@@ -894,6 +900,113 @@ export function TemplateGovernanceWorkbenchPage({
               Select or create a template family to manage module templates.
             </p>
           )}
+        </article>
+
+        <article className="template-governance-panel">
+          <div className="template-governance-panel-header">
+            <div>
+              <h3>Retrieval Quality</h3>
+              <p>
+                Inspect the latest retrieval-quality evidence for the selected family without
+                changing routing or publication behavior.
+              </p>
+            </div>
+          </div>
+
+          <p className="template-governance-selected-note">
+            {retrievalInsights?.message ??
+              "Retrieval-quality evidence will appear here once a template family is selected."}
+          </p>
+
+          {retrievalInsights?.latestRun ? (
+            <article className="template-governance-card">
+              <strong>Latest Run</strong>
+              <small>
+                {retrievalInsights.latestRun.module} 路 {retrievalInsights.latestRun.created_at}
+              </small>
+              <p>
+                Gold set {retrievalInsights.latestRun.gold_set_version_id} 路 snapshots{" "}
+                {retrievalInsights.latestRun.retrieval_snapshot_ids.length}
+              </p>
+              <div className="template-governance-chip-row">
+                <span className="template-governance-chip">
+                  answer relevancy {formatRetrievalMetric(
+                    retrievalInsights.latestRun.metric_summary.answer_relevancy,
+                  )}
+                </span>
+                {retrievalInsights.latestRun.metric_summary.context_precision != null ? (
+                  <span className="template-governance-chip">
+                    context precision{" "}
+                    {formatRetrievalMetric(
+                      retrievalInsights.latestRun.metric_summary.context_precision,
+                    )}
+                  </span>
+                ) : null}
+                {retrievalInsights.latestRun.metric_summary.context_recall != null ? (
+                  <span className="template-governance-chip">
+                    context recall{" "}
+                    {formatRetrievalMetric(
+                      retrievalInsights.latestRun.metric_summary.context_recall,
+                    )}
+                  </span>
+                ) : null}
+              </div>
+            </article>
+          ) : (
+            <p className="template-governance-empty">
+              No retrieval-quality run is currently available for this family.
+            </p>
+          )}
+
+          {retrievalInsights?.latestSnapshot ? (
+            <article className="template-governance-card">
+              <strong>Latest Snapshot Summary</strong>
+              <small>{retrievalInsights.latestSnapshot.created_at}</small>
+              <p>{retrievalInsights.latestSnapshot.query_text}</p>
+              <div className="template-governance-chip-row">
+                <span className="template-governance-chip">
+                  retrieved {retrievalInsights.latestSnapshot.retrieved_count}
+                </span>
+                <span className="template-governance-chip">
+                  reranked {retrievalInsights.latestSnapshot.reranked_count}
+                </span>
+                {(retrievalInsights.latestSnapshot.top_knowledge_item_ids ?? []).map((itemId) => (
+                  <span
+                    key={itemId}
+                    className="template-governance-chip template-governance-chip-secondary"
+                  >
+                    {itemId}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ) : null}
+
+          {retrievalInsights && retrievalInsights.signals.length > 0 ? (
+            <div className="template-governance-card">
+              <strong>Operator Signals</strong>
+              <div className="template-governance-chip-row">
+                {retrievalInsights.signals.map((signal) => (
+                  <span key={`${signal.kind}-${signal.title}`} className="template-governance-chip">
+                    {signal.title}
+                  </span>
+                ))}
+              </div>
+              <div className="template-governance-form-grid">
+                {retrievalInsights.signals.map((signal) => (
+                  <article key={`${signal.kind}-${signal.body}`} className="template-governance-card">
+                    <strong>{signal.title}</strong>
+                    <small>{signal.kind}</small>
+                    <p>{signal.body}</p>
+                    <small>
+                      Evidence 路 run {signal.evidence.retrieval_run_id ?? "n/a"} 路 snapshot{" "}
+                      {signal.evidence.retrieval_snapshot_id ?? "n/a"}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </article>
 
         <article className="template-governance-panel template-governance-panel-wide">
@@ -1336,6 +1449,26 @@ function isEditableModuleScope(
   value: string,
 ): value is KnowledgeDraftFormState["moduleScope"] {
   return value === "any" || value === "screening" || value === "editing" || value === "proofreading";
+}
+
+function formatRetrievalInsightStatus(status: NonNullable<TemplateGovernanceWorkbenchOverview["retrievalInsights"]>["status"]): string {
+  switch (status) {
+    case "available":
+      return "evidence ready";
+    case "partial":
+      return "partial evidence";
+    case "not_started":
+      return "not started";
+    case "unavailable":
+      return "fail-open";
+    case "idle":
+    default:
+      return "idle";
+  }
+}
+
+function formatRetrievalMetric(value: number): string {
+  return value.toFixed(2);
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {

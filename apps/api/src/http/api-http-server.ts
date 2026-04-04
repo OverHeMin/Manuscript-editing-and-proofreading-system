@@ -231,6 +231,7 @@ import {
   ModuleTemplateNotFoundError,
   ModuleTemplateStatusTransitionError,
   TemplateRetrievalGoldSetVersionValidationError,
+  TemplateRetrievalQualityRunNotFoundError,
   TemplateFamilyNotFoundError,
   TemplateFamilyManuscriptTypeMismatchError,
   TemplateGovernanceService,
@@ -506,6 +507,10 @@ type HttpRouteMatch =
     }
   | {
       route: "templates-create-retrieval-quality-run";
+      templateFamilyId: string;
+    }
+  | {
+      route: "templates-get-latest-retrieval-quality-run";
       templateFamilyId: string;
     }
   | {
@@ -1009,6 +1014,7 @@ export function createInMemoryApiRuntime(input: {
     moduleTemplateRepository,
     learningCandidateRepository,
     harnessDatasetRepository,
+    knowledgeRetrievalRepository,
     knowledgeRetrievalService,
   });
   const toolGatewayService = new ToolGatewayService({
@@ -2939,6 +2945,14 @@ async function handleRoute(
         },
       });
     }
+    case "templates-get-latest-retrieval-quality-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.templateApi.getLatestRetrievalQualityRun({
+        templateFamilyId: routeMatch.templateFamilyId,
+        actorRole: session.user.role,
+      });
+    }
     case "knowledge-resolve-governed-retrieval-context": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as Omit<
@@ -3709,6 +3723,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const latestTemplateRetrievalQualityRunMatch = path.match(
+    /^\/api\/v1\/templates\/families\/([^/]+)\/retrieval-quality-runs\/latest$/,
+  );
+  if (method === "GET" && latestTemplateRetrievalQualityRunMatch) {
+    return {
+      route: "templates-get-latest-retrieval-quality-run",
+      templateFamilyId: latestTemplateRetrievalQualityRunMatch[1],
+    };
+  }
+
   const updateModuleTemplateDraftMatch = path.match(
     /^\/api\/v1\/templates\/module-templates\/([^/]+)\/draft$/,
   );
@@ -4443,6 +4467,7 @@ function mapErrorToHttpResponse(
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
+    error instanceof TemplateRetrievalQualityRunNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
     error instanceof ModelRoutingReferenceNotFoundError ||

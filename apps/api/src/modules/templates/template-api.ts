@@ -127,5 +127,21 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
         ),
       };
     },
+
+    async getLatestRetrievalQualityRun({
+      templateFamilyId,
+      actorRole,
+    }: {
+      templateFamilyId: string;
+      actorRole: RoleKey;
+    }): Promise<RouteResponse<KnowledgeRetrievalQualityRunRecord>> {
+      return {
+        status: 200,
+        body: await templateService.getLatestRetrievalQualityRun(
+          templateFamilyId,
+          actorRole,
+        ),
+      };
+    },
   };
 }

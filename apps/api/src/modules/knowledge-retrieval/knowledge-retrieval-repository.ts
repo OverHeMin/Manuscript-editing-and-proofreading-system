@@ -28,6 +28,9 @@ export interface KnowledgeRetrievalRepository {
   findRetrievalQualityRunById(
     id: string,
   ): Promise<KnowledgeRetrievalQualityRunRecord | undefined>;
+  findLatestRetrievalQualityRunByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<KnowledgeRetrievalQualityRunRecord | undefined>;
   listRetrievalQualityRunsByGoldSetVersionId(
     goldSetVersionId: string,
   ): Promise<KnowledgeRetrievalQualityRunRecord[]>;

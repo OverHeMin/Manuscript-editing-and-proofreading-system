@@ -191,6 +191,17 @@ export class InMemoryKnowledgeRetrievalRepository
     return record ? cloneQualityRun(record) : undefined;
   }
 
+  async findLatestRetrievalQualityRunByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<KnowledgeRetrievalQualityRunRecord | undefined> {
+    const records = [...this.runs.values()]
+      .filter((record) => record.template_family_id === templateFamilyId)
+      .sort(compareByTimestampAsc);
+    const latest = records.at(-1);
+
+    return latest ? cloneQualityRun(latest) : undefined;
+  }
+
   async listRetrievalQualityRunsByGoldSetVersionId(
     goldSetVersionId: string,
   ): Promise<KnowledgeRetrievalQualityRunRecord[]> {

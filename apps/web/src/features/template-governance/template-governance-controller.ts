@@ -10,6 +10,17 @@ import {
   type KnowledgeItemViewModel,
   type UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
+import { BrowserHttpClientError } from "../../lib/browser-http-client.ts";
+import {
+  getLatestTemplateFamilyRetrievalQualityRun,
+  getRetrievalSnapshot,
+  type KnowledgeRetrievalHttpClient,
+  type KnowledgeRetrievalQualityRunViewModel,
+  type KnowledgeRetrievalSnapshotViewModel,
+  type TemplateFamilyRetrievalInsightsViewModel,
+  type TemplateFamilyRetrievalSignalViewModel,
+  type TemplateFamilyRetrievalSnapshotSummaryViewModel,
+} from "../knowledge-retrieval/index.ts";
 import {
   createModuleTemplateDraft,
   createTemplateFamily,
@@ -38,6 +49,7 @@ export interface TemplateGovernanceWorkbenchOverview {
   selectedTemplateFamilyId: string | null;
   selectedTemplateFamily: TemplateFamilyViewModel | null;
   moduleTemplates: ModuleTemplateViewModel[];
+  retrievalInsights: TemplateFamilyRetrievalInsightsViewModel;
   knowledgeItems: KnowledgeItemViewModel[];
   visibleKnowledgeItems: KnowledgeItemViewModel[];
   boundKnowledgeItems: KnowledgeItemViewModel[];
@@ -114,7 +126,10 @@ export interface TemplateGovernanceWorkbenchController {
   }>;
 }
 
-type TemplateGovernanceHttpClient = KnowledgeHttpClient & TemplateHttpClient;
+type TemplateGovernanceHttpClient =
+  KnowledgeHttpClient &
+  TemplateHttpClient &
+  KnowledgeRetrievalHttpClient;
 
 export function createTemplateGovernanceWorkbenchController(
   client: TemplateGovernanceHttpClient,
@@ -273,6 +288,10 @@ async function loadTemplateGovernanceOverview(
       : (
           await listModuleTemplatesByTemplateFamilyId(client, selectedTemplateFamilyId)
         ).body;
+  const retrievalInsights = await loadTemplateFamilyRetrievalInsights(
+    client,
+    selectedTemplateFamilyId,
+  );
   const visibleKnowledgeItems = filterKnowledgeItems(knowledgeItems, filters);
   const boundKnowledgeItems = visibleKnowledgeItems.filter((item) =>
     isKnowledgeItemBoundToFamily(item, selectedTemplateFamilyId, moduleTemplates),
@@ -290,6 +309,7 @@ async function loadTemplateGovernanceOverview(
     selectedTemplateFamilyId,
     selectedTemplateFamily,
     moduleTemplates,
+    retrievalInsights,
     knowledgeItems,
     visibleKnowledgeItems,
     boundKnowledgeItems,
@@ -382,4 +402,154 @@ function resolveSelectedKnowledgeItemId(input: {
   }
 
   return input.boundKnowledgeItems[0]?.id ?? input.visibleKnowledgeItems[0]?.id ?? null;
+}
+
+async function loadTemplateFamilyRetrievalInsights(
+  client: TemplateGovernanceHttpClient,
+  templateFamilyId: string | null,
+): Promise<TemplateFamilyRetrievalInsightsViewModel> {
+  if (templateFamilyId == null) {
+    return {
+      status: "idle",
+      latestRun: null,
+      latestSnapshot: null,
+      signals: [],
+      message: "Select a template family to inspect retrieval quality evidence.",
+    };
+  }
+
+  try {
+    const latestRun = (
+      await getLatestTemplateFamilyRetrievalQualityRun(client, templateFamilyId)
+    ).body;
+    const latestSnapshotId =
+      latestRun.retrieval_snapshot_ids.at(-1) ?? latestRun.retrieval_snapshot_ids[0];
+    if (!latestSnapshotId) {
+      const signals = createRetrievalSignals(latestRun, null);
+
+      return {
+        status: "partial",
+        latestRun,
+        latestSnapshot: null,
+        signals,
+        message:
+          "A retrieval-quality run exists, but it does not expose a linked retrieval snapshot summary yet.",
+      };
+    }
+
+    try {
+      const latestSnapshot = (await getRetrievalSnapshot(client, latestSnapshotId)).body;
+      const latestSnapshotSummary = summarizeRetrievalSnapshot(latestSnapshot);
+      const signals = createRetrievalSignals(latestRun, latestSnapshotSummary);
+
+      return {
+        status: "available",
+        latestRun,
+        latestSnapshot: latestSnapshotSummary,
+        signals,
+        message:
+          signals.length === 0
+            ? "Latest retrieval-quality evidence is within the current operator thresholds."
+            : `${signals.length} retrieval-quality signal(s) need operator review.`,
+      };
+    } catch {
+      const signals = createRetrievalSignals(latestRun, null);
+
+      return {
+        status: "partial",
+        latestRun,
+        latestSnapshot: null,
+        signals,
+        message:
+          "Latest retrieval snapshot evidence is unavailable, but the rest of template governance remains usable.",
+      };
+    }
+  } catch (error) {
+    if (isNotFoundHttpError(error)) {
+      return {
+        status: "not_started",
+        latestRun: null,
+        latestSnapshot: null,
+        signals: [],
+        message:
+          "No retrieval-quality run has been recorded for this template family yet.",
+      };
+    }
+
+    return {
+      status: "unavailable",
+      latestRun: null,
+      latestSnapshot: null,
+      signals: [],
+      message:
+        "Retrieval-quality read models are unavailable right now. Core template governance actions remain available.",
+    };
+  }
+}
+
+function summarizeRetrievalSnapshot(
+  snapshot: KnowledgeRetrievalSnapshotViewModel,
+): TemplateFamilyRetrievalSnapshotSummaryViewModel {
+  const rankedItems =
+    snapshot.reranked_items.length > 0 ? snapshot.reranked_items : snapshot.retrieved_items;
+
+  return {
+    id: snapshot.id,
+    query_text: snapshot.query_text,
+    retrieved_count: snapshot.retrieved_items.length,
+    reranked_count: snapshot.reranked_items.length,
+    top_knowledge_item_ids: rankedItems
+      .slice(0, 3)
+      .map((item) => item.knowledge_item_id),
+    created_at: snapshot.created_at,
+  };
+}
+
+function createRetrievalSignals(
+  latestRun: KnowledgeRetrievalQualityRunViewModel,
+  latestSnapshot: TemplateFamilyRetrievalSnapshotSummaryViewModel | null,
+): TemplateFamilyRetrievalSignalViewModel[] {
+  const signals: TemplateFamilyRetrievalSignalViewModel[] = [];
+  const metricSummary = latestRun.metric_summary;
+
+  if (
+    metricSummary.answer_relevancy < 0.85 ||
+    (metricSummary.context_precision != null &&
+      metricSummary.context_precision < 0.75)
+  ) {
+    signals.push({
+      kind: "retrieval_drift",
+      severity: "warning",
+      title: "Retrieval drift signal",
+      body:
+        "Latest answer relevancy or context precision has dropped below the current operator threshold.",
+      evidence: {
+        retrieval_run_id: latestRun.id,
+        retrieval_snapshot_id: latestSnapshot?.id,
+      },
+    });
+  }
+
+  if (
+    (metricSummary.context_recall != null && metricSummary.context_recall < 0.75) ||
+    latestSnapshot?.retrieved_count === 0
+  ) {
+    signals.push({
+      kind: "missing_knowledge",
+      severity: "warning",
+      title: "Missing knowledge signal",
+      body:
+        "Recall is weak or the latest retrieval snapshot returned no grounded knowledge items for review.",
+      evidence: {
+        retrieval_run_id: latestRun.id,
+        retrieval_snapshot_id: latestSnapshot?.id,
+      },
+    });
+  }
+
+  return signals;
+}
+
+function isNotFoundHttpError(error: unknown): boolean {
+  return error instanceof BrowserHttpClientError && error.status === 404;
 }

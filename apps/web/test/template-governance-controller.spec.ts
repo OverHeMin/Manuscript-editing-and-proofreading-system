@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BrowserHttpClientError } from "../src/lib/browser-http-client.ts";
 import {
   createTemplateGovernanceWorkbenchController,
 } from "../src/features/template-governance/template-governance-controller.ts";
 
-test("template governance controller loads template families, module templates, and bound knowledge items", async () => {
+test("template governance controller loads template families, retrieval insights, module templates, and bound knowledge items", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createTemplateGovernanceWorkbenchController({
     request: async <TResponse>(input: {
@@ -47,6 +48,30 @@ test("template governance controller loads template families, module templates, 
         };
       }
 
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        return {
+          status: 200,
+          body: {
+            id: "retrieval-run-1",
+            gold_set_version_id: "gold-version-1",
+            module: "screening",
+            template_family_id: "family-1",
+            retrieval_snapshot_ids: ["retrieval-snapshot-1", "retrieval-snapshot-2"],
+            retriever_config: {
+              strategy: "template_pack",
+              top_k: 3,
+            },
+            metric_summary: {
+              answer_relevancy: 0.71,
+              context_precision: 0.68,
+              context_recall: 0.62,
+            },
+            created_by: "operator-1",
+            created_at: "2026-04-04T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
       if (input.url === "/api/v1/knowledge") {
         return {
           status: 200,
@@ -79,6 +104,27 @@ test("template governance controller loads template families, module templates, 
         };
       }
 
+      if (input.url === "/api/v1/knowledge/retrieval-snapshots/retrieval-snapshot-2") {
+        return {
+          status: 200,
+          body: {
+            id: "retrieval-snapshot-2",
+            module: "screening",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            template_family_id: "family-1",
+            query_text: "Primary endpoint grounding",
+            retriever_config: {
+              strategy: "template_pack",
+              top_k: 3,
+            },
+            retrieved_items: [],
+            reranked_items: [],
+            created_at: "2026-04-04T08:59:30.000Z",
+          } as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -92,12 +138,24 @@ test("template governance controller loads template families, module templates, 
   assert.equal(overview.boundKnowledgeItems.length, 1);
   assert.equal(overview.boundKnowledgeItems[0]?.id, "knowledge-1");
   assert.equal(overview.selectedKnowledgeItem?.id, "knowledge-1");
+  assert.equal(overview.retrievalInsights.status, "available");
+  assert.equal(overview.retrievalInsights.latestRun?.id, "retrieval-run-1");
+  assert.equal(
+    overview.retrievalInsights.latestSnapshot?.id,
+    "retrieval-snapshot-2",
+  );
+  assert.deepEqual(
+    overview.retrievalInsights.signals.map((signal) => signal.kind),
+    ["retrieval_drift", "missing_knowledge"],
+  );
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
       "GET /api/v1/templates/families",
       "GET /api/v1/knowledge",
       "GET /api/v1/templates/families/family-1/module-templates",
+      "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
+      "GET /api/v1/knowledge/retrieval-snapshots/retrieval-snapshot-2",
     ],
   );
 });
@@ -181,6 +239,67 @@ test("template governance controller clears knowledge selection when a family sw
   assert.equal(overview.boundKnowledgeItems.length, 0);
   assert.equal(overview.selectedKnowledgeItemId, null);
   assert.equal(overview.selectedKnowledgeItem, null);
+});
+
+test("template governance controller keeps the workbench fail-open when retrieval insights are unavailable", async () => {
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw new BrowserHttpClientError({
+          method: "GET",
+          requestUrl: input.url,
+          status: 404,
+          responseBody: {
+            error: "not_found",
+          },
+        });
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.templateFamilies.length, 1);
+  assert.equal(overview.selectedTemplateFamilyId, "family-1");
+  assert.equal(overview.moduleTemplates.length, 0);
+  assert.equal(overview.retrievalInsights.status, "not_started");
+  assert.equal(overview.retrievalInsights.latestRun, null);
+  assert.equal(overview.retrievalInsights.latestSnapshot, null);
+  assert.equal(overview.retrievalInsights.signals.length, 0);
 });
 
 test("template governance controller can create, update, submit, and publish governed assets", async () => {

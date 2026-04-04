@@ -3,6 +3,7 @@ import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { HarnessDatasetRepository } from "../harness-datasets/harness-dataset-repository.ts";
 import type { KnowledgeRetrievalQualityRunRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
+import type { KnowledgeRetrievalRepository } from "../knowledge-retrieval/knowledge-retrieval-repository.ts";
 import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import {
@@ -87,6 +88,10 @@ export interface TemplateGovernanceServiceOptions {
   moduleTemplateRepository: ModuleTemplateRepository;
   learningCandidateRepository?: LearningCandidateRepository;
   harnessDatasetRepository?: HarnessDatasetRepository;
+  knowledgeRetrievalRepository?: Pick<
+    KnowledgeRetrievalRepository,
+    "findLatestRetrievalQualityRunByTemplateFamilyId"
+  >;
   knowledgeRetrievalService?: Pick<
     KnowledgeRetrievalService,
     "recordRetrievalQualityRun"
@@ -176,11 +181,24 @@ export class TemplateRetrievalGoldSetVersionValidationError extends Error {
   }
 }
 
+export class TemplateRetrievalQualityRunNotFoundError extends Error {
+  constructor(templateFamilyId: string) {
+    super(
+      `Template family ${templateFamilyId} does not have a retrieval-quality run yet.`,
+    );
+    this.name = "TemplateRetrievalQualityRunNotFoundError";
+  }
+}
+
 export class TemplateGovernanceService {
   private readonly templateFamilyRepository: TemplateFamilyRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly learningCandidateRepository?: LearningCandidateRepository;
   private readonly harnessDatasetRepository?: HarnessDatasetRepository;
+  private readonly knowledgeRetrievalRepository?: Pick<
+    KnowledgeRetrievalRepository,
+    "findLatestRetrievalQualityRunByTemplateFamilyId"
+  >;
   private readonly knowledgeRetrievalService?: Pick<
     KnowledgeRetrievalService,
     "recordRetrievalQualityRun"
@@ -194,6 +212,7 @@ export class TemplateGovernanceService {
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.learningCandidateRepository = options.learningCandidateRepository;
     this.harnessDatasetRepository = options.harnessDatasetRepository;
+    this.knowledgeRetrievalRepository = options.knowledgeRetrievalRepository;
     this.knowledgeRetrievalService = options.knowledgeRetrievalService;
     this.transactionManager =
       options.transactionManager ??
@@ -491,6 +510,32 @@ export class TemplateGovernanceService {
       metricSummary: input.metricSummary,
       createdBy: input.createdBy,
     });
+  }
+
+  async getLatestRetrievalQualityRun(
+    templateFamilyId: string,
+    actorRole: RoleKey,
+  ): Promise<KnowledgeRetrievalQualityRunRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    if (!this.knowledgeRetrievalRepository) {
+      throw new TemplateRetrievalQualityDependencyError();
+    }
+
+    const templateFamily = await this.templateFamilyRepository.findById(templateFamilyId);
+    if (!templateFamily) {
+      throw new TemplateFamilyNotFoundError(templateFamilyId);
+    }
+
+    const latestRun =
+      await this.knowledgeRetrievalRepository.findLatestRetrievalQualityRunByTemplateFamilyId(
+        templateFamilyId,
+      );
+    if (!latestRun) {
+      throw new TemplateRetrievalQualityRunNotFoundError(templateFamilyId);
+    }
+
+    return latestRun;
   }
 
   listTemplateFamilies(): Promise<TemplateFamilyRecord[]> {
