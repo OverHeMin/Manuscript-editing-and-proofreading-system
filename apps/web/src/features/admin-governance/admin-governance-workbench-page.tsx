@@ -322,6 +322,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Agent Profiles" value={overview?.agentProfiles.length ?? 0} />
         <SummaryCard label="Agent Runtimes" value={overview?.agentRuntimes.length ?? 0} />
         <SummaryCard label="Runtime Bindings" value={overview?.runtimeBindings.length ?? 0} />
+        <SummaryCard label="Harness Adapters" value={overview?.harnessAdapters.length ?? 0} />
       </section>
 
       <section className="admin-governance-grid">
@@ -887,6 +888,71 @@ export function AdminGovernanceWorkbenchPage({
             <p className="admin-governance-empty">
               Resolve a family/module pair to preview the exact governed runtime bundle the system
               will execute.
+            </p>
+          )}
+        </article>
+
+        <article className="admin-governance-panel admin-governance-panel-wide">
+          <h3>Harness Integrations</h3>
+          <p className="admin-governance-empty">
+            Read-only visibility for local harness adapters. This surface does not change routing,
+            publish state, or production control-plane policy.
+          </p>
+
+          {(overview?.harnessAdapterHealth.length ?? 0) > 0 ? (
+            <ul className="admin-governance-list admin-governance-list-spaced">
+              {(overview?.harnessAdapterHealth ?? []).map((record) => (
+                <li key={record.adapter.id} className="admin-governance-template-row">
+                  <div>
+                    <strong>{record.adapter.display_name}</strong>
+                    <p>
+                      {record.adapter.kind} 路 {record.adapter.execution_mode} 路 latest{" "}
+                      {record.latest_status}
+                    </p>
+                  </div>
+                  <div className="admin-governance-template-actions">
+                    <span className="admin-governance-badge">
+                      trace {record.trace_availability}
+                    </span>
+                    {record.latest_degradation_reason ? (
+                      <small>{record.latest_degradation_reason}</small>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="admin-governance-empty">
+              No harness adapters are registered yet.
+            </p>
+          )}
+
+          {overview?.latestJudgeCalibrationBatchOutcome ? (
+            <div className="admin-governance-policy-grid">
+              <article className="admin-governance-asset-row">
+                <span>Latest Judge Batch</span>
+                <small>{overview.latestJudgeCalibrationBatchOutcome.execution_id}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Judge Status</span>
+                <small>{overview.latestJudgeCalibrationBatchOutcome.status}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Exact Match Rate</span>
+                <small>
+                  {overview.latestJudgeCalibrationBatchOutcome.exact_match_rate ?? "unknown"}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Disagreements</span>
+                <small>
+                  {overview.latestJudgeCalibrationBatchOutcome.disagreement_count ?? "unknown"}
+                </small>
+              </article>
+            </div>
+          ) : (
+            <p className="admin-governance-empty">
+              No judge calibration outcome has been recorded yet.
             </p>
           )}
         </article>

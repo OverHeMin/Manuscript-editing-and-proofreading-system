@@ -2164,6 +2164,20 @@ test("persistent governance runtime launches governed harness runs explicitly fr
         const secondServer = await startPersistentGovernanceServer(databaseUrl);
         try {
           const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const adaptersResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/harness-integrations/adapters`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const adapters = (await adaptersResponse.json()) as Array<{
+            id: string;
+            kind: string;
+            execution_mode: string;
+            fail_open: boolean;
+          }>;
           const executionsResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/harness-integrations/adapters/${persistentHarnessIntegrationFixtureIds.promptfooAdapterId}/executions`,
             {
@@ -2178,6 +2192,23 @@ test("persistent governance runtime launches governed harness runs explicitly fr
             dataset_id?: string;
           }>;
 
+          assert.equal(adaptersResponse.status, 200);
+          assert.deepEqual(
+            adapters.map((record) => ({
+              id: record.id,
+              kind: record.kind,
+              execution_mode: record.execution_mode,
+              fail_open: record.fail_open,
+            })),
+            [
+              {
+                id: persistentHarnessIntegrationFixtureIds.promptfooAdapterId,
+                kind: "promptfoo",
+                execution_mode: "local_cli",
+                fail_open: true,
+              },
+            ],
+          );
           assert.equal(executionsResponse.status, 200);
           assert.deepEqual(
             executions.map((record) => ({

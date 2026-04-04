@@ -14,6 +14,7 @@ const agentToolingOverviewUrls = [
   "/api/v1/verification-ops/release-check-profiles",
   "/api/v1/verification-ops/evaluation-suites",
   "/api/v1/runtime-bindings",
+  "/api/v1/harness-integrations/adapters",
   "/api/v1/agent-execution",
 ] as const;
 const routingGovernanceOverviewUrl = "/api/v1/model-routing-governance/policies";
@@ -412,6 +413,327 @@ test("admin governance controller loads versioned routing policies alongside reg
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+    ],
+  );
+});
+
+test("admin governance controller loads harness adapter health as a read-only governance model", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/prompt-skill-registry/prompt-templates" ||
+        input.url === "/api/v1/prompt-skill-registry/skill-packages" ||
+        input.url === "/api/v1/model-registry" ||
+        input.url === "/api/v1/model-registry/routing-policy" ||
+        input.url === routingGovernanceOverviewUrl ||
+        input.url === "/api/v1/execution-governance/profiles"
+      ) {
+        return {
+          status: 200,
+          body:
+            input.url === "/api/v1/model-registry/routing-policy"
+              ? ({
+                  system_default_model_id: undefined,
+                  module_defaults: {},
+                  template_overrides: {},
+                } as TResponse)
+              : ([] as TResponse),
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "adapter-promptfoo-1",
+              kind: "promptfoo",
+              display_name: "Promptfoo local suite",
+              execution_mode: "local_cli",
+              fail_open: true,
+              redaction_profile_id: "profile-1",
+              feature_flag_keys: ["harness.promptfoo.enabled"],
+              result_envelope_version: "1.0.0",
+              created_at: "2026-04-04T12:00:00.000Z",
+              updated_at: "2026-04-04T12:00:00.000Z",
+            },
+            {
+              id: "adapter-langfuse-1",
+              kind: "langfuse_oss",
+              display_name: "Self-hosted Langfuse trace sink",
+              execution_mode: "self_hosted_http",
+              fail_open: true,
+              redaction_profile_id: "profile-2",
+              feature_flag_keys: ["harness.langfuse.enabled"],
+              result_envelope_version: "1.0.0",
+              created_at: "2026-04-04T12:05:00.000Z",
+              updated_at: "2026-04-04T12:05:00.000Z",
+            },
+            {
+              id: "adapter-judge-1",
+              kind: "judge_reliability_local",
+              display_name: "Judge calibration runner",
+              execution_mode: "local_cli",
+              fail_open: true,
+              redaction_profile_id: "profile-3",
+              feature_flag_keys: ["harness.judge.enabled"],
+              result_envelope_version: "1.0.0",
+              created_at: "2026-04-04T12:10:00.000Z",
+              updated_at: "2026-04-04T12:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters/adapter-promptfoo-1/executions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "exec-promptfoo-1",
+              adapter_id: "adapter-promptfoo-1",
+              trigger_kind: "api_requested",
+              input_reference: "run-input://promptfoo/suite-1",
+              dataset_id: "gold-set-1",
+              status: "succeeded",
+              result_summary: {
+                binding_id: "binding-1",
+                evaluation_suite_id: "suite-1",
+              },
+              created_at: "2026-04-04T13:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters/adapter-langfuse-1/executions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "exec-langfuse-1",
+              adapter_id: "adapter-langfuse-1",
+              trigger_kind: "api_requested",
+              input_reference: "run-input://trace/suite-1",
+              dataset_id: "gold-set-1",
+              status: "degraded",
+              degradation_reason: "self-hosted trace sink unavailable",
+              result_summary: {
+                trace_sink_status: "unavailable",
+              },
+              created_at: "2026-04-04T13:05:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters/adapter-judge-1/executions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "exec-judge-1",
+              adapter_id: "adapter-judge-1",
+              trigger_kind: "operator_requested",
+              input_reference: "run-input://judge/batch-1",
+              status: "succeeded",
+              result_summary: {
+                exact_match_rate: 0.92,
+                agreement_count: 11,
+                disagreement_count: 1,
+              },
+              created_at: "2026-04-04T13:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.harnessAdapters.length, 3);
+  assert.equal(overview.harnessAdapterHealth.length, 3);
+  assert.deepEqual(
+    overview.harnessAdapterHealth.map((record) => ({
+      id: record.adapter.id,
+      latestStatus: record.latest_status,
+      traceAvailability: record.trace_availability,
+    })),
+    [
+      {
+        id: "adapter-promptfoo-1",
+        latestStatus: "succeeded",
+        traceAvailability: "not_applicable",
+      },
+      {
+        id: "adapter-langfuse-1",
+        latestStatus: "degraded",
+        traceAvailability: "unavailable",
+      },
+      {
+        id: "adapter-judge-1",
+        latestStatus: "succeeded",
+        traceAvailability: "not_applicable",
+      },
+    ],
+  );
+  assert.deepEqual(overview.latestJudgeCalibrationBatchOutcome, {
+    adapter_id: "adapter-judge-1",
+    execution_id: "exec-judge-1",
+    status: "succeeded",
+    exact_match_rate: 0.92,
+    agreement_count: 11,
+    disagreement_count: 1,
+    created_at: "2026-04-04T13:10:00.000Z",
+  });
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
+      "/api/v1/execution-governance/profiles",
+      ...agentToolingOverviewUrls,
+      "/api/v1/harness-integrations/adapters/adapter-promptfoo-1/executions",
+      "/api/v1/harness-integrations/adapters/adapter-langfuse-1/executions",
+      "/api/v1/harness-integrations/adapters/adapter-judge-1/executions",
+    ],
+  );
+});
+
+test("admin governance controller fails open when harness read endpoints are unavailable", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "review",
+              name: "Review family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters") {
+        throw new Error("harness adapters unavailable");
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/skill-packages") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: undefined,
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.url === routingGovernanceOverviewUrl) {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/execution-governance/profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.selectedTemplateFamilyId, "family-1");
+  assert.deepEqual(overview.harnessAdapters, []);
+  assert.deepEqual(overview.harnessAdapterHealth, []);
+  assert.equal(overview.latestJudgeCalibrationBatchOutcome, null);
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
+      "/api/v1/execution-governance/profiles",
+      ...agentToolingOverviewUrls,
+      "/api/v1/templates/families/family-1/module-templates",
     ],
   );
 });
@@ -1281,6 +1603,13 @@ test("admin governance controller loads agent-tooling registries and recent exec
               version: 2,
             },
           ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters") {
+        return {
+          status: 200,
+          body: [] as TResponse,
         };
       }
 

@@ -340,6 +340,9 @@ type HttpRouteMatch =
       goldSetVersionId: string;
     }
   | {
+      route: "harness-integrations-list-adapters";
+    }
+  | {
       route: "harness-integrations-launch-governed-run";
     }
   | {
@@ -2159,6 +2162,9 @@ async function handleRoute(
         },
       });
     }
+    case "harness-integrations-list-adapters":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessIntegrationApi.listAdapters();
     case "harness-integrations-launch-governed-run": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3437,6 +3443,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
       route: "harness-datasets-export-gold-set-version",
       goldSetVersionId: exportHarnessGoldSetVersionMatch[1],
     };
+  }
+
+  if (method === "GET" && path === "/api/v1/harness-integrations/adapters") {
+    return { route: "harness-integrations-list-adapters" };
   }
 
   if (method === "POST" && path === "/api/v1/harness-integrations/governed-runs") {

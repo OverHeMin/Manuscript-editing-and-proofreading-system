@@ -72,6 +72,16 @@ import type {
   RuntimeBindingViewModel,
 } from "../runtime-bindings/index.ts";
 import {
+  listHarnessAdapters,
+  listHarnessExecutionsByAdapterId,
+} from "../harness-integrations/index.ts";
+import type {
+  HarnessAdapterHealthViewModel,
+  HarnessAdapterViewModel,
+  HarnessExecutionViewModel,
+  HarnessJudgeCalibrationOutcomeViewModel,
+} from "../harness-integrations/index.ts";
+import {
   activateSandboxProfile,
   createSandboxProfile,
   listSandboxProfiles,
@@ -168,6 +178,9 @@ export interface AdminGovernanceOverview {
   releaseCheckProfiles: ReleaseCheckProfileViewModel[];
   evaluationSuites: EvaluationSuiteViewModel[];
   runtimeBindings: RuntimeBindingViewModel[];
+  harnessAdapters: HarnessAdapterViewModel[];
+  harnessAdapterHealth: HarnessAdapterHealthViewModel[];
+  latestJudgeCalibrationBatchOutcome: HarnessJudgeCalibrationOutcomeViewModel | null;
   agentExecutionLogs: AgentExecutionLogViewModel[];
 }
 
@@ -503,6 +516,7 @@ export async function loadAdminGovernanceOverview(
     releaseCheckProfileResponse,
     evaluationSuiteResponse,
     runtimeBindingResponse,
+    harnessAdapters,
     agentExecutionResponse,
   ] = await Promise.all([
     listTemplateFamilies(client),
@@ -521,6 +535,10 @@ export async function loadAdminGovernanceOverview(
     listReleaseCheckProfiles(client),
     listEvaluationSuites(client),
     listRuntimeBindings(client),
+    loadOptional(
+      () => listHarnessAdapters(client).then((response) => response.body),
+      [] as HarnessAdapterViewModel[],
+    ),
     listAgentExecutionLogs(client),
   ]);
 
@@ -538,6 +556,10 @@ export async function loadAdminGovernanceOverview(
             selectedTemplateFamilyId,
           )
         ).body;
+  const harnessAdapterHealth = await loadHarnessAdapterHealth(
+    client,
+    harnessAdapters ?? [],
+  );
 
   return {
     templateFamilies,
@@ -558,6 +580,10 @@ export async function loadAdminGovernanceOverview(
     releaseCheckProfiles: releaseCheckProfileResponse.body,
     evaluationSuites: evaluationSuiteResponse.body,
     runtimeBindings: runtimeBindingResponse.body,
+    harnessAdapters: harnessAdapters ?? [],
+    harnessAdapterHealth,
+    latestJudgeCalibrationBatchOutcome:
+      selectLatestJudgeCalibrationBatchOutcome(harnessAdapterHealth),
     agentExecutionLogs: agentExecutionResponse.body,
   };
 }
@@ -657,4 +683,111 @@ function resolveSelectedTemplateFamilyId(
   }
 
   return templateFamilies[0]?.id ?? null;
+}
+
+async function loadHarnessAdapterHealth(
+  client: AdminGovernanceHttpClient,
+  adapters: readonly HarnessAdapterViewModel[],
+): Promise<HarnessAdapterHealthViewModel[]> {
+  const executionResponses = await Promise.all(
+    adapters.map(async (adapter) => ({
+      adapter,
+      executions:
+        (await loadOptional(
+          () =>
+            listHarnessExecutionsByAdapterId(client, adapter.id).then(
+              (response) => response.body,
+            ),
+          [] as HarnessExecutionViewModel[],
+        )) ?? [],
+    })),
+  );
+
+  return executionResponses.map(({ adapter, executions }) =>
+    buildHarnessAdapterHealth(adapter, executions),
+  );
+}
+
+function buildHarnessAdapterHealth(
+  adapter: HarnessAdapterViewModel,
+  executions: readonly HarnessExecutionViewModel[],
+): HarnessAdapterHealthViewModel {
+  const latestExecution = [...executions].sort((left, right) =>
+    right.created_at.localeCompare(left.created_at),
+  )[0] ?? null;
+
+  return {
+    adapter,
+    latest_execution: latestExecution,
+    latest_status: latestExecution?.status ?? "never_run",
+    trace_availability: resolveHarnessTraceAvailability(adapter, latestExecution),
+    latest_degradation_reason: latestExecution?.degradation_reason,
+  };
+}
+
+function resolveHarnessTraceAvailability(
+  adapter: HarnessAdapterViewModel,
+  latestExecution: HarnessAdapterHealthViewModel["latest_execution"],
+): HarnessAdapterHealthViewModel["trace_availability"] {
+  if (adapter.kind !== "langfuse_oss") {
+    return "not_applicable";
+  }
+
+  if (!latestExecution) {
+    return "unknown";
+  }
+
+  if (latestExecution.status === "succeeded") {
+    return "available";
+  }
+
+  if (
+    latestExecution.degradation_reason === "self-hosted trace sink unavailable" ||
+    latestExecution.result_summary?.trace_sink_status === "unavailable"
+  ) {
+    return "unavailable";
+  }
+
+  return "unknown";
+}
+
+function selectLatestJudgeCalibrationBatchOutcome(
+  records: readonly HarnessAdapterHealthViewModel[],
+): HarnessJudgeCalibrationOutcomeViewModel | null {
+  const latestRecord = [...records]
+    .filter(
+      (record) =>
+        record.adapter.kind === "judge_reliability_local" &&
+        record.latest_execution != null,
+    )
+    .sort((left, right) =>
+      (right.latest_execution?.created_at ?? "").localeCompare(
+        left.latest_execution?.created_at ?? "",
+      ),
+    )[0];
+  const latestExecution = latestRecord?.latest_execution;
+
+  if (!latestRecord || !latestExecution) {
+    return null;
+  }
+
+  return {
+    adapter_id: latestRecord.adapter.id,
+    execution_id: latestExecution.id,
+    status: latestExecution.status,
+    exact_match_rate: coerceOptionalNumber(
+      latestExecution.result_summary?.exact_match_rate,
+    ),
+    agreement_count: coerceOptionalNumber(
+      latestExecution.result_summary?.agreement_count,
+    ),
+    disagreement_count: coerceOptionalNumber(
+      latestExecution.result_summary?.disagreement_count,
+    ),
+    created_at: latestExecution.created_at,
+  };
+}
+
+function coerceOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
 }
