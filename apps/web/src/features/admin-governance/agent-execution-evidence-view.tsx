@@ -89,7 +89,7 @@ export function AgentExecutionEvidenceView({
             <span>Policy Layer</span>
             <small>
               {log.routing_policy_scope_kind
-                ? formatRoutingPolicyScopeKindLabel(log.routing_policy_scope_kind)
+                ? `${formatRoutingPolicyScopeKindLabel(log.routing_policy_scope_kind)} (${log.routing_policy_scope_kind})`
                 : "Legacy Fallback Path"}
             </small>
           </article>

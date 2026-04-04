@@ -866,7 +866,8 @@ export function AdminGovernanceWorkbenchPage({
                 <small>
                   {formatExecutionResolutionModelSourceLabel(
                     executionPreview.model_source,
-                  )}
+                  )}{" "}
+                  ({executionPreview.model_source})
                 </small>
               </article>
               <article className="admin-governance-asset-row">

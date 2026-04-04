@@ -204,3 +204,15 @@
 - `phase8aa / phase8ab / phase8ac / phase8ad` 是 `phase8z` 之后的延续编号，不是 `phase8a` 的子层级。
 - Phase 9 的缺失字母当前视为未使用编号，不默认代表丢失内容。
 - 具体边界解释以 `Phase Boundary Index` 与相关 reconciliation 文档为准。
+## Model Governance Routing
+
+- `Model Registry` stores approved model assets and module compatibility only. It does not own routing governance decisions.
+- `Model Routing Governance` stores versioned routing policy for `module` and `template_family` scopes, including the approved primary model, ordered fallback chain, and evidence references.
+- `Admin Governance Console` is the only routing control plane in Phase 10B. `Evaluation Workbench` remains an evidence surface and does not activate policy.
+- Live runtime resolves routing in this order:
+  1. active `template_family` policy
+  2. active `module` policy
+  3. legacy singleton template override
+  4. legacy singleton module default
+  5. legacy singleton system default
+- Runtime fallback is limited to approved chains for technical/runtime failures. Quality-based automatic switching remains out of scope for Phase 10B.
