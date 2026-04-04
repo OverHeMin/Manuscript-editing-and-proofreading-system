@@ -94,6 +94,20 @@
   min-width: 0;
 }
 
+.evaluation-workbench-delta-summary {
+  border-color: #bfdbfe;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 40%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.08);
+}
+
+.evaluation-workbench-comparison-panel {
+  border-color: #cbd5e1;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.92) 0%, #ffffff 100%);
+}
+
 .evaluation-workbench-panel-header {
   display: flex;
   justify-content: space-between;
@@ -108,6 +122,64 @@
 }
 
 .evaluation-workbench-panel-header span {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.evaluation-workbench-delta-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.evaluation-workbench-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.evaluation-workbench-delta-badge.is-better {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.evaluation-workbench-delta-badge.is-worse {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.evaluation-workbench-delta-badge.is-flat {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.evaluation-workbench-delta-inline-note {
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.evaluation-workbench-delta-copy {
+  margin: 0;
+  color: #1e293b;
+  line-height: 1.7;
+}
+
+.evaluation-workbench-delta-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   font-size: 0.85rem;
   color: #64748b;
 }
@@ -220,6 +292,12 @@
   gap: 12px;
 }
 
+.evaluation-workbench-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .evaluation-workbench-field {
   display: grid;
   gap: 6px;
@@ -297,6 +375,18 @@
   gap: 6px;
 }
 
+.evaluation-workbench-history-list {
+  gap: 12px;
+}
+
+.evaluation-workbench-history-guidance,
+.evaluation-workbench-history-hidden-selection,
+.evaluation-workbench-history-detail {
+  border-style: dashed;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, #ffffff 100%);
+}
+
 .evaluation-workbench-history-signals {
   display: flex;
   flex-wrap: wrap;
@@ -340,6 +430,10 @@
   align-items: flex-start;
 }
 
+.evaluation-workbench-run-item-detail {
+  border-color: #bfdbfe;
+}
+
 .evaluation-workbench-linked-sample-list li {
   padding: 10px 12px;
   border-radius: 12px;
@@ -368,6 +462,10 @@
   }
 
   .evaluation-workbench-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-workbench-control-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

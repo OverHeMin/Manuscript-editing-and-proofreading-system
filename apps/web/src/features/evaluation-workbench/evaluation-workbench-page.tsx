@@ -16,6 +16,7 @@ import {
   type EvaluationWorkbenchFinalizedRunHistoryEntry,
   type EvaluationWorkbenchOverview,
 } from "./evaluation-workbench-controller.ts";
+import type { EvaluationWorkbenchHistoryWindowPreset } from "./evaluation-workbench-operations.ts";
 
 const defaultController = createEvaluationWorkbenchController(createBrowserHttpClient());
 const learningCandidateTypes: LearningCandidateType[] = [
@@ -93,6 +94,8 @@ export function EvaluationWorkbenchPage({
   const [isBusy, setIsBusy] = useState(false);
   const [isActivatingSuiteId, setIsActivatingSuiteId] = useState<string | null>(null);
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
+  const [historyWindowPreset, setHistoryWindowPreset] =
+    useState<EvaluationWorkbenchHistoryWindowPreset>("latest_10");
   const [historyScope, setHistoryScope] = useState<EvaluationWorkbenchHistoryScope>("suite");
   const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState("");
@@ -112,8 +115,11 @@ export function EvaluationWorkbenchPage({
   useEffect(() => {
     void loadOverview(
       normalizedPrefilledManuscriptId.length > 0
-        ? { manuscriptId: normalizedPrefilledManuscriptId }
-        : undefined,
+        ? {
+            manuscriptId: normalizedPrefilledManuscriptId,
+            historyWindowPreset,
+          }
+        : { historyWindowPreset },
     );
   }, [controller, normalizedPrefilledManuscriptId]);
 
@@ -338,6 +344,25 @@ export function EvaluationWorkbenchPage({
     );
   }
 
+  return (
+    <EvaluationWorkbenchOperationsView
+      overview={overview}
+      prefilledManuscriptId={normalizedPrefilledManuscriptId}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      historyFilter={historyFilter}
+      historySortMode={historySortMode}
+      selectedRunItemId={selectedRunItemId}
+      onSelectSuite={(suiteId) => void handleSelectSuite(suiteId)}
+      onSelectRun={(runId) => void handleSelectRun(runId)}
+      onSelectRunItem={setSelectedRunItemId}
+      onSelectHistoryWindow={(preset) => void handleSelectHistoryWindow(preset)}
+      onSelectHistoryFilter={setHistoryFilter}
+      onSelectHistorySortMode={setHistorySortMode}
+    />
+  );
+
+  /*
   return (
     <section className="evaluation-workbench">
       <header className="evaluation-workbench-hero">
@@ -969,16 +994,34 @@ export function EvaluationWorkbenchPage({
       </div>
     </section>
   );
+  */
+
+  async function handleSelectHistoryWindow(preset: EvaluationWorkbenchHistoryWindowPreset) {
+    if (preset === historyWindowPreset) return;
+    setHistoryWindowPreset(preset);
+    await loadOverview({
+      selectedSuiteId: overview?.selectedSuiteId ?? null,
+      selectedRunId: overview?.selectedRunId ?? null,
+      manuscriptId: activeManuscriptContextId,
+      historyWindowPreset: preset,
+    });
+  }
 
   async function loadOverview(input?: {
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
     manuscriptId?: string | null;
+    historyWindowPreset?: EvaluationWorkbenchHistoryWindowPreset;
   }) {
     setLoadStatus("loading");
     setErrorMessage(null);
     try {
-      setOverview(await controller.loadOverview(input));
+      setOverview(
+        await controller.loadOverview({
+          ...input,
+          historyWindowPreset: input?.historyWindowPreset ?? historyWindowPreset,
+        }),
+      );
       setLoadStatus("ready");
     } catch (error) {
       setLoadStatus("error");
@@ -994,6 +1037,7 @@ export function EvaluationWorkbenchPage({
       selectedSuiteId: suiteId,
       selectedRunId: null,
       manuscriptId: activeManuscriptContextId,
+      historyWindowPreset,
     });
   }
 
@@ -1006,6 +1050,7 @@ export function EvaluationWorkbenchPage({
       selectedSuiteId: overview.selectedSuiteId,
       selectedRunId: runId,
       manuscriptId: activeManuscriptContextId,
+      historyWindowPreset,
     });
   }
 
@@ -1159,6 +1204,521 @@ export function EvaluationWorkbenchPage({
       setIsBusy(false);
     }
   }
+}
+
+export function EvaluationWorkbenchOperationsView(props: {
+  overview: EvaluationWorkbenchOverview;
+  prefilledManuscriptId?: string;
+  statusMessage?: string | null;
+  errorMessage?: string | null;
+  historyFilter: EvaluationWorkbenchHistoryFilter;
+  historySortMode: EvaluationWorkbenchHistorySortMode;
+  selectedRunItemId: string | null;
+  onSelectSuite: (suiteId: string) => void;
+  onSelectRun: (runId: string) => void;
+  onSelectRunItem: (runItemId: string) => void;
+  onSelectHistoryWindow: (preset: EvaluationWorkbenchHistoryWindowPreset) => void;
+  onSelectHistoryFilter: (filter: EvaluationWorkbenchHistoryFilter) => void;
+  onSelectHistorySortMode: (sortMode: EvaluationWorkbenchHistorySortMode) => void;
+}) {
+  const normalizedPrefilledManuscriptId = props.prefilledManuscriptId?.trim() ?? "";
+  const selectedRun =
+    props.overview.runs.find((item) => item.id === props.overview.selectedRunId) ?? null;
+  const selectedRunHistoryEntry =
+    selectedRun == null
+      ? null
+      : props.overview.finalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
+  const selectedRunItem =
+    props.overview.runItems.find((item) => item.id === props.selectedRunItemId) ?? null;
+  const linkedSampleSetItem =
+    selectedRunItem == null
+      ? null
+      : props.overview.sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ??
+        null;
+  const selectedSampleSet =
+    selectedRun == null
+      ? null
+      : props.overview.sampleSets.find((item) => item.id === selectedRun.sample_set_id) ?? null;
+  const visibleHistory = props.overview.suiteOperations.visibleHistory;
+  const filteredVisibleHistory = filterFinalizedRunHistory(visibleHistory, props.historyFilter);
+  const sortedVisibleHistory = sortFinalizedRunHistory(
+    filteredVisibleHistory,
+    props.historySortMode,
+  );
+  const defaultComparison = props.overview.suiteOperations.defaultComparison;
+  const defaultComparisonDetail = props.overview.suiteOperations.defaultComparisonDetail;
+  const selectedRunOutsideVisibleWindow =
+    selectedRun != null && !visibleHistory.some((entry) => entry.run.id === selectedRun.id);
+
+  return (
+    <section className="evaluation-workbench">
+      <header className="evaluation-workbench-hero">
+        <div>
+          <h2>Evaluation Workbench</h2>
+          <p>
+            Delta-first operations view for finalized suite movement, bounded history, and
+            read-only inspection.
+          </p>
+          {props.errorMessage ? <p className="evaluation-workbench-error">{props.errorMessage}</p> : null}
+        </div>
+        {props.statusMessage ? <p className="evaluation-workbench-status">{props.statusMessage}</p> : null}
+      </header>
+
+      {normalizedPrefilledManuscriptId.length > 0 ? (
+        <div className="evaluation-workbench-result">
+          <strong>Manuscript Handoff</strong>
+          <div className="evaluation-workbench-history-compare">
+            <span>Context manuscript: {normalizedPrefilledManuscriptId}</span>
+            <span>
+              {props.overview.manuscriptContext?.matchedRunId
+                ? `Matched run: ${props.overview.manuscriptContext.matchedRunId}`
+                : "No matched evaluation run yet"}
+            </span>
+            <span>
+              {props.overview.manuscriptContext?.matchedSuiteId
+                ? `Matched suite: ${props.overview.manuscriptContext.matchedSuiteId}`
+                : "Showing the default evaluation suite"}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <section className="evaluation-workbench-panel evaluation-workbench-delta-summary">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Delta Summary</h3>
+          <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
+        </div>
+        {props.overview.suiteOperations.delta != null && defaultComparison != null ? (
+          <>
+            <div className="evaluation-workbench-delta-badge-row">
+              <span className={`evaluation-workbench-delta-badge is-${props.overview.suiteOperations.delta.classification}`}>
+                Classification: {props.overview.suiteOperations.delta.classification}
+              </span>
+              <span className="evaluation-workbench-delta-inline-note">
+                Default comparison: {defaultComparison.selected.run.id} vs {defaultComparison.baseline.run.id}.
+              </span>
+            </div>
+            <p className="evaluation-workbench-delta-copy">
+              {describeDeltaReasonCopy({
+                delta: props.overview.suiteOperations.delta,
+                defaultComparison,
+              })}
+            </p>
+            <p className="evaluation-workbench-delta-copy">
+              Next operator cue:{" "}
+              {describeDeltaNextOperatorCue({
+                selectedEntry: defaultComparison.selected,
+                baselineEntry: defaultComparison.baseline,
+              })}
+            </p>
+            <div className="evaluation-workbench-delta-meta">
+              <span>Latest-versus-previous finalized comparison</span>
+              <span>
+                Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="evaluation-workbench-delta-copy">
+              {describeHonestDegradationCopy({
+                honestDegradation: props.overview.suiteOperations.honestDegradation,
+                windowPreset: props.overview.suiteOperations.defaultWindow,
+              })}
+            </p>
+            <p className="evaluation-workbench-delta-copy">
+              {describeHonestDegradationNextStep(props.overview.suiteOperations.honestDegradation)}
+            </p>
+          </>
+        )}
+      </section>
+
+      <section className="evaluation-workbench-panel evaluation-workbench-comparison-panel">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Run Comparison</h3>
+          <span>Latest-versus-previous finalized comparison</span>
+        </div>
+        {defaultComparison != null && defaultComparisonDetail != null ? (
+          <EvaluationWorkbenchRunComparisonCard
+            comparisonScopeLabel="Latest-versus-previous finalized comparison"
+            selectedEntry={defaultComparison.selected}
+            previousEntry={defaultComparison.baseline}
+            selectedEvidence={[...defaultComparisonDetail.selectedEvidence]}
+            previousEvidence={[...defaultComparisonDetail.baselineEvidence]}
+          />
+        ) : (
+          <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+            <strong>Comparison unavailable</strong>
+            <p className="evaluation-workbench-empty">
+              {describeHonestDegradationCopy({
+                honestDegradation: props.overview.suiteOperations.honestDegradation,
+                windowPreset: props.overview.suiteOperations.defaultWindow,
+              })}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="evaluation-workbench-summary">
+        <SummaryCard label="Check Profiles" value={props.overview.checkProfiles.length} />
+        <SummaryCard label="Release Profiles" value={props.overview.releaseCheckProfiles.length} />
+        <SummaryCard label="Sample Sets" value={props.overview.sampleSets.length} />
+        <SummaryCard label="Suites" value={props.overview.suites.length} />
+        <SummaryCard label="Runs" value={props.overview.runs.length} />
+        <SummaryCard label="Run Items" value={props.overview.runItems.length} />
+      </section>
+
+      <div className="evaluation-workbench-layout">
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Visible History</h3>
+            <span>{visibleHistory.length} visible / {props.overview.finalizedRunHistory.length} total</span>
+          </div>
+          <p className="evaluation-workbench-empty">
+            Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+          </p>
+          <div className="evaluation-workbench-control-grid">
+            <Field label="History Window">
+              <select
+                value={props.overview.suiteOperations.defaultWindow}
+                onChange={(event) =>
+                  props.onSelectHistoryWindow(
+                    event.target.value as EvaluationWorkbenchHistoryWindowPreset,
+                  )
+                }
+              >
+                {createHistoryWindowOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Recommendation Filter">
+              <select
+                value={props.historyFilter}
+                onChange={(event) =>
+                  props.onSelectHistoryFilter(
+                    event.target.value as EvaluationWorkbenchHistoryFilter,
+                  )
+                }
+              >
+                {createHistoryFilterControlOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Sort Mode">
+              <select
+                value={props.historySortMode}
+                onChange={(event) =>
+                  props.onSelectHistorySortMode(
+                    event.target.value as EvaluationWorkbenchHistorySortMode,
+                  )
+                }
+              >
+                {createHistorySortControlOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {selectedRunOutsideVisibleWindow && selectedRun ? (
+            <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
+              <strong>Selected inspection run: {selectedRun.id}</strong>
+              <p className="evaluation-workbench-empty">
+                Selected run {selectedRun.id} is outside the visible history window.
+              </p>
+            </div>
+          ) : null}
+          {sortedVisibleHistory.length > 0 ? (
+            <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
+              {sortedVisibleHistory.map((entry) => (
+                <li key={entry.run.id}>
+                  <button
+                    type="button"
+                    aria-label={`History run ${entry.run.id}`}
+                    className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
+                    onClick={() => props.onSelectRun(entry.run.id)}
+                  >
+                    <strong>{entry.run.id}</strong>
+                    <span>
+                      {describeHistoryStatusPair(
+                        entry.finalized.recommendation.status,
+                        entry.finalized.evidence_pack.summary_status,
+                      )}
+                    </span>
+                    <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
+                    {summarizeFinalizedEntry(entry) ? <span>{summarizeFinalizedEntry(entry)}</span> : null}
+                    {describeDefaultComparisonRoleLabel(entry.run.id, defaultComparison).map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
+              <strong>No finalized runs match the current history controls.</strong>
+            </div>
+          )}
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Suite Signal Summary</h3>
+            <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
+          </div>
+          <div className="evaluation-workbench-history-summary-grid">
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Recommendation Distribution</strong>
+              <span>
+                {formatSignalDistributionSummary(
+                  props.overview.suiteOperations.signals.recommendationDistribution,
+                )}
+              </span>
+            </article>
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Evidence Pack Outcomes</strong>
+              <span>
+                {formatSignalDistributionSummary(
+                  props.overview.suiteOperations.signals.evidencePackOutcomeMix,
+                )}
+              </span>
+            </article>
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Recurrence Signals</strong>
+              <span>
+                {formatRecurrenceSignalSummary(props.overview.suiteOperations.signals.recurrence)}
+              </span>
+            </article>
+          </div>
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Suites</h3>
+            <span>{props.overview.suites.length} configured</span>
+          </div>
+          {props.overview.suites.length === 0 ? (
+            <p className="evaluation-workbench-empty">No evaluation suites are configured yet.</p>
+          ) : (
+            <ul className="evaluation-workbench-stack">
+              {props.overview.suites.map((suite) => (
+                <li key={suite.id}>
+                  <button
+                    type="button"
+                    className={`evaluation-workbench-select${suite.id === props.overview.selectedSuiteId ? " is-selected" : ""}`}
+                    onClick={() => props.onSelectSuite(suite.id)}
+                  >
+                    <strong>{suite.name}</strong>
+                    <span>{suite.suite_type} | {suite.status}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Selected Inspection</h3>
+            <span>{selectedRun?.id ?? "Select run first"}</span>
+          </div>
+          {selectedRun == null ? (
+            <p className="evaluation-workbench-empty">
+              Select a run to inspect its finalized evidence and read-only details.
+            </p>
+          ) : (
+            <>
+              <div className="evaluation-workbench-result evaluation-workbench-history-detail">
+                <strong>Selected inspection run: {selectedRun.id}</strong>
+                <div className="evaluation-workbench-history-compare">
+                  <span>Status: {selectedRun.status}</span>
+                  <span>Run items: {selectedRun.run_item_count ?? 0}</span>
+                  {selectedRunHistoryEntry ? (
+                    <>
+                      <span>Recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
+                      <span>Evidence Pack: {selectedRunHistoryEntry.finalized.evidence_pack.id}</span>
+                      {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
+                        <span>{selectedRunHistoryEntry.finalized.recommendation.decision_reason}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span>
+                      This run is outside the finalized history slice that powers the default delta summary.
+                    </span>
+                  )}
+                </div>
+              </div>
+              {selectedRunHistoryEntry ? (
+                <EvaluationWorkbenchEvidencePackSummary
+                  evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
+                />
+              ) : null}
+              {selectedRun.governed_source ? (
+                <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
+              ) : null}
+              {props.overview.runItems.length > 0 ? (
+                <>
+                  <EvaluationWorkbenchLinkedSampleContextList
+                    runItems={props.overview.runItems}
+                    sampleSetItems={props.overview.sampleSetItems}
+                    selectedRunItemId={props.selectedRunItemId}
+                    defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(selectedSampleSet?.module)}
+                    onFocusRunItem={props.onSelectRunItem}
+                  />
+                  {selectedRunItem && linkedSampleSetItem ? (
+                    <EvaluationWorkbenchSelectedRunItemDetailCard
+                      selectedRun={selectedRun}
+                      selectedRunItem={selectedRunItem}
+                      linkedSampleSetItem={linkedSampleSetItem}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <p className="evaluation-workbench-empty">
+                  This inspection lane stays read-only and no sample-backed run items are available for the selected run.
+                </p>
+              )}
+              <EvaluationWorkbenchEvidenceList
+                evidence={props.overview.selectedRunEvidence}
+                emptyMessage="No persisted verification evidence is attached to this run."
+              />
+            </>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function describeDefaultComparisonRoleLabel(
+  entryRunId: string,
+  defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"],
+) {
+  if (defaultComparison == null) return [];
+  if (entryRunId === defaultComparison.selected.run.id) {
+    return ["Default latest run"];
+  }
+  if (entryRunId === defaultComparison.baseline.run.id) {
+    return ["Default baseline"];
+  }
+  return [];
+}
+
+function describeDeltaReasonCopy(input: {
+  delta: NonNullable<EvaluationWorkbenchOverview["suiteOperations"]["delta"]>;
+  defaultComparison: NonNullable<EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"]>;
+}) {
+  const selectedRecommendation = input.defaultComparison.selected.finalized.recommendation.status;
+  const baselineRecommendation = input.defaultComparison.baseline.finalized.recommendation.status;
+  const selectedStatus = input.defaultComparison.selected.run.status;
+  const baselineStatus = input.defaultComparison.baseline.run.status;
+
+  if (input.delta.reason === "recommendation_improved") {
+    return `Chosen because the latest finalized recommendation improved from ${baselineRecommendation} to ${selectedRecommendation}.`;
+  }
+  if (input.delta.reason === "recommendation_regressed") {
+    return `Chosen because the latest finalized recommendation regressed from ${baselineRecommendation} to ${selectedRecommendation}.`;
+  }
+  if (input.delta.reason === "finalized_status_improved") {
+    return `Chosen because the latest finalized run status improved from ${baselineStatus} to ${selectedStatus}.`;
+  }
+  if (input.delta.reason === "finalized_status_regressed") {
+    return `Chosen because the latest finalized run status regressed from ${baselineStatus} to ${selectedStatus}.`;
+  }
+  return `Chosen because the latest finalized comparison showed no material change between ${input.defaultComparison.selected.run.id} and ${input.defaultComparison.baseline.run.id}.`;
+}
+
+function describeDeltaNextOperatorCue(input: {
+  selectedEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  baselineEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+}) {
+  const selectedScore = parseAverageWeightedScore(input.selectedEntry.finalized.evidence_pack.score_summary);
+  const baselineScore = parseAverageWeightedScore(input.baselineEntry.finalized.evidence_pack.score_summary);
+  return describeComparisonTriageHint({
+    selectedStatus: input.selectedEntry.finalized.recommendation.status,
+    previousStatus: input.baselineEntry.finalized.recommendation.status,
+    scoreDelta:
+      selectedScore != null && baselineScore != null ? selectedScore - baselineScore : null,
+  });
+}
+
+function describeHonestDegradationCopy(input: {
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"];
+  windowPreset: EvaluationWorkbenchHistoryWindowPreset;
+}) {
+  if (input.honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
+    return `Honest degradation: fewer than two finalized runs are visible in the ${describeHistoryWindowPresetLabel(input.windowPreset)} window, so no default delta can be claimed yet.`;
+  }
+  if (input.honestDegradation?.reason === "insufficient_comparison_data") {
+    return "Honest degradation: the visible finalized runs do not provide enough comparison data to classify the suite as better, worse, or flat.";
+  }
+  return "Honest degradation: no default comparison is currently available for this suite.";
+}
+
+function describeHonestDegradationNextStep(
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"],
+) {
+  if (honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
+    return "Finalize one more run in the visible window before treating the suite as improved, worse, or flat.";
+  }
+  if (honestDegradation?.reason === "insufficient_comparison_data") {
+    return "Inspect the latest finalized runs directly until a deterministic comparison pair becomes available.";
+  }
+  return "Inspect the selected run directly until a deterministic comparison pair becomes available.";
+}
+
+function createHistoryWindowOptions() {
+  return [
+    { value: "latest_10" as const, label: "Latest 10" },
+    { value: "last_7_days" as const, label: "Last 7 Days" },
+    { value: "last_30_days" as const, label: "Last 30 Days" },
+    { value: "all_suite" as const, label: "All Suite History" },
+  ];
+}
+
+function describeHistoryWindowPresetLabel(preset: EvaluationWorkbenchHistoryWindowPreset) {
+  return (
+    createHistoryWindowOptions().find((option) => option.value === preset)?.label ?? "Latest 10"
+  );
+}
+
+function createHistoryFilterControlOptions() {
+  return [
+    { value: "all" as const, label: "All" },
+    { value: "recommended" as const, label: "Recommended" },
+    { value: "needs_review" as const, label: "Needs Review" },
+    { value: "rejected" as const, label: "Rejected" },
+  ];
+}
+
+function createHistorySortControlOptions() {
+  return [
+    { value: "newest" as const, label: "Newest First" },
+    { value: "failures_first" as const, label: "Failures First" },
+  ];
+}
+
+function formatSignalDistributionSummary(input: {
+  recommended: number;
+  needs_review: number;
+  rejected: number;
+}) {
+  return `${input.recommended} recommended / ${input.needs_review} needs review / ${input.rejected} rejected`;
+}
+
+function formatRecurrenceSignalSummary(input: {
+  regressionMentions: number;
+  failureMentions: number;
+  runsWithRecurrenceSignals: number;
+}) {
+  return `${input.regressionMentions} regression mentions / ${input.failureMentions} failure mentions / ${input.runsWithRecurrenceSignals} runs flagged`;
 }
 
 export function EvaluationWorkbenchRunComparisonCard(props: {
@@ -1873,7 +2433,7 @@ function describeHistoryResultCount(input: {
 }
 
 export function filterFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   filter: EvaluationWorkbenchHistoryFilter,
 ) {
   if (filter === "all") return entries;
@@ -1881,7 +2441,7 @@ export function filterFinalizedRunHistory(
 }
 
 export function sortFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   sortMode: EvaluationWorkbenchHistorySortMode,
 ) {
   const nextEntries = [...entries];
@@ -1899,7 +2459,7 @@ export function sortFinalizedRunHistory(
 }
 
 export function searchFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   query: string,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -1913,7 +2473,7 @@ export function searchFinalizedRunHistory(
 }
 
 export function isSelectedRunHiddenFromHistoryList(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   selectedRunId: string | null,
 ) {
   if (selectedRunId == null) return false;
