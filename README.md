@@ -215,3 +215,12 @@
   4. legacy singleton module default
   5. legacy singleton system default
 - Runtime fallback is limited to approved chains for technical/runtime failures. Quality-based automatic switching remains out of scope for Phase 10B.
+
+## Harness Dataset Governance (Phase 10D)
+
+- `harness-datasets` is a dedicated governed asset lane for gold-set families, immutable gold-set versions, rubric definitions, and export audit history. It does not replace `verification-ops`, `learning-governance`, or `knowledge-review`.
+- `verification-ops` sample sets and finalized evaluation runs remain execution/evidence assets. Gold sets remain separate human-curated reference assets for later harness use.
+- The new harness workbench is an admin-only curation and export surface. It is not a routing control plane, and `Evaluation Workbench` remains an evidence surface rather than a policy activator.
+- Harness capabilities are local-first and fail-open. Live manuscript execution does not depend on gold-set publication, rubric publication, or harness export success.
+- Manual export is limited to published gold-set versions only. The HTTP workbench writes under `.local-data/harness-exports/<APP_ENV>`, and the standalone scripts write under `.local-data/harness-exports/manual` unless an explicit local output directory override is provided.
+- Rubric calibration, borderline case resolution, and promotion into gold sets remain human-owned decisions. Phase 10D does not enable automatic model switching, automatic publishing, or automatic learning writeback.
