@@ -13,7 +13,11 @@ import type {
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
-import type { VerificationOpsRepository } from "./verification-ops-repository.ts";
+import type {
+  EvaluationSuiteFinalizationHistoryWindowPreset,
+  EvaluationSuiteFinalizationRecord,
+  VerificationOpsRepository,
+} from "./verification-ops-repository.ts";
 
 function cloneSampleSetSourcePolicy(
   record: EvaluationSampleSetRecord["source_policy"],
@@ -289,6 +293,53 @@ export class InMemoryVerificationOpsRepository
       .map(cloneEvaluationRun);
   }
 
+  async listEvaluationSuiteFinalizations(
+    suiteId: string,
+    input?: {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    },
+  ): Promise<EvaluationSuiteFinalizationRecord[]> {
+    const finalized = [...this.runs.values()]
+      .filter((run) => run.suite_id === suiteId)
+      .map((run) => {
+        const recommendation = [...this.recommendations.values()]
+          .filter((candidate) => candidate.experiment_run_id === run.id)
+          .sort(
+            (left, right) =>
+              compareCreatedAtDesc(left.created_at, right.created_at) ||
+              compareById(right, left),
+          )[0];
+        if (!recommendation) {
+          return null;
+        }
+
+        const evidencePack = this.evidencePacks.get(recommendation.evidence_pack_id);
+        if (!evidencePack) {
+          return null;
+        }
+
+        const evidence = run.evidence_ids
+          .map((evidenceId) => this.evidence.get(evidenceId))
+          .filter((record): record is VerificationEvidenceRecord => record != null)
+          .sort(
+            (left, right) =>
+              left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id),
+          )
+          .map(cloneVerificationEvidence);
+
+        return {
+          run: cloneEvaluationRun(run),
+          evidence_pack: cloneEvaluationEvidencePack(evidencePack),
+          recommendation: cloneEvaluationPromotionRecommendation(recommendation),
+          evidence,
+        };
+      })
+      .filter((record): record is EvaluationSuiteFinalizationRecord => record != null)
+      .sort(compareFinalizationRecordRecencyDesc);
+
+    return filterFinalizationWindow(finalized, input?.historyWindowPreset);
+  }
+
   async saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void> {
     this.runItems.set(record.id, cloneEvaluationRunItem(record));
   }
@@ -495,4 +546,43 @@ export class InMemoryVerificationOpsRepository
       );
     }
   }
+}
+
+function compareFinalizationRecordRecencyDesc(
+  left: EvaluationSuiteFinalizationRecord,
+  right: EvaluationSuiteFinalizationRecord,
+): number {
+  if (left.recommendation.created_at !== right.recommendation.created_at) {
+    return compareCreatedAtDesc(left.recommendation.created_at, right.recommendation.created_at);
+  }
+
+  return right.run.id.localeCompare(left.run.id);
+}
+
+function filterFinalizationWindow(
+  finalized: EvaluationSuiteFinalizationRecord[],
+  historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset,
+): EvaluationSuiteFinalizationRecord[] {
+  const preset = historyWindowPreset ?? "latest_10";
+  if (preset === "all_suite") {
+    return finalized;
+  }
+
+  if (preset === "latest_10") {
+    return finalized.slice(0, 10);
+  }
+
+  const anchorTimestamp = finalized[0]?.recommendation.created_at;
+  const anchorEpochMs = anchorTimestamp ? Date.parse(anchorTimestamp) : Number.NaN;
+  if (Number.isNaN(anchorEpochMs)) {
+    return [];
+  }
+
+  const days = preset === "last_7_days" ? 7 : 30;
+  const cutoffEpochMs = anchorEpochMs - days * 24 * 60 * 60 * 1000;
+
+  return finalized.filter((record) => {
+    const createdAtEpochMs = Date.parse(record.recommendation.created_at);
+    return !Number.isNaN(createdAtEpochMs) && createdAtEpochMs >= cutoffEpochMs;
+  });
 }

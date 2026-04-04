@@ -18,6 +18,8 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  EvaluationSuiteFinalizationHistoryWindowPreset,
+  EvaluationSuiteFinalizationResult,
   FinalizeEvaluationRunResult,
   RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
@@ -311,15 +313,18 @@ export function createVerificationOpsApi(
     async listEvaluationSuiteFinalizations({
       actorRole,
       suiteId,
+      historyWindowPreset,
     }: {
       actorRole: RoleKey;
       suiteId: string;
-    }): Promise<RouteResponse<FinalizeEvaluationRunResult[]>> {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    }): Promise<RouteResponse<EvaluationSuiteFinalizationResult[]>> {
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationSuiteFinalizations(
           actorRole,
           suiteId,
+          { historyWindowPreset },
         ),
       };
     },

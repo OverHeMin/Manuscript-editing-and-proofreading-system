@@ -11,6 +11,19 @@ import type {
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
 
+export type EvaluationSuiteFinalizationHistoryWindowPreset =
+  | "latest_10"
+  | "last_7_days"
+  | "last_30_days"
+  | "all_suite";
+
+export interface EvaluationSuiteFinalizationRecord {
+  run: EvaluationRunRecord;
+  evidence_pack: EvaluationEvidencePackRecord;
+  recommendation: EvaluationPromotionRecommendationRecord;
+  evidence: VerificationEvidenceRecord[];
+}
+
 export interface VerificationOpsRepository {
   saveEvaluationSampleSet(record: EvaluationSampleSetRecord): Promise<void>;
   findEvaluationSampleSetById(
@@ -48,6 +61,12 @@ export interface VerificationOpsRepository {
   saveEvaluationRun(record: EvaluationRunRecord): Promise<void>;
   findEvaluationRunById(id: string): Promise<EvaluationRunRecord | undefined>;
   listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]>;
+  listEvaluationSuiteFinalizations(
+    suiteId: string,
+    input?: {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    },
+  ): Promise<EvaluationSuiteFinalizationRecord[]>;
 
   saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void>;
   findEvaluationRunItemById(id: string): Promise<EvaluationRunItemRecord | undefined>;

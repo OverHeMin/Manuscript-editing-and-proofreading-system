@@ -12,7 +12,11 @@ import type {
   VerificationCheckProfileRecord,
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
-import type { VerificationOpsRepository } from "./verification-ops-repository.ts";
+import type {
+  EvaluationSuiteFinalizationHistoryWindowPreset,
+  EvaluationSuiteFinalizationRecord,
+  VerificationOpsRepository,
+} from "./verification-ops-repository.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -135,6 +139,25 @@ interface EvaluationPromotionRecommendationRow {
   decision_reason: string | null;
   learning_candidate_ids: string[] | string;
   created_at: Date;
+}
+
+interface EvaluationSuiteFinalizationRow extends EvaluationRunRow {
+  evidence_pack_id: string;
+  evidence_pack_experiment_run_id: string;
+  evidence_pack_summary_status: EvaluationEvidencePackRecord["summary_status"];
+  evidence_pack_score_summary: string | null;
+  evidence_pack_regression_summary: string | null;
+  evidence_pack_failure_summary: string | null;
+  evidence_pack_cost_summary: string | null;
+  evidence_pack_latency_summary: string | null;
+  evidence_pack_created_at: Date;
+  recommendation_id: string;
+  recommendation_experiment_run_id: string;
+  recommendation_evidence_pack_id: string;
+  recommendation_status: EvaluationPromotionRecommendationRecord["status"];
+  recommendation_decision_reason: string | null;
+  recommendation_learning_candidate_ids: string[] | string;
+  recommendation_created_at: Date;
 }
 
 export class PostgresVerificationOpsRepository
@@ -734,6 +757,109 @@ export class PostgresVerificationOpsRepository
     return result.rows.map(mapEvaluationRunRow);
   }
 
+  async listEvaluationSuiteFinalizations(
+    suiteId: string,
+    input?: {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    },
+  ): Promise<EvaluationSuiteFinalizationRecord[]> {
+    const preset = input?.historyWindowPreset ?? "latest_10";
+    const { whereClause, params, limitClause } = buildSuiteFinalizationWindowSql({
+      suiteId,
+      historyWindowPreset: preset,
+    });
+
+    const finalizedResult =
+      await this.dependencies.client.query<EvaluationSuiteFinalizationRow>(
+        `
+          with latest_recommendations as (
+            select distinct on (experiment_run_id)
+              id,
+              experiment_run_id,
+              evidence_pack_id,
+              status,
+              decision_reason,
+              learning_candidate_ids,
+              created_at
+            from evaluation_promotion_recommendations
+            order by experiment_run_id asc, created_at desc, id desc
+          ),
+          latest_evidence_packs as (
+            select distinct on (experiment_run_id)
+              id,
+              experiment_run_id,
+              summary_status,
+              score_summary,
+              regression_summary,
+              failure_summary,
+              cost_summary,
+              latency_summary,
+              created_at
+            from evaluation_evidence_packs
+            order by experiment_run_id asc, created_at desc, id desc
+          ),
+          finalized as (
+            select
+              runs.id,
+              runs.suite_id,
+              runs.sample_set_id,
+              runs.baseline_binding,
+              runs.candidate_binding,
+              runs.governed_source,
+              runs.release_check_profile_id,
+              runs.run_item_count,
+              runs.status,
+              runs.evidence_ids,
+              runs.started_at,
+              runs.finished_at,
+              evidence_packs.id as evidence_pack_id,
+              evidence_packs.experiment_run_id as evidence_pack_experiment_run_id,
+              evidence_packs.summary_status as evidence_pack_summary_status,
+              evidence_packs.score_summary as evidence_pack_score_summary,
+              evidence_packs.regression_summary as evidence_pack_regression_summary,
+              evidence_packs.failure_summary as evidence_pack_failure_summary,
+              evidence_packs.cost_summary as evidence_pack_cost_summary,
+              evidence_packs.latency_summary as evidence_pack_latency_summary,
+              evidence_packs.created_at as evidence_pack_created_at,
+              recommendations.id as recommendation_id,
+              recommendations.experiment_run_id as recommendation_experiment_run_id,
+              recommendations.evidence_pack_id as recommendation_evidence_pack_id,
+              recommendations.status as recommendation_status,
+              recommendations.decision_reason as recommendation_decision_reason,
+              recommendations.learning_candidate_ids as recommendation_learning_candidate_ids,
+              recommendations.created_at as recommendation_created_at
+            from evaluation_runs runs
+            join latest_recommendations recommendations
+              on recommendations.experiment_run_id = runs.id
+            join latest_evidence_packs evidence_packs
+              on evidence_packs.id = recommendations.evidence_pack_id
+            where runs.suite_id = $1
+          ),
+          anchored as (
+            select max(recommendation_created_at) as anchor_created_at
+            from finalized
+          )
+          select finalized.*
+          from finalized
+          cross join anchored
+          ${whereClause}
+          order by finalized.recommendation_created_at desc, finalized.id desc
+          ${limitClause}
+        `,
+        params,
+      );
+
+    const runIds = finalizedResult.rows.map((row) => row.id);
+    const evidenceByRunId = await this.listEvidenceByRunIds(runIds);
+
+    return finalizedResult.rows.map((row) => ({
+      run: mapEvaluationRunRow(row),
+      evidence_pack: mapEvaluationSuiteEvidencePackRow(row),
+      recommendation: mapEvaluationSuiteRecommendationRow(row),
+      evidence: evidenceByRunId.get(row.id) ?? [],
+    }));
+  }
+
   async saveEvaluationRunItem(record: EvaluationRunItemRecord): Promise<void> {
     await this.dependencies.client.query(
       `
@@ -987,6 +1113,50 @@ export class PostgresVerificationOpsRepository
       ? mapEvaluationPromotionRecommendationRow(result.rows[0])
       : undefined;
   }
+
+  private async listEvidenceByRunIds(
+    runIds: string[],
+  ): Promise<Map<string, VerificationEvidenceRecord[]>> {
+    if (runIds.length === 0) {
+      return new Map();
+    }
+
+    const result = await this.dependencies.client.query<
+      VerificationEvidenceRow & { run_id: string }
+    >(
+      `
+        select
+          run_evidence.run_id,
+          evidence.id,
+          evidence.kind,
+          evidence.label,
+          evidence.uri,
+          evidence.artifact_asset_id,
+          evidence.check_profile_id,
+          evidence.created_at
+        from (
+          select
+            runs.id as run_id,
+            unnest(runs.evidence_ids) as evidence_id
+          from evaluation_runs runs
+          where runs.id = any($1::text[])
+        ) as run_evidence
+        join verification_evidence evidence
+          on evidence.id = run_evidence.evidence_id
+        order by run_evidence.run_id asc, evidence.created_at asc, evidence.id asc
+      `,
+      [runIds],
+    );
+
+    const evidenceByRunId = new Map<string, VerificationEvidenceRecord[]>();
+    for (const row of result.rows) {
+      const bucket = evidenceByRunId.get(row.run_id) ?? [];
+      bucket.push(mapVerificationEvidenceRow(row));
+      evidenceByRunId.set(row.run_id, bucket);
+    }
+
+    return evidenceByRunId;
+  }
 }
 
 function mapEvaluationSampleSetRow(
@@ -1192,6 +1362,86 @@ function mapEvaluationPromotionRecommendationRow(
       ? { learning_candidate_ids: learningCandidateIds }
       : {}),
   };
+}
+
+function mapEvaluationSuiteEvidencePackRow(
+  row: EvaluationSuiteFinalizationRow,
+): EvaluationEvidencePackRecord {
+  return {
+    id: row.evidence_pack_id,
+    experiment_run_id: row.evidence_pack_experiment_run_id,
+    summary_status: row.evidence_pack_summary_status,
+    created_at: row.evidence_pack_created_at.toISOString(),
+    ...(row.evidence_pack_score_summary != null
+      ? { score_summary: row.evidence_pack_score_summary }
+      : {}),
+    ...(row.evidence_pack_regression_summary != null
+      ? { regression_summary: row.evidence_pack_regression_summary }
+      : {}),
+    ...(row.evidence_pack_failure_summary != null
+      ? { failure_summary: row.evidence_pack_failure_summary }
+      : {}),
+    ...(row.evidence_pack_cost_summary != null
+      ? { cost_summary: row.evidence_pack_cost_summary }
+      : {}),
+    ...(row.evidence_pack_latency_summary != null
+      ? { latency_summary: row.evidence_pack_latency_summary }
+      : {}),
+  };
+}
+
+function mapEvaluationSuiteRecommendationRow(
+  row: EvaluationSuiteFinalizationRow,
+): EvaluationPromotionRecommendationRecord {
+  const learningCandidateIds = decodeTextArray(row.recommendation_learning_candidate_ids);
+
+  return {
+    id: row.recommendation_id,
+    experiment_run_id: row.recommendation_experiment_run_id,
+    evidence_pack_id: row.recommendation_evidence_pack_id,
+    status: row.recommendation_status,
+    created_at: row.recommendation_created_at.toISOString(),
+    ...(row.recommendation_decision_reason != null
+      ? { decision_reason: row.recommendation_decision_reason }
+      : {}),
+    ...(learningCandidateIds.length > 0
+      ? { learning_candidate_ids: learningCandidateIds }
+      : {}),
+  };
+}
+
+function buildSuiteFinalizationWindowSql(input: {
+  suiteId: string;
+  historyWindowPreset: EvaluationSuiteFinalizationHistoryWindowPreset;
+}): {
+  whereClause: string;
+  params: unknown[];
+  limitClause: string;
+} {
+  switch (input.historyWindowPreset) {
+    case "all_suite":
+      return {
+        whereClause: "",
+        params: [input.suiteId],
+        limitClause: "",
+      };
+    case "latest_10":
+      return {
+        whereClause: "",
+        params: [input.suiteId],
+        limitClause: "limit 10",
+      };
+    case "last_7_days":
+    case "last_30_days": {
+      const days = input.historyWindowPreset === "last_7_days" ? 7 : 30;
+      return {
+        whereClause:
+          "where anchored.anchor_created_at is not null and finalized.recommendation_created_at >= anchored.anchor_created_at - ($2::int * interval '1 day')",
+        params: [input.suiteId, days],
+        limitClause: "",
+      };
+    }
+  }
 }
 
 function decodeNullableTextArray(

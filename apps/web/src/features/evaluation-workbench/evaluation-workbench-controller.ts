@@ -22,6 +22,7 @@ import type {
   CreateEvaluationRunInput,
   EvaluationLearningCandidateViewModel,
   EvaluationRunItemViewModel,
+  EvaluationSuiteFinalizedResultViewModel,
   EvaluationRunViewModel,
   EvaluationSampleSetViewModel,
   EvaluationSampleSetItemViewModel,
@@ -69,7 +70,7 @@ export interface EvaluationWorkbenchOverview {
 
 export interface EvaluationWorkbenchFinalizedRunHistoryEntry {
   run: EvaluationRunViewModel;
-  finalized: FinalizeEvaluationRunResultViewModel;
+  finalized: EvaluationSuiteFinalizedResultViewModel;
 }
 
 export interface EvaluationWorkbenchManuscriptContext {
@@ -399,7 +400,9 @@ async function loadEvaluationWorkbenchOverview(
 
     if (runs.length > 0) {
       finalizedRunHistory = (
-        await listEvaluationSuiteFinalizedResults(client, selectedSuiteId)
+        await listEvaluationSuiteFinalizedResults(client, selectedSuiteId, {
+          historyWindow: input?.historyWindowPreset ?? "latest_10",
+        })
       ).body.map((finalized) => ({
         run: finalized.run,
         finalized,
@@ -426,8 +429,9 @@ async function loadEvaluationWorkbenchOverview(
       }
     }
 
-    selectedRunFinalization =
-      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
+    selectedRunFinalization = stripSuiteFinalizationEvidence(
+      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null,
+    );
 
     const defaultComparison = suiteOperationsSummary.defaultComparison;
     suiteOperations = {
@@ -494,6 +498,20 @@ function createEmptySuiteOperations(input: {
     delta: suiteOperationsSummary.delta,
     signals: suiteOperationsSummary.signals,
     honestDegradation: suiteOperationsSummary.emptyState,
+  };
+}
+
+function stripSuiteFinalizationEvidence(
+  finalized: EvaluationSuiteFinalizedResultViewModel | null,
+): FinalizeEvaluationRunResultViewModel | null {
+  if (finalized == null) {
+    return null;
+  }
+
+  return {
+    run: finalized.run,
+    evidence_pack: finalized.evidence_pack,
+    recommendation: finalized.recommendation,
   };
 }
 

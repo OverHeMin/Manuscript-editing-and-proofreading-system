@@ -275,7 +275,10 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -358,7 +361,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -586,7 +589,10 @@ test("evaluation workbench controller loads finalized suite history for comparis
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -684,7 +690,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
     ],
   );
@@ -928,7 +934,10 @@ test("evaluation workbench controller creates a run and reloads the selected run
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -999,7 +1008,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1116,7 +1125,10 @@ test("evaluation workbench controller records a run item result and reloads the 
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -1173,7 +1185,7 @@ test("evaluation workbench controller records a run item result and reloads the 
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1379,7 +1391,10 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -1471,7 +1486,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1677,7 +1692,10 @@ test("evaluation workbench controller records artifact evidence before finalizin
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -1921,7 +1939,10 @@ test("evaluation workbench controller finalizes a machine-completed governed run
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -2250,7 +2271,10 @@ test("evaluation workbench controller can preselect the newest run for a handed-
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -2411,7 +2435,10 @@ test("evaluation workbench controller matches governed-source runs for handed-of
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -2456,7 +2483,7 @@ test("evaluation workbench controller matches governed-source runs for handed-of
       "GET /api/v1/verification-ops/evaluation-suites/suite-other/runs",
       "GET /api/v1/verification-ops/evaluation-suites/suite-governed/runs",
       "GET /api/v1/verification-ops/evaluation-runs/run-governed-newest/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -2663,7 +2690,10 @@ test("evaluation workbench controller exposes a bounded suite operations overvie
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: finalizedResults as TResponse,
@@ -2727,7 +2757,7 @@ test("evaluation workbench controller exposes a bounded suite operations overvie
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-5/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-5/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
       "GET /api/v1/verification-ops/evaluation-runs/run-4/evidence",
     ],
   );
@@ -2943,7 +2973,10 @@ test("evaluation workbench controller keeps manuscript handoff while preserving 
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: finalizedResults as TResponse,
@@ -3112,7 +3145,10 @@ test("evaluation workbench controller surfaces honest degradation when fewer tha
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: finalizedResults as TResponse,

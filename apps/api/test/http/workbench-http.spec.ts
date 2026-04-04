@@ -1000,16 +1000,10 @@ test("verification ops http routes support an admin evaluation flow and learning
       finalizedResult.recommendation.status,
       finalized.recommendation.status,
     );
-    assert.equal(finalizedResult.evidence.length, 1);
-    assert.equal(finalizedResult.evidence[0]?.id, evidence.id);
-    assert.equal(finalizedResult.evidence[0]?.label, "Demo evaluation browser QA");
-    assert.equal(
-      finalizedResult.evidence[0]?.uri,
-      "https://example.test/evidence/browser-qa",
-    );
+    assert.equal("evidence" in finalizedResult, false);
 
     const suiteFinalizedResultsResponse = await fetch(
-      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/finalized-results`,
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/finalized-results?history_window=latest_10`,
       {
         headers: {
           Cookie: cookie,
