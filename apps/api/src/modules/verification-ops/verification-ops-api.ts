@@ -1,4 +1,9 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type {
+  CreateHarnessDatasetDraftCandidateInput,
+  HarnessDatasetDraftCandidateRecord,
+  HarnessDatasetService,
+} from "../harness-datasets/harness-dataset-service.ts";
 import type { LearningCandidateRecord } from "../learning/learning-record.ts";
 import type {
   EvaluationRunRecord,
@@ -35,12 +40,13 @@ interface RouteResponse<T> {
 
 export interface CreateVerificationOpsApiOptions {
   verificationOpsService: VerificationOpsService;
+  harnessDatasetService?: HarnessDatasetService;
 }
 
 export function createVerificationOpsApi(
   options: CreateVerificationOpsApiOptions,
 ) {
-  const { verificationOpsService } = options;
+  const { verificationOpsService, harnessDatasetService } = options;
 
   return {
     async createEvaluationSampleSet({
@@ -379,6 +385,32 @@ export function createVerificationOpsApi(
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationRunEvidence(actorRole, runId),
+      };
+    },
+
+    async createHarnessDatasetCandidateFromEvaluationEvidencePack({
+      actorRole,
+      evidencePackId,
+      input,
+    }: {
+      actorRole: RoleKey;
+      evidencePackId: string;
+      input: CreateHarnessDatasetDraftCandidateInput;
+    }): Promise<RouteResponse<HarnessDatasetDraftCandidateRecord>> {
+      if (!harnessDatasetService) {
+        throw new Error(
+          "Harness dataset service is not configured for verification handoffs.",
+        );
+      }
+
+      return {
+        status: 201,
+        body:
+          await harnessDatasetService.createDraftCandidateFromEvaluationEvidencePack(
+            actorRole,
+            evidencePackId,
+            input,
+          ),
       };
     },
   };

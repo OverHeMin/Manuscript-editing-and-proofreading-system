@@ -1,4 +1,9 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type {
+  CreateHarnessDatasetDraftCandidateFromHumanFinalAssetInput,
+  HarnessDatasetDraftCandidateRecord,
+  HarnessDatasetService,
+} from "../harness-datasets/harness-dataset-service.ts";
 import { KnowledgeService } from "./knowledge-service.ts";
 import type {
   CreateKnowledgeDraftInput,
@@ -16,10 +21,11 @@ interface RouteResponse<T> {
 
 export interface CreateKnowledgeApiOptions {
   knowledgeService: KnowledgeService;
+  harnessDatasetService?: HarnessDatasetService;
 }
 
 export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
-  const { knowledgeService } = options;
+  const { knowledgeService, harnessDatasetService } = options;
 
   return {
     async createDraft(
@@ -118,6 +124,31 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       return {
         status: 200,
         body: await knowledgeService.archive(knowledgeItemId),
+      };
+    },
+
+    async createHarnessDatasetCandidateFromHumanFinalAsset({
+      actorRole,
+      humanFinalAssetId,
+      input,
+    }: {
+      actorRole: RoleKey;
+      humanFinalAssetId: string;
+      input: CreateHarnessDatasetDraftCandidateFromHumanFinalAssetInput;
+    }): Promise<RouteResponse<HarnessDatasetDraftCandidateRecord>> {
+      if (!harnessDatasetService) {
+        throw new Error(
+          "Harness dataset service is not configured for knowledge handoffs.",
+        );
+      }
+
+      return {
+        status: 201,
+        body: await harnessDatasetService.createDraftCandidateFromHumanFinalAsset(
+          actorRole,
+          humanFinalAssetId,
+          input,
+        ),
       };
     },
   };

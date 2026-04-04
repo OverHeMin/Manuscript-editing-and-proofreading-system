@@ -84,6 +84,14 @@ import {
 import { InMemoryAuditService } from "../audit/index.ts";
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
+  createHarnessDatasetApi,
+  HarnessDatasetDependencyMissingError,
+  HarnessGoldSetVersionExportValidationError,
+  HarnessDatasetService,
+  HarnessDatasetSourceResolutionError,
+  InMemoryHarnessDatasetRepository,
+} from "../modules/harness-datasets/index.ts";
+import {
   DocumentAssetService,
   InMemoryDocumentAssetRepository,
   ManuscriptNotFoundError,
@@ -307,6 +315,13 @@ type HttpRouteMatch =
   | {
       route: "document-assets-download";
       assetId: string;
+    }
+  | {
+      route: "harness-datasets-workbench";
+    }
+  | {
+      route: "harness-datasets-export-gold-set-version";
+      goldSetVersionId: string;
     }
   | {
       route: "modules-screening-run";
@@ -616,6 +631,10 @@ type HttpRouteMatch =
       knowledgeItemId: string;
     }
   | {
+      route: "knowledge-create-harness-dataset-candidate";
+      humanFinalAssetId: string;
+    }
+  | {
       route: "knowledge-archive";
       knowledgeItemId: string;
     }
@@ -652,6 +671,10 @@ type HttpRouteMatch =
   | {
       route: "learning-governance-list-writebacks";
       candidateId: string;
+    }
+  | {
+      route: "learning-governance-create-harness-dataset-candidate";
+      reviewedCaseSnapshotId: string;
     }
   | {
       route: "verification-ops-create-check-profile";
@@ -742,6 +765,10 @@ type HttpRouteMatch =
   | {
       route: "verification-ops-create-learning-candidate";
       runId: string;
+    }
+  | {
+      route: "verification-ops-create-harness-dataset-candidate";
+      evidencePackId: string;
     };
 
 export interface CreateApiHttpServerOptions {
@@ -794,6 +821,7 @@ export interface ApiServerRuntime {
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
+  harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
@@ -825,6 +853,7 @@ export function createApiHttpServer(
   const serviceHealth =
     options.serviceHealth ?? createAlwaysReadyServiceHealthProvider();
   const uploadRootDir = options.uploadRootDir ?? resolveDefaultUploadRootDir(appEnv);
+  const harnessExportRootDir = resolveDefaultHarnessExportRootDir(appEnv);
 
   return createServer(async (req, res) => {
     const corsHeaders = createCorsHeaders(req, allowedOrigins);
@@ -855,6 +884,7 @@ export function createApiHttpServer(
         req,
         runtime,
         uploadRootDir,
+        harnessExportRootDir,
         serviceHealth,
       );
       writeResponse(res, routeResponse.status, routeResponse.body, {
@@ -901,6 +931,7 @@ export function createInMemoryApiRuntime(input: {
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
+  const harnessDatasetRepository = new InMemoryHarnessDatasetRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
@@ -940,6 +971,14 @@ export function createInMemoryApiRuntime(input: {
     reviewedCaseSnapshotRepository,
     learningService,
     toolGatewayRepository,
+  });
+  const harnessDatasetService = new HarnessDatasetService({
+    repository: harnessDatasetRepository,
+    reviewedCaseSnapshotRepository,
+    manuscriptRepository,
+    assetRepository,
+    verificationOpsRepository,
+    permissionGuard,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -1178,13 +1217,21 @@ export function createInMemoryApiRuntime(input: {
     executionTrackingApi: createExecutionTrackingApi({
       executionTrackingService,
     }),
-    knowledgeApi: createKnowledgeApi({ knowledgeService }),
+    harnessDatasetApi: createHarnessDatasetApi({
+      harnessDatasetService,
+    }),
+    knowledgeApi: createKnowledgeApi({
+      knowledgeService,
+      harnessDatasetService,
+    }),
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+      harnessDatasetService,
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,
+      harnessDatasetService,
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
@@ -1901,6 +1948,7 @@ async function handleRoute(
   req: IncomingMessage,
   runtime: ApiServerRuntime,
   uploadRootDir: string,
+  harnessExportRootDir: string,
   serviceHealth: HttpServiceHealthProvider,
 ): Promise<RouteResponse<unknown>> {
   switch (routeMatch.route) {
@@ -2019,6 +2067,28 @@ async function handleRoute(
         assetId: routeMatch.assetId,
         uploadRootDir,
       });
+    case "harness-datasets-workbench": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessDatasetApi.listWorkbenchOverview({
+        actorRole: session.user.role,
+        exportRootDir: harnessExportRootDir,
+      });
+    }
+    case "harness-datasets-export-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        format: "json" | "jsonl";
+      };
+
+      return runtime.harnessDatasetApi.exportGoldSetVersion({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: {
+          format: body.format,
+          exportRootDir: harnessExportRootDir,
+        },
+      });
+    }
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -2791,6 +2861,26 @@ async function handleRoute(
       return runtime.knowledgeApi.listReviewActions({
         knowledgeItemId: routeMatch.knowledgeItemId,
       });
+    case "knowledge-create-harness-dataset-candidate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<
+            typeof runtime.knowledgeApi.createHarnessDatasetCandidateFromHumanFinalAsset
+          >[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.knowledgeApi.createHarnessDatasetCandidateFromHumanFinalAsset({
+        actorRole: session.user.role,
+        humanFinalAssetId: routeMatch.humanFinalAssetId,
+        input: {
+          ...body.input,
+          createdBy: session.user.id,
+        },
+      });
+    }
     case "knowledge-archive":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.archive({
@@ -2891,6 +2981,28 @@ async function handleRoute(
       return runtime.learningGovernanceApi.listWritebacksByCandidate({
         learningCandidateId: routeMatch.candidateId,
       });
+    case "learning-governance-create-harness-dataset-candidate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<
+            typeof runtime.learningGovernanceApi.createHarnessDatasetCandidateFromReviewedSnapshot
+          >[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.learningGovernanceApi.createHarnessDatasetCandidateFromReviewedSnapshot(
+        {
+          actorRole: session.user.role,
+          reviewedCaseSnapshotId: routeMatch.reviewedCaseSnapshotId,
+          input: {
+            ...body.input,
+            createdBy: session.user.id,
+          },
+        },
+      );
+    }
     case "verification-ops-create-check-profile": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3111,6 +3223,28 @@ async function handleRoute(
         },
       });
     }
+    case "verification-ops-create-harness-dataset-candidate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<
+            typeof runtime.verificationOpsApi.createHarnessDatasetCandidateFromEvaluationEvidencePack
+          >[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.verificationOpsApi.createHarnessDatasetCandidateFromEvaluationEvidencePack(
+        {
+          actorRole: session.user.role,
+          evidencePackId: routeMatch.evidencePackId,
+          input: {
+            ...body.input,
+            createdBy: session.user.id,
+          },
+        },
+      );
+    }
   }
 }
 
@@ -3154,6 +3288,20 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "document-assets-download",
       assetId: documentAssetDownloadMatch[1],
+    };
+  }
+
+  if (method === "GET" && path === "/api/v1/harness-datasets/workbench") {
+    return { route: "harness-datasets-workbench" };
+  }
+
+  const exportHarnessGoldSetVersionMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/export$/,
+  );
+  if (method === "POST" && exportHarnessGoldSetVersionMatch) {
+    return {
+      route: "harness-datasets-export-gold-set-version",
+      goldSetVersionId: exportHarnessGoldSetVersionMatch[1],
     };
   }
 
@@ -3935,6 +4083,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const createEvidencePackHarnessDatasetCandidateMatch = path.match(
+    /^\/api\/v1\/verification-ops\/evidence-packs\/([^/]+)\/harness-dataset-candidates$/,
+  );
+  if (method === "POST" && createEvidencePackHarnessDatasetCandidateMatch) {
+    return {
+      route: "verification-ops-create-harness-dataset-candidate",
+      evidencePackId: createEvidencePackHarnessDatasetCandidateMatch[1],
+    };
+  }
+
   if (method === "GET" && path === "/api/v1/knowledge") {
     return { route: "knowledge-list" };
   }
@@ -3987,6 +4145,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "learning-governance-create-writeback" };
   }
 
+  const createReviewedSnapshotHarnessDatasetCandidateMatch = path.match(
+    /^\/api\/v1\/learning-governance\/reviewed-case-snapshots\/([^/]+)\/harness-dataset-candidates$/,
+  );
+  if (method === "POST" && createReviewedSnapshotHarnessDatasetCandidateMatch) {
+    return {
+      route: "learning-governance-create-harness-dataset-candidate",
+      reviewedCaseSnapshotId: createReviewedSnapshotHarnessDatasetCandidateMatch[1],
+    };
+  }
+
   const learningApplyWritebackMatch = path.match(
     /^\/api\/v1\/learning-governance\/writebacks\/([^/]+)\/apply$/,
   );
@@ -4014,6 +4182,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "knowledge-review-actions",
       knowledgeItemId: reviewActionsMatch[1],
+    };
+  }
+
+  const createHumanFinalHarnessDatasetCandidateMatch = path.match(
+    /^\/api\/v1\/knowledge\/human-final-assets\/([^/]+)\/harness-dataset-candidates$/,
+  );
+  if (method === "POST" && createHumanFinalHarnessDatasetCandidateMatch) {
+    return {
+      route: "knowledge-create-harness-dataset-candidate",
+      humanFinalAssetId: createHumanFinalHarnessDatasetCandidateMatch[1],
     };
   }
 
@@ -4223,7 +4401,9 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationSuiteModuleScopeMismatchError ||
     error instanceof EvaluationEvidencePackRunMismatchError ||
     error instanceof EvaluationLearningSnapshotNotInRunError ||
-    error instanceof EvaluationExperimentBindingError
+    error instanceof EvaluationExperimentBindingError ||
+    error instanceof HarnessDatasetSourceResolutionError ||
+    error instanceof HarnessGoldSetVersionExportValidationError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -4275,6 +4455,10 @@ function mapErrorToHttpResponse(
 
   if (error instanceof SyntaxError) {
     return [400, { error: "invalid_json", message: error.message }];
+  }
+
+  if (error instanceof HarnessDatasetDependencyMissingError) {
+    return [500, { error: "internal_error", message: error.message }];
   }
 
   if (error instanceof Error) {
@@ -4332,6 +4516,10 @@ async function resolveUploadStorageKey(input: {
 
 function resolveDefaultUploadRootDir(appEnv: AppEnv): string {
   return path.resolve(process.cwd(), ".local-data", "uploads", appEnv);
+}
+
+function resolveDefaultHarnessExportRootDir(appEnv: AppEnv): string {
+  return path.resolve(process.cwd(), ".local-data", "harness-exports", appEnv);
 }
 
 function buildDownloadHeaders(

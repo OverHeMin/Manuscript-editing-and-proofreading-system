@@ -49,6 +49,11 @@ import {
   PostgresExecutionTrackingRepository,
 } from "../modules/execution-tracking/index.ts";
 import {
+  createHarnessDatasetApi,
+  HarnessDatasetService,
+  PostgresHarnessDatasetRepository,
+} from "../modules/harness-datasets/index.ts";
+import {
   createKnowledgeApi,
   KnowledgeService,
   PostgresKnowledgeRepository,
@@ -231,6 +236,9 @@ export function createPersistentGovernanceRuntime(
   const verificationOpsRepository = new PostgresVerificationOpsRepository({
     client: options.client,
   });
+  const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
+    client: options.client,
+  });
 
   const workbenchTransactionManager = createPostgresWriteTransactionManager({
     getClient: async () => options.client.connect(),
@@ -259,6 +267,12 @@ export function createPersistentGovernanceRuntime(
     getClient: async () => options.client.connect(),
     createContext: (client) => ({
       repository: new PostgresVerificationOpsRepository({ client }),
+    }),
+  });
+  const harnessDatasetTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      repository: new PostgresHarnessDatasetRepository({ client }),
     }),
   });
 
@@ -292,6 +306,15 @@ export function createPersistentGovernanceRuntime(
     learningService,
     toolGatewayRepository,
     transactionManager: verificationOpsTransactionManager,
+  });
+  const harnessDatasetService = new HarnessDatasetService({
+    repository: harnessDatasetRepository,
+    reviewedCaseSnapshotRepository,
+    manuscriptRepository,
+    assetRepository,
+    verificationOpsRepository,
+    permissionGuard,
+    transactionManager: harnessDatasetTransactionManager,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -542,13 +565,21 @@ export function createPersistentGovernanceRuntime(
     executionTrackingApi: createExecutionTrackingApi({
       executionTrackingService,
     }),
-    knowledgeApi: createKnowledgeApi({ knowledgeService }),
+    harnessDatasetApi: createHarnessDatasetApi({
+      harnessDatasetService,
+    }),
+    knowledgeApi: createKnowledgeApi({
+      knowledgeService,
+      harnessDatasetService,
+    }),
     learningApi: createLearningApi({ learningService }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
+      harnessDatasetService,
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,
+      harnessDatasetService,
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import {
   createApiHttpServer,
@@ -7,10 +8,15 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { PostgresDocumentAssetRepository } from "../../src/modules/assets/index.ts";
+import { PostgresHarnessDatasetRepository } from "../../src/modules/harness-datasets/index.ts";
 import {
   PostgresKnowledgeRepository,
   PostgresKnowledgeReviewActionRepository,
 } from "../../src/modules/knowledge/index.ts";
+import { PostgresReviewedCaseSnapshotRepository } from "../../src/modules/learning/index.ts";
+import { PostgresManuscriptRepository } from "../../src/modules/manuscripts/index.ts";
+import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -1339,6 +1345,383 @@ test("persistent governance runtime keeps agent-tooling governance records acros
   });
 });
 
+const persistentHarnessHandoffFixtureIds = {
+  manuscriptId: "33333333-3333-4333-8333-333333333333",
+  originalAssetId: "44444444-4444-4444-8444-444444444444",
+  humanFinalAssetId: "55555555-5555-4555-8555-555555555555",
+  snapshotAssetId: "66666666-6666-4666-8666-666666666666",
+  reviewedCaseSnapshotId: "77777777-7777-4777-8777-777777777777",
+  verificationEvidenceId: "88888888-8888-4888-8888-888888888888",
+  evaluationSuiteId: "99999999-9999-4999-8999-999999999999",
+  evaluationSampleSetId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+  evaluationSampleSetItemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbba",
+  evaluationRunId: "cccccccc-cccc-4ccc-8ccc-ccccccccccca",
+  evaluationEvidencePackId: "dddddddd-dddd-4ddd-8ddd-ddddddddddda",
+} as const;
+
+const persistentHarnessWorkbenchFixtureIds = {
+  draftFamilyId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeea",
+  draftVersionId: "ffffffff-ffff-4fff-8fff-fffffffffffa",
+  publishedFamilyId: "12121212-1212-4212-8212-121212121212",
+  publishedVersionId: "34343434-3434-4334-8334-343434343434",
+  rubricId: "56565656-5656-4565-8565-565656565656",
+  jsonPublicationId: "78787878-7878-4787-8787-787878787878",
+} as const;
+
+test("persistent governance runtime creates additive harness dataset draft handoffs from governed sources", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessDatasetHandoffData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+
+        const snapshotResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning-governance/reviewed-case-snapshots/${persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId}/harness-dataset-candidates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                familyName: "Persistent reviewed snapshot gold set",
+                measureFocus: "proofreading issue detection",
+                publicationNotes:
+                  "Seeded draft harness candidate from a reviewed snapshot.",
+              },
+            }),
+          },
+        );
+        const snapshotCandidate = (await snapshotResponse.json()) as {
+          source_kind: string;
+          source_id: string;
+          draft_family_id: string;
+          draft_version_id: string;
+          status: string;
+          item_count: number;
+          requires_manual_rubric_assignment: boolean;
+        };
+
+        assert.equal(snapshotResponse.status, 201);
+        assert.equal(snapshotCandidate.source_kind, "reviewed_case_snapshot");
+        assert.equal(
+          snapshotCandidate.source_id,
+          persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+        );
+        assert.equal(snapshotCandidate.status, "draft");
+        assert.equal(snapshotCandidate.item_count, 1);
+        assert.equal(snapshotCandidate.requires_manual_rubric_assignment, true);
+
+        const humanFinalResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/human-final-assets/${persistentHarnessHandoffFixtureIds.humanFinalAssetId}/harness-dataset-candidates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                familyName: "Persistent human final gold set",
+                module: "proofreading",
+                measureFocus: "human-final proofreading conformance",
+                publicationNotes:
+                  "Seeded draft harness candidate from a human final asset.",
+              },
+            }),
+          },
+        );
+        const humanFinalCandidate = (await humanFinalResponse.json()) as {
+          source_kind: string;
+          source_id: string;
+          draft_family_id: string;
+          draft_version_id: string;
+          status: string;
+          item_count: number;
+          requires_manual_rubric_assignment: boolean;
+        };
+
+        assert.equal(humanFinalResponse.status, 201);
+        assert.equal(humanFinalCandidate.source_kind, "human_final_asset");
+        assert.equal(
+          humanFinalCandidate.source_id,
+          persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+        );
+        assert.equal(humanFinalCandidate.status, "draft");
+        assert.equal(humanFinalCandidate.item_count, 1);
+        assert.equal(humanFinalCandidate.requires_manual_rubric_assignment, true);
+
+        const evidencePackResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evidence-packs/${persistentHarnessHandoffFixtureIds.evaluationEvidencePackId}/harness-dataset-candidates`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                familyName: "Persistent evidence pack gold set",
+                measureFocus: "proofreading regression adjudication",
+                publicationNotes:
+                  "Seeded draft harness candidate from a finalized evaluation evidence pack.",
+              },
+            }),
+          },
+        );
+        const evidencePackCandidate = (await evidencePackResponse.json()) as {
+          source_kind: string;
+          source_id: string;
+          draft_family_id: string;
+          draft_version_id: string;
+          status: string;
+          item_count: number;
+          requires_manual_rubric_assignment: boolean;
+        };
+
+        assert.equal(evidencePackResponse.status, 201);
+        assert.equal(
+          evidencePackCandidate.source_kind,
+          "evaluation_evidence_pack",
+        );
+        assert.equal(
+          evidencePackCandidate.source_id,
+          persistentHarnessHandoffFixtureIds.evaluationEvidencePackId,
+        );
+        assert.equal(evidencePackCandidate.status, "draft");
+        assert.equal(evidencePackCandidate.item_count, 1);
+        assert.equal(evidencePackCandidate.requires_manual_rubric_assignment, true);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
+            client: seedPool,
+          });
+
+          const persistedSnapshotFamily =
+            await harnessDatasetRepository.findGoldSetFamilyById(
+              snapshotCandidate.draft_family_id,
+            );
+          const persistedSnapshotVersion =
+            await harnessDatasetRepository.findGoldSetVersionById(
+              snapshotCandidate.draft_version_id,
+            );
+          const persistedHumanFinalVersion =
+            await harnessDatasetRepository.findGoldSetVersionById(
+              humanFinalCandidate.draft_version_id,
+            );
+          const persistedEvidencePackVersion =
+            await harnessDatasetRepository.findGoldSetVersionById(
+              evidencePackCandidate.draft_version_id,
+            );
+
+          assert.equal(persistedSnapshotFamily?.scope.module, "proofreading");
+          assert.deepEqual(persistedSnapshotFamily?.scope.manuscript_types, [
+            "clinical_study",
+          ]);
+          assert.equal(persistedSnapshotVersion?.status, "draft");
+          assert.equal(
+            persistedSnapshotVersion?.items[0]?.source_kind,
+            "reviewed_case_snapshot",
+          );
+          assert.equal(
+            persistedSnapshotVersion?.rubric_definition_id,
+            undefined,
+          );
+          assert.equal(
+            persistedHumanFinalVersion?.items[0]?.source_kind,
+            "human_final_asset",
+          );
+          assert.equal(
+            persistedHumanFinalVersion?.deidentification_gate_passed,
+            false,
+          );
+          assert.equal(
+            persistedEvidencePackVersion?.items[0]?.source_kind,
+            "evaluation_evidence_pack",
+          );
+          assert.equal(
+            persistedEvidencePackVersion?.human_review_gate_passed,
+            true,
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime lists harness dataset workbench state and exports published gold sets locally", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessDatasetHandoffData(seedPool);
+      await seedPersistentHarnessDatasetWorkbenchData(seedPool);
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const overviewResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/harness-datasets/workbench`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const overview = (await overviewResponse.json()) as {
+          export_root_dir: string;
+          versions: Array<{
+            id: string;
+            status: string;
+            family_name: string;
+            rubric_assignment: {
+              status: string;
+              rubric_name?: string;
+            };
+            items: Array<{
+              source_kind: string;
+              source_id: string;
+            }>;
+            publications: Array<{
+              export_format: string;
+            }>;
+          }>;
+        };
+
+        assert.equal(overviewResponse.status, 200);
+        assert.match(
+          overview.export_root_dir,
+          /[\\/]\.local-data[\\/]harness-exports[\\/]development$/,
+        );
+        assert.equal(overview.versions.length, 2);
+        assert.deepEqual(
+          overview.versions.map((version) => ({
+            id: version.id,
+            status: version.status,
+            familyName: version.family_name,
+            rubricStatus: version.rubric_assignment.status,
+          })),
+          [
+            {
+              id: persistentHarnessWorkbenchFixtureIds.draftVersionId,
+              status: "draft",
+              familyName: "Proofreading gold set",
+              rubricStatus: "missing",
+            },
+            {
+              id: persistentHarnessWorkbenchFixtureIds.publishedVersionId,
+              status: "published",
+              familyName: "Editing gold set",
+              rubricStatus: "published",
+            },
+          ],
+        );
+        assert.equal(
+          overview.versions[1]?.rubric_assignment.rubric_name,
+          "Editing rubric",
+        );
+        assert.deepEqual(
+          overview.versions[1]?.items.map((item) => item.source_kind),
+          ["human_final_asset", "evaluation_evidence_pack"],
+        );
+        assert.deepEqual(
+          overview.versions[1]?.publications.map((publication) => publication.export_format),
+          ["json"],
+        );
+
+        const exportResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/harness-datasets/gold-set-versions/${persistentHarnessWorkbenchFixtureIds.publishedVersionId}/export`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              format: "jsonl",
+            }),
+          },
+        );
+        const exportResult = (await exportResponse.json()) as {
+          publication: {
+            gold_set_version_id: string;
+            export_format: string;
+            status: string;
+            output_uri?: string;
+          };
+          output_path: string;
+        };
+
+        assert.equal(exportResponse.status, 201);
+        assert.equal(
+          exportResult.publication.gold_set_version_id,
+          persistentHarnessWorkbenchFixtureIds.publishedVersionId,
+        );
+        assert.equal(exportResult.publication.export_format, "jsonl");
+        assert.equal(exportResult.publication.status, "succeeded");
+        assert.equal(exportResult.publication.output_uri, exportResult.output_path);
+        const exportedJsonl = await readFile(exportResult.output_path, "utf8");
+        const exportedLines = exportedJsonl
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { source_kind: string; source_id: string });
+        assert.deepEqual(
+          exportedLines.map((line) => line.source_kind),
+          ["human_final_asset", "evaluation_evidence_pack"],
+        );
+
+        const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
+          client: seedPool,
+        });
+        const publications =
+          await harnessDatasetRepository.listDatasetPublicationsByVersionId(
+            persistentHarnessWorkbenchFixtureIds.publishedVersionId,
+          );
+        assert.equal(publications.length, 2);
+        assert.deepEqual(
+          publications
+            .map((publication) => publication.export_format)
+            .sort((left, right) => left.localeCompare(right)),
+          ["json", "jsonl"],
+        );
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -1379,6 +1762,276 @@ async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
     action: "submitted_for_review",
     actor_role: "user",
     created_at: "2026-03-30T09:00:00.000Z",
+  });
+}
+
+async function seedPersistentHarnessDatasetHandoffData(pool: Pool): Promise<void> {
+  const manuscriptRepository = new PostgresManuscriptRepository({ client: pool });
+  const assetRepository = new PostgresDocumentAssetRepository({ client: pool });
+  const reviewedCaseSnapshotRepository = new PostgresReviewedCaseSnapshotRepository({
+    client: pool,
+  });
+  const verificationOpsRepository = new PostgresVerificationOpsRepository({
+    client: pool,
+  });
+
+  await manuscriptRepository.save({
+    id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    title: "Persistent Harness Handoff Manuscript",
+    manuscript_type: "clinical_study",
+    status: "completed",
+    created_by: "persistent-admin",
+    created_at: "2026-04-01T08:00:00.000Z",
+    updated_at: "2026-04-01T08:00:00.000Z",
+  });
+  await assetRepository.save({
+    id: persistentHarnessHandoffFixtureIds.originalAssetId,
+    manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    asset_type: "original",
+    status: "active",
+    storage_key: "persistent/harness/original.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "upload",
+    created_by: "persistent-admin",
+    version_no: 1,
+    is_current: false,
+    file_name: "persistent-harness-original.docx",
+    created_at: "2026-04-01T08:01:00.000Z",
+    updated_at: "2026-04-01T08:01:00.000Z",
+  });
+  await assetRepository.save({
+    id: persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+    manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    asset_type: "human_final_docx",
+    status: "active",
+    storage_key: "persistent/harness/human-final.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: persistentHarnessHandoffFixtureIds.originalAssetId,
+    source_module: "manual",
+    created_by: "persistent-admin",
+    version_no: 2,
+    is_current: true,
+    file_name: "persistent-harness-human-final.docx",
+    created_at: "2026-04-01T08:02:00.000Z",
+    updated_at: "2026-04-01T08:02:00.000Z",
+  });
+  await assetRepository.save({
+    id: persistentHarnessHandoffFixtureIds.snapshotAssetId,
+    manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    asset_type: "learning_snapshot_attachment",
+    status: "active",
+    storage_key: "persistent/harness/reviewed-snapshot.bin",
+    mime_type: "application/octet-stream",
+    parent_asset_id: persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+    source_module: "learning",
+    created_by: "persistent-admin",
+    version_no: 1,
+    is_current: false,
+    file_name: "persistent-reviewed-snapshot.bin",
+    created_at: "2026-04-01T08:03:00.000Z",
+    updated_at: "2026-04-01T08:03:00.000Z",
+  });
+  await reviewedCaseSnapshotRepository.save({
+    id: persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+    manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    human_final_asset_id: persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+    deidentification_passed: true,
+    snapshot_asset_id: persistentHarnessHandoffFixtureIds.snapshotAssetId,
+    created_by: "persistent-admin",
+    created_at: "2026-04-01T08:03:30.000Z",
+  });
+  await verificationOpsRepository.saveEvaluationSuite({
+    id: persistentHarnessHandoffFixtureIds.evaluationSuiteId,
+    name: "Persistent Harness Evaluation Suite",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: [],
+    module_scope: ["proofreading"],
+    requires_production_baseline: false,
+    supports_ab_comparison: false,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: false,
+    },
+    score_weights: {
+      structure: 0,
+      terminology: 0,
+      knowledge_coverage: 0,
+      risk_detection: 0,
+      human_edit_burden: 0,
+      cost_and_latency: 0,
+    },
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSampleSet({
+    id: persistentHarnessHandoffFixtureIds.evaluationSampleSetId,
+    name: "Persistent Harness Sample Set",
+    module: "proofreading",
+    manuscript_types: ["clinical_study"],
+    sample_count: 1,
+    source_policy: {
+      source_kind: "reviewed_case_snapshot",
+      requires_deidentification_pass: true,
+      requires_human_final_asset: true,
+    },
+    status: "published",
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSampleSetItem({
+    id: persistentHarnessHandoffFixtureIds.evaluationSampleSetItemId,
+    sample_set_id: persistentHarnessHandoffFixtureIds.evaluationSampleSetId,
+    manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+    snapshot_asset_id: persistentHarnessHandoffFixtureIds.snapshotAssetId,
+    reviewed_case_snapshot_id:
+      persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    risk_tags: ["consistency"],
+  });
+  await verificationOpsRepository.saveVerificationEvidence({
+    id: persistentHarnessHandoffFixtureIds.verificationEvidenceId,
+    kind: "artifact",
+    label: "Persistent harness evaluation evidence",
+    artifact_asset_id: persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+    created_at: "2026-04-01T08:04:00.000Z",
+  });
+  await verificationOpsRepository.saveEvaluationRun({
+    id: persistentHarnessHandoffFixtureIds.evaluationRunId,
+    suite_id: persistentHarnessHandoffFixtureIds.evaluationSuiteId,
+    sample_set_id: persistentHarnessHandoffFixtureIds.evaluationSampleSetId,
+    run_item_count: 1,
+    status: "passed",
+    evidence_ids: [persistentHarnessHandoffFixtureIds.verificationEvidenceId],
+    started_at: "2026-04-01T08:05:00.000Z",
+    finished_at: "2026-04-01T08:06:00.000Z",
+  });
+  await verificationOpsRepository.saveEvaluationEvidencePack({
+    id: persistentHarnessHandoffFixtureIds.evaluationEvidencePackId,
+    experiment_run_id: persistentHarnessHandoffFixtureIds.evaluationRunId,
+    summary_status: "recommended",
+    score_summary: "Persistent harness evidence pack.",
+    created_at: "2026-04-01T08:06:30.000Z",
+  });
+}
+
+async function seedPersistentHarnessDatasetWorkbenchData(pool: Pool): Promise<void> {
+  const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
+    client: pool,
+  });
+
+  await harnessDatasetRepository.saveGoldSetFamily({
+    id: persistentHarnessWorkbenchFixtureIds.draftFamilyId,
+    name: "Proofreading gold set",
+    scope: {
+      module: "proofreading",
+      manuscript_types: ["clinical_study"],
+      measure_focus: "issue detection",
+    },
+    admin_only: true,
+    created_at: "2026-04-04T09:00:00.000Z",
+    updated_at: "2026-04-04T09:00:00.000Z",
+  });
+  await harnessDatasetRepository.saveGoldSetVersion({
+    id: persistentHarnessWorkbenchFixtureIds.draftVersionId,
+    family_id: persistentHarnessWorkbenchFixtureIds.draftFamilyId,
+    version_no: 1,
+    status: "draft",
+    item_count: 1,
+    deidentification_gate_passed: true,
+    human_review_gate_passed: true,
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+        manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+      },
+    ],
+    created_by: "persistent.admin",
+    created_at: "2026-04-04T09:05:00.000Z",
+  });
+
+  await harnessDatasetRepository.saveGoldSetFamily({
+    id: persistentHarnessWorkbenchFixtureIds.publishedFamilyId,
+    name: "Editing gold set",
+    scope: {
+      module: "editing",
+      manuscript_types: ["review"],
+      measure_focus: "conformance",
+    },
+    admin_only: true,
+    created_at: "2026-04-04T10:00:00.000Z",
+    updated_at: "2026-04-04T10:00:00.000Z",
+  });
+  await harnessDatasetRepository.saveRubricDefinition({
+    id: persistentHarnessWorkbenchFixtureIds.rubricId,
+    name: "Editing rubric",
+    version_no: 2,
+    status: "published",
+    scope: {
+      module: "editing",
+      manuscript_types: ["review"],
+    },
+    scoring_dimensions: [
+      {
+        key: "conformance",
+        label: "Conformance",
+        weight: 1,
+      },
+    ],
+    created_by: "persistent.admin",
+    created_at: "2026-04-04T10:10:00.000Z",
+    published_by: "persistent.admin",
+    published_at: "2026-04-04T10:20:00.000Z",
+  });
+  await harnessDatasetRepository.saveGoldSetVersion({
+    id: persistentHarnessWorkbenchFixtureIds.publishedVersionId,
+    family_id: persistentHarnessWorkbenchFixtureIds.publishedFamilyId,
+    version_no: 2,
+    status: "published",
+    rubric_definition_id: persistentHarnessWorkbenchFixtureIds.rubricId,
+    item_count: 2,
+    deidentification_gate_passed: true,
+    human_review_gate_passed: true,
+    items: [
+      {
+        source_kind: "human_final_asset",
+        source_id: persistentHarnessHandoffFixtureIds.humanFinalAssetId,
+        manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+        manuscript_type: "review",
+        deidentification_passed: true,
+        human_reviewed: true,
+        risk_tags: ["terminology"],
+      },
+      {
+        source_kind: "evaluation_evidence_pack",
+        source_id: persistentHarnessHandoffFixtureIds.evaluationEvidencePackId,
+        manuscript_id: persistentHarnessHandoffFixtureIds.manuscriptId,
+        manuscript_type: "review",
+        deidentification_passed: true,
+        human_reviewed: true,
+      },
+    ],
+    created_by: "persistent.admin",
+    created_at: "2026-04-04T10:30:00.000Z",
+    published_by: "persistent.admin",
+    published_at: "2026-04-04T11:00:00.000Z",
+  });
+  await harnessDatasetRepository.saveDatasetPublication({
+    id: persistentHarnessWorkbenchFixtureIds.jsonPublicationId,
+    gold_set_version_id: persistentHarnessWorkbenchFixtureIds.publishedVersionId,
+    export_format: "json",
+    status: "succeeded",
+    output_uri:
+      ".local-data/harness-exports/development/34343434-3434-4334-8334-343434343434.json",
+    deidentification_gate_passed: true,
+    created_at: "2026-04-04T11:02:00.000Z",
   });
 }
 
