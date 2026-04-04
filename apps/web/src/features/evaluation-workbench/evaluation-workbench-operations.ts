@@ -317,6 +317,13 @@ function hasMeaningfulRegressionMention(summary: string | undefined): boolean {
   const normalized = summary.trim().toLowerCase();
   if (!normalized) return false;
   if (normalized.includes("no regression failures were recorded")) return false;
+  if (normalized.includes("no explicit regression failures were recorded")) return false;
+
+  const regressionCountMatch = /^(\d+)\s+regression-failed item\(s\) detected\.$/.exec(normalized);
+  if (regressionCountMatch) {
+    return Number(regressionCountMatch[1]) > 0;
+  }
+
   return normalized.includes("regression");
 }
 
@@ -325,5 +332,13 @@ function hasMeaningfulFailureMention(summary: string | undefined): boolean {
   const normalized = summary.trim().toLowerCase();
   if (!normalized) return false;
   if (normalized.includes("no failure annotations were recorded")) return false;
-  return normalized.includes("failure");
+  if (
+    normalized.includes("runtime_failed") ||
+    normalized.includes("governance_failed") ||
+    normalized.includes("scoring_failed") ||
+    normalized.includes("hard_gate_failed")
+  ) {
+    return true;
+  }
+  return true;
 }

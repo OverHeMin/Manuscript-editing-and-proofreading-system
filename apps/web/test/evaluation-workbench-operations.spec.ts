@@ -5,7 +5,7 @@ import {
 } from "../src/features/evaluation-workbench/evaluation-workbench-operations.ts";
 
 type RecommendationStatus = "recommended" | "needs_review" | "rejected";
-type RunStatus = "passed" | "failed";
+type RunStatus = "queued" | "running" | "passed" | "failed";
 type EvidencePackStatus = "recommended" | "needs_review" | "rejected";
 
 function createHistoryEntry(input: {
@@ -292,6 +292,31 @@ test("suite operations summary degrades honestly when fewer than two finalized r
   assert.equal(summary.emptyState?.reason, "fewer_than_two_visible_finalized_runs");
 });
 
+test("suite operations summary marks insufficient comparison data when delta cannot be derived", () => {
+  const summary = buildEvaluationWorkbenchSuiteOperationsSummary({
+    finalizedRunHistory: [
+      createHistoryEntry({
+        runId: "run-baseline",
+        recommendationCreatedAt: "2026-04-01T00:00:00.000Z",
+        recommendationStatus: "recommended",
+        runStatus: "queued",
+      }),
+      createHistoryEntry({
+        runId: "run-latest",
+        recommendationCreatedAt: "2026-04-02T00:00:00.000Z",
+        recommendationStatus: "recommended",
+        runStatus: "running",
+      }),
+    ],
+  });
+
+  assert.equal(summary.defaultComparison?.selected.run.id, "run-latest");
+  assert.equal(summary.defaultComparison?.baseline.run.id, "run-baseline");
+  assert.equal(summary.delta, null);
+  assert.equal(summary.emptyState?.kind, "comparison_unavailable");
+  assert.equal(summary.emptyState?.reason, "insufficient_comparison_data");
+});
+
 test("suite operations summary computes signals only from the active visible history window", () => {
   const finalizedRunHistory = [
     createHistoryEntry({
@@ -339,7 +364,7 @@ test("suite operations summary computes signals only from the active visible his
       recommendationCreatedAt: "2026-03-07T00:00:00.000Z",
       recommendationStatus: "needs_review",
       evidencePackSummaryStatus: "needs_review",
-      regressionSummary: "Regression drift remains unresolved.",
+      regressionSummary: "No explicit regression failures were recorded.",
       failureSummary: "No failure annotations were recorded.",
     }),
     createHistoryEntry({
@@ -348,22 +373,22 @@ test("suite operations summary computes signals only from the active visible his
       recommendationStatus: "needs_review",
       evidencePackSummaryStatus: "needs_review",
       regressionSummary: "No regression failures were recorded.",
-      failureSummary: "Failure recurrence was observed for hard gate checks.",
+      failureSummary: "runtime_failed",
     }),
     createHistoryEntry({
       runId: "run-05",
       recommendationCreatedAt: "2026-03-05T00:00:00.000Z",
       recommendationStatus: "rejected",
       evidencePackSummaryStatus: "rejected",
-      regressionSummary: "No regression failures were recorded.",
-      failureSummary: "No failure annotations were recorded.",
+      regressionSummary: "0 regression-failed item(s) detected.",
+      failureSummary: "hard_gate_failed",
     }),
     createHistoryEntry({
       runId: "run-04",
       recommendationCreatedAt: "2026-03-04T00:00:00.000Z",
       recommendationStatus: "recommended",
       evidencePackSummaryStatus: "recommended",
-      regressionSummary: "No regression failures were recorded.",
+      regressionSummary: "1 regression-failed item(s) detected.",
       failureSummary: "No failure annotations were recorded.",
     }),
     createHistoryEntry({
@@ -372,7 +397,7 @@ test("suite operations summary computes signals only from the active visible his
       recommendationStatus: "recommended",
       evidencePackSummaryStatus: "needs_review",
       regressionSummary: "No regression failures were recorded.",
-      failureSummary: "No failure annotations were recorded.",
+      failureSummary: "Terminology drift exceeded threshold.",
     }),
     createHistoryEntry({
       runId: "run-02-hidden",
@@ -409,6 +434,6 @@ test("suite operations summary computes signals only from the active visible his
     rejected: 1,
   });
   assert.equal(summary.signals.recurrence.regressionMentions, 1);
-  assert.equal(summary.signals.recurrence.failureMentions, 1);
-  assert.equal(summary.signals.recurrence.runsWithRecurrenceSignals, 2);
+  assert.equal(summary.signals.recurrence.failureMentions, 3);
+  assert.equal(summary.signals.recurrence.runsWithRecurrenceSignals, 4);
 });
