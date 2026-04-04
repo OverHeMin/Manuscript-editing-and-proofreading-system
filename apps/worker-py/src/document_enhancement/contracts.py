@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -32,8 +33,18 @@ class AcademicStructureAdvisoryResult:
 
 
 @dataclass(frozen=True)
+class ArtifactWriteResult:
+    status: str
+    output_dir: Path | None
+    artifact_path: Path | None
+    index_path: Path | None
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult
     academic_structure: AcademicStructureAdvisoryResult
+    artifact: ArtifactWriteResult | None
     notes: list[str]

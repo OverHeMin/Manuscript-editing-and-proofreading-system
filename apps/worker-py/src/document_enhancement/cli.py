@@ -2,10 +2,11 @@ import argparse
 import json
 import os
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import replace
 from pathlib import Path
 
 from .academic_structure import build_academic_structure_advisory
+from .artifacts import serialize_jsonable, skipped_artifact_result, write_audit_artifact
 from .contracts import DocumentEnhancementAuditReport
 from .privacy import build_privacy_advisory
 
@@ -18,6 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--document-path", required=True)
     parser.add_argument("--text-file")
+    parser.add_argument("--write-artifact", action="store_true")
+    parser.add_argument("--output-dir")
     parser.add_argument(
         "--text-layer",
         choices=("present", "missing", "unknown"),
@@ -58,10 +61,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             text_layer=args.text_layer,
             environment=environment,
         ),
+        artifact=None,
         notes=notes,
     )
 
-    print(json.dumps(asdict(report), indent=2))
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    artifact = (
+        write_audit_artifact(report, output_dir=output_dir)
+        if args.write_artifact
+        else skipped_artifact_result(output_dir=output_dir)
+    )
+
+    report = replace(report, artifact=artifact)
+    print(json.dumps(serialize_jsonable(report), indent=2))
 
 
 if __name__ == "__main__":

@@ -511,9 +511,11 @@ Codex 的推荐使用方式：
 Use the worker-owned audit command when you need bounded local evidence about privacy precheck findings or OCR / academic-structure readiness:
 
 - `pnpm --filter @medical/worker-py run audit:document-enhancement -- --document-path <local-path> [--text-file <local-text-file>] [--text-layer present|missing|unknown]`
+- `pnpm --filter @medical/worker-py run audit:document-enhancement -- --document-path <local-path> [--text-file <local-text-file>] [--text-layer present|missing|unknown] --write-artifact [--output-dir <local-dir>]`
 
 Operational rules:
 
 - This command is local-first, read-only, and fail-open.
+- The default artifact directory is `.local-data/document-enhancement-audits/manual`, and the directory keeps additive JSON reports plus `audit-index.json`.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters return degraded advisory evidence instead of blocking worker startup or manuscript execution.
 - The JSON output is an operator aid only. It does not replace human de-identification review and does not auto-launch OCR or academic-structure extraction.
