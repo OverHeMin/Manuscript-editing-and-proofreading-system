@@ -1800,6 +1800,125 @@ test("persistent verification ops routes keep finalized evaluation evidence usab
   });
 });
 
+test("persistent verification ops finalized-results route enforces latest_10 and last_7_days windows", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent verification database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      const verificationOpsRepository = new PostgresVerificationOpsRepository({
+        client: seedPool,
+      });
+      await seedPersistentSuiteFinalizations(
+        verificationOpsRepository,
+        seededIds.screeningSuiteId,
+        12,
+      );
+
+      const { server, baseUrl } = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentUser(baseUrl, "persistent.admin");
+
+        const latestWindowResponse = await fetch(
+          `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.screeningSuiteId}/finalized-results?history_window=latest_10`,
+          {
+            headers: { Cookie: adminCookie },
+          },
+        );
+        assert.equal(latestWindowResponse.status, 200);
+        const latestWindow = (await latestWindowResponse.json()) as Array<{
+          run: { id: string };
+          evidence: Array<{ id: string }>;
+        }>;
+        assert.equal(latestWindow.length, 10);
+        assert.equal(latestWindow[0]?.run.id, "window-run-12");
+        assert.equal(latestWindow[9]?.run.id, "window-run-03");
+        assert.ok(latestWindow.every((entry) => entry.evidence.length === 1));
+
+        const lastSevenDaysResponse = await fetch(
+          `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.screeningSuiteId}/finalized-results?history_window=last_7_days`,
+          {
+            headers: { Cookie: adminCookie },
+          },
+        );
+        assert.equal(lastSevenDaysResponse.status, 200);
+        const lastSevenDays = (await lastSevenDaysResponse.json()) as Array<{
+          run: { id: string };
+        }>;
+        assert.deepEqual(
+          lastSevenDays.map((entry) => entry.run.id),
+          [
+            "window-run-12",
+            "window-run-11",
+            "window-run-10",
+            "window-run-09",
+            "window-run-08",
+            "window-run-07",
+            "window-run-06",
+            "window-run-05",
+          ],
+        );
+      } finally {
+        await stopServer(server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+async function seedPersistentSuiteFinalizations(
+  verificationOpsRepository: PostgresVerificationOpsRepository,
+  suiteId: string,
+  count: number,
+): Promise<void> {
+  for (let index = 1; index <= count; index += 1) {
+    const suffix = String(index).padStart(2, "0");
+    const timestamp = new Date(Date.UTC(2026, 3, index, 12, 0, 0)).toISOString();
+    const runId = `window-run-${suffix}`;
+    const evidenceId = `window-evidence-${suffix}`;
+    const evidencePackId = `window-pack-${suffix}`;
+
+    await verificationOpsRepository.saveVerificationEvidence({
+      id: evidenceId,
+      kind: "url",
+      label: `Window evidence ${suffix}`,
+      uri: `https://example.test/window/${suffix}`,
+      created_at: timestamp,
+    });
+    await verificationOpsRepository.saveEvaluationRun({
+      id: runId,
+      suite_id: suiteId,
+      run_item_count: 0,
+      status: "passed",
+      evidence_ids: [evidenceId],
+      started_at: timestamp,
+      finished_at: timestamp,
+    });
+    await verificationOpsRepository.saveEvaluationEvidencePack({
+      id: evidencePackId,
+      experiment_run_id: runId,
+      summary_status: "recommended",
+      score_summary: `Window summary ${suffix}`,
+      created_at: timestamp,
+    });
+    await verificationOpsRepository.saveEvaluationPromotionRecommendation({
+      id: `window-recommendation-${suffix}`,
+      experiment_run_id: runId,
+      evidence_pack_id: evidencePackId,
+      status: "recommended",
+      decision_reason: `Window recommendation ${suffix}`,
+      created_at: timestamp,
+    });
+  }
+}
+
 async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });

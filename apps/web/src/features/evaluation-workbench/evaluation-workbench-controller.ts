@@ -4,6 +4,7 @@ import {
   createEvaluationRun,
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
+  getEvaluationRunFinalizedResult,
   listEvaluationSuiteFinalizedResults,
   listEvaluationRunEvidenceByRunId,
   listEvaluationRunItemsByRunId,
@@ -377,9 +378,11 @@ async function loadEvaluationWorkbenchOverview(
       runs.map((run) => run.id),
       preferredRunId,
     );
+    const selectedRun = selectedRunId == null
+      ? null
+      : (runs.find((run) => run.id === selectedRunId) ?? null);
 
     if (selectedRunId != null) {
-      const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
       const [nextSampleSetItems, nextRunItems, nextRunEvidence] = await Promise.all([
         selectedRun?.sample_set_id
           ? listEvaluationSampleSetItems(client, selectedRun.sample_set_id).then(
@@ -414,11 +417,28 @@ async function loadEvaluationWorkbenchOverview(
       finalizedRunHistory,
       windowPreset: input?.historyWindowPreset,
     });
-
+    const boundedSelectedFinalization =
+      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
+    const requiresSelectedRunFallback =
+      selectedRun != null &&
+      boundedSelectedFinalization == null &&
+      isRunOutsideVisibleFinalizedHistory(finalizedRunHistory, selectedRun);
     const previousRunId =
       selectedRunId == null
         ? null
-        : findPreviousFinalizedRunHistoryRunId(finalizedRunHistory, selectedRunId);
+        : findPreviousFinalizedRunHistoryRunId(finalizedRunHistory, selectedRunId) ??
+          (requiresSelectedRunFallback
+            ? findPreviousRunIdFromRuns(runs, selectedRunId)
+            : null);
+
+    selectedRunFinalization = boundedSelectedFinalization == null
+      ? null
+      : stripSuiteFinalizationEvidence(boundedSelectedFinalization);
+    if (requiresSelectedRunFallback && selectedRun != null) {
+      selectedRunFinalization = (
+        await getEvaluationRunFinalizedResult(client, selectedRun.id)
+      ).body;
+    }
 
     if (previousRunId != null) {
       const previousRun = runs.find((run) => run.id === previousRunId) ?? null;
@@ -428,10 +448,6 @@ async function loadEvaluationWorkbenchOverview(
         ).body;
       }
     }
-
-    selectedRunFinalization = stripSuiteFinalizationEvidence(
-      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null,
-    );
 
     const defaultComparison = suiteOperationsSummary.defaultComparison;
     suiteOperations = {
@@ -641,4 +657,30 @@ function findPreviousFinalizedRunHistoryRunId(
   const selectedIndex = entries.findIndex((entry) => entry.run.id === selectedRunId);
   if (selectedIndex === -1) return null;
   return entries.slice(selectedIndex + 1)[0]?.run.id ?? null;
+}
+
+function findPreviousRunIdFromRuns(
+  runs: EvaluationRunViewModel[],
+  selectedRunId: string,
+) {
+  const sortedRuns = [...runs].sort((left, right) => compareRunRecency(right, left));
+  const selectedIndex = sortedRuns.findIndex((run) => run.id === selectedRunId);
+  if (selectedIndex === -1) return null;
+  return sortedRuns[selectedIndex + 1]?.id ?? null;
+}
+
+function isRunOutsideVisibleFinalizedHistory(
+  entries: EvaluationWorkbenchFinalizedRunHistoryEntry[],
+  run: EvaluationRunViewModel,
+) {
+  if (entries.length === 0) {
+    return false;
+  }
+
+  if (entries.some((entry) => entry.run.id === run.id)) {
+    return false;
+  }
+
+  const oldestVisibleRun = entries[entries.length - 1]?.run;
+  return oldestVisibleRun != null && compareRunRecency(run, oldestVisibleRun) < 0;
 }

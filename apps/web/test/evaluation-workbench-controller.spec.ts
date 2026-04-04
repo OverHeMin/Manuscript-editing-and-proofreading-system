@@ -2763,6 +2763,201 @@ test("evaluation workbench controller exposes a bounded suite operations overvie
   );
 });
 
+test("evaluation workbench controller falls back for manual inspection outside the bounded suite window", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const finalizedResults = Array.from({ length: 12 }, (_, index) =>
+    createSuiteHistoryFinalizedResult({
+      id: `run-${12 - index}`,
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: `2026-04-${String(12 - index).padStart(2, "0")}T12:00:00.000Z`,
+    }),
+  );
+  const boundedFinalizedResults = finalizedResults.slice(0, 10);
+  const runs = finalizedResults.map((entry) => entry.run);
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Regression Samples",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: runs as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const runItemsMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/items$/.exec(
+        input.url,
+      );
+      if (runItemsMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `item-${runItemsMatch[1]}`,
+              evaluation_run_id: runItemsMatch[1],
+              sample_set_item_id: "sample-item-1",
+              lane: "candidate",
+              result_asset_id: `asset-${runItemsMatch[1]}`,
+              hard_gate_passed: true,
+              weighted_score: 90,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      const evidenceMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/evidence$/.exec(
+        input.url,
+      );
+      if (evidenceMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `evidence-${evidenceMatch[1]}`,
+              kind: "url",
+              label: `Evidence for ${evidenceMatch[1]}`,
+              uri: `https://example.test/evidence/${evidenceMatch[1]}`,
+              created_at: "2026-04-12T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result"
+      ) {
+        const selectedFinalized = finalizedResults.find((entry) => entry.run.id === "run-2");
+        assert.ok(selectedFinalized);
+        return {
+          status: 200,
+          body: {
+            run: selectedFinalized.run,
+            evidence_pack: selectedFinalized.evidence_pack,
+            recommendation: selectedFinalized.recommendation,
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: boundedFinalizedResults as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-2",
+  });
+  const suiteOperations = getSuiteOperationsSnapshot(overview);
+
+  assert.equal(overview.selectedRunId, "run-2");
+  assert.equal(overview.selectedRunFinalization?.evidence_pack.id, "pack-run-2");
+  assert.equal(overview.selectedRunEvidence[0]?.id, "evidence-run-2");
+  assert.equal(overview.previousRunEvidence[0]?.id, "evidence-run-1");
+  assert.deepEqual(
+    suiteOperations.visibleHistory?.map((entry) => entry.run.id),
+    ["run-12", "run-11", "run-10", "run-9", "run-8", "run-7", "run-6", "run-5", "run-4", "run-3"],
+  );
+  assert.equal(suiteOperations.defaultComparison?.selected.run.id, "run-12");
+  assert.equal(suiteOperations.defaultComparison?.baseline.run.id, "run-11");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
+    ],
+  );
+});
+
 test("evaluation workbench controller keeps manuscript handoff while preserving the suite-first comparison default", async () => {
   const finalizedResults = [
     createSuiteHistoryFinalizedResult({

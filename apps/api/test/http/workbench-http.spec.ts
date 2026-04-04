@@ -10,6 +10,7 @@ import {
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
 import {
+  createWorkbenchRuntime,
   loginAsDemoUser,
   startWorkbenchServer,
   stopServer,
@@ -1116,6 +1117,50 @@ test("verification ops http routes support an admin evaluation flow and learning
   }
 });
 
+test("verification ops http suite finalized-results route enforces latest_10 and all_suite windows in memory runtime", async () => {
+  const { server, baseUrl, runtime } = await startWorkbenchServerWithRuntime();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    await seedInMemorySuiteFinalizations(runtime, "suite-editing-1", 12);
+
+    const latestWindowResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/suite-editing-1/finalized-results?history_window=latest_10`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(latestWindowResponse.status, 200);
+    const latestWindow = (await latestWindowResponse.json()) as Array<{
+      run: { id: string };
+      evidence: Array<{ id: string }>;
+    }>;
+    assert.equal(latestWindow.length, 10);
+    assert.ok(latestWindow.every((entry) => entry.evidence.length === 1));
+
+    const allSuiteResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/suite-editing-1/finalized-results?history_window=all_suite`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(allSuiteResponse.status, 200);
+    const allSuite = (await allSuiteResponse.json()) as Array<{
+      run: { id: string };
+    }>;
+    assert.equal(allSuite.length, 12);
+    assert.ok(
+      latestWindow.every((entry) => allSuite.some((candidate) => candidate.run.id === entry.run.id)),
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 async function startDefaultDemoServer(): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
@@ -1135,6 +1180,69 @@ async function startDefaultDemoServer(): Promise<{
     server,
     baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
   };
+}
+
+async function startWorkbenchServerWithRuntime(): Promise<{
+  server: ApiHttpServer;
+  baseUrl: string;
+  runtime: ReturnType<typeof createWorkbenchRuntime>;
+}> {
+  const runtime = createWorkbenchRuntime();
+  const server = createApiHttpServer({
+    appEnv: "local",
+    allowedOrigins: ["http://127.0.0.1:4173"],
+    runtime: runtime as never,
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
+
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
+    runtime,
+  };
+}
+
+async function seedInMemorySuiteFinalizations(
+  runtime: ReturnType<typeof createWorkbenchRuntime>,
+  suiteId: string,
+  count: number,
+): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    const run = (
+      await runtime.verificationOpsApi.createEvaluationRun({
+        actorRole: "admin",
+        input: {
+          suiteId,
+        },
+      })
+    ).body;
+    const evidence = (
+      await runtime.verificationOpsApi.recordVerificationEvidence({
+        actorRole: "admin",
+        input: {
+          kind: "url",
+          label: `Window evidence ${index + 1}`,
+          uri: `https://example.test/window/${index + 1}`,
+        },
+      })
+    ).body;
+
+    await runtime.verificationOpsApi.completeEvaluationRun({
+      actorRole: "admin",
+      runId: run.id,
+      status: "passed",
+      evidenceIds: [evidence.id],
+    });
+    await runtime.verificationOpsApi.finalizeEvaluationRun({
+      actorRole: "admin",
+      runId: run.id,
+    });
+  }
 }
 
 test("workbench http proofreading publish route creates a human-final asset and advances export resolution", async () => {
