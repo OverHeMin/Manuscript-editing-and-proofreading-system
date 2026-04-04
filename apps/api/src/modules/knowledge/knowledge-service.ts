@@ -1,13 +1,33 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
+import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
+import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
+import type {
+  KnowledgeRetrievalSnapshotRecord,
+} from "../knowledge-retrieval/knowledge-retrieval-record.ts";
+import type { KnowledgeRetrievalRepository } from "../knowledge-retrieval/knowledge-retrieval-repository.ts";
+import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
+import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
+import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
+import {
+  resolveGovernedAgentContext,
+  type GovernedAgentContext,
+} from "../shared/governed-agent-context-resolver.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
+import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
+import type { TemplateModule } from "../templates/template-record.ts";
+import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
@@ -55,10 +75,47 @@ export interface UpdateKnowledgeDraftInput {
   templateBindings?: string[];
 }
 
+export interface ResolveGovernedRetrievalContextInput {
+  manuscriptId: string;
+  module: TemplateModule;
+  actorId: string;
+  actorRole: RoleKey;
+  jobId?: string;
+}
+
+export interface GovernedRetrievalContextRecord {
+  manuscript_id: string;
+  module: TemplateModule;
+  template_family_id: string;
+  knowledge_item_ids: string[];
+  retrieval_status: GovernedAgentContext["retrievalContext"]["status"];
+  retrieval_snapshot_id?: string;
+  retrieval_failure_reason?: string;
+}
+
+export interface GovernedRetrievalResolverDependencies {
+  manuscriptRepository: ManuscriptRepository;
+  moduleTemplateRepository: ModuleTemplateRepository;
+  executionGovernanceService: ExecutionGovernanceService;
+  promptSkillRegistryRepository: PromptSkillRegistryRepository;
+  aiGatewayService: AiGatewayService;
+  sandboxProfileService: SandboxProfileService;
+  agentProfileService: AgentProfileService;
+  agentRuntimeService: AgentRuntimeService;
+  runtimeBindingService: RuntimeBindingService;
+  toolPermissionPolicyService: ToolPermissionPolicyService;
+}
+
 export interface KnowledgeServiceOptions {
   repository: KnowledgeRepository;
   reviewActionRepository: KnowledgeReviewActionRepository;
   learningCandidateRepository?: LearningCandidateRepository;
+  knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
+  knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalSnapshot"
+  >;
+  governedRetrievalResolverDependencies?: GovernedRetrievalResolverDependencies;
   transactionManager?: WriteTransactionManager<KnowledgeWriteContext>;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
@@ -86,10 +143,30 @@ export class KnowledgeStatusTransitionError extends Error {
   }
 }
 
+export class GovernedRetrievalContextDependencyError extends Error {
+  constructor() {
+    super("Governed retrieval context dependencies are not configured.");
+    this.name = "GovernedRetrievalContextDependencyError";
+  }
+}
+
+export class KnowledgeRetrievalSnapshotNotFoundError extends Error {
+  constructor(snapshotId: string) {
+    super(`Knowledge retrieval snapshot ${snapshotId} was not found.`);
+    this.name = "KnowledgeRetrievalSnapshotNotFoundError";
+  }
+}
+
 export class KnowledgeService {
   private readonly repository: KnowledgeRepository;
   private readonly reviewActionRepository: KnowledgeReviewActionRepository;
   private readonly learningCandidateRepository?: LearningCandidateRepository;
+  private readonly knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
+  private readonly knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalSnapshot"
+  >;
+  private readonly governedRetrievalResolverDependencies?: GovernedRetrievalResolverDependencies;
   private readonly transactionManager: WriteTransactionManager<KnowledgeWriteContext>;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
@@ -99,6 +176,10 @@ export class KnowledgeService {
     this.repository = options.repository;
     this.reviewActionRepository = options.reviewActionRepository;
     this.learningCandidateRepository = options.learningCandidateRepository;
+    this.knowledgeRetrievalRepository = options.knowledgeRetrievalRepository;
+    this.knowledgeRetrievalService = options.knowledgeRetrievalService;
+    this.governedRetrievalResolverDependencies =
+      options.governedRetrievalResolverDependencies;
     this.transactionManager =
       options.transactionManager ??
       createKnowledgeWriteTransactionManager({
@@ -337,6 +418,86 @@ export class KnowledgeService {
   ): Promise<KnowledgeReviewActionRecord[]> {
     await this.requireKnowledgeItem(knowledgeItemId);
     return this.reviewActionRepository.listByKnowledgeItemId(knowledgeItemId);
+  }
+
+  async resolveGovernedRetrievalContext(
+    input: ResolveGovernedRetrievalContextInput,
+  ): Promise<GovernedRetrievalContextRecord> {
+    this.permissionGuard.assert(input.actorRole, "permissions.manage");
+
+    if (
+      !this.governedRetrievalResolverDependencies ||
+      !this.knowledgeRetrievalService
+    ) {
+      throw new GovernedRetrievalContextDependencyError();
+    }
+
+    const governedContext = await resolveGovernedAgentContext({
+      manuscriptId: input.manuscriptId,
+      module: input.module,
+      jobId: input.jobId ?? this.createId(),
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      manuscriptRepository:
+        this.governedRetrievalResolverDependencies.manuscriptRepository,
+      moduleTemplateRepository:
+        this.governedRetrievalResolverDependencies.moduleTemplateRepository,
+      executionGovernanceService:
+        this.governedRetrievalResolverDependencies.executionGovernanceService,
+      promptSkillRegistryRepository:
+        this.governedRetrievalResolverDependencies.promptSkillRegistryRepository,
+      knowledgeRepository: this.repository,
+      aiGatewayService:
+        this.governedRetrievalResolverDependencies.aiGatewayService,
+      sandboxProfileService:
+        this.governedRetrievalResolverDependencies.sandboxProfileService,
+      agentProfileService:
+        this.governedRetrievalResolverDependencies.agentProfileService,
+      agentRuntimeService:
+        this.governedRetrievalResolverDependencies.agentRuntimeService,
+      runtimeBindingService:
+        this.governedRetrievalResolverDependencies.runtimeBindingService,
+      toolPermissionPolicyService:
+        this.governedRetrievalResolverDependencies.toolPermissionPolicyService,
+      knowledgeRetrievalService: this.knowledgeRetrievalService,
+    });
+
+    return {
+      manuscript_id: governedContext.manuscript.id,
+      module: input.module,
+      template_family_id: governedContext.executionProfile.template_family_id,
+      knowledge_item_ids: governedContext.moduleContext.knowledgeSelections.map(
+        (selection) => selection.knowledgeItem.id,
+      ),
+      retrieval_status: governedContext.retrievalContext.status,
+      ...(governedContext.retrievalContext.retrieval_snapshot_id
+        ? {
+            retrieval_snapshot_id:
+              governedContext.retrievalContext.retrieval_snapshot_id,
+          }
+        : {}),
+      ...(governedContext.retrievalContext.failure_reason
+        ? {
+            retrieval_failure_reason:
+              governedContext.retrievalContext.failure_reason,
+          }
+        : {}),
+    };
+  }
+
+  async getRetrievalSnapshot(
+    actorRole: RoleKey,
+    snapshotId: string,
+  ): Promise<KnowledgeRetrievalSnapshotRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const snapshot =
+      await this.knowledgeRetrievalRepository?.findRetrievalSnapshotById(snapshotId);
+    if (!snapshot) {
+      throw new KnowledgeRetrievalSnapshotNotFoundError(snapshotId);
+    }
+
+    return snapshot;
   }
 
   private async requireKnowledgeItem(

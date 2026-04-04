@@ -4,6 +4,7 @@ import type { RoleKey } from "../../users/roles.ts";
 import type {
   CreateGovernedLearningCandidateInput,
 } from "../learning/learning-service.ts";
+import type { KnowledgeRetrievalRepository } from "../knowledge-retrieval/knowledge-retrieval-repository.ts";
 import type {
   LearningCandidateRecord,
   LearningCandidateType,
@@ -103,6 +104,8 @@ export interface RecordVerificationEvidenceInput {
   uri?: string;
   artifactAssetId?: string;
   checkProfileId?: string;
+  retrievalSnapshotId?: string;
+  retrievalQualityRunId?: string;
 }
 
 export interface CreateEvaluationRunInput {
@@ -177,6 +180,7 @@ export interface VerificationOpsServiceOptions {
   repository: VerificationOpsRepository;
   reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   learningService?: VerificationOpsLearningService;
+  knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
   toolGatewayRepository: ToolGatewayRepository;
   governedRunCheckExecutor?: GovernedRunCheckExecutor;
   permissionGuard?: PermissionGuard;
@@ -328,10 +332,18 @@ export class VerificationOpsLearningServiceRequiredError extends Error {
   }
 }
 
+export class VerificationRetrievalDependencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VerificationRetrievalDependencyError";
+  }
+}
+
 export class VerificationOpsService {
   private readonly repository: VerificationOpsRepository;
   private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   private readonly learningService?: VerificationOpsLearningService;
+  private readonly knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
   private readonly toolGatewayRepository: ToolGatewayRepository;
   private readonly governedRunCheckExecutor: GovernedRunCheckExecutor;
   private readonly permissionGuard: PermissionGuard;
@@ -343,6 +355,7 @@ export class VerificationOpsService {
     this.repository = options.repository;
     this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
     this.learningService = options.learningService;
+    this.knowledgeRetrievalRepository = options.knowledgeRetrievalRepository;
     this.toolGatewayRepository = options.toolGatewayRepository;
     this.governedRunCheckExecutor =
       options.governedRunCheckExecutor ?? createDefaultGovernedRunCheckExecutor();
@@ -609,13 +622,48 @@ export class VerificationOpsService {
   ): Promise<VerificationEvidenceRecord> {
     this.permissionGuard.assert(actorRole, "permissions.manage");
 
+    let profile: VerificationCheckProfileRecord | undefined;
     if (input.checkProfileId) {
-      const profile = await this.requireVerificationCheckProfile(input.checkProfileId);
+      profile = await this.requireVerificationCheckProfile(input.checkProfileId);
       if (profile.status !== "published") {
         throw new VerificationCheckProfileDependencyError(
           `Verification evidence requires published check profile ${profile.id}.`,
         );
       }
+    }
+
+    if (input.retrievalSnapshotId) {
+      const snapshot =
+        await this.knowledgeRetrievalRepository?.findRetrievalSnapshotById(
+          input.retrievalSnapshotId,
+        );
+      if (!snapshot) {
+        throw new VerificationRetrievalDependencyError(
+          `Verification evidence requires retrieval snapshot ${input.retrievalSnapshotId}.`,
+        );
+      }
+    }
+
+    if (input.retrievalQualityRunId) {
+      const retrievalRun =
+        await this.knowledgeRetrievalRepository?.findRetrievalQualityRunById(
+          input.retrievalQualityRunId,
+        );
+      if (!retrievalRun) {
+        throw new VerificationRetrievalDependencyError(
+          `Verification evidence requires retrieval quality run ${input.retrievalQualityRunId}.`,
+        );
+      }
+    }
+
+    if (
+      profile &&
+      (input.retrievalSnapshotId || input.retrievalQualityRunId) &&
+      profile.check_type !== "retrieval_quality"
+    ) {
+      throw new VerificationCheckProfileDependencyError(
+        `Retrieval evidence requires a retrieval_quality check profile, received ${profile.check_type}.`,
+      );
     }
 
     const record: VerificationEvidenceRecord = {
@@ -625,6 +673,8 @@ export class VerificationOpsService {
       uri: input.uri,
       artifact_asset_id: input.artifactAssetId,
       check_profile_id: input.checkProfileId,
+      retrieval_snapshot_id: input.retrievalSnapshotId,
+      retrieval_quality_run_id: input.retrievalQualityRunId,
       created_at: this.now().toISOString(),
     };
     await this.repository.saveVerificationEvidence(record);

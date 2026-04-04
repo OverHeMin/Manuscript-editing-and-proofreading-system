@@ -87,6 +87,8 @@ interface VerificationEvidenceRow {
   uri: string | null;
   artifact_asset_id: string | null;
   check_profile_id: string | null;
+  retrieval_snapshot_id: string | null;
+  retrieval_quality_run_id: string | null;
   created_at: Date;
 }
 
@@ -577,9 +579,11 @@ export class PostgresVerificationOpsRepository
           uri,
           artifact_asset_id,
           check_profile_id,
+          retrieval_snapshot_id,
+          retrieval_quality_run_id,
           created_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         on conflict (id) do update
         set
           kind = excluded.kind,
@@ -587,6 +591,8 @@ export class PostgresVerificationOpsRepository
           uri = excluded.uri,
           artifact_asset_id = excluded.artifact_asset_id,
           check_profile_id = excluded.check_profile_id,
+          retrieval_snapshot_id = excluded.retrieval_snapshot_id,
+          retrieval_quality_run_id = excluded.retrieval_quality_run_id,
           created_at = excluded.created_at
       `,
       [
@@ -596,6 +602,8 @@ export class PostgresVerificationOpsRepository
         record.uri ?? null,
         record.artifact_asset_id ?? null,
         record.check_profile_id ?? null,
+        record.retrieval_snapshot_id ?? null,
+        record.retrieval_quality_run_id ?? null,
         record.created_at,
       ],
     );
@@ -613,6 +621,8 @@ export class PostgresVerificationOpsRepository
           uri,
           artifact_asset_id,
           check_profile_id,
+          retrieval_snapshot_id,
+          retrieval_quality_run_id,
           created_at
         from verification_evidence
         where id = $1
@@ -633,6 +643,8 @@ export class PostgresVerificationOpsRepository
           uri,
           artifact_asset_id,
           check_profile_id,
+          retrieval_snapshot_id,
+          retrieval_quality_run_id,
           created_at
         from verification_evidence
         order by created_at asc, id asc
@@ -1133,6 +1145,8 @@ export class PostgresVerificationOpsRepository
           evidence.uri,
           evidence.artifact_asset_id,
           evidence.check_profile_id,
+          evidence.retrieval_snapshot_id,
+          evidence.retrieval_quality_run_id,
           evidence.created_at
         from (
           select
@@ -1268,6 +1282,12 @@ function mapVerificationEvidenceRow(
       : {}),
     ...(row.check_profile_id != null
       ? { check_profile_id: row.check_profile_id }
+      : {}),
+    ...(row.retrieval_snapshot_id != null
+      ? { retrieval_snapshot_id: row.retrieval_snapshot_id }
+      : {}),
+    ...(row.retrieval_quality_run_id != null
+      ? { retrieval_quality_run_id: row.retrieval_quality_run_id }
       : {}),
   };
 }

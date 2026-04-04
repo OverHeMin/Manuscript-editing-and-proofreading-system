@@ -23,6 +23,7 @@ import {
   ToolPermissionPolicyNotFoundError,
   type ToolPermissionPolicyService,
 } from "../tool-permission-policies/tool-permission-policy-service.ts";
+import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import {
   type GovernedModuleContext,
   type ResolveGovernedModuleContextInput,
@@ -35,6 +36,12 @@ export interface GovernedAgentVerificationExpectations {
   release_check_profile_id?: string;
 }
 
+export interface GovernedAgentRetrievalContext {
+  status: "recorded" | "failed_open" | "skipped";
+  retrieval_snapshot_id?: string;
+  failure_reason?: string;
+}
+
 export interface GovernedAgentContext {
   moduleContext: GovernedModuleContext;
   manuscript: GovernedModuleContext["manuscript"];
@@ -45,6 +52,7 @@ export interface GovernedAgentContext {
   agentProfile: AgentProfileRecord;
   toolPolicy: ToolPermissionPolicyRecord;
   verificationExpectations: GovernedAgentVerificationExpectations;
+  retrievalContext: GovernedAgentRetrievalContext;
 }
 
 export interface ResolveGovernedAgentContextInput
@@ -54,6 +62,10 @@ export interface ResolveGovernedAgentContextInput
   agentRuntimeService: AgentRuntimeService;
   runtimeBindingService: RuntimeBindingService;
   toolPermissionPolicyService: ToolPermissionPolicyService;
+  knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalSnapshot"
+  >;
 }
 
 export class ActiveRuntimeBindingNotFoundError extends Error {
@@ -107,6 +119,11 @@ export async function resolveGovernedAgentContext(
     moduleContext,
   });
 
+  const retrievalContext = await maybeRecordGovernedRetrievalSnapshot({
+    moduleContext,
+    knowledgeRetrievalService: input.knowledgeRetrievalService,
+  });
+
   return {
     moduleContext,
     manuscript: moduleContext.manuscript,
@@ -123,6 +140,7 @@ export async function resolveGovernedAgentContext(
       evaluation_suite_ids: [...activeBinding.evaluation_suite_ids],
       release_check_profile_id: activeBinding.release_check_profile_id,
     },
+    retrievalContext,
   };
 }
 
@@ -313,4 +331,87 @@ function sameOrderedIds(left: string[], right: string[]): boolean {
   }
 
   return left.every((value, index) => value === right[index]);
+}
+
+async function maybeRecordGovernedRetrievalSnapshot(input: {
+  moduleContext: GovernedModuleContext;
+  knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalSnapshot"
+  >;
+}): Promise<GovernedAgentRetrievalContext> {
+  if (!input.knowledgeRetrievalService) {
+    return {
+      status: "skipped",
+    };
+  }
+
+  const knowledgeSelections = input.moduleContext.knowledgeSelections;
+  const snapshotItems = knowledgeSelections.map((selection, index) =>
+    buildSnapshotItem(selection.knowledgeItem.id, index, selection),
+  );
+
+  try {
+    const snapshot = await input.knowledgeRetrievalService.recordRetrievalSnapshot({
+      module: input.moduleContext.moduleTemplate.module,
+      manuscriptId: input.moduleContext.manuscript.id,
+      manuscriptType: input.moduleContext.manuscript.manuscript_type,
+      templateFamilyId: input.moduleContext.executionProfile.template_family_id,
+      queryText: [
+        `governed_agent_context:${input.moduleContext.moduleTemplate.module}`,
+        `manuscript:${input.moduleContext.manuscript.title}`,
+        `template_family:${input.moduleContext.executionProfile.template_family_id}`,
+      ].join("\n"),
+      queryContext: {
+        source: "governed_agent_context",
+        execution_profile_id: input.moduleContext.executionProfile.id,
+        module_template_id: input.moduleContext.moduleTemplate.id,
+        prompt_template_id: input.moduleContext.promptTemplate.id,
+        knowledge_item_ids: knowledgeSelections.map(
+          (selection) => selection.knowledgeItem.id,
+        ),
+      },
+      retrieverConfig: {
+        strategy: "template_pack",
+        topK: Math.max(snapshotItems.length, 1),
+        filters: {
+          source: "governed_agent_context",
+        },
+      },
+      retrievedItems: snapshotItems,
+      rerankedItems: snapshotItems,
+    });
+
+    return {
+      status: "recorded",
+      retrieval_snapshot_id: snapshot.id,
+    };
+  } catch (error) {
+    return {
+      status: "failed_open",
+      failure_reason:
+        error instanceof Error ? error.message : "Unknown retrieval snapshot failure.",
+    };
+  }
+}
+
+function buildSnapshotItem(
+  knowledgeItemId: string,
+  index: number,
+  selection: GovernedModuleContext["knowledgeSelections"][number],
+): Parameters<
+  NonNullable<ResolveGovernedAgentContextInput["knowledgeRetrievalService"]>["recordRetrievalSnapshot"]
+>[0]["retrievedItems"][number] {
+  return {
+    knowledgeItemId,
+    retrievalRank: index + 1,
+    retrievalScore: Math.max(0, 1 - index * 0.05),
+    rerankScore: Math.max(0, 1 - index * 0.05),
+    metadata: {
+      match_source: selection.matchSource,
+      match_source_id: selection.matchSourceId,
+      binding_rule_id: selection.bindingRuleId,
+      match_reasons: [...selection.matchReasons],
+    },
+  };
 }

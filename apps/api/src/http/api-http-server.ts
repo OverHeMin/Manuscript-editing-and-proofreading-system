@@ -120,11 +120,17 @@ import {
   KnowledgeItemNotFoundError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
+  KnowledgeRetrievalSnapshotNotFoundError,
   type CreateKnowledgeDraftInput,
+  type ResolveGovernedRetrievalContextInput,
   type KnowledgeRecord,
   type KnowledgeReviewActionRecord,
   type UpdateKnowledgeDraftInput,
 } from "../modules/knowledge/index.ts";
+import {
+  InMemoryKnowledgeRetrievalRepository,
+  KnowledgeRetrievalService,
+} from "../modules/knowledge-retrieval/index.ts";
 import {
   createLearningApi,
   InMemoryLearningCandidateRepository,
@@ -224,6 +230,7 @@ import {
   InMemoryTemplateFamilyRepository,
   ModuleTemplateNotFoundError,
   ModuleTemplateStatusTransitionError,
+  TemplateRetrievalGoldSetVersionValidationError,
   TemplateFamilyNotFoundError,
   TemplateFamilyManuscriptTypeMismatchError,
   TemplateGovernanceService,
@@ -252,6 +259,7 @@ import {
   VerificationEvidenceNotFoundError,
   VerificationOpsLearningServiceRequiredError,
   VerificationOpsService,
+  VerificationRetrievalDependencyError,
   VerificationToolDependencyError,
 } from "../modules/verification-ops/index.ts";
 import {
@@ -497,6 +505,10 @@ type HttpRouteMatch =
       templateFamilyId: string;
     }
   | {
+      route: "templates-create-retrieval-quality-run";
+      templateFamilyId: string;
+    }
+  | {
       route: "templates-publish-module-template";
       moduleTemplateId: string;
     }
@@ -633,6 +645,13 @@ type HttpRouteMatch =
   | {
       route: "knowledge-create-harness-dataset-candidate";
       humanFinalAssetId: string;
+    }
+  | {
+      route: "knowledge-resolve-governed-retrieval-context";
+    }
+  | {
+      route: "knowledge-get-retrieval-snapshot";
+      snapshotId: string;
     }
   | {
       route: "knowledge-archive";
@@ -946,6 +965,7 @@ export function createInMemoryApiRuntime(input: {
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
+  const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const auditService = new InMemoryAuditService();
 
   const documentAssetService = new DocumentAssetService({
@@ -970,6 +990,7 @@ export function createInMemoryApiRuntime(input: {
     repository: verificationOpsRepository,
     reviewedCaseSnapshotRepository,
     learningService,
+    knowledgeRetrievalRepository,
     toolGatewayRepository,
   });
   const harnessDatasetService = new HarnessDatasetService({
@@ -980,15 +1001,15 @@ export function createInMemoryApiRuntime(input: {
     verificationOpsRepository,
     permissionGuard,
   });
-  const knowledgeService = new KnowledgeService({
-    repository: knowledgeRepository,
-    reviewActionRepository: knowledgeReviewActionRepository,
-    learningCandidateRepository,
+  const knowledgeRetrievalService = new KnowledgeRetrievalService({
+    repository: knowledgeRetrievalRepository,
   });
   const templateService = new TemplateGovernanceService({
     templateFamilyRepository,
     moduleTemplateRepository,
     learningCandidateRepository,
+    harnessDatasetRepository,
+    knowledgeRetrievalService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -1064,6 +1085,25 @@ export function createInMemoryApiRuntime(input: {
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
+  });
+  const knowledgeService = new KnowledgeService({
+    repository: knowledgeRepository,
+    reviewActionRepository: knowledgeReviewActionRepository,
+    learningCandidateRepository,
+    knowledgeRetrievalRepository,
+    knowledgeRetrievalService,
+    governedRetrievalResolverDependencies: {
+      manuscriptRepository,
+      moduleTemplateRepository,
+      executionGovernanceService,
+      promptSkillRegistryRepository,
+      aiGatewayService,
+      sandboxProfileService,
+      agentProfileService,
+      agentRuntimeService,
+      runtimeBindingService,
+      toolPermissionPolicyService,
+    },
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
@@ -2518,6 +2558,24 @@ async function handleRoute(
       return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
         templateFamilyId: routeMatch.templateFamilyId,
       });
+    case "templates-create-retrieval-quality-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<typeof runtime.templateApi.createRetrievalQualityRun>[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.templateApi.createRetrievalQualityRun({
+        templateFamilyId: routeMatch.templateFamilyId,
+        actorRole: session.user.role,
+        input: {
+          ...body.input,
+          createdBy: session.user.id,
+        },
+      });
+    }
     case "templates-publish-module-template": {
       const session = await requirePermission(req, runtime, "templates.publish");
       return runtime.templateApi.publishModuleTemplate({
@@ -2879,6 +2937,28 @@ async function handleRoute(
           ...body.input,
           createdBy: session.user.id,
         },
+      });
+    }
+    case "knowledge-resolve-governed-retrieval-context": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Omit<
+        ResolveGovernedRetrievalContextInput,
+        "actorId" | "actorRole"
+      >;
+
+      return runtime.knowledgeApi.resolveGovernedRetrievalContext({
+        input: {
+          ...body,
+          actorId: session.user.id,
+          actorRole: session.user.role,
+        },
+      });
+    }
+    case "knowledge-get-retrieval-snapshot": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.knowledgeApi.getRetrievalSnapshot({
+        actorRole: session.user.role,
+        snapshotId: routeMatch.snapshotId,
       });
     }
     case "knowledge-archive":
@@ -3527,6 +3607,20 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-create-draft" };
   }
 
+  if (method === "POST" && path === "/api/v1/knowledge/retrieval-context") {
+    return { route: "knowledge-resolve-governed-retrieval-context" };
+  }
+
+  const getKnowledgeRetrievalSnapshotMatch = path.match(
+    /^\/api\/v1\/knowledge\/retrieval-snapshots\/([^/]+)$/,
+  );
+  if (method === "GET" && getKnowledgeRetrievalSnapshotMatch) {
+    return {
+      route: "knowledge-get-retrieval-snapshot",
+      snapshotId: getKnowledgeRetrievalSnapshotMatch[1],
+    };
+  }
+
   const manuscriptAssetListMatch = path.match(
     /^\/api\/v1\/manuscripts\/([^/]+)\/assets$/,
   );
@@ -3602,6 +3696,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "templates-list-module-templates",
       templateFamilyId: moduleTemplateListMatch[1],
+    };
+  }
+
+  const createTemplateRetrievalQualityRunMatch = path.match(
+    /^\/api\/v1\/templates\/families\/([^/]+)\/retrieval-quality-runs$/,
+  );
+  if (method === "POST" && createTemplateRetrievalQualityRunMatch) {
+    return {
+      route: "templates-create-retrieval-quality-run",
+      templateFamilyId: createTemplateRetrievalQualityRunMatch[1],
     };
   }
 
@@ -4364,7 +4468,8 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationRunItemNotFoundError ||
     error instanceof VerificationEvidenceNotFoundError ||
     error instanceof EvaluationEvidencePackNotFoundError ||
-    error instanceof EvaluationSampleSetSourceSnapshotNotFoundError
+    error instanceof EvaluationSampleSetSourceSnapshotNotFoundError ||
+    error instanceof KnowledgeRetrievalSnapshotNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -4403,7 +4508,8 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationLearningSnapshotNotInRunError ||
     error instanceof EvaluationExperimentBindingError ||
     error instanceof HarnessDatasetSourceResolutionError ||
-    error instanceof HarnessGoldSetVersionExportValidationError
+    error instanceof HarnessGoldSetVersionExportValidationError ||
+    error instanceof TemplateRetrievalGoldSetVersionValidationError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -4428,7 +4534,8 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationLearningCandidateTypeError ||
     error instanceof VerificationOpsLearningServiceRequiredError ||
     error instanceof ReviewedCaseSnapshotRepositoryRequiredError ||
-    error instanceof EvaluationSampleSetSourceEligibilityError
+    error instanceof EvaluationSampleSetSourceEligibilityError ||
+    error instanceof VerificationRetrievalDependencyError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

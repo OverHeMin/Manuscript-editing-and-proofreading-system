@@ -4,7 +4,8 @@ import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 export type VerificationCheckType =
   | "browser_qa"
   | "benchmark"
-  | "deploy_verification";
+  | "deploy_verification"
+  | "retrieval_quality";
 export type RegistryAssetStatus = "draft" | "published" | "archived";
 export type EvaluationSuiteStatus = "draft" | "active" | "archived";
 export type EvaluationSuiteType = "regression" | "release_gate";
@@ -115,6 +116,8 @@ export interface VerificationEvidenceRecord {
   uri?: string;
   artifact_asset_id?: string;
   check_profile_id?: string;
+  retrieval_snapshot_id?: string;
+  retrieval_quality_run_id?: string;
   created_at: string;
 }
 

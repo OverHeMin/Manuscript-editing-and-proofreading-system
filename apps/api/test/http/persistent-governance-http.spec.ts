@@ -10,6 +10,7 @@ import { createPersistentGovernanceRuntime } from "../../src/http/persistent-gov
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
 import { PostgresDocumentAssetRepository } from "../../src/modules/assets/index.ts";
 import { PostgresHarnessDatasetRepository } from "../../src/modules/harness-datasets/index.ts";
+import { PostgresKnowledgeRetrievalRepository } from "../../src/modules/knowledge-retrieval/index.ts";
 import {
   PostgresKnowledgeRepository,
   PostgresKnowledgeReviewActionRepository,
@@ -1368,6 +1369,14 @@ const persistentHarnessWorkbenchFixtureIds = {
   jsonPublicationId: "78787878-7878-4787-8787-787878787878",
 } as const;
 
+const persistentRetrievalQualityFixtureIds = {
+  manuscriptId: "90909090-9090-4090-8090-909090909090",
+  knowledgeItemId: "91919191-9191-4191-8191-919191919191",
+  goldSetFamilyId: "92929292-9292-4292-8292-929292929292",
+  goldSetVersionId: "93939393-9393-4393-8393-939393939393",
+  rubricId: "94949494-9494-4494-8494-949494949494",
+} as const;
+
 test("persistent governance runtime creates additive harness dataset draft handoffs from governed sources", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -1722,6 +1731,298 @@ test("persistent governance runtime lists harness dataset workbench state and ex
   });
 });
 
+test("persistent governance runtime records governed retrieval snapshots and retrieval-quality evidence additively", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const governedFixture = await createPersistentRetrievalQualityFixture({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          pool: seedPool,
+        });
+
+        const retrievalContextResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/retrieval-context`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: persistentRetrievalQualityFixtureIds.manuscriptId,
+              module: "editing",
+            }),
+          },
+        );
+        const retrievalContext = (await retrievalContextResponse.json()) as {
+          template_family_id: string;
+          knowledge_item_ids: string[];
+          retrieval_status: string;
+          retrieval_snapshot_id?: string;
+          retrieval_failure_reason?: string;
+        };
+
+        assert.equal(retrievalContextResponse.status, 200);
+        assert.equal(retrievalContext.template_family_id, governedFixture.familyId);
+        assert.deepEqual(retrievalContext.knowledge_item_ids, [
+          persistentRetrievalQualityFixtureIds.knowledgeItemId,
+        ]);
+        assert.equal(retrievalContext.retrieval_status, "recorded");
+        assert.ok(
+          retrievalContext.retrieval_snapshot_id,
+          retrievalContext.retrieval_failure_reason ??
+            "Expected governed retrieval context to return a retrieval snapshot id.",
+        );
+
+        const retrievalSnapshotResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/retrieval-snapshots/${retrievalContext.retrieval_snapshot_id}`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const retrievalSnapshot = (await retrievalSnapshotResponse.json()) as {
+          id: string;
+          module: string;
+          template_family_id?: string;
+          retrieved_items: Array<{
+            knowledge_item_id: string;
+          }>;
+          reranked_items: Array<{
+            knowledge_item_id: string;
+          }>;
+        };
+
+        assert.equal(retrievalSnapshotResponse.status, 200);
+        assert.equal(retrievalSnapshot.id, retrievalContext.retrieval_snapshot_id);
+        assert.equal(retrievalSnapshot.module, "editing");
+        assert.equal(retrievalSnapshot.template_family_id, governedFixture.familyId);
+        assert.equal(
+          retrievalSnapshot.retrieved_items[0]?.knowledge_item_id,
+          persistentRetrievalQualityFixtureIds.knowledgeItemId,
+        );
+        assert.equal(
+          retrievalSnapshot.reranked_items[0]?.knowledge_item_id,
+          persistentRetrievalQualityFixtureIds.knowledgeItemId,
+        );
+
+        const checkProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/check-profiles`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                name: "Persistent retrieval quality check",
+                checkType: "retrieval_quality",
+              },
+            }),
+          },
+        );
+        const checkProfile = (await checkProfileResponse.json()) as {
+          id: string;
+          check_type: string;
+        };
+
+        assert.equal(checkProfileResponse.status, 201);
+        assert.equal(checkProfile.check_type, "retrieval_quality");
+
+        const publishCheckProfileResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          },
+        );
+
+        assert.equal(publishCheckProfileResponse.status, 200);
+
+        const retrievalQualityRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/templates/families/${governedFixture.familyId}/retrieval-quality-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                module: "editing",
+                goldSetVersionId:
+                  persistentRetrievalQualityFixtureIds.goldSetVersionId,
+                retrievalSnapshotIds: [
+                  retrievalContext.retrieval_snapshot_id,
+                ],
+                retrieverConfig: {
+                  strategy: "template_pack",
+                  topK: 1,
+                  filters: {
+                    lane: "persistent_http",
+                  },
+                },
+                metricSummary: {
+                  answerRelevancy: 0.91,
+                  contextPrecision: 0.87,
+                },
+              },
+            }),
+          },
+        );
+        const retrievalQualityRun =
+          (await retrievalQualityRunResponse.json()) as {
+            id: string;
+            gold_set_version_id: string;
+            template_family_id?: string;
+            retrieval_snapshot_ids: string[];
+            metric_summary: {
+              answer_relevancy: number;
+            };
+          };
+
+        assert.equal(retrievalQualityRunResponse.status, 201);
+        assert.equal(
+          retrievalQualityRun.gold_set_version_id,
+          persistentRetrievalQualityFixtureIds.goldSetVersionId,
+        );
+        assert.equal(
+          retrievalQualityRun.template_family_id,
+          governedFixture.familyId,
+        );
+        assert.deepEqual(retrievalQualityRun.retrieval_snapshot_ids, [
+          retrievalContext.retrieval_snapshot_id,
+        ]);
+        assert.equal(
+          retrievalQualityRun.metric_summary.answer_relevancy,
+          0.91,
+        );
+
+        const evidenceResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evidence`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                kind: "url",
+                label: "Persistent retrieval quality evidence",
+                uri: `local://retrieval-quality-runs/${retrievalQualityRun.id}`,
+                checkProfileId: checkProfile.id,
+                retrievalSnapshotId:
+                  retrievalContext.retrieval_snapshot_id,
+                retrievalQualityRunId: retrievalQualityRun.id,
+              },
+            }),
+          },
+        );
+        const evidence = (await evidenceResponse.json()) as {
+          id: string;
+          check_profile_id?: string;
+          retrieval_snapshot_id?: string;
+          retrieval_quality_run_id?: string;
+        };
+
+        assert.equal(evidenceResponse.status, 201);
+        assert.equal(evidence.check_profile_id, checkProfile.id);
+        assert.equal(
+          evidence.retrieval_snapshot_id,
+          retrievalContext.retrieval_snapshot_id,
+        );
+        assert.equal(evidence.retrieval_quality_run_id, retrievalQualityRun.id);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const persistedSnapshotResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/retrieval-snapshots/${retrievalContext.retrieval_snapshot_id}`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const persistedSnapshot = (await persistedSnapshotResponse.json()) as {
+            id: string;
+            retrieved_items: Array<{
+              knowledge_item_id: string;
+            }>;
+          };
+          const persistedEvidenceResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evidence/${evidence.id}`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const persistedEvidence = (await persistedEvidenceResponse.json()) as {
+            retrieval_snapshot_id?: string;
+            retrieval_quality_run_id?: string;
+          };
+          const retrievalRepository = new PostgresKnowledgeRetrievalRepository({
+            client: seedPool,
+          });
+          const persistedQualityRun =
+            await retrievalRepository.findRetrievalQualityRunById(
+              retrievalQualityRun.id,
+            );
+
+          assert.equal(persistedSnapshotResponse.status, 200);
+          assert.equal(persistedSnapshot.id, retrievalContext.retrieval_snapshot_id);
+          assert.equal(
+            persistedSnapshot.retrieved_items[0]?.knowledge_item_id,
+            persistentRetrievalQualityFixtureIds.knowledgeItemId,
+          );
+          assert.equal(persistedEvidenceResponse.status, 200);
+          assert.equal(
+            persistedEvidence.retrieval_snapshot_id,
+            retrievalContext.retrieval_snapshot_id,
+          );
+          assert.equal(
+            persistedEvidence.retrieval_quality_run_id,
+            retrievalQualityRun.id,
+          );
+          assert.equal(persistedQualityRun?.template_family_id, governedFixture.familyId);
+          assert.deepEqual(persistedQualityRun?.retrieval_snapshot_ids, [
+            retrievalContext.retrieval_snapshot_id,
+          ]);
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -2033,6 +2334,527 @@ async function seedPersistentHarnessDatasetWorkbenchData(pool: Pool): Promise<vo
     deidentification_gate_passed: true,
     created_at: "2026-04-04T11:02:00.000Z",
   });
+}
+
+async function createPersistentRetrievalQualityFixture(input: {
+  baseUrl: string;
+  cookie: string;
+  pool: Pool;
+}): Promise<{
+  familyId: string;
+  moduleTemplateId: string;
+}> {
+  const familyResponse = await fetch(`${input.baseUrl}/api/v1/templates/families`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      manuscriptType: "clinical_study",
+      name: "Persistent retrieval family",
+    }),
+  });
+  const family = (await familyResponse.json()) as { id: string };
+
+  assert.equal(familyResponse.status, 201);
+
+  const moduleTemplateResponse = await fetch(
+    `${input.baseUrl}/api/v1/templates/module-drafts`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        templateFamilyId: family.id,
+        module: "editing",
+        manuscriptType: "clinical_study",
+        prompt: "Persistent retrieval editing template",
+        checklist: ["Keep retrieval evidence additive."],
+      }),
+    },
+  );
+  const moduleTemplate = (await moduleTemplateResponse.json()) as { id: string };
+
+  assert.equal(moduleTemplateResponse.status, 201);
+
+  const publishModuleTemplateResponse = await fetch(
+    `${input.baseUrl}/api/v1/templates/module-templates/${moduleTemplate.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishModuleTemplateResponse.status, 200);
+
+  const promptResponse = await fetch(
+    `${input.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        name: "persistent_retrieval_prompt",
+        version: "1.0.0",
+        module: "editing",
+        manuscriptTypes: ["clinical_study"],
+      }),
+    },
+  );
+  const prompt = (await promptResponse.json()) as { id: string };
+
+  assert.equal(promptResponse.status, 201);
+
+  const publishPromptResponse = await fetch(
+    `${input.baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${prompt.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishPromptResponse.status, 200);
+
+  const skillResponse = await fetch(
+    `${input.baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        name: "persistent_retrieval_skills",
+        version: "1.0.0",
+        appliesToModules: ["editing"],
+      }),
+    },
+  );
+  const skill = (await skillResponse.json()) as { id: string };
+
+  assert.equal(skillResponse.status, 201);
+
+  const publishSkillResponse = await fetch(
+    `${input.baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skill.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishSkillResponse.status, 200);
+
+  const modelResponse = await fetch(`${input.baseUrl}/api/v1/model-registry`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      provider: "openai",
+      modelName: "persistent-retrieval-model",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    }),
+  });
+  const model = (await modelResponse.json()) as { id: string };
+
+  assert.equal(modelResponse.status, 201);
+
+  const updateRoutingPolicyResponse = await fetch(
+    `${input.baseUrl}/api/v1/model-registry/routing-policy`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        moduleDefaults: {
+          editing: model.id,
+        },
+      }),
+    },
+  );
+
+  assert.equal(updateRoutingPolicyResponse.status, 200);
+
+  const profileResponse = await fetch(
+    `${input.baseUrl}/api/v1/execution-governance/profiles`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        input: {
+          module: "editing",
+          manuscriptType: "clinical_study",
+          templateFamilyId: family.id,
+          moduleTemplateId: moduleTemplate.id,
+          promptTemplateId: prompt.id,
+          skillPackageIds: [skill.id],
+          knowledgeBindingMode: "profile_plus_dynamic",
+        },
+      }),
+    },
+  );
+  const profile = (await profileResponse.json()) as { id: string };
+
+  assert.equal(profileResponse.status, 201);
+
+  const publishProfileResponse = await fetch(
+    `${input.baseUrl}/api/v1/execution-governance/profiles/${profile.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishProfileResponse.status, 200);
+
+  const toolResponse = await fetch(`${input.baseUrl}/api/v1/tool-gateway`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      input: {
+        name: "persistent.retrieval.lookup",
+        scope: "knowledge",
+      },
+    }),
+  });
+  const tool = (await toolResponse.json()) as { id: string };
+
+  assert.equal(toolResponse.status, 201);
+
+  const policyResponse = await fetch(
+    `${input.baseUrl}/api/v1/tool-permission-policies`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        input: {
+          name: "Persistent retrieval tool policy",
+          allowedToolIds: [tool.id],
+        },
+      }),
+    },
+  );
+  const policy = (await policyResponse.json()) as { id: string };
+
+  assert.equal(policyResponse.status, 201);
+
+  const activatePolicyResponse = await fetch(
+    `${input.baseUrl}/api/v1/tool-permission-policies/${policy.id}/activate`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(activatePolicyResponse.status, 200);
+
+  const sandboxResponse = await fetch(`${input.baseUrl}/api/v1/sandbox-profiles`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      input: {
+        name: "Persistent retrieval sandbox",
+        sandboxMode: "workspace_write",
+        networkAccess: false,
+        approvalRequired: true,
+        allowedToolIds: [tool.id],
+      },
+    }),
+  });
+  const sandbox = (await sandboxResponse.json()) as { id: string };
+
+  assert.equal(sandboxResponse.status, 201);
+
+  const activateSandboxResponse = await fetch(
+    `${input.baseUrl}/api/v1/sandbox-profiles/${sandbox.id}/activate`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(activateSandboxResponse.status, 200);
+
+  const runtimeResponse = await fetch(`${input.baseUrl}/api/v1/agent-runtime`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      input: {
+        name: "Persistent retrieval runtime",
+        adapter: "deepagents",
+        sandboxProfileId: sandbox.id,
+        allowedModules: ["editing"],
+        runtimeSlot: "editing",
+      },
+    }),
+  });
+  const runtime = (await runtimeResponse.json()) as { id: string };
+
+  assert.equal(runtimeResponse.status, 201);
+
+  const publishRuntimeResponse = await fetch(
+    `${input.baseUrl}/api/v1/agent-runtime/${runtime.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishRuntimeResponse.status, 200);
+
+  const agentProfileResponse = await fetch(`${input.baseUrl}/api/v1/agent-profiles`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      input: {
+        name: "Persistent retrieval executor",
+        roleKey: "subagent",
+        moduleScope: ["editing"],
+        manuscriptTypes: ["clinical_study"],
+      },
+    }),
+  });
+  const agentProfile = (await agentProfileResponse.json()) as { id: string };
+
+  assert.equal(agentProfileResponse.status, 201);
+
+  const publishAgentProfileResponse = await fetch(
+    `${input.baseUrl}/api/v1/agent-profiles/${agentProfile.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishAgentProfileResponse.status, 200);
+
+  const bindingResponse = await fetch(`${input.baseUrl}/api/v1/runtime-bindings`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      input: {
+        module: "editing",
+        manuscriptType: "clinical_study",
+        templateFamilyId: family.id,
+        runtimeId: runtime.id,
+        sandboxProfileId: sandbox.id,
+        agentProfileId: agentProfile.id,
+        toolPermissionPolicyId: policy.id,
+        promptTemplateId: prompt.id,
+        skillPackageIds: [skill.id],
+      },
+    }),
+  });
+  const binding = (await bindingResponse.json()) as { id: string };
+
+  assert.equal(bindingResponse.status, 201);
+
+  const activateBindingResponse = await fetch(
+    `${input.baseUrl}/api/v1/runtime-bindings/${binding.id}/activate`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(activateBindingResponse.status, 200);
+
+  const manuscriptRepository = new PostgresManuscriptRepository({
+    client: input.pool,
+  });
+  await manuscriptRepository.save({
+    id: persistentRetrievalQualityFixtureIds.manuscriptId,
+    title: "Persistent retrieval manuscript",
+    manuscript_type: "clinical_study",
+    status: "completed",
+    current_template_family_id: family.id,
+    created_by: "persistent-admin",
+    created_at: "2026-04-04T12:00:00.000Z",
+    updated_at: "2026-04-04T12:00:00.000Z",
+  });
+
+  const knowledgeRepository = new PostgresKnowledgeRepository({
+    client: input.pool,
+  });
+  await knowledgeRepository.save({
+    id: persistentRetrievalQualityFixtureIds.knowledgeItemId,
+    title: "Persistent retrieval knowledge item",
+    canonical_text:
+      "Editing runs must preserve governed retrieval evidence as additive context only.",
+    summary: "Used to prove retrieval context snapshots stay additive.",
+    knowledge_kind: "rule",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["discussion"],
+      risk_tags: ["grounding"],
+    },
+    template_bindings: [moduleTemplate.id],
+  });
+
+  const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
+    client: input.pool,
+  });
+  await harnessDatasetRepository.saveGoldSetFamily({
+    id: persistentRetrievalQualityFixtureIds.goldSetFamilyId,
+    name: "Persistent retrieval gold set",
+    scope: {
+      module: "editing",
+      manuscript_types: ["clinical_study"],
+      measure_focus: "retrieval grounding",
+      template_family_id: family.id,
+    },
+    admin_only: true,
+    created_at: "2026-04-04T12:10:00.000Z",
+    updated_at: "2026-04-04T12:10:00.000Z",
+  });
+  await harnessDatasetRepository.saveRubricDefinition({
+    id: persistentRetrievalQualityFixtureIds.rubricId,
+    name: "Persistent retrieval rubric",
+    version_no: 1,
+    status: "published",
+    scope: {
+      module: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    scoring_dimensions: [
+      {
+        key: "grounding",
+        label: "Grounding",
+        weight: 1,
+      },
+    ],
+    created_by: "persistent-admin",
+    created_at: "2026-04-04T12:12:00.000Z",
+    published_by: "persistent-admin",
+    published_at: "2026-04-04T12:13:00.000Z",
+  });
+  await harnessDatasetRepository.saveGoldSetVersion({
+    id: persistentRetrievalQualityFixtureIds.goldSetVersionId,
+    family_id: persistentRetrievalQualityFixtureIds.goldSetFamilyId,
+    version_no: 1,
+    status: "published",
+    rubric_definition_id: persistentRetrievalQualityFixtureIds.rubricId,
+    item_count: 1,
+    deidentification_gate_passed: true,
+    human_review_gate_passed: true,
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: "persistent-retrieval-reviewed-snapshot-1",
+        manuscript_id: persistentRetrievalQualityFixtureIds.manuscriptId,
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+        risk_tags: ["grounding"],
+      },
+    ],
+    created_by: "persistent-admin",
+    created_at: "2026-04-04T12:14:00.000Z",
+    published_by: "persistent-admin",
+    published_at: "2026-04-04T12:15:00.000Z",
+  });
+
+  return {
+    familyId: family.id,
+    moduleTemplateId: moduleTemplate.id,
+  };
 }
 
 async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {

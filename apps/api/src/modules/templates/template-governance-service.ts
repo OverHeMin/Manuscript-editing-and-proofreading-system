@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { HarnessDatasetRepository } from "../harness-datasets/harness-dataset-repository.ts";
+import type { KnowledgeRetrievalQualityRunRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
+import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import {
   createDirectWriteTransactionManager,
@@ -53,10 +56,41 @@ export interface CreateModuleTemplateDraftFromLearningCandidateInput
   sourceLearningCandidateId: string;
 }
 
+export interface CreateTemplateRetrievalQualityRunInput {
+  module: TemplateModule;
+  goldSetVersionId: string;
+  retrievalSnapshotIds: string[];
+  retrieverConfig: {
+    strategy: "vector" | "hybrid" | "template_pack";
+    topK: number;
+    embeddingProvider?: string;
+    embeddingModel?: string;
+    filters?: Record<string, unknown>;
+  };
+  rerankerConfig?: {
+    provider: string;
+    model?: string;
+    topK: number;
+    metadata?: Record<string, unknown>;
+  };
+  metricSummary: {
+    answerRelevancy: number;
+    contextPrecision?: number;
+    contextRecall?: number;
+    rankingConsistency?: number;
+  };
+  createdBy: string;
+}
+
 export interface TemplateGovernanceServiceOptions {
   templateFamilyRepository: TemplateFamilyRepository;
   moduleTemplateRepository: ModuleTemplateRepository;
   learningCandidateRepository?: LearningCandidateRepository;
+  harnessDatasetRepository?: HarnessDatasetRepository;
+  knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalQualityRun"
+  >;
   transactionManager?: WriteTransactionManager<TemplateWriteContext>;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
@@ -128,10 +162,29 @@ export class TemplateFamilyActiveConflictError extends Error {
   }
 }
 
+export class TemplateRetrievalQualityDependencyError extends Error {
+  constructor() {
+    super("Retrieval quality dependencies are not configured.");
+    this.name = "TemplateRetrievalQualityDependencyError";
+  }
+}
+
+export class TemplateRetrievalGoldSetVersionValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TemplateRetrievalGoldSetVersionValidationError";
+  }
+}
+
 export class TemplateGovernanceService {
   private readonly templateFamilyRepository: TemplateFamilyRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly learningCandidateRepository?: LearningCandidateRepository;
+  private readonly harnessDatasetRepository?: HarnessDatasetRepository;
+  private readonly knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "recordRetrievalQualityRun"
+  >;
   private readonly transactionManager: WriteTransactionManager<TemplateWriteContext>;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
@@ -140,6 +193,8 @@ export class TemplateGovernanceService {
     this.templateFamilyRepository = options.templateFamilyRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.learningCandidateRepository = options.learningCandidateRepository;
+    this.harnessDatasetRepository = options.harnessDatasetRepository;
+    this.knowledgeRetrievalService = options.knowledgeRetrievalService;
     this.transactionManager =
       options.transactionManager ??
       createTemplateWriteTransactionManager({
@@ -362,6 +417,80 @@ export class TemplateGovernanceService {
     }
 
     return this.moduleTemplateRepository.listByTemplateFamilyId(templateFamilyId);
+  }
+
+  async createRetrievalQualityRun(
+    templateFamilyId: string,
+    actorRole: RoleKey,
+    input: CreateTemplateRetrievalQualityRunInput,
+  ): Promise<KnowledgeRetrievalQualityRunRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    if (!this.harnessDatasetRepository || !this.knowledgeRetrievalService) {
+      throw new TemplateRetrievalQualityDependencyError();
+    }
+
+    const templateFamily = await this.templateFamilyRepository.findById(templateFamilyId);
+    if (!templateFamily) {
+      throw new TemplateFamilyNotFoundError(templateFamilyId);
+    }
+
+    const goldSetVersion =
+      await this.harnessDatasetRepository.findGoldSetVersionById(input.goldSetVersionId);
+    if (!goldSetVersion) {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set version ${input.goldSetVersionId} was not found.`,
+      );
+    }
+
+    if (goldSetVersion.status !== "published") {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set version ${input.goldSetVersionId} must be published before retrieval-quality runs can start.`,
+      );
+    }
+
+    const goldSetFamily = await this.harnessDatasetRepository.findGoldSetFamilyById(
+      goldSetVersion.family_id,
+    );
+    if (!goldSetFamily) {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set family ${goldSetVersion.family_id} was not found.`,
+      );
+    }
+
+    if (goldSetFamily.scope.module !== input.module) {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set version ${input.goldSetVersionId} is scoped to module ${goldSetFamily.scope.module}, not ${input.module}.`,
+      );
+    }
+
+    if (
+      goldSetFamily.scope.template_family_id &&
+      goldSetFamily.scope.template_family_id !== templateFamilyId
+    ) {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set version ${input.goldSetVersionId} is scoped to template family ${goldSetFamily.scope.template_family_id}, not ${templateFamilyId}.`,
+      );
+    }
+
+    if (
+      !goldSetFamily.scope.manuscript_types.includes(templateFamily.manuscript_type)
+    ) {
+      throw new TemplateRetrievalGoldSetVersionValidationError(
+        `Harness gold-set version ${input.goldSetVersionId} does not cover manuscript type ${templateFamily.manuscript_type}.`,
+      );
+    }
+
+    return this.knowledgeRetrievalService.recordRetrievalQualityRun({
+      goldSetVersionId: input.goldSetVersionId,
+      module: input.module,
+      templateFamilyId,
+      retrievalSnapshotIds: input.retrievalSnapshotIds,
+      retrieverConfig: input.retrieverConfig,
+      rerankerConfig: input.rerankerConfig,
+      metricSummary: input.metricSummary,
+      createdBy: input.createdBy,
+    });
   }
 
   listTemplateFamilies(): Promise<TemplateFamilyRecord[]> {

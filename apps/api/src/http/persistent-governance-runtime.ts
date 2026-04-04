@@ -60,6 +60,10 @@ import {
   PostgresKnowledgeReviewActionRepository,
 } from "../modules/knowledge/index.ts";
 import {
+  KnowledgeRetrievalService,
+  PostgresKnowledgeRetrievalRepository,
+} from "../modules/knowledge-retrieval/index.ts";
+import {
   createLearningApi,
   LearningService,
   PostgresLearningCandidateRepository,
@@ -187,6 +191,9 @@ export function createPersistentGovernanceRuntime(
   const knowledgeRepository = new PostgresKnowledgeRepository({
     client: options.client,
   });
+  const knowledgeRetrievalRepository = new PostgresKnowledgeRetrievalRepository({
+    client: options.client,
+  });
   const knowledgeReviewActionRepository =
     new PostgresKnowledgeReviewActionRepository({
       client: options.client,
@@ -304,6 +311,7 @@ export function createPersistentGovernanceRuntime(
     repository: verificationOpsRepository,
     reviewedCaseSnapshotRepository,
     learningService,
+    knowledgeRetrievalRepository,
     toolGatewayRepository,
     transactionManager: verificationOpsTransactionManager,
   });
@@ -316,17 +324,15 @@ export function createPersistentGovernanceRuntime(
     permissionGuard,
     transactionManager: harnessDatasetTransactionManager,
   });
-  const knowledgeService = new KnowledgeService({
-    repository: knowledgeRepository,
-    reviewActionRepository: knowledgeReviewActionRepository,
-    learningCandidateRepository,
-    transactionManager: createPostgresWriteTransactionManager({
-      getClient: async () => options.client.connect(),
-      createContext: (client) => ({
-        repository: new PostgresKnowledgeRepository({ client }),
-        reviewActionRepository: new PostgresKnowledgeReviewActionRepository({
-          client,
-        }),
+  const knowledgeRetrievalService = new KnowledgeRetrievalService({
+    repository: knowledgeRetrievalRepository,
+  });
+  const knowledgeServiceTransactionManager = createPostgresWriteTransactionManager({
+    getClient: async () => options.client.connect(),
+    createContext: (client) => ({
+      repository: new PostgresKnowledgeRepository({ client }),
+      reviewActionRepository: new PostgresKnowledgeReviewActionRepository({
+        client,
       }),
     }),
   });
@@ -334,6 +340,8 @@ export function createPersistentGovernanceRuntime(
     templateFamilyRepository,
     moduleTemplateRepository,
     learningCandidateRepository,
+    harnessDatasetRepository,
+    knowledgeRetrievalService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => options.client.connect(),
       createContext: (client) => ({
@@ -420,6 +428,26 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+  });
+  const knowledgeService = new KnowledgeService({
+    repository: knowledgeRepository,
+    reviewActionRepository: knowledgeReviewActionRepository,
+    learningCandidateRepository,
+    knowledgeRetrievalRepository,
+    knowledgeRetrievalService,
+    governedRetrievalResolverDependencies: {
+      manuscriptRepository,
+      moduleTemplateRepository,
+      executionGovernanceService,
+      promptSkillRegistryRepository,
+      aiGatewayService,
+      sandboxProfileService,
+      agentProfileService,
+      agentRuntimeService,
+      runtimeBindingService,
+      toolPermissionPolicyService,
+    },
+    transactionManager: knowledgeServiceTransactionManager,
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,

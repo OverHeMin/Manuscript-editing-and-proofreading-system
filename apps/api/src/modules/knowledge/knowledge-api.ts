@@ -6,9 +6,12 @@ import type {
 } from "../harness-datasets/harness-dataset-service.ts";
 import { KnowledgeService } from "./knowledge-service.ts";
 import type {
+  GovernedRetrievalContextRecord,
+  ResolveGovernedRetrievalContextInput,
   CreateKnowledgeDraftInput,
   UpdateKnowledgeDraftInput,
 } from "./knowledge-service.ts";
+import type { KnowledgeRetrievalSnapshotRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type {
   KnowledgeRecord,
   KnowledgeReviewActionRecord,
@@ -113,6 +116,30 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       return {
         status: 200,
         body: await knowledgeService.listReviewActions(knowledgeItemId),
+      };
+    },
+
+    async resolveGovernedRetrievalContext({
+      input,
+    }: {
+      input: ResolveGovernedRetrievalContextInput;
+    }): Promise<RouteResponse<GovernedRetrievalContextRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.resolveGovernedRetrievalContext(input),
+      };
+    },
+
+    async getRetrievalSnapshot({
+      actorRole,
+      snapshotId,
+    }: {
+      actorRole: RoleKey;
+      snapshotId: string;
+    }): Promise<RouteResponse<KnowledgeRetrievalSnapshotRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.getRetrievalSnapshot(actorRole, snapshotId),
       };
     },
 

@@ -1,11 +1,13 @@
 import type { RoleKey } from "../../users/roles.ts";
 import { TemplateGovernanceService } from "./template-governance-service.ts";
 import type {
+  CreateTemplateRetrievalQualityRunInput,
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
   UpdateModuleTemplateDraftInput,
   UpdateTemplateFamilyInput,
 } from "./template-governance-service.ts";
+import type { KnowledgeRetrievalQualityRunRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type {
   ModuleTemplateRecord,
   TemplateFamilyRecord,
@@ -103,6 +105,25 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
         status: 200,
         body: await templateService.listModuleTemplatesByTemplateFamilyId(
           templateFamilyId,
+        ),
+      };
+    },
+
+    async createRetrievalQualityRun({
+      templateFamilyId,
+      actorRole,
+      input,
+    }: {
+      templateFamilyId: string;
+      actorRole: RoleKey;
+      input: CreateTemplateRetrievalQualityRunInput;
+    }): Promise<RouteResponse<KnowledgeRetrievalQualityRunRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createRetrievalQualityRun(
+          templateFamilyId,
+          actorRole,
+          input,
         ),
       };
     },
