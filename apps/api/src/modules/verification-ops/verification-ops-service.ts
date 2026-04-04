@@ -146,7 +146,7 @@ export interface FinalizeEvaluationRunResult {
   recommendation: EvaluationPromotionRecommendationRecord;
 }
 
-export type EvaluationSuiteFinalizationHistoryWindowPreset =
+type EvaluationSuiteFinalizationHistoryWindowPreset =
   RepositoryEvaluationSuiteFinalizationHistoryWindowPreset;
 
 export interface EvaluationSuiteFinalizationResult

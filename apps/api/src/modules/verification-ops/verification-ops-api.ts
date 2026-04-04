@@ -11,6 +11,9 @@ import type {
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
 import type {
+  EvaluationSuiteFinalizationHistoryWindowPreset,
+} from "./verification-ops-repository.ts";
+import type {
   CompleteEvaluationRunInput,
   CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
@@ -18,7 +21,6 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
-  EvaluationSuiteFinalizationHistoryWindowPreset,
   EvaluationSuiteFinalizationResult,
   FinalizeEvaluationRunResult,
   RecordEvaluationRunItemResultInput,
