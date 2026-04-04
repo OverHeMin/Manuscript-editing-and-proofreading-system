@@ -1,31 +1,20 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { getAdminDatabaseUrl, getDatabaseName, getDatabaseUrl } from "../config.ts";
-import { createMigrationChecksum } from "../migration-checksum.ts";
+import { auditDatabaseMigrations } from "../migration-audit.ts";
+import {
+  getRepositoryMigrationLedgerMap,
+  readRepositoryMigrationSql,
+} from "../migration-ledger.ts";
 import { seedRoles } from "../seeds/roles.seed.ts";
 import { loadAppEnvDefaults } from "../../ops/env-defaults.ts";
 
 const packageRoot = path.resolve(import.meta.dirname, "../../..");
-const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
 const prismaSchemaPath = path.join(packageRoot, "prisma", "schema.prisma");
 const MIGRATION_LOCK_KEY = "medical_api_schema_migrations";
-const LEGACY_MIGRATION_CHECKSUMS = new Map<string, Set<string>>([
-  [
-    "0001_initial.sql",
-    new Set(["6140ea1d2280a0712aae27ae1f284131bf1eeb239446ea46ef49298fb8b30920"]),
-  ],
-  [
-    "0009_agent_tooling_persistence.sql",
-    new Set(["f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd"]),
-  ],
-  [
-    "0015_model_routing_governance_persistence.sql",
-    new Set(["ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4"]),
-  ],
-]);
 
 function runPrismaValidate(): void {
   const command = process.platform === "win32" ? "cmd.exe" : "pnpm";
@@ -80,12 +69,6 @@ async function ensureDatabaseExists(): Promise<void> {
   }
 }
 
-function getMigrationFiles(): string[] {
-  return readdirSync(migrationsDirectory)
-    .filter((fileName) => fileName.endsWith(".sql"))
-    .sort();
-}
-
 async function ensureMigrationTable(client: Client): Promise<void> {
   await client.query(`
     create table if not exists schema_migrations (
@@ -105,41 +88,39 @@ async function releaseMigrationLock(client: Client): Promise<void> {
 }
 
 async function applyPendingMigrations(client: Client): Promise<void> {
-  const appliedResult = await client.query<{ version: string; checksum: string }>(
-    "select version, checksum from schema_migrations",
-  );
-  const appliedMigrations = new Map(
-    appliedResult.rows.map((row) => [row.version, row.checksum]),
-  );
+  const audit = await auditDatabaseMigrations(client);
 
-  for (const migrationFile of getMigrationFiles()) {
-    const migrationSql = readFileSync(path.join(migrationsDirectory, migrationFile), "utf8");
-    const checksum = createMigrationChecksum(migrationSql);
-    const appliedChecksum = appliedMigrations.get(migrationFile);
-
-    if (appliedChecksum) {
-      const acceptedLegacyChecksums = LEGACY_MIGRATION_CHECKSUMS.get(migrationFile);
-
-      if (appliedChecksum === checksum) {
-        continue;
-      }
-
-      if (acceptedLegacyChecksums?.has(appliedChecksum)) {
-        await client.query(
-          `
-            update schema_migrations
-            set checksum = $1
-            where version = $2
-          `,
-          [checksum, migrationFile],
-        );
-        appliedMigrations.set(migrationFile, checksum);
-        console.log(`Normalized legacy checksum for ${migrationFile}`);
-        continue;
-      }
-
-      throw new Error(`Migration checksum mismatch for ${migrationFile}.`);
+  if (audit.blockingMigrations.length > 0) {
+    const blockingMigration = audit.blockingMigrations[0];
+    if (blockingMigration.reason === "unknown-database-version") {
+      throw new Error(`Unknown database migration version ${blockingMigration.version}.`);
     }
+
+    throw new Error(`Migration checksum mismatch for ${blockingMigration.version}.`);
+  }
+
+  for (const repairableMigration of audit.repairableMigrations) {
+    await client.query(
+      `
+        update schema_migrations
+        set checksum = $1
+        where version = $2
+      `,
+      [repairableMigration.expectedChecksum, repairableMigration.version],
+    );
+    console.log(`Normalized legacy checksum for ${repairableMigration.version}`);
+  }
+
+  const repositoryMigrationLedger = getRepositoryMigrationLedgerMap();
+
+  for (const migrationFile of audit.pendingMigrations) {
+    const migrationEntry = repositoryMigrationLedger.get(migrationFile);
+
+    if (!migrationEntry) {
+      continue;
+    }
+
+    const migrationSql = readRepositoryMigrationSql(migrationFile);
 
     await client.query("begin");
 
@@ -150,7 +131,7 @@ async function applyPendingMigrations(client: Client): Promise<void> {
           insert into schema_migrations (version, checksum)
           values ($1, $2)
         `,
-        [migrationFile, checksum],
+        [migrationFile, migrationEntry.checksum],
       );
       await client.query("commit");
       console.log(`Applied migration ${migrationFile}`);

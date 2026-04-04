@@ -1,0 +1,55 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { createMigrationChecksum } from "./migration-checksum.ts";
+
+const migrationsDirectory = path.join(import.meta.dirname, "migrations");
+const legacyMigrationChecksums = new Map<string, Set<string>>([
+  [
+    "0001_initial.sql",
+    new Set(["6140ea1d2280a0712aae27ae1f284131bf1eeb239446ea46ef49298fb8b30920"]),
+  ],
+  [
+    "0009_agent_tooling_persistence.sql",
+    new Set(["f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd"]),
+  ],
+  [
+    "0015_model_routing_governance_persistence.sql",
+    new Set(["ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4"]),
+  ],
+]);
+
+export interface MigrationLedgerEntry {
+  version: string;
+  checksum: string;
+  acceptedLegacyChecksums: string[];
+}
+
+let cachedLedger: MigrationLedgerEntry[] | undefined;
+
+export function getRepositoryMigrationFiles(): string[] {
+  return readdirSync(migrationsDirectory)
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+}
+
+export function readRepositoryMigrationSql(version: string): string {
+  return readFileSync(path.join(migrationsDirectory, version), "utf8");
+}
+
+export function getRepositoryMigrationLedger(): MigrationLedgerEntry[] {
+  cachedLedger ??= getRepositoryMigrationFiles().map((version) => ({
+    version,
+    checksum: createMigrationChecksum(readRepositoryMigrationSql(version)),
+    acceptedLegacyChecksums: [...(legacyMigrationChecksums.get(version) ?? [])],
+  }));
+
+  return cachedLedger;
+}
+
+export function getRepositoryMigrationLedgerMap(): Map<string, MigrationLedgerEntry> {
+  return new Map(getRepositoryMigrationLedger().map((entry) => [entry.version, entry]));
+}
+
+export function isAcceptedLegacyMigrationChecksum(version: string, checksum: string): boolean {
+  return legacyMigrationChecksums.get(version)?.has(checksum) ?? false;
+}

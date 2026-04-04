@@ -12,6 +12,13 @@ const migrationScriptPath = path.join(
   "scripts",
   "migrate.ts",
 );
+const migrationDoctorScriptPath = path.join(
+  packageRoot,
+  "src",
+  "database",
+  "scripts",
+  "migration-doctor.ts",
+);
 
 export function getMigrationChecksum(fileName: string): string {
   const migrationFilePath = path.join(
@@ -30,9 +37,38 @@ export function runMigrateProcess(databaseUrl = getDatabaseUrl()): {
   stdout: string;
   stderr: string;
 } {
+  return runDatabaseScript(migrationScriptPath, [], databaseUrl);
+}
+
+export function runMigrationDoctorProcess(
+  options: {
+    args?: string[];
+    databaseUrl?: string;
+  } = {},
+): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  return runDatabaseScript(
+    migrationDoctorScriptPath,
+    options.args ?? ["--json"],
+    options.databaseUrl ?? getDatabaseUrl(),
+  );
+}
+
+function runDatabaseScript(
+  scriptPath: string,
+  args: string[],
+  databaseUrl: string,
+): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
   const result = spawnSync(
     process.execPath,
-    ["--import", "tsx", migrationScriptPath],
+    ["--import", "tsx", scriptPath, ...args],
     {
       cwd: packageRoot,
       encoding: "utf8",
