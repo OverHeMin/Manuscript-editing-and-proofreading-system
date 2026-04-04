@@ -1249,6 +1249,8 @@ export function EvaluationWorkbenchOperationsView(props: {
   const defaultComparisonDetail = props.overview.suiteOperations.defaultComparisonDetail;
   const selectedRunOutsideVisibleWindow =
     selectedRun != null && !visibleHistory.some((entry) => entry.run.id === selectedRun.id);
+  const selectedInspectionFinalization =
+    selectedRunHistoryEntry?.finalized ?? props.overview.selectedRunFinalization;
 
   return (
     <section className="evaluation-workbench">
@@ -1540,24 +1542,32 @@ export function EvaluationWorkbenchOperationsView(props: {
                 <div className="evaluation-workbench-history-compare">
                   <span>Status: {selectedRun.status}</span>
                   <span>Run items: {selectedRun.run_item_count ?? 0}</span>
-                  {selectedRunHistoryEntry ? (
+                  {selectedInspectionFinalization ? (
                     <>
-                      <span>Recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
-                      <span>Evidence Pack: {selectedRunHistoryEntry.finalized.evidence_pack.id}</span>
-                      {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
-                        <span>{selectedRunHistoryEntry.finalized.recommendation.decision_reason}</span>
+                      <span>Recommendation: {selectedInspectionFinalization.recommendation.status}</span>
+                      <span>Evidence Pack: {selectedInspectionFinalization.evidence_pack.id}</span>
+                      {selectedInspectionFinalization.recommendation.decision_reason ? (
+                        <span>{selectedInspectionFinalization.recommendation.decision_reason}</span>
                       ) : null}
                     </>
                   ) : (
+                    <span>No finalized recommendation is available for the selected inspection run yet.</span>
+                  )}
+                  {selectedRunOutsideVisibleWindow ? (
                     <span>
                       This run is outside the finalized history slice that powers the default delta summary.
                     </span>
-                  )}
+                  ) : null}
+                  {!selectedRunOutsideVisibleWindow && !selectedInspectionFinalization ? (
+                    <span>
+                      This run remains within the visible history window but has not been finalized yet.
+                    </span>
+                  ) : null}
                 </div>
               </div>
-              {selectedRunHistoryEntry ? (
+              {selectedInspectionFinalization ? (
                 <EvaluationWorkbenchEvidencePackSummary
-                  evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
+                  evidencePack={selectedInspectionFinalization.evidence_pack}
                 />
               ) : null}
               {selectedRun.governed_source ? (

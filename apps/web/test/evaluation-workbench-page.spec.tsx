@@ -406,6 +406,25 @@ test("evaluation workbench loaded operations view renders a delta-first summary 
   assert.doesNotMatch(markup, /Finalize Recommendation/);
 });
 
+test("evaluation workbench loaded operations view keeps selected inspection finalization outside the visible history window", () => {
+  const overview = createOperationsOverviewFixture();
+  const selectedFinalized = overview.finalizedRunHistory.find((entry) => entry.run.id === "run-01");
+  assert.ok(selectedFinalized);
+  overview.selectedRunFinalization = {
+    run: selectedFinalized.run,
+    evidence_pack: selectedFinalized.finalized.evidence_pack,
+    recommendation: selectedFinalized.finalized.recommendation,
+  };
+
+  const markup = renderOperationsView(overview);
+
+  assert.match(markup, /Selected inspection run: run-01/);
+  assert.match(markup, /Recommendation: rejected/);
+  assert.match(markup, /Evidence Pack: pack-run-01/);
+  assert.match(markup, /Selected inspection run regressed and was rejected\./);
+  assert.match(markup, /This run is outside the finalized history slice that powers the default delta summary\./);
+});
+
 test("evaluation workbench loaded operations view renders honest degradation when fewer than two finalized runs are visible", () => {
   const overview = createOperationsOverviewFixture();
   const onlyVisibleEntry = overview.finalizedRunHistory[0];
