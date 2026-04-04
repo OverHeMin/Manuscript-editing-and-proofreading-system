@@ -27,6 +27,10 @@
 
 - Create: `apps/web/src/features/evaluation-workbench/evaluation-workbench-operations.ts`
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-controller.ts`
+- Modify: `apps/web/src/features/verification-ops/types.ts`
+- Modify: `apps/web/src/features/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-service.ts`
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-page.tsx`
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench.css`
 - Test: `apps/web/test/evaluation-workbench-operations.spec.ts`
@@ -124,6 +128,10 @@ git commit -m "feat: add evaluation workbench operations summary helpers"
 
 **Files:**
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-controller.ts`
+- Modify: `apps/web/src/features/verification-ops/types.ts`
+- Modify: `apps/web/src/features/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-service.ts`
 - Modify: `apps/web/test/evaluation-workbench-controller.spec.ts`
 
 - [ ] **Step 1: Write the failing controller tests**
@@ -166,6 +174,7 @@ Update `apps/web/src/features/evaluation-workbench/evaluation-workbench-controll
 - import the new helper module
 - extend `EvaluationWorkbenchOverview` with a read-only `suiteOperations` block
 - allow `loadOverview()` to accept an optional history-window preset
+- if the current finalized-results payload cannot provide stable default-comparison detail without extra per-run evidence fetches, make the smallest possible read-side contract expansion so suite finalized results can carry evidence detail for the default comparison path in one bounded response
 - derive:
   - visible finalized history
   - default comparison pair
@@ -178,10 +187,11 @@ Implementation rules:
 
 - keep the existing `verification-ops` client calls intact
 - preserve current manuscript-context matching behavior
-- avoid new endpoint fan-out
+- avoid new endpoint fan-out; prefer one bounded finalized-results read with embedded evidence detail over extra per-run evidence calls
 - keep selected-run history and previous-run evidence behavior backward compatible where possible
 - ensure `suiteOperations` summaries are derived from the actively visible filtered history set rather than hidden finalized results outside the current window/filter
 - if the operator selects a different historical run for inspection, continue to load `selectedRunEvidence` for that inspection path while separately exposing the stable latest-versus-previous comparison detail payload through `suiteOperations`
+- keep any contract expansion strictly read-side and suite-scoped; do not introduce new write APIs, orchestration, or control-plane semantics
 
 - [ ] **Step 4: Re-run the controller test and confirm it passes**
 
