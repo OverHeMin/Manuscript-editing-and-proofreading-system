@@ -4,6 +4,7 @@ import type { AuthRole } from "../auth/index.ts";
 import type {
   ResolvedExecutionBundleViewModel,
 } from "../execution-governance/index.ts";
+import { formatExecutionResolutionModelSourceLabel } from "../execution-governance/index.ts";
 import type { ManuscriptType } from "../manuscripts/index.ts";
 import type {
   CreateModelRegistryEntryInput,
@@ -251,7 +252,7 @@ export function AdminGovernanceWorkbenchPage({
 
       startTransition(() => {
         setOverview(nextOverview);
-        setStatusMessage("Updated model routing policy.");
+        setStatusMessage("Updated legacy fallback defaults.");
       });
     });
   }
@@ -315,6 +316,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
         <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
         <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
+        <SummaryCard label="Routing Policies" value={overview?.routingPolicies.length ?? 0} />
         <SummaryCard label="Tool Gateway" value={overview?.toolGatewayTools.length ?? 0} />
         <SummaryCard label="Sandbox Profiles" value={overview?.sandboxProfiles.length ?? 0} />
         <SummaryCard label="Agent Profiles" value={overview?.agentProfiles.length ?? 0} />
@@ -670,7 +672,7 @@ export function AdminGovernanceWorkbenchPage({
         </article>
 
         <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Routing Policy</h3>
+          <h3>Legacy Fallback Defaults</h3>
           {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
             <>
               <div className="admin-governance-form-grid">
@@ -727,22 +729,22 @@ export function AdminGovernanceWorkbenchPage({
                 <button
                   type="button"
                   className="auth-primary-action"
-                  onClick={() => void handleSaveRoutingPolicy()}
-                  disabled={isMutating}
-                >
-                  Save Routing Policy
+                    onClick={() => void handleSaveRoutingPolicy()}
+                    disabled={isMutating}
+                  >
+                  Save Legacy Defaults
                 </button>
               </div>
 
               <div className="admin-governance-policy-grid">
-                <article className="admin-governance-asset-row">
-                  <span>Current System Default</span>
+              <article className="admin-governance-asset-row">
+                  <span>Legacy System Default</span>
                   <small>
                     {overview?.modelRoutingPolicy.system_default_model_id ?? "Unassigned"}
                   </small>
                 </article>
                 <article className="admin-governance-asset-row">
-                  <span>Template Overrides</span>
+                  <span>Legacy Template Overrides</span>
                   <small>
                     {Object.keys(overview?.modelRoutingPolicy.template_overrides ?? {}).length}
                   </small>
@@ -861,7 +863,12 @@ export function AdminGovernanceWorkbenchPage({
               </article>
               <article className="admin-governance-asset-row">
                 <span>Model Source</span>
-                <small>{executionPreview.model_source}</small>
+                <small>
+                  {formatExecutionResolutionModelSourceLabel(
+                    executionPreview.model_source,
+                  )}{" "}
+                  ({executionPreview.model_source})
+                </small>
               </article>
               <article className="admin-governance-asset-row">
                 <span>Knowledge Hits</span>

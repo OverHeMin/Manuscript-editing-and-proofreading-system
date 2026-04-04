@@ -1,6 +1,7 @@
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
+import type { ModelRoutingGovernanceService } from "../model-routing-governance/model-routing-governance-service.ts";
 import type {
   ModelRegistryRepository,
   ModelRoutingPolicyRepository,
@@ -29,6 +30,7 @@ export interface ExecutionResolutionServiceOptions {
   knowledgeRepository: KnowledgeRepository;
   modelRegistryRepository: ModelRegistryRepository;
   modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
+  modelRoutingGovernanceService?: ModelRoutingGovernanceService;
 }
 
 export class ExecutionResolutionProfileAssetNotFoundError extends Error {
@@ -68,6 +70,7 @@ export class ExecutionResolutionService {
   private readonly knowledgeRepository: KnowledgeRepository;
   private readonly modelRegistryRepository: ModelRegistryRepository;
   private readonly modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
+  private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
 
   constructor(options: ExecutionResolutionServiceOptions) {
     this.executionGovernanceService = options.executionGovernanceService;
@@ -76,6 +79,7 @@ export class ExecutionResolutionService {
     this.knowledgeRepository = options.knowledgeRepository;
     this.modelRegistryRepository = options.modelRegistryRepository;
     this.modelRoutingPolicyRepository = options.modelRoutingPolicyRepository;
+    this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
   }
 
   async resolveExecutionBundle(
@@ -165,6 +169,47 @@ export class ExecutionResolutionService {
     model: ModelRegistryRecord;
     source: ExecutionResolutionModelSource;
   }> {
+    if (this.modelRoutingGovernanceService) {
+      const templateFamilyPolicy =
+        await this.modelRoutingGovernanceService.findActivePolicy(
+          "template_family",
+          profile.template_family_id,
+        );
+      const activeTemplateFamilyVersion = templateFamilyPolicy?.active_version;
+      if (activeTemplateFamilyVersion) {
+        const model = await this.requireGovernedPolicyModel(
+          activeTemplateFamilyVersion.primary_model_id,
+          profile.module,
+          profile.template_family_id,
+          activeTemplateFamilyVersion.fallback_model_ids,
+        );
+
+        return {
+          model,
+          source: "template_family_policy",
+        };
+      }
+
+      const modulePolicy = await this.modelRoutingGovernanceService.findActivePolicy(
+        "module",
+        profile.module,
+      );
+      const activeModuleVersion = modulePolicy?.active_version;
+      if (activeModuleVersion) {
+        const model = await this.requireGovernedPolicyModel(
+          activeModuleVersion.primary_model_id,
+          profile.module,
+          profile.template_family_id,
+          activeModuleVersion.fallback_model_ids,
+        );
+
+        return {
+          model,
+          source: "module_policy",
+        };
+      }
+    }
+
     const policy = await this.modelRoutingPolicyRepository.get();
     const candidates: Array<{
       modelId?: string;
@@ -172,15 +217,15 @@ export class ExecutionResolutionService {
     }> = [
       {
         modelId: policy.template_overrides[profile.module_template_id],
-        source: "template_override",
+        source: "legacy_template_override",
       },
       {
         modelId: policy.module_defaults[profile.module],
-        source: "module_default",
+        source: "legacy_module_default",
       },
       {
         modelId: policy.system_default_model_id,
-        source: "system_default",
+        source: "legacy_system_default",
       },
     ];
 
@@ -208,6 +253,41 @@ export class ExecutionResolutionService {
       profile.module,
       profile.template_family_id,
     );
+  }
+
+  private async requireGovernedPolicyModel(
+    primaryModelId: string,
+    module: TemplateModule,
+    templateFamilyId: string,
+    fallbackModelIds: string[],
+  ): Promise<ModelRegistryRecord> {
+    const model = await this.modelRegistryRepository.findById(primaryModelId);
+    if (!model) {
+      throw new ExecutionResolutionModelNotFoundError(module, templateFamilyId);
+    }
+
+    if (!model.is_prod_allowed || !model.allowed_modules.includes(module)) {
+      throw new ExecutionResolutionModelIncompatibleError(model.id, module);
+    }
+
+    for (const fallbackModelId of fallbackModelIds) {
+      const fallbackModel = await this.modelRegistryRepository.findById(fallbackModelId);
+      if (!fallbackModel) {
+        throw new ExecutionResolutionModelNotFoundError(module, templateFamilyId);
+      }
+
+      if (
+        !fallbackModel.is_prod_allowed ||
+        !fallbackModel.allowed_modules.includes(module)
+      ) {
+        throw new ExecutionResolutionModelIncompatibleError(
+          fallbackModel.id,
+          module,
+        );
+      }
+    }
+
+    return model;
   }
 }
 

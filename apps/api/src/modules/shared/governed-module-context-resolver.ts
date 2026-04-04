@@ -189,6 +189,7 @@ export async function resolveGovernedModuleContext(
 
   const modelSelection = await input.aiGatewayService.resolveModelSelection({
     module: input.module,
+    templateFamilyId: manuscript.current_template_family_id,
     moduleTemplateId: moduleTemplate.id,
     taskId: input.jobId,
     actorId: input.actorId,

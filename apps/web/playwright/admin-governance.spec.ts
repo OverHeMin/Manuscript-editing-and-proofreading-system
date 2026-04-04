@@ -81,6 +81,164 @@ test("admin can preview a governed execution bundle from the governance console"
   await expect(resolutionGrid).toContainText(prepared.promptName);
 });
 
+test("admin can complete the routing governance operator flow", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareRoutingGovernanceScenario(request, {
+    label: "Phase 10B",
+  });
+
+  await page.goto("/#admin-console", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
+
+  const routingDraftPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Routing Policy Draft" }) });
+  await routingDraftPanel.getByLabel("Scope Kind").selectOption("template_family");
+  await routingDraftPanel
+    .getByLabel("Scope Value")
+    .selectOption({ label: prepared.familyName });
+  await routingDraftPanel.getByLabel("Primary Model").selectOption(prepared.primaryModelId);
+  await routingDraftPanel
+    .getByRole("checkbox", { name: prepared.fallbackModelName })
+    .check();
+  await routingDraftPanel
+    .getByLabel("Evidence References")
+    .fill(`evaluation_run:${prepared.evaluationRunId}`);
+  await routingDraftPanel.getByLabel("Notes").fill("Phase 10B routing governance flow");
+  await routingDraftPanel.getByRole("button", { name: "Create Routing Policy Draft" }).click();
+
+  await expect(page.locator(".admin-governance-status")).toContainText(
+    "Created routing policy draft",
+  );
+
+  const governedPoliciesPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Governed Routing Policies" }) });
+  const policyRow = governedPoliciesPanel
+    .locator(".admin-governance-template-row")
+    .filter({ hasText: prepared.familyId });
+
+  await expect(policyRow).toContainText("template_family");
+  await expect(policyRow).toContainText(prepared.evaluationRunId);
+
+  await policyRow.getByRole("button", { name: "Submit For Review" }).click();
+  await expect(page.locator(".admin-governance-status")).toContainText(
+    "Submitted routing policy draft",
+  );
+
+  await policyRow.getByRole("button", { name: "Approve" }).click();
+  await expect(page.locator(".admin-governance-status")).toContainText(
+    "Approved routing policy version",
+  );
+
+  await policyRow.getByRole("button", { name: "Activate" }).click();
+  await expect(page.locator(".admin-governance-status")).toContainText(
+    "Activated routing policy version",
+  );
+  await expect(policyRow).toContainText("Active Policy");
+  await expect(policyRow).toContainText(prepared.primaryModelId);
+  await expect(policyRow).toContainText(prepared.fallbackModelId);
+
+  const executionPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Execution Governance" }) });
+  await executionPanel
+    .getByLabel("Template Family")
+    .selectOption({ label: prepared.familyName });
+  await executionPanel.getByLabel("Module").selectOption("editing");
+  await executionPanel.getByRole("button", { name: "Preview Execution Bundle" }).click();
+
+  await expect(page.locator(".admin-governance-status")).toContainText(
+    "Resolved execution bundle preview.",
+  );
+
+  const resolutionGrid = executionPanel.locator(".admin-governance-resolution-grid");
+  await expect(resolutionGrid).toContainText(prepared.profileId);
+  await expect(resolutionGrid).toContainText(`openai / ${prepared.primaryModelName}`);
+  await expect(resolutionGrid).toContainText("template_family_policy");
+
+  const policiesResponse = await request.get(
+    `${apiBaseUrl}/api/v1/model-routing-governance/policies`,
+  );
+  expect(policiesResponse.ok()).toBeTruthy();
+  const policies = (await policiesResponse.json()) as Array<{
+    scope_value: string;
+    active_version?: {
+      id: string;
+    };
+  }>;
+  const activePolicy = policies.find((policy) => policy.scope_value === prepared.familyId);
+  expect(activePolicy?.active_version?.id).toBeTruthy();
+
+  const routedManuscriptSlug = slugify(`${prepared.familyName}-routing-audit`);
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    data: {
+      title: `${prepared.familyName} Routed Audit Manuscript`,
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: `${routedManuscriptSlug}-source.docx`,
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      storageKey: `uploads/${routedManuscriptSlug}/${routedManuscriptSlug}-source.docx`,
+    },
+  });
+  expect(uploadResponse.ok()).toBeTruthy();
+  const uploaded = (await uploadResponse.json()) as {
+    manuscript: { id: string };
+  };
+
+  const routedLogResponse = await request.post(`${apiBaseUrl}/api/v1/agent-execution`, {
+    data: {
+      input: {
+        manuscriptId: uploaded.manuscript.id,
+        module: "editing",
+        triggeredBy: "dev.admin",
+        runtimeId: prepared.runtimeId,
+        sandboxProfileId: prepared.sandboxProfileId,
+        agentProfileId: prepared.agentProfileId,
+        runtimeBindingId: prepared.runtimeBindingId,
+        toolPermissionPolicyId: prepared.toolPermissionPolicyId,
+        knowledgeItemIds: [],
+        routingPolicyVersionId: activePolicy!.active_version!.id,
+        routingPolicyScopeKind: "template_family",
+        routingPolicyScopeValue: prepared.familyId,
+        resolvedModelId: prepared.primaryModelId,
+      },
+    },
+  });
+  expect(routedLogResponse.ok()).toBeTruthy();
+
+  await page.reload({
+    waitUntil: "domcontentloaded",
+  });
+
+  const recentExecutionsPanel = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
+  await recentExecutionsPanel.getByLabel("Search executions").fill(uploaded.manuscript.id);
+  const targetExecutionRow = recentExecutionsPanel
+    .locator(".admin-governance-template-row")
+    .filter({ hasText: uploaded.manuscript.id });
+  const inspectButton = targetExecutionRow.getByRole("button");
+  await expect(inspectButton).toBeVisible();
+  if ((await inspectButton.textContent())?.trim() === "Inspect") {
+    await inspectButton.click();
+  }
+
+  const evidencePanel = page.locator(".admin-governance-evidence");
+  await expect(evidencePanel).toContainText("Routing Policy Hit");
+  await expect(evidencePanel).toContainText("template_family");
+  await expect(evidencePanel).toContainText(activePolicy!.active_version!.id);
+  await expect(evidencePanel).toContainText("Resolved Model");
+  await expect(evidencePanel).toContainText(prepared.primaryModelId);
+  await expect(evidencePanel).toContainText("Fallback Outcome");
+});
+
 test("admin can inspect governed execution outputs from the governance console", async ({
   page,
   request,
@@ -218,7 +376,9 @@ interface PrepareExecutionPreviewScenarioInput {
 }
 
 interface PreparedExecutionPreviewScenario {
+  familyId: string;
   familyName: string;
+  modelId: string;
   modelName: string;
   promptName: string;
   profileId: string;
@@ -252,6 +412,22 @@ interface PreparedRuntimeBindingVerificationScenario {
 interface PreparedExecutionFilterScenario {
   completedManuscriptId: string;
   runningManuscriptId: string;
+}
+
+interface PreparedRoutingGovernanceScenario {
+  evaluationRunId: string;
+  familyId: string;
+  familyName: string;
+  primaryModelId: string;
+  primaryModelName: string;
+  fallbackModelId: string;
+  fallbackModelName: string;
+  profileId: string;
+  runtimeId: string;
+  sandboxProfileId: string;
+  agentProfileId: string;
+  runtimeBindingId: string;
+  toolPermissionPolicyId: string;
 }
 
 async function prepareExecutionPreviewScenario(
@@ -402,10 +578,68 @@ async function prepareExecutionPreviewScenario(
   expect(publishProfileResponse.ok()).toBeTruthy();
 
   return {
+    familyId: family.id,
     familyName,
+    modelId: model.id,
     modelName,
     promptName,
     profileId: profile.id,
+  };
+}
+
+async function prepareRoutingGovernanceScenario(
+  request: APIRequestContext,
+  input: PrepareExecutionPreviewScenarioInput,
+): Promise<PreparedRoutingGovernanceScenario> {
+  const preview = await prepareExecutionPreviewScenario(request, input);
+  const slug = slugify(input.label);
+  const fallbackModelName = `${slug}-gemini-2.5-pro`;
+  const evaluationRunId = `${slug}-evaluation-run`;
+
+  const fallbackModelResponse = await request.post(`${apiBaseUrl}/api/v1/model-registry`, {
+    data: {
+      actorRole: "admin",
+      provider: "google",
+      modelName: fallbackModelName,
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  expect(fallbackModelResponse.ok()).toBeTruthy();
+  const fallbackModel = (await fallbackModelResponse.json()) as { id: string };
+
+  const routingPolicyResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-registry/routing-policy`,
+    {
+      data: {
+        actorRole: "admin",
+        moduleDefaults: {
+          editing: fallbackModel.id,
+        },
+      },
+    },
+  );
+  expect(routingPolicyResponse.ok()).toBeTruthy();
+
+  const evidenceSeed = await prepareExecutionEvidenceScenario(request, {
+    label: `${input.label} Seed`,
+  });
+  const seedLog = await findExecutionLogByManuscriptId(request, evidenceSeed.manuscriptId);
+
+  return {
+    evaluationRunId,
+    familyId: preview.familyId,
+    familyName: preview.familyName,
+    primaryModelId: preview.modelId,
+    primaryModelName: preview.modelName,
+    fallbackModelId: fallbackModel.id,
+    fallbackModelName,
+    profileId: preview.profileId,
+    runtimeId: seedLog.runtime_id,
+    sandboxProfileId: seedLog.sandbox_profile_id,
+    agentProfileId: seedLog.agent_profile_id,
+    runtimeBindingId: seedLog.runtime_binding_id,
+    toolPermissionPolicyId: seedLog.tool_permission_policy_id,
   };
 }
 

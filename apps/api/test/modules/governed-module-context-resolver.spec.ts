@@ -11,6 +11,10 @@ import { ExecutionGovernanceService } from "../../src/modules/execution-governan
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
 import {
+  InMemoryModelRoutingGovernanceRepository,
+} from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
+import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
@@ -63,6 +67,8 @@ async function createResolverHarness() {
   });
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const modelRoutingGovernanceRepository =
+    new InMemoryModelRoutingGovernanceRepository();
   const auditService = new InMemoryAuditService();
   const modelRegistryService = new ModelRegistryService({
     repository: modelRepository,
@@ -76,9 +82,28 @@ async function createResolverHarness() {
       };
     })(),
   });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository: modelRepository,
+    createId: (() => {
+      const ids = [
+        "governance-id-1",
+        "governance-id-2",
+        "governance-id-3",
+        "governance-id-4",
+      ];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a governance id to be available.");
+        return value;
+      };
+    })(),
+    now: () => new Date("2026-03-28T12:00:00.000Z"),
+  });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
     routingPolicyRepository,
+    modelRoutingGovernanceService,
     auditService,
     now: () => new Date("2026-03-28T12:00:00.000Z"),
   });
@@ -248,11 +273,39 @@ async function createResolverHarness() {
     allowedModules: ["screening", "editing", "proofreading"],
     isProdAllowed: true,
   });
+  const fallbackModel = await modelRegistryService.createModelEntry("admin", {
+    provider: "azure_openai",
+    modelName: "gpt-5-editing-fallback",
+    modelVersion: "2026-03",
+    allowedModules: ["editing"],
+    isProdAllowed: true,
+  });
   await modelRegistryService.updateRoutingPolicy("admin", {
     systemDefaultModelId: systemModel.id,
     moduleDefaults: {
       editing: systemModel.id,
     },
+  });
+  await modelRoutingGovernanceRepository.saveScope({
+    id: "policy-scope-1",
+    scope_kind: "template_family",
+    scope_value: "family-1",
+    active_version_id: "policy-version-1",
+    created_at: "2026-03-28T12:00:00.000Z",
+    updated_at: "2026-03-28T12:00:00.000Z",
+  });
+  await modelRoutingGovernanceRepository.saveVersion({
+    id: "policy-version-1",
+    policy_scope_id: "policy-scope-1",
+    scope_kind: "template_family",
+    scope_value: "family-1",
+    version_no: 1,
+    primary_model_id: systemModel.id,
+    fallback_model_ids: [fallbackModel.id],
+    evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+    status: "active",
+    created_at: "2026-03-28T12:00:00.000Z",
+    updated_at: "2026-03-28T12:00:00.000Z",
   });
 
   const tool = await toolGatewayService.createTool("admin", {
@@ -347,7 +400,15 @@ test("resolver returns the active execution profile with frozen template, prompt
   );
   assert.equal(context.knowledgeSelections[0]?.matchSource, "binding_rule");
   assert.equal(context.knowledgeSelections[1]?.matchSource, "template_binding");
+  assert.equal(context.modelSelection.layer, "template_family_policy");
+  assert.equal(context.modelSelection.policy_version_id, "policy-version-1");
+  assert.equal(context.modelSelection.policy_scope_kind, "template_family");
+  assert.equal(context.modelSelection.policy_scope_value, "family-1");
   assert.equal(context.modelSelection.model.id, "model-1");
+  assert.deepEqual(
+    context.modelSelection.fallback_chain.map((model) => model.id),
+    ["model-2"],
+  );
 });
 
 test("resolver fails when no active execution profile exists for the module scope", async () => {

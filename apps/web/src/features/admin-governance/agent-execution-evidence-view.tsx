@@ -1,4 +1,5 @@
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
+import { formatRoutingPolicyScopeKindLabel } from "../model-routing-governance/index.ts";
 import type { AdminGovernanceExecutionEvidence } from "./admin-governance-controller.ts";
 
 export interface AgentExecutionEvidenceViewProps {
@@ -77,6 +78,56 @@ export function AgentExecutionEvidenceView({
           <article className="admin-governance-asset-row">
             <span>Release Check Profile</span>
             <small>{log.release_check_profile_id ?? "none"}</small>
+          </article>
+        </div>
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Routing Policy Hit</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Policy Layer</span>
+            <small>
+              {log.routing_policy_scope_kind
+                ? `${formatRoutingPolicyScopeKindLabel(log.routing_policy_scope_kind)} (${log.routing_policy_scope_kind})`
+                : "Legacy Fallback Path"}
+            </small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Policy Version</span>
+            <small>{log.routing_policy_version_id ?? "legacy-defaults"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Scope</span>
+            <small>{log.routing_policy_scope_value ?? "n/a"}</small>
+          </article>
+        </div>
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Resolved Model</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Primary Resolution</span>
+            <small>{log.resolved_model_id ?? snapshot?.model_id ?? "Unavailable"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Snapshot Model</span>
+            <small>{snapshot?.model_id ?? "Pending snapshot"}</small>
+          </article>
+        </div>
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Fallback Outcome</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Fallback Model</span>
+            <small>{log.fallback_model_id ?? "No fallback triggered"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Trigger</span>
+            <small>{log.fallback_trigger ?? "No technical fallback recorded"}</small>
           </article>
         </div>
       </article>

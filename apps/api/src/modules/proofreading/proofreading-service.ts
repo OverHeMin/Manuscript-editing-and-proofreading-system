@@ -359,6 +359,10 @@ export class ProofreadingService {
               agentProfileId: resolvedContext.agentProfileId,
               runtimeBindingId: resolvedContext.runtimeBindingId,
               toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+              routingPolicyVersionId: resolvedContext.routingPolicyVersionId,
+              routingPolicyScopeKind: resolvedContext.routingPolicyScopeKind,
+              routingPolicyScopeValue: resolvedContext.routingPolicyScopeValue,
+              resolvedModelId: resolvedContext.modelId,
               knowledgeItemIds: resolvedContext.knowledgeHits.map(
                 (hit) => hit.knowledgeItemId,
               ),
@@ -536,6 +540,9 @@ export class ProofreadingService {
       })),
       modelId: moduleContext.modelSelection.model.id,
       modelVersion: moduleContext.modelSelection.model.model_version,
+      routingPolicyVersionId: moduleContext.modelSelection.policy_version_id,
+      routingPolicyScopeKind: moduleContext.modelSelection.policy_scope_kind,
+      routingPolicyScopeValue: moduleContext.modelSelection.policy_scope_value,
       agentRuntimeId: governedContext.runtime.id,
       sandboxProfileId: governedContext.sandboxProfile.id,
       agentProfileId: governedContext.agentProfile.id,
@@ -589,6 +596,9 @@ export class ProofreadingService {
       })),
       modelId: snapshot.model_id,
       modelVersion: snapshot.model_version,
+      routingPolicyVersionId: draftExecutionLog.routing_policy_version_id,
+      routingPolicyScopeKind: draftExecutionLog.routing_policy_scope_kind,
+      routingPolicyScopeValue: draftExecutionLog.routing_policy_scope_value,
       draftSnapshotId: snapshot.id,
       agentRuntimeId: draftExecutionLog.runtime_id,
       sandboxProfileId: draftExecutionLog.sandbox_profile_id,
@@ -635,6 +645,9 @@ interface ResolvedProofreadingGovernedContext {
   knowledgeHits: RecordKnowledgeHitInput[];
   modelId: string;
   modelVersion?: string;
+  routingPolicyVersionId?: string;
+  routingPolicyScopeKind?: AgentExecutionLogRecord["routing_policy_scope_kind"];
+  routingPolicyScopeValue?: string;
   draftSnapshotId?: string;
   agentRuntimeId: string;
   sandboxProfileId: string;

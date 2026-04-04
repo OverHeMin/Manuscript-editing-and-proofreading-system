@@ -129,6 +129,98 @@ test("agent tooling governance section renders runtime binding verification expe
   assert.match(html, /Editing Release Gate/);
 });
 
+test("agent tooling governance section renders routing governance drafts, grouped scopes, and lifecycle actions", () => {
+  const html = renderToStaticMarkup(
+    <AgentToolingGovernanceSection
+      actorRole="admin"
+      controller={{} as AdminGovernanceWorkbenchController}
+      overview={createOverview({
+        modelRegistryEntries: [
+          {
+            id: "model-primary-1",
+            provider: "openai",
+            model_name: "gpt-5.4",
+            model_version: "2026-04-01",
+            allowed_modules: ["screening", "editing", "proofreading"],
+            is_prod_allowed: true,
+          },
+          {
+            id: "model-fallback-1",
+            provider: "google",
+            model_name: "gemini-2.5-pro",
+            model_version: "2026-04-01",
+            allowed_modules: ["screening", "editing", "proofreading"],
+            is_prod_allowed: true,
+          },
+        ],
+        routingPolicies: [
+          {
+            policy_id: "policy-template-family-1",
+            scope_kind: "template_family",
+            scope_value: "family-1",
+            active_version: {
+              id: "policy-version-1",
+              policy_scope_id: "policy-template-family-1",
+              scope_kind: "template_family",
+              scope_value: "family-1",
+              version_no: 1,
+              primary_model_id: "model-primary-1",
+              fallback_model_ids: ["model-fallback-1"],
+              evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
+              status: "active",
+              created_at: "2026-04-03T08:00:00.000Z",
+              updated_at: "2026-04-03T08:05:00.000Z",
+            },
+            versions: [],
+            decisions: [],
+          },
+          {
+            policy_id: "policy-module-1",
+            scope_kind: "module",
+            scope_value: "editing",
+            versions: [
+              {
+                id: "policy-version-2",
+                policy_scope_id: "policy-module-1",
+                scope_kind: "module",
+                scope_value: "editing",
+                version_no: 2,
+                primary_model_id: "model-primary-1",
+                fallback_model_ids: ["model-fallback-1"],
+                evidence_links: [{ kind: "evaluation_run", id: "run-2" }],
+                notes: "Editing module routing draft",
+                status: "draft",
+                created_at: "2026-04-03T09:00:00.000Z",
+                updated_at: "2026-04-03T09:05:00.000Z",
+              },
+            ],
+            decisions: [],
+          },
+        ],
+      })}
+      isMutating={false}
+      runMutation={async () => {}}
+      onOverviewChange={() => {}}
+    />,
+  );
+
+  assert.match(html, /Routing Policy Draft/i);
+  assert.match(html, /template_family/i);
+  assert.match(html, /module/i);
+  assert.match(html, /family-1/);
+  assert.match(html, /editing/);
+  assert.match(html, /New Draft Version/);
+  assert.match(html, /Save Draft/);
+  assert.match(html, /Submit For Review/);
+  assert.match(html, /Approve/);
+  assert.match(html, /Activate/);
+  assert.match(html, /Rollback/);
+  assert.match(html, /run-1/);
+  assert.match(html, /run-2/);
+  assert.match(html, /model-primary-1/);
+  assert.match(html, /model-fallback-1/);
+});
+
 function createOverview(
   overrides: Partial<AdminGovernanceOverview> = {},
 ): AdminGovernanceOverview {
@@ -146,6 +238,7 @@ function createOverview(
       template_overrides: {},
       updated_at: "2026-04-02T08:00:00.000Z",
     },
+    routingPolicies: [],
     toolGatewayTools: [],
     sandboxProfiles: [],
     agentProfiles: [],

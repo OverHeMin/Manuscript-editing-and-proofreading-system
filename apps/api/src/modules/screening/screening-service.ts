@@ -164,6 +164,10 @@ export class ScreeningService {
         agentProfileId: governedContext.agentProfile.id,
         runtimeBindingId: governedContext.runtimeBinding.id,
         toolPermissionPolicyId: governedContext.toolPolicy.id,
+        routingPolicyVersionId: moduleContext.modelSelection.policy_version_id,
+        routingPolicyScopeKind: moduleContext.modelSelection.policy_scope_kind,
+        routingPolicyScopeValue: moduleContext.modelSelection.policy_scope_value,
+        resolvedModelId: moduleContext.modelSelection.model.id,
         knowledgeItemIds: moduleContext.knowledgeSelections.map(
           (selection) => selection.knowledgeItem.id,
         ),

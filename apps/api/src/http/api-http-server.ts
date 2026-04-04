@@ -165,6 +165,17 @@ import {
   ModelRoutingReferenceNotFoundError,
 } from "../modules/model-registry/index.ts";
 import {
+  createModelRoutingGovernanceApi,
+  InMemoryModelRoutingGovernanceRepository,
+  ModelRoutingGovernanceDraftNotEditableError,
+  ModelRoutingGovernanceService,
+  ModelRoutingGovernanceStatusTransitionError,
+  ModelRoutingGovernanceValidationError,
+  ModelRoutingPolicyNotFoundError,
+  ModelRoutingPolicyScopeConflictError,
+  ModelRoutingPolicyVersionNotFoundError,
+} from "../modules/model-routing-governance/index.ts";
+import {
   createPromptSkillRegistryApi,
   InMemoryPromptSkillRegistryRepository,
   PromptTemplateNotFoundError,
@@ -549,6 +560,36 @@ type HttpRouteMatch =
       route: "model-registry-update-routing-policy";
     }
   | {
+      route: "model-routing-governance-list-policies";
+    }
+  | {
+      route: "model-routing-governance-create-policy";
+    }
+  | {
+      route: "model-routing-governance-create-draft-version";
+      policyId: string;
+    }
+  | {
+      route: "model-routing-governance-update-draft-version";
+      versionId: string;
+    }
+  | {
+      route: "model-routing-governance-submit-version";
+      versionId: string;
+    }
+  | {
+      route: "model-routing-governance-approve-version";
+      versionId: string;
+    }
+  | {
+      route: "model-routing-governance-activate-version";
+      versionId: string;
+    }
+  | {
+      route: "model-routing-governance-rollback-policy";
+      policyId: string;
+    }
+  | {
       route: "knowledge-list";
     }
   | {
@@ -759,6 +800,7 @@ export interface ApiServerRuntime {
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
+  modelRoutingGovernanceApi: ReturnType<typeof createModelRoutingGovernanceApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
   runtimeBindingApi: ReturnType<typeof createRuntimeBindingApi>;
   sandboxProfileApi: ReturnType<typeof createSandboxProfileApi>;
@@ -863,6 +905,8 @@ export function createInMemoryApiRuntime(input: {
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const modelRoutingGovernanceRepository =
+    new InMemoryModelRoutingGovernanceRepository();
   const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
@@ -954,9 +998,15 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     manuscriptRepository,
   });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository,
+    permissionGuard,
+  });
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    modelRoutingGovernanceService,
     auditService,
   });
   const modelRegistryService = new ModelRegistryService({
@@ -970,6 +1020,7 @@ export function createInMemoryApiRuntime(input: {
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    modelRoutingGovernanceService,
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
@@ -1137,6 +1188,9 @@ export function createInMemoryApiRuntime(input: {
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
+    modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
+      modelRoutingGovernanceService,
+    }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
     }),
@@ -2573,6 +2627,119 @@ async function handleRoute(
         },
       });
     }
+    case "model-routing-governance-list-policies":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.modelRoutingGovernanceApi.listPolicies();
+    case "model-routing-governance-create-policy": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<typeof runtime.modelRoutingGovernanceApi.createPolicy>[0]["input"];
+      };
+
+      return runtime.modelRoutingGovernanceApi.createPolicy({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "model-routing-governance-create-draft-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.modelRoutingGovernanceApi.createDraftVersion
+        >[0]["input"];
+      };
+
+      return runtime.modelRoutingGovernanceApi.createDraftVersion({
+        actorRole: session.user.role,
+        policyId: routeMatch.policyId,
+        input: body.input,
+      });
+    }
+    case "model-routing-governance-update-draft-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.modelRoutingGovernanceApi.updateDraftVersion
+        >[0]["input"];
+      };
+
+      return runtime.modelRoutingGovernanceApi.updateDraftVersion({
+        actorRole: session.user.role,
+        versionId: routeMatch.versionId,
+        input: body.input,
+      });
+    }
+    case "model-routing-governance-submit-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        actorId?: string;
+        reason?: string;
+      };
+
+      return runtime.modelRoutingGovernanceApi.submitVersion({
+        actorRole: session.user.role,
+        versionId: routeMatch.versionId,
+        input: {
+          actorId: coalesceOptionalString(body.actorId),
+          reason: coalesceOptionalString(body.reason),
+        },
+      });
+    }
+    case "model-routing-governance-approve-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        actorId?: string;
+        reason?: string;
+      };
+
+      return runtime.modelRoutingGovernanceApi.approveVersion({
+        actorRole: session.user.role,
+        versionId: routeMatch.versionId,
+        input: {
+          actorId: coalesceOptionalString(body.actorId),
+          reason: coalesceOptionalString(body.reason),
+        },
+      });
+    }
+    case "model-routing-governance-activate-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        actorId?: string;
+        reason?: string;
+      };
+
+      return runtime.modelRoutingGovernanceApi.activateVersion({
+        actorRole: session.user.role,
+        versionId: routeMatch.versionId,
+        input: {
+          actorId: coalesceOptionalString(body.actorId),
+          reason: coalesceOptionalString(body.reason),
+        },
+      });
+    }
+    case "model-routing-governance-rollback-policy": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        actorId?: string;
+        reason?: string;
+      };
+
+      return runtime.modelRoutingGovernanceApi.rollbackPolicy({
+        actorRole: session.user.role,
+        policyId: routeMatch.policyId,
+        input: {
+          actorId: coalesceOptionalString(body.actorId),
+          reason: coalesceOptionalString(body.reason),
+        },
+      });
+    }
     case "knowledge-create-draft":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.createDraft(
@@ -3134,6 +3301,74 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/model-registry/routing-policy") {
     return { route: "model-registry-update-routing-policy" };
+  }
+
+  if (method === "GET" && path === "/api/v1/model-routing-governance/policies") {
+    return { route: "model-routing-governance-list-policies" };
+  }
+
+  if (method === "POST" && path === "/api/v1/model-routing-governance/policies") {
+    return { route: "model-routing-governance-create-policy" };
+  }
+
+  const createModelRoutingDraftVersionMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/policies\/([^/]+)\/versions$/,
+  );
+  if (method === "POST" && createModelRoutingDraftVersionMatch) {
+    return {
+      route: "model-routing-governance-create-draft-version",
+      policyId: createModelRoutingDraftVersionMatch[1],
+    };
+  }
+
+  const updateModelRoutingDraftVersionMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/versions\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateModelRoutingDraftVersionMatch) {
+    return {
+      route: "model-routing-governance-update-draft-version",
+      versionId: updateModelRoutingDraftVersionMatch[1],
+    };
+  }
+
+  const submitModelRoutingVersionMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/versions\/([^/]+)\/submit$/,
+  );
+  if (method === "POST" && submitModelRoutingVersionMatch) {
+    return {
+      route: "model-routing-governance-submit-version",
+      versionId: submitModelRoutingVersionMatch[1],
+    };
+  }
+
+  const approveModelRoutingVersionMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/versions\/([^/]+)\/approve$/,
+  );
+  if (method === "POST" && approveModelRoutingVersionMatch) {
+    return {
+      route: "model-routing-governance-approve-version",
+      versionId: approveModelRoutingVersionMatch[1],
+    };
+  }
+
+  const activateModelRoutingVersionMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/versions\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && activateModelRoutingVersionMatch) {
+    return {
+      route: "model-routing-governance-activate-version",
+      versionId: activateModelRoutingVersionMatch[1],
+    };
+  }
+
+  const rollbackModelRoutingPolicyMatch = path.match(
+    /^\/api\/v1\/model-routing-governance\/policies\/([^/]+)\/rollback$/,
+  );
+  if (method === "POST" && rollbackModelRoutingPolicyMatch) {
+    return {
+      route: "model-routing-governance-rollback-policy",
+      policyId: rollbackModelRoutingPolicyMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/knowledge/drafts") {
@@ -3925,6 +4160,8 @@ function mapErrorToHttpResponse(
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
     error instanceof ModelRoutingReferenceNotFoundError ||
+    error instanceof ModelRoutingPolicyNotFoundError ||
+    error instanceof ModelRoutingPolicyVersionNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError ||
     error instanceof RuntimeBindingNotFoundError ||
@@ -3961,6 +4198,9 @@ function mapErrorToHttpResponse(
     error instanceof ModuleTemplateDraftNotEditableError ||
     error instanceof ModuleTemplateStatusTransitionError ||
     error instanceof DuplicateModelRegistryEntryError ||
+    error instanceof ModelRoutingPolicyScopeConflictError ||
+    error instanceof ModelRoutingGovernanceDraftNotEditableError ||
+    error instanceof ModelRoutingGovernanceStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
     error instanceof RuntimeBindingCompatibilityError ||
     error instanceof RuntimeBindingDependencyStateError ||
@@ -3991,6 +4231,7 @@ function mapErrorToHttpResponse(
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||
     error instanceof ModelRoutingPolicyValidationError ||
+    error instanceof ModelRoutingGovernanceValidationError ||
     error instanceof ExecutionTrackingSkillPackageVersionMismatchError ||
     error instanceof ToolPermissionPolicyHighRiskAllowlistError ||
     error instanceof ToolPermissionPolicyUnknownToolError ||

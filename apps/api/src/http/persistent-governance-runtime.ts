@@ -75,6 +75,11 @@ import {
   PostgresModelRoutingPolicyRepository,
 } from "../modules/model-registry/index.ts";
 import {
+  createModelRoutingGovernanceApi,
+  ModelRoutingGovernanceService,
+  PostgresModelRoutingGovernanceRepository,
+} from "../modules/model-routing-governance/index.ts";
+import {
   createManuscriptApi,
   ManuscriptLifecycleService,
   PostgresManuscriptRepository,
@@ -202,6 +207,10 @@ export function createPersistentGovernanceRuntime(
   const modelRoutingPolicyRepository = new PostgresModelRoutingPolicyRepository({
     client: options.client,
   });
+  const modelRoutingGovernanceRepository =
+    new PostgresModelRoutingGovernanceRepository({
+      client: options.client,
+    });
   const runtimeBindingRepository = new PostgresRuntimeBindingRepository({
     client: options.client,
   });
@@ -350,9 +359,15 @@ export function createPersistentGovernanceRuntime(
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
   });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository,
+    permissionGuard,
+  });
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    modelRoutingGovernanceService,
     auditService: new PostgresAuditService({
       client: options.client,
     }),
@@ -372,6 +387,7 @@ export function createPersistentGovernanceRuntime(
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    modelRoutingGovernanceService,
   });
   const runtimeBindingService = new RuntimeBindingService({
     repository: runtimeBindingRepository,
@@ -536,6 +552,9 @@ export function createPersistentGovernanceRuntime(
     }),
     templateApi: createTemplateApi({ templateService }),
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
+    modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
+      modelRoutingGovernanceService,
+    }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
     }),

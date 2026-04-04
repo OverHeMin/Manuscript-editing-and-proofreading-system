@@ -958,6 +958,477 @@ test("http server lets admin manage model registry entries and routing policy", 
   }
 });
 
+test("http server lets admin manage the model routing governance lifecycle", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const createModel = async (input: {
+      provider: string;
+      modelName: string;
+      modelVersion: string;
+      allowedModules: string[];
+    }) => {
+      const response = await fetch(`${baseUrl}/api/v1/model-registry`, {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          provider: input.provider,
+          modelName: input.modelName,
+          modelVersion: input.modelVersion,
+          allowedModules: input.allowedModules,
+          isProdAllowed: true,
+        }),
+      });
+      const body = (await response.json()) as { id: string };
+
+      assert.equal(response.status, 201);
+      return body;
+    };
+
+    const primaryModel = await createModel({
+      provider: "openai",
+      modelName: "gpt-5-routing-primary",
+      modelVersion: "2026-04-01",
+      allowedModules: ["screening", "editing", "proofreading"],
+    });
+    const fallbackModel = await createModel({
+      provider: "google",
+      modelName: "gemini-routing-fallback",
+      modelVersion: "2026-04-01",
+      allowedModules: ["screening", "editing", "proofreading"],
+    });
+    const alternateModel = await createModel({
+      provider: "anthropic",
+      modelName: "claude-routing-alternate",
+      modelVersion: "2026-04-01",
+      allowedModules: ["screening", "editing", "proofreading"],
+    });
+
+    const createPolicyResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/policies`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            scopeKind: "template_family",
+            scopeValue: "family-http-routing-1",
+            primaryModelId: primaryModel.id,
+            fallbackModelIds: [fallbackModel.id],
+            evidenceLinks: [{ kind: "evaluation_run", id: "run-http-routing-1" }],
+            notes: "Create the initial routing governance draft.",
+          },
+        }),
+      },
+    );
+    const createdDraft = (await createPolicyResponse.json()) as {
+      policy_id: string;
+      scope: {
+        scope_kind: string;
+        scope_value: string;
+      };
+      version: {
+        id: string;
+        status: string;
+        primary_model_id: string;
+        fallback_model_ids: string[];
+      };
+    };
+
+    assert.equal(createPolicyResponse.status, 201);
+    assert.equal(createdDraft.scope.scope_kind, "template_family");
+    assert.equal(createdDraft.scope.scope_value, "family-http-routing-1");
+    assert.equal(createdDraft.version.status, "draft");
+    assert.equal(createdDraft.version.primary_model_id, primaryModel.id);
+    assert.deepEqual(createdDraft.version.fallback_model_ids, [fallbackModel.id]);
+
+    const updateDraftResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/draft`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            fallbackModelIds: [fallbackModel.id],
+            notes: "Keep a single approved fallback in the draft.",
+          },
+        }),
+      },
+    );
+    const updatedDraft = (await updateDraftResponse.json()) as {
+      version: {
+        status: string;
+        fallback_model_ids: string[];
+        notes?: string;
+      };
+    };
+
+    assert.equal(updateDraftResponse.status, 200);
+    assert.equal(updatedDraft.version.status, "draft");
+    assert.deepEqual(updatedDraft.version.fallback_model_ids, [fallbackModel.id]);
+    assert.equal(
+      updatedDraft.version.notes,
+      "Keep a single approved fallback in the draft.",
+    );
+
+    const activateBeforeApprovalResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "This should fail before approval.",
+        }),
+      },
+    );
+    const activateBeforeApproval = (await activateBeforeApprovalResponse.json()) as {
+      error: string;
+      message: string;
+    };
+
+    assert.equal(activateBeforeApprovalResponse.status, 409);
+    assert.equal(activateBeforeApproval.error, "state_conflict");
+    assert.match(activateBeforeApproval.message, /cannot transition/i);
+
+    const submitResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Route the policy into review.",
+        }),
+      },
+    );
+    const submittedDraft = (await submitResponse.json()) as {
+      version: {
+        status: string;
+      };
+    };
+
+    assert.equal(submitResponse.status, 200);
+    assert.equal(submittedDraft.version.status, "pending_review");
+
+    const approveResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Evidence supports approval.",
+        }),
+      },
+    );
+    const approvedDraft = (await approveResponse.json()) as {
+      version: {
+        status: string;
+      };
+    };
+
+    assert.equal(approveResponse.status, 200);
+    assert.equal(approvedDraft.version.status, "approved");
+
+    const activateResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Promote the approved version to active.",
+        }),
+      },
+    );
+    const activeDraft = (await activateResponse.json()) as {
+      version: {
+        id: string;
+        status: string;
+      };
+    };
+
+    assert.equal(activateResponse.status, 200);
+    assert.equal(activeDraft.version.id, createdDraft.version.id);
+    assert.equal(activeDraft.version.status, "active");
+
+    const listResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/policies`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const policies = (await listResponse.json()) as Array<{
+      policy_id: string;
+      scope_kind: string;
+      scope_value: string;
+      active_version?: {
+        status: string;
+        primary_model_id: string;
+        scope_kind: string;
+        fallback_model_ids: string[];
+      };
+    }>;
+    const listedPolicy = policies.find(
+      (policy) => policy.policy_id === createdDraft.policy_id,
+    );
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(listedPolicy?.scope_kind, "template_family");
+    assert.equal(listedPolicy?.scope_value, "family-http-routing-1");
+    assert.equal(listedPolicy?.active_version?.status, "active");
+    assert.equal(listedPolicy?.active_version?.primary_model_id, primaryModel.id);
+    assert.equal(listedPolicy?.active_version?.scope_kind, "template_family");
+    assert.deepEqual(listedPolicy?.active_version?.fallback_model_ids, [
+      fallbackModel.id,
+    ]);
+
+    const createDraftVersionResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/policies/${createdDraft.policy_id}/versions`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            primaryModelId: alternateModel.id,
+            fallbackModelIds: [fallbackModel.id],
+            evidenceLinks: [{ kind: "evaluation_run", id: "run-http-routing-2" }],
+            notes: "Prepare a superseding draft version.",
+          },
+        }),
+      },
+    );
+    const nextDraft = (await createDraftVersionResponse.json()) as {
+      version: {
+        id: string;
+        version_no: number;
+        status: string;
+        primary_model_id: string;
+      };
+    };
+
+    assert.equal(createDraftVersionResponse.status, 201);
+    assert.equal(nextDraft.version.version_no, 2);
+    assert.equal(nextDraft.version.status, "draft");
+    assert.equal(nextDraft.version.primary_model_id, alternateModel.id);
+
+    const submitNextDraftResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${nextDraft.version.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Submit the superseding draft.",
+        }),
+      },
+    );
+    const approveNextDraftResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${nextDraft.version.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Approve the superseding draft.",
+        }),
+      },
+    );
+    const activateNextDraftResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${nextDraft.version.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Activate the superseding draft.",
+        }),
+      },
+    );
+    const activeNextDraft = (await activateNextDraftResponse.json()) as {
+      version: {
+        id: string;
+        status: string;
+        primary_model_id: string;
+      };
+    };
+
+    assert.equal(submitNextDraftResponse.status, 200);
+    assert.equal(approveNextDraftResponse.status, 200);
+    assert.equal(activateNextDraftResponse.status, 200);
+    assert.equal(activeNextDraft.version.id, nextDraft.version.id);
+    assert.equal(activeNextDraft.version.status, "active");
+    assert.equal(activeNextDraft.version.primary_model_id, alternateModel.id);
+
+    const rollbackResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/policies/${createdDraft.policy_id}/rollback`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Return this scope to the legacy fallback path.",
+        }),
+      },
+    );
+    const rolledBack = (await rollbackResponse.json()) as {
+      version: {
+        status: string;
+      };
+    };
+
+    assert.equal(rollbackResponse.status, 200);
+    assert.equal(rolledBack.version.status, "rolled_back");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server rejects routing governance approval without evidence links", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const createModelResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        provider: "openai",
+        modelName: "gpt-5-routing-without-evidence",
+        modelVersion: "2026-04-02",
+        allowedModules: ["editing"],
+        isProdAllowed: true,
+      }),
+    });
+    const createdModel = (await createModelResponse.json()) as { id: string };
+
+    assert.equal(createModelResponse.status, 201);
+
+    const createPolicyResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/policies`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            scopeKind: "module",
+            scopeValue: "editing",
+            primaryModelId: createdModel.id,
+            fallbackModelIds: [],
+            evidenceLinks: [],
+            notes: "Create a draft without evidence to prove validation.",
+          },
+        }),
+      },
+    );
+    const createdDraft = (await createPolicyResponse.json()) as {
+      version: {
+        id: string;
+        status: string;
+      };
+    };
+
+    assert.equal(createPolicyResponse.status, 201);
+    assert.equal(createdDraft.version.status, "draft");
+
+    const submitResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Submit the no-evidence draft.",
+        }),
+      },
+    );
+
+    assert.equal(submitResponse.status, 200);
+
+    const approveResponse = await fetch(
+      `${baseUrl}/api/v1/model-routing-governance/versions/${createdDraft.version.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          reason: "Approval should fail without evidence.",
+        }),
+      },
+    );
+    const approvalError = (await approveResponse.json()) as {
+      error: string;
+      message: string;
+    };
+
+    assert.equal(approveResponse.status, 400);
+    assert.equal(approvalError.error, "invalid_request");
+    assert.match(approvalError.message, /requires evidence links/i);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server resolves governed execution bundles and records execution snapshots", async () => {
   const { server, baseUrl } = await startServer();
 
