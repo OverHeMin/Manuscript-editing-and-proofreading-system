@@ -232,3 +232,12 @@
 - Local harness runners live under `apps/worker-py/src/harness_runners`, and repo-owned export/runner scripts live under `scripts/harness`. These tools are fail-open and must never become synchronous dependencies of live screening, editing, or proofreading execution.
 - Template Governance Workbench now exposes a bounded read-only retrieval view: latest retrieval-quality run, latest retrieval snapshot summary, and operator signals. Missing endpoints or missing data degrade to a fail-open evidence message instead of blocking governance actions.
 - `Evaluation Workbench` still does not become the routing control plane in Phase 10E. Retrieval metrics may inform operators, but they do not activate routing policy, auto-switch models, auto-publish templates or knowledge, or auto-write learning feedback.
+
+## Local-First Harness Adapter Platform (Phase 10F)
+
+- `harness-integrations` is a repository-owned adapter lane for `promptfoo`, `langfuse_oss`, `simple_evals_local`, and `judge_reliability_local`. It keeps harness tools replaceable and outside the synchronous manuscript execution dependency chain.
+- Harness launches stay explicit and bounded to governed runtime assets such as active runtime bindings and approved evaluation suites. `screening`, `editing`, `proofreading`, the routing control plane, and existing `verification-ops` contracts do not depend on adapter availability to complete their primary path.
+- Self-hosted tracing is limited to `Langfuse OSS` style endpoints. Repo scripts degrade or skip when no local/self-hosted sink is configured, and hosted `langfuse.com` endpoints are not the primary path for this phase.
+- Admin Governance now exposes a read-only harness health surface for registered adapters, latest execution state, trace sink availability, and judge calibration outcomes. This surface is additive only: it does not publish policies, activate routing, auto-switch models, or become an operations control plane.
+- Harness read/write surfaces are fail-open by design. Missing harness endpoints or unavailable adapter executions degrade to empty evidence/read-model state instead of blocking broader governance work, and operator-launched harness failures remain recorded as governed degraded results.
+- Phase 10F does not enable automatic model switching, automatic publishing, automatic release actions, or automatic learning writeback. Judge and eval outcomes remain advisory evidence for human operators.
