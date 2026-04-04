@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+import { getRepositoryMigrationFiles } from "../../src/database/migration-ledger.ts";
 import { withTemporaryDatabase, withTestClient } from "./support/postgres.ts";
 import { getMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
 
@@ -519,28 +520,9 @@ const expectedRoleKeys = [
   "user",
 ];
 
-const expectedMigrationFiles = [
-  "0001_initial.sql",
-  "0002_model_registry_version_guard.sql",
-  "0003_document_assets_file_name.sql",
-  "0004_auth_persistence.sql",
-  "0005_governed_registry_persistence.sql",
-  "0006_prompt_skill_registry_persistence.sql",
-  "0007_model_routing_policy_persistence.sql",
-  "0008_execution_runtime_persistence.sql",
-  "0009_agent_tooling_persistence.sql",
-  "0010_learning_review_persistence.sql",
-  "0011_verification_ops_persistence.sql",
-  "0012_template_family_active_uniqueness.sql",
-  "0013_governed_evaluation_run_seeding.sql",
-  "0014_agent_tooling_verification_expectations.sql",
-  "0015_model_routing_governance_persistence.sql",
-  "0016_harness_dataset_governance.sql",
-  "0017_retrieval_quality_harness.sql",
-  "0018_retrieval_quality_verification_ops.sql",
-  "0019_local_first_harness_adapter_platform.sql",
-  "0020_agent_execution_model_routing_resolution.sql",
-] as const;
+const expectedMigrationFiles = getRepositoryMigrationFiles();
+const legacyInitialChecksum =
+  "6140ea1d2280a0712aae27ae1f284131bf1eeb239446ea46ef49298fb8b30920";
 
 const legacyAgentToolingChecksum =
   "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
@@ -649,6 +631,35 @@ test("migration seeds system roles and records migration bookkeeping", { concurr
   });
 });
 
+test("migration bookkeeping tracks the repo migration ledger in release order", () => {
+  assert.deepEqual(
+    expectedMigrationFiles,
+    [
+      "0001_initial.sql",
+      "0002_model_registry_version_guard.sql",
+      "0003_document_assets_file_name.sql",
+      "0004_auth_persistence.sql",
+      "0005_governed_registry_persistence.sql",
+      "0006_prompt_skill_registry_persistence.sql",
+      "0007_model_routing_policy_persistence.sql",
+      "0008_execution_runtime_persistence.sql",
+      "0009_agent_tooling_persistence.sql",
+      "0010_learning_review_persistence.sql",
+      "0011_verification_ops_persistence.sql",
+      "0012_template_family_active_uniqueness.sql",
+      "0013_governed_evaluation_run_seeding.sql",
+      "0014_agent_tooling_verification_expectations.sql",
+      "0015_model_routing_governance_persistence.sql",
+      "0016_harness_dataset_governance.sql",
+      "0017_retrieval_quality_harness.sql",
+      "0018_retrieval_quality_verification_ops.sql",
+      "0019_local_first_harness_adapter_platform.sql",
+      "0020_agent_execution_model_routing_resolution.sql",
+    ],
+    "Expected the repository migration ledger to include the current release-reliability schema set.",
+  );
+});
+
 test("model_registry rejects duplicate unversioned models", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
     const modelName = `gpt-unversioned-regression-${process.pid}`;
@@ -743,6 +754,31 @@ test("migrate detects checksum mismatches before applying anything new", { concu
       `${result.stdout}\n${result.stderr}`,
       /Migration checksum mismatch for 0001_initial\.sql/,
     );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          order by version
+        `,
+      );
+
+      assert.deepEqual(
+        migrationResult.rows,
+        expectedMigrationFiles.map((version) => ({
+          version,
+          checksum:
+            version === "0001_initial.sql" ? "tampered-checksum" : getMigrationChecksum(version),
+        })),
+        "Expected blocked migration drift to leave bookkeeping untouched except for the injected mismatch.",
+      );
+    } finally {
+      await verificationClient.end();
+    }
   });
 });
 
@@ -775,6 +811,58 @@ test("migrate accepts line-ending-only checksum differences for existing migrati
       0,
       `Expected migrate to accept equivalent line-ending-only checksum changes.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
     );
+  });
+});
+
+test("migrate repairs accepted legacy 0001 initial checksum rows by normalizing bookkeeping", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = $1
+          where version = '0001_initial.sql'
+        `,
+        [legacyInitialChecksum],
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to normalize the accepted legacy 0001 checksum.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          where version = '0001_initial.sql'
+        `,
+      );
+
+      assert.deepEqual(migrationResult.rows, [
+        {
+          version: "0001_initial.sql",
+          checksum: getMigrationChecksum("0001_initial.sql"),
+        },
+      ]);
+    } finally {
+      await verificationClient.end();
+    }
   });
 });
 
@@ -980,6 +1068,38 @@ test("migrate repairs legacy 0015 model routing databases by normalizing checksu
     } finally {
       await verificationClient.end();
     }
+  });
+});
+
+test("migrate blocks unknown database migration versions instead of treating them as pending repo work", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(
+        `
+          insert into schema_migrations (version, checksum)
+          values ('9999_manual_hotfix.sql', 'manual-hotfix-checksum')
+        `,
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.notEqual(
+      rerunMigration.status,
+      0,
+      "Expected unknown database migration versions to remain blocking drift.",
+    );
+    assert.match(
+      `${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+      /Unknown database migration version 9999_manual_hotfix\.sql/,
+    );
   });
 });
 
