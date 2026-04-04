@@ -13,6 +13,7 @@ test("workbench routing exposes manuscript processing surfaces as implemented", 
   assert.equal(isWorkbenchImplemented("editing"), true);
   assert.equal(isWorkbenchImplemented("proofreading"), true);
   assert.equal(isWorkbenchImplemented("evaluation-workbench"), true);
+  assert.equal(isWorkbenchImplemented("harness-datasets"), true);
   assert.equal(isWorkbenchImplemented("template-governance"), true);
 });
 
@@ -23,6 +24,7 @@ test("workbench routing maps manuscript processing surfaces to the manuscript wo
   assert.equal(resolveWorkbenchRenderKind("proofreading"), "manuscript-workbench");
   assert.equal(resolveWorkbenchRenderKind("knowledge-review"), "knowledge-review");
   assert.equal(resolveWorkbenchRenderKind("evaluation-workbench"), "evaluation-workbench");
+  assert.equal(resolveWorkbenchRenderKind("harness-datasets"), "harness-datasets");
   assert.equal(resolveWorkbenchRenderKind("template-governance"), "template-governance");
 });
 

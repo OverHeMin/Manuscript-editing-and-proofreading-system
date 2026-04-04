@@ -9,6 +9,7 @@ export type WorkbenchId =
   | "learning-review"
   | "admin-console"
   | "evaluation-workbench"
+  | "harness-datasets"
   | "template-governance"
   | "system-settings";
 
@@ -81,6 +82,13 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     roles: ["admin"],
   },
   {
+    id: "harness-datasets",
+    label: "Harness Datasets",
+    placement: "admin",
+    surfaces: ["web"],
+    roles: ["admin"],
+  },
+  {
     id: "template-governance",
     label: "Template Governance",
     placement: "admin",
@@ -105,6 +113,7 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "learning-review",
     "admin-console",
     "evaluation-workbench",
+    "harness-datasets",
     "template-governance",
     "system-settings",
   ],

@@ -6,6 +6,7 @@ import type {
 } from "../features/auth/index.ts";
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { EvaluationWorkbenchPage } from "../features/evaluation-workbench/index.ts";
+import { HarnessDatasetsWorkbenchPage } from "../features/harness-datasets/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
 import {
@@ -197,6 +198,8 @@ export function WorkbenchHost({
             prefilledManuscriptId={routeState.manuscriptId}
           />
         );
+      case "harness-datasets":
+        return <HarnessDatasetsWorkbenchPage />;
       case "template-governance":
         return <TemplateGovernanceWorkbenchPage actorRole={session.role} />;
       case "placeholder":

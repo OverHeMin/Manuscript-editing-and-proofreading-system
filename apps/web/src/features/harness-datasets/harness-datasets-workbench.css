@@ -1,0 +1,111 @@
+.harness-datasets-workbench {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.harness-datasets-hero,
+.harness-datasets-panel,
+.harness-datasets-summary-card,
+.harness-datasets-card {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.06);
+}
+
+.harness-datasets-hero,
+.harness-datasets-panel,
+.harness-datasets-card {
+  padding: 1.25rem;
+}
+
+.harness-datasets-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.harness-datasets-summary {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.harness-datasets-summary-card {
+  padding: 1rem 1.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.harness-datasets-summary-card-wide {
+  grid-column: span 2;
+}
+
+.harness-datasets-layout {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+}
+
+.harness-datasets-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.harness-datasets-panel-header,
+.harness-datasets-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.harness-datasets-stack,
+.harness-datasets-card,
+.harness-datasets-provenance,
+.harness-datasets-publications {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.harness-datasets-gates {
+  display: grid;
+  gap: 0.25rem;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.harness-datasets-copy,
+.harness-datasets-note,
+.harness-datasets-empty,
+.harness-datasets-list small,
+.harness-datasets-status,
+.harness-datasets-error {
+  color: #475569;
+}
+
+.harness-datasets-status {
+  margin: 0;
+}
+
+.harness-datasets-error {
+  margin: 0;
+}
+
+.harness-datasets-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.harness-datasets-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.harness-datasets-actions button {
+  min-width: 7rem;
+}

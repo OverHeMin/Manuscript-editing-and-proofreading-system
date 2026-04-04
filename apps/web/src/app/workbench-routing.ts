@@ -7,6 +7,7 @@ export type WorkbenchRenderKind =
   | "learning-review"
   | "admin-governance"
   | "evaluation-workbench"
+  | "harness-datasets"
   | "template-governance"
   | "placeholder";
 
@@ -40,6 +41,10 @@ export function resolveWorkbenchRenderKind(
 
   if (workbenchId === "admin-console") {
     return "admin-governance";
+  }
+
+  if (workbenchId === "harness-datasets") {
+    return "harness-datasets";
   }
 
   if (workbenchId === "template-governance") {
@@ -153,6 +158,7 @@ function isWorkbenchId(value: string): value is WorkbenchId {
     value === "learning-review" ||
     value === "admin-console" ||
     value === "evaluation-workbench" ||
+    value === "harness-datasets" ||
     value === "template-governance" ||
     value === "system-settings"
   );
