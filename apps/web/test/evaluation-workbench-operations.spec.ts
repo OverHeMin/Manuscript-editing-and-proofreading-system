@@ -99,6 +99,50 @@ test("suite operations summary falls back to finalized run status when recommend
   assert.equal(summary.delta?.reason, "finalized_status_improved");
 });
 
+test("suite operations summary classifies worse when recommendation severity regresses", () => {
+  const summary = buildEvaluationWorkbenchSuiteOperationsSummary({
+    finalizedRunHistory: [
+      createHistoryEntry({
+        runId: "run-baseline",
+        recommendationCreatedAt: "2026-04-01T00:00:00.000Z",
+        recommendationStatus: "recommended",
+        runStatus: "passed",
+      }),
+      createHistoryEntry({
+        runId: "run-latest",
+        recommendationCreatedAt: "2026-04-02T00:00:00.000Z",
+        recommendationStatus: "rejected",
+        runStatus: "passed",
+      }),
+    ],
+  });
+
+  assert.equal(summary.delta?.classification, "worse");
+  assert.equal(summary.delta?.reason, "recommendation_regressed");
+});
+
+test("suite operations summary classifies flat when recommendation and finalized status are unchanged", () => {
+  const summary = buildEvaluationWorkbenchSuiteOperationsSummary({
+    finalizedRunHistory: [
+      createHistoryEntry({
+        runId: "run-baseline",
+        recommendationCreatedAt: "2026-04-01T00:00:00.000Z",
+        recommendationStatus: "recommended",
+        runStatus: "passed",
+      }),
+      createHistoryEntry({
+        runId: "run-latest",
+        recommendationCreatedAt: "2026-04-02T00:00:00.000Z",
+        recommendationStatus: "recommended",
+        runStatus: "passed",
+      }),
+    ],
+  });
+
+  assert.equal(summary.delta?.classification, "flat");
+  assert.equal(summary.delta?.reason, "no_material_change");
+});
+
 test("suite operations summary clamps the default visible history to the latest 10 by recommendation created_at", () => {
   const finalizedRunHistory = Array.from({ length: 12 }, (_, index) => {
     const day = String(index + 1).padStart(2, "0");
@@ -198,6 +242,36 @@ test("suite operations summary supports latest_10, last_7_days, last_30_days, an
     "run-8-days",
     "run-20-days",
     "run-40-days",
+  ]);
+});
+
+test("suite operations summary keeps range windows deterministic without explicit now", () => {
+  const finalizedRunHistory = [
+    createHistoryEntry({
+      runId: "run-anchor",
+      recommendationCreatedAt: "2026-04-03T00:00:00.000Z",
+      recommendationStatus: "recommended",
+    }),
+    createHistoryEntry({
+      runId: "run-inside",
+      recommendationCreatedAt: "2026-03-30T00:00:00.000Z",
+      recommendationStatus: "recommended",
+    }),
+    createHistoryEntry({
+      runId: "run-outside",
+      recommendationCreatedAt: "2026-03-20T00:00:00.000Z",
+      recommendationStatus: "rejected",
+    }),
+  ];
+
+  const summary = buildEvaluationWorkbenchSuiteOperationsSummary({
+    finalizedRunHistory,
+    windowPreset: "last_7_days",
+  });
+
+  assert.deepEqual(summary.visibleHistory.map((entry) => entry.run.id), [
+    "run-anchor",
+    "run-inside",
   ]);
 });
 

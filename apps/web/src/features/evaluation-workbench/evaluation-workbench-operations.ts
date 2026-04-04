@@ -107,7 +107,10 @@ export function filterVisibleHistoryByWindowPreset(input: {
   }
 
   const days = windowPreset === "last_7_days" ? 7 : 30;
-  const nowEpochMs = resolveNowEpochMs(input.now);
+  const nowEpochMs = resolveWindowAnchorEpochMs({
+    now: input.now,
+    orderedHistory,
+  });
   const cutoffEpochMs = nowEpochMs - days * msPerDay;
 
   return orderedHistory.filter(
@@ -278,15 +281,35 @@ function getCreatedAtEpochMs(createdAt: string | undefined): number {
   return parsed;
 }
 
-function resolveNowEpochMs(now?: string | Date): number {
+function resolveWindowAnchorEpochMs(input: {
+  now?: string | Date;
+  orderedHistory: readonly EvaluationWorkbenchFinalizedRunHistoryEntry[];
+}): number {
+  const explicitNowEpochMs = resolveExplicitNowEpochMs(input.now);
+  if (explicitNowEpochMs != null) {
+    return explicitNowEpochMs;
+  }
+
+  let latestHistoryEpochMs = Number.NEGATIVE_INFINITY;
+  for (const entry of input.orderedHistory) {
+    const epochMs = getCreatedAtEpochMs(entry.finalized.recommendation.created_at);
+    if (epochMs > latestHistoryEpochMs) {
+      latestHistoryEpochMs = epochMs;
+    }
+  }
+
+  return latestHistoryEpochMs;
+}
+
+function resolveExplicitNowEpochMs(now?: string | Date): number | null {
   if (now instanceof Date) {
     return now.getTime();
   }
   if (typeof now === "string") {
     const parsed = Date.parse(now);
-    return Number.isNaN(parsed) ? Date.now() : parsed;
+    return Number.isNaN(parsed) ? null : parsed;
   }
-  return Date.now();
+  return null;
 }
 
 function hasMeaningfulRegressionMention(summary: string | undefined): boolean {
