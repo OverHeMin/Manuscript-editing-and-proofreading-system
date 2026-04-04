@@ -155,6 +155,92 @@ const expectedTableColumns: Record<string, string[]> = {
     "deidentification_gate_passed",
     "created_at",
   ],
+  knowledge_retrieval_index_entries: [
+    "id",
+    "knowledge_item_id",
+    "module",
+    "manuscript_types",
+    "template_family_id",
+    "title",
+    "source_text",
+    "source_hash",
+    "embedding_provider",
+    "embedding_model",
+    "embedding_dimensions",
+    "embedding_storage_backend",
+    "embedding_vector",
+    "metadata",
+    "created_at",
+    "updated_at",
+  ],
+  knowledge_retrieval_snapshots: [
+    "id",
+    "module",
+    "manuscript_id",
+    "manuscript_type",
+    "template_family_id",
+    "query_text",
+    "query_context",
+    "retriever_config",
+    "retrieved_items",
+    "reranked_items",
+    "created_at",
+  ],
+  knowledge_retrieval_quality_runs: [
+    "id",
+    "gold_set_version_id",
+    "module",
+    "template_family_id",
+    "retrieval_snapshot_ids",
+    "retriever_config",
+    "reranker_config",
+    "metric_summary",
+    "created_by",
+    "created_at",
+  ],
+  harness_redaction_profiles: [
+    "id",
+    "name",
+    "redaction_mode",
+    "structured_fields",
+    "allow_raw_payload_export",
+    "created_at",
+    "updated_at",
+  ],
+  harness_integrations: [
+    "id",
+    "kind",
+    "display_name",
+    "execution_mode",
+    "fail_open",
+    "redaction_profile_id",
+    "feature_flag_keys",
+    "result_envelope_version",
+    "config",
+    "created_at",
+    "updated_at",
+  ],
+  harness_integration_feature_flag_changes: [
+    "id",
+    "adapter_id",
+    "flag_key",
+    "enabled",
+    "changed_by",
+    "change_reason",
+    "created_at",
+  ],
+  harness_execution_audits: [
+    "id",
+    "adapter_id",
+    "trigger_kind",
+    "input_reference",
+    "dataset_id",
+    "artifact_uri",
+    "status",
+    "degradation_reason",
+    "result_summary",
+    "created_at",
+  ],
   prompt_templates: [
     "id",
     "name",
@@ -387,6 +473,12 @@ const expectedIndexes = [
   "harness_rubric_definitions_name_status_version_idx",
   "harness_gold_set_versions_family_status_version_idx",
   "harness_dataset_publications_version_created_at_idx",
+  "knowledge_retrieval_index_entries_module_updated_at_idx",
+  "knowledge_retrieval_index_entries_template_family_updated_at_id",
+  "knowledge_retrieval_snapshots_module_created_at_idx",
+  "knowledge_retrieval_snapshots_template_family_created_at_idx",
+  "knowledge_retrieval_quality_runs_gold_set_created_at_idx",
+  "knowledge_retrieval_quality_runs_module_template_created_at_idx",
   "prompt_templates_module_name_status_idx",
   "skill_packages_name_status_idx",
   "execution_profiles_module_manuscript_family_status_idx",
@@ -408,6 +500,14 @@ const expectedIndexes = [
   "runtime_bindings_scope_status_version_idx",
   "tool_permission_policies_name_status_idx",
   "agent_execution_logs_manuscript_module_started_at_idx",
+  "verification_evidence_retrieval_snapshot_id_idx",
+  "verification_evidence_retrieval_quality_run_id_idx",
+  "harness_integrations_kind_updated_at_idx",
+  "harness_integrations_redaction_profile_id_idx",
+  "harness_integration_feature_flag_changes_adapter_created_at_idx",
+  "harness_integration_feature_flag_changes_flag_key_created_at_id",
+  "harness_execution_audits_adapter_created_at_idx",
+  "harness_execution_audits_dataset_created_at_idx",
 ];
 
 const expectedRoleKeys = [
@@ -436,10 +536,16 @@ const expectedMigrationFiles = [
   "0014_agent_tooling_verification_expectations.sql",
   "0015_model_routing_governance_persistence.sql",
   "0016_harness_dataset_governance.sql",
+  "0017_retrieval_quality_harness.sql",
+  "0018_retrieval_quality_verification_ops.sql",
+  "0019_local_first_harness_adapter_platform.sql",
+  "0020_agent_execution_model_routing_resolution.sql",
 ] as const;
 
 const legacyAgentToolingChecksum =
   "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
+const legacyModelRoutingGovernanceChecksum =
+  "ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4";
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
@@ -769,6 +875,107 @@ test("migrate repairs legacy 0009 agent-tooling databases by backfilling verific
           },
         ],
         "Expected migrate to restore verification expectation columns for legacy 0009 databases.",
+      );
+    } finally {
+      await verificationClient.end();
+    }
+  });
+});
+
+test("migrate repairs legacy 0015 model routing databases by normalizing checksum and applying routed execution columns", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(
+        `
+          delete from schema_migrations
+          where version = '0020_agent_execution_model_routing_resolution.sql'
+        `,
+      );
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = $1
+          where version = '0015_model_routing_governance_persistence.sql'
+        `,
+        [legacyModelRoutingGovernanceChecksum],
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to repair legacy 0015 model-routing databases.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const columnsResult = await verificationClient.query<{
+        column_name: string;
+      }>(
+        `
+          select column_name
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'agent_execution_logs'
+            and column_name in (
+              'routing_policy_version_id',
+              'routing_policy_scope_kind',
+              'routing_policy_scope_value',
+              'resolved_model_id',
+              'fallback_model_id',
+              'fallback_trigger'
+            )
+          order by column_name
+        `,
+      );
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          where version in (
+            '0015_model_routing_governance_persistence.sql',
+            '0020_agent_execution_model_routing_resolution.sql'
+          )
+          order by version
+        `,
+      );
+
+      assert.deepEqual(
+        columnsResult.rows,
+        [
+          { column_name: "fallback_model_id" },
+          { column_name: "fallback_trigger" },
+          { column_name: "resolved_model_id" },
+          { column_name: "routing_policy_scope_kind" },
+          { column_name: "routing_policy_scope_value" },
+          { column_name: "routing_policy_version_id" },
+        ],
+        "Expected migrate to preserve routed execution columns for legacy 0015 databases.",
+      );
+      assert.deepEqual(
+        migrationResult.rows,
+        [
+          {
+            version: "0015_model_routing_governance_persistence.sql",
+            checksum: getMigrationChecksum("0015_model_routing_governance_persistence.sql"),
+          },
+          {
+            version: "0020_agent_execution_model_routing_resolution.sql",
+            checksum: getMigrationChecksum("0020_agent_execution_model_routing_resolution.sql"),
+          },
+        ],
+        "Expected migrate to normalize legacy 0015 checksum and record the new routed execution migration.",
       );
     } finally {
       await verificationClient.end();

@@ -21,6 +21,10 @@ const LEGACY_MIGRATION_CHECKSUMS = new Map<string, Set<string>>([
     "0009_agent_tooling_persistence.sql",
     new Set(["f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd"]),
   ],
+  [
+    "0015_model_routing_governance_persistence.sql",
+    new Set(["ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4"]),
+  ],
 ]);
 
 function runPrismaValidate(): void {
