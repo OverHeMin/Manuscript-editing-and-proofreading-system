@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "audit:document-enhancement": "python -m src.document_enhancement.cli",
     "lint": "python -m compileall src",
     "smoke:boot": "python -m src.smoke_boot",
     "typecheck": "python -m compileall src",

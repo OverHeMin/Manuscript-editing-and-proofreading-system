@@ -251,3 +251,10 @@
 - `Phase 10H` continues the repo-owned production lane from `10A` and `10G`, but keeps the boundary narrow: secret placeholder protection, secret-rotation proof, and upgrade-rehearsal proof.
 - The new rehearsal guard is local-first and operator-owned. It prints a bounded sequence built from existing repo commands such as manifest-aware predeploy, strict migration checks, persistent startup preflight, migration execution, and postdeploy readiness verification.
 - This phase still does not create a deployment control plane. It does not auto-deploy, auto-rollback, auto-rotate secrets, or grant Evaluation Workbench / Admin Governance authority over release execution.
+
+## Privacy Evidence And Academic Structure Baseline (Phase 10I)
+
+- `Phase 10I` starts with a worker-only advisory evidence lane under `apps/worker-py/src/document_enhancement` rather than wiring privacy or OCR tools into the manuscript mainline.
+- `pnpm --filter @medical/worker-py run audit:document-enhancement -- --document-path <local-path> [--text-file <local-text-file>] [--text-layer present|missing|unknown]` emits a local-first JSON report for privacy precheck findings and OCR / academic-structure readiness.
+- Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters degrade to advisory evidence. They do not block screening, editing, proofreading, routing, or verification-ops contracts.
+- This baseline does not auto-anonymize, auto-run OCR, auto-publish governed assets, or promote itself into a routing or release control plane.
