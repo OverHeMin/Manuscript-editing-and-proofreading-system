@@ -4,6 +4,7 @@ import {
   createEvaluationRun,
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
   finalizeEvaluationRun,
+  getEvaluationRunFinalizedResult,
   listEvaluationSuiteFinalizedResults,
   listEvaluationRunEvidenceByRunId,
   listEvaluationRunItemsByRunId,
@@ -22,6 +23,7 @@ import type {
   CreateEvaluationRunInput,
   EvaluationLearningCandidateViewModel,
   EvaluationRunItemViewModel,
+  EvaluationSuiteFinalizedResultViewModel,
   EvaluationRunViewModel,
   EvaluationSampleSetViewModel,
   EvaluationSampleSetItemViewModel,
@@ -33,6 +35,10 @@ import type {
   VerificationEvidenceViewModel,
   VerificationCheckProfileViewModel,
 } from "../verification-ops/index.ts";
+import {
+  buildEvaluationWorkbenchSuiteOperationsSummary,
+  type EvaluationWorkbenchHistoryWindowPreset,
+} from "./evaluation-workbench-operations.ts";
 
 export interface EvaluationWorkbenchHttpClient {
   request<TResponse>(input: {
@@ -59,12 +65,13 @@ export interface EvaluationWorkbenchOverview {
   previousRunEvidence: VerificationEvidenceViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
   finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
+  readonly suiteOperations: EvaluationWorkbenchSuiteOperationsOverview;
   manuscriptContext: EvaluationWorkbenchManuscriptContext | null;
 }
 
 export interface EvaluationWorkbenchFinalizedRunHistoryEntry {
   run: EvaluationRunViewModel;
-  finalized: FinalizeEvaluationRunResultViewModel;
+  finalized: EvaluationSuiteFinalizedResultViewModel;
 }
 
 export interface EvaluationWorkbenchManuscriptContext {
@@ -72,6 +79,51 @@ export interface EvaluationWorkbenchManuscriptContext {
   matchedSuiteId: string | null;
   matchedRunId: string | null;
   matchedHistoryRunIds: string[];
+}
+
+export interface EvaluationWorkbenchSuiteOperationsOverview {
+  readonly defaultWindow: EvaluationWorkbenchHistoryWindowPreset;
+  readonly visibleHistory: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>;
+  readonly defaultComparison: EvaluationWorkbenchComparisonSnapshot | null;
+  readonly defaultComparisonDetail: EvaluationWorkbenchComparisonDetailSnapshot | null;
+  readonly delta: EvaluationWorkbenchSuiteOperationsDeltaSnapshot | null;
+  readonly signals: EvaluationWorkbenchSuiteOperationsSignalsSnapshot;
+  readonly honestDegradation: EvaluationWorkbenchSuiteOperationsEmptyStateSnapshot | null;
+}
+
+export interface EvaluationWorkbenchComparisonSnapshot {
+  readonly selected: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  readonly baseline: EvaluationWorkbenchFinalizedRunHistoryEntry;
+}
+
+export interface EvaluationWorkbenchComparisonDetailSnapshot {
+  readonly selectedEvidence: ReadonlyArray<VerificationEvidenceViewModel>;
+  readonly baselineEvidence: ReadonlyArray<VerificationEvidenceViewModel>;
+}
+
+export interface EvaluationWorkbenchSuiteOperationsDeltaSnapshot {
+  readonly classification: "better" | "worse" | "flat";
+  readonly reason:
+    | "recommendation_improved"
+    | "recommendation_regressed"
+    | "finalized_status_improved"
+    | "finalized_status_regressed"
+    | "no_material_change";
+}
+
+export interface EvaluationWorkbenchSuiteOperationsSignalsSnapshot {
+  readonly recommendationDistribution: Record<"recommended" | "needs_review" | "rejected", number>;
+  readonly evidencePackOutcomeMix: Record<"recommended" | "needs_review" | "rejected", number>;
+  readonly recurrence: {
+    readonly regressionMentions: number;
+    readonly failureMentions: number;
+    readonly runsWithRecurrenceSignals: number;
+  };
+}
+
+export interface EvaluationWorkbenchSuiteOperationsEmptyStateSnapshot {
+  readonly kind: "comparison_unavailable";
+  readonly reason: "fewer_than_two_visible_finalized_runs" | "insufficient_comparison_data";
 }
 
 interface ResolvedEvaluationManuscriptContext {
@@ -86,6 +138,7 @@ export interface EvaluationWorkbenchController {
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
     manuscriptId?: string | null;
+    historyWindowPreset?: EvaluationWorkbenchHistoryWindowPreset;
   }): Promise<EvaluationWorkbenchOverview>;
   activateSuiteAndReload(input: {
     suiteId: string;
@@ -270,6 +323,7 @@ async function loadEvaluationWorkbenchOverview(
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
     manuscriptId?: string | null;
+    historyWindowPreset?: EvaluationWorkbenchHistoryWindowPreset;
   },
 ): Promise<EvaluationWorkbenchOverview> {
   const [
@@ -314,6 +368,9 @@ async function loadEvaluationWorkbenchOverview(
   let previousRunEvidence: VerificationEvidenceViewModel[] = [];
   let selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null = null;
   let finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[] = [];
+  let suiteOperations: EvaluationWorkbenchSuiteOperationsOverview = createEmptySuiteOperations({
+    historyWindowPreset: input?.historyWindowPreset,
+  });
 
   if (selectedSuiteId != null) {
     runs = (await listEvaluationRunsBySuiteId(client, selectedSuiteId)).body;
@@ -321,9 +378,11 @@ async function loadEvaluationWorkbenchOverview(
       runs.map((run) => run.id),
       preferredRunId,
     );
+    const selectedRun = selectedRunId == null
+      ? null
+      : (runs.find((run) => run.id === selectedRunId) ?? null);
 
     if (selectedRunId != null) {
-      const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
       const [nextSampleSetItems, nextRunItems, nextRunEvidence] = await Promise.all([
         selectedRun?.sample_set_id
           ? listEvaluationSampleSetItems(client, selectedRun.sample_set_id).then(
@@ -344,7 +403,9 @@ async function loadEvaluationWorkbenchOverview(
 
     if (runs.length > 0) {
       finalizedRunHistory = (
-        await listEvaluationSuiteFinalizedResults(client, selectedSuiteId)
+        await listEvaluationSuiteFinalizedResults(client, selectedSuiteId, {
+          historyWindow: input?.historyWindowPreset ?? "latest_10",
+        })
       ).body.map((finalized) => ({
         run: finalized.run,
         finalized,
@@ -352,10 +413,32 @@ async function loadEvaluationWorkbenchOverview(
         .sort(compareFinalizedRunHistory);
     }
 
+    const suiteOperationsSummary = buildEvaluationWorkbenchSuiteOperationsSummary({
+      finalizedRunHistory,
+      windowPreset: input?.historyWindowPreset,
+    });
+    const boundedSelectedFinalization =
+      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
+    const requiresSelectedRunFallback =
+      selectedRun != null &&
+      boundedSelectedFinalization == null &&
+      isRunOutsideVisibleFinalizedHistory(finalizedRunHistory, selectedRun);
     const previousRunId =
       selectedRunId == null
         ? null
-        : findPreviousFinalizedRunHistoryRunId(finalizedRunHistory, selectedRunId);
+        : findPreviousFinalizedRunHistoryRunId(finalizedRunHistory, selectedRunId) ??
+          (requiresSelectedRunFallback
+            ? findPreviousRunIdFromRuns(runs, selectedRunId)
+            : null);
+
+    selectedRunFinalization = boundedSelectedFinalization == null
+      ? null
+      : stripSuiteFinalizationEvidence(boundedSelectedFinalization);
+    if (requiresSelectedRunFallback && selectedRun != null) {
+      selectedRunFinalization = (
+        await getEvaluationRunFinalizedResult(client, selectedRun.id)
+      ).body;
+    }
 
     if (previousRunId != null) {
       const previousRun = runs.find((run) => run.id === previousRunId) ?? null;
@@ -366,8 +449,22 @@ async function loadEvaluationWorkbenchOverview(
       }
     }
 
-    selectedRunFinalization =
-      finalizedRunHistory.find((entry) => entry.run.id === selectedRunId)?.finalized ?? null;
+    const defaultComparison = suiteOperationsSummary.defaultComparison;
+    suiteOperations = {
+      defaultWindow: suiteOperationsSummary.windowPreset,
+      visibleHistory: suiteOperationsSummary.visibleHistory,
+      defaultComparison,
+      defaultComparisonDetail:
+        defaultComparison == null
+          ? null
+          : {
+              selectedEvidence: defaultComparison.selected.finalized.evidence ?? [],
+              baselineEvidence: defaultComparison.baseline.finalized.evidence ?? [],
+            },
+      delta: suiteOperationsSummary.delta,
+      signals: suiteOperationsSummary.signals,
+      honestDegradation: suiteOperationsSummary.emptyState,
+    };
   }
 
   if (resolvedManuscriptContext) {
@@ -396,7 +493,41 @@ async function loadEvaluationWorkbenchOverview(
     previousRunEvidence,
     selectedRunFinalization,
     finalizedRunHistory,
+    suiteOperations,
     manuscriptContext,
+  };
+}
+
+function createEmptySuiteOperations(input: {
+  historyWindowPreset?: EvaluationWorkbenchHistoryWindowPreset;
+}): EvaluationWorkbenchSuiteOperationsOverview {
+  const suiteOperationsSummary = buildEvaluationWorkbenchSuiteOperationsSummary({
+    finalizedRunHistory: [],
+    windowPreset: input.historyWindowPreset,
+  });
+
+  return {
+    defaultWindow: suiteOperationsSummary.windowPreset,
+    visibleHistory: suiteOperationsSummary.visibleHistory,
+    defaultComparison: suiteOperationsSummary.defaultComparison,
+    defaultComparisonDetail: null,
+    delta: suiteOperationsSummary.delta,
+    signals: suiteOperationsSummary.signals,
+    honestDegradation: suiteOperationsSummary.emptyState,
+  };
+}
+
+function stripSuiteFinalizationEvidence(
+  finalized: EvaluationSuiteFinalizedResultViewModel | null,
+): FinalizeEvaluationRunResultViewModel | null {
+  if (finalized == null) {
+    return null;
+  }
+
+  return {
+    run: finalized.run,
+    evidence_pack: finalized.evidence_pack,
+    recommendation: finalized.recommendation,
   };
 }
 
@@ -526,4 +657,30 @@ function findPreviousFinalizedRunHistoryRunId(
   const selectedIndex = entries.findIndex((entry) => entry.run.id === selectedRunId);
   if (selectedIndex === -1) return null;
   return entries.slice(selectedIndex + 1)[0]?.run.id ?? null;
+}
+
+function findPreviousRunIdFromRuns(
+  runs: EvaluationRunViewModel[],
+  selectedRunId: string,
+) {
+  const sortedRuns = [...runs].sort((left, right) => compareRunRecency(right, left));
+  const selectedIndex = sortedRuns.findIndex((run) => run.id === selectedRunId);
+  if (selectedIndex === -1) return null;
+  return sortedRuns[selectedIndex + 1]?.id ?? null;
+}
+
+function isRunOutsideVisibleFinalizedHistory(
+  entries: EvaluationWorkbenchFinalizedRunHistoryEntry[],
+  run: EvaluationRunViewModel,
+) {
+  if (entries.length === 0) {
+    return false;
+  }
+
+  if (entries.some((entry) => entry.run.id === run.id)) {
+    return false;
+  }
+
+  const oldestVisibleRun = entries[entries.length - 1]?.run;
+  return oldestVisibleRun != null && compareRunRecency(run, oldestVisibleRun) < 0;
 }

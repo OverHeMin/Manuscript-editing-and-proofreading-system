@@ -3064,10 +3064,14 @@ async function handleRoute(
     }
     case "verification-ops-list-suite-finalized-results": {
       const session = await requirePermission(req, runtime, "permissions.manage");
+      const historyWindow = readRequestUrl(req).searchParams.get("history_window");
 
       return runtime.verificationOpsApi.listEvaluationSuiteFinalizations({
         suiteId: routeMatch.suiteId,
         actorRole: session.user.role,
+        historyWindowPreset: isEvaluationSuiteHistoryWindowPreset(historyWindow)
+          ? historyWindow
+          : undefined,
       });
     }
     case "verification-ops-record-run-item-result": {
@@ -4286,6 +4290,17 @@ function readSingleHeader(value: string | string[] | undefined): string | undefi
   }
 
   return value;
+}
+
+function isEvaluationSuiteHistoryWindowPreset(
+  value: string | null,
+): value is "latest_10" | "last_7_days" | "last_30_days" | "all_suite" {
+  return (
+    value === "latest_10" ||
+    value === "last_7_days" ||
+    value === "last_30_days" ||
+    value === "all_suite"
+  );
 }
 
 function coalesceOptionalString(value: string | undefined): string | undefined {

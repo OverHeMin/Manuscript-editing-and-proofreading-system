@@ -12,6 +12,8 @@ import type {
   EvaluationRunViewModel,
   EvaluationSampleSetItemViewModel,
   EvaluationSampleSetViewModel,
+  EvaluationSuiteFinalizedResultViewModel,
+  EvaluationSuiteFinalizedResultsHistoryWindowPreset,
   EvaluationSuiteViewModel,
   FinalizeEvaluationRunInput,
   FinalizeEvaluationRunResultViewModel,
@@ -313,10 +315,18 @@ export function getEvaluationRunFinalizedResult(
 export function listEvaluationSuiteFinalizedResults(
   client: VerificationOpsHttpClient,
   suiteId: string,
+  input?: {
+    historyWindow?: EvaluationSuiteFinalizedResultsHistoryWindowPreset;
+  },
 ) {
-  return client.request<FinalizeEvaluationRunResultViewModel[]>({
+  const historyWindow = input?.historyWindow?.trim();
+  const query = historyWindow
+    ? `?history_window=${encodeURIComponent(historyWindow)}`
+    : "";
+
+  return client.request<EvaluationSuiteFinalizedResultViewModel[]>({
     method: "GET",
-    url: `/api/v1/verification-ops/evaluation-suites/${suiteId}/finalized-results`,
+    url: `/api/v1/verification-ops/evaluation-suites/${suiteId}/finalized-results${query}`,
   });
 }
 

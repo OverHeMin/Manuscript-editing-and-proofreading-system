@@ -189,6 +189,17 @@ export interface FinalizeEvaluationRunResultViewModel {
   recommendation: EvaluationPromotionRecommendationViewModel;
 }
 
+export type EvaluationSuiteFinalizedResultsHistoryWindowPreset =
+  | "latest_10"
+  | "last_7_days"
+  | "last_30_days"
+  | "all_suite";
+
+export interface EvaluationSuiteFinalizedResultViewModel
+  extends FinalizeEvaluationRunResultViewModel {
+  evidence: ReadonlyArray<VerificationEvidenceViewModel>;
+}
+
 export interface CreateVerificationCheckProfileInput {
   actorRole: AuthRole;
   name: string;

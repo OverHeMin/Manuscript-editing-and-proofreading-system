@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
-import type { LearningCandidateType } from "../learning-review/types.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
-  EvaluationRunItemFailureKind,
   FinalizeEvaluationRunResultViewModel,
   VerificationEvidenceKind,
   VerificationEvidenceViewModel,
@@ -16,55 +14,15 @@ import {
   type EvaluationWorkbenchFinalizedRunHistoryEntry,
   type EvaluationWorkbenchOverview,
 } from "./evaluation-workbench-controller.ts";
+import type { EvaluationWorkbenchHistoryWindowPreset } from "./evaluation-workbench-operations.ts";
 
 const defaultController = createEvaluationWorkbenchController(createBrowserHttpClient());
-const learningCandidateTypes: LearningCandidateType[] = [
-  "rule_candidate",
-  "case_pattern_candidate",
-  "template_update_candidate",
-  "prompt_optimization_candidate",
-  "checklist_update_candidate",
-  "skill_update_candidate",
-];
-const failureKinds: EvaluationRunItemFailureKind[] = [
-  "governance_failed",
-  "runtime_failed",
-  "scoring_failed",
-  "regression_failed",
-];
-const baseRunForm = {
-  sampleSetId: "",
-  baselineModelId: "demo-model-prod-1",
-  candidateModelId: "demo-model-candidate-1",
-  runtimeId: "demo-runtime-prod-1",
-  promptTemplateId: "demo-prompt-prod-1",
-  skillPackageIds: "demo-skill-prod-1",
-  moduleTemplateId: "demo-template-prod-1",
-  releaseCheckProfileId: "",
-};
-const baseRunItemForm = {
-  resultAssetId: "human-final-demo-1",
-  hardGatePassed: true,
-  weightedScore: "91",
-  diffSummary: "Candidate improves editing structure stability.",
-  requiresHumanReview: false,
-  failureKind: "" as "" | EvaluationRunItemFailureKind,
-  failureReason: "",
-};
 const baseFinalizeForm = {
   status: "passed" as "passed" | "failed",
   evidenceKind: "url" as VerificationEvidenceKind,
   evidenceLabel: "Browser QA evidence",
   evidenceUrl: "https://example.test/evidence/browser-qa",
   artifactAssetId: "",
-};
-const baseLearningForm = {
-  reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
-  sourceAssetId: "human-final-demo-1",
-  candidateType: "prompt_optimization_candidate" as LearningCandidateType,
-  title: "Promote evaluated editing binding",
-  proposalText: "Promote the candidate binding after governed evaluation approval.",
-  createdBy: "admin-1",
 };
 export type EvaluationWorkbenchHistoryFilter =
   | "all"
@@ -78,52 +36,46 @@ export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
   actorRole?: AuthRole;
   prefilledManuscriptId?: string;
+  initialOverview?: EvaluationWorkbenchOverview | null;
 }
 
 export function EvaluationWorkbenchPage({
   controller = defaultController,
-  actorRole = "admin",
   prefilledManuscriptId,
+  initialOverview = null,
 }: EvaluationWorkbenchPageProps) {
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
-  const [overview, setOverview] = useState<EvaluationWorkbenchOverview | null>(null);
-  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const activeManuscriptContextId =
+    normalizedPrefilledManuscriptId.length > 0 ? normalizedPrefilledManuscriptId : null;
+  const [overview, setOverview] = useState<EvaluationWorkbenchOverview | null>(initialOverview);
+  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    initialOverview ? "ready" : "idle",
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const [isActivatingSuiteId, setIsActivatingSuiteId] = useState<string | null>(null);
   const [selectedRunItemId, setSelectedRunItemId] = useState<string | null>(null);
-  const [historyScope, setHistoryScope] = useState<EvaluationWorkbenchHistoryScope>("suite");
+  const [historyWindowPreset, setHistoryWindowPreset] =
+    useState<EvaluationWorkbenchHistoryWindowPreset>(
+      initialOverview?.suiteOperations.defaultWindow ?? "latest_10",
+    );
   const [historyFilter, setHistoryFilter] = useState<EvaluationWorkbenchHistoryFilter>("all");
-  const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [historySortMode, setHistorySortMode] =
     useState<EvaluationWorkbenchHistorySortMode>("newest");
-  const [runForm, setRunForm] = useState(baseRunForm);
-  const [runItemForm, setRunItemForm] = useState(baseRunItemForm);
-  const [finalizeForm, setFinalizeForm] = useState(baseFinalizeForm);
-  const [learningForm, setLearningForm] = useState(baseLearningForm);
-  const [finalizedResult, setFinalizedResult] = useState<Awaited<
-    ReturnType<EvaluationWorkbenchController["completeRunWithEvidenceAndFinalize"]>
-  >["finalized"] | null>(null);
-  const [createdLearningCandidate, setCreatedLearningCandidate] = useState<Awaited<
-    ReturnType<EvaluationWorkbenchController["createLearningCandidateFromEvaluation"]>
-  > | null>(null);
 
   useEffect(() => {
+    if (initialOverview != null) return;
     void loadOverview(
       normalizedPrefilledManuscriptId.length > 0
-        ? { manuscriptId: normalizedPrefilledManuscriptId }
-        : undefined,
+        ? {
+            manuscriptId: normalizedPrefilledManuscriptId,
+            historyWindowPreset,
+          }
+        : { historyWindowPreset },
     );
-  }, [controller, normalizedPrefilledManuscriptId]);
+  }, [controller, normalizedPrefilledManuscriptId, initialOverview]);
 
   useEffect(() => {
     if (!overview) return;
-    const suite = overview.suites.find((item) => item.id === overview.selectedSuiteId) ?? null;
-    const preferredSampleSetId = resolveSampleSetId(overview, runForm.sampleSetId, suite);
-    if (preferredSampleSetId !== runForm.sampleSetId) {
-      setRunForm((current) => ({ ...current, sampleSetId: preferredSampleSetId }));
-    }
     const nextRunItemId = resolveSelectedId(
       overview.runItems.map((item) => item.id),
       selectedRunItemId,
@@ -131,194 +83,12 @@ export function EvaluationWorkbenchPage({
     if (nextRunItemId !== selectedRunItemId) {
       setSelectedRunItemId(nextRunItemId);
     }
-  }, [overview, runForm.sampleSetId, selectedRunItemId]);
-
-  const selectedSuite = overview?.suites.find((item) => item.id === overview.selectedSuiteId) ?? null;
-  const selectedRun = overview?.runs.find((item) => item.id === overview.selectedRunId) ?? null;
-  const effectiveFinalizedResult =
-    selectedRun != null && finalizedResult?.run.id === selectedRun.id
-      ? finalizedResult
-      : overview?.selectedRunFinalization ?? null;
-  const finalizedRunHistory = overview?.finalizedRunHistory ?? [];
-  const matchedHistoryRunIds = overview?.manuscriptContext?.matchedHistoryRunIds ?? [];
-  const canScopeHistoryToManuscript =
-    normalizedPrefilledManuscriptId.length > 0 && matchedHistoryRunIds.length > 0;
-  const effectiveHistoryScope =
-    historyScope === "manuscript" && canScopeHistoryToManuscript ? "manuscript" : "suite";
-  const scopedFinalizedRunHistory = filterFinalizedRunHistoryByScope(
-    finalizedRunHistory,
-    effectiveHistoryScope,
-    matchedHistoryRunIds,
-  );
-  const selectedRunHistoryEntry =
-    selectedRun == null
-      ? null
-      : scopedFinalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
-  const previousRunHistoryEntry =
-    selectedRun == null
-      ? null
-      : findPreviousFinalizedRunHistoryEntry(scopedFinalizedRunHistory, selectedRun.id);
-  const historyComparisonGuidance = describeHistoryComparisonGuidance({
-    selectedRun,
-    selectedRunHistoryEntry,
-    previousRunHistoryEntry,
-    scope: effectiveHistoryScope,
-    totalFinalizedCount: finalizedRunHistory.length,
-    scopedCount: scopedFinalizedRunHistory.length,
-  });
-  const historyComparisonGuidanceSummary = describeHistoryComparisonGuidanceSummary({
-    selectedRun,
-    selectedRunHistoryEntry,
-    previousRunHistoryEntry,
-    scope: effectiveHistoryScope,
-    totalFinalizedCount: finalizedRunHistory.length,
-    scopedCount: scopedFinalizedRunHistory.length,
-  });
-  const canSwitchToSuiteHistoryForComparison =
-    effectiveHistoryScope === "manuscript" &&
-    selectedRunHistoryEntry != null &&
-    previousRunHistoryEntry == null &&
-    finalizedRunHistory.length > scopedFinalizedRunHistory.length;
-  const comparisonScopeLabel = describeComparisonScopeLabel({
-    scope: effectiveHistoryScope,
-    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
-  });
-  const selectedComparisonOriginLabel = describeHistoryEntryOriginLabel({
-    runId: selectedRunHistoryEntry?.run.id ?? null,
-    matchedRunIds: matchedHistoryRunIds,
-    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
-    scope: effectiveHistoryScope,
-  });
-  const previousComparisonOriginLabel = describeHistoryEntryOriginLabel({
-    runId: previousRunHistoryEntry?.run.id ?? null,
-    matchedRunIds: matchedHistoryRunIds,
-    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
-    scope: effectiveHistoryScope,
-  });
-  const historyCounts = summarizeHistoryCounts(scopedFinalizedRunHistory);
-  const filteredFinalizedRunHistory = filterFinalizedRunHistory(
-    scopedFinalizedRunHistory,
-    historyFilter,
-  );
-  const visibleFinalizedRunHistory = searchFinalizedRunHistory(
-    filteredFinalizedRunHistory,
-    historySearchQuery,
-  );
-  const sortedVisibleFinalizedRunHistory = sortFinalizedRunHistory(
-    visibleFinalizedRunHistory,
-    historySortMode,
-  );
-  const historyOriginSummary = describeHistoryOriginSummary({
-    runIds: sortedVisibleFinalizedRunHistory.map((entry) => entry.run.id),
-    matchedRunIds: matchedHistoryRunIds,
-    hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
-    scope: effectiveHistoryScope,
-  });
-  const isSelectedRunHiddenByHistoryControls = isSelectedRunHiddenFromHistoryList(
-    sortedVisibleFinalizedRunHistory,
-    selectedRun?.id ?? null,
-  );
-  const historyVisibilitySummary = describeHistoryVisibilitySummary({
-    visibleCount: sortedVisibleFinalizedRunHistory.length,
-    totalCount: scopedFinalizedRunHistory.length,
-    scope: effectiveHistoryScope,
-    filter: historyFilter,
-    searchQuery: historySearchQuery,
-    sortMode: historySortMode,
-    selectedRunId: selectedRun?.id ?? null,
-    selectedRunHidden: isSelectedRunHiddenByHistoryControls,
-  });
-  const historyCompareStatusSummary = describeHistoryCompareStatusSummary({
-    selectedRunHistoryEntry,
-    previousRunHistoryEntry,
-    historyComparisonGuidance,
-    historyComparisonGuidanceSummary,
-  });
-  const historyControlSummaryLines = describeHistoryControlSummaryLines({
-    scope: effectiveHistoryScope,
-    filter: historyFilter,
-    searchQuery: historySearchQuery,
-    sortMode: historySortMode,
-  });
-  const sampleSetItems = overview?.sampleSetItems ?? [];
-  const selectedRunEvidence = overview?.selectedRunEvidence ?? [];
-  const previousRunEvidence = overview?.previousRunEvidence ?? [];
-  const selectedRunItem = overview?.runItems.find((item) => item.id === selectedRunItemId) ?? null;
-  const selectedRunGovernedSource = selectedRun?.governed_source ?? null;
-  const selectedSampleSet =
-    selectedRun == null || overview == null
-      ? null
-      : overview.sampleSets.find((item) => item.id === selectedRun.sample_set_id) ?? null;
-  const linkedSampleSetItem =
-    selectedRunItem == null
-      ? null
-      : sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ?? null;
-  const finalizeArtifactOptions = createFinalizeArtifactOptions(
-    selectedRunItem,
-    linkedSampleSetItem,
-    selectedRunGovernedSource,
-  );
-  const governedLearningHandoffGuidance = describeGovernedLearningHandoffGuidance({
-    hasFinalizedResult: effectiveFinalizedResult != null,
-    hasLinkedSampleContext: linkedSampleSetItem != null,
-    hasGovernedSource: selectedRunGovernedSource != null,
-  });
-  const learningReviewHash = createdLearningCandidate ? formatWorkbenchHash("learning-review") : null;
-  const activeManuscriptContextId =
-    normalizedPrefilledManuscriptId.length > 0 ? normalizedPrefilledManuscriptId : null;
-
-  useEffect(() => {
-    if (!selectedRunItem) return;
-    setRunItemForm({
-      resultAssetId: selectedRunItem.result_asset_id ?? "human-final-demo-1",
-      hardGatePassed: selectedRunItem.hard_gate_passed ?? true,
-      weightedScore:
-        selectedRunItem.weighted_score == null ? "91" : String(selectedRunItem.weighted_score),
-      diffSummary: selectedRunItem.diff_summary ?? "Candidate improves editing structure stability.",
-      requiresHumanReview: selectedRunItem.requires_human_review ?? false,
-      failureKind: selectedRunItem.failure_kind ?? "",
-      failureReason: selectedRunItem.failure_reason ?? "",
-    });
-    setLearningForm((current) => ({
-      ...current,
-      sourceAssetId: selectedRunItem.result_asset_id ?? current.sourceAssetId,
-    }));
-  }, [selectedRunItem]);
-
-  useEffect(() => {
-    if (!linkedSampleSetItem) return;
-    setLearningForm((current) => ({
-      ...current,
-      reviewedCaseSnapshotId: linkedSampleSetItem.reviewed_case_snapshot_id,
-    }));
-  }, [linkedSampleSetItem]);
-
-  useEffect(() => {
-    if (!selectedRun || finalizedResult?.run.id === selectedRun.id) return;
-    setFinalizedResult(null);
-    setCreatedLearningCandidate(null);
-  }, [selectedRun, finalizedResult]);
+  }, [overview, selectedRunItemId]);
 
   useEffect(() => {
     setHistoryFilter("all");
-    setHistorySearchQuery("");
     setHistorySortMode("newest");
   }, [overview?.selectedSuiteId]);
-
-  useEffect(() => {
-    if (!overview) return;
-    if (normalizedPrefilledManuscriptId.length === 0) {
-      setHistoryScope("suite");
-      return;
-    }
-    setHistoryScope(
-      overview.manuscriptContext?.matchedHistoryRunIds.length ? "manuscript" : "suite",
-    );
-  }, [
-    overview?.selectedSuiteId,
-    overview?.manuscriptContext?.manuscriptId,
-    normalizedPrefilledManuscriptId,
-  ]);
 
   if (loadStatus === "error" && !overview) {
     return (
@@ -339,646 +109,50 @@ export function EvaluationWorkbenchPage({
   }
 
   return (
-    <section className="evaluation-workbench">
-      <header className="evaluation-workbench-hero">
-        <div>
-          <h2>Evaluation Workbench</h2>
-          <p>Run governed evaluations, finalize evidence, and hand approved results into learning review.</p>
-          {errorMessage ? <p className="evaluation-workbench-error">{errorMessage}</p> : null}
-        </div>
-        {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
-      </header>
-
-      {normalizedPrefilledManuscriptId.length > 0 ? (
-        <div className="evaluation-workbench-result">
-          <strong>Manuscript Handoff</strong>
-          <div className="evaluation-workbench-history-compare">
-            <span>Context manuscript: {normalizedPrefilledManuscriptId}</span>
-            <span>
-              {overview.manuscriptContext?.matchedRunId
-                ? `Matched run: ${overview.manuscriptContext.matchedRunId}`
-                : "No matched evaluation run yet"}
-            </span>
-            <span>
-              {overview.manuscriptContext?.matchedSuiteId
-                ? `Matched suite: ${overview.manuscriptContext.matchedSuiteId}`
-                : "Showing the default evaluation suite"}
-            </span>
-          </div>
-        </div>
-      ) : null}
-
-      <section className="evaluation-workbench-summary">
-        <SummaryCard label="Check Profiles" value={overview.checkProfiles.length} />
-        <SummaryCard label="Release Profiles" value={overview.releaseCheckProfiles.length} />
-        <SummaryCard label="Sample Sets" value={overview.sampleSets.length} />
-        <SummaryCard label="Suites" value={overview.suites.length} />
-        <SummaryCard label="Runs" value={overview.runs.length} />
-        <SummaryCard label="Run Items" value={overview.runItems.length} />
-      </section>
-
-      <div className="evaluation-workbench-layout">
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Verification Assets</h3>
-            <span>{overview.sampleSets.length} sample sets</span>
-          </div>
-          <dl className="evaluation-workbench-metadata">
-            <div>
-              <dt>Published checks</dt>
-              <dd>{overview.checkProfiles.filter((item) => item.status === "published").length}</dd>
-            </div>
-            <div>
-              <dt>Release gates</dt>
-              <dd>{overview.releaseCheckProfiles.filter((item) => item.status === "published").length}</dd>
-            </div>
-            <div>
-              <dt>Covered modules</dt>
-              <dd>{summarizeCoveredModules(overview)}</dd>
-            </div>
-          </dl>
-          <ul className="evaluation-workbench-inline-list">
-            {overview.sampleSets.map((sampleSet) => (
-              <li key={sampleSet.id}>
-                <strong>{sampleSet.name}</strong>
-                <span>{sampleSet.module} 璺?{sampleSet.sample_count} samples 璺?{sampleSet.status}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Suites</h3>
-            <span>{overview.suites.length} configured</span>
-          </div>
-          {overview.suites.length === 0 ? (
-            <p className="evaluation-workbench-empty">No evaluation suites are configured yet.</p>
-          ) : (
-            <ul className="evaluation-workbench-stack">
-              {overview.suites.map((suite) => (
-                <li key={suite.id}>
-                  <button
-                    type="button"
-                    className={`evaluation-workbench-select${suite.id === overview.selectedSuiteId ? " is-selected" : ""}`}
-                    onClick={() => void handleSelectSuite(suite.id)}
-                  >
-                    <strong>{suite.name}</strong>
-                    <span>{suite.suite_type} 璺?{suite.status}</span>
-                  </button>
-                  {suite.status === "draft" ? (
-                    <button
-                      type="button"
-                      className="evaluation-workbench-action"
-                      disabled={isBusy || isActivatingSuiteId === suite.id}
-                      onClick={() => void handleActivateSuite(suite.id)}
-                    >
-                      {isActivatingSuiteId === suite.id ? "Activating..." : "Activate"}
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Run Launch</h3>
-            <span>{selectedSuite?.name ?? "Select suite first"}</span>
-          </div>
-          {selectedSuite == null ? (
-            <p className="evaluation-workbench-empty">Select a suite before creating a run.</p>
-          ) : (
-            <>
-              <div className="evaluation-workbench-form-grid">
-                <Field label="Sample Set">
-                  <select value={runForm.sampleSetId} onChange={(event) => setRunForm((current) => ({ ...current, sampleSetId: event.target.value }))}>
-                    {overview.sampleSets.map((sampleSet) => (
-                      <option key={sampleSet.id} value={sampleSet.id}>{sampleSet.name} ({sampleSet.status})</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Baseline Model ID"><input value={runForm.baselineModelId} onChange={(event) => setRunForm((current) => ({ ...current, baselineModelId: event.target.value }))} /></Field>
-                <Field label="Candidate Model ID"><input value={runForm.candidateModelId} onChange={(event) => setRunForm((current) => ({ ...current, candidateModelId: event.target.value }))} /></Field>
-                <Field label="Runtime ID"><input value={runForm.runtimeId} onChange={(event) => setRunForm((current) => ({ ...current, runtimeId: event.target.value }))} /></Field>
-                <Field label="Prompt Template ID"><input value={runForm.promptTemplateId} onChange={(event) => setRunForm((current) => ({ ...current, promptTemplateId: event.target.value }))} /></Field>
-                <Field label="Skill Package IDs"><input value={runForm.skillPackageIds} onChange={(event) => setRunForm((current) => ({ ...current, skillPackageIds: event.target.value }))} /></Field>
-                <Field label="Module Template ID"><input value={runForm.moduleTemplateId} onChange={(event) => setRunForm((current) => ({ ...current, moduleTemplateId: event.target.value }))} /></Field>
-                <Field label="Release Check Profile ID"><input value={runForm.releaseCheckProfileId} onChange={(event) => setRunForm((current) => ({ ...current, releaseCheckProfileId: event.target.value }))} /></Field>
-              </div>
-              <button type="button" onClick={() => void handleCreateRun()} disabled={isBusy}>Create Evaluation Run</button>
-            </>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Runs</h3>
-            <span>{selectedSuite?.name ?? "No suite selected"}</span>
-          </div>
-          {selectedSuite == null ? (
-            <p className="evaluation-workbench-empty">Select a suite to inspect runs.</p>
-          ) : overview.runs.length === 0 ? (
-            <p className="evaluation-workbench-empty">No runs have been recorded for this suite yet.</p>
-          ) : (
-            <ul className="evaluation-workbench-stack">
-              {overview.runs.map((run) => (
-                <li key={run.id}>
-                  <button
-                    type="button"
-                    aria-label={`Run ${run.id}`}
-                    className={`evaluation-workbench-select${run.id === overview.selectedRunId ? " is-selected" : ""}`}
-                    onClick={() => void handleSelectRun(run.id)}
-                  >
-                    <strong>{run.id}</strong>
-                    <span>{run.status} 璺?{run.run_item_count ?? 0} items</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel evaluation-workbench-history">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Run History</h3>
-            <span>
-              {describeHistoryResultCount({
-                totalFinalizedCount: finalizedRunHistory.length,
-                scopedCount: scopedFinalizedRunHistory.length,
-                visibleCount: visibleFinalizedRunHistory.length,
-                filter: historyFilter,
-                query: historySearchQuery,
-                scope: effectiveHistoryScope,
-              })}
-            </span>
-          </div>
-          {selectedSuite == null ? (
-            <p className="evaluation-workbench-empty">Select a suite to compare finalized run history.</p>
-          ) : scopedFinalizedRunHistory.length === 0 ? (
-            selectedRun && !selectedRunHistoryEntry ? (
-              <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-                <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
-                {historyComparisonGuidanceSummary ? (
-                  <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
-                ) : null}
-              </div>
-            ) : (
-              <p className="evaluation-workbench-empty">
-                {effectiveHistoryScope === "manuscript"
-                  ? "Finalize at least one run for this manuscript to unlock manuscript-scoped history."
-                  : "Finalize at least one run to unlock suite-level history."}
-              </p>
-            )
-          ) : (
-            <>
-              <dl className="evaluation-workbench-metadata">
-                <div>
-                  <dt>Recommended</dt>
-                  <dd>{historyCounts.recommended}</dd>
-                </div>
-                <div>
-                  <dt>Needs Review</dt>
-                  <dd>{historyCounts.needsReview}</dd>
-                </div>
-                <div>
-                  <dt>Rejected</dt>
-                  <dd>{historyCounts.rejected}</dd>
-                </div>
-              </dl>
-              {historyOriginSummary ? (
-                <div className="evaluation-workbench-history-compare">
-                  <span>{historyOriginSummary}</span>
-                </div>
-              ) : null}
-              {normalizedPrefilledManuscriptId.length > 0 ? (
-                <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history scope">
-                  {createHistoryScopeOptions(matchedHistoryRunIds.length).map((option) => {
-                    const isSelected = effectiveHistoryScope === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`evaluation-workbench-action${isSelected ? " is-selected" : ""}`}
-                        aria-pressed={isSelected}
-                        disabled={option.value === "manuscript" && !canScopeHistoryToManuscript}
-                        onClick={() => setHistoryScope(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-              <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history filters">
-                {createHistoryFilterOptions(historyCounts, scopedFinalizedRunHistory.length).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`evaluation-workbench-action${historyFilter === option.value ? " is-selected" : ""}`}
-                    aria-pressed={historyFilter === option.value}
-                    onClick={() => setHistoryFilter(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <div className="evaluation-workbench-inline-list" role="group" aria-label="Run history sort">
-                {createHistorySortOptions().map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`evaluation-workbench-action${historySortMode === option.value ? " is-selected" : ""}`}
-                    aria-pressed={historySortMode === option.value}
-                    onClick={() => setHistorySortMode(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <Field label="Search History" wide>
-                <input
-                  value={historySearchQuery}
-                  placeholder="Run ID, model, decision, regression, or evidence pack"
-                  onChange={(event) => setHistorySearchQuery(event.target.value)}
-                />
-              </Field>
-              {isSelectedRunHiddenByHistoryControls ? (
-                <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
-                  <strong>Selected run is currently hidden by history controls.</strong>
-                  <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
-                  {historyCompareStatusSummary ? (
-                    <p className="evaluation-workbench-empty">{historyCompareStatusSummary}</p>
-                  ) : null}
-                  <div className="evaluation-workbench-history-compare">
-                    <span>Selected run: {selectedRun?.id}</span>
-                    {historyControlSummaryLines.map((line) => (
-                      <span key={line}>{line}</span>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="evaluation-workbench-action"
-                    onClick={() => {
-                      if (effectiveHistoryScope === "manuscript") {
-                        setHistoryScope("suite");
-                      }
-                      setHistoryFilter("all");
-                      setHistorySearchQuery("");
-                    }}
-                  >
-                    Show Selected Run
-                  </button>
-                </div>
-              ) : null}
-              {selectedRunHistoryEntry && previousRunHistoryEntry ? (
-                <EvaluationWorkbenchRunComparisonCard
-                  comparisonScopeLabel={comparisonScopeLabel}
-                  selectedOriginLabel={selectedComparisonOriginLabel}
-                  previousOriginLabel={previousComparisonOriginLabel}
-                  selectedEntry={selectedRunHistoryEntry}
-                  previousEntry={previousRunHistoryEntry}
-                  selectedEvidence={selectedRunEvidence}
-                  previousEvidence={previousRunEvidence}
-                />
-              ) : historyComparisonGuidance && canSwitchToSuiteHistoryForComparison ? (
-                <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-                  <strong>History Compare Guidance</strong>
-                  <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
-                  {historyComparisonGuidanceSummary ? (
-                    <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="evaluation-workbench-action"
-                    onClick={() => setHistoryScope("suite")}
-                  >
-                    Compare Against Entire Suite History
-                  </button>
-                </div>
-              ) : historyComparisonGuidance ? (
-                <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-                  <p className="evaluation-workbench-empty">{historyComparisonGuidance}</p>
-                  {historyComparisonGuidanceSummary ? (
-                    <p className="evaluation-workbench-empty">{historyComparisonGuidanceSummary}</p>
-                  ) : null}
-                </div>
-              ) : null}
-              {selectedRunHistoryEntry ? (
-                <div className="evaluation-workbench-result evaluation-workbench-history-detail">
-                  <strong>Selected History Detail</strong>
-                  <div className="evaluation-workbench-history-compare">
-                    <span>Run: {selectedRunHistoryEntry.run.id}</span>
-                    {selectedComparisonOriginLabel ? (
-                      <span>Origin: {selectedComparisonOriginLabel}</span>
-                    ) : null}
-                    <span>Recommendation: {selectedRunHistoryEntry.finalized.recommendation.status}</span>
-                    <span>Evidence Pack: {selectedRunHistoryEntry.finalized.evidence_pack.id}</span>
-                    {selectedRunHistoryEntry.finalized.recommendation.decision_reason ? (
-                      <span>{selectedRunHistoryEntry.finalized.recommendation.decision_reason}</span>
-                    ) : null}
-                    {selectedRunItem?.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
-                    {linkedSampleSetItem ? (
-                      <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
-                    ) : selectedRunHistoryEntry.run.governed_source ? (
-                      <span>
-                        Governed Source: {selectedRunHistoryEntry.run.governed_source.source_module} /{" "}
-                        {selectedRunHistoryEntry.run.governed_source.manuscript_id}
-                      </span>
-                    ) : null}
-                  </div>
-                  <EvaluationWorkbenchEvidencePackSummary
-                    evidencePack={selectedRunHistoryEntry.finalized.evidence_pack}
-                  />
-                  {selectedRunHistoryEntry.run.governed_source ? (
-                    <EvaluationWorkbenchGovernedSourceDetailCard
-                      selectedRun={selectedRunHistoryEntry.run}
-                    />
-                  ) : null}
-                  {overview.runItems.length > 0 ? (
-                    <EvaluationWorkbenchLinkedSampleContextList
-                      runItems={overview.runItems}
-                      sampleSetItems={sampleSetItems}
-                      selectedRunItemId={selectedRunItemId}
-                      defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
-                        selectedSampleSet?.module,
-                      )}
-                      onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
-                    />
-                  ) : selectedRunHistoryEntry.run.governed_source ? (
-                    <p className="evaluation-workbench-empty">
-                      This governed run was seeded from a live module execution and does not
-                      include sample-backed run items.
-                    </p>
-                  ) : (
-                    <EvaluationWorkbenchLinkedSampleContextList
-                      runItems={overview.runItems}
-                      sampleSetItems={sampleSetItems}
-                      selectedRunItemId={selectedRunItemId}
-                      defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(
-                        selectedSampleSet?.module,
-                      )}
-                      onFocusRunItem={(runItemId) => setSelectedRunItemId(runItemId)}
-                    />
-                  )}
-                  <EvaluationWorkbenchEvidenceList
-                    evidence={selectedRunEvidence}
-                    emptyMessage="No persisted verification evidence is attached to this run."
-                  />
-                </div>
-              ) : null}
-              {sortedVisibleFinalizedRunHistory.length > 0 ? (
-                <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
-                  {sortedVisibleFinalizedRunHistory.map((entry) => (
-                    <li key={entry.run.id}>
-                      {(() => {
-                        const roleLabels = describeHistoryComparisonRoleLabels({
-                          entryRunId: entry.run.id,
-                          selectedRunId: selectedRun?.id ?? null,
-                          previousRunId: previousRunHistoryEntry?.run.id ?? null,
-                        });
-
-                        return (
-                      <button
-                        type="button"
-                        aria-label={`History run ${entry.run.id}`}
-                        className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
-                        onClick={() => void handleSelectRun(entry.run.id)}
-                      >
-                        <strong>{entry.run.id}</strong>
-                        <span>
-                          {describeHistoryStatusPair(
-                            entry.finalized.recommendation.status,
-                            entry.finalized.evidence_pack.summary_status,
-                          )}
-                        </span>
-                        {(() => {
-                          const historyEntryOriginLabel = describeHistoryEntryOriginLabel({
-                            runId: entry.run.id,
-                            matchedRunIds: matchedHistoryRunIds,
-                            hasManuscriptContext: normalizedPrefilledManuscriptId.length > 0,
-                            scope: effectiveHistoryScope,
-                          });
-                          return historyEntryOriginLabel ? (
-                            <span>Origin: {historyEntryOriginLabel}</span>
-                          ) : null;
-                        })()}
-                        <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
-                        {summarizeFinalizedEntry(entry) ? (
-                          <span>{summarizeFinalizedEntry(entry)}</span>
-                        ) : null}
-                        {roleLabels.map((label) => (
-                          <span key={label}>{label}</span>
-                        ))}
-                      </button>
-                        );
-                      })()}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
-                  <strong>No finalized runs match the current history controls.</strong>
-                  <p className="evaluation-workbench-empty">{historyVisibilitySummary}</p>
-                  {historyCompareStatusSummary ? (
-                    <p className="evaluation-workbench-empty">{historyCompareStatusSummary}</p>
-                  ) : null}
-                  <div className="evaluation-workbench-history-compare">
-                    {historyControlSummaryLines.map((line) => (
-                      <span key={line}>{line}</span>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="evaluation-workbench-action"
-                    onClick={() => {
-                      setHistoryFilter("all");
-                      setHistorySearchQuery("");
-                      setHistorySortMode("newest");
-                    }}
-                  >
-                    Reset History Controls
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Run Items</h3>
-            <span>{selectedRun?.id ?? "No run selected"}</span>
-          </div>
-          {selectedRun == null ? (
-            <p className="evaluation-workbench-empty">Pick a run to review run-item outcomes.</p>
-          ) : overview.runItems.length === 0 ? (
-            <>
-              {selectedRun.governed_source ? (
-                <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
-              ) : null}
-              <p className="evaluation-workbench-empty">
-                {selectedRun.governed_source
-                  ? "This governed run was seeded from a live module execution and does not include sample-backed run items."
-                  : "This run has no recorded run-item results yet."}
-              </p>
-            </>
-          ) : (
-            <>
-              <ul className="evaluation-workbench-stack">
-                {overview.runItems.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={`evaluation-workbench-select${item.id === selectedRunItemId ? " is-selected" : ""}`}
-                      onClick={() => setSelectedRunItemId(item.id)}
-                    >
-                      <strong>{item.id} 璺?{item.lane}</strong>
-                      <span>{formatRunItemSummary(item)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {selectedRunItem ? (
-                <>
-                  <EvaluationWorkbenchSelectedRunItemDetailCard
-                    selectedRun={selectedRun}
-                    selectedRunItem={selectedRunItem}
-                    linkedSampleSetItem={linkedSampleSetItem}
-                  />
-                  <div className="evaluation-workbench-form-grid">
-                    <Field label="Result Asset ID"><input value={runItemForm.resultAssetId} onChange={(event) => setRunItemForm((current) => ({ ...current, resultAssetId: event.target.value }))} /></Field>
-                    <Field label="Weighted Score"><input type="number" min="0" max="100" value={runItemForm.weightedScore} onChange={(event) => setRunItemForm((current) => ({ ...current, weightedScore: event.target.value }))} /></Field>
-                    <Field label="Failure Kind">
-                      <select value={runItemForm.failureKind} onChange={(event) => setRunItemForm((current) => ({ ...current, failureKind: event.target.value as typeof current.failureKind }))}>
-                        <option value="">No failure</option>
-                        {failureKinds.map((item) => <option key={item} value={item}>{item}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Failure Reason"><input value={runItemForm.failureReason} onChange={(event) => setRunItemForm((current) => ({ ...current, failureReason: event.target.value }))} /></Field>
-                    <Field label="Diff Summary" wide><textarea value={runItemForm.diffSummary} onChange={(event) => setRunItemForm((current) => ({ ...current, diffSummary: event.target.value }))} /></Field>
-                  </div>
-                  <div className="evaluation-workbench-check-row">
-                    <label className="evaluation-workbench-check">
-                      <input type="checkbox" checked={runItemForm.hardGatePassed} onChange={(event) => setRunItemForm((current) => ({ ...current, hardGatePassed: event.target.checked }))} />
-                      <span>Hard Gate Passed</span>
-                    </label>
-                    <label className="evaluation-workbench-check">
-                      <input type="checkbox" checked={runItemForm.requiresHumanReview} onChange={(event) => setRunItemForm((current) => ({ ...current, requiresHumanReview: event.target.checked }))} />
-                      <span>Requires Human Review</span>
-                    </label>
-                  </div>
-                  <button type="button" onClick={() => void handleSaveRunItemResult()} disabled={isBusy}>Save Run Item Result</button>
-                </>
-              ) : null}
-            </>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Finalize Run</h3>
-            <span>{selectedRun?.id ?? "Select run first"}</span>
-          </div>
-          <EvaluationWorkbenchFinalizePanel
-            selectedRun={selectedRun}
-            effectiveFinalizedResult={effectiveFinalizedResult}
-            finalizeForm={finalizeForm}
-            finalizeArtifactOptions={finalizeArtifactOptions}
-            selectedRunEvidence={selectedRunEvidence}
-            isBusy={isBusy}
-            onFinalizeStatusChange={(status) =>
-              setFinalizeForm((current) => ({ ...current, status }))
-            }
-            onEvidenceKindChange={(nextEvidenceKind) =>
-              setFinalizeForm((current) => ({
-                ...current,
-                evidenceKind: nextEvidenceKind,
-                artifactAssetId:
-                  nextEvidenceKind === "artifact" && !current.artifactAssetId
-                    ? resolvePreferredFinalizeArtifactAssetId(finalizeArtifactOptions)
-                    : current.artifactAssetId,
-              }))
-            }
-            onEvidenceLabelChange={(evidenceLabel) =>
-              setFinalizeForm((current) => ({ ...current, evidenceLabel }))
-            }
-            onEvidenceUrlChange={(evidenceUrl) =>
-              setFinalizeForm((current) => ({ ...current, evidenceUrl }))
-            }
-            onArtifactAssetIdChange={(artifactAssetId) =>
-              setFinalizeForm((current) => ({ ...current, artifactAssetId }))
-            }
-            onSelectArtifactSuggestion={(artifactAssetId) =>
-              setFinalizeForm((current) => ({ ...current, artifactAssetId }))
-            }
-            onCompleteAndFinalize={() => void handleCompleteAndFinalizeRun()}
-            onFinalizeRecommendation={() => void handleFinalizeRecommendation()}
-          />
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>Learning Handoff</h3>
-            <span>{effectiveFinalizedResult ? createdLearningCandidate?.id ?? "Ready to create" : "Finalize run first"}</span>
-          </div>
-          {!effectiveFinalizedResult ? (
-            <p className="evaluation-workbench-empty">The learning handoff stays gated until the evaluation run is finalized.</p>
-          ) : governedLearningHandoffGuidance ? (
-            <div className="evaluation-workbench-result">
-              <strong>Learning Handoff Unavailable</strong>
-              <p className="evaluation-workbench-empty">{governedLearningHandoffGuidance}</p>
-            </div>
-          ) : (
-            <>
-              {linkedSampleSetItem ? (
-                <p className="evaluation-workbench-empty">
-                  Snapshot auto-linked from sample item {linkedSampleSetItem.id}.
-                </p>
-              ) : null}
-              <div className="evaluation-workbench-form-grid">
-                <Field label="Reviewed Case Snapshot ID"><input value={learningForm.reviewedCaseSnapshotId} onChange={(event) => setLearningForm((current) => ({ ...current, reviewedCaseSnapshotId: event.target.value }))} /></Field>
-                <Field label="Source Asset ID"><input value={learningForm.sourceAssetId} onChange={(event) => setLearningForm((current) => ({ ...current, sourceAssetId: event.target.value }))} /></Field>
-                <Field label="Learning Candidate Type">
-                  <select value={learningForm.candidateType} onChange={(event) => setLearningForm((current) => ({ ...current, candidateType: event.target.value as LearningCandidateType }))}>
-                    {learningCandidateTypes.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                </Field>
-                <Field label="Created By"><input value={learningForm.createdBy} onChange={(event) => setLearningForm((current) => ({ ...current, createdBy: event.target.value }))} /></Field>
-                <Field label="Learning Candidate Title"><input value={learningForm.title} onChange={(event) => setLearningForm((current) => ({ ...current, title: event.target.value }))} /></Field>
-                <Field label="Learning Proposal" wide><textarea value={learningForm.proposalText} onChange={(event) => setLearningForm((current) => ({ ...current, proposalText: event.target.value }))} /></Field>
-              </div>
-              <div className="evaluation-workbench-button-row">
-                <button type="button" onClick={() => void handleCreateLearningCandidate()} disabled={isBusy}>Create Learning Candidate</button>
-                {learningReviewHash ? <a href={learningReviewHash}>Open Learning Review</a> : null}
-              </div>
-              {createdLearningCandidate ? (
-                <div className="evaluation-workbench-result">
-                  <strong>Learning Candidate Created</strong>
-                  <div>
-                    <span>{createdLearningCandidate.id}</span>
-                    <span>{createdLearningCandidate.status}</span>
-                    <span>{createdLearningCandidate.type}</span>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
-      </div>
-    </section>
+    <EvaluationWorkbenchOperationsView
+      overview={overview}
+      prefilledManuscriptId={normalizedPrefilledManuscriptId}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      historyFilter={historyFilter}
+      historySortMode={historySortMode}
+      selectedRunItemId={selectedRunItemId}
+      onSelectSuite={(suiteId) => void handleSelectSuite(suiteId)}
+      onSelectRun={(runId) => void handleSelectRun(runId)}
+      onSelectRunItem={setSelectedRunItemId}
+      onSelectHistoryWindow={(preset) => void handleSelectHistoryWindow(preset)}
+      onSelectHistoryFilter={setHistoryFilter}
+      onSelectHistorySortMode={setHistorySortMode}
+    />
   );
+
+  async function handleSelectHistoryWindow(preset: EvaluationWorkbenchHistoryWindowPreset) {
+    if (!overview) return;
+    if (preset === historyWindowPreset) return;
+    setStatusMessage(null);
+    await loadOverview({
+      selectedSuiteId: overview.selectedSuiteId,
+      selectedRunId: overview.selectedRunId,
+      manuscriptId: activeManuscriptContextId,
+      historyWindowPreset: preset,
+    });
+  }
 
   async function loadOverview(input?: {
     selectedSuiteId?: string | null;
     selectedRunId?: string | null;
     manuscriptId?: string | null;
+    historyWindowPreset?: EvaluationWorkbenchHistoryWindowPreset;
   }) {
     setLoadStatus("loading");
     setErrorMessage(null);
     try {
-      setOverview(await controller.loadOverview(input));
+      const nextOverview = await controller.loadOverview({
+        ...input,
+        historyWindowPreset: input?.historyWindowPreset ?? historyWindowPreset,
+      });
+      setOverview(nextOverview);
+      setHistoryWindowPreset(nextOverview.suiteOperations.defaultWindow);
       setLoadStatus("ready");
     } catch (error) {
       setLoadStatus("error");
@@ -988,177 +162,549 @@ export function EvaluationWorkbenchPage({
 
   async function handleSelectSuite(suiteId: string) {
     setStatusMessage(null);
-    setFinalizedResult(null);
-    setCreatedLearningCandidate(null);
     await loadOverview({
       selectedSuiteId: suiteId,
       selectedRunId: null,
       manuscriptId: activeManuscriptContextId,
+      historyWindowPreset,
     });
   }
 
   async function handleSelectRun(runId: string) {
     if (!overview) return;
     setStatusMessage(null);
-    setFinalizedResult(null);
-    setCreatedLearningCandidate(null);
     await loadOverview({
       selectedSuiteId: overview.selectedSuiteId,
       selectedRunId: runId,
       manuscriptId: activeManuscriptContextId,
+      historyWindowPreset,
     });
   }
+}
 
-  async function handleActivateSuite(suiteId: string) {
-    setIsActivatingSuiteId(suiteId);
-    setErrorMessage(null);
-    try {
-      const nextOverview = await controller.activateSuiteAndReload({
-        suiteId,
-        actorRole,
-        manuscriptId: activeManuscriptContextId,
-      });
-      setOverview(nextOverview);
-      setStatusMessage(`Activated evaluation suite ${suiteId}.`);
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    } finally {
-      setIsActivatingSuiteId(null);
-    }
-  }
+function EvaluationWorkbenchOperationsView(props: {
+  overview: EvaluationWorkbenchOverview;
+  prefilledManuscriptId?: string;
+  statusMessage?: string | null;
+  errorMessage?: string | null;
+  historyFilter: EvaluationWorkbenchHistoryFilter;
+  historySortMode: EvaluationWorkbenchHistorySortMode;
+  selectedRunItemId: string | null;
+  onSelectSuite: (suiteId: string) => void;
+  onSelectRun: (runId: string) => void;
+  onSelectRunItem: (runItemId: string) => void;
+  onSelectHistoryWindow: (preset: EvaluationWorkbenchHistoryWindowPreset) => void;
+  onSelectHistoryFilter: (filter: EvaluationWorkbenchHistoryFilter) => void;
+  onSelectHistorySortMode: (sortMode: EvaluationWorkbenchHistorySortMode) => void;
+}) {
+  const normalizedPrefilledManuscriptId = props.prefilledManuscriptId?.trim() ?? "";
+  const selectedRun =
+    props.overview.runs.find((item) => item.id === props.overview.selectedRunId) ?? null;
+  const selectedRunHistoryEntry =
+    selectedRun == null
+      ? null
+      : props.overview.finalizedRunHistory.find((entry) => entry.run.id === selectedRun.id) ?? null;
+  const selectedRunItem =
+    props.overview.runItems.find((item) => item.id === props.selectedRunItemId) ?? null;
+  const linkedSampleSetItem =
+    selectedRunItem == null
+      ? null
+      : props.overview.sampleSetItems.find((item) => item.id === selectedRunItem.sample_set_item_id) ??
+        null;
+  const selectedSampleSet =
+    selectedRun == null
+      ? null
+      : props.overview.sampleSets.find((item) => item.id === selectedRun.sample_set_id) ?? null;
+  const visibleHistory = props.overview.suiteOperations.visibleHistory;
+  const filteredVisibleHistory = filterFinalizedRunHistory(visibleHistory, props.historyFilter);
+  const sortedVisibleHistory = sortFinalizedRunHistory(
+    filteredVisibleHistory,
+    props.historySortMode,
+  );
+  const defaultComparison = props.overview.suiteOperations.defaultComparison;
+  const defaultComparisonDetail = props.overview.suiteOperations.defaultComparisonDetail;
+  const selectedRunOutsideVisibleWindow =
+    selectedRun != null && !visibleHistory.some((entry) => entry.run.id === selectedRun.id);
+  const selectedInspectionFinalization =
+    selectedRunHistoryEntry?.finalized ?? props.overview.selectedRunFinalization;
 
-  async function handleCreateRun() {
-    if (!selectedSuite) return setErrorMessage("Select a suite before creating a run.");
-    if (!runForm.sampleSetId.trim()) return setErrorMessage("Select a sample set before creating a run.");
-    await runBusyTask(async () => {
-      const result = await controller.createRunAndReload({
-        actorRole,
-        suiteId: selectedSuite.id,
-        manuscriptId: activeManuscriptContextId,
-        sampleSetId: runForm.sampleSetId.trim(),
-        baselineBinding: createBinding("baseline", runForm.baselineModelId, runForm),
-        candidateBinding: createBinding("candidate", runForm.candidateModelId, runForm),
-        releaseCheckProfileId: optional(runForm.releaseCheckProfileId),
-      });
-      setOverview(result.overview);
-      setFinalizedResult(null);
-      setCreatedLearningCandidate(null);
-      setStatusMessage(`Created evaluation run ${result.run.id}.`);
-    });
-  }
+  return (
+    <section className="evaluation-workbench">
+      <header className="evaluation-workbench-hero">
+        <div>
+          <h2>Evaluation Workbench</h2>
+          <p>
+            Delta-first operations view for finalized suite movement, bounded history, and
+            read-only inspection.
+          </p>
+          {props.errorMessage ? <p className="evaluation-workbench-error">{props.errorMessage}</p> : null}
+        </div>
+        {props.statusMessage ? <p className="evaluation-workbench-status">{props.statusMessage}</p> : null}
+      </header>
 
-  async function handleSaveRunItemResult() {
-    if (!selectedSuite || !selectedRun || !selectedRunItem) {
-      return setErrorMessage("Select a suite, run, and run item before saving the result.");
-    }
-    await runBusyTask(async () => {
-      const result = await controller.recordRunItemResultAndReload({
-        actorRole,
-        suiteId: selectedSuite.id,
-        runId: selectedRun.id,
-        manuscriptId: activeManuscriptContextId,
-        runItemId: selectedRunItem.id,
-        resultAssetId: optional(runItemForm.resultAssetId),
-        hardGatePassed: runItemForm.hardGatePassed,
-        weightedScore: numberOrUndefined(runItemForm.weightedScore),
-        diffSummary: optional(runItemForm.diffSummary),
-        requiresHumanReview: runItemForm.requiresHumanReview,
-        failureKind: runItemForm.failureKind || undefined,
-        failureReason: optional(runItemForm.failureReason),
-      });
-      setOverview(result.overview);
-      setFinalizedResult(null);
-      setCreatedLearningCandidate(null);
-      setStatusMessage(`Saved run item result ${result.runItem.id}.`);
-    });
-  }
+      {normalizedPrefilledManuscriptId.length > 0 ? (
+        <div className="evaluation-workbench-result">
+          <strong>Manuscript Handoff</strong>
+          <div className="evaluation-workbench-history-compare">
+            <span>Context manuscript: {normalizedPrefilledManuscriptId}</span>
+            <span>
+              {props.overview.manuscriptContext?.matchedRunId
+                ? `Matched run: ${props.overview.manuscriptContext.matchedRunId}`
+                : "No matched evaluation run yet"}
+            </span>
+            <span>
+              {props.overview.manuscriptContext?.matchedSuiteId
+                ? `Matched suite: ${props.overview.manuscriptContext.matchedSuiteId}`
+                : "Showing the default evaluation suite"}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
-  async function handleCompleteAndFinalizeRun() {
-    if (!selectedSuite || !selectedRun) return setErrorMessage("Select a run before finalizing it.");
-    if (!finalizeForm.evidenceLabel.trim()) {
-      return setErrorMessage("Evidence label is required before finalization.");
-    }
-    if (finalizeForm.evidenceKind === "url" && !finalizeForm.evidenceUrl.trim()) {
-      return setErrorMessage("Evidence URL is required when recording URL evidence.");
-    }
-    if (finalizeForm.evidenceKind === "artifact" && !finalizeForm.artifactAssetId.trim()) {
-      return setErrorMessage("Artifact asset ID is required when recording artifact evidence.");
-    }
-    await runBusyTask(async () => {
-      const result = await controller.completeRunWithEvidenceAndFinalize({
-        actorRole,
-        suiteId: selectedSuite.id,
-        runId: selectedRun.id,
-        manuscriptId: activeManuscriptContextId,
-        status: finalizeForm.status,
-        existingEvidenceIds: selectedRun.evidence_ids,
-        evidence:
-          finalizeForm.evidenceKind === "artifact"
-            ? {
-                kind: "artifact",
-                label: finalizeForm.evidenceLabel.trim(),
-                artifactAssetId: finalizeForm.artifactAssetId.trim(),
-              }
-            : {
-                kind: "url",
-                label: finalizeForm.evidenceLabel.trim(),
-                uri: finalizeForm.evidenceUrl.trim(),
-              },
-      });
-      setOverview(result.overview);
-      setFinalizedResult(result.finalized);
-      setCreatedLearningCandidate(null);
-      setStatusMessage(`Finalized evaluation run ${result.finalized.run.id} with ${result.finalized.recommendation.status} recommendation.`);
-    });
-  }
+      <section className="evaluation-workbench-panel evaluation-workbench-delta-summary">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Delta Summary</h3>
+          <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
+        </div>
+        {props.overview.suiteOperations.delta != null && defaultComparison != null ? (
+          <>
+            <div className="evaluation-workbench-delta-badge-row">
+              <span className={`evaluation-workbench-delta-badge is-${props.overview.suiteOperations.delta.classification}`}>
+                Classification: {props.overview.suiteOperations.delta.classification}
+              </span>
+              <span className="evaluation-workbench-delta-inline-note">
+                Default comparison: {defaultComparison.selected.run.id} vs {defaultComparison.baseline.run.id}.
+              </span>
+            </div>
+            <p className="evaluation-workbench-delta-copy">
+              {describeDeltaReasonCopy({
+                delta: props.overview.suiteOperations.delta,
+                defaultComparison,
+              })}
+            </p>
+            <p className="evaluation-workbench-delta-copy">
+              Next operator cue:{" "}
+              {describeDeltaNextOperatorCue({
+                selectedEntry: defaultComparison.selected,
+                baselineEntry: defaultComparison.baseline,
+              })}
+            </p>
+            <div className="evaluation-workbench-delta-meta">
+              <span>Latest-versus-previous finalized comparison</span>
+              <span>
+                Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="evaluation-workbench-delta-copy">
+              {describeHonestDegradationCopy({
+                honestDegradation: props.overview.suiteOperations.honestDegradation,
+                windowPreset: props.overview.suiteOperations.defaultWindow,
+              })}
+            </p>
+            <p className="evaluation-workbench-delta-copy">
+              {describeHonestDegradationNextStep(props.overview.suiteOperations.honestDegradation)}
+            </p>
+          </>
+        )}
+      </section>
 
-  async function handleFinalizeRecommendation() {
-    if (!selectedSuite || !selectedRun) return setErrorMessage("Select a run before finalizing it.");
-    await runBusyTask(async () => {
-      const result = await controller.finalizeCompletedRun({
-        actorRole,
-        suiteId: selectedSuite.id,
-        runId: selectedRun.id,
-        manuscriptId: activeManuscriptContextId,
-      });
-      setOverview(result.overview);
-      setFinalizedResult(result.finalized);
-      setCreatedLearningCandidate(null);
-      setStatusMessage(`Finalized evaluation run ${result.finalized.run.id} with ${result.finalized.recommendation.status} recommendation.`);
-    });
-  }
+      <section className="evaluation-workbench-panel evaluation-workbench-comparison-panel">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Run Comparison</h3>
+          <span>Latest-versus-previous finalized comparison</span>
+        </div>
+        {defaultComparison != null && defaultComparisonDetail != null ? (
+          <EvaluationWorkbenchRunComparisonCard
+            comparisonScopeLabel="Latest-versus-previous finalized comparison"
+            selectedEntry={defaultComparison.selected}
+            previousEntry={defaultComparison.baseline}
+            selectedEvidence={[...defaultComparisonDetail.selectedEvidence]}
+            previousEvidence={[...defaultComparisonDetail.baselineEvidence]}
+          />
+        ) : (
+          <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+            <strong>Comparison unavailable</strong>
+            <p className="evaluation-workbench-empty">
+              {describeHonestDegradationCopy({
+                honestDegradation: props.overview.suiteOperations.honestDegradation,
+                windowPreset: props.overview.suiteOperations.defaultWindow,
+              })}
+            </p>
+          </div>
+        )}
+      </section>
 
-  async function handleCreateLearningCandidate() {
-    if (!effectiveFinalizedResult) return setErrorMessage("Finalize the evaluation run before creating a learning candidate.");
-    await runBusyTask(async () => {
-      const learningCandidate = await controller.createLearningCandidateFromEvaluation({
-        actorRole,
-        runId: effectiveFinalizedResult.run.id,
-        evidencePackId: effectiveFinalizedResult.evidence_pack.id,
-        reviewedCaseSnapshotId: learningForm.reviewedCaseSnapshotId.trim(),
-        candidateType: learningForm.candidateType,
-        title: optional(learningForm.title),
-        proposalText: optional(learningForm.proposalText),
-        createdBy: learningForm.createdBy.trim(),
-        sourceAssetId: learningForm.sourceAssetId.trim(),
-      });
-      setCreatedLearningCandidate(learningCandidate);
-      setStatusMessage(`Created learning candidate ${learningCandidate.id}.`);
-    });
-  }
+      <section className="evaluation-workbench-summary">
+        <SummaryCard label="Check Profiles" value={props.overview.checkProfiles.length} />
+        <SummaryCard label="Release Profiles" value={props.overview.releaseCheckProfiles.length} />
+        <SummaryCard label="Sample Sets" value={props.overview.sampleSets.length} />
+        <SummaryCard label="Suites" value={props.overview.suites.length} />
+        <SummaryCard label="Runs" value={props.overview.runs.length} />
+        <SummaryCard label="Run Items" value={props.overview.runItems.length} />
+      </section>
 
-  async function runBusyTask(task: () => Promise<void>) {
-    setIsBusy(true);
-    setErrorMessage(null);
-    setStatusMessage(null);
-    try {
-      await task();
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    } finally {
-      setIsBusy(false);
-    }
+      <div className="evaluation-workbench-layout">
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Visible History</h3>
+            <span>{visibleHistory.length} visible / {props.overview.finalizedRunHistory.length} total</span>
+          </div>
+          <p className="evaluation-workbench-empty">
+            Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+          </p>
+          <div className="evaluation-workbench-control-grid">
+            <Field label="History Window">
+              <select
+                value={props.overview.suiteOperations.defaultWindow}
+                onChange={(event) =>
+                  props.onSelectHistoryWindow(
+                    event.target.value as EvaluationWorkbenchHistoryWindowPreset,
+                  )
+                }
+              >
+                {createHistoryWindowOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Recommendation Filter">
+              <select
+                value={props.historyFilter}
+                onChange={(event) =>
+                  props.onSelectHistoryFilter(
+                    event.target.value as EvaluationWorkbenchHistoryFilter,
+                  )
+                }
+              >
+                {createHistoryFilterControlOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Sort Mode">
+              <select
+                value={props.historySortMode}
+                onChange={(event) =>
+                  props.onSelectHistorySortMode(
+                    event.target.value as EvaluationWorkbenchHistorySortMode,
+                  )
+                }
+              >
+                {createHistorySortControlOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {selectedRunOutsideVisibleWindow && selectedRun ? (
+            <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
+              <strong>Selected inspection run: {selectedRun.id}</strong>
+              <p className="evaluation-workbench-empty">
+                Selected run {selectedRun.id} is outside the visible history window.
+              </p>
+            </div>
+          ) : null}
+          {sortedVisibleHistory.length > 0 ? (
+            <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
+              {sortedVisibleHistory.map((entry) => (
+                <li key={entry.run.id}>
+                  <button
+                    type="button"
+                    aria-label={`History run ${entry.run.id}`}
+                    className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
+                    onClick={() => props.onSelectRun(entry.run.id)}
+                  >
+                    <strong>{entry.run.id}</strong>
+                    <span>
+                      {describeHistoryStatusPair(
+                        entry.finalized.recommendation.status,
+                        entry.finalized.evidence_pack.summary_status,
+                      )}
+                    </span>
+                    <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
+                    {summarizeFinalizedEntry(entry) ? <span>{summarizeFinalizedEntry(entry)}</span> : null}
+                    {describeDefaultComparisonRoleLabel(entry.run.id, defaultComparison).map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
+              <strong>No finalized runs match the current history controls.</strong>
+            </div>
+          )}
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Suite Signal Summary</h3>
+            <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
+          </div>
+          <div className="evaluation-workbench-history-summary-grid">
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Recommendation Distribution</strong>
+              <span>
+                {formatSignalDistributionSummary(
+                  props.overview.suiteOperations.signals.recommendationDistribution,
+                )}
+              </span>
+            </article>
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Evidence Pack Outcomes</strong>
+              <span>
+                {formatSignalDistributionSummary(
+                  props.overview.suiteOperations.signals.evidencePackOutcomeMix,
+                )}
+              </span>
+            </article>
+            <article className="evaluation-workbench-history-summary-card">
+              <strong>Recurrence Signals</strong>
+              <span>
+                {formatRecurrenceSignalSummary(props.overview.suiteOperations.signals.recurrence)}
+              </span>
+            </article>
+          </div>
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Suites</h3>
+            <span>{props.overview.suites.length} configured</span>
+          </div>
+          {props.overview.suites.length === 0 ? (
+            <p className="evaluation-workbench-empty">No evaluation suites are configured yet.</p>
+          ) : (
+            <ul className="evaluation-workbench-stack">
+              {props.overview.suites.map((suite) => (
+                <li key={suite.id}>
+                  <button
+                    type="button"
+                    className={`evaluation-workbench-select${suite.id === props.overview.selectedSuiteId ? " is-selected" : ""}`}
+                    onClick={() => props.onSelectSuite(suite.id)}
+                  >
+                    <strong>{suite.name}</strong>
+                    <span>{suite.suite_type} | {suite.status}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="evaluation-workbench-panel">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Selected Inspection</h3>
+            <span>{selectedRun?.id ?? "Select run first"}</span>
+          </div>
+          {selectedRun == null ? (
+            <p className="evaluation-workbench-empty">
+              Select a run to inspect its finalized evidence and read-only details.
+            </p>
+          ) : (
+            <>
+              <div className="evaluation-workbench-result evaluation-workbench-history-detail">
+                <strong>Selected inspection run: {selectedRun.id}</strong>
+                <div className="evaluation-workbench-history-compare">
+                  <span>Status: {selectedRun.status}</span>
+                  <span>Run items: {selectedRun.run_item_count ?? 0}</span>
+                  {selectedInspectionFinalization ? (
+                    <>
+                      <span>Recommendation: {selectedInspectionFinalization.recommendation.status}</span>
+                      <span>Evidence Pack: {selectedInspectionFinalization.evidence_pack.id}</span>
+                      {selectedInspectionFinalization.recommendation.decision_reason ? (
+                        <span>{selectedInspectionFinalization.recommendation.decision_reason}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span>No finalized recommendation is available for the selected inspection run yet.</span>
+                  )}
+                  {selectedRunOutsideVisibleWindow ? (
+                    <span>
+                      This run is outside the finalized history slice that powers the default delta summary.
+                    </span>
+                  ) : null}
+                  {!selectedRunOutsideVisibleWindow && !selectedInspectionFinalization ? (
+                    <span>
+                      This run remains within the visible history window but has not been finalized yet.
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {selectedInspectionFinalization ? (
+                <EvaluationWorkbenchEvidencePackSummary
+                  evidencePack={selectedInspectionFinalization.evidence_pack}
+                />
+              ) : null}
+              {selectedRun.governed_source ? (
+                <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
+              ) : null}
+              {props.overview.runItems.length > 0 ? (
+                <>
+                  <EvaluationWorkbenchLinkedSampleContextList
+                    runItems={props.overview.runItems}
+                    sampleSetItems={props.overview.sampleSetItems}
+                    selectedRunItemId={props.selectedRunItemId}
+                    defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(selectedSampleSet?.module)}
+                    onFocusRunItem={props.onSelectRunItem}
+                  />
+                  {selectedRunItem && linkedSampleSetItem ? (
+                    <EvaluationWorkbenchSelectedRunItemDetailCard
+                      selectedRun={selectedRun}
+                      selectedRunItem={selectedRunItem}
+                      linkedSampleSetItem={linkedSampleSetItem}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <p className="evaluation-workbench-empty">
+                  This inspection lane stays read-only and no sample-backed run items are available for the selected run.
+                </p>
+              )}
+              <EvaluationWorkbenchEvidenceList
+                evidence={props.overview.selectedRunEvidence}
+                emptyMessage="No persisted verification evidence is attached to this run."
+              />
+            </>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function describeDefaultComparisonRoleLabel(
+  entryRunId: string,
+  defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"],
+) {
+  if (defaultComparison == null) return [];
+  if (entryRunId === defaultComparison.selected.run.id) {
+    return ["Default latest run"];
   }
+  if (entryRunId === defaultComparison.baseline.run.id) {
+    return ["Default baseline"];
+  }
+  return [];
+}
+
+function describeDeltaReasonCopy(input: {
+  delta: NonNullable<EvaluationWorkbenchOverview["suiteOperations"]["delta"]>;
+  defaultComparison: NonNullable<EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"]>;
+}) {
+  const selectedRecommendation = input.defaultComparison.selected.finalized.recommendation.status;
+  const baselineRecommendation = input.defaultComparison.baseline.finalized.recommendation.status;
+  const selectedStatus = input.defaultComparison.selected.run.status;
+  const baselineStatus = input.defaultComparison.baseline.run.status;
+
+  if (input.delta.reason === "recommendation_improved") {
+    return `Chosen because the latest finalized recommendation improved from ${baselineRecommendation} to ${selectedRecommendation}.`;
+  }
+  if (input.delta.reason === "recommendation_regressed") {
+    return `Chosen because the latest finalized recommendation regressed from ${baselineRecommendation} to ${selectedRecommendation}.`;
+  }
+  if (input.delta.reason === "finalized_status_improved") {
+    return `Chosen because the latest finalized run status improved from ${baselineStatus} to ${selectedStatus}.`;
+  }
+  if (input.delta.reason === "finalized_status_regressed") {
+    return `Chosen because the latest finalized run status regressed from ${baselineStatus} to ${selectedStatus}.`;
+  }
+  return `Chosen because the latest finalized comparison showed no material change between ${input.defaultComparison.selected.run.id} and ${input.defaultComparison.baseline.run.id}.`;
+}
+
+function describeDeltaNextOperatorCue(input: {
+  selectedEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  baselineEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+}) {
+  const selectedScore = parseAverageWeightedScore(input.selectedEntry.finalized.evidence_pack.score_summary);
+  const baselineScore = parseAverageWeightedScore(input.baselineEntry.finalized.evidence_pack.score_summary);
+  return describeComparisonTriageHint({
+    selectedStatus: input.selectedEntry.finalized.recommendation.status,
+    previousStatus: input.baselineEntry.finalized.recommendation.status,
+    scoreDelta:
+      selectedScore != null && baselineScore != null ? selectedScore - baselineScore : null,
+  });
+}
+
+function describeHonestDegradationCopy(input: {
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"];
+  windowPreset: EvaluationWorkbenchHistoryWindowPreset;
+}) {
+  if (input.honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
+    return `Honest degradation: fewer than two finalized runs are visible in the ${describeHistoryWindowPresetLabel(input.windowPreset)} window, so no default delta can be claimed yet.`;
+  }
+  if (input.honestDegradation?.reason === "insufficient_comparison_data") {
+    return "Honest degradation: the visible finalized runs do not provide enough comparison data to classify the suite as better, worse, or flat.";
+  }
+  return "Honest degradation: no default comparison is currently available for this suite.";
+}
+
+function describeHonestDegradationNextStep(
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"],
+) {
+  if (honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
+    return "Finalize one more run in the visible window before treating the suite as improved, worse, or flat.";
+  }
+  if (honestDegradation?.reason === "insufficient_comparison_data") {
+    return "Inspect the latest finalized runs directly until a deterministic comparison pair becomes available.";
+  }
+  return "Inspect the selected run directly until a deterministic comparison pair becomes available.";
+}
+
+function createHistoryWindowOptions() {
+  return [
+    { value: "latest_10" as const, label: "Latest 10" },
+    { value: "last_7_days" as const, label: "Last 7 Days" },
+    { value: "last_30_days" as const, label: "Last 30 Days" },
+    { value: "all_suite" as const, label: "All Suite History" },
+  ];
+}
+
+function describeHistoryWindowPresetLabel(preset: EvaluationWorkbenchHistoryWindowPreset) {
+  return (
+    createHistoryWindowOptions().find((option) => option.value === preset)?.label ?? "Latest 10"
+  );
+}
+
+function createHistoryFilterControlOptions() {
+  return [
+    { value: "all" as const, label: "All" },
+    { value: "recommended" as const, label: "Recommended" },
+    { value: "needs_review" as const, label: "Needs Review" },
+    { value: "rejected" as const, label: "Rejected" },
+  ];
+}
+
+function createHistorySortControlOptions() {
+  return [
+    { value: "newest" as const, label: "Newest First" },
+    { value: "failures_first" as const, label: "Failures First" },
+  ];
+}
+
+function formatSignalDistributionSummary(input: {
+  recommended: number;
+  needs_review: number;
+  rejected: number;
+}) {
+  return `${input.recommended} recommended / ${input.needs_review} needs review / ${input.rejected} rejected`;
+}
+
+function formatRecurrenceSignalSummary(input: {
+  regressionMentions: number;
+  failureMentions: number;
+  runsWithRecurrenceSignals: number;
+}) {
+  return `${input.regressionMentions} regression mentions / ${input.failureMentions} failure mentions / ${input.runsWithRecurrenceSignals} runs flagged`;
 }
 
 export function EvaluationWorkbenchRunComparisonCard(props: {
@@ -1789,7 +1335,7 @@ function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][numb
     item.hard_gate_passed == null ? "Hard gate pending" : item.hard_gate_passed ? "Hard gate passed" : "Hard gate failed",
     item.weighted_score == null ? "Score pending" : `Score ${item.weighted_score}`,
     item.requires_human_review ? "Needs review" : "No manual review flag",
-  ].join(" 璺?");
+  ].join(" | ");
 }
 
 function summarizeHistoryCounts(
@@ -1873,7 +1419,7 @@ function describeHistoryResultCount(input: {
 }
 
 export function filterFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   filter: EvaluationWorkbenchHistoryFilter,
 ) {
   if (filter === "all") return entries;
@@ -1881,7 +1427,7 @@ export function filterFinalizedRunHistory(
 }
 
 export function sortFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   sortMode: EvaluationWorkbenchHistorySortMode,
 ) {
   const nextEntries = [...entries];
@@ -1899,7 +1445,7 @@ export function sortFinalizedRunHistory(
 }
 
 export function searchFinalizedRunHistory(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   query: string,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -1913,7 +1459,7 @@ export function searchFinalizedRunHistory(
 }
 
 export function isSelectedRunHiddenFromHistoryList(
-  entries: EvaluationWorkbenchOverview["finalizedRunHistory"],
+  entries: ReadonlyArray<EvaluationWorkbenchFinalizedRunHistoryEntry>,
   selectedRunId: string | null,
 ) {
   if (selectedRunId == null) return false;
@@ -2160,30 +1706,8 @@ export function summarizeFinalizedEntry(
     .join(" | ");
 }
 
-function resolveSampleSetId(overview: EvaluationWorkbenchOverview, preferredId: string, selectedSuite: EvaluationWorkbenchOverview["suites"][number] | null) {
-  if (preferredId && overview.sampleSets.some((item) => item.id === preferredId)) return preferredId;
-  const scope = selectedSuite?.module_scope === "any" ? [] : selectedSuite?.module_scope ?? [];
-  return overview.sampleSets.find((item) => (scope.length === 0 ? true : scope.includes(item.module)))?.id ?? overview.sampleSets[0]?.id ?? "";
-}
-
 function resolveSelectedId(ids: readonly string[], preferredId: string | null) {
   return preferredId && ids.includes(preferredId) ? preferredId : ids[0] ?? null;
-}
-
-function createBinding(lane: "baseline" | "candidate", modelId: string, form: typeof baseRunForm) {
-  return {
-    lane,
-    modelId: modelId.trim(),
-    runtimeId: form.runtimeId.trim(),
-    promptTemplateId: form.promptTemplateId.trim(),
-    skillPackageIds: form.skillPackageIds.split(",").map((item) => item.trim()).filter(Boolean),
-    moduleTemplateId: form.moduleTemplateId.trim(),
-  };
-}
-
-function optional(value: string) {
-  const normalized = value.trim();
-  return normalized ? normalized : undefined;
 }
 
 function describeHardGate(hardGatePassed: boolean | undefined) {
@@ -2546,12 +2070,6 @@ function createHistorySearchHaystack(
     entry.run.candidate_binding?.prompt_template_id,
     formatOptionalList(entry.run.candidate_binding?.skill_package_ids),
   ].filter((value): value is string => Boolean(value));
-}
-
-function numberOrUndefined(value: string) {
-  if (!value.trim()) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function toErrorMessage(error: unknown) {

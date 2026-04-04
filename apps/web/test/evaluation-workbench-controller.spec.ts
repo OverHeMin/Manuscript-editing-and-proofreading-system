@@ -4,6 +4,110 @@ import {
   createEvaluationWorkbenchController,
 } from "../src/features/evaluation-workbench/evaluation-workbench-controller.ts";
 
+type EvaluationWorkbenchSuiteOperationsSnapshot = {
+  defaultWindow?: string;
+  visibleHistory?: Array<{ run: { id: string } }>;
+  defaultComparison?: {
+    selected: { run: { id: string } };
+    baseline: { run: { id: string } };
+  } | null;
+  defaultComparisonDetail?: {
+    selectedEvidence?: Array<{ id: string }>;
+    baselineEvidence?: Array<{ id: string }>;
+  } | null;
+  delta?: {
+    classification?: string;
+  } | null;
+  signals?: {
+    recommendationDistribution?: Record<string, number>;
+    evidencePackOutcomeMix?: Record<string, number>;
+    recurrence?: {
+      regressionMentions?: number;
+      failureMentions?: number;
+      runsWithRecurrenceSignals?: number;
+    };
+  } | null;
+  honestDegradation?: {
+    kind?: string;
+    reason?: string;
+  } | null;
+};
+
+function getSuiteOperationsSnapshot(overview: unknown): EvaluationWorkbenchSuiteOperationsSnapshot {
+  return (overview as {
+    suiteOperations?: EvaluationWorkbenchSuiteOperationsSnapshot;
+  }).suiteOperations ?? {};
+}
+
+function createSuiteHistoryRun(input: {
+  id: string;
+  sampleSetId?: string;
+  status: "passed" | "failed";
+  evidenceIds?: string[];
+  startedAt: string;
+  finishedAt: string;
+}) {
+  return {
+    id: input.id,
+    suite_id: "suite-1",
+    sample_set_id: input.sampleSetId ?? "sample-set-1",
+    run_item_count: 1,
+    status: input.status,
+    evidence_ids: input.evidenceIds ?? [`evidence-${input.id}`],
+    started_at: input.startedAt,
+    finished_at: input.finishedAt,
+  };
+}
+
+function createSuiteHistoryFinalizedResult(input: {
+  id: string;
+  sampleSetId?: string;
+  recommendationStatus: "recommended" | "needs_review" | "rejected";
+  summaryStatus?: "recommended" | "needs_review" | "rejected";
+  runStatus: "passed" | "failed";
+  recommendationCreatedAt: string;
+  regressionSummary?: string;
+  failureSummary?: string;
+}) {
+  const run = createSuiteHistoryRun({
+    id: input.id,
+    sampleSetId: input.sampleSetId,
+    status: input.runStatus,
+    startedAt: input.recommendationCreatedAt,
+    finishedAt: input.recommendationCreatedAt,
+  });
+
+  return {
+    run,
+    evidence_pack: {
+      id: `pack-${input.id}`,
+      experiment_run_id: input.id,
+      summary_status: input.summaryStatus ?? input.recommendationStatus,
+      score_summary: `Score summary for ${input.id}.`,
+      regression_summary: input.regressionSummary,
+      failure_summary: input.failureSummary,
+      created_at: input.recommendationCreatedAt,
+    },
+    recommendation: {
+      id: `recommendation-${input.id}`,
+      experiment_run_id: input.id,
+      evidence_pack_id: `pack-${input.id}`,
+      status: input.recommendationStatus,
+      decision_reason: `Decision for ${input.id}.`,
+      created_at: input.recommendationCreatedAt,
+    },
+    evidence: [
+      {
+        id: `evidence-${input.id}`,
+        kind: "url",
+        label: `Evidence for ${input.id}`,
+        uri: `https://example.test/evidence/${input.id}`,
+        created_at: input.recommendationCreatedAt,
+      },
+    ],
+  };
+}
+
 test("evaluation workbench controller loads verification assets, suites, runs, and run items", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createEvaluationWorkbenchController({
@@ -171,7 +275,10 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -254,7 +361,7 @@ test("evaluation workbench controller loads verification assets, suites, runs, a
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -482,7 +589,10 @@ test("evaluation workbench controller loads finalized suite history for comparis
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -580,7 +690,7 @@ test("evaluation workbench controller loads finalized suite history for comparis
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
       "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
     ],
   );
@@ -824,7 +934,10 @@ test("evaluation workbench controller creates a run and reloads the selected run
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -895,7 +1008,7 @@ test("evaluation workbench controller creates a run and reloads the selected run
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1012,7 +1125,10 @@ test("evaluation workbench controller records a run item result and reloads the 
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -1069,7 +1185,7 @@ test("evaluation workbench controller records a run item result and reloads the 
       "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1275,7 +1391,10 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -1367,7 +1486,7 @@ test("evaluation workbench controller records evidence, finalizes the run, and r
       "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
       "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
     ],
   );
 });
@@ -1573,7 +1692,10 @@ test("evaluation workbench controller records artifact evidence before finalizin
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -1817,7 +1939,10 @@ test("evaluation workbench controller finalizes a machine-completed governed run
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [
@@ -2146,7 +2271,10 @@ test("evaluation workbench controller can preselect the newest run for a handed-
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-2/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -2307,7 +2435,10 @@ test("evaluation workbench controller matches governed-source runs for handed-of
         };
       }
 
-      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results") {
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results?history_window=latest_10"
+      ) {
         return {
           status: 200,
           body: [] as TResponse,
@@ -2352,7 +2483,891 @@ test("evaluation workbench controller matches governed-source runs for handed-of
       "GET /api/v1/verification-ops/evaluation-suites/suite-other/runs",
       "GET /api/v1/verification-ops/evaluation-suites/suite-governed/runs",
       "GET /api/v1/verification-ops/evaluation-runs/run-governed-newest/items",
-      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-governed/finalized-results?history_window=latest_10",
     ],
+  );
+});
+
+test("evaluation workbench controller exposes a bounded suite operations overview while preserving manual inspection evidence", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const finalizedResults = [
+    createSuiteHistoryFinalizedResult({
+      id: "run-11",
+      recommendationStatus: "rejected",
+      runStatus: "failed",
+      recommendationCreatedAt: "2026-04-03T11:00:00.000Z",
+      failureSummary: "runtime_failed in the latest governed check.",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-10",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T10:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-9",
+      recommendationStatus: "needs_review",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T09:00:00.000Z",
+      regressionSummary: "2 regression-failed item(s) detected.",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-8",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T08:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-7",
+      recommendationStatus: "rejected",
+      runStatus: "failed",
+      recommendationCreatedAt: "2026-04-03T07:00:00.000Z",
+      regressionSummary: "1 regression-failed item(s) detected.",
+      failureSummary: "hard_gate_failed due to a mandatory blocker.",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-6",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T06:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-5",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T05:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-4",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T04:00:00.000Z",
+      regressionSummary: "No explicit regression failures were recorded.",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-3",
+      recommendationStatus: "needs_review",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T03:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-2",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T02:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-1",
+      recommendationStatus: "rejected",
+      runStatus: "failed",
+      recommendationCreatedAt: "2026-04-03T01:00:00.000Z",
+      failureSummary: "runtime_failed on an older hidden run.",
+    }),
+  ];
+  const runs = finalizedResults.map((entry) => entry.run);
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Regression Samples",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: runs as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const runItemsMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/items$/.exec(
+        input.url,
+      );
+      if (runItemsMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `item-${runItemsMatch[1]}`,
+              evaluation_run_id: runItemsMatch[1],
+              sample_set_item_id: "sample-item-1",
+              lane: "candidate",
+              result_asset_id: `asset-${runItemsMatch[1]}`,
+              hard_gate_passed: true,
+              weighted_score: 90,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      const evidenceMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/evidence$/.exec(
+        input.url,
+      );
+      if (evidenceMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `evidence-${evidenceMatch[1]}`,
+              kind: "url",
+              label: `Evidence for ${evidenceMatch[1]}`,
+              uri: `https://example.test/evidence/${evidenceMatch[1]}`,
+              created_at: "2026-04-03T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: finalizedResults as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-5",
+  });
+  const suiteOperations = getSuiteOperationsSnapshot(overview);
+
+  assert.equal(overview.selectedRunId, "run-5");
+  assert.equal(overview.selectedRunEvidence[0]?.id, "evidence-run-5");
+  assert.equal(overview.previousRunEvidence[0]?.id, "evidence-run-4");
+  assert.equal(suiteOperations.visibleHistory?.length, 10);
+  assert.equal(suiteOperations.defaultWindow, "latest_10");
+  assert.deepEqual(
+    suiteOperations.visibleHistory?.map((entry) => entry.run.id),
+    ["run-11", "run-10", "run-9", "run-8", "run-7", "run-6", "run-5", "run-4", "run-3", "run-2"],
+  );
+  assert.equal(suiteOperations.delta?.classification, "worse");
+  assert.equal(suiteOperations.defaultComparison?.selected.run.id, "run-11");
+  assert.equal(suiteOperations.defaultComparison?.baseline.run.id, "run-10");
+  assert.equal(
+    suiteOperations.defaultComparisonDetail?.selectedEvidence?.[0]?.id,
+    "evidence-run-11",
+  );
+  assert.equal(
+    suiteOperations.defaultComparisonDetail?.baselineEvidence?.[0]?.id,
+    "evidence-run-10",
+  );
+  assert.deepEqual(suiteOperations.signals?.recommendationDistribution, {
+    recommended: 6,
+    needs_review: 2,
+    rejected: 2,
+  });
+  assert.deepEqual(suiteOperations.signals?.evidencePackOutcomeMix, {
+    recommended: 6,
+    needs_review: 2,
+    rejected: 2,
+  });
+  assert.deepEqual(suiteOperations.signals?.recurrence, {
+    regressionMentions: 2,
+    failureMentions: 2,
+    runsWithRecurrenceSignals: 3,
+  });
+  assert.equal(suiteOperations.honestDegradation, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-5/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-5/evidence",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
+      "GET /api/v1/verification-ops/evaluation-runs/run-4/evidence",
+    ],
+  );
+});
+
+test("evaluation workbench controller falls back for manual inspection outside the bounded suite window", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const finalizedResults = Array.from({ length: 12 }, (_, index) =>
+    createSuiteHistoryFinalizedResult({
+      id: `run-${12 - index}`,
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: `2026-04-${String(12 - index).padStart(2, "0")}T12:00:00.000Z`,
+    }),
+  );
+  const boundedFinalizedResults = finalizedResults.slice(0, 10);
+  const runs = finalizedResults.map((entry) => entry.run);
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Regression Samples",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: runs as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const runItemsMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/items$/.exec(
+        input.url,
+      );
+      if (runItemsMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `item-${runItemsMatch[1]}`,
+              evaluation_run_id: runItemsMatch[1],
+              sample_set_item_id: "sample-item-1",
+              lane: "candidate",
+              result_asset_id: `asset-${runItemsMatch[1]}`,
+              hard_gate_passed: true,
+              weighted_score: 90,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      const evidenceMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/evidence$/.exec(
+        input.url,
+      );
+      if (evidenceMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `evidence-${evidenceMatch[1]}`,
+              kind: "url",
+              label: `Evidence for ${evidenceMatch[1]}`,
+              uri: `https://example.test/evidence/${evidenceMatch[1]}`,
+              created_at: "2026-04-12T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-runs/run-2/finalized-result"
+      ) {
+        const selectedFinalized = finalizedResults.find((entry) => entry.run.id === "run-2");
+        assert.ok(selectedFinalized);
+        return {
+          status: 200,
+          body: {
+            run: selectedFinalized.run,
+            evidence_pack: selectedFinalized.evidence_pack,
+            recommendation: selectedFinalized.recommendation,
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: boundedFinalizedResults as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-2",
+  });
+  const suiteOperations = getSuiteOperationsSnapshot(overview);
+
+  assert.equal(overview.selectedRunId, "run-2");
+  assert.equal(overview.selectedRunFinalization?.evidence_pack.id, "pack-run-2");
+  assert.equal(overview.selectedRunEvidence[0]?.id, "evidence-run-2");
+  assert.equal(overview.previousRunEvidence[0]?.id, "evidence-run-1");
+  assert.deepEqual(
+    suiteOperations.visibleHistory?.map((entry) => entry.run.id),
+    ["run-12", "run-11", "run-10", "run-9", "run-8", "run-7", "run-6", "run-5", "run-4", "run-3"],
+  );
+  assert.equal(suiteOperations.defaultComparison?.selected.run.id, "run-12");
+  assert.equal(suiteOperations.defaultComparison?.baseline.run.id, "run-11");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/verification-ops/check-profiles",
+      "GET /api/v1/verification-ops/release-check-profiles",
+      "GET /api/v1/verification-ops/evaluation-sample-sets",
+      "GET /api/v1/verification-ops/evaluation-suites",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/runs",
+      "GET /api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/items",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/evidence",
+      "GET /api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10",
+      "GET /api/v1/verification-ops/evaluation-runs/run-2/finalized-result",
+      "GET /api/v1/verification-ops/evaluation-runs/run-1/evidence",
+    ],
+  );
+});
+
+test("evaluation workbench controller keeps manuscript handoff while preserving the suite-first comparison default", async () => {
+  const finalizedResults = [
+    createSuiteHistoryFinalizedResult({
+      id: "run-10",
+      sampleSetId: "sample-set-2",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T10:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-9",
+      sampleSetId: "sample-set-2",
+      recommendationStatus: "needs_review",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T09:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-8",
+      sampleSetId: "sample-set-2",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T08:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-7",
+      sampleSetId: "sample-set-2",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T07:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-6",
+      sampleSetId: "sample-set-1",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T06:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-5",
+      sampleSetId: "sample-set-2",
+      recommendationStatus: "rejected",
+      runStatus: "failed",
+      recommendationCreatedAt: "2026-04-03T05:00:00.000Z",
+    }),
+    createSuiteHistoryFinalizedResult({
+      id: "run-4",
+      sampleSetId: "sample-set-1",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T04:00:00.000Z",
+    }),
+  ];
+  const runs = finalizedResults.map((entry) => entry.run);
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Matched Editing Samples",
+              module: "editing",
+              manuscript_types: ["clinical_study"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+            {
+              id: "sample-set-2",
+              name: "Other Editing Samples",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: runs as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-target-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-target-1",
+              snapshot_asset_id: "snapshot-target-1",
+              reviewed_case_snapshot_id: "reviewed-target-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-2/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-other-1",
+              sample_set_id: "sample-set-2",
+              manuscript_id: "manuscript-other-1",
+              snapshot_asset_id: "snapshot-other-1",
+              reviewed_case_snapshot_id: "reviewed-other-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const runItemsMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/items$/.exec(
+        input.url,
+      );
+      if (runItemsMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `item-${runItemsMatch[1]}`,
+              evaluation_run_id: runItemsMatch[1],
+              sample_set_item_id:
+                runItemsMatch[1] === "run-6" || runItemsMatch[1] === "run-4"
+                  ? "sample-item-target-1"
+                  : "sample-item-other-1",
+              lane: "candidate",
+              result_asset_id: `asset-${runItemsMatch[1]}`,
+              hard_gate_passed: true,
+              weighted_score: 91,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      const evidenceMatch = /^\/api\/v1\/verification-ops\/evaluation-runs\/([^/]+)\/evidence$/.exec(
+        input.url,
+      );
+      if (evidenceMatch) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: `evidence-${evidenceMatch[1]}`,
+              kind: "url",
+              label: `Evidence for ${evidenceMatch[1]}`,
+              uri: `https://example.test/evidence/${evidenceMatch[1]}`,
+              created_at: "2026-04-03T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: finalizedResults as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    manuscriptId: "manuscript-target-1",
+  } as never);
+  const manuscriptContext = (overview as never as {
+    manuscriptContext?: {
+      manuscriptId?: string;
+      matchedSuiteId?: string | null;
+      matchedRunId?: string | null;
+      matchedHistoryRunIds?: string[];
+    } | null;
+  }).manuscriptContext;
+  const suiteOperations = getSuiteOperationsSnapshot(overview);
+
+  assert.equal(overview.selectedSuiteId, "suite-1");
+  assert.equal(overview.selectedRunId, "run-6");
+  assert.equal(manuscriptContext?.manuscriptId, "manuscript-target-1");
+  assert.equal(manuscriptContext?.matchedSuiteId, "suite-1");
+  assert.equal(manuscriptContext?.matchedRunId, "run-6");
+  assert.deepEqual(manuscriptContext?.matchedHistoryRunIds, ["run-6", "run-4"]);
+  assert.equal(suiteOperations.defaultWindow, "latest_10");
+  assert.equal(suiteOperations.defaultComparison?.selected.run.id, "run-10");
+  assert.equal(suiteOperations.defaultComparison?.baseline.run.id, "run-9");
+  assert.equal(
+    suiteOperations.defaultComparisonDetail?.selectedEvidence?.[0]?.id,
+    "evidence-run-10",
+  );
+  assert.equal(
+    suiteOperations.defaultComparisonDetail?.baselineEvidence?.[0]?.id,
+    "evidence-run-9",
+  );
+});
+
+test("evaluation workbench controller surfaces honest degradation when fewer than two finalized runs exist", async () => {
+  const finalizedResults = [
+    createSuiteHistoryFinalizedResult({
+      id: "run-1",
+      recommendationStatus: "recommended",
+      runStatus: "passed",
+      recommendationCreatedAt: "2026-04-03T01:00:00.000Z",
+    }),
+  ];
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing Regression Samples",
+              module: "editing",
+              manuscript_types: ["review"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing Regression",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: finalizedResults.map((entry) => entry.run) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-item-1",
+              sample_set_id: "sample-set-1",
+              manuscript_id: "manuscript-1",
+              snapshot_asset_id: "snapshot-asset-1",
+              reviewed_case_snapshot_id: "reviewed-case-snapshot-1",
+              module: "editing",
+              manuscript_type: "review",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/items") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "item-run-1",
+              evaluation_run_id: "run-1",
+              sample_set_item_id: "sample-item-1",
+              lane: "candidate",
+              result_asset_id: "asset-run-1",
+              hard_gate_passed: true,
+              weighted_score: 95,
+              requires_human_review: false,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/evidence") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "evidence-run-1",
+              kind: "url",
+              label: "Evidence for run-1",
+              uri: "https://example.test/evidence/run-1",
+              created_at: "2026-04-03T01:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: finalizedResults as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-1",
+  });
+  const suiteOperations = getSuiteOperationsSnapshot(overview);
+
+  assert.equal(suiteOperations.defaultWindow, "latest_10");
+  assert.equal(suiteOperations.visibleHistory?.length, 1);
+  assert.equal(suiteOperations.defaultComparison, null);
+  assert.equal(suiteOperations.defaultComparisonDetail, null);
+  assert.equal(suiteOperations.delta, null);
+  assert.equal(suiteOperations.honestDegradation?.kind, "comparison_unavailable");
+  assert.equal(
+    suiteOperations.honestDegradation?.reason,
+    "fewer_than_two_visible_finalized_runs",
   );
 });

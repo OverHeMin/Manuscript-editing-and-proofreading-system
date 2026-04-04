@@ -33,6 +33,282 @@ import {
   searchFinalizedRunHistory,
 } from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
 
+function createFinalizedHistoryEntry(input: {
+  runId: string;
+  recommendationStatus: "recommended" | "needs_review" | "rejected";
+  summaryStatus?: "recommended" | "needs_review" | "rejected";
+  score: number;
+  decisionReason: string;
+  createdAt: string;
+  regressionSummary?: string;
+  failureSummary?: string;
+  evidenceLabel?: string;
+}) {
+  return {
+    run: {
+      id: input.runId,
+      suite_id: "suite-ops-1",
+      sample_set_id: "sample-set-ops-1",
+      baseline_binding: {
+        lane: "baseline",
+        model_id: "baseline-model-stable",
+        runtime_id: "runtime-prod-1",
+        prompt_template_id: "prompt-prod-1",
+        skill_package_ids: ["skill-prod-1"],
+        module_template_id: "template-prod-1",
+      },
+      candidate_binding: {
+        lane: "candidate",
+        model_id: `candidate-model-${input.runId}`,
+        runtime_id: "runtime-candidate-1",
+        prompt_template_id: `prompt-${input.runId}`,
+        skill_package_ids: ["skill-candidate-1"],
+        module_template_id: "template-candidate-1",
+      },
+      run_item_count: 1,
+      status: "passed",
+      evidence_ids: [`evidence-${input.runId}`],
+      started_at: input.createdAt,
+      finished_at: input.createdAt,
+    },
+    finalized: {
+      run: {
+        id: input.runId,
+        suite_id: "suite-ops-1",
+        status: "passed",
+        evidence_ids: [`evidence-${input.runId}`],
+        started_at: input.createdAt,
+        finished_at: input.createdAt,
+      },
+      evidence_pack: {
+        id: `pack-${input.runId}`,
+        experiment_run_id: input.runId,
+        summary_status: input.summaryStatus ?? input.recommendationStatus,
+        score_summary: `Average weighted score ${input.score.toFixed(1)} across 1 item(s).`,
+        regression_summary:
+          input.regressionSummary ?? "No regression failures were recorded.",
+        failure_summary: input.failureSummary ?? "No failure annotations were recorded.",
+        cost_summary: "Cost tracking is not recorded in Phase 6A v1.",
+        latency_summary: "Latency tracking is not recorded in Phase 6A v1.",
+        created_at: input.createdAt,
+      },
+      recommendation: {
+        id: `recommendation-${input.runId}`,
+        experiment_run_id: input.runId,
+        evidence_pack_id: `pack-${input.runId}`,
+        status: input.recommendationStatus,
+        decision_reason: input.decisionReason,
+        created_at: input.createdAt,
+      },
+      evidence: [
+        {
+          id: `evidence-${input.runId}`,
+          kind: "url",
+          label: input.evidenceLabel ?? `Evidence for ${input.runId}`,
+          uri: `https://example.test/evidence/${input.runId}`,
+          created_at: input.createdAt,
+        },
+      ],
+    },
+  };
+}
+
+function createOperationsOverviewFixture() {
+  const finalizedRunHistory = [
+    createFinalizedHistoryEntry({
+      runId: "run-12",
+      recommendationStatus: "recommended",
+      score: 96,
+      decisionReason: "Latest finalized recommendation is safe to promote.",
+      createdAt: "2026-04-12T09:00:00.000Z",
+      evidenceLabel: "Latest browser QA",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-11",
+      recommendationStatus: "needs_review",
+      summaryStatus: "needs_review",
+      score: 82,
+      decisionReason: "Previous finalized recommendation needed manual review.",
+      createdAt: "2026-04-11T09:00:00.000Z",
+      regressionSummary: "Regression drift detected in terminology consistency.",
+      failureSummary: "One hard gate warning remains open.",
+      evidenceLabel: "Previous browser QA",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-10",
+      recommendationStatus: "recommended",
+      score: 91,
+      decisionReason: "Historical reference remained recommended.",
+      createdAt: "2026-04-10T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-09",
+      recommendationStatus: "rejected",
+      summaryStatus: "rejected",
+      score: 54,
+      decisionReason: "Inspection run was rejected for regression drift.",
+      createdAt: "2026-04-09T09:00:00.000Z",
+      regressionSummary: "2 regression-failed item(s) detected.",
+      failureSummary: "Structure regression triggered the hard gate.",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-08",
+      recommendationStatus: "recommended",
+      score: 89,
+      decisionReason: "Historical reference remained recommended.",
+      createdAt: "2026-04-08T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-07",
+      recommendationStatus: "needs_review",
+      summaryStatus: "needs_review",
+      score: 76,
+      decisionReason: "Historical reference needs review.",
+      createdAt: "2026-04-07T09:00:00.000Z",
+      regressionSummary: "Regression drift detected in citation formatting.",
+      failureSummary: "One hard gate warning remains open.",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-06",
+      recommendationStatus: "recommended",
+      score: 88,
+      decisionReason: "Historical reference remained recommended.",
+      createdAt: "2026-04-06T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-05",
+      recommendationStatus: "recommended",
+      score: 90,
+      decisionReason: "Historical reference remained recommended.",
+      createdAt: "2026-04-05T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-04",
+      recommendationStatus: "needs_review",
+      summaryStatus: "needs_review",
+      score: 74,
+      decisionReason: "Historical reference needs review.",
+      createdAt: "2026-04-04T09:00:00.000Z",
+      failureSummary: "Runtime_failed required a manual check.",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-03",
+      recommendationStatus: "recommended",
+      score: 86,
+      decisionReason: "Historical reference remained recommended.",
+      createdAt: "2026-04-03T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-02",
+      recommendationStatus: "recommended",
+      score: 84,
+      decisionReason: "Older suite history remained recommended.",
+      createdAt: "2026-04-02T09:00:00.000Z",
+    }),
+    createFinalizedHistoryEntry({
+      runId: "run-01",
+      recommendationStatus: "rejected",
+      summaryStatus: "rejected",
+      score: 49,
+      decisionReason: "Selected inspection run regressed and was rejected.",
+      createdAt: "2026-04-01T09:00:00.000Z",
+      regressionSummary: "3 regression-failed item(s) detected.",
+      failureSummary: "Structure regression triggered the hard gate.",
+    }),
+  ];
+  const visibleHistory = finalizedRunHistory.slice(0, 10);
+
+  return {
+    checkProfiles: [{ id: "check-1", status: "published" }],
+    releaseCheckProfiles: [{ id: "release-1", status: "published" }],
+    sampleSets: [
+      {
+        id: "sample-set-ops-1",
+        name: "Editing Suite Set",
+        module: "editing",
+        sample_count: 12,
+        status: "published",
+      },
+    ],
+    suites: [
+      {
+        id: "suite-ops-1",
+        name: "Editing Delta Suite",
+        suite_type: "governed_evaluation",
+        status: "active",
+        module_scope: ["editing"],
+      },
+    ],
+    selectedSuiteId: "suite-ops-1",
+    runs: finalizedRunHistory.map((entry) => entry.run),
+    selectedRunId: "run-01",
+    sampleSetItems: [],
+    runItems: [],
+    selectedRunEvidence: [
+      {
+        id: "selected-evidence-run-01",
+        kind: "url",
+        label: "Selected inspection evidence",
+        uri: "https://example.test/evidence/selected-run-01",
+        created_at: "2026-04-01T09:05:00.000Z",
+      },
+    ],
+    previousRunEvidence: [],
+    selectedRunFinalization: null,
+    finalizedRunHistory,
+    suiteOperations: {
+      defaultWindow: "latest_10",
+      visibleHistory,
+      defaultComparison: {
+        selected: visibleHistory[0],
+        baseline: visibleHistory[1],
+      },
+      defaultComparisonDetail: {
+        selectedEvidence: visibleHistory[0].finalized.evidence,
+        baselineEvidence: visibleHistory[1].finalized.evidence,
+      },
+      delta: {
+        classification: "better",
+        reason: "recommendation_improved",
+      },
+      signals: {
+        recommendationDistribution: {
+          recommended: 6,
+          needs_review: 3,
+          rejected: 1,
+        },
+        evidencePackOutcomeMix: {
+          recommended: 6,
+          needs_review: 3,
+          rejected: 1,
+        },
+        recurrence: {
+          regressionMentions: 3,
+          failureMentions: 4,
+          runsWithRecurrenceSignals: 4,
+        },
+      },
+      honestDegradation: null,
+    },
+    manuscriptContext: null,
+  };
+}
+
+function renderLoadedPage(
+  overview: ReturnType<typeof createOperationsOverviewFixture>,
+): string {
+  const controller = {
+    loadOverview: async () => overview,
+  } as React.ComponentProps<typeof EvaluationWorkbenchPage>["controller"];
+
+  return renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={controller}
+      initialOverview={overview}
+    />,
+  );
+}
+
 test("evaluation workbench page renders an explicit loading state for server-side shell output", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchPage
@@ -49,6 +325,111 @@ test("evaluation workbench page renders an explicit loading state for server-sid
 
   assert.match(markup, /Evaluation Workbench/);
   assert.match(markup, /Loading suites, runs, and verification assets\.\.\./);
+});
+
+test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
+  const markup = renderLoadedPage(createOperationsOverviewFixture());
+
+  assert.match(markup, /Delta Summary/);
+  assert.match(markup, /Classification: better/i);
+  assert.match(
+    markup,
+    /Chosen because the latest finalized recommendation improved from needs_review to recommended\./,
+  );
+  assert.match(markup, /Next operator cue:/);
+  assert.match(markup, /Latest-versus-previous finalized comparison/);
+  assert.match(markup, /Default comparison: run-12 vs run-11\./);
+  assert.match(markup, /Latest 10/);
+  assert.match(markup, /Last 7 Days/);
+  assert.match(markup, /Last 30 Days/);
+  assert.match(markup, /All Suite History/);
+  assert.match(markup, /All/);
+  assert.match(markup, /Recommended/);
+  assert.match(markup, /Needs Review/);
+  assert.match(markup, /Rejected/);
+  assert.match(markup, /Newest First/);
+  assert.match(markup, /Failures First/);
+  assert.match(markup, /Visible history window: 10 of 12 finalized runs are in scope\./);
+  assert.match(markup, /run-12/);
+  assert.match(markup, /run-03/);
+  assert.doesNotMatch(markup, /run-02/);
+  assert.match(markup, /Default latest run/);
+  assert.match(markup, /Default baseline/);
+  assert.match(markup, /Selected inspection run: run-01/);
+  assert.match(markup, /Selected run run-01 is outside the visible history window\./);
+  assert.match(markup, /Recommendation Distribution/);
+  assert.match(markup, /6 recommended \/ 3 needs review \/ 1 rejected/);
+  assert.match(markup, /Evidence Pack Outcomes/);
+  assert.match(markup, /Recurrence Signals/);
+  assert.match(markup, /3 regression mentions \/ 4 failure mentions \/ 4 runs flagged/);
+  assert.doesNotMatch(markup, /Activate/);
+  assert.doesNotMatch(markup, /Run Launch/);
+  assert.doesNotMatch(markup, /Complete And Finalize Run/);
+  assert.doesNotMatch(markup, /Finalize Recommendation/);
+});
+
+test("evaluation workbench loaded page keeps selected inspection finalization outside the visible history window", () => {
+  const overview = createOperationsOverviewFixture();
+  const selectedFinalized = overview.finalizedRunHistory.find((entry) => entry.run.id === "run-01");
+  assert.ok(selectedFinalized);
+  overview.selectedRunFinalization = {
+    run: selectedFinalized.run,
+    evidence_pack: selectedFinalized.finalized.evidence_pack,
+    recommendation: selectedFinalized.finalized.recommendation,
+  };
+
+  const markup = renderLoadedPage(overview);
+
+  assert.match(markup, /Selected inspection run: run-01/);
+  assert.match(markup, /Recommendation: rejected/);
+  assert.match(markup, /Evidence Pack: pack-run-01/);
+  assert.match(markup, /Selected inspection run regressed and was rejected\./);
+  assert.match(markup, /This run is outside the finalized history slice that powers the default delta summary\./);
+});
+
+test("evaluation workbench loaded page renders honest degradation when fewer than two finalized runs are visible", () => {
+  const overview = createOperationsOverviewFixture();
+  const onlyVisibleEntry = overview.finalizedRunHistory[0];
+  overview.suiteOperations = {
+    ...overview.suiteOperations,
+    visibleHistory: [onlyVisibleEntry],
+    defaultComparison: null,
+    defaultComparisonDetail: null,
+    delta: null,
+    honestDegradation: {
+      kind: "comparison_unavailable",
+      reason: "fewer_than_two_visible_finalized_runs",
+    },
+    signals: {
+      recommendationDistribution: {
+        recommended: 1,
+        needs_review: 0,
+        rejected: 0,
+      },
+      evidencePackOutcomeMix: {
+        recommended: 1,
+        needs_review: 0,
+        rejected: 0,
+      },
+      recurrence: {
+        regressionMentions: 0,
+        failureMentions: 0,
+        runsWithRecurrenceSignals: 0,
+      },
+    },
+  };
+
+  const markup = renderLoadedPage(overview);
+
+  assert.match(markup, /Delta Summary/);
+  assert.match(
+    markup,
+    /Honest degradation: fewer than two finalized runs are visible in the Latest 10 window, so no default delta can be claimed yet\./,
+  );
+  assert.match(
+    markup,
+    /Finalize one more run in the visible window before treating the suite as improved, worse, or flat\./,
+  );
 });
 
 test("evaluation workbench run-item detail card renders linked sample context and frozen bindings", () => {

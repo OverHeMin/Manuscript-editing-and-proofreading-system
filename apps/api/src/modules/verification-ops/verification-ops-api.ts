@@ -11,6 +11,9 @@ import type {
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
 import type {
+  EvaluationSuiteFinalizationHistoryWindowPreset,
+} from "./verification-ops-repository.ts";
+import type {
   CompleteEvaluationRunInput,
   CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
@@ -18,6 +21,7 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  EvaluationSuiteFinalizationResult,
   FinalizeEvaluationRunResult,
   RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
@@ -311,15 +315,18 @@ export function createVerificationOpsApi(
     async listEvaluationSuiteFinalizations({
       actorRole,
       suiteId,
+      historyWindowPreset,
     }: {
       actorRole: RoleKey;
       suiteId: string;
-    }): Promise<RouteResponse<FinalizeEvaluationRunResult[]>> {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    }): Promise<RouteResponse<EvaluationSuiteFinalizationResult[]>> {
       return {
         status: 200,
         body: await verificationOpsService.listEvaluationSuiteFinalizations(
           actorRole,
           suiteId,
+          { historyWindowPreset },
         ),
       };
     },

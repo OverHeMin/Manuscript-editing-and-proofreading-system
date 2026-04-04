@@ -50,6 +50,10 @@ import type {
   VerificationEvidenceRecord,
 } from "./verification-ops-record.ts";
 import type { VerificationOpsRepository } from "./verification-ops-repository.ts";
+import type {
+  EvaluationSuiteFinalizationHistoryWindowPreset as RepositoryEvaluationSuiteFinalizationHistoryWindowPreset,
+  EvaluationSuiteFinalizationRecord,
+} from "./verification-ops-repository.ts";
 
 export interface CreateVerificationCheckProfileInput {
   name: string;
@@ -141,6 +145,12 @@ export interface FinalizeEvaluationRunResult {
   evidence_pack: EvaluationEvidencePackRecord;
   recommendation: EvaluationPromotionRecommendationRecord;
 }
+
+type EvaluationSuiteFinalizationHistoryWindowPreset =
+  RepositoryEvaluationSuiteFinalizationHistoryWindowPreset;
+
+export interface EvaluationSuiteFinalizationResult
+  extends EvaluationSuiteFinalizationRecord {}
 
 export interface CreateLearningCandidateFromEvaluationInput {
   runId: string;
@@ -1027,18 +1037,16 @@ export class VerificationOpsService {
   async listEvaluationSuiteFinalizations(
     actorRole: RoleKey,
     suiteId: string,
-  ): Promise<FinalizeEvaluationRunResult[]> {
+    input?: {
+      historyWindowPreset?: EvaluationSuiteFinalizationHistoryWindowPreset;
+    },
+  ): Promise<EvaluationSuiteFinalizationResult[]> {
     this.permissionGuard.assert(actorRole, "permissions.manage");
 
     await this.requireEvaluationSuite(suiteId);
-    const runs = await this.repository.listEvaluationRunsBySuiteId(suiteId);
-    const finalizedRuns = await Promise.all(
-      runs.map((run) => this.buildFinalizationForRun(run)),
-    );
-
-    return finalizedRuns
-      .filter((result): result is FinalizeEvaluationRunResult => result != null)
-      .sort(compareFinalizationRecencyDesc);
+    return this.repository.listEvaluationSuiteFinalizations(suiteId, {
+      historyWindowPreset: input?.historyWindowPreset,
+    });
   }
 
   async createLearningCandidateFromEvaluation(
@@ -1237,20 +1245,6 @@ export class VerificationOpsService {
       recommendation,
     };
   }
-}
-
-function compareFinalizationRecencyDesc(
-  left: FinalizeEvaluationRunResult,
-  right: FinalizeEvaluationRunResult,
-) {
-  const leftTimestamp = left.run.finished_at ?? left.run.started_at;
-  const rightTimestamp = right.run.finished_at ?? right.run.started_at;
-
-  if (leftTimestamp !== rightTimestamp) {
-    return rightTimestamp.localeCompare(leftTimestamp);
-  }
-
-  return right.run.id.localeCompare(left.run.id);
 }
 
 function createVerificationOpsTransactionManager(
