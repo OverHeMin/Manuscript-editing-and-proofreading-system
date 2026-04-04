@@ -63,7 +63,7 @@ export interface EvaluationWorkbenchOverview {
   previousRunEvidence: VerificationEvidenceViewModel[];
   selectedRunFinalization: FinalizeEvaluationRunResultViewModel | null;
   finalizedRunHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
-  suiteOperations: EvaluationWorkbenchSuiteOperationsOverview;
+  readonly suiteOperations: EvaluationWorkbenchSuiteOperationsOverview;
   manuscriptContext: EvaluationWorkbenchManuscriptContext | null;
 }
 
@@ -80,28 +80,28 @@ export interface EvaluationWorkbenchManuscriptContext {
 }
 
 export interface EvaluationWorkbenchSuiteOperationsOverview {
-  defaultWindow: EvaluationWorkbenchHistoryWindowPreset;
-  visibleHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
-  defaultComparison: EvaluationWorkbenchComparisonSnapshot | null;
-  defaultComparisonDetail: EvaluationWorkbenchComparisonDetailSnapshot | null;
-  delta: EvaluationWorkbenchSuiteOperationsDeltaSnapshot | null;
-  signals: EvaluationWorkbenchSuiteOperationsSignalsSnapshot;
-  honestDegradation: EvaluationWorkbenchSuiteOperationsEmptyStateSnapshot | null;
+  readonly defaultWindow: EvaluationWorkbenchHistoryWindowPreset;
+  readonly visibleHistory: EvaluationWorkbenchFinalizedRunHistoryEntry[];
+  readonly defaultComparison: EvaluationWorkbenchComparisonSnapshot | null;
+  readonly defaultComparisonDetail: EvaluationWorkbenchComparisonDetailSnapshot | null;
+  readonly delta: EvaluationWorkbenchSuiteOperationsDeltaSnapshot | null;
+  readonly signals: EvaluationWorkbenchSuiteOperationsSignalsSnapshot;
+  readonly honestDegradation: EvaluationWorkbenchSuiteOperationsEmptyStateSnapshot | null;
 }
 
 export interface EvaluationWorkbenchComparisonSnapshot {
-  selected: EvaluationWorkbenchFinalizedRunHistoryEntry;
-  baseline: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  readonly selected: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  readonly baseline: EvaluationWorkbenchFinalizedRunHistoryEntry;
 }
 
 export interface EvaluationWorkbenchComparisonDetailSnapshot {
-  selectedEvidence: VerificationEvidenceViewModel[];
-  baselineEvidence: VerificationEvidenceViewModel[];
+  readonly selectedEvidence: VerificationEvidenceViewModel[];
+  readonly baselineEvidence: VerificationEvidenceViewModel[];
 }
 
 export interface EvaluationWorkbenchSuiteOperationsDeltaSnapshot {
-  classification: "better" | "worse" | "flat";
-  reason:
+  readonly classification: "better" | "worse" | "flat";
+  readonly reason:
     | "recommendation_improved"
     | "recommendation_regressed"
     | "finalized_status_improved"
@@ -110,18 +110,18 @@ export interface EvaluationWorkbenchSuiteOperationsDeltaSnapshot {
 }
 
 export interface EvaluationWorkbenchSuiteOperationsSignalsSnapshot {
-  recommendationDistribution: Record<"recommended" | "needs_review" | "rejected", number>;
-  evidencePackOutcomeMix: Record<"recommended" | "needs_review" | "rejected", number>;
-  recurrence: {
-    regressionMentions: number;
-    failureMentions: number;
-    runsWithRecurrenceSignals: number;
+  readonly recommendationDistribution: Record<"recommended" | "needs_review" | "rejected", number>;
+  readonly evidencePackOutcomeMix: Record<"recommended" | "needs_review" | "rejected", number>;
+  readonly recurrence: {
+    readonly regressionMentions: number;
+    readonly failureMentions: number;
+    readonly runsWithRecurrenceSignals: number;
   };
 }
 
 export interface EvaluationWorkbenchSuiteOperationsEmptyStateSnapshot {
-  kind: "comparison_unavailable";
-  reason: "fewer_than_two_visible_finalized_runs" | "insufficient_comparison_data";
+  readonly kind: "comparison_unavailable";
+  readonly reason: "fewer_than_two_visible_finalized_runs" | "insufficient_comparison_data";
 }
 
 interface ResolvedEvaluationManuscriptContext {
