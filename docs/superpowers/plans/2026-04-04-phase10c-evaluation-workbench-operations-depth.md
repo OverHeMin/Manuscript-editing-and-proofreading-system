@@ -29,7 +29,11 @@
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-controller.ts`
 - Modify: `apps/web/src/features/verification-ops/types.ts`
 - Modify: `apps/web/src/features/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/http/api-http-server.ts`
 - Modify: `apps/api/src/modules/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-repository.ts`
+- Modify: `apps/api/src/modules/verification-ops/in-memory-verification-ops-repository.ts`
+- Modify: `apps/api/src/modules/verification-ops/postgres-verification-ops-repository.ts`
 - Modify: `apps/api/src/modules/verification-ops/verification-ops-service.ts`
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-page.tsx`
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench.css`
@@ -130,7 +134,11 @@ git commit -m "feat: add evaluation workbench operations summary helpers"
 - Modify: `apps/web/src/features/evaluation-workbench/evaluation-workbench-controller.ts`
 - Modify: `apps/web/src/features/verification-ops/types.ts`
 - Modify: `apps/web/src/features/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/http/api-http-server.ts`
 - Modify: `apps/api/src/modules/verification-ops/verification-ops-api.ts`
+- Modify: `apps/api/src/modules/verification-ops/verification-ops-repository.ts`
+- Modify: `apps/api/src/modules/verification-ops/in-memory-verification-ops-repository.ts`
+- Modify: `apps/api/src/modules/verification-ops/postgres-verification-ops-repository.ts`
 - Modify: `apps/api/src/modules/verification-ops/verification-ops-service.ts`
 - Modify: `apps/web/test/evaluation-workbench-controller.spec.ts`
 
@@ -174,7 +182,7 @@ Update `apps/web/src/features/evaluation-workbench/evaluation-workbench-controll
 - import the new helper module
 - extend `EvaluationWorkbenchOverview` with a read-only `suiteOperations` block
 - allow `loadOverview()` to accept an optional history-window preset
-- if the current finalized-results payload cannot provide stable default-comparison detail without extra per-run evidence fetches, make the smallest possible read-side contract expansion so suite finalized results can carry evidence detail for the default comparison path in one bounded response
+- if the current finalized-results payload cannot provide stable default-comparison detail without extra per-run evidence fetches, make the smallest possible suite-scoped read-side contract expansion so `evaluation-suites/:suiteId/finalized-results` can accept the bounded history-window preset and return embedded evidence detail for that bounded suite response only
 - derive:
   - visible finalized history
   - default comparison pair
@@ -187,11 +195,12 @@ Implementation rules:
 
 - keep the existing `verification-ops` client calls intact
 - preserve current manuscript-context matching behavior
-- avoid new endpoint fan-out; prefer one bounded finalized-results read with embedded evidence detail over extra per-run evidence calls
+- avoid new endpoint fan-out; prefer one bounded suite finalized-results read with embedded evidence detail over extra per-run evidence calls
 - keep selected-run history and previous-run evidence behavior backward compatible where possible
 - ensure `suiteOperations` summaries are derived from the actively visible filtered history set rather than hidden finalized results outside the current window/filter
 - if the operator selects a different historical run for inspection, continue to load `selectedRunEvidence` for that inspection path while separately exposing the stable latest-versus-previous comparison detail payload through `suiteOperations`
-- keep any contract expansion strictly read-side and suite-scoped; do not introduce new write APIs, orchestration, or control-plane semantics
+- keep any contract expansion strictly read-side and suite-scoped; do not widen the write-side `finalize` response or the single-run `finalized-result` shape
+- ensure the bounded suite response is enforced server-side rather than fetching all suite finalizations and clamping only in the controller
 
 - [ ] **Step 4: Re-run the controller test and confirm it passes**
 
