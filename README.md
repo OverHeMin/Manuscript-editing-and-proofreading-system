@@ -131,6 +131,8 @@
 ## Production Release Contract
 
 - 发布前统一运行 `pnpm verify:production-preflight`。该脚本会按固定顺序执行 `lint`、`typecheck`、`test`、API/Web/Worker `smoke:boot`，以及 `pnpm verify:manuscript-workbench`。
+- 进入 Phase 10G 后，发布前优先使用 `pnpm verify:production-preflight -- --manifest <path-to-manifest>`。脚本会先校验 release manifest，再在需要时串联只读的 migration doctor；如果 manifest 声明 `schema change = no` 但仓库仍有 pending migrations，predeploy 会直接失败。
+- 如需单独做 repo-owned 的 migration guard，可运行 `pnpm verify:production-preflight:strict` 或 `pnpm --filter @medical/api run db:migration-doctor -- --json`。这些检查只输出本地证据与阻断信号，不会自动部署、自动回滚或修改 release 状态。
 - 持久化 API 启动后，用 `pnpm verify:production-postdeploy -- --base-url http://127.0.0.1:3001` 检查 `/healthz` 和 `/readyz`。其中 `/readyz` 是发布是否可放量的真门禁。
 - 每次 staging / production 发布都应先基于 `docs/operations/release-manifest-template.md` 记录环境、操作人、commit SHA、备份件、schema 决策、发布后检查与回滚结果。
 
@@ -161,7 +163,7 @@
 - `docs/OPERATIONS.md`
   运行、迁移、备份/回滚、远程维护、密钥安全与升级流程
 - `docs/operations/release-manifest-template.md`
-  staging / production 发布记录模板，覆盖备份、schema gate、发布后验证与回滚决策
+  staging / production 发布记录模板，覆盖 manifest 字段校验、schema/storage backup gate、migration doctor 证据、发布后验证与回滚决策
 - `docs/CODE_QUALITY.md`
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`

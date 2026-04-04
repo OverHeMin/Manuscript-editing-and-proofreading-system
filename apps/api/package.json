@@ -15,7 +15,8 @@
     "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",
-    "db:migrate": "tsx ./src/database/scripts/migrate.ts"
+    "db:migrate": "tsx ./src/database/scripts/migrate.ts",
+    "db:migration-doctor": "tsx ./src/database/scripts/migration-doctor.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",

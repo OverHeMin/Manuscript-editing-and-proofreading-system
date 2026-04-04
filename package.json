@@ -7,6 +7,7 @@
     "test:production-release-contract": "node --test scripts/production-release-contract.spec.mjs",
     "verify:production-postdeploy": "node ./scripts/production-release-contract.mjs postdeploy",
     "verify:production-preflight": "node ./scripts/production-release-contract.mjs predeploy",
+    "verify:production-preflight:strict": "node ./scripts/production-release-contract.mjs predeploy --check-migrations",
     "verify:manuscript-workbench": "node ./scripts/run-manuscript-workbench-gate.mjs",
     "typecheck": "pnpm --parallel typecheck",
     "test": "pnpm --parallel test"

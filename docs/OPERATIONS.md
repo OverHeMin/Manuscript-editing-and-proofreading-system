@@ -168,6 +168,8 @@ Web 关键环境变量：
 ### 5.3 Repo-owned pre-deploy validation
 
 - `pnpm verify:production-preflight`
+- `pnpm verify:production-preflight -- --manifest <path-to-manifest>`
+- `pnpm verify:production-preflight:strict`
 
 该命令会按固定顺序串行执行：
 
@@ -182,6 +184,8 @@ Web 关键环境变量：
 说明：
 
 - 任一步失败都应立即停止发布。
+- `--manifest <path>` 会先对 release manifest 做机器校验；若 manifest 声明 `schema change = no` 但仓库仍存在 pending migrations，predeploy 会在真正执行 lint/typecheck/test 之前失败。
+- `verify:production-preflight:strict` 会在不依赖 manifest 的情况下追加只读 migration doctor 检查，用于先行发现 checksum drift、unknown database version 或 pending migrations。
 - `pnpm verify:manuscript-workbench` 仍是 repo 内最贴近运营主链路的浏览器门禁，覆盖 manuscript handoff、learning review、knowledge review、admin governance、evaluation workbench 与 verification-ops 持久化 HTTP 回归。
 - `.github/workflows/manuscript-workbench-gate.yml` 会在 `main` 分支 push / pull request 时复用同一条门禁命令。
 
@@ -198,6 +202,9 @@ Web 关键环境变量：
   - pre-deploy checks
   - post-deploy checks
   - rollback decision and outcome
+- 若 `schema change required = yes`，则 `PostgreSQL backup artifact`、`Restore point / snapshot ID`、`Backup verified by` 都必须填写完整。
+- 若 `Upload root or object storage impact = yes`，则至少要填写一个 storage snapshot 字段：`Object storage backup artifact` 或 `Upload root snapshot`。
+- manifest 是 repo-owned 的本地记录与 predeploy 证据，不会触发自动部署、自动回滚或远程发布编排。
 
 ### 5.5 持久化启动前验证
 
@@ -241,6 +248,17 @@ Web 关键环境变量：
 ## 7. 迁移、备份与回滚
 
 发布前先基于 `docs/operations/release-manifest-template.md` 记录本次环境、操作人、commit SHA、备份件与 schema change 决策。没有 manifest，就不应进入正式发布动作。
+
+在 Phase 10G 中，建议先执行：
+
+- `pnpm --filter @medical/api run db:migration-doctor -- --json`
+- `pnpm verify:production-preflight -- --manifest <path-to-manifest>`
+
+这两个步骤都是本地只读 guard：
+
+- 会分类 `clean` / `repairable` / `blocked`
+- 会区分 pending repo migrations 与真正的 migration history drift
+- 不会自动 deploy、自动 rollback，也不会越权成为 routing control plane
 
 至少需要覆盖以下资产：
 
