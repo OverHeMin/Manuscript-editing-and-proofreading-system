@@ -92,6 +92,13 @@ import {
   InMemoryHarnessDatasetRepository,
 } from "../modules/harness-datasets/index.ts";
 import {
+  createHarnessIntegrationApi,
+  HarnessGovernedRunStateError,
+  HarnessIntegrationService,
+  HarnessIntegrationValidationError,
+  InMemoryHarnessIntegrationRepository,
+} from "../modules/harness-integrations/index.ts";
+import {
   DocumentAssetService,
   InMemoryDocumentAssetRepository,
   ManuscriptNotFoundError,
@@ -331,6 +338,13 @@ type HttpRouteMatch =
   | {
       route: "harness-datasets-export-gold-set-version";
       goldSetVersionId: string;
+    }
+  | {
+      route: "harness-integrations-launch-governed-run";
+    }
+  | {
+      route: "harness-integrations-list-adapter-executions";
+      adapterId: string;
     }
   | {
       route: "modules-screening-run";
@@ -846,6 +860,7 @@ export interface ApiServerRuntime {
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
   harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
+  harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
@@ -956,6 +971,7 @@ export function createInMemoryApiRuntime(input: {
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
   const harnessDatasetRepository = new InMemoryHarnessDatasetRepository();
+  const harnessIntegrationRepository = new InMemoryHarnessIntegrationRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
@@ -1041,6 +1057,11 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+  });
+  const harnessIntegrationService = new HarnessIntegrationService({
+    repository: harnessIntegrationRepository,
+    governedRunRuntime: runtimeBindingService,
+    verificationEvidenceRecorder: verificationOpsService,
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
@@ -1265,6 +1286,9 @@ export function createInMemoryApiRuntime(input: {
     }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
+    }),
+    harnessIntegrationApi: createHarnessIntegrationApi({
+      harnessIntegrationService,
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
@@ -2135,6 +2159,22 @@ async function handleRoute(
         },
       });
     }
+    case "harness-integrations-launch-governed-run": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.harnessIntegrationApi.launchGovernedRun
+      >[0];
+
+      return runtime.harnessIntegrationApi.launchGovernedRun({
+        ...body,
+        actorRole: session.user.role,
+      });
+    }
+    case "harness-integrations-list-adapter-executions":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessIntegrationApi.listExecutionAuditsByAdapterId({
+        adapterId: routeMatch.adapterId,
+      });
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3399,6 +3439,20 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "POST" && path === "/api/v1/harness-integrations/governed-runs") {
+    return { route: "harness-integrations-launch-governed-run" };
+  }
+
+  const listHarnessAdapterExecutionsMatch = path.match(
+    /^\/api\/v1\/harness-integrations\/adapters\/([^/]+)\/executions$/,
+  );
+  if (method === "GET" && listHarnessAdapterExecutionsMatch) {
+    return {
+      route: "harness-integrations-list-adapter-executions",
+      adapterId: listHarnessAdapterExecutionsMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/modules/screening/run") {
     return { route: "modules-screening-run" };
   }
@@ -4534,6 +4588,7 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationExperimentBindingError ||
     error instanceof HarnessDatasetSourceResolutionError ||
     error instanceof HarnessGoldSetVersionExportValidationError ||
+    error instanceof HarnessGovernedRunStateError ||
     error instanceof TemplateRetrievalGoldSetVersionValidationError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
@@ -4560,7 +4615,8 @@ function mapErrorToHttpResponse(
     error instanceof VerificationOpsLearningServiceRequiredError ||
     error instanceof ReviewedCaseSnapshotRepositoryRequiredError ||
     error instanceof EvaluationSampleSetSourceEligibilityError ||
-    error instanceof VerificationRetrievalDependencyError
+    error instanceof VerificationRetrievalDependencyError ||
+    error instanceof HarnessIntegrationValidationError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

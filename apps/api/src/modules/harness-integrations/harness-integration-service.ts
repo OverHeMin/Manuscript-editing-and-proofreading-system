@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import type { RoleKey } from "../../users/roles.ts";
+import type { RuntimeBindingRecord } from "../runtime-bindings/runtime-binding-record.ts";
+import type { TemplateModule } from "../templates/template-record.ts";
+import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
+import type { VerificationEvidenceRecord } from "../verification-ops/verification-ops-record.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
@@ -50,12 +55,50 @@ export interface RecordHarnessExecutionAuditInput {
   resultSummary?: Record<string, unknown>;
 }
 
+export interface LaunchGovernedHarnessRunInput {
+  adapterId: string;
+  module: TemplateModule;
+  manuscriptType: ManuscriptType;
+  templateFamilyId: string;
+  evaluationSuiteId: string;
+  goldSetVersionId?: string;
+  inputReference: string;
+  triggerKind?: HarnessExecutionAuditRecord["trigger_kind"];
+}
+
+export interface LaunchGovernedHarnessRunResult {
+  execution: HarnessExecutionAuditRecord;
+  binding: RuntimeBindingRecord;
+  evidence?: VerificationEvidenceRecord;
+}
+
+export interface HarnessGovernedRunRuntime {
+  getActiveBindingForScope(input: {
+    module: RuntimeBindingRecord["module"];
+    manuscriptType: RuntimeBindingRecord["manuscript_type"];
+    templateFamilyId: RuntimeBindingRecord["template_family_id"];
+  }): Promise<RuntimeBindingRecord | undefined>;
+}
+
+export interface HarnessVerificationEvidenceRecorder {
+  recordVerificationEvidence(
+    actorRole: RoleKey,
+    input: {
+      kind: VerificationEvidenceRecord["kind"];
+      label: string;
+      uri?: string;
+    },
+  ): Promise<VerificationEvidenceRecord>;
+}
+
 interface HarnessIntegrationWriteContext {
   repository: HarnessIntegrationRepository;
 }
 
 export interface HarnessIntegrationServiceOptions {
   repository: HarnessIntegrationRepository;
+  governedRunRuntime?: HarnessGovernedRunRuntime;
+  verificationEvidenceRecorder?: HarnessVerificationEvidenceRecorder;
   transactionManager?: WriteTransactionManager<HarnessIntegrationWriteContext>;
   createId?: () => string;
   now?: () => Date;
@@ -68,14 +111,25 @@ export class HarnessIntegrationValidationError extends Error {
   }
 }
 
+export class HarnessGovernedRunStateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HarnessGovernedRunStateError";
+  }
+}
+
 export class HarnessIntegrationService {
   private readonly repository: HarnessIntegrationRepository;
+  private readonly governedRunRuntime?: HarnessGovernedRunRuntime;
+  private readonly verificationEvidenceRecorder?: HarnessVerificationEvidenceRecorder;
   private readonly transactionManager: WriteTransactionManager<HarnessIntegrationWriteContext>;
   private readonly createId: () => string;
   private readonly now: () => Date;
 
   constructor(options: HarnessIntegrationServiceOptions) {
     this.repository = options.repository;
+    this.governedRunRuntime = options.governedRunRuntime;
+    this.verificationEvidenceRecorder = options.verificationEvidenceRecorder;
     this.transactionManager =
       options.transactionManager ??
       createHarnessIntegrationTransactionManager({
@@ -291,6 +345,111 @@ export class HarnessIntegrationService {
   ): Promise<HarnessExecutionAuditRecord[]> {
     return this.repository.listExecutionAuditsByAdapterId(adapterId);
   }
+
+  async launchGovernedRun(
+    actorRole: RoleKey,
+    input: LaunchGovernedHarnessRunInput,
+  ): Promise<LaunchGovernedHarnessRunResult> {
+    if (!this.governedRunRuntime) {
+      throw new HarnessIntegrationValidationError(
+        "Governed harness runs require a configured runtime-binding resolver.",
+      );
+    }
+
+    const adapter = await this.repository.findAdapterById(input.adapterId);
+    if (!adapter) {
+      throw new HarnessIntegrationValidationError(
+        `Harness adapter ${input.adapterId} was not found.`,
+      );
+    }
+
+    await this.assertAdapterFeatureFlagsEnabled(adapter);
+
+    const binding = await this.governedRunRuntime.getActiveBindingForScope({
+      module: input.module,
+      manuscriptType: input.manuscriptType,
+      templateFamilyId: input.templateFamilyId,
+    });
+    if (!binding) {
+      throw new HarnessGovernedRunStateError(
+        `No active runtime binding exists for ${input.module}/${input.manuscriptType}/${input.templateFamilyId}.`,
+      );
+    }
+    if (!binding.evaluation_suite_ids.includes(input.evaluationSuiteId)) {
+      throw new HarnessGovernedRunStateError(
+        `Active runtime binding ${binding.id} does not authorize evaluation suite ${input.evaluationSuiteId}.`,
+      );
+    }
+
+    const execution = await this.recordExecutionAudit({
+      adapterId: adapter.id,
+      triggerKind: input.triggerKind ?? "api_requested",
+      inputReference: input.inputReference,
+      datasetId: input.goldSetVersionId,
+      status: adapter.kind === "langfuse_oss" ? "degraded" : "succeeded",
+      degradationReason:
+        adapter.kind === "langfuse_oss"
+          ? "self-hosted trace sink unavailable"
+          : undefined,
+      resultSummary: {
+        adapter_kind: adapter.kind,
+        execution_mode: adapter.execution_mode,
+        fail_open: adapter.fail_open,
+        local_first: true,
+        binding_id: binding.id,
+        evaluation_suite_id: input.evaluationSuiteId,
+        ...(adapter.kind === "langfuse_oss"
+          ? { trace_sink_status: "unavailable" }
+          : { launch_mode: "explicit_governed_run" }),
+      },
+    });
+
+    const evidence = await this.recordGovernedRunEvidence(actorRole, execution, adapter);
+    return {
+      execution,
+      binding: cloneRuntimeBinding(binding),
+      ...(evidence ? { evidence } : {}),
+    };
+  }
+
+  private async assertAdapterFeatureFlagsEnabled(
+    adapter: HarnessAdapterRecord,
+  ): Promise<void> {
+    for (const flagKey of adapter.feature_flag_keys) {
+      const latestChange = await this.repository.findLatestFeatureFlagChange(
+        adapter.id,
+        flagKey,
+      );
+      if (!latestChange?.enabled) {
+        throw new HarnessGovernedRunStateError(
+          `Harness adapter ${adapter.id} requires enabled governance flag ${flagKey}.`,
+        );
+      }
+    }
+  }
+
+  private async recordGovernedRunEvidence(
+    actorRole: RoleKey,
+    execution: HarnessExecutionAuditRecord,
+    adapter: HarnessAdapterRecord,
+  ): Promise<VerificationEvidenceRecord | undefined> {
+    if (!this.verificationEvidenceRecorder) {
+      return undefined;
+    }
+
+    try {
+      return await this.verificationEvidenceRecorder.recordVerificationEvidence(
+        actorRole,
+        {
+          kind: "url",
+          label: `Harness execution audit for ${adapter.display_name}`,
+          uri: `local://harness-executions/${execution.id}`,
+        },
+      );
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 function createHarnessIntegrationTransactionManager(
@@ -344,5 +503,14 @@ function cloneExecutionAudit(
   return {
     ...record,
     result_summary: cloneJson(record.result_summary),
+  };
+}
+
+function cloneRuntimeBinding(record: RuntimeBindingRecord): RuntimeBindingRecord {
+  return {
+    ...record,
+    skill_package_ids: [...record.skill_package_ids],
+    verification_check_profile_ids: [...record.verification_check_profile_ids],
+    evaluation_suite_ids: [...record.evaluation_suite_ids],
   };
 }

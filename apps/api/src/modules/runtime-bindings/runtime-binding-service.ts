@@ -141,6 +141,21 @@ export class RuntimeBindingService {
     );
   }
 
+  async getActiveBindingForScope(input: {
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  }): Promise<RuntimeBindingRecord | undefined> {
+    const bindings = await this.repository.listByScope(
+      input.module,
+      input.manuscriptType,
+      input.templateFamilyId,
+      true,
+    );
+
+    return [...bindings].sort((left, right) => right.version - left.version)[0];
+  }
+
   async getBinding(bindingId: string): Promise<RuntimeBindingRecord> {
     return this.requireBinding(bindingId);
   }

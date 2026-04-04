@@ -54,6 +54,11 @@ import {
   PostgresHarnessDatasetRepository,
 } from "../modules/harness-datasets/index.ts";
 import {
+  createHarnessIntegrationApi,
+  HarnessIntegrationService,
+  PostgresHarnessIntegrationRepository,
+} from "../modules/harness-integrations/index.ts";
+import {
   createKnowledgeApi,
   KnowledgeService,
   PostgresKnowledgeRepository,
@@ -246,6 +251,9 @@ export function createPersistentGovernanceRuntime(
   const harnessDatasetRepository = new PostgresHarnessDatasetRepository({
     client: options.client,
   });
+  const harnessIntegrationRepository = new PostgresHarnessIntegrationRepository({
+    client: options.client,
+  });
 
   const workbenchTransactionManager = createPostgresWriteTransactionManager({
     getClient: async () => options.client.connect(),
@@ -430,6 +438,11 @@ export function createPersistentGovernanceRuntime(
     promptSkillRegistryRepository,
     verificationOpsRepository,
   });
+  const harnessIntegrationService = new HarnessIntegrationService({
+    repository: harnessIntegrationRepository,
+    governedRunRuntime: runtimeBindingService,
+    verificationEvidenceRecorder: verificationOpsService,
+  });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
@@ -596,6 +609,9 @@ export function createPersistentGovernanceRuntime(
     }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
+    }),
+    harnessIntegrationApi: createHarnessIntegrationApi({
+      harnessIntegrationService,
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,

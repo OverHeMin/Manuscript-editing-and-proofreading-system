@@ -10,6 +10,7 @@ import { createPersistentGovernanceRuntime } from "../../src/http/persistent-gov
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
 import { PostgresDocumentAssetRepository } from "../../src/modules/assets/index.ts";
 import { PostgresHarnessDatasetRepository } from "../../src/modules/harness-datasets/index.ts";
+import { PostgresHarnessIntegrationRepository } from "../../src/modules/harness-integrations/index.ts";
 import { PostgresKnowledgeRetrievalRepository } from "../../src/modules/knowledge-retrieval/index.ts";
 import {
   PostgresKnowledgeRepository,
@@ -1377,6 +1378,16 @@ const persistentRetrievalQualityFixtureIds = {
   rubricId: "94949494-9494-4494-8494-949494949494",
 } as const;
 
+const persistentHarnessIntegrationFixtureIds = {
+  promptfooRedactionProfileId: "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1",
+  promptfooAdapterId: "a2a2a2a2-a2a2-42a2-82a2-a2a2a2a2a2a2",
+  promptfooFlagChangeId: "a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3",
+  langfuseRedactionProfileId: "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1",
+  langfuseAdapterId: "b2b2b2b2-b2b2-42b2-82b2-b2b2b2b2b2b2",
+  langfuseFlagChangeId: "b3b3b3b3-b3b3-43b3-83b3-b3b3b3b3b3b3",
+  parentAssetId: "c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1",
+} as const;
+
 test("persistent governance runtime creates additive harness dataset draft handoffs from governed sources", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -2043,6 +2054,341 @@ test("persistent governance runtime records governed retrieval snapshots and ret
   });
 });
 
+test("persistent governance runtime launches governed harness runs explicitly from active runtime bindings", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const evaluationSuite = await createPersistentHarnessEvaluationSuite({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          name: "Persistent governed harness suite",
+        });
+        const governedFixture = await createPersistentRetrievalQualityFixture({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          pool: seedPool,
+          evaluationSuiteIds: [evaluationSuite.id],
+        });
+        await seedPersistentHarnessAdapter({
+          pool: seedPool,
+          redactionProfileId: persistentHarnessIntegrationFixtureIds
+            .promptfooRedactionProfileId,
+          adapterId: persistentHarnessIntegrationFixtureIds.promptfooAdapterId,
+          flagChangeId: persistentHarnessIntegrationFixtureIds.promptfooFlagChangeId,
+          kind: "promptfoo",
+          displayName: "Promptfoo local suite",
+          executionMode: "local_cli",
+          flagKey: "harness.promptfoo.enabled",
+          enabled: true,
+          config: {
+            suite: "retrieval-quality",
+          },
+        });
+
+        const launchResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/harness-integrations/governed-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                adapterId: persistentHarnessIntegrationFixtureIds.promptfooAdapterId,
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: governedFixture.familyId,
+                evaluationSuiteId: evaluationSuite.id,
+                goldSetVersionId:
+                  persistentRetrievalQualityFixtureIds.goldSetVersionId,
+                inputReference: "run-input://retrieval-quality/persistent-http",
+              },
+            }),
+          },
+        );
+        const launched = (await launchResponse.json()) as {
+          execution: {
+            id: string;
+            adapter_id: string;
+            dataset_id?: string;
+            input_reference: string;
+            status: string;
+          };
+          evidence?: {
+            id: string;
+            uri?: string;
+          };
+          binding: {
+            id: string;
+            evaluation_suite_ids: string[];
+          };
+        };
+
+        assert.equal(launchResponse.status, 201);
+        assert.equal(
+          launched.execution.adapter_id,
+          persistentHarnessIntegrationFixtureIds.promptfooAdapterId,
+        );
+        assert.equal(
+          launched.execution.dataset_id,
+          persistentRetrievalQualityFixtureIds.goldSetVersionId,
+        );
+        assert.equal(
+          launched.execution.input_reference,
+          "run-input://retrieval-quality/persistent-http",
+        );
+        assert.equal(launched.execution.status, "succeeded");
+        assert.deepEqual(launched.binding.evaluation_suite_ids, [
+          evaluationSuite.id,
+        ]);
+        assert.equal(
+          launched.evidence?.uri,
+          `local://harness-executions/${launched.execution.id}`,
+        );
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const executionsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/harness-integrations/adapters/${persistentHarnessIntegrationFixtureIds.promptfooAdapterId}/executions`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const executions = (await executionsResponse.json()) as Array<{
+            id: string;
+            status: string;
+            dataset_id?: string;
+          }>;
+
+          assert.equal(executionsResponse.status, 200);
+          assert.deepEqual(
+            executions.map((record) => ({
+              id: record.id,
+              status: record.status,
+              dataset_id: record.dataset_id,
+            })),
+            [
+              {
+                id: launched.execution.id,
+                status: "succeeded",
+                dataset_id: persistentRetrievalQualityFixtureIds.goldSetVersionId,
+              },
+            ],
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime records degraded harness executions when a self-hosted trace sink is unavailable", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+        const evaluationSuite = await createPersistentHarnessEvaluationSuite({
+          baseUrl: serverHandle.baseUrl,
+          cookie,
+          name: "Persistent tracing harness suite",
+        });
+        const governedFixture = await createPersistentRetrievalQualityFixture({
+          baseUrl: serverHandle.baseUrl,
+          cookie,
+          pool: seedPool,
+          evaluationSuiteIds: [evaluationSuite.id],
+        });
+        await seedPersistentHarnessAdapter({
+          pool: seedPool,
+          redactionProfileId: persistentHarnessIntegrationFixtureIds
+            .langfuseRedactionProfileId,
+          adapterId: persistentHarnessIntegrationFixtureIds.langfuseAdapterId,
+          flagChangeId: persistentHarnessIntegrationFixtureIds.langfuseFlagChangeId,
+          kind: "langfuse_oss",
+          displayName: "Self-hosted Langfuse trace sink",
+          executionMode: "self_hosted_http",
+          flagKey: "harness.langfuse.enabled",
+          enabled: true,
+        });
+
+        const launchResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/harness-integrations/governed-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                adapterId: persistentHarnessIntegrationFixtureIds.langfuseAdapterId,
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: governedFixture.familyId,
+                evaluationSuiteId: evaluationSuite.id,
+                goldSetVersionId:
+                  persistentRetrievalQualityFixtureIds.goldSetVersionId,
+                inputReference: "run-input://trace/persistent-http",
+              },
+            }),
+          },
+        );
+        const launched = (await launchResponse.json()) as {
+          execution: {
+            id: string;
+            status: string;
+            degradation_reason?: string;
+          };
+        };
+
+        assert.equal(launchResponse.status, 201);
+        assert.equal(launched.execution.status, "degraded");
+        assert.equal(
+          launched.execution.degradation_reason,
+          "self-hosted trace sink unavailable",
+        );
+
+        const harnessRepository = new PostgresHarnessIntegrationRepository({
+          client: seedPool,
+        });
+        const persistedAudits = await harnessRepository.listExecutionAuditsByAdapterId(
+          persistentHarnessIntegrationFixtureIds.langfuseAdapterId,
+        );
+
+        assert.deepEqual(
+          persistedAudits.map((record) => ({
+            id: record.id,
+            status: record.status,
+            degradation_reason: record.degradation_reason,
+          })),
+          [
+            {
+              id: launched.execution.id,
+              status: "degraded",
+              degradation_reason: "self-hosted trace sink unavailable",
+            },
+          ],
+        );
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime keeps module execution succeeded when harness tracing adapters are unavailable", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+        await createPersistentHarnessEvaluationSuite({
+          baseUrl: serverHandle.baseUrl,
+          cookie,
+          name: "Persistent module tracing suite",
+        });
+        const governedFixture = await createPersistentRetrievalQualityFixture({
+          baseUrl: serverHandle.baseUrl,
+          cookie,
+          pool: seedPool,
+        });
+        await seedPersistentHarnessAdapter({
+          pool: seedPool,
+          redactionProfileId: persistentHarnessIntegrationFixtureIds
+            .langfuseRedactionProfileId,
+          adapterId: persistentHarnessIntegrationFixtureIds.langfuseAdapterId,
+          flagChangeId: persistentHarnessIntegrationFixtureIds.langfuseFlagChangeId,
+          kind: "langfuse_oss",
+          displayName: "Self-hosted Langfuse trace sink",
+          executionMode: "self_hosted_http",
+          flagKey: "harness.langfuse.enabled",
+          enabled: true,
+        });
+        await seedPersistentEditingParentAsset(seedPool, governedFixture.familyId);
+
+        const editingResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/modules/editing/run`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: persistentRetrievalQualityFixtureIds.manuscriptId,
+              parentAssetId: persistentHarnessIntegrationFixtureIds.parentAssetId,
+              storageKey: "persistent/harness/editing-output.docx",
+              fileName: "persistent-editing-output.docx",
+            }),
+          },
+        );
+        const editingRun = (await editingResponse.json()) as {
+          job: {
+            status: string;
+          };
+          asset: {
+            asset_type: string;
+          };
+        };
+
+        assert.equal(editingResponse.status, 201);
+        assert.equal(editingRun.job.status, "completed");
+        assert.equal(editingRun.asset.asset_type, "edited_docx");
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -2356,10 +2702,159 @@ async function seedPersistentHarnessDatasetWorkbenchData(pool: Pool): Promise<vo
   });
 }
 
+async function createPersistentHarnessEvaluationSuite(input: {
+  baseUrl: string;
+  cookie: string;
+  name: string;
+}): Promise<{
+  id: string;
+  status: string;
+}> {
+  const createResponse = await fetch(
+    `${input.baseUrl}/api/v1/verification-ops/evaluation-suites`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: {
+          name: input.name,
+          suiteType: "regression",
+          verificationCheckProfileIds: [],
+          moduleScope: ["editing"],
+          hardGatePolicy: {
+            mustUseDeidentifiedSamples: true,
+            requiresParsableOutput: false,
+          },
+        },
+      }),
+    },
+  );
+  const created = (await createResponse.json()) as {
+    id: string;
+  };
+
+  assert.equal(createResponse.status, 201);
+
+  const activateResponse = await fetch(
+    `${input.baseUrl}/api/v1/verification-ops/evaluation-suites/${created.id}/activate`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    },
+  );
+  const activated = (await activateResponse.json()) as {
+    id: string;
+    status: string;
+  };
+
+  assert.equal(activateResponse.status, 200);
+  assert.equal(activated.status, "active");
+
+  return activated;
+}
+
+async function seedPersistentHarnessAdapter(input: {
+  pool: Pool;
+  redactionProfileId: string;
+  adapterId: string;
+  flagChangeId: string;
+  kind: "promptfoo" | "langfuse_oss";
+  displayName: string;
+  executionMode: "local_cli" | "self_hosted_http";
+  flagKey: string;
+  enabled: boolean;
+  config?: Record<string, unknown>;
+}): Promise<void> {
+  const repository = new PostgresHarnessIntegrationRepository({
+    client: input.pool,
+  });
+
+  await repository.saveRedactionProfile({
+    id: input.redactionProfileId,
+    name: `${input.kind}-persistent-profile`,
+    redaction_mode:
+      input.kind === "langfuse_oss" ? "metadata_only" : "structured_only",
+    structured_fields: ["module", "manuscript_type", "template_family_id"],
+    allow_raw_payload_export: false,
+    created_at: "2026-04-04T12:20:00.000Z",
+    updated_at: "2026-04-04T12:20:00.000Z",
+  });
+  await repository.saveAdapter({
+    id: input.adapterId,
+    kind: input.kind,
+    display_name: input.displayName,
+    execution_mode: input.executionMode,
+    fail_open: true,
+    redaction_profile_id: input.redactionProfileId,
+    feature_flag_keys: [input.flagKey],
+    result_envelope_version: "1.0.0",
+    config: input.config,
+    created_at: "2026-04-04T12:21:00.000Z",
+    updated_at: "2026-04-04T12:21:00.000Z",
+  });
+  await repository.saveFeatureFlagChange({
+    id: input.flagChangeId,
+    adapter_id: input.adapterId,
+    flag_key: input.flagKey,
+    enabled: input.enabled,
+    changed_by: "persistent.admin",
+    change_reason: "Enable harness adapter for bounded runtime tests.",
+    created_at: "2026-04-04T12:22:00.000Z",
+  });
+}
+
+async function seedPersistentEditingParentAsset(
+  pool: Pool,
+  templateFamilyId: string,
+): Promise<void> {
+  const assetRepository = new PostgresDocumentAssetRepository({
+    client: pool,
+  });
+  const manuscriptRepository = new PostgresManuscriptRepository({
+    client: pool,
+  });
+
+  await assetRepository.save({
+    id: persistentHarnessIntegrationFixtureIds.parentAssetId,
+    manuscript_id: persistentRetrievalQualityFixtureIds.manuscriptId,
+    asset_type: "original",
+    status: "active",
+    storage_key: "persistent/harness/editing-parent.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "upload",
+    created_by: "persistent-admin",
+    version_no: 1,
+    is_current: true,
+    file_name: "persistent-editing-parent.docx",
+    created_at: "2026-04-04T12:23:00.000Z",
+    updated_at: "2026-04-04T12:23:00.000Z",
+  });
+
+  const manuscript = await manuscriptRepository.findById(
+    persistentRetrievalQualityFixtureIds.manuscriptId,
+  );
+  assert.ok(manuscript, "Expected retrieval-quality manuscript fixture to exist.");
+
+  await manuscriptRepository.save({
+    ...manuscript,
+    current_template_family_id: templateFamilyId,
+    updated_at: "2026-04-04T12:23:30.000Z",
+  });
+}
+
 async function createPersistentRetrievalQualityFixture(input: {
   baseUrl: string;
   cookie: string;
   pool: Pool;
+  evaluationSuiteIds?: string[];
 }): Promise<{
   familyId: string;
   moduleTemplateId: string;
@@ -2751,6 +3246,7 @@ async function createPersistentRetrievalQualityFixture(input: {
         toolPermissionPolicyId: policy.id,
         promptTemplateId: prompt.id,
         skillPackageIds: [skill.id],
+        evaluationSuiteIds: input.evaluationSuiteIds,
       },
     }),
   });

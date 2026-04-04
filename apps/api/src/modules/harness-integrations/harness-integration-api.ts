@@ -6,11 +6,14 @@ import type {
 } from "./harness-integration-record.ts";
 import type {
   HarnessIntegrationService,
+  LaunchGovernedHarnessRunInput,
+  LaunchGovernedHarnessRunResult,
   RecordHarnessExecutionAuditInput,
   RecordHarnessFeatureFlagChangeInput,
   RegisterHarnessAdapterInput,
   UpsertHarnessRedactionProfileInput,
 } from "./harness-integration-service.ts";
+import type { RoleKey } from "../../users/roles.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -112,6 +115,19 @@ export function createHarnessIntegrationApi(
         body: await harnessIntegrationService.listExecutionAuditsByAdapterId(
           adapterId,
         ),
+      };
+    },
+
+    async launchGovernedRun({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: LaunchGovernedHarnessRunInput;
+    }): Promise<RouteResponse<LaunchGovernedHarnessRunResult>> {
+      return {
+        status: 201,
+        body: await harnessIntegrationService.launchGovernedRun(actorRole, input),
       };
     },
   };
