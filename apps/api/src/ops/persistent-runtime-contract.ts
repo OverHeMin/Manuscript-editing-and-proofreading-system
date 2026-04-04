@@ -1,4 +1,5 @@
 import path from "node:path";
+import { assertPersistentSecretContract } from "./persistent-secret-contract.ts";
 
 export type PersistentAppEnv = "development" | "test" | "staging" | "production";
 export type RuntimeDependencyMode =
@@ -33,25 +34,11 @@ export interface PersistentRuntimeContract {
 
 const DEFAULT_PORT = 3001;
 const DEFAULT_HOST = "0.0.0.0";
-const PROD_ONLYOFFICE_JWT_PLACEHOLDER = "change-me-in-prod";
-
 export function resolvePersistentRuntimeContract(
   env: NodeJS.ProcessEnv = process.env,
 ): PersistentRuntimeContract {
   const appEnv = parsePersistentAppEnv(env.APP_ENV);
-  const onlyOfficeJwtSecret = parseOptionalConfiguredValue(
-    "ONLYOFFICE_JWT_SECRET",
-    env.ONLYOFFICE_JWT_SECRET,
-  );
-
-  if (
-    (appEnv === "staging" || appEnv === "production") &&
-    onlyOfficeJwtSecret === PROD_ONLYOFFICE_JWT_PLACEHOLDER
-  ) {
-    throw new Error(
-      `Persistent API runtime requires ONLYOFFICE_JWT_SECRET to be replaced for APP_ENV="${appEnv}".`,
-    );
-  }
+  assertPersistentSecretContract(appEnv, env);
 
   const uploadRoot = resolveUploadRoot(appEnv, env.UPLOAD_ROOT_DIR);
   const onlyOfficeUrl = parseOptionalConfiguredUrl("ONLYOFFICE_URL", env.ONLYOFFICE_URL);

@@ -98,3 +98,54 @@ test("persistent runtime contract normalizes configured dependency urls", () => 
   );
   assert.equal(contract.dependencies.libreOffice.binary, "soffice");
 });
+
+test("persistent runtime contract rejects staging and production placeholder object storage access keys", () => {
+  assert.throws(
+    () =>
+      resolvePersistentRuntimeContract({
+        APP_ENV: "staging",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+        ONLYOFFICE_JWT_SECRET: "real-secret",
+        OBJECT_STORAGE_ACCESS_KEY: "minioadmin",
+      }),
+    /object_storage_access_key/i,
+  );
+});
+
+test("persistent runtime contract rejects staging and production placeholder object storage secret keys", () => {
+  assert.throws(
+    () =>
+      resolvePersistentRuntimeContract({
+        APP_ENV: "production",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+        ONLYOFFICE_JWT_SECRET: "real-secret",
+        OBJECT_STORAGE_SECRET_KEY: "minioadmin123",
+      }),
+    /object_storage_secret_key/i,
+  );
+});
+
+test("persistent runtime contract still tolerates local object storage defaults in development", () => {
+  const contract = resolvePersistentRuntimeContract({
+    APP_ENV: "development",
+    DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    OBJECT_STORAGE_ACCESS_KEY: "minioadmin",
+    OBJECT_STORAGE_SECRET_KEY: "minioadmin123",
+  });
+
+  assert.equal(contract.appEnv, "development");
+  assert.equal(contract.dependencies.objectStorage.mode, "smoke_only");
+});
+
+test("persistent runtime contract accepts explicit non-placeholder object storage credentials in production", () => {
+  const contract = resolvePersistentRuntimeContract({
+    APP_ENV: "production",
+    DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    ONLYOFFICE_JWT_SECRET: "real-secret",
+    OBJECT_STORAGE_ACCESS_KEY: "prod-storage-user",
+    OBJECT_STORAGE_SECRET_KEY: "prod-storage-secret",
+  });
+
+  assert.equal(contract.appEnv, "production");
+  assert.equal(contract.dependencies.objectStorage.mode, "smoke_only");
+});
