@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "audit:document-enhancement": "python -m src.document_enhancement.cli",
+    "audit:document-enhancement:cleanup-plan": "python -m src.document_enhancement.cleanup_plan_cli",
     "audit:document-enhancement:history": "python -m src.document_enhancement.history_cli",
     "audit:document-enhancement:retention": "python -m src.document_enhancement.retention_cli",
     "lint": "python -m compileall src",

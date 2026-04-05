@@ -260,5 +260,7 @@
 - The local artifact lane keeps additive JSON history plus `audit-index.json` for replay. It remains manual and repository-local rather than API-backed persistence.
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:history -- --list [--limit <n>] [--output-dir <local-dir>]` lists the local artifact index, and `--artifact-path <local-json>` replays one persisted advisory report.
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:retention -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>]` produces a read-only retention audit that recommends which local artifacts are safe candidates for cleanup review.
+- `pnpm --filter @medical/worker-py run audit:document-enhancement:cleanup-plan -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>] [--write-plan] [--plan-output-dir <local-dir>]` turns those retention recommendations into a bounded local cleanup plan and can optionally persist one local JSON manifest under `plans/`.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters degrade to advisory evidence. They do not block screening, editing, proofreading, routing, or verification-ops contracts.
+- Cleanup-plan manifests are local-only operator aids. They do not delete files, rewrite `audit-index.json`, or auto-launch archive / cleanup actions.
 - This baseline does not auto-anonymize, auto-run OCR, auto-publish governed assets, or promote itself into a routing or release control plane.

@@ -1,4 +1,5 @@
 from .artifacts import default_audit_output_dir, skipped_artifact_result, write_audit_artifact
+from .cleanup_plan import build_cleanup_plan, default_cleanup_plan_output_dir
 from .contracts import (
     AcademicStructureAdvisoryResult,
     AdapterStatus,
@@ -6,6 +7,8 @@ from .contracts import (
     AuditHistoryEntry,
     AuditHistoryListingResult,
     AuditReplayResult,
+    CleanupPlanAction,
+    CleanupPlanResult,
     DocumentEnhancementAuditReport,
     PrivacyAdvisoryResult,
     PrivacyFinding,
@@ -24,13 +27,17 @@ __all__ = [
     "AuditHistoryEntry",
     "AuditHistoryListingResult",
     "AuditReplayResult",
+    "CleanupPlanAction",
+    "CleanupPlanResult",
     "DocumentEnhancementAuditReport",
     "PrivacyAdvisoryResult",
     "PrivacyFinding",
     "RetentionAuditResult",
     "RetentionCandidate",
     "build_academic_structure_advisory",
+    "build_cleanup_plan",
     "build_privacy_advisory",
+    "default_cleanup_plan_output_dir",
     "default_audit_output_dir",
     "evaluate_retention_audit",
     "list_audit_history",

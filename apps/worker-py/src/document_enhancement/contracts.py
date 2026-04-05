@@ -92,6 +92,29 @@ class RetentionAuditResult:
 
 
 @dataclass(frozen=True)
+class CleanupPlanAction:
+    created_at: str
+    document_path: str
+    artifact_path: str
+    age_days: int | None
+    action: str
+    reason: str
+    manual_steps: list[str]
+
+
+@dataclass(frozen=True)
+class CleanupPlanResult:
+    status: str
+    output_dir: Path | None
+    index_path: Path | None
+    plan_path: Path | None
+    evaluated_item_count: int
+    planned_action_count: int
+    actions: list[CleanupPlanAction]
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult

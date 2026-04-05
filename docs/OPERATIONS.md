@@ -515,6 +515,7 @@ Use the worker-owned audit command when you need bounded local evidence about pr
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:history -- --list [--limit <n>] [--output-dir <local-dir>]`
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:history -- --artifact-path <local-json>`
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:retention -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>]`
+- `pnpm --filter @medical/worker-py run audit:document-enhancement:cleanup-plan -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>] [--write-plan] [--plan-output-dir <local-dir>]`
 
 Operational rules:
 
@@ -522,5 +523,7 @@ Operational rules:
 - The default artifact directory is `.local-data/document-enhancement-audits/manual`, and the directory keeps additive JSON reports plus `audit-index.json`.
 - The separate history CLI is also read-only. It only reads the local index and explicit artifact paths; it does not rewrite or delete artifacts.
 - The retention audit is advisory-only and non-destructive. It recommends cleanup candidates but does not delete files or rewrite the index.
+- The cleanup-plan CLI stays advisory-only as well. `--write-plan` only writes one local JSON manifest, defaulting to `.local-data/document-enhancement-audits/manual/plans`, and `--plan-output-dir` can override that local directory.
+- Cleanup-plan output may recommend `archive_then_cleanup_review` or `index_repair_review`, but those are human follow-up signals only. The command does not delete files or rewrite `audit-index.json`.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters return degraded advisory evidence instead of blocking worker startup or manuscript execution.
 - The JSON output is an operator aid only. It does not replace human de-identification review and does not auto-launch OCR or academic-structure extraction.
