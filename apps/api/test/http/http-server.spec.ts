@@ -1690,10 +1690,27 @@ test("http server resolves governed execution bundles and records execution snap
         }),
       },
     );
-    const snapshot = (await snapshotResponse.json()) as { id: string; model_id: string };
+    const snapshot = (await snapshotResponse.json()) as {
+      id: string;
+      model_id: string;
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+          issues: Array<{ code: string }>;
+        };
+      };
+    };
 
     assert.equal(snapshotResponse.status, 201);
     assert.equal(snapshot.model_id, model.id);
+    assert.equal(snapshot.runtime_binding_readiness.observation_status, "reported");
+    assert.equal(snapshot.runtime_binding_readiness.report?.status, "missing");
+    assert.ok(
+      snapshot.runtime_binding_readiness.report?.issues.some(
+        (issue) => issue.code === "missing_active_binding",
+      ),
+    );
 
     const loadedSnapshotResponse = await fetch(
       `${baseUrl}/api/v1/execution-tracking/snapshots/${snapshot.id}`,
@@ -1711,12 +1728,34 @@ test("http server resolves governed execution bundles and records execution snap
         },
       },
     );
-    const loadedSnapshot = (await loadedSnapshotResponse.json()) as { id: string };
+    const loadedSnapshot = (await loadedSnapshotResponse.json()) as {
+      id: string;
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+          issues: Array<{ code: string }>;
+        };
+      };
+    };
     const hitLogs = (await hitLogsResponse.json()) as Array<{ match_source: string }>;
 
     assert.equal(loadedSnapshotResponse.status, 200);
     assert.equal(hitLogsResponse.status, 200);
     assert.equal(loadedSnapshot.id, snapshot.id);
+    assert.equal(
+      loadedSnapshot.runtime_binding_readiness.observation_status,
+      "reported",
+    );
+    assert.equal(
+      loadedSnapshot.runtime_binding_readiness.report?.status,
+      "missing",
+    );
+    assert.ok(
+      loadedSnapshot.runtime_binding_readiness.report?.issues.some(
+        (issue) => issue.code === "missing_active_binding",
+      ),
+    );
     assert.deepEqual(hitLogs.map((record) => record.match_source), ["dynamic_routing"]);
   } finally {
     await stopServer(server);

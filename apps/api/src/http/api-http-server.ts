@@ -1320,6 +1320,8 @@ export function createInMemoryApiRuntime(input: {
     }),
     executionTrackingApi: createExecutionTrackingApi({
       executionTrackingService,
+      executionGovernanceRepository,
+      runtimeBindingReadinessService,
     }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,

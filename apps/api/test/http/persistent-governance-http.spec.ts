@@ -786,7 +786,28 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
             }),
           },
         );
-        const snapshot = (await snapshotResponse.json()) as { id: string };
+        const snapshot = (await snapshotResponse.json()) as {
+          id: string;
+          runtime_binding_readiness: {
+            observation_status: string;
+            report?: {
+              status: string;
+              issues: Array<{ code: string }>;
+            };
+          };
+        };
+
+        assert.equal(snapshotResponse.status, 201);
+        assert.equal(
+          snapshot.runtime_binding_readiness.observation_status,
+          "reported",
+        );
+        assert.equal(snapshot.runtime_binding_readiness.report?.status, "missing");
+        assert.ok(
+          snapshot.runtime_binding_readiness.report?.issues.some(
+            (issue) => issue.code === "missing_active_binding",
+          ),
+        );
 
         await stopServer(firstServer.server);
 
@@ -812,7 +833,16 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
               },
             },
           );
-          const snapshotLoaded = (await snapshotLoadedResponse.json()) as { id: string };
+          const snapshotLoaded = (await snapshotLoadedResponse.json()) as {
+            id: string;
+            runtime_binding_readiness: {
+              observation_status: string;
+              report?: {
+                status: string;
+                issues: Array<{ code: string }>;
+              };
+            };
+          };
           const resolveResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/execution-governance/resolve`,
             {
@@ -856,6 +886,19 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
             ],
           );
           assert.equal(snapshotLoaded.id, snapshot.id);
+          assert.equal(
+            snapshotLoaded.runtime_binding_readiness.observation_status,
+            "reported",
+          );
+          assert.equal(
+            snapshotLoaded.runtime_binding_readiness.report?.status,
+            "missing",
+          );
+          assert.ok(
+            snapshotLoaded.runtime_binding_readiness.report?.issues.some(
+              (issue) => issue.code === "missing_active_binding",
+            ),
+          );
           assert.equal(resolved.profile.id, profile.id);
           assert.equal(resolved.resolved_model.id, model.id);
           assert.equal(

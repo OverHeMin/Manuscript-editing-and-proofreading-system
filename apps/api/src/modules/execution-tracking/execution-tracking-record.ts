@@ -1,4 +1,5 @@
 import type { TemplateModule } from "../templates/template-record.ts";
+import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
 
 export type KnowledgeHitMatchSource =
   | "binding_rule"
@@ -37,4 +38,15 @@ export interface KnowledgeHitLogRecord {
   score?: number;
   section?: string;
   created_at: string;
+}
+
+export interface ExecutionTrackingRuntimeBindingReadinessObservationRecord {
+  observation_status: "reported" | "failed_open";
+  report?: RuntimeBindingReadinessReport;
+  error?: string;
+}
+
+export interface ModuleExecutionSnapshotViewRecord
+  extends ModuleExecutionSnapshotRecord {
+  runtime_binding_readiness: ExecutionTrackingRuntimeBindingReadinessObservationRecord;
 }

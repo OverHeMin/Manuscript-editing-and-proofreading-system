@@ -630,6 +630,8 @@ export function createPersistentGovernanceRuntime(
     }),
     executionTrackingApi: createExecutionTrackingApi({
       executionTrackingService,
+      executionGovernanceRepository,
+      runtimeBindingReadinessService,
     }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
