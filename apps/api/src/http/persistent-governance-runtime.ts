@@ -573,6 +573,7 @@ export function createPersistentGovernanceRuntime(
     authRuntime: options.authRuntime,
     agentExecutionApi: createAgentExecutionApi({
       agentExecutionService,
+      runtimeBindingReadinessService,
     }),
     agentProfileApi: createAgentProfileApi({
       agentProfileService,

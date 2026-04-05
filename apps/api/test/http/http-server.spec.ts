@@ -2454,11 +2454,27 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       id: string;
       status: string;
       knowledge_item_ids: string[];
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+          binding?: { id: string };
+        };
+      };
     };
 
     assert.equal(createExecutionLogResponse.status, 201);
     assert.equal(executionLog.status, "running");
     assert.deepEqual(executionLog.knowledge_item_ids, ["knowledge-demo-1"]);
+    assert.equal(
+      executionLog.runtime_binding_readiness.observation_status,
+      "reported",
+    );
+    assert.equal(executionLog.runtime_binding_readiness.report?.status, "ready");
+    assert.equal(
+      executionLog.runtime_binding_readiness.report?.binding?.id,
+      bindingDraft.id,
+    );
 
     const completeExecutionLogResponse = await fetch(
       `${baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
@@ -2479,6 +2495,12 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       status: string;
       execution_snapshot_id?: string;
       verification_evidence_ids: string[];
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+        };
+      };
     };
 
     assert.equal(completeExecutionLogResponse.status, 200);
@@ -2491,6 +2513,14 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       "evidence-1",
       "evidence-2",
     ]);
+    assert.equal(
+      completedExecutionLog.runtime_binding_readiness.observation_status,
+      "reported",
+    );
+    assert.equal(
+      completedExecutionLog.runtime_binding_readiness.report?.status,
+      "ready",
+    );
 
     const listExecutionLogsResponse = await fetch(
       `${baseUrl}/api/v1/agent-execution`,
@@ -2503,6 +2533,12 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     const executionLogs = (await listExecutionLogsResponse.json()) as Array<{
       id: string;
       status: string;
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+        };
+      };
     }>;
 
     assert.equal(listExecutionLogsResponse.status, 200);
@@ -2515,6 +2551,11 @@ test("http server exposes admin agent-tooling governance routes and execution lo
         status: "completed",
       },
     ]);
+    assert.equal(
+      executionLogs[0]?.runtime_binding_readiness.observation_status,
+      "reported",
+    );
+    assert.equal(executionLogs[0]?.runtime_binding_readiness.report?.status, "ready");
 
     const archiveRuntimeResponse = await fetch(
       `${baseUrl}/api/v1/agent-runtime/${runtimeDraft.id}/archive`,

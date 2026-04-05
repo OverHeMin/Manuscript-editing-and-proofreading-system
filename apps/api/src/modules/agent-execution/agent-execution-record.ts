@@ -1,5 +1,6 @@
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { ModelRoutingPolicyScopeKind } from "../model-routing-governance/model-routing-governance-record.ts";
+import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
 
 export type AgentExecutionStatus =
   | "queued"
@@ -47,4 +48,14 @@ export interface AgentExecutionLogRecord {
   orchestration_next_retry_at?: string;
   started_at: string;
   finished_at?: string;
+}
+
+export interface AgentExecutionRuntimeBindingReadinessObservationRecord {
+  observation_status: "reported" | "failed_open";
+  report?: RuntimeBindingReadinessReport;
+  error?: string;
+}
+
+export interface AgentExecutionLogViewRecord extends AgentExecutionLogRecord {
+  runtime_binding_readiness: AgentExecutionRuntimeBindingReadinessObservationRecord;
 }

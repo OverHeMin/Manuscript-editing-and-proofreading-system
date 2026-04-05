@@ -1268,6 +1268,7 @@ export function createInMemoryApiRuntime(input: {
     authRuntime,
     agentExecutionApi: createAgentExecutionApi({
       agentExecutionService,
+      runtimeBindingReadinessService,
     }),
     agentProfileApi: createAgentProfileApi({
       agentProfileService,

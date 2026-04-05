@@ -1339,9 +1339,27 @@ test("persistent governance runtime keeps agent-tooling governance records acros
             }),
           },
         );
-        const executionLog = (await executionLogResponse.json()) as { id: string };
+        const executionLog = (await executionLogResponse.json()) as {
+          id: string;
+          runtime_binding_readiness: {
+            observation_status: string;
+            report?: {
+              status: string;
+              binding?: { id: string };
+            };
+          };
+        };
 
         assert.equal(executionLogResponse.status, 201);
+        assert.equal(
+          executionLog.runtime_binding_readiness.observation_status,
+          "reported",
+        );
+        assert.equal(executionLog.runtime_binding_readiness.report?.status, "ready");
+        assert.equal(
+          executionLog.runtime_binding_readiness.report?.binding?.id,
+          binding.id,
+        );
 
         const completeExecutionLogResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
@@ -1433,6 +1451,13 @@ test("persistent governance runtime keeps agent-tooling governance records acros
             id: string;
             status: string;
             execution_snapshot_id?: string;
+            runtime_binding_readiness: {
+              observation_status: string;
+              report?: {
+                status: string;
+                binding?: { id: string };
+              };
+            };
           };
 
           assert.equal(getToolResponse.status, 200);
@@ -1474,6 +1499,18 @@ test("persistent governance runtime keeps agent-tooling governance records acros
           assert.equal(
             persistedExecutionLog.execution_snapshot_id,
             "persistent-snapshot-1",
+          );
+          assert.equal(
+            persistedExecutionLog.runtime_binding_readiness.observation_status,
+            "reported",
+          );
+          assert.equal(
+            persistedExecutionLog.runtime_binding_readiness.report?.status,
+            "ready",
+          );
+          assert.equal(
+            persistedExecutionLog.runtime_binding_readiness.report?.binding?.id,
+            binding.id,
           );
         } finally {
           await stopServer(secondServer.server);

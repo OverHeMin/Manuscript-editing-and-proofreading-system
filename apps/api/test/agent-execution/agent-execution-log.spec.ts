@@ -6,8 +6,13 @@ import {
   AgentExecutionService,
   type CreateAgentExecutionLogInput,
 } from "../../src/modules/agent-execution/agent-execution-service.ts";
+import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/runtime-binding-readiness.ts";
 
-function createAgentExecutionHarness() {
+function createAgentExecutionHarness(input?: {
+  runtimeBindingReadinessService?: {
+    getBindingReadiness: (bindingId: string) => Promise<RuntimeBindingReadinessReport>;
+  };
+}) {
   const ids = ["execution-log-1", "execution-log-2"];
   const service = new AgentExecutionService({
     repository: new InMemoryAgentExecutionRepository(),
@@ -20,6 +25,7 @@ function createAgentExecutionHarness() {
   });
   const api = createAgentExecutionApi({
     agentExecutionService: service,
+    runtimeBindingReadinessService: input?.runtimeBindingReadinessService,
   });
 
   return {
@@ -29,7 +35,43 @@ function createAgentExecutionHarness() {
 }
 
 test("agent execution logs capture governed runtime metadata and can be completed with snapshot evidence", async () => {
-  const { api } = createAgentExecutionHarness();
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "ready",
+    scope: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+    binding: {
+      id: "binding-1",
+      status: "active",
+      version: 1,
+      runtime_id: "runtime-1",
+      sandbox_profile_id: "sandbox-1",
+      agent_profile_id: "agent-profile-1",
+      tool_permission_policy_id: "policy-1",
+      prompt_template_id: "prompt-editing-1",
+      skill_package_ids: ["skill-editing-1"],
+      execution_profile_id: "profile-1",
+      verification_check_profile_ids: ["check-profile-1"],
+      evaluation_suite_ids: ["suite-1"],
+      release_check_profile_id: "release-profile-1",
+    },
+    issues: [],
+    execution_profile_alignment: {
+      status: "aligned",
+      binding_execution_profile_id: "profile-1",
+      active_execution_profile_id: "profile-1",
+    },
+  };
+  const { api } = createAgentExecutionHarness({
+    runtimeBindingReadinessService: {
+      async getBindingReadiness(bindingId) {
+        assert.equal(bindingId, "binding-1");
+        return readinessReport;
+      },
+    },
+  });
   const input: CreateAgentExecutionLogInput = {
     manuscriptId: "manuscript-1",
     module: "editing",
@@ -79,6 +121,8 @@ test("agent execution logs capture governed runtime metadata and can be complete
   assert.equal(created.body.orchestration_attempt_claim_token, undefined);
   assert.equal(created.body.orchestration_next_retry_at, undefined);
   assert.deepEqual(created.body.verification_evidence_ids, []);
+  assert.equal(created.body.runtime_binding_readiness.observation_status, "reported");
+  assert.deepEqual(created.body.runtime_binding_readiness.report, readinessReport);
 
   const completed = await api.completeLog({
     logId: created.body.id,
@@ -99,10 +143,56 @@ test("agent execution logs capture governed runtime metadata and can be complete
     "evidence-2",
   ]);
   assert.equal(completed.body.finished_at, "2026-03-28T13:00:00.000Z");
+  assert.equal(
+    completed.body.runtime_binding_readiness.observation_status,
+    "reported",
+  );
+  assert.deepEqual(completed.body.runtime_binding_readiness.report, readinessReport);
 });
 
 test("agent execution logs can append governed verification evidence after completion", async () => {
-  const { service } = createAgentExecutionHarness();
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "degraded",
+    scope: {
+      module: "screening",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+    binding: {
+      id: "binding-1",
+      status: "active",
+      version: 1,
+      runtime_id: "runtime-1",
+      sandbox_profile_id: "sandbox-1",
+      agent_profile_id: "agent-profile-1",
+      tool_permission_policy_id: "policy-1",
+      prompt_template_id: "prompt-screening-1",
+      skill_package_ids: [],
+      execution_profile_id: "profile-1",
+      verification_check_profile_ids: [],
+      evaluation_suite_ids: [],
+      release_check_profile_id: undefined,
+    },
+    issues: [
+      {
+        code: "runtime_not_active",
+        message: "Runtime runtime-1 is not active.",
+      },
+    ],
+    execution_profile_alignment: {
+      status: "aligned",
+      binding_execution_profile_id: "profile-1",
+      active_execution_profile_id: "profile-1",
+    },
+  };
+  const { service, api } = createAgentExecutionHarness({
+    runtimeBindingReadinessService: {
+      async getBindingReadiness(bindingId) {
+        assert.equal(bindingId, "binding-1");
+        return readinessReport;
+      },
+    },
+  });
 
   const created = await service.createLog({
     manuscriptId: "manuscript-1",
@@ -156,4 +246,47 @@ test("agent execution logs can append governed verification evidence after compl
   assert.equal(updated.orchestration_next_retry_at, undefined);
   assert.equal(updated.execution_snapshot_id, "snapshot-1");
   assert.equal(updated.finished_at, "2026-03-28T13:00:00.000Z");
+
+  const listed = await api.listLogs();
+  assert.equal(listed.status, 200);
+  assert.equal(
+    listed.body[0]?.runtime_binding_readiness.observation_status,
+    "reported",
+  );
+  assert.deepEqual(listed.body[0]?.runtime_binding_readiness.report, readinessReport);
+});
+
+test("agent execution api fails open when runtime binding readiness observation throws unexpectedly", async () => {
+  const { api } = createAgentExecutionHarness({
+    runtimeBindingReadinessService: {
+      async getBindingReadiness() {
+        throw new Error("execution log readiness exploded");
+      },
+    },
+  });
+
+  const created = await api.createLog({
+    input: {
+      manuscriptId: "manuscript-1",
+      module: "editing",
+      triggeredBy: "editor-1",
+      runtimeId: "runtime-1",
+      sandboxProfileId: "sandbox-1",
+      agentProfileId: "agent-profile-1",
+      runtimeBindingId: "binding-1",
+      toolPermissionPolicyId: "policy-1",
+      knowledgeItemIds: [],
+    },
+  });
+
+  assert.equal(created.status, 201);
+  assert.equal(
+    created.body.runtime_binding_readiness.observation_status,
+    "failed_open",
+  );
+  assert.equal(
+    created.body.runtime_binding_readiness.error,
+    "execution log readiness exploded",
+  );
+  assert.equal(created.body.runtime_binding_readiness.report, undefined);
 });
