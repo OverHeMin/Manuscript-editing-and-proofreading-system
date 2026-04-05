@@ -121,6 +121,14 @@ test("agent execution logs capture governed runtime metadata and can be complete
   assert.equal(created.body.orchestration_attempt_claim_token, undefined);
   assert.equal(created.body.orchestration_next_retry_at, undefined);
   assert.deepEqual(created.body.verification_evidence_ids, []);
+  assert.equal(
+    created.body.completion_summary.derived_status,
+    "business_in_progress",
+  );
+  assert.equal(created.body.completion_summary.business_completed, false);
+  assert.equal(created.body.completion_summary.follow_up_required, true);
+  assert.equal(created.body.completion_summary.fully_settled, false);
+  assert.equal(created.body.completion_summary.attention_required, false);
   assert.equal(created.body.runtime_binding_readiness.observation_status, "reported");
   assert.deepEqual(created.body.runtime_binding_readiness.report, readinessReport);
 
@@ -143,6 +151,14 @@ test("agent execution logs capture governed runtime metadata and can be complete
     "evidence-2",
   ]);
   assert.equal(completed.body.finished_at, "2026-03-28T13:00:00.000Z");
+  assert.equal(
+    completed.body.completion_summary.derived_status,
+    "business_completed_follow_up_pending",
+  );
+  assert.equal(completed.body.completion_summary.business_completed, true);
+  assert.equal(completed.body.completion_summary.follow_up_required, true);
+  assert.equal(completed.body.completion_summary.fully_settled, false);
+  assert.equal(completed.body.completion_summary.attention_required, false);
   assert.equal(
     completed.body.runtime_binding_readiness.observation_status,
     "reported",
@@ -250,10 +266,111 @@ test("agent execution logs can append governed verification evidence after compl
   const listed = await api.listLogs();
   assert.equal(listed.status, 200);
   assert.equal(
+    listed.body[0]?.completion_summary.derived_status,
+    "business_completed_settled",
+  );
+  assert.equal(listed.body[0]?.completion_summary.business_completed, true);
+  assert.equal(listed.body[0]?.completion_summary.follow_up_required, false);
+  assert.equal(listed.body[0]?.completion_summary.fully_settled, true);
+  assert.equal(listed.body[0]?.completion_summary.attention_required, false);
+  assert.equal(
     listed.body[0]?.runtime_binding_readiness.observation_status,
     "reported",
   );
   assert.deepEqual(listed.body[0]?.runtime_binding_readiness.report, readinessReport);
+});
+
+test("agent execution api derives retryable and terminal follow-up completion summaries without changing business completion", async () => {
+  const { api, service } = createAgentExecutionHarness({
+    runtimeBindingReadinessService: {
+      async getBindingReadiness() {
+        return {
+          status: "ready",
+          scope: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: "family-1",
+          },
+          issues: [],
+          execution_profile_alignment: {
+            status: "aligned",
+            binding_execution_profile_id: "profile-1",
+            active_execution_profile_id: "profile-1",
+          },
+        };
+      },
+    },
+  });
+
+  const retryable = await service.createLog({
+    manuscriptId: "manuscript-retryable",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-1"],
+  });
+  await service.completeLog({
+    logId: retryable.id,
+    executionSnapshotId: "snapshot-retryable",
+  });
+  await service.failOrchestrationAttempt({
+    logId: retryable.id,
+    errorMessage: "retry later",
+    nextRetryAt: "2026-03-28T13:05:00.000Z",
+  });
+
+  const failed = await service.createLog({
+    manuscriptId: "manuscript-failed",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-2"],
+    orchestrationMaxAttempts: 1,
+  });
+  await service.completeLog({
+    logId: failed.id,
+    executionSnapshotId: "snapshot-failed",
+  });
+  await service.markOrchestrationRunning({
+    logId: failed.id,
+  });
+  await service.failOrchestrationAttempt({
+    logId: failed.id,
+    errorMessage: "exhausted",
+  });
+
+  const retryableView = await api.getLog({ logId: retryable.id });
+  const failedView = await api.getLog({ logId: failed.id });
+
+  assert.equal(retryableView.status, 200);
+  assert.equal(
+    retryableView.body.completion_summary.derived_status,
+    "business_completed_follow_up_retryable",
+  );
+  assert.equal(retryableView.body.completion_summary.business_completed, true);
+  assert.equal(retryableView.body.completion_summary.follow_up_required, true);
+  assert.equal(retryableView.body.completion_summary.fully_settled, false);
+  assert.equal(retryableView.body.completion_summary.attention_required, false);
+
+  assert.equal(failedView.status, 200);
+  assert.equal(
+    failedView.body.completion_summary.derived_status,
+    "business_completed_follow_up_failed",
+  );
+  assert.equal(failedView.body.completion_summary.business_completed, true);
+  assert.equal(failedView.body.completion_summary.follow_up_required, true);
+  assert.equal(failedView.body.completion_summary.fully_settled, false);
+  assert.equal(failedView.body.completion_summary.attention_required, true);
 });
 
 test("agent execution api fails open when runtime binding readiness observation throws unexpectedly", async () => {
@@ -280,6 +397,14 @@ test("agent execution api fails open when runtime binding readiness observation 
   });
 
   assert.equal(created.status, 201);
+  assert.equal(
+    created.body.completion_summary.derived_status,
+    "business_in_progress",
+  );
+  assert.equal(created.body.completion_summary.business_completed, false);
+  assert.equal(created.body.completion_summary.follow_up_required, false);
+  assert.equal(created.body.completion_summary.fully_settled, false);
+  assert.equal(created.body.completion_summary.attention_required, false);
   assert.equal(
     created.body.runtime_binding_readiness.observation_status,
     "failed_open",

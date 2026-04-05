@@ -2493,6 +2493,13 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       id: string;
       status: string;
       knowledge_item_ids: string[];
+      completion_summary: {
+        derived_status: string;
+        business_completed: boolean;
+        follow_up_required: boolean;
+        fully_settled: boolean;
+        attention_required: boolean;
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -2505,6 +2512,14 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(createExecutionLogResponse.status, 201);
     assert.equal(executionLog.status, "running");
     assert.deepEqual(executionLog.knowledge_item_ids, ["knowledge-demo-1"]);
+    assert.equal(
+      executionLog.completion_summary.derived_status,
+      "business_in_progress",
+    );
+    assert.equal(executionLog.completion_summary.business_completed, false);
+    assert.equal(executionLog.completion_summary.follow_up_required, false);
+    assert.equal(executionLog.completion_summary.fully_settled, false);
+    assert.equal(executionLog.completion_summary.attention_required, false);
     assert.equal(
       executionLog.runtime_binding_readiness.observation_status,
       "reported",
@@ -2534,6 +2549,13 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       status: string;
       execution_snapshot_id?: string;
       verification_evidence_ids: string[];
+      completion_summary: {
+        derived_status: string;
+        business_completed: boolean;
+        follow_up_required: boolean;
+        fully_settled: boolean;
+        attention_required: boolean;
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -2552,6 +2574,14 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       "evidence-1",
       "evidence-2",
     ]);
+    assert.equal(
+      completedExecutionLog.completion_summary.derived_status,
+      "business_completed_settled",
+    );
+    assert.equal(completedExecutionLog.completion_summary.business_completed, true);
+    assert.equal(completedExecutionLog.completion_summary.follow_up_required, false);
+    assert.equal(completedExecutionLog.completion_summary.fully_settled, true);
+    assert.equal(completedExecutionLog.completion_summary.attention_required, false);
     assert.equal(
       completedExecutionLog.runtime_binding_readiness.observation_status,
       "reported",
@@ -2572,6 +2602,13 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     const executionLogs = (await listExecutionLogsResponse.json()) as Array<{
       id: string;
       status: string;
+      completion_summary: {
+        derived_status: string;
+        business_completed: boolean;
+        follow_up_required: boolean;
+        fully_settled: boolean;
+        attention_required: boolean;
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -2595,6 +2632,14 @@ test("http server exposes admin agent-tooling governance routes and execution lo
       "reported",
     );
     assert.equal(executionLogs[0]?.runtime_binding_readiness.report?.status, "ready");
+    assert.equal(
+      executionLogs[0]?.completion_summary.derived_status,
+      "business_completed_settled",
+    );
+    assert.equal(executionLogs[0]?.completion_summary.business_completed, true);
+    assert.equal(executionLogs[0]?.completion_summary.follow_up_required, false);
+    assert.equal(executionLogs[0]?.completion_summary.fully_settled, true);
+    assert.equal(executionLogs[0]?.completion_summary.attention_required, false);
 
     const archiveRuntimeResponse = await fetch(
       `${baseUrl}/api/v1/agent-runtime/${runtimeDraft.id}/archive`,

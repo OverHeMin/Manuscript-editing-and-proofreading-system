@@ -1384,6 +1384,13 @@ test("persistent governance runtime keeps agent-tooling governance records acros
         );
         const executionLog = (await executionLogResponse.json()) as {
           id: string;
+          completion_summary: {
+            derived_status: string;
+            business_completed: boolean;
+            follow_up_required: boolean;
+            fully_settled: boolean;
+            attention_required: boolean;
+          };
           runtime_binding_readiness: {
             observation_status: string;
             report?: {
@@ -1394,6 +1401,14 @@ test("persistent governance runtime keeps agent-tooling governance records acros
         };
 
         assert.equal(executionLogResponse.status, 201);
+        assert.equal(
+          executionLog.completion_summary.derived_status,
+          "business_in_progress",
+        );
+        assert.equal(executionLog.completion_summary.business_completed, false);
+        assert.equal(executionLog.completion_summary.follow_up_required, false);
+        assert.equal(executionLog.completion_summary.fully_settled, false);
+        assert.equal(executionLog.completion_summary.attention_required, false);
         assert.equal(
           executionLog.runtime_binding_readiness.observation_status,
           "reported",
@@ -1494,6 +1509,13 @@ test("persistent governance runtime keeps agent-tooling governance records acros
             id: string;
             status: string;
             execution_snapshot_id?: string;
+            completion_summary: {
+              derived_status: string;
+              business_completed: boolean;
+              follow_up_required: boolean;
+              fully_settled: boolean;
+              attention_required: boolean;
+            };
             runtime_binding_readiness: {
               observation_status: string;
               report?: {
@@ -1542,6 +1564,26 @@ test("persistent governance runtime keeps agent-tooling governance records acros
           assert.equal(
             persistedExecutionLog.execution_snapshot_id,
             "persistent-snapshot-1",
+          );
+          assert.equal(
+            persistedExecutionLog.completion_summary.derived_status,
+            "business_completed_settled",
+          );
+          assert.equal(
+            persistedExecutionLog.completion_summary.business_completed,
+            true,
+          );
+          assert.equal(
+            persistedExecutionLog.completion_summary.follow_up_required,
+            false,
+          );
+          assert.equal(
+            persistedExecutionLog.completion_summary.fully_settled,
+            true,
+          );
+          assert.equal(
+            persistedExecutionLog.completion_summary.attention_required,
+            false,
           );
           assert.equal(
             persistedExecutionLog.runtime_binding_readiness.observation_status,

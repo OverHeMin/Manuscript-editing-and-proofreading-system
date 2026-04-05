@@ -14,6 +14,14 @@ export type AgentExecutionOrchestrationStatus =
   | "retryable"
   | "completed"
   | "failed";
+export type AgentExecutionCompletionDerivedStatus =
+  | "business_in_progress"
+  | "business_failed"
+  | "business_completed_follow_up_pending"
+  | "business_completed_follow_up_running"
+  | "business_completed_follow_up_retryable"
+  | "business_completed_follow_up_failed"
+  | "business_completed_settled";
 
 export interface AgentExecutionLogRecord {
   id: string;
@@ -56,6 +64,15 @@ export interface AgentExecutionRuntimeBindingReadinessObservationRecord {
   error?: string;
 }
 
+export interface AgentExecutionCompletionSummaryRecord {
+  derived_status: AgentExecutionCompletionDerivedStatus;
+  business_completed: boolean;
+  follow_up_required: boolean;
+  fully_settled: boolean;
+  attention_required: boolean;
+}
+
 export interface AgentExecutionLogViewRecord extends AgentExecutionLogRecord {
+  completion_summary: AgentExecutionCompletionSummaryRecord;
   runtime_binding_readiness: AgentExecutionRuntimeBindingReadinessObservationRecord;
 }

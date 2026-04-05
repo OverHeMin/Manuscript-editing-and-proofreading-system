@@ -1,4 +1,5 @@
 import type {
+  AgentExecutionCompletionSummaryRecord,
   AgentExecutionLogRecord,
   AgentExecutionLogViewRecord,
   AgentExecutionRuntimeBindingReadinessObservationRecord,
@@ -96,10 +97,93 @@ async function enrichLogView(
     verification_check_profile_ids: [...record.verification_check_profile_ids],
     evaluation_suite_ids: [...record.evaluation_suite_ids],
     verification_evidence_ids: [...record.verification_evidence_ids],
+    completion_summary: deriveCompletionSummary(record),
     runtime_binding_readiness: await observeRuntimeBindingReadiness({
       bindingId: record.runtime_binding_id,
       runtimeBindingReadinessService,
     }),
+  };
+}
+
+function deriveCompletionSummary(
+  record: AgentExecutionLogRecord,
+): AgentExecutionCompletionSummaryRecord {
+  if (record.status === "failed") {
+    return {
+      derived_status: "business_failed",
+      business_completed: false,
+      follow_up_required: false,
+      fully_settled: false,
+      attention_required: true,
+    };
+  }
+
+  if (record.status !== "completed") {
+    return {
+      derived_status: "business_in_progress",
+      business_completed: false,
+      follow_up_required: record.orchestration_status !== "not_required",
+      fully_settled: false,
+      attention_required: false,
+    };
+  }
+
+  if (record.orchestration_status === "not_required") {
+    return {
+      derived_status: "business_completed_settled",
+      business_completed: true,
+      follow_up_required: false,
+      fully_settled: true,
+      attention_required: false,
+    };
+  }
+
+  if (record.orchestration_status === "completed") {
+    return {
+      derived_status: "business_completed_settled",
+      business_completed: true,
+      follow_up_required: true,
+      fully_settled: true,
+      attention_required: false,
+    };
+  }
+
+  if (record.orchestration_status === "pending") {
+    return {
+      derived_status: "business_completed_follow_up_pending",
+      business_completed: true,
+      follow_up_required: true,
+      fully_settled: false,
+      attention_required: false,
+    };
+  }
+
+  if (record.orchestration_status === "running") {
+    return {
+      derived_status: "business_completed_follow_up_running",
+      business_completed: true,
+      follow_up_required: true,
+      fully_settled: false,
+      attention_required: false,
+    };
+  }
+
+  if (record.orchestration_status === "retryable") {
+    return {
+      derived_status: "business_completed_follow_up_retryable",
+      business_completed: true,
+      follow_up_required: true,
+      fully_settled: false,
+      attention_required: false,
+    };
+  }
+
+  return {
+    derived_status: "business_completed_follow_up_failed",
+    business_completed: true,
+    follow_up_required: true,
+    fully_settled: false,
+    attention_required: true,
   };
 }
 
