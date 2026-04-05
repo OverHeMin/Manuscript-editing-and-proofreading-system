@@ -121,7 +121,8 @@ export function formatGovernedExecutionOrchestrationInspectionSummary(
     `not_recoverable=${report.summary.not_recoverable_count} ` +
     `actionable=${report.focus.actionable_count} ` +
     `displayed=${report.focus.displayed_count} ` +
-    `omitted=${report.focus.omitted_count}`
+    `omitted=${report.focus.omitted_count}` +
+    formatGovernedExecutionOrchestrationInspectionPreviewDetails(report)
   );
 }
 
@@ -295,6 +296,7 @@ function resolveInspectionCliOptions(
 ): AgentExecutionOrchestrationInspectionOptions {
   return {
     actionableOnly: args.includes("--actionable-only"),
+    budget: readOptionalIntegerFlag(args, "--budget"),
     limit: readOptionalIntegerFlag(args, "--limit"),
     ...resolveScopeCliOptions(args),
   };
@@ -316,6 +318,22 @@ function resolveScopeCliOptions(
     modules: readRepeatedModuleFlag(args, "--module"),
     logIds: readRepeatedStringFlag(args, "--log-id"),
   };
+}
+
+function formatGovernedExecutionOrchestrationInspectionPreviewDetails(
+  report: AgentExecutionOrchestrationInspectionReport,
+): string {
+  const preview = report.replay_preview;
+  if (preview == null) {
+    return "";
+  }
+
+  return (
+    ` preview_selected=${preview.selected_count}` +
+    ` preview_eligible=${preview.eligible_count}` +
+    ` preview_remaining=${preview.remaining_count}` +
+    ` preview_budget=${preview.budget}`
+  );
 }
 
 function readOptionalIntegerFlag(args: string[], flag: string): number | undefined {

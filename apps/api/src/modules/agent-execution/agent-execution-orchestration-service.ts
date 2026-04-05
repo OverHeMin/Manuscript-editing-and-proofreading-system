@@ -66,15 +66,24 @@ export interface AgentExecutionOrchestrationInspectionFocus {
   limit?: number;
 }
 
+export interface AgentExecutionOrchestrationReplayPreview {
+  budget: number;
+  eligible_count: number;
+  selected_count: number;
+  remaining_count: number;
+}
+
 export interface AgentExecutionOrchestrationInspectionReport {
   summary: AgentExecutionOrchestrationInspectionSummary;
   focus: AgentExecutionOrchestrationInspectionFocus;
+  replay_preview?: AgentExecutionOrchestrationReplayPreview;
   items: AgentExecutionOrchestrationInspectionItem[];
 }
 
 export interface AgentExecutionOrchestrationInspectionOptions
   extends AgentExecutionOrchestrationScopeOptions {
   actionableOnly?: boolean;
+  budget?: number;
   limit?: number;
 }
 
@@ -301,6 +310,7 @@ export class AgentExecutionOrchestrationService {
     const logs = this.scopeLogs(await this.agentExecutionService.listLogs(), options);
     const normalizedLimit =
       options.limit != null ? Math.max(0, Math.trunc(options.limit)) : undefined;
+    const normalizedBudget = normalizeOptionalNonNegativeInteger(options.budget);
     const report: AgentExecutionOrchestrationInspectionReport = {
       summary: {
         total_count: logs.length,
@@ -344,10 +354,23 @@ export class AgentExecutionOrchestrationService {
 
     const sorted = [...items].sort(compareInspectionItems);
     const actionable = sorted.filter((item) => item.category !== "not_recoverable");
+    const replayPreviewBase = actionable.filter((item) =>
+      isReplayPreviewCategory(item.category),
+    );
     report.focus.actionable_count = actionable.length;
 
-    const visibleBase =
+    let visibleBase =
       options.actionableOnly === true ? actionable : sorted;
+    if (normalizedBudget != null) {
+      const selectedPreview = replayPreviewBase.slice(0, normalizedBudget);
+      report.replay_preview = {
+        budget: normalizedBudget,
+        eligible_count: replayPreviewBase.length,
+        selected_count: selectedPreview.length,
+        remaining_count: Math.max(0, replayPreviewBase.length - selectedPreview.length),
+      };
+      visibleBase = selectedPreview;
+    }
     const visible =
       normalizedLimit != null
         ? visibleBase.slice(0, normalizedLimit)
@@ -722,4 +745,10 @@ function inspectionCategoryPriority(
   }
 
   return 4;
+}
+
+function isReplayPreviewCategory(
+  category: AgentExecutionOrchestrationInspectionCategory,
+): boolean {
+  return category === "stale_running" || category === "recoverable_now";
 }

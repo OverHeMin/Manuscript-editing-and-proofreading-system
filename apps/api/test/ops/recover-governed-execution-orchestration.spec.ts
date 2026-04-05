@@ -285,6 +285,7 @@ test("governed execution orchestration dry-run forwards actionable focus options
   let receivedOptions:
     | {
         actionableOnly?: boolean;
+        budget?: number;
         limit?: number;
         modules?: string[];
         logIds?: string[];
@@ -355,12 +356,83 @@ test("governed execution orchestration dry-run forwards actionable focus options
 
   assert.deepEqual(receivedOptions, {
     actionableOnly: true,
+    budget: undefined,
     limit: 2,
     modules: ["editing", "screening"],
     logIds: ["execution-log-4"],
   });
   assert.match(messages[0] ?? "", /displayed=2/i);
   assert.match(messages[0] ?? "", /omitted=1/i);
+});
+
+test("governed execution orchestration dry-run can preview a bounded replay window", async () => {
+  const messages: string[] = [];
+  let receivedOptions:
+    | {
+        actionableOnly?: boolean;
+        budget?: number;
+        limit?: number;
+      }
+    | undefined;
+
+  const inspection: AgentExecutionOrchestrationInspectionReport = {
+    summary: {
+      total_count: 3,
+      recoverable_now_count: 1,
+      stale_running_count: 1,
+      deferred_retry_count: 0,
+      attention_required_count: 1,
+      not_recoverable_count: 0,
+    },
+    focus: {
+      actionable_count: 3,
+      displayed_count: 1,
+      omitted_count: 0,
+      actionable_only: false,
+      limit: undefined,
+    },
+    replay_preview: {
+      budget: 1,
+      eligible_count: 2,
+      selected_count: 1,
+      remaining_count: 1,
+    },
+    items: [
+      {
+        log_id: "execution-log-3",
+        manuscript_id: "manuscript-3",
+        module: "editing",
+        business_status: "completed",
+        orchestration_status: "running",
+        orchestration_attempt_count: 1,
+        orchestration_max_attempts: 3,
+        category: "stale_running",
+        reason: "Running orchestration attempt is stale and reclaimable.",
+      },
+    ],
+  };
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run", "--budget", "1"],
+    createInspectionRunner: async (input) => {
+      receivedOptions = input.inspectionOptions;
+      return inspection;
+    },
+    log: (message) => messages.push(message),
+  });
+
+  assert.equal(receivedOptions?.budget, 1);
+  assert.match(messages[0] ?? "", /preview_budget=1/i);
+  assert.match(messages[0] ?? "", /preview_selected=1/i);
+  assert.match(messages[0] ?? "", /preview_remaining=1/i);
+
+  messages.length = 0;
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run", "--budget", "1", "--json"],
+    createInspectionRunner: async () => inspection,
+    log: (message) => messages.push(message),
+  });
+  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
 });
 
 test("governed execution orchestration replay forwards scoped recovery options", async () => {

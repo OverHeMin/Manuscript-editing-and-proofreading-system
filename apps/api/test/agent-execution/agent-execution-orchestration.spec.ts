@@ -667,6 +667,170 @@ test("budgeted replay aligns with the existing dry-run recoverable priority orde
   assert.equal(recoveredStale.orchestration_attempt_count, 2);
 });
 
+test("inspection can preview the next budgeted replay slice without mutating durable state", async () => {
+  const harness = createOrchestrationHarness();
+  const editingSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
+    name: "Editing Preview Suite",
+  });
+  const screeningSuite = await createActiveSuiteForModule(harness, {
+    module: "screening",
+    name: "Screening Preview Suite",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-pending",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-stale",
+    module: "screening",
+    suiteIds: [screeningSuite.id],
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-2",
+    claimToken: "claim-preview",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-failed",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+    maxAttempts: 1,
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-3",
+    claimToken: "claim-failed",
+  });
+  await harness.agentExecutionService.failOrchestrationAttempt({
+    logId: "execution-log-3",
+    claimToken: "claim-failed",
+    errorMessage: "Exhausted",
+  });
+
+  const report = await harness.orchestrationService.inspectBacklog({
+    budget: 1,
+  });
+
+  assert.deepEqual(report.summary, {
+    total_count: 3,
+    recoverable_now_count: 1,
+    stale_running_count: 1,
+    deferred_retry_count: 0,
+    attention_required_count: 1,
+    not_recoverable_count: 0,
+  });
+  assert.deepEqual(report.focus, {
+    actionable_count: 3,
+    displayed_count: 1,
+    omitted_count: 0,
+    actionable_only: false,
+    limit: undefined,
+  });
+  assert.deepEqual(report.replay_preview, {
+    budget: 1,
+    eligible_count: 2,
+    selected_count: 1,
+    remaining_count: 1,
+  });
+  assert.deepEqual(
+    report.items.map((item) => ({
+      logId: item.log_id,
+      category: item.category,
+    })),
+    [
+      {
+        logId: "execution-log-2",
+        category: "stale_running",
+      },
+    ],
+  );
+
+  const pending = await harness.agentExecutionService.getLog("execution-log-1");
+  assert.equal(pending.orchestration_status, "pending");
+
+  const staleRunning = await harness.agentExecutionService.getLog("execution-log-2");
+  assert.equal(staleRunning.orchestration_status, "running");
+
+  const failed = await harness.agentExecutionService.getLog("execution-log-3");
+  assert.equal(failed.orchestration_status, "failed");
+});
+
+test("inspection budget preview preserves preview counts when display limit trims the preview slice", async () => {
+  const harness = createOrchestrationHarness();
+  const editingSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
+    name: "Editing Preview Limit Suite",
+  });
+  const screeningSuite = await createActiveSuiteForModule(harness, {
+    module: "screening",
+    name: "Screening Preview Limit Suite",
+  });
+  const proofreadingSuite = await createActiveSuiteForModule(harness, {
+    module: "proofreading",
+    name: "Proofreading Preview Limit Suite",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-editing",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-screening",
+    module: "screening",
+    suiteIds: [screeningSuite.id],
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-2",
+    claimToken: "claim-stale",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-proofreading",
+    module: "proofreading",
+    suiteIds: [proofreadingSuite.id],
+  });
+
+  const report = await harness.orchestrationService.inspectBacklog({
+    budget: 2,
+    limit: 1,
+  });
+
+  assert.deepEqual(report.focus, {
+    actionable_count: 3,
+    displayed_count: 1,
+    omitted_count: 1,
+    actionable_only: false,
+    limit: 1,
+  });
+  assert.deepEqual(report.replay_preview, {
+    budget: 2,
+    eligible_count: 3,
+    selected_count: 2,
+    remaining_count: 1,
+  });
+  assert.deepEqual(
+    report.items.map((item) => item.log_id),
+    ["execution-log-2"],
+  );
+});
+
 test("only one orchestration claimant can win the same persisted attempt snapshot", async () => {
   const { agentExecutionService } = await seedPendingExecutionLog();
 
