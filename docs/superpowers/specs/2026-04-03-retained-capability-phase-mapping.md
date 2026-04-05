@@ -194,7 +194,7 @@ This phase does **not** absorb:
 - deployment automation
 - durable execution orchestration
 
-### 4.8 Phase 10J Through Phase 10V: Durable Execution Orchestration Mainline
+### 4.8 Phase 10J Through Phase 10W: Durable Execution Orchestration Mainline
 
 **Primary capability lane:** Execution And Orchestration Platform  
 **Actual landed scope:** the execution/orchestration lane was split into adjacent bounded slices instead of landing under the earlier predicted `10G` label
@@ -214,6 +214,7 @@ The current ownership is:
 - `10T`: summary-level readiness rollup for immediate replay posture and earliest next-ready timing
 - `10U`: additive JSON contract metadata for stable machine-readable replay and inspection consumption
 - `10V`: additive boot-time residual observation aligned with the same read-only readiness model after enabled recovery passes
+- `10W`: additive post-replay residual observation for human recovery output in the same scoped lane, without widening the stabilized json contract
 
 Together these phases now own:
 
@@ -227,12 +228,13 @@ Together these phases now own:
 - summary-level glanceability for immediate replay posture and next blocked readiness time
 - stronger local-first machine-consumption stability for replay and inspection json output
 - better restart-time residual posture evidence immediately after boot recovery, without introducing new mutation authority
+- better manual replay-time residual posture evidence in the same scoped lane, without changing replay semantics or widening json
 
 These phases still do **not** claim full `Temporal`-class workflow depth.
 Deeper multi-node orchestration, hosted schedulers, and broader workflow-engine
 substitution remain future work inside the same capability lane.
 
-### 4.9 Still-Open Retained Capability Lanes After 10V
+### 4.9 Still-Open Retained Capability Lanes After 10W
 
 After reconciling actual landed numbering, two retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
@@ -250,9 +252,9 @@ The repository has now landed the following actual sequence after `10A`:
 3. `10D-10F` harness/governed-dataset/retrieval-support work
 4. `10G-10H` production-hardening continuation
 5. `10I` privacy / OCR advisory baseline
-6. `10J-10V` durable execution-orchestration mainline
+6. `10J-10W` durable execution-orchestration mainline
 
-The practical planning implication after `10V` is:
+The practical planning implication after `10W` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here

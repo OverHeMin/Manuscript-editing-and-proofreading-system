@@ -242,6 +242,7 @@ Web 关键环境变量：
 - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to invoke the same bounded recovery path automatically after persistent server startup. This boot replay is asynchronous and fail-open: startup still succeeds if recovery work later fails.
 - Phase 10Q adds an optional startup-side replay cap: `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET=<positive-integer>` forwards the same recovery `budget` semantics into enabled boot replay. Missing, zero, negative, or invalid values are ignored fail-open, and startup still proceeds normally.
 - Phase 10V extends that same boot lane with one read-only residual summary after a successful boot replay pass, so startup logs also show remaining `actionable`, readiness rollup, and optional `next_ready_at` posture. Residual inspection failures degrade to a separate fail-open log and do not block startup.
+- Phase 10W extends the same manual replay lane for human operators: after a successful `recover:governed-orchestration` replay, the CLI now prints one residual summary for the same scope using the existing read-only readiness model. This residual observation ignores replay `budget`, degrades fail-open if inspection itself fails, and intentionally leaves `--json` output unchanged in this phase.
 
 ### 5.6 Post-deploy health confirmation
 

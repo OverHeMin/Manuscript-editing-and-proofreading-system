@@ -258,6 +258,149 @@ test("governed execution orchestration recovery cli prints json and human summar
   );
 });
 
+test("governed execution orchestration replay prints a residual backlog summary for the same scope", async () => {
+  const messages: string[] = [];
+  let receivedInspectionOptions:
+    | {
+        actionableOnly?: boolean;
+        budget?: number;
+        limit?: number;
+        modules?: string[];
+        logIds?: string[];
+      }
+    | undefined;
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: [
+      "--budget",
+      "2",
+      "--module",
+      "editing",
+      "--module",
+      "screening",
+      "--log-id",
+      "execution-log-2",
+    ],
+    createRecoveryRunner: async () => ({
+      processed_count: 1,
+      completed_count: 1,
+      retryable_count: 0,
+      failed_count: 0,
+      deferred_count: 1,
+      eligible_count: 3,
+      remaining_count: 2,
+      budget: 2,
+    }),
+    createInspectionRunner: async (input) => {
+      receivedInspectionOptions = input.inspectionOptions;
+      return {
+        summary: {
+          total_count: 4,
+          recoverable_now_count: 1,
+          stale_running_count: 1,
+          deferred_retry_count: 1,
+          attention_required_count: 1,
+          not_recoverable_count: 0,
+        },
+        focus: {
+          actionable_count: 4,
+          displayed_count: 0,
+          omitted_count: 0,
+          actionable_only: false,
+          limit: undefined,
+        },
+        readiness_summary: {
+          ready_now_count: 2,
+          waiting_retry_eligibility_count: 1,
+          waiting_running_timeout_count: 1,
+          next_ready_at: "2026-04-05T09:06:00.000Z",
+        },
+        items: [],
+      };
+    },
+    log: (message) => messages.push(message),
+  });
+
+  assert.deepEqual(receivedInspectionOptions, {
+    actionableOnly: false,
+    budget: undefined,
+    limit: undefined,
+    modules: ["editing", "screening"],
+    logIds: ["execution-log-2"],
+  });
+  assert.deepEqual(messages, [
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=1 eligible=3 remaining=2 budget=2",
+    "[api] governed execution orchestration recovery residual total=4 recoverable_now=1 stale_running=1 deferred_retry=1 attention_required=1 not_recoverable=0 actionable=4 ready_now=2 waiting_retry_eligibility=1 waiting_running_timeout=1 next_ready_at=2026-04-05T09:06:00.000Z",
+  ]);
+});
+
+test("governed execution orchestration replay keeps residual observation fail-open", async () => {
+  const messages: string[] = [];
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    createRecoveryRunner: async () => ({
+      processed_count: 1,
+      completed_count: 1,
+      retryable_count: 0,
+      failed_count: 0,
+      deferred_count: 0,
+    }),
+    createInspectionRunner: async () => {
+      throw new Error("Synthetic residual inspection failure");
+    },
+    log: (message) => messages.push(message),
+  });
+
+  assert.deepEqual(messages, [
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=0",
+    "[api] governed execution orchestration recovery residual observation failed-open: Synthetic residual inspection failure",
+  ]);
+});
+
+test("governed execution orchestration replay json output stays unchanged and skips residual observation", async () => {
+  const messages: string[] = [];
+  let inspectionCalled = false;
+  const summary = {
+    processed_count: 2,
+    completed_count: 1,
+    retryable_count: 1,
+    failed_count: 0,
+    deferred_count: 3,
+  };
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--json"],
+    createRecoveryRunner: async () => summary,
+    createInspectionRunner: async () => {
+      inspectionCalled = true;
+      return {
+        summary: {
+          total_count: 0,
+          recoverable_now_count: 0,
+          stale_running_count: 0,
+          deferred_retry_count: 0,
+          attention_required_count: 0,
+          not_recoverable_count: 0,
+        },
+        focus: {
+          actionable_count: 0,
+          displayed_count: 0,
+          omitted_count: 0,
+          actionable_only: false,
+          limit: undefined,
+        },
+        items: [],
+      };
+    },
+    log: (message) => messages.push(message),
+  });
+
+  assert.equal(inspectionCalled, false);
+  assert.deepEqual(messages, [
+    JSON.stringify(withExpectedRecoveryJsonMetadata(summary), null, 2),
+  ]);
+});
+
 test("governed execution orchestration recovery summary appends budget details when present", async () => {
   assert.equal(
     formatGovernedExecutionOrchestrationRecoverySummary({
@@ -624,6 +767,15 @@ test("governed execution orchestration replay forwards scoped recovery options",
         logIds?: string[];
       }
     | undefined;
+  let receivedInspectionOptions:
+    | {
+        actionableOnly?: boolean;
+        budget?: number;
+        limit?: number;
+        modules?: string[];
+        logIds?: string[];
+      }
+    | undefined;
 
   await runGovernedExecutionOrchestrationRecoveryCli({
     args: [
@@ -648,6 +800,27 @@ test("governed execution orchestration replay forwards scoped recovery options",
         deferred_count: 0,
       };
     },
+    createInspectionRunner: async (input) => {
+      receivedInspectionOptions = input.inspectionOptions;
+      return {
+        summary: {
+          total_count: 1,
+          recoverable_now_count: 0,
+          stale_running_count: 0,
+          deferred_retry_count: 0,
+          attention_required_count: 1,
+          not_recoverable_count: 0,
+        },
+        focus: {
+          actionable_count: 1,
+          displayed_count: 0,
+          omitted_count: 0,
+          actionable_only: false,
+          limit: undefined,
+        },
+        items: [],
+      };
+    },
     log: (message) => messages.push(message),
   });
 
@@ -656,5 +829,13 @@ test("governed execution orchestration replay forwards scoped recovery options",
     modules: ["editing", "proofreading"],
     logIds: ["execution-log-1", "execution-log-3"],
   });
+  assert.deepEqual(receivedInspectionOptions, {
+    actionableOnly: false,
+    budget: undefined,
+    limit: undefined,
+    modules: ["editing", "proofreading"],
+    logIds: ["execution-log-1", "execution-log-3"],
+  });
   assert.match(messages[0] ?? "", /processed=1/i);
+  assert.match(messages[1] ?? "", /recovery residual/i);
 });
