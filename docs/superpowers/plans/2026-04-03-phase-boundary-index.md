@@ -113,6 +113,9 @@ delivered through one cleanly isolated branch or one PR with the same name.
   execution/orchestration lane: it adds per-log recovery posture visibility on
   the existing execution-log read path without reopening replay authority,
   queue-control, or orchestration-core work.
+- Treat `Phase 11` itself as closed at `11G`: any future runtime-platform or
+  execution/orchestration deepening should use a fresh post-11 phase label
+  rather than extending the current `11` letter stream.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.
@@ -124,5 +127,6 @@ delivered through one cleanly isolated branch or one PR with the same name.
 
 - `2026-04-03-phase4-7b-8-boundary-reconciliation.md`
 - `2026-04-05-phase10-closeout-anti-drift-review.md`
+- `2026-04-06-phase11-closeout-anti-drift-review.md`
 - `README.md`
 - `docs/OPERATIONS.md`

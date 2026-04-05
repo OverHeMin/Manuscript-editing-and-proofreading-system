@@ -371,6 +371,10 @@ silently mapped back onto already-used phase numbers:
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
 - broader `Execution And Orchestration Platform` deepening beyond `10J-10W` and `11F-11G` execution-log read-model visibility
 
+This means the capability lanes remain open, but `Phase 11` itself does not.
+Any future work on those lanes should open under a fresh post-`11` label rather
+than continuing with `11H+`.
+
 ## 5. Recommended Sequence
 
 The repository has now landed the following actual sequence after `10A`:
@@ -396,6 +400,8 @@ The practical planning implication after `11G` is:
 - assign any remaining retained capability line a fresh adjacent label when it becomes active again
 - treat `Phase 10` itself as closed through `10W`, so any further orchestration
   deepening or new retained-capability work opens under a new phase label
+- treat `Phase 11` itself as closed through `11G`, so any further runtime-platform
+  or execution/orchestration deepening also opens under a fresh post-`11` label
 - treat `11A-11E` as narrow runtime-platform safety/visibility slices, not as
   permission to reopen workbench or control-plane expansion under the same lane
 - treat `11F-11G` as narrow execution/orchestration read-model slices, not as
