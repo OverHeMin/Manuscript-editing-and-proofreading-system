@@ -126,6 +126,7 @@ API 关键环境变量：
 - `DATABASE_ADMIN_URL`
 - `UPLOAD_ROOT_DIR`
 - `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT` (optional)
+- `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET` (optional)
 - `REDIS_URL`
 - `OBJECT_STORAGE_*`
 - `ONLYOFFICE_*`
@@ -235,6 +236,7 @@ Web 关键环境变量：
 - Phase 10K adds a single-owner orchestration attempt claim guard on top of that recovery path. If boot replay, manual recovery, or best-effort dispatch overlap on the same log, only one claimant wins the durable attempt token; losing paths degrade to no-op instead of double-writing orchestration completion.
 - For machine-readable output, run `pnpm --filter @medical/api run recover:governed-orchestration -- --json`, or pair it with `-- --dry-run --json` for read-only backlog inspection output. `--budget <n>` applies to replay mode, while `--actionable-only`, `--limit <n>`, repeatable `--module <module>`, and repeatable `--log-id <execution-log-id>` can be combined with the same dry-run JSON mode.
 - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to invoke the same bounded recovery path automatically after persistent server startup. This boot replay is asynchronous and fail-open: startup still succeeds if recovery work later fails.
+- Phase 10Q adds an optional startup-side replay cap: `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET=<positive-integer>` forwards the same recovery `budget` semantics into enabled boot replay. Missing, zero, negative, or invalid values are ignored fail-open, and startup still proceeds normally.
 
 ### 5.6 Post-deploy health confirmation
 

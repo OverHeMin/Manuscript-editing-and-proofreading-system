@@ -16,6 +16,7 @@ import {
 import {
   formatGovernedExecutionOrchestrationRecoverySummary,
   runPersistentGovernedExecutionOrchestrationRecovery,
+  type AgentExecutionOrchestrationRecoveryOptions,
   type AgentExecutionOrchestrationRecoverySummary,
 } from "../ops/recover-governed-execution-orchestration.ts";
 import {
@@ -73,6 +74,7 @@ export interface StartPersistentServerOptions<
   }) => Promise<void>;
   runGovernedExecutionOrchestrationRecovery?: (input: {
     env: NodeJS.ProcessEnv;
+    recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
   log?: (message: string) => void;
 }
@@ -80,6 +82,8 @@ export interface StartPersistentServerOptions<
 const appRoot = path.resolve(import.meta.dirname, "../..");
 const GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_ENV =
   "AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT";
+const GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET_ENV =
+  "AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET";
 
 export async function startPersistentServer<
   TServer = ApiHttpServer,
@@ -190,7 +194,7 @@ export async function startPersistentServer<
         ((input) =>
           runPersistentGovernedExecutionOrchestrationRecovery(input.env, {
             loadEnvDefaults: () => undefined,
-          })),
+          }, input.recoveryOptions)),
     });
 
     return {
@@ -227,16 +231,21 @@ function scheduleGovernedExecutionOrchestrationRecoveryOnBoot(input: {
   log: (message: string) => void;
   runRecovery: (input: {
     env: NodeJS.ProcessEnv;
+    recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
 }): void {
   if (!isGovernedExecutionOrchestrationRecoveryOnBootEnabled(input.env)) {
     return;
   }
 
+  const recoveryOptions =
+    resolveGovernedExecutionOrchestrationRecoveryOnBootOptions(input.env);
+
   setTimeout(() => {
     void input
       .runRecovery({
         env: input.env,
+        recoveryOptions,
       })
       .then((summary) => {
         input.log(formatGovernedExecutionOrchestrationRecoverySummary(summary));
@@ -256,6 +265,39 @@ function isGovernedExecutionOrchestrationRecoveryOnBootEnabled(
     env[GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_ENV]?.trim().toLowerCase();
 
   return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function resolveGovernedExecutionOrchestrationRecoveryOnBootOptions(
+  env: NodeJS.ProcessEnv,
+): AgentExecutionOrchestrationRecoveryOptions | undefined {
+  const budget = readOptionalPositiveIntegerEnv(
+    env,
+    GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET_ENV,
+  );
+  if (budget == null) {
+    return undefined;
+  }
+
+  return {
+    budget,
+  };
+}
+
+function readOptionalPositiveIntegerEnv(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): number | undefined {
+  const rawValue = env[key]?.trim();
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
 }
 
 function formatError(error: unknown): string {

@@ -217,6 +217,125 @@ test("persistent server bootstrap can schedule fail-open governed orchestration 
   ]);
 });
 
+test("persistent server bootstrap forwards a bounded boot recovery budget when configured", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  await startPersistentServer({
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "true",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET: "2",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }) => ({
+      status: "ready",
+      components: {
+        runtimeContract: { status: "ok" },
+        database: { status: "ok" },
+        uploadRoot: { status: "ok", path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async ({ env, recoveryOptions }) => {
+      callLog.push(
+        `recovery:${env.APP_ENV}:budget=${String(recoveryOptions?.budget)}`,
+      );
+      return {
+        processed_count: 1,
+        completed_count: 1,
+        retryable_count: 0,
+        failed_count: 0,
+        deferred_count: 0,
+        eligible_count: 3,
+        remaining_count: 2,
+        budget: 2,
+      };
+    },
+    log: (message) => {
+      callLog.push(message);
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "recovery:development:budget=2",
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=0 eligible=3 remaining=2 budget=2",
+  ]);
+});
+
+test("persistent server bootstrap ignores invalid boot recovery budget values fail-open", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  await startPersistentServer({
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "true",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET: "invalid",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }) => ({
+      status: "ready",
+      components: {
+        runtimeContract: { status: "ok" },
+        database: { status: "ok" },
+        uploadRoot: { status: "ok", path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async ({ env, recoveryOptions }) => {
+      callLog.push(
+        `recovery:${env.APP_ENV}:budget=${String(recoveryOptions?.budget)}`,
+      );
+      return {
+        processed_count: 2,
+        completed_count: 1,
+        retryable_count: 1,
+        failed_count: 0,
+        deferred_count: 0,
+      };
+    },
+    log: (message) => {
+      callLog.push(message);
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "recovery:development:budget=undefined",
+    "[api] governed execution orchestration recovery processed=2 completed=1 retryable=1 failed=0 deferred=0",
+  ]);
+});
+
 test("persistent server bootstrap keeps startup healthy when boot recovery fails", async () => {
   const callLog: string[] = [];
   const fakePool = {

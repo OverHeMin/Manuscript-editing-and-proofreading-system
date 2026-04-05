@@ -96,6 +96,7 @@
   - Retryable logs now honor a bounded next-eligible retry timestamp, so recovery only replays work that is actually due.
   - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
   - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
+  - Optionally set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET=<positive-integer>` to cap each boot replay pass to the next bounded eligible slice. Missing or invalid values are ignored fail-open.
 5. 启动本地 demo API
    `pnpm --filter @medical/api run serve:demo`
 6. 启动 PostgreSQL 持久化 API
@@ -211,6 +212,7 @@
 - `Phase 10N` adds bounded replay scoping to the same repo-owned lane. Operators can repeat `--module <module>` and `--log-id <execution-log-id>` to inspect or replay only a narrow subset of logs, while all existing retry-eligibility, stale-running, and terminal-failure protections stay unchanged.
 - `Phase 10O` adds bounded replay budgeting to the same repo-owned lane. Operators can ask recovery to process only the next `n` eligible scoped logs via `--budget <n>`, while the summary reports scoped eligible-versus-remaining backlog counts and all existing recoverability protections stay unchanged.
 - `Phase 10P` aligns budgeted replay ordering with the existing recoverable-priority model already visible in dry-run categories, so stale-running reclaim work is consumed before plain recoverable-now work when a replay budget is supplied.
+- `Phase 10Q` extends the same semantics to startup wiring: if boot recovery is enabled, operators may optionally bound each auto-recovery pass with `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET`, while invalid values degrade to the prior full-pass boot behavior.
 - Admin Governance 只新增 read-only orchestration 观测字段，不获得新的写控制权；Evaluation Workbench 仍然只是 evidence surface，不成为 routing 或 release control plane。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
   当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。

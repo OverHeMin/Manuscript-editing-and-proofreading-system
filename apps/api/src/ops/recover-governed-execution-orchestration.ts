@@ -75,6 +75,7 @@ const appRoot = path.resolve(import.meta.dirname, "../..");
 
 export type {
   AgentExecutionOrchestrationInspectionReport,
+  AgentExecutionOrchestrationRecoveryOptions,
   AgentExecutionOrchestrationRecoverySummary,
 };
 
