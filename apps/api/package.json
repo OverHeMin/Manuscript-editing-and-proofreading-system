@@ -12,6 +12,7 @@
     "serve:demo": "tsx ./src/http/dev-server.ts",
     "serve:persistent": "tsx ./src/http/prod-server.ts",
     "preflight:persistent": "tsx ./src/ops/persistent-startup-preflight.ts",
+    "recover:governed-orchestration": "tsx ./src/ops/recover-governed-execution-orchestration.ts",
     "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",

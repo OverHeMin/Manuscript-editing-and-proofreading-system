@@ -1,6 +1,9 @@
 import type { SnapshotCapableRepository } from "../shared/write-transaction-manager.ts";
 import type { AgentExecutionLogRecord } from "./agent-execution-record.ts";
-import type { AgentExecutionRepository } from "./agent-execution-repository.ts";
+import type {
+  AgentExecutionRepository,
+  SaveIfOrchestrationStateMatchesInput,
+} from "./agent-execution-repository.ts";
 
 function cloneRecord(record: AgentExecutionLogRecord): AgentExecutionLogRecord {
   return {
@@ -9,6 +12,13 @@ function cloneRecord(record: AgentExecutionLogRecord): AgentExecutionLogRecord {
     verification_check_profile_ids: [...record.verification_check_profile_ids],
     evaluation_suite_ids: [...record.evaluation_suite_ids],
     verification_evidence_ids: [...record.verification_evidence_ids],
+    orchestration_last_error: record.orchestration_last_error,
+    orchestration_last_attempt_started_at:
+      record.orchestration_last_attempt_started_at,
+    orchestration_last_attempt_finished_at:
+      record.orchestration_last_attempt_finished_at,
+    orchestration_attempt_claim_token: record.orchestration_attempt_claim_token,
+    orchestration_next_retry_at: record.orchestration_next_retry_at,
   };
 }
 
@@ -32,6 +42,33 @@ export class InMemoryAgentExecutionRepository
 
   async save(record: AgentExecutionLogRecord): Promise<void> {
     this.records.set(record.id, cloneRecord(record));
+  }
+
+  async saveIfOrchestrationStateMatches(
+    input: SaveIfOrchestrationStateMatchesInput,
+  ): Promise<AgentExecutionLogRecord | undefined> {
+    const existing = this.records.get(input.record.id);
+    if (!existing) {
+      return undefined;
+    }
+
+    if (
+      existing.orchestration_status !== input.expected.orchestration_status ||
+      existing.orchestration_attempt_count !==
+        input.expected.orchestration_attempt_count ||
+      existing.orchestration_last_attempt_started_at !==
+        input.expected.orchestration_last_attempt_started_at ||
+      existing.orchestration_next_retry_at !==
+        input.expected.orchestration_next_retry_at ||
+      existing.orchestration_attempt_claim_token !==
+        input.expected.orchestration_attempt_claim_token
+    ) {
+      return undefined;
+    }
+
+    const cloned = cloneRecord(input.record);
+    this.records.set(input.record.id, cloned);
+    return cloneRecord(cloned);
   }
 
   async findById(id: string): Promise<AgentExecutionLogRecord | undefined> {

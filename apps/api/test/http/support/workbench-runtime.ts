@@ -14,6 +14,7 @@ import { InMemoryAuditService } from "../../../src/audit/audit-service.ts";
 import { PermissionGuard } from "../../../src/auth/permission-guard.ts";
 import { DocumentAssetService } from "../../../src/modules/assets/document-asset-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../../src/modules/assets/in-memory-document-asset-repository.ts";
+import { AgentExecutionOrchestrationService } from "../../../src/modules/agent-execution/agent-execution-orchestration-service.ts";
 import { AgentExecutionService } from "../../../src/modules/agent-execution/agent-execution-service.ts";
 import { InMemoryAgentExecutionRepository } from "../../../src/modules/agent-execution/in-memory-agent-execution-repository.ts";
 import { AgentProfileService } from "../../../src/modules/agent-profiles/agent-profile-service.ts";
@@ -278,6 +279,13 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     createId: () => nextId("evaluation-run"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
+  const agentExecutionOrchestrationService =
+    new AgentExecutionOrchestrationService({
+      agentExecutionService,
+      executionTrackingService,
+      verificationOpsService,
+      now: () => new Date("2026-03-31T08:05:00.000Z"),
+    });
 
   seedWorkbenchGovernance({
     manuscriptRepository,
@@ -349,7 +357,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
-        verificationOpsService,
+        agentExecutionOrchestrationService,
         createId: () => nextId("job-screening"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -372,7 +380,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
-        verificationOpsService,
+        agentExecutionOrchestrationService,
         createId: () => nextId("job-editing"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -395,7 +403,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         runtimeBindingService,
         toolPermissionPolicyService,
         agentExecutionService,
-        verificationOpsService,
+        agentExecutionOrchestrationService,
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),

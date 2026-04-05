@@ -58,7 +58,8 @@
 - `apps/api` 已经有真实可运行的 HTTP 服务
 - `apps/api run serve` 已经能持久化稿件上传、资产读取、作业查询、当前资产导出，以及 screening / editing / proofreading 的受治理执行
 - `apps/api run serve` 已经能持久化 learning review 的 reviewed-case snapshots、人工反馈记录、governed provenance，knowledge review 的队列 / 历史治理数据，以及 verification-ops 的 sample sets / check profiles / suites / runs / evidence packs
-- `apps/api run serve` 现在会在 screening / editing / proofreading-final 成功后内联执行 seeded governed verification checks，并把 machine evidence 同时挂到 evaluation run 与 agent execution log；失败会落在 governed run 上，不会回滚已经产出的模块输出
+- `apps/api run serve` 现在会在 screening / editing / proofreading-final 业务成功后触发 best-effort 的 governed verification orchestration：business completion 与 orchestration completion 已拆分，agent execution log 会持久化 orchestration lifecycle / attempt / error 元数据，成功时把 machine evidence 挂到 evaluation run 与 agent execution log，失败时只把 orchestration 标成 `retryable` / `failed`，不会回滚已经产出的模块输出
+- `Phase 10K` 在此基础上进一步补齐 single-owner orchestration attempt claim guardrails：并发的 best-effort dispatch、手动 recovery、boot recovery 不会同时赢下同一条 follow-up attempt；旧 owner 的迟到写回会 fail-open 成 no-op，不会覆盖较新的 reclaim owner
 - `apps/api` 的稿件 intake 路由已经支持 `fileContentBase64` 直传，本地文件默认写入 `.local-data/uploads/<app-env>`，也可通过 `UPLOAD_ROOT_DIR` 改到独立数据目录
 - `apps/web` 里的 admin-console 已经能加载治理数据、管理 agent-tooling 注册表/策略/绑定，并下钻查看 execution snapshot 与知识命中证据，不再是纯占位页
 - `apps/web` 里的 admin-console 现在还可以把 Recent Agent Executions 直接下钻到 manuscript、job 与 created asset 输出明细，并通过状态筛选/搜索快速聚焦 running / failed / completed 执行，方便治理台追踪运行结果
@@ -86,6 +87,12 @@
    `pnpm --filter @medical/api run smoke:boot`
 4. 在启动 persistent API 前执行共享 preflight
    `pnpm --filter @medical/api run preflight:persistent`
+   - If you need to replay pending, retryable, or stale-running governed follow-up orchestration after a restart or operator intervention, run `pnpm --filter @medical/api run recover:governed-orchestration`.
+   - If you need to inspect the same governed orchestration backlog without mutating it first, run `pnpm --filter @medical/api run recover:governed-orchestration -- --dry-run`.
+   - Add `-- --dry-run --actionable-only --limit <n>` to narrow the same read-only view down to the highest-priority actionable backlog items first.
+   - Retryable logs now honor a bounded next-eligible retry timestamp, so recovery only replays work that is actually due.
+   - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
+   - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
 5. 启动本地 demo API
    `pnpm --filter @medical/api run serve:demo`
 6. 启动 PostgreSQL 持久化 API
@@ -188,7 +195,17 @@
 - 模型执行治理、评测与路由策略联动
   已具备模型注册表、路由策略、runtime binding、verification expectations、governed evaluation run seeding 与 Phase 9T 的 inline check execution 基础联动，但更自动的策略执行与跨层编排仍需继续完善。
 - agent 执行编排、运行证据与更深层治理运营能力
-  已具备 execution log、execution snapshot、knowledge-hit evidence、Recent Agent Executions triage 与 admin evidence drilldown，但仍缺少更成熟的异步编排、恢复机制与更深层运维能力。
+  已具备 execution log、execution snapshot、knowledge-hit evidence、Recent Agent Executions triage、admin evidence drilldown，以及 Phase 10J 的 durable orchestration baseline（重启安全、有限重试、恢复状态、只读观测）；更深层队列化 worker、自动化 release orchestration 与跨系统 operations control plane 仍不在当前范围。
+
+## Durable Execution Orchestration Baseline (Phase 10J)
+
+- `AgentExecutionLog.status` 继续表示业务执行生命周期；新增 orchestration lifecycle 只表示 business commit 之后的 governed follow-up 状态。
+- `verification-ops` 对同一 governed source + suite 的 seeded run 现已做幂等复用，避免恢复/重放时重复造 run。
+- `screening` / `editing` / `proofreading-final` 现在在业务事务完成后做 best-effort orchestration dispatch；失败会保留业务完成结果，并把 orchestration 标记为 `retryable` / `failed`，并在 retryable 状态下记录 bounded next-retry eligibility。
+- orchestration running state 现在还会携带一个内部 attempt claim token，用于 repo-owned compare-and-swap claim/finalize guard；它只服务 durable execution safety，不成为新的 operator control plane 或 write surface。
+- `Phase 10L` adds a repo-owned dry-run inspection mode on top of the same orchestration rules, so operators can see `recoverable_now` / `deferred_retry` / `stale_running` / `attention_required` / `not_recoverable` backlog state before choosing to replay recovery.
+- `Phase 10M` adds bounded actionable focus ordering to that dry-run lane. Operators can keep the full summary counts while asking for `--actionable-only` and `--limit <n>` so the CLI shows the most urgent replay candidates first without turning into a new orchestration control plane.
+- Admin Governance 只新增 read-only orchestration 观测字段，不获得新的写控制权；Evaluation Workbench 仍然只是 evidence surface，不成为 routing 或 release control plane。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
   当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。
 - 更深的 Evaluation Workbench 运营能力

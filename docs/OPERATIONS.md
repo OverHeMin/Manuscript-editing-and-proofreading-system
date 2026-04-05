@@ -42,6 +42,7 @@
 - Runtime Binding Registry
 - Tool Permission Policy Registry
 - Agent Execution 日志
+  - 当前已包含业务 `status` 之外的 orchestration lifecycle / attempt / error 元数据，用于 Phase 10J 的 durable follow-up recovery baseline
 - 执行治理配置
 - 执行追踪快照
 - 知识命中日志
@@ -78,6 +79,7 @@
 - Tool Permission Policy、Runtime Binding
 - execution bundle preview、最近 Agent Execution 日志查看，以及 execution snapshot / knowledge-hit 证据下钻
 - Recent Agent Executions 对应的 manuscript / job / created asset 输出下钻、跳转到对应 workbench / 下载可导出资产，以及按状态筛选/搜索的执行分诊
+- Agent Execution 证据下钻里的 orchestration read model：只读显示 lifecycle、attempt 计数、最近错误与最近尝试时间，不提供新的调度/发布控制动作
 
 ## 3. 本地依赖服务
 
@@ -123,6 +125,7 @@ API 关键环境变量：
 - `DATABASE_URL`
 - `DATABASE_ADMIN_URL`
 - `UPLOAD_ROOT_DIR`
+- `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT` (optional)
 - `REDIS_URL`
 - `OBJECT_STORAGE_*`
 - `ONLYOFFICE_*`
@@ -213,6 +216,7 @@ Web 关键环境变量：
 ### 5.5 持久化启动前验证
 
 - `pnpm --filter @medical/api run preflight:persistent`
+- `pnpm --filter @medical/api run recover:governed-orchestration`
 - `pnpm --filter @medical/api run db:migrate`
 - `pnpm --filter @medical/api run serve`
 
@@ -221,6 +225,13 @@ Web 关键环境变量：
 - `preflight:persistent` 与 `serve` 复用同一套 persistent runtime contract 与 startup preflight，不允许再依赖第二套口头校验路径。
 - `serve` 会在 listen 前完成 contract 解析、数据库可达性检查和 upload root 可写性检查；任一失败都应直接阻断启动。
 - `APP_ENV=staging|production` 时必须替换 `ONLYOFFICE_JWT_SECRET=change-me-in-prod`，否则 preflight 会失败。
+- `recover:governed-orchestration` is the local, repo-owned Phase 10J recovery command. It only replays pending, retryable, or stale-running orchestration work and does not roll back completed business assets, become a routing control plane, or trigger release / learning writeback automation.
+- `recover:governed-orchestration -- --dry-run` is the matching Phase 10L inspection path. It is read-only and reports current backlog categories such as `recoverable_now`, `deferred_retry`, `stale_running`, `attention_required`, and `not_recoverable` before any replay is attempted.
+- Phase 10M extends that dry-run path with bounded focus controls: `--actionable-only` hides `not_recoverable` rows from the item list, and `--limit <n>` keeps the output focused on the top `n` actionable items while preserving the full summary counts.
+- Retryable logs are replayed only after their bounded `orchestration_next_retry_at` eligibility is reached; repeated manual recovery before that time is a no-op by design.
+- Phase 10K adds a single-owner orchestration attempt claim guard on top of that recovery path. If boot replay, manual recovery, or best-effort dispatch overlap on the same log, only one claimant wins the durable attempt token; losing paths degrade to no-op instead of double-writing orchestration completion.
+- For machine-readable output, run `pnpm --filter @medical/api run recover:governed-orchestration -- --json`, or pair it with `-- --dry-run --json` for read-only backlog inspection output. `--actionable-only` and `--limit <n>` can be combined with the same dry-run JSON mode.
+- Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to invoke the same bounded recovery path automatically after persistent server startup. This boot replay is asynchronous and fail-open: startup still succeeds if recovery work later fails.
 
 ### 5.6 Post-deploy health confirmation
 

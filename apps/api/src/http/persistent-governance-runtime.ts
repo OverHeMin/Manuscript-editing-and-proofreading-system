@@ -9,6 +9,7 @@ import {
   PostgresAgentProfileRepository,
 } from "../modules/agent-profiles/index.ts";
 import {
+  AgentExecutionOrchestrationService,
   AgentExecutionService,
   createAgentExecutionApi,
   PostgresAgentExecutionRepository,
@@ -399,6 +400,12 @@ export function createPersistentGovernanceRuntime(
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
   });
+  const agentExecutionOrchestrationService =
+    new AgentExecutionOrchestrationService({
+      agentExecutionService,
+      executionTrackingService,
+      verificationOpsService,
+    });
   const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
     repository: modelRoutingGovernanceRepository,
     modelRegistryRepository,
@@ -502,7 +509,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
     transactionManager: workbenchTransactionManager,
   });
   const editingService = new EditingService({
@@ -522,7 +529,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
     transactionManager: workbenchTransactionManager,
   });
   const proofreadingService = new ProofreadingService({
@@ -542,7 +549,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
     transactionManager: workbenchTransactionManager,
   });
 

@@ -30,6 +30,9 @@ test("postgres agent execution repository persists running and completed logs", 
         release_check_profile_id: "release-profile-1",
         verification_evidence_ids: [],
         status: "running",
+        orchestration_status: "pending",
+        orchestration_attempt_count: 0,
+        orchestration_max_attempts: 3,
         started_at: "2026-03-30T08:00:00.000Z",
       });
       await repository.save({
@@ -55,6 +58,14 @@ test("postgres agent execution repository persists running and completed logs", 
         release_check_profile_id: "release-profile-1",
         verification_evidence_ids: ["evidence-1"],
         status: "completed",
+        orchestration_status: "retryable",
+        orchestration_attempt_count: 1,
+        orchestration_max_attempts: 3,
+        orchestration_last_error: "governed follow-up failed",
+        orchestration_last_attempt_started_at: "2026-03-30T08:05:30.000Z",
+        orchestration_last_attempt_finished_at: "2026-03-30T08:06:00.000Z",
+        orchestration_attempt_claim_token: "claim-1",
+        orchestration_next_retry_at: "2026-03-30T08:07:00.000Z",
         started_at: "2026-03-30T08:00:00.000Z",
         finished_at: "2026-03-30T08:05:00.000Z",
       });
@@ -85,6 +96,23 @@ test("postgres agent execution repository persists running and completed logs", 
       assert.deepEqual(loaded?.evaluation_suite_ids, ["suite-1"]);
       assert.equal(loaded?.release_check_profile_id, "release-profile-1");
       assert.deepEqual(loaded?.verification_evidence_ids, ["evidence-1"]);
+      assert.equal(loaded?.orchestration_status, "retryable");
+      assert.equal(loaded?.orchestration_attempt_count, 1);
+      assert.equal(loaded?.orchestration_max_attempts, 3);
+      assert.equal(loaded?.orchestration_last_error, "governed follow-up failed");
+      assert.equal(
+        loaded?.orchestration_last_attempt_started_at,
+        "2026-03-30T08:05:30.000Z",
+      );
+      assert.equal(
+        loaded?.orchestration_last_attempt_finished_at,
+        "2026-03-30T08:06:00.000Z",
+      );
+      assert.equal(loaded?.orchestration_attempt_claim_token, "claim-1");
+      assert.equal(
+        loaded?.orchestration_next_retry_at,
+        "2026-03-30T08:07:00.000Z",
+      );
       assert.deepEqual(list.map((record) => record.id), ["log-1"]);
     } finally {
       await pool.end();

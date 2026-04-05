@@ -321,3 +321,43 @@ test("governed run execution rejects runs that are no longer queued", async () =
       }),
   );
 });
+
+test("seeded governed runs reuse an existing run for the same governed source and suite", async () => {
+  const {
+    verificationOpsService,
+    checkProfile1,
+  } = await createPublishedCheckProfiles();
+
+  const suite = await verificationOpsService.createEvaluationSuite("admin", {
+    name: "Governed Reuse Suite",
+    suiteType: "regression",
+    verificationCheckProfileIds: [checkProfile1.id],
+    moduleScope: ["editing"],
+  });
+  const activeSuite = await verificationOpsService.activateEvaluationSuite(
+    suite.id,
+    "admin",
+  );
+
+  const governedSource = {
+    source_kind: "governed_module_execution" as const,
+    manuscript_id: "manuscript-4",
+    source_module: "editing" as const,
+    agent_execution_log_id: "execution-log-4",
+    execution_snapshot_id: "snapshot-4",
+    output_asset_id: "asset-4",
+  };
+
+  const [firstRun] = await verificationOpsService.seedGovernedExecutionRuns("admin", {
+    suiteIds: [activeSuite.id],
+    governedSource,
+  });
+  const [secondRun] = await verificationOpsService.seedGovernedExecutionRuns("admin", {
+    suiteIds: [activeSuite.id],
+    governedSource,
+  });
+
+  assert.equal(secondRun.id, firstRun.id);
+  const runs = await verificationOpsService.listEvaluationRunsBySuiteId(activeSuite.id);
+  assert.deepEqual(runs.map((run) => run.id), [firstRun.id]);
+});

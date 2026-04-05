@@ -151,6 +151,20 @@ function compareCreatedAtDesc(left: string, right: string): number {
   return right.localeCompare(left);
 }
 
+function governedSourcesEqual(
+  left: GovernedExecutionEvaluationSourceRecord | undefined,
+  right: GovernedExecutionEvaluationSourceRecord,
+): boolean {
+  return (
+    left?.source_kind === right.source_kind &&
+    left.manuscript_id === right.manuscript_id &&
+    left.source_module === right.source_module &&
+    left.agent_execution_log_id === right.agent_execution_log_id &&
+    left.execution_snapshot_id === right.execution_snapshot_id &&
+    left.output_asset_id === right.output_asset_id
+  );
+}
+
 export class InMemoryVerificationOpsRepository
   implements
     VerificationOpsRepository,
@@ -283,6 +297,22 @@ export class InMemoryVerificationOpsRepository
 
   async findEvaluationRunById(id: string): Promise<EvaluationRunRecord | undefined> {
     const record = this.runs.get(id);
+    return record ? cloneEvaluationRun(record) : undefined;
+  }
+
+  async findGovernedEvaluationRun(input: {
+    suiteId: string;
+    governedSource: GovernedExecutionEvaluationSourceRecord;
+    releaseCheckProfileId?: string;
+  }): Promise<EvaluationRunRecord | undefined> {
+    const record = [...this.runs.values()]
+      .sort(compareById)
+      .find(
+        (candidate) =>
+          candidate.suite_id === input.suiteId &&
+          candidate.release_check_profile_id === input.releaseCheckProfileId &&
+          governedSourcesEqual(candidate.governed_source, input.governedSource),
+      );
     return record ? cloneEvaluationRun(record) : undefined;
   }
 

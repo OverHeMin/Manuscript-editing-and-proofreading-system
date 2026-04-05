@@ -83,6 +83,41 @@ export function AgentExecutionEvidenceView({
       </article>
 
       <article className="admin-governance-panel admin-governance-panel-tight">
+        <h5>Orchestration Status</h5>
+        <div className="admin-governance-resolution-grid">
+          <article className="admin-governance-asset-row">
+            <span>Lifecycle</span>
+            <small>{log.orchestration_status ?? "legacy-inline"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Attempts</span>
+            <small>
+              {log.orchestration_attempt_count != null &&
+              log.orchestration_max_attempts != null
+                ? `${log.orchestration_attempt_count} / ${log.orchestration_max_attempts}`
+                : "n/a"}
+            </small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Last Started</span>
+            <small>{log.orchestration_last_attempt_started_at ?? "n/a"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Last Finished</span>
+            <small>{log.orchestration_last_attempt_finished_at ?? "n/a"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Last Error</span>
+            <small>{log.orchestration_last_error ?? "none"}</small>
+          </article>
+          <article className="admin-governance-asset-row">
+            <span>Next Retry After</span>
+            <small>{log.orchestration_next_retry_at ?? "n/a"}</small>
+          </article>
+        </div>
+      </article>
+
+      <article className="admin-governance-panel admin-governance-panel-tight">
         <h5>Routing Policy Hit</h5>
         <div className="admin-governance-resolution-grid">
           <article className="admin-governance-asset-row">

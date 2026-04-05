@@ -243,6 +243,10 @@ const executionViewModelCheck: AgentExecutionLogViewModel = {
   release_check_profile_id: "release-profile-1",
   verification_evidence_ids: ["evidence-1"],
   status: executionStatusCheck,
+  orchestration_status: "retryable",
+  orchestration_attempt_count: 1,
+  orchestration_max_attempts: 3,
+  orchestration_next_retry_at: "2026-04-05T09:06:00.000Z",
   started_at: "2026-03-28T14:00:00.000Z",
   finished_at: "2026-03-28T14:02:00.000Z",
 };

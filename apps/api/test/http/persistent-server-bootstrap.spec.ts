@@ -156,3 +156,110 @@ test("persistent server bootstrap rejects when preflight is not ready and never 
     "pool-end",
   ]);
 });
+
+test("persistent server bootstrap can schedule fail-open governed orchestration recovery on boot", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  await startPersistentServer({
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "true",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }) => ({
+      status: "ready",
+      components: {
+        runtimeContract: { status: "ok" },
+        database: { status: "ok" },
+        uploadRoot: { status: "ok", path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async ({ env }) => {
+      callLog.push(`recovery:${env.APP_ENV}`);
+      return {
+        processed_count: 2,
+        completed_count: 1,
+        retryable_count: 1,
+        failed_count: 0,
+        deferred_count: 0,
+      };
+    },
+    log: (message) => {
+      callLog.push(message);
+    },
+  });
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+  ]);
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "recovery:development",
+    "[api] governed execution orchestration recovery processed=2 completed=1 retryable=1 failed=0 deferred=0",
+  ]);
+});
+
+test("persistent server bootstrap keeps startup healthy when boot recovery fails", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  await startPersistentServer({
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "1",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }) => ({
+      status: "ready",
+      components: {
+        runtimeContract: { status: "ok" },
+        database: { status: "ok" },
+        uploadRoot: { status: "ok", path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async () => {
+      throw new Error("Synthetic recovery failure");
+    },
+    log: (message) => {
+      callLog.push(message);
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "[api] governed execution orchestration recovery failed-open: Synthetic recovery failure",
+  ]);
+});

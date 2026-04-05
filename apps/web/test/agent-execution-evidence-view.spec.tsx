@@ -33,6 +33,13 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
           release_check_profile_id: "release-profile-1",
           verification_evidence_ids: ["evidence-1", "evidence-2"],
           status: "completed",
+          orchestration_status: "retryable",
+          orchestration_attempt_count: 2,
+          orchestration_max_attempts: 3,
+          orchestration_last_error: "Synthetic failure for check-profile-1",
+          orchestration_last_attempt_started_at: "2026-03-31T08:00:40.000Z",
+          orchestration_last_attempt_finished_at: "2026-03-31T08:00:55.000Z",
+          orchestration_next_retry_at: "2026-03-31T08:02:00.000Z",
           started_at: "2026-03-31T08:00:00.000Z",
           finished_at: "2026-03-31T08:01:00.000Z",
         },
@@ -149,6 +156,11 @@ test("agent execution evidence view renders frozen snapshot context and knowledg
   assert.match(html, /check-profile-1/);
   assert.match(html, /suite-1/);
   assert.match(html, /release-profile-1/);
+  assert.match(html, /Orchestration Status/);
+  assert.match(html, /retryable/);
+  assert.match(html, /2 \/ 3/);
+  assert.match(html, /Synthetic failure for check-profile-1/);
+  assert.match(html, /2026-03-31T08:02:00.000Z/);
   assert.match(html, /Routing Policy Hit/);
   assert.match(html, /Template Family Policy/);
   assert.match(html, /policy-version-1/);
@@ -194,6 +206,9 @@ test("agent execution evidence view renders a snapshot-pending state for running
           release_check_profile_id: undefined,
           verification_evidence_ids: [],
           status: "running",
+          orchestration_status: "not_required",
+          orchestration_attempt_count: 0,
+          orchestration_max_attempts: 3,
           started_at: "2026-03-31T09:00:00.000Z",
         },
         manuscript: null,

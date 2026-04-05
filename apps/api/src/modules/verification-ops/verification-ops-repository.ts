@@ -1,6 +1,7 @@
 import type {
   EvaluationEvidencePackRecord,
   EvaluationPromotionRecommendationRecord,
+  GovernedExecutionEvaluationSourceRecord,
   EvaluationRunRecord,
   EvaluationRunItemRecord,
   EvaluationSampleSetItemRecord,
@@ -60,6 +61,11 @@ export interface VerificationOpsRepository {
 
   saveEvaluationRun(record: EvaluationRunRecord): Promise<void>;
   findEvaluationRunById(id: string): Promise<EvaluationRunRecord | undefined>;
+  findGovernedEvaluationRun(input: {
+    suiteId: string;
+    governedSource: GovernedExecutionEvaluationSourceRecord;
+    releaseCheckProfileId?: string;
+  }): Promise<EvaluationRunRecord | undefined>;
   listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]>;
   listEvaluationSuiteFinalizations(
     suiteId: string,

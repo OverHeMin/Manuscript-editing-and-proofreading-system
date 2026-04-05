@@ -21,8 +21,8 @@ import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
 import {
-  seedGovernedRunsForModuleExecution,
-  type GovernedEvaluationRunSeeder,
+  dispatchGovernedOrchestrationBestEffort,
+  type GovernedExecutionOrchestrationDispatcher,
   type ModuleExecutionResult,
 } from "../shared/module-run-support.ts";
 import {
@@ -58,7 +58,7 @@ export interface ScreeningServiceOptions {
   runtimeBindingService: RuntimeBindingService;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
-  verificationOpsService: GovernedEvaluationRunSeeder;
+  agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -86,7 +86,7 @@ export class ScreeningService {
   private readonly runtimeBindingService: RuntimeBindingService;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
-  private readonly verificationOpsService: GovernedEvaluationRunSeeder;
+  private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -108,7 +108,8 @@ export class ScreeningService {
     this.runtimeBindingService = options.runtimeBindingService;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
-    this.verificationOpsService = options.verificationOpsService;
+    this.agentExecutionOrchestrationService =
+      options.agentExecutionOrchestrationService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -124,7 +125,7 @@ export class ScreeningService {
   async run(input: RunScreeningInput): Promise<ScreeningRunResult> {
     this.permissionGuard.assert(input.actorRole, "workbench.screening");
 
-    return this.transactionManager.withTransaction(async (context) => {
+    const committed = await this.transactionManager.withTransaction(async (context) => {
       const { jobRepository } = context;
       if (!jobRepository) {
         throw new Error("Screening runs require a job repository.");
@@ -268,36 +269,32 @@ export class ScreeningService {
       };
       await jobRepository.save(completedJob);
 
-      await seedGovernedRunsForModuleExecution({
-        verificationOpsService: this.verificationOpsService,
-        agentExecutionService: this.agentExecutionService,
-        actorRole: "admin",
-        suiteIds: governedContext.verificationExpectations.evaluation_suite_ids,
-        releaseCheckProfileId:
-          governedContext.verificationExpectations.release_check_profile_id,
-        manuscriptId: input.manuscriptId,
-        sourceModule: "screening",
-        agentExecutionLogId: executionLog.id,
-        executionSnapshotId: snapshot.id,
-        outputAssetId: asset.id,
-      });
-
       return {
-        job: completedJob,
-        asset,
-        template_id: moduleContext.moduleTemplate.id,
-        execution_profile_id: governedContext.executionProfile.id,
-        prompt_template_id: moduleContext.promptTemplate.id,
-        skill_package_ids: moduleContext.skillPackages.map((record) => record.id),
-        snapshot_id: snapshot.id,
-        knowledge_item_ids: moduleContext.knowledgeSelections.map(
-          (selection) => selection.knowledgeItem.id,
-        ),
-        model_id: moduleContext.modelSelection.model.id,
-        agent_runtime_id: governedContext.runtime.id,
-        agent_profile_id: governedContext.agentProfile.id,
-        agent_execution_log_id: executionLog.id,
+        agentExecutionLogId: executionLog.id,
+        response: {
+          job: completedJob,
+          asset,
+          template_id: moduleContext.moduleTemplate.id,
+          execution_profile_id: governedContext.executionProfile.id,
+          prompt_template_id: moduleContext.promptTemplate.id,
+          skill_package_ids: moduleContext.skillPackages.map((record) => record.id),
+          snapshot_id: snapshot.id,
+          knowledge_item_ids: moduleContext.knowledgeSelections.map(
+            (selection) => selection.knowledgeItem.id,
+          ),
+          model_id: moduleContext.modelSelection.model.id,
+          agent_runtime_id: governedContext.runtime.id,
+          agent_profile_id: governedContext.agentProfile.id,
+          agent_execution_log_id: executionLog.id,
+        },
       };
     });
+
+    await dispatchGovernedOrchestrationBestEffort({
+      orchestrationService: this.agentExecutionOrchestrationService,
+      agentExecutionLogId: committed.agentExecutionLogId,
+    });
+
+    return committed.response;
   }
 }

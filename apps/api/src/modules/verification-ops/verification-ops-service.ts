@@ -789,6 +789,16 @@ export class VerificationOpsService {
           input.governedSource.source_module,
         );
 
+        const existing = await repository.findGovernedEvaluationRun({
+          suiteId: suite.id,
+          governedSource: input.governedSource,
+          releaseCheckProfileId: input.releaseCheckProfileId,
+        });
+        if (existing) {
+          seededRuns.push(existing);
+          continue;
+        }
+
         const record: EvaluationRunRecord = {
           id: this.createId(),
           suite_id: suite.id,

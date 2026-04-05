@@ -14,6 +14,11 @@ import {
   type PersistentStartupPreflightResult,
 } from "../ops/persistent-startup-preflight.ts";
 import {
+  formatGovernedExecutionOrchestrationRecoverySummary,
+  runPersistentGovernedExecutionOrchestrationRecovery,
+  type AgentExecutionOrchestrationRecoverySummary,
+} from "../ops/recover-governed-execution-orchestration.ts";
+import {
   resolvePersistentRuntimeContract,
   type PersistentRuntimeContract,
 } from "../ops/persistent-runtime-contract.ts";
@@ -66,10 +71,15 @@ export interface StartPersistentServerOptions<
     config: ReturnType<typeof resolvePersistentServerConfig>;
     server: TServer;
   }) => Promise<void>;
+  runGovernedExecutionOrchestrationRecovery?: (input: {
+    env: NodeJS.ProcessEnv;
+  }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
   log?: (message: string) => void;
 }
 
 const appRoot = path.resolve(import.meta.dirname, "../..");
+const GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_ENV =
+  "AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT";
 
 export async function startPersistentServer<
   TServer = ApiHttpServer,
@@ -172,6 +182,16 @@ export async function startPersistentServer<
       `[api] persistent runtime listening on http://${config.host}:${config.port} ` +
         `(${config.appEnv}, PostgreSQL-backed auth and governance registries)`,
     );
+    scheduleGovernedExecutionOrchestrationRecoveryOnBoot({
+      env,
+      log,
+      runRecovery:
+        options.runGovernedExecutionOrchestrationRecovery ??
+        ((input) =>
+          runPersistentGovernedExecutionOrchestrationRecovery(input.env, {
+            loadEnvDefaults: () => undefined,
+          })),
+    });
 
     return {
       contract,
@@ -200,4 +220,48 @@ function attachPoolCloseHandler<TServer, TPool extends PoolLike>(
   maybeEventedServer.on?.("close", () => {
     void pool.end();
   });
+}
+
+function scheduleGovernedExecutionOrchestrationRecoveryOnBoot(input: {
+  env: NodeJS.ProcessEnv;
+  log: (message: string) => void;
+  runRecovery: (input: {
+    env: NodeJS.ProcessEnv;
+  }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
+}): void {
+  if (!isGovernedExecutionOrchestrationRecoveryOnBootEnabled(input.env)) {
+    return;
+  }
+
+  setTimeout(() => {
+    void input
+      .runRecovery({
+        env: input.env,
+      })
+      .then((summary) => {
+        input.log(formatGovernedExecutionOrchestrationRecoverySummary(summary));
+      })
+      .catch((error) => {
+        input.log(
+          `[api] governed execution orchestration recovery failed-open: ${formatError(error)}`,
+        );
+      });
+  }, 0);
+}
+
+function isGovernedExecutionOrchestrationRecoveryOnBootEnabled(
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const value =
+    env[GOVERNED_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_ENV]?.trim().toLowerCase();
+
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }

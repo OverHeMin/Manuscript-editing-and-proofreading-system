@@ -70,6 +70,14 @@ test("agent execution logs capture governed runtime metadata and can be complete
   assert.equal(created.body.resolved_model_id, "model-primary-1");
   assert.equal(created.body.fallback_model_id, undefined);
   assert.equal(created.body.fallback_trigger, undefined);
+  assert.equal(created.body.orchestration_status, "pending");
+  assert.equal(created.body.orchestration_attempt_count, 0);
+  assert.equal(created.body.orchestration_max_attempts, 3);
+  assert.equal(created.body.orchestration_last_error, undefined);
+  assert.equal(created.body.orchestration_last_attempt_started_at, undefined);
+  assert.equal(created.body.orchestration_last_attempt_finished_at, undefined);
+  assert.equal(created.body.orchestration_attempt_claim_token, undefined);
+  assert.equal(created.body.orchestration_next_retry_at, undefined);
   assert.deepEqual(created.body.verification_evidence_ids, []);
 
   const completed = await api.completeLog({
@@ -81,6 +89,11 @@ test("agent execution logs capture governed runtime metadata and can be complete
   assert.equal(completed.status, 200);
   assert.equal(completed.body.status, "completed");
   assert.equal(completed.body.execution_snapshot_id, "snapshot-1");
+  assert.equal(completed.body.orchestration_status, "pending");
+  assert.equal(completed.body.orchestration_attempt_count, 0);
+  assert.equal(completed.body.orchestration_max_attempts, 3);
+  assert.equal(completed.body.orchestration_attempt_claim_token, undefined);
+  assert.equal(completed.body.orchestration_next_retry_at, undefined);
   assert.deepEqual(completed.body.verification_evidence_ids, [
     "evidence-1",
     "evidence-2",
@@ -136,6 +149,11 @@ test("agent execution logs can append governed verification evidence after compl
   assert.equal(updated.fallback_model_id, "model-fallback-2");
   assert.equal(updated.fallback_trigger, "rate_limit");
   assert.equal(updated.status, "completed");
+  assert.equal(updated.orchestration_status, "not_required");
+  assert.equal(updated.orchestration_attempt_count, 0);
+  assert.equal(updated.orchestration_max_attempts, 3);
+  assert.equal(updated.orchestration_attempt_claim_token, undefined);
+  assert.equal(updated.orchestration_next_retry_at, undefined);
   assert.equal(updated.execution_snapshot_id, "snapshot-1");
   assert.equal(updated.finished_at, "2026-03-28T13:00:00.000Z");
 });

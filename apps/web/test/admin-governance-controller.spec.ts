@@ -2088,6 +2088,12 @@ test("admin governance controller loads execution evidence with snapshot and kno
             knowledge_item_ids: ["knowledge-1", "knowledge-2"],
             verification_evidence_ids: ["evidence-1", "evidence-missing"],
             status: "completed",
+            orchestration_status: "retryable",
+            orchestration_attempt_count: 2,
+            orchestration_max_attempts: 3,
+            orchestration_last_error: "Synthetic failure for check-profile-1",
+            orchestration_last_attempt_started_at: "2026-03-31T08:00:40.000Z",
+            orchestration_last_attempt_finished_at: "2026-03-31T08:00:55.000Z",
             started_at: "2026-03-31T08:00:00.000Z",
             finished_at: "2026-03-31T08:01:00.000Z",
           } as TResponse,
@@ -2227,6 +2233,10 @@ test("admin governance controller loads execution evidence with snapshot and kno
   const evidence = await controller.loadExecutionEvidence("log-1");
 
   assert.equal(evidence.log.id, "log-1");
+  assert.equal(evidence.log.orchestration_status, "retryable");
+  assert.equal(evidence.log.orchestration_attempt_count, 2);
+  assert.equal(evidence.log.orchestration_max_attempts, 3);
+  assert.match(evidence.log.orchestration_last_error ?? "", /Synthetic failure/);
   assert.equal(evidence.manuscript?.title, "Evidence inspection manuscript");
   assert.equal(evidence.job?.id, "job-1");
   assert.equal(evidence.snapshot?.id, "snapshot-1");

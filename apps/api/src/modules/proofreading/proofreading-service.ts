@@ -28,8 +28,8 @@ import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
 import {
-  seedGovernedRunsForModuleExecution,
-  type GovernedEvaluationRunSeeder,
+  dispatchGovernedOrchestrationBestEffort,
+  type GovernedExecutionOrchestrationDispatcher,
   type ModuleExecutionResult,
 } from "../shared/module-run-support.ts";
 import {
@@ -83,7 +83,7 @@ export interface ProofreadingServiceOptions {
   runtimeBindingService: RuntimeBindingService;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
-  verificationOpsService: GovernedEvaluationRunSeeder;
+  agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -141,7 +141,7 @@ export class ProofreadingService {
   private readonly runtimeBindingService: RuntimeBindingService;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
-  private readonly verificationOpsService: GovernedEvaluationRunSeeder;
+  private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -164,7 +164,8 @@ export class ProofreadingService {
     this.runtimeBindingService = options.runtimeBindingService;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
-    this.verificationOpsService = options.verificationOpsService;
+    this.agentExecutionOrchestrationService =
+      options.agentExecutionOrchestrationService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -326,7 +327,7 @@ export class ProofreadingService {
     jobType: "proofreading_draft_run" | "proofreading_confirm";
     pinnedContext?: ResolvedProofreadingGovernedContext;
   }): Promise<ProofreadingRunResult> {
-    return this.transactionManager.withTransaction(async (context) => {
+    const committed = await this.transactionManager.withTransaction(async (context) => {
       const { jobRepository } = context;
       if (!jobRepository) {
         throw new Error("Proofreading runs require a job repository.");
@@ -438,9 +439,9 @@ export class ProofreadingService {
         draftSnapshotId: resolvedContext.draftSnapshotId,
         knowledgeHits: resolvedContext.knowledgeHits,
       });
-      if (executionLog) {
+      if (agentExecutionLogId) {
         await this.agentExecutionService.completeLog({
-          logId: executionLog.id,
+          logId: agentExecutionLogId,
           executionSnapshotId: snapshot.id,
         });
       }
@@ -461,38 +462,37 @@ export class ProofreadingService {
       };
       await jobRepository.save(completedJob);
 
-      if (input.jobType === "proofreading_confirm" && agentExecutionLogId) {
-        await seedGovernedRunsForModuleExecution({
-          verificationOpsService: this.verificationOpsService,
-          agentExecutionService: this.agentExecutionService,
-          actorRole: "admin",
-          suiteIds: resolvedContext.evaluationSuiteIds,
-          releaseCheckProfileId: resolvedContext.releaseCheckProfileId,
-          manuscriptId: input.manuscriptId,
-          sourceModule: "proofreading",
-          agentExecutionLogId,
-          executionSnapshotId: snapshot.id,
-          outputAssetId: asset.id,
-        });
-      }
-
       return {
-        job: completedJob,
-        asset,
-        template_id: resolvedContext.templateId,
-        execution_profile_id: resolvedContext.executionProfileId,
-        prompt_template_id: resolvedContext.promptTemplateId,
-        skill_package_ids: resolvedContext.skillPackageIds,
-        snapshot_id: snapshot.id,
-        knowledge_item_ids: resolvedContext.knowledgeHits.map(
-          (hit) => hit.knowledgeItemId,
-        ),
-        model_id: resolvedContext.modelId,
-        agent_runtime_id: resolvedContext.agentRuntimeId,
-        agent_profile_id: resolvedContext.agentProfileId,
-        agent_execution_log_id: agentExecutionLogId,
+        shouldDispatchOrchestration:
+          input.jobType === "proofreading_confirm" && !!agentExecutionLogId,
+        agentExecutionLogId,
+        response: {
+          job: completedJob,
+          asset,
+          template_id: resolvedContext.templateId,
+          execution_profile_id: resolvedContext.executionProfileId,
+          prompt_template_id: resolvedContext.promptTemplateId,
+          skill_package_ids: resolvedContext.skillPackageIds,
+          snapshot_id: snapshot.id,
+          knowledge_item_ids: resolvedContext.knowledgeHits.map(
+            (hit) => hit.knowledgeItemId,
+          ),
+          model_id: resolvedContext.modelId,
+          agent_runtime_id: resolvedContext.agentRuntimeId,
+          agent_profile_id: resolvedContext.agentProfileId,
+          agent_execution_log_id: agentExecutionLogId,
+        },
       };
     });
+
+    if (committed.shouldDispatchOrchestration) {
+      await dispatchGovernedOrchestrationBestEffort({
+        orchestrationService: this.agentExecutionOrchestrationService,
+        agentExecutionLogId: committed.agentExecutionLogId,
+      });
+    }
+
+    return committed.response;
   }
 
   private async resolveDraftExecutionContext(input: {

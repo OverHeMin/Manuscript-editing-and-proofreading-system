@@ -74,6 +74,10 @@ export interface AgentExecutionEvidenceAppender {
   }): Promise<unknown>;
 }
 
+export interface GovernedExecutionOrchestrationDispatcher {
+  dispatchBestEffort(logId: string): Promise<unknown>;
+}
+
 export class ModuleTemplateFamilyNotConfiguredError extends Error {
   constructor(manuscriptId: string) {
     super(`Manuscript ${manuscriptId} does not have a current template family.`);
@@ -251,4 +255,19 @@ export async function seedGovernedRunsForModuleExecution(input: {
     logId: input.agentExecutionLogId,
     evidenceIds,
   });
+}
+
+export async function dispatchGovernedOrchestrationBestEffort(input: {
+  orchestrationService: GovernedExecutionOrchestrationDispatcher;
+  agentExecutionLogId?: string;
+}): Promise<void> {
+  if (!input.agentExecutionLogId) {
+    return;
+  }
+
+  try {
+    await input.orchestrationService.dispatchBestEffort(input.agentExecutionLogId);
+  } catch {
+    // Phase 10J keeps orchestration fail-open relative to the business path.
+  }
 }

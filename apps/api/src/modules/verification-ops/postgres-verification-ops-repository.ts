@@ -743,6 +743,54 @@ export class PostgresVerificationOpsRepository
     return result.rows[0] ? mapEvaluationRunRow(result.rows[0]) : undefined;
   }
 
+  async findGovernedEvaluationRun(input: {
+    suiteId: string;
+    governedSource: GovernedExecutionEvaluationSourceRecord;
+    releaseCheckProfileId?: string;
+  }): Promise<EvaluationRunRecord | undefined> {
+    const result = await this.dependencies.client.query<EvaluationRunRow>(
+      `
+        select
+          id,
+          suite_id,
+          sample_set_id,
+          baseline_binding,
+          candidate_binding,
+          governed_source,
+          release_check_profile_id,
+          run_item_count,
+          status,
+          evidence_ids,
+          started_at,
+          finished_at
+        from evaluation_runs
+        where suite_id = $1
+          and release_check_profile_id is not distinct from $2
+          and governed_source is not null
+          and governed_source->>'source_kind' = $3
+          and governed_source->>'manuscript_id' = $4
+          and governed_source->>'source_module' = $5
+          and governed_source->>'agent_execution_log_id' = $6
+          and governed_source->>'execution_snapshot_id' = $7
+          and governed_source->>'output_asset_id' = $8
+        order by id asc
+        limit 1
+      `,
+      [
+        input.suiteId,
+        input.releaseCheckProfileId ?? null,
+        input.governedSource.source_kind,
+        input.governedSource.manuscript_id,
+        input.governedSource.source_module,
+        input.governedSource.agent_execution_log_id,
+        input.governedSource.execution_snapshot_id,
+        input.governedSource.output_asset_id,
+      ],
+    );
+
+    return result.rows[0] ? mapEvaluationRunRow(result.rows[0]) : undefined;
+  }
+
   async listEvaluationRunsBySuiteId(suiteId: string): Promise<EvaluationRunRecord[]> {
     const result = await this.dependencies.client.query<EvaluationRunRow>(
       `

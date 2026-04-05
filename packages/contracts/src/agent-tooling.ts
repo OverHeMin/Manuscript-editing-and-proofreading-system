@@ -34,6 +34,13 @@ export type AgentExecutionStatus =
   | "running"
   | "completed"
   | "failed";
+export type AgentExecutionOrchestrationStatus =
+  | "not_required"
+  | "pending"
+  | "running"
+  | "retryable"
+  | "completed"
+  | "failed";
 export type VerificationCheckType =
   | "browser_qa"
   | "benchmark"
@@ -221,6 +228,13 @@ export interface AgentExecutionLog {
   knowledge_item_ids: string[];
   verification_evidence_ids: VerificationEvidenceId[];
   status: AgentExecutionStatus;
+  orchestration_status: AgentExecutionOrchestrationStatus;
+  orchestration_attempt_count: number;
+  orchestration_max_attempts: number;
+  orchestration_last_error?: string;
+  orchestration_last_attempt_started_at?: string;
+  orchestration_last_attempt_finished_at?: string;
+  orchestration_next_retry_at?: string;
   started_at: string;
   finished_at?: string;
 }

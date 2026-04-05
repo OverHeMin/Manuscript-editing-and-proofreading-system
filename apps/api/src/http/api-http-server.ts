@@ -41,6 +41,7 @@ import {
   InMemoryAgentProfileRepository,
 } from "../modules/agent-profiles/index.ts";
 import {
+  AgentExecutionOrchestrationService,
   AgentExecutionLogNotFoundError,
   AgentExecutionService,
   createAgentExecutionApi,
@@ -1078,6 +1079,12 @@ export function createInMemoryApiRuntime(input: {
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
   });
+  const agentExecutionOrchestrationService =
+    new AgentExecutionOrchestrationService({
+      agentExecutionService,
+      executionTrackingService,
+      verificationOpsService,
+    });
   const manuscriptService = new ManuscriptLifecycleService({
     manuscriptRepository,
     assetRepository,
@@ -1190,7 +1197,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -1209,7 +1216,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -1228,7 +1235,7 @@ export function createInMemoryApiRuntime(input: {
     runtimeBindingService,
     toolPermissionPolicyService,
     agentExecutionService,
-    verificationOpsService,
+    agentExecutionOrchestrationService,
   });
 
   return {

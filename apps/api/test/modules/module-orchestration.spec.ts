@@ -5,6 +5,7 @@ import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import { DocumentAssetService } from "../../src/modules/assets/document-asset-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { InMemoryAgentExecutionRepository } from "../../src/modules/agent-execution/in-memory-agent-execution-repository.ts";
+import { AgentExecutionOrchestrationService } from "../../src/modules/agent-execution/agent-execution-orchestration-service.ts";
 import { AgentExecutionService } from "../../src/modules/agent-execution/agent-execution-service.ts";
 import { InMemoryAgentProfileRepository } from "../../src/modules/agent-profiles/in-memory-agent-profile-repository.ts";
 import { AgentProfileService } from "../../src/modules/agent-profiles/agent-profile-service.ts";
@@ -51,7 +52,9 @@ import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-servic
 import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 import { VerificationOpsService } from "../../src/modules/verification-ops/verification-ops-service.ts";
 
-function createModuleHarness() {
+function createModuleHarness(input?: {
+  failingCheckProfileIds?: string[];
+}) {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
@@ -232,7 +235,28 @@ function createModuleHarness() {
     toolGatewayRepository,
     createId: () => nextValue(evaluationRunIds, "verification run"),
     now: () => new Date("2026-03-27T09:00:00.000Z"),
+    governedRunCheckExecutor: async ({ checkProfile, governedSource }) => {
+      if (input?.failingCheckProfileIds?.includes(checkProfile.id)) {
+        throw new Error(`Synthetic failure for ${checkProfile.id}`);
+      }
+
+      return {
+        outcome: "passed",
+        evidence: {
+          kind: "url",
+          label: `Automatic governed ${checkProfile.check_type} passed for ${checkProfile.name}`,
+          uri: `/api/v1/document-assets/${governedSource.output_asset_id}/download`,
+        },
+      };
+    },
   });
+  const agentExecutionOrchestrationService =
+    new AgentExecutionOrchestrationService({
+      agentExecutionService,
+      executionTrackingService,
+      verificationOpsService,
+      now: () => new Date("2026-03-27T09:05:00.000Z"),
+    });
 
   const screeningApi = createScreeningApi({
     screeningService: new ScreeningService({
@@ -252,7 +276,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
-      verificationOpsService,
+      agentExecutionOrchestrationService,
       createId: () => nextValue(screeningJobIds, "screening job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -275,7 +299,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
-      verificationOpsService,
+      agentExecutionOrchestrationService,
       createId: () => nextValue(editingJobIds, "editing job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -298,7 +322,7 @@ function createModuleHarness() {
       runtimeBindingService,
       toolPermissionPolicyService,
       agentExecutionService,
-      verificationOpsService,
+      agentExecutionOrchestrationService,
       createId: () => nextValue(proofreadingJobIds, "proofreading job"),
       now: () => new Date("2026-03-27T09:00:00.000Z"),
     }),
@@ -361,8 +385,10 @@ async function saveActivePolicy(input: {
   });
 }
 
-async function seedWorkflowContext() {
-  const harness = createModuleHarness();
+async function seedWorkflowContext(input?: {
+  failingCheckProfileIds?: string[];
+}) {
+  const harness = createModuleHarness(input);
 
   await harness.manuscriptRepository.save({
     id: "manuscript-1",
@@ -1208,6 +1234,7 @@ test("editing produces a final docx asset with routed template, knowledge, and m
   assert.equal(seededRuns[0]?.run_item_count, 0);
   assert.equal(seededRuns[0]?.sample_set_id, undefined);
   assert.equal(seededRuns[0]?.evidence_ids.length, 1);
+  assert.equal(executionLog?.orchestration_status, "completed");
   assert.deepEqual(executionLog?.verification_evidence_ids, seededRuns[0]?.evidence_ids);
   const editingEvidence = await verificationOpsRepository.findVerificationEvidenceById(
     seededRuns[0]!.evidence_ids[0]!,
@@ -1223,6 +1250,47 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     ),
     [],
   );
+});
+
+test("editing stays business-complete when best-effort orchestration fails", async () => {
+  const {
+    editingApi,
+    manuscriptRepository,
+    agentExecutionRepository,
+    verificationOpsRepository,
+    originalAsset,
+  } = await seedWorkflowContext({
+    failingCheckProfileIds: ["check-profile-editing-1"],
+  });
+
+  const response = await editingApi.runEditing({
+    manuscriptId: "manuscript-1",
+    parentAssetId: originalAsset.id,
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    storageKey: "runs/manuscript-1/editing/final.docx",
+    fileName: "edited.docx",
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(response.body.job.status, "completed");
+  assert.equal(
+    (await manuscriptRepository.findById("manuscript-1"))?.current_editing_asset_id,
+    response.body.asset.id,
+  );
+
+  const logId = response.body.agent_execution_log_id;
+  assert.ok(logId);
+  const executionLog = await agentExecutionRepository.findById(logId);
+  assert.equal(executionLog?.status, "completed");
+  assert.equal(executionLog?.orchestration_status, "retryable");
+  assert.match(executionLog?.orchestration_last_error ?? "", /Synthetic failure/);
+
+  const seededRuns =
+    await verificationOpsRepository.listEvaluationRunsBySuiteId("suite-editing-1");
+  assert.equal(seededRuns.length, 1);
+  assert.equal(seededRuns[0]?.status, "failed");
+  assert.equal(executionLog?.verification_evidence_ids.length, 1);
 });
 
 test("proofreading produces a draft first and only advances the final pointer after confirmation", async () => {
@@ -1361,7 +1429,7 @@ test("proofreading produces a draft first and only advances the final pointer af
   const executionLog = await agentExecutionRepository.findById(
     draftResponse.body.agent_execution_log_id,
   );
-  assert.equal(executionLog?.execution_snapshot_id, draftResponse.body.snapshot_id);
+  assert.equal(executionLog?.execution_snapshot_id, finalResponse.body.snapshot_id);
   assert.equal(
     executionLog?.routing_policy_version_id,
     "policy-version-proofreading-1",
@@ -1407,6 +1475,7 @@ test("proofreading produces a draft first and only advances the final pointer af
   assert.equal(seededRuns[0]?.run_item_count, 0);
   assert.equal(seededRuns[0]?.sample_set_id, undefined);
   assert.equal(seededRuns[0]?.evidence_ids.length, 1);
+  assert.equal(executionLog?.orchestration_status, "completed");
   assert.deepEqual(executionLog?.verification_evidence_ids, seededRuns[0]?.evidence_ids);
   const proofreadingEvidence =
     await verificationOpsRepository.findVerificationEvidenceById(
