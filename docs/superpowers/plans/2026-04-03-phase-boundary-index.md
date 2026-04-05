@@ -79,6 +79,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 10S | `2026-04-05-phase10s-governed-orchestration-readiness-windows-design.md` | focused mainline delivery around readiness-window inspection rollout | Clean | Deepens the same read-only inspection lane with explicit replay-readiness timing, without adding replay controls or mutation authority. |
 | Phase 10T | `2026-04-05-phase10t-governed-orchestration-readiness-summary-rollup-design.md` | focused mainline delivery around readiness-summary inspection rollout | Clean | Adds a glanceable readiness rollup to the same read-only inspection lane without adding replay controls or mutation authority. |
 | Phase 10U | `2026-04-05-phase10u-governed-orchestration-json-contract-stabilization-design.md` | focused mainline delivery around orchestration json-contract stabilization | Clean | Stabilizes machine-readable replay and dry-run output with additive metadata while keeping the same local read-only / replay semantics. |
+| Phase 10V | `2026-04-05-phase10v-boot-recovery-residual-observation-design.md` | focused mainline delivery around boot-recovery residual observation | Clean | Extends enabled boot replay with one additive read-only residual summary so startup logs expose remaining actionable/readiness posture without adding new replay authority. |
 
 ## Practical Guidance For Future Work
 
@@ -92,7 +93,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
   per-phase plan/spec files remain canonical.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
-  story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, and `10U` are the current best Phase 10 examples of that pattern.
+  story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, and `10V` are the current best Phase 10 examples of that pattern.
 
 ## Related Documents
 

@@ -101,6 +101,7 @@
   - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
   - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
   - Optionally set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET=<positive-integer>` to cap each boot replay pass to the next bounded eligible slice. Missing or invalid values are ignored fail-open.
+  - `Phase 10V` extends the same startup lane with one read-only residual summary after enabled boot recovery finishes, so startup logs also show remaining `actionable` / readiness posture and optional `next_ready_at` timing. This inspection stays additive and fail-open.
 5. 启动本地 demo API
    `pnpm --filter @medical/api run serve:demo`
 6. 启动 PostgreSQL 持久化 API
@@ -221,6 +222,7 @@
 - `Phase 10S` makes recovery-state timing more explicit in that same read-only lane: dry-run items now surface normalized readiness states plus concrete `ready_at` timestamps for deferred retry eligibility and fresh running reclaim windows, without changing replay policy.
 - `Phase 10T` makes that same timing posture glanceable at summary level: dry-run reports now roll up `ready_now`, `waiting_retry_eligibility`, `waiting_running_timeout`, and the earliest `next_ready_at`, again without adding replay authority.
 - `Phase 10U` keeps the same semantics but stabilizes machine-readable consumption: replay and dry-run `--json` payloads now add explicit `report_kind`, `contract_version`, and `requested_options` metadata while preserving existing top-level result fields.
+- `Phase 10V` extends the same boot-recovery lane with one read-only residual summary after each enabled boot replay pass, so restart-time logs expose remaining actionable/readiness posture without creating new replay controls or mutation authority.
 - Admin Governance 只新增 read-only orchestration 观测字段，不获得新的写控制权；Evaluation Workbench 仍然只是 evidence surface，不成为 routing 或 release control plane。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
   当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。

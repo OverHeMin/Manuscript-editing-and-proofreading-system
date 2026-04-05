@@ -109,6 +109,22 @@ export function formatGovernedExecutionOrchestrationRecoverySummary(
   );
 }
 
+export function formatGovernedExecutionOrchestrationBootInspectionSummary(
+  report: AgentExecutionOrchestrationInspectionReport,
+): string {
+  return (
+    "[api] governed execution orchestration boot residual " +
+    `total=${report.summary.total_count} ` +
+    `recoverable_now=${report.summary.recoverable_now_count} ` +
+    `stale_running=${report.summary.stale_running_count} ` +
+    `deferred_retry=${report.summary.deferred_retry_count} ` +
+    `attention_required=${report.summary.attention_required_count} ` +
+    `not_recoverable=${report.summary.not_recoverable_count} ` +
+    `actionable=${report.focus.actionable_count}` +
+    formatGovernedExecutionOrchestrationInspectionReadinessDetails(report)
+  );
+}
+
 export function formatGovernedExecutionOrchestrationInspectionSummary(
   report: AgentExecutionOrchestrationInspectionReport,
 ): string {

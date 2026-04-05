@@ -14,8 +14,11 @@ import {
   type PersistentStartupPreflightResult,
 } from "../ops/persistent-startup-preflight.ts";
 import {
+  formatGovernedExecutionOrchestrationBootInspectionSummary,
   formatGovernedExecutionOrchestrationRecoverySummary,
+  runPersistentGovernedExecutionOrchestrationInspection,
   runPersistentGovernedExecutionOrchestrationRecovery,
+  type AgentExecutionOrchestrationInspectionReport,
   type AgentExecutionOrchestrationRecoveryOptions,
   type AgentExecutionOrchestrationRecoverySummary,
 } from "../ops/recover-governed-execution-orchestration.ts";
@@ -76,6 +79,9 @@ export interface StartPersistentServerOptions<
     env: NodeJS.ProcessEnv;
     recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
+  runGovernedExecutionOrchestrationInspection?: (input: {
+    env: NodeJS.ProcessEnv;
+  }) => Promise<AgentExecutionOrchestrationInspectionReport>;
   log?: (message: string) => void;
 }
 
@@ -195,6 +201,12 @@ export async function startPersistentServer<
           runPersistentGovernedExecutionOrchestrationRecovery(input.env, {
             loadEnvDefaults: () => undefined,
           }, input.recoveryOptions)),
+      runInspection:
+        options.runGovernedExecutionOrchestrationInspection ??
+        ((input) =>
+          runPersistentGovernedExecutionOrchestrationInspection(input.env, {
+            loadEnvDefaults: () => undefined,
+          })),
     });
 
     return {
@@ -233,6 +245,9 @@ function scheduleGovernedExecutionOrchestrationRecoveryOnBoot(input: {
     env: NodeJS.ProcessEnv;
     recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
+  runInspection: (input: {
+    env: NodeJS.ProcessEnv;
+  }) => Promise<AgentExecutionOrchestrationInspectionReport>;
 }): void {
   if (!isGovernedExecutionOrchestrationRecoveryOnBootEnabled(input.env)) {
     return;
@@ -242,20 +257,51 @@ function scheduleGovernedExecutionOrchestrationRecoveryOnBoot(input: {
     resolveGovernedExecutionOrchestrationRecoveryOnBootOptions(input.env);
 
   setTimeout(() => {
-    void input
-      .runRecovery({
-        env: input.env,
-        recoveryOptions,
-      })
-      .then((summary) => {
-        input.log(formatGovernedExecutionOrchestrationRecoverySummary(summary));
-      })
-      .catch((error) => {
-        input.log(
-          `[api] governed execution orchestration recovery failed-open: ${formatError(error)}`,
-        );
-      });
+    void runGovernedExecutionOrchestrationRecoveryOnBootPass({
+      env: input.env,
+      log: input.log,
+      recoveryOptions,
+      runRecovery: input.runRecovery,
+      runInspection: input.runInspection,
+    });
   }, 0);
+}
+
+async function runGovernedExecutionOrchestrationRecoveryOnBootPass(input: {
+  env: NodeJS.ProcessEnv;
+  log: (message: string) => void;
+  recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
+  runRecovery: (input: {
+    env: NodeJS.ProcessEnv;
+    recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
+  }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
+  runInspection: (input: {
+    env: NodeJS.ProcessEnv;
+  }) => Promise<AgentExecutionOrchestrationInspectionReport>;
+}): Promise<void> {
+  try {
+    const summary = await input.runRecovery({
+      env: input.env,
+      recoveryOptions: input.recoveryOptions,
+    });
+    input.log(formatGovernedExecutionOrchestrationRecoverySummary(summary));
+  } catch (error) {
+    input.log(
+      `[api] governed execution orchestration recovery failed-open: ${formatError(error)}`,
+    );
+    return;
+  }
+
+  try {
+    const report = await input.runInspection({
+      env: input.env,
+    });
+    input.log(formatGovernedExecutionOrchestrationBootInspectionSummary(report));
+  } catch (error) {
+    input.log(
+      `[api] governed execution orchestration boot inspection failed-open: ${formatError(error)}`,
+    );
+  }
 }
 
 function isGovernedExecutionOrchestrationRecoveryOnBootEnabled(

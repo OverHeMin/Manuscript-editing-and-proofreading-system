@@ -241,6 +241,7 @@ Web 关键环境变量：
 - For machine-readable output, run `pnpm --filter @medical/api run recover:governed-orchestration -- --json`, or pair it with `-- --dry-run --json` for read-only backlog inspection output. `--budget <n>` applies to replay mode, and now also to `--dry-run` as a read-only replay preview. `--actionable-only`, `--limit <n>`, repeatable `--module <module>`, and repeatable `--log-id <execution-log-id>` can still be combined with the same dry-run JSON mode.
 - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to invoke the same bounded recovery path automatically after persistent server startup. This boot replay is asynchronous and fail-open: startup still succeeds if recovery work later fails.
 - Phase 10Q adds an optional startup-side replay cap: `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET=<positive-integer>` forwards the same recovery `budget` semantics into enabled boot replay. Missing, zero, negative, or invalid values are ignored fail-open, and startup still proceeds normally.
+- Phase 10V extends that same boot lane with one read-only residual summary after a successful boot replay pass, so startup logs also show remaining `actionable`, readiness rollup, and optional `next_ready_at` posture. Residual inspection failures degrade to a separate fail-open log and do not block startup.
 
 ### 5.6 Post-deploy health confirmation
 

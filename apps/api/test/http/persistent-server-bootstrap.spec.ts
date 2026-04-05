@@ -336,6 +336,175 @@ test("persistent server bootstrap ignores invalid boot recovery budget values fa
   ]);
 });
 
+test("persistent server bootstrap logs a read-only boot residual summary after recovery", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  const options = {
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "true",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }: { contract: { uploadRootDir: string } }) => ({
+      status: "ready" as const,
+      components: {
+        runtimeContract: { status: "ok" as const },
+        database: { status: "ok" as const },
+        uploadRoot: { status: "ok" as const, path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async ({
+      env,
+    }: {
+      env: NodeJS.ProcessEnv;
+    }) => {
+      callLog.push(`recovery:${env.APP_ENV}`);
+      return {
+        processed_count: 1,
+        completed_count: 1,
+        retryable_count: 0,
+        failed_count: 0,
+        deferred_count: 1,
+      };
+    },
+    runGovernedExecutionOrchestrationInspection: async ({
+      env,
+    }: {
+      env: NodeJS.ProcessEnv;
+    }) => {
+      callLog.push(`inspection:${env.APP_ENV}`);
+      return {
+        summary: {
+          total_count: 4,
+          recoverable_now_count: 1,
+          stale_running_count: 1,
+          deferred_retry_count: 1,
+          attention_required_count: 1,
+          not_recoverable_count: 0,
+        },
+        focus: {
+          actionable_count: 4,
+          displayed_count: 0,
+          omitted_count: 0,
+          actionable_only: false,
+          limit: undefined,
+        },
+        readiness_summary: {
+          ready_now_count: 2,
+          waiting_retry_eligibility_count: 1,
+          waiting_running_timeout_count: 1,
+          next_ready_at: "2026-04-05T09:06:00.000Z",
+        },
+        items: [],
+      };
+    },
+    log: (message: string) => {
+      callLog.push(message);
+    },
+  };
+
+  await startPersistentServer(
+    options as Parameters<typeof startPersistentServer>[0],
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "recovery:development",
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=1",
+    "inspection:development",
+    "[api] governed execution orchestration boot residual total=4 recoverable_now=1 stale_running=1 deferred_retry=1 attention_required=1 not_recoverable=0 actionable=4 ready_now=2 waiting_retry_eligibility=1 waiting_running_timeout=1 next_ready_at=2026-04-05T09:06:00.000Z",
+  ]);
+});
+
+test("persistent server bootstrap keeps startup healthy when boot residual inspection fails", async () => {
+  const callLog: string[] = [];
+  const fakePool = {
+    end() {
+      return Promise.resolve();
+    },
+  };
+
+  const options = {
+    env: {
+      APP_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+      AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT: "true",
+    },
+    loadEnvDefaults: () => undefined,
+    createPool: () => fakePool,
+    runPreflight: async ({ contract }: { contract: { uploadRootDir: string } }) => ({
+      status: "ready" as const,
+      components: {
+        runtimeContract: { status: "ok" as const },
+        database: { status: "ok" as const },
+        uploadRoot: { status: "ok" as const, path: contract.uploadRootDir },
+      },
+    }),
+    createAuthRuntime: () => ({ kind: "auth-runtime" }),
+    createRuntime: () => ({ kind: "governance-runtime" }),
+    createServer: () => ({}),
+    listenServer: async () => {
+      callLog.push("listen");
+    },
+    runGovernedExecutionOrchestrationRecovery: async ({
+      env,
+    }: {
+      env: NodeJS.ProcessEnv;
+    }) => {
+      callLog.push(`recovery:${env.APP_ENV}`);
+      return {
+        processed_count: 1,
+        completed_count: 1,
+        retryable_count: 0,
+        failed_count: 0,
+        deferred_count: 0,
+      };
+    },
+    runGovernedExecutionOrchestrationInspection: async ({
+      env,
+    }: {
+      env: NodeJS.ProcessEnv;
+    }) => {
+      callLog.push(`inspection:${env.APP_ENV}`);
+      throw new Error("Synthetic inspection failure");
+    },
+    log: (message: string) => {
+      callLog.push(message);
+    },
+  };
+
+  await startPersistentServer(
+    options as Parameters<typeof startPersistentServer>[0],
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(callLog, [
+    "listen",
+    "[api] persistent runtime listening on http://0.0.0.0:3001 (development, PostgreSQL-backed auth and governance registries)",
+    "recovery:development",
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=0",
+    "inspection:development",
+    "[api] governed execution orchestration boot inspection failed-open: Synthetic inspection failure",
+  ]);
+});
+
 test("persistent server bootstrap keeps startup healthy when boot recovery fails", async () => {
   const callLog: string[] = [];
   const fakePool = {
