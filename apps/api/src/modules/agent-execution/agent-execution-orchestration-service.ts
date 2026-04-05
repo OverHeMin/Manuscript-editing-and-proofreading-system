@@ -34,6 +34,12 @@ export type AgentExecutionOrchestrationInspectionCategory =
   | "attention_required"
   | "not_recoverable";
 
+export type AgentExecutionOrchestrationRecoveryReadiness =
+  | "ready_now"
+  | "waiting_retry_eligibility"
+  | "waiting_running_timeout"
+  | "not_recoverable";
+
 export interface AgentExecutionOrchestrationInspectionItem {
   log_id: string;
   manuscript_id: string;
@@ -46,6 +52,8 @@ export interface AgentExecutionOrchestrationInspectionItem {
   orchestration_last_attempt_finished_at?: string;
   orchestration_next_retry_at?: string;
   category: AgentExecutionOrchestrationInspectionCategory;
+  recovery_readiness?: AgentExecutionOrchestrationRecoveryReadiness;
+  recovery_ready_at?: string;
   reason: string;
 }
 
@@ -610,26 +618,50 @@ function isDeferredRetry(log: AgentExecutionLogRecord, now: Date): boolean {
   );
 }
 
+function computeRunningReclaimableAt(
+  log: AgentExecutionLogRecord,
+  staleAfterMs: number,
+): string | undefined {
+  const startedAt = log.orchestration_last_attempt_started_at;
+  if (!startedAt) {
+    return undefined;
+  }
+
+  const startedAtMs = Date.parse(startedAt);
+  if (Number.isNaN(startedAtMs)) {
+    return undefined;
+  }
+
+  return new Date(startedAtMs + staleAfterMs).toISOString();
+}
+
 function inspectOrchestrationLog(
   log: AgentExecutionLogRecord,
   now: Date,
   staleAfterMs: number,
 ): AgentExecutionOrchestrationInspectionItem {
   let category: AgentExecutionOrchestrationInspectionCategory;
+  let recoveryReadiness: AgentExecutionOrchestrationRecoveryReadiness;
+  let recoveryReadyAt: string | undefined;
   let reason: string;
 
   if (log.status !== "completed") {
     category = "not_recoverable";
+    recoveryReadiness = "not_recoverable";
     reason = `Business execution is ${log.status}, so governed follow-up is not recoverable yet.`;
   } else if (log.orchestration_status === "pending") {
     category = "recoverable_now";
+    recoveryReadiness = "ready_now";
     reason = "Pending orchestration is ready to replay now.";
   } else if (log.orchestration_status === "retryable") {
     if (isRetryEligible(log, now)) {
       category = "recoverable_now";
+      recoveryReadiness = "ready_now";
       reason = "Retryable orchestration is eligible to replay now.";
     } else {
       category = "deferred_retry";
+      recoveryReadiness = "waiting_retry_eligibility";
+      recoveryReadyAt = log.orchestration_next_retry_at;
       reason =
         log.orchestration_next_retry_at != null
           ? `Retryable orchestration is deferred until ${log.orchestration_next_retry_at}.`
@@ -638,22 +670,28 @@ function inspectOrchestrationLog(
   } else if (log.orchestration_status === "running") {
     if (isStaleRunningAttempt(log, now, staleAfterMs)) {
       category = "stale_running";
+      recoveryReadiness = "ready_now";
       reason = "Running orchestration attempt is stale and reclaimable.";
     } else {
       category = "not_recoverable";
+      recoveryReadiness = "waiting_running_timeout";
+      recoveryReadyAt = computeRunningReclaimableAt(log, staleAfterMs);
       reason = "Running orchestration attempt is still fresh and should not be reclaimed yet.";
     }
   } else if (log.orchestration_status === "failed") {
     category = "attention_required";
+    recoveryReadiness = "not_recoverable";
     reason =
       log.orchestration_last_error != null
         ? `Orchestration failed terminally: ${log.orchestration_last_error}`
         : "Orchestration failed terminally and needs operator attention.";
   } else if (log.orchestration_status === "completed") {
     category = "not_recoverable";
+    recoveryReadiness = "not_recoverable";
     reason = "Orchestration is already completed.";
   } else {
     category = "not_recoverable";
+    recoveryReadiness = "not_recoverable";
     reason = "No governed follow-up orchestration is required for this execution.";
   }
 
@@ -671,6 +709,8 @@ function inspectOrchestrationLog(
       log.orchestration_last_attempt_finished_at,
     orchestration_next_retry_at: log.orchestration_next_retry_at,
     category,
+    recovery_readiness: recoveryReadiness,
+    recovery_ready_at: recoveryReadyAt,
     reason,
   };
 }

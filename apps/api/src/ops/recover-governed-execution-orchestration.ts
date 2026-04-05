@@ -134,6 +134,7 @@ export function formatGovernedExecutionOrchestrationInspectionItem(
     `category=${item.category} ` +
     `log=${item.log_id} ` +
     `module=${item.module} ` +
+    formatGovernedExecutionOrchestrationInspectionItemReadiness(item) +
     `reason=${item.reason}`
   );
 }
@@ -334,6 +335,19 @@ function formatGovernedExecutionOrchestrationInspectionPreviewDetails(
     ` preview_remaining=${preview.remaining_count}` +
     ` preview_budget=${preview.budget}`
   );
+}
+
+function formatGovernedExecutionOrchestrationInspectionItemReadiness(
+  item: AgentExecutionOrchestrationInspectionItem,
+): string {
+  if (item.recovery_readiness == null) {
+    return "";
+  }
+
+  const readyAt =
+    item.recovery_ready_at != null ? ` ready_at=${item.recovery_ready_at}` : "";
+
+  return `readiness=${item.recovery_readiness}${readyAt} `;
 }
 
 function readOptionalIntegerFlag(args: string[], flag: string): number | undefined {

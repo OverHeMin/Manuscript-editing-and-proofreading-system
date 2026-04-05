@@ -994,6 +994,66 @@ test("inspection classifies orchestration backlog without mutating durable state
   assert.equal(staleAfter.orchestration_attempt_claim_token, "claim-stale");
 });
 
+test("inspection exposes normalized recovery readiness windows", async () => {
+  const harness = createOrchestrationHarness();
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-ready",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-deferred",
+  });
+  await harness.agentExecutionService.failOrchestrationAttempt({
+    logId: "execution-log-2",
+    errorMessage: "Retry later",
+    nextRetryAt: "2026-04-05T09:06:00.000Z",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-running",
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-3",
+    claimToken: "claim-fresh",
+  });
+
+  const report = await new AgentExecutionOrchestrationService({
+    agentExecutionService: harness.agentExecutionService,
+    executionTrackingService: harness.executionTrackingService,
+    verificationOpsService: harness.verificationOpsService,
+    now: () => new Date("2026-04-05T09:04:00.000Z"),
+  }).inspectBacklog();
+
+  const byId = new Map(report.items.map((item) => [item.log_id, item]));
+  assert.equal(byId.get("execution-log-1")?.recovery_readiness, "ready_now");
+  assert.equal(byId.get("execution-log-1")?.recovery_ready_at, undefined);
+
+  assert.equal(
+    byId.get("execution-log-2")?.recovery_readiness,
+    "waiting_retry_eligibility",
+  );
+  assert.equal(
+    byId.get("execution-log-2")?.recovery_ready_at,
+    "2026-04-05T09:06:00.000Z",
+  );
+
+  assert.equal(
+    byId.get("execution-log-3")?.recovery_readiness,
+    "waiting_running_timeout",
+  );
+  assert.equal(
+    byId.get("execution-log-3")?.recovery_ready_at,
+    "2026-04-05T09:05:00.000Z",
+  );
+});
+
 test("inspection supports actionable focus ordering and bounded limits", async () => {
   const harness = createOrchestrationHarness();
 

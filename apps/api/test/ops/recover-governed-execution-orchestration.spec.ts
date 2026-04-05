@@ -255,6 +255,7 @@ test("governed execution orchestration recovery cli supports dry-run inspection 
         orchestration_attempt_count: 0,
         orchestration_max_attempts: 3,
         category: "recoverable_now",
+        recovery_readiness: "ready_now",
         reason: "Pending orchestration is ready to replay now.",
       },
     ],
@@ -270,6 +271,60 @@ test("governed execution orchestration recovery cli supports dry-run inspection 
   assert.match(messages[0] ?? "", /recoverable_now=1/i);
   assert.match(messages[0] ?? "", /stale_running=1/i);
   assert.match(messages[1] ?? "", /execution-log-1/);
+
+  messages.length = 0;
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run", "--json"],
+    createInspectionRunner: async () => inspection,
+    log: (message) => messages.push(message),
+  });
+  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+});
+
+test("governed execution orchestration dry-run item output appends readiness windows", async () => {
+  const messages: string[] = [];
+  const inspection: AgentExecutionOrchestrationInspectionReport = {
+    summary: {
+      total_count: 1,
+      recoverable_now_count: 0,
+      stale_running_count: 0,
+      deferred_retry_count: 1,
+      attention_required_count: 0,
+      not_recoverable_count: 0,
+    },
+    focus: {
+      actionable_count: 1,
+      displayed_count: 1,
+      omitted_count: 0,
+      actionable_only: false,
+      limit: undefined,
+    },
+    items: [
+      {
+        log_id: "execution-log-2",
+        manuscript_id: "manuscript-2",
+        module: "editing",
+        business_status: "completed",
+        orchestration_status: "retryable",
+        orchestration_attempt_count: 1,
+        orchestration_max_attempts: 3,
+        orchestration_next_retry_at: "2026-04-05T09:06:00.000Z",
+        category: "deferred_retry",
+        recovery_readiness: "waiting_retry_eligibility",
+        recovery_ready_at: "2026-04-05T09:06:00.000Z",
+        reason: "Retryable orchestration is deferred until 2026-04-05T09:06:00.000Z.",
+      },
+    ],
+  };
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run"],
+    createInspectionRunner: async () => inspection,
+    log: (message) => messages.push(message),
+  });
+
+  assert.match(messages[1] ?? "", /readiness=waiting_retry_eligibility/i);
+  assert.match(messages[1] ?? "", /ready_at=2026-04-05T09:06:00.000Z/i);
 
   messages.length = 0;
   await runGovernedExecutionOrchestrationRecoveryCli({

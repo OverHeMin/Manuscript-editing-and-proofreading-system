@@ -194,7 +194,7 @@ This phase does **not** absorb:
 - deployment automation
 - durable execution orchestration
 
-### 4.8 Phase 10J Through Phase 10R: Durable Execution Orchestration Mainline
+### 4.8 Phase 10J Through Phase 10S: Durable Execution Orchestration Mainline
 
 **Primary capability lane:** Execution And Orchestration Platform  
 **Actual landed scope:** the execution/orchestration lane was split into adjacent bounded slices instead of landing under the earlier predicted `10G` label
@@ -210,6 +210,7 @@ The current ownership is:
 - `10P`: budgeted replay alignment with existing recoverable priority ordering
 - `10Q`: optional boot-recovery replay budgeting under the same fail-open semantics
 - `10R`: read-only budgeted dry-run preview of the next exact replay window
+- `10S`: normalized dry-run readiness windows for deferred retry and fresh-running reclaim timing
 
 Together these phases now own:
 
@@ -219,12 +220,13 @@ Together these phases now own:
 - stronger separation between business completion and orchestration completion
 - repo-owned queue-state observability through read-only inspection
 - exact read-only preview of the next bounded replay slice before mutation
+- clearer read-only recovery-state timing for when blocked work becomes replayable next
 
 These phases still do **not** claim full `Temporal`-class workflow depth.
 Deeper multi-node orchestration, hosted schedulers, and broader workflow-engine
 substitution remain future work inside the same capability lane.
 
-### 4.9 Still-Open Retained Capability Lanes After 10R
+### 4.9 Still-Open Retained Capability Lanes After 10S
 
 After reconciling actual landed numbering, two retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
@@ -244,7 +246,7 @@ The repository has now landed the following actual sequence after `10A`:
 5. `10I` privacy / OCR advisory baseline
 6. `10J-10Q` durable execution-orchestration mainline
 
-The practical planning implication after `10R` is:
+The practical planning implication after `10S` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
