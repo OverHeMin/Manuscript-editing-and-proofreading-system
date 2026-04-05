@@ -158,6 +158,25 @@ class RepairHandoffResult:
 
 
 @dataclass(frozen=True)
+class OperatorSummaryResult:
+    status: str
+    output_dir: Path | None
+    index_path: Path | None
+    summary_path: Path | None
+    indexed_artifact_count: int
+    recent_history: list[AuditHistoryEntry]
+    privacy_status_counts: dict[str, int]
+    academic_structure_status_counts: dict[str, int]
+    retention_review_count: int
+    cleanup_action_count: int
+    consistency_issue_count: int
+    attention_item_count: int
+    attention_items: list[RepairHandoffItem]
+    next_steps: list[str]
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult

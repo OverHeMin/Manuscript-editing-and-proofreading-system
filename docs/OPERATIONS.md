@@ -518,6 +518,7 @@ Use the worker-owned audit command when you need bounded local evidence about pr
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:cleanup-plan -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>] [--write-plan] [--plan-output-dir <local-dir>]`
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:index-consistency -- [--output-dir <local-dir>]`
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:repair-handoff -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>] [--write-handoff] [--handoff-output-dir <local-dir>]`
+- `pnpm --filter @medical/worker-py run audit:document-enhancement:operator-summary -- --keep-last <n> [--max-age-days <n>] [--history-limit <n>] [--attention-limit <n>] [--output-dir <local-dir>] [--write-summary] [--summary-output-dir <local-dir>]`
 
 Operational rules:
 
@@ -527,8 +528,10 @@ Operational rules:
 - The retention audit is advisory-only and non-destructive. It recommends cleanup candidates but does not delete files or rewrite the index.
 - The cleanup-plan CLI stays advisory-only as well. `--write-plan` only writes one local JSON manifest, defaulting to `.local-data/document-enhancement-audits/manual/plans`, and `--plan-output-dir` can override that local directory.
 - Cleanup-plan output may recommend `archive_then_cleanup_review` or `index_repair_review`, but those are human follow-up signals only. The command does not delete files or rewrite `audit-index.json`.
-- The index-consistency CLI reports bounded local drift such as `missing_artifact`, `duplicate_index_entry`, `invalid_index_entry`, and `orphan_artifact`. It skips helper paths like `plans/`, stays read-only, and does not attempt auto-repair.
+- The index-consistency CLI reports bounded local drift such as `missing_artifact`, `duplicate_index_entry`, `invalid_index_entry`, and `orphan_artifact`. It skips helper paths like `plans/`, `repair-handoffs/`, and `operator-summaries/`, stays read-only, and does not attempt auto-repair.
 - The repair-handoff CLI combines cleanup and consistency findings into one operator checklist. `--write-handoff` only writes one local JSON manifest, defaulting to `.local-data/document-enhancement-audits/manual/repair-handoffs`, and `--handoff-output-dir` can override that local directory.
 - Repair-handoff output is still advisory-only. It does not repair `audit-index.json`, re-index orphan files, or perform cleanup automatically.
+- The operator-summary CLI is phase-closeout evidence only. `--write-summary` writes at most one local JSON snapshot, defaulting to `.local-data/document-enhancement-audits/manual/operator-summaries`, and `--summary-output-dir` can override that local directory.
+- Operator-summary output may point back to history replay or repair-handoff follow-up, but it does not execute repair, cleanup, routing, or release behavior.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters return degraded advisory evidence instead of blocking worker startup or manuscript execution.
 - The JSON output is an operator aid only. It does not replace human de-identification review and does not auto-launch OCR or academic-structure extraction.

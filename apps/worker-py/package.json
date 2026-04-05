@@ -7,6 +7,7 @@
     "audit:document-enhancement:cleanup-plan": "python -m src.document_enhancement.cleanup_plan_cli",
     "audit:document-enhancement:history": "python -m src.document_enhancement.history_cli",
     "audit:document-enhancement:index-consistency": "python -m src.document_enhancement.index_consistency_cli",
+    "audit:document-enhancement:operator-summary": "python -m src.document_enhancement.operator_summary_cli",
     "audit:document-enhancement:repair-handoff": "python -m src.document_enhancement.repair_handoff_cli",
     "audit:document-enhancement:retention": "python -m src.document_enhancement.retention_cli",
     "lint": "python -m compileall src",

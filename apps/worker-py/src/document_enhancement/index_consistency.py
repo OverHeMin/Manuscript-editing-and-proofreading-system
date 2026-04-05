@@ -4,7 +4,7 @@ from .artifacts import INDEX_FILE_NAME, default_audit_output_dir, read_index
 from .contracts import IndexConsistencyAuditResult, IndexConsistencyIssue
 
 
-HELPER_DIRECTORY_NAMES = {"plans"}
+HELPER_DIRECTORY_NAMES = {"plans", "repair-handoffs", "operator-summaries"}
 
 
 def evaluate_index_consistency(

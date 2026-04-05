@@ -98,6 +98,18 @@ def test_index_consistency_reports_orphan_artifacts_and_skips_helper_paths(tmp_p
         json.dumps({"status": "ready"}, indent=2),
         encoding="utf-8",
     )
+    handoff_dir = tmp_path / "repair-handoffs"
+    handoff_dir.mkdir()
+    (handoff_dir / "20260405-112000Z-repair-handoff.json").write_text(
+        json.dumps({"status": "ready"}, indent=2),
+        encoding="utf-8",
+    )
+    summary_dir = tmp_path / "operator-summaries"
+    summary_dir.mkdir()
+    (summary_dir / "20260405-112500Z-operator-summary.json").write_text(
+        json.dumps({"status": "ready"}, indent=2),
+        encoding="utf-8",
+    )
 
     result = evaluate_index_consistency(output_dir=tmp_path)
 

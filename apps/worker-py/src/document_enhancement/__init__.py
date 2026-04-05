@@ -12,6 +12,7 @@ from .contracts import (
     DocumentEnhancementAuditReport,
     IndexConsistencyAuditResult,
     IndexConsistencyIssue,
+    OperatorSummaryResult,
     PrivacyAdvisoryResult,
     PrivacyFinding,
     RepairHandoffItem,
@@ -22,6 +23,10 @@ from .contracts import (
 from .academic_structure import build_academic_structure_advisory
 from .history import list_audit_history, replay_audit_artifact
 from .index_consistency import evaluate_index_consistency
+from .operator_summary import (
+    build_operator_summary,
+    default_operator_summary_output_dir,
+)
 from .privacy import build_privacy_advisory
 from .repair_handoff import build_repair_handoff, default_repair_handoff_output_dir
 from .retention import evaluate_retention_audit
@@ -38,6 +43,7 @@ __all__ = [
     "DocumentEnhancementAuditReport",
     "IndexConsistencyAuditResult",
     "IndexConsistencyIssue",
+    "OperatorSummaryResult",
     "PrivacyAdvisoryResult",
     "PrivacyFinding",
     "RepairHandoffItem",
@@ -46,10 +52,12 @@ __all__ = [
     "RetentionCandidate",
     "build_academic_structure_advisory",
     "build_cleanup_plan",
+    "build_operator_summary",
     "build_privacy_advisory",
     "build_repair_handoff",
     "default_cleanup_plan_output_dir",
     "default_audit_output_dir",
+    "default_operator_summary_output_dir",
     "default_repair_handoff_output_dir",
     "evaluate_index_consistency",
     "evaluate_retention_audit",
