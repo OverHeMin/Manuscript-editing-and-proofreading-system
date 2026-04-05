@@ -527,6 +527,75 @@ test("recovery can scope replay candidates by module and explicit log id", async
   );
 });
 
+test("recovery applies replay budget after scope and recoverability screening", async () => {
+  const harness = createOrchestrationHarness();
+  const editingSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
+    name: "Editing Budget Suite",
+  });
+  const screeningSuite = await createActiveSuiteForModule(harness, {
+    module: "screening",
+    name: "Screening Budget Suite",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-editing",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-deferred",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+  await harness.agentExecutionService.failOrchestrationAttempt({
+    logId: "execution-log-2",
+    errorMessage: "Retry later",
+    nextRetryAt: "2026-04-05T09:06:00.000Z",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-screening",
+    module: "screening",
+    suiteIds: [screeningSuite.id],
+  });
+
+  const summary = await harness.orchestrationService.recoverPending({
+    modules: ["editing", "screening"],
+    budget: 1,
+  });
+
+  assert.deepEqual(summary, {
+    processed_count: 1,
+    completed_count: 1,
+    retryable_count: 0,
+    failed_count: 0,
+    deferred_count: 1,
+    eligible_count: 2,
+    remaining_count: 1,
+    budget: 1,
+  });
+
+  const processed = await harness.agentExecutionService.getLog("execution-log-1");
+  assert.equal(processed.orchestration_status, "completed");
+  assert.equal(processed.orchestration_attempt_count, 1);
+
+  const deferred = await harness.agentExecutionService.getLog("execution-log-2");
+  assert.equal(deferred.orchestration_status, "retryable");
+  assert.equal(deferred.orchestration_next_retry_at, "2026-04-05T09:06:00.000Z");
+
+  const remaining = await harness.agentExecutionService.getLog("execution-log-3");
+  assert.equal(remaining.orchestration_status, "pending");
+  assert.equal(remaining.orchestration_attempt_count, 0);
+});
+
 test("only one orchestration claimant can win the same persisted attempt snapshot", async () => {
   const { agentExecutionService } = await seedPendingExecutionLog();
 

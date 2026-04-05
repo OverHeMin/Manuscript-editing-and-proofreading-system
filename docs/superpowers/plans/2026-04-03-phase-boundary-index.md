@@ -72,6 +72,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 10L | `2026-04-05-phase10l-governed-orchestration-dry-run-inspection-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | Read-only inspection slice landed in the same focused delivery container as `10J-10M`. |
 | Phase 10M | `2026-04-05-phase10m-governed-orchestration-focus-ordering-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | Focus-ordering slice shares the same orchestrator commit without creating scope ambiguity in the docs. |
 | Phase 10N | `2026-04-05-phase10n-governed-orchestration-scoped-replay-design.md` | commit `3765e0a` on `main` | Clean | Returns to the one focused slice / one clear verification story pattern. |
+| Phase 10O | `2026-04-05-phase10o-governed-orchestration-replay-budgeting-design.md` | focused mainline delivery around the replay-budgeting rollout | Clean | Continues the same execution/orchestration lane with one bounded CLI/service slice. |
 
 ## Practical Guidance For Future Work
 
@@ -85,7 +86,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
   per-phase plan/spec files remain canonical.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
-  story. `10N` is the current best Phase 10 example of that pattern.
+  story. `10N` and `10O` are the current best Phase 10 examples of that pattern.
 
 ## Related Documents
 

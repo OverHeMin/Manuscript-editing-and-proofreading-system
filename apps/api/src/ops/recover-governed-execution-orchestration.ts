@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import {
+  type AgentExecutionOrchestrationRecoveryOptions,
   type AgentExecutionOrchestrationScopeOptions,
   type AgentExecutionOrchestrationInspectionOptions,
   AgentExecutionOrchestrationService,
@@ -36,7 +37,7 @@ type QueryableClient = {
 
 export interface GovernedExecutionOrchestrationRecoveryRunner {
   recoverPending(
-    options?: AgentExecutionOrchestrationScopeOptions,
+    options?: AgentExecutionOrchestrationRecoveryOptions,
   ): Promise<AgentExecutionOrchestrationRecoverySummary>;
 }
 
@@ -48,7 +49,7 @@ export interface GovernedExecutionOrchestrationInspectionRunner {
 
 export interface RunGovernedExecutionOrchestrationRecoveryOptions {
   orchestrationService: GovernedExecutionOrchestrationRecoveryRunner;
-  recoveryOptions?: AgentExecutionOrchestrationScopeOptions;
+  recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions;
 }
 
 export interface RunGovernedExecutionOrchestrationInspectionOptions {
@@ -61,7 +62,7 @@ export interface RunGovernedExecutionOrchestrationRecoveryCliOptions {
   loadEnvDefaults?: () => void;
   createRecoveryRunner?: (input: {
     env: NodeJS.ProcessEnv;
-    recoveryOptions: AgentExecutionOrchestrationScopeOptions;
+    recoveryOptions: AgentExecutionOrchestrationRecoveryOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
   createInspectionRunner?: (input: {
     env: NodeJS.ProcessEnv;
@@ -101,7 +102,8 @@ export function formatGovernedExecutionOrchestrationRecoverySummary(
     `completed=${summary.completed_count} ` +
     `retryable=${summary.retryable_count} ` +
     `failed=${summary.failed_count} ` +
-    `deferred=${deferredCount}`
+    `deferred=${deferredCount}` +
+    formatGovernedExecutionOrchestrationRecoveryBudgetDetails(summary)
   );
 }
 
@@ -190,7 +192,7 @@ export async function runPersistentGovernedExecutionOrchestrationRecovery(
   options?: {
     loadEnvDefaults?: () => void;
   },
-  recoveryOptions?: AgentExecutionOrchestrationScopeOptions,
+  recoveryOptions?: AgentExecutionOrchestrationRecoveryOptions,
 ): Promise<AgentExecutionOrchestrationRecoverySummary> {
   const loadDefaults = options?.loadEnvDefaults ?? (() => loadAppEnvDefaults(appRoot));
   loadDefaults();
@@ -293,11 +295,20 @@ function resolveInspectionCliOptions(
   return {
     actionableOnly: args.includes("--actionable-only"),
     limit: readOptionalIntegerFlag(args, "--limit"),
-    ...resolveRecoveryCliOptions(args),
+    ...resolveScopeCliOptions(args),
   };
 }
 
 function resolveRecoveryCliOptions(
+  args: string[],
+): AgentExecutionOrchestrationRecoveryOptions {
+  return {
+    budget: readOptionalIntegerFlag(args, "--budget"),
+    ...resolveScopeCliOptions(args),
+  };
+}
+
+function resolveScopeCliOptions(
   args: string[],
 ): AgentExecutionOrchestrationScopeOptions {
   return {
@@ -347,4 +358,18 @@ function readRepeatedModuleFlag(
 ): AgentExecutionOrchestrationScopeOptions["modules"] {
   const values = readRepeatedStringFlag(args, flag);
   return values as AgentExecutionOrchestrationScopeOptions["modules"];
+}
+
+function formatGovernedExecutionOrchestrationRecoveryBudgetDetails(
+  summary: AgentExecutionOrchestrationRecoverySummary,
+): string {
+  if (summary.budget == null) {
+    return "";
+  }
+
+  return (
+    ` eligible=${summary.eligible_count ?? 0}` +
+    ` remaining=${summary.remaining_count ?? 0}` +
+    ` budget=${summary.budget}`
+  );
 }

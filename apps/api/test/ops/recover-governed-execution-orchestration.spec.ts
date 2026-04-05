@@ -211,6 +211,22 @@ test("governed execution orchestration recovery cli prints json and human summar
   );
 });
 
+test("governed execution orchestration recovery summary appends budget details when present", async () => {
+  assert.equal(
+    formatGovernedExecutionOrchestrationRecoverySummary({
+      processed_count: 1,
+      completed_count: 1,
+      retryable_count: 0,
+      failed_count: 0,
+      deferred_count: 1,
+      eligible_count: 3,
+      remaining_count: 2,
+      budget: 1,
+    }),
+    "[api] governed execution orchestration recovery processed=1 completed=1 retryable=0 failed=0 deferred=1 eligible=3 remaining=2 budget=1",
+  );
+});
+
 test("governed execution orchestration recovery cli supports dry-run inspection output", async () => {
   const messages: string[] = [];
   const inspection: AgentExecutionOrchestrationInspectionReport = {
@@ -351,6 +367,7 @@ test("governed execution orchestration replay forwards scoped recovery options",
   const messages: string[] = [];
   let receivedOptions:
     | {
+        budget?: number;
         modules?: string[];
         logIds?: string[];
       }
@@ -358,6 +375,8 @@ test("governed execution orchestration replay forwards scoped recovery options",
 
   await runGovernedExecutionOrchestrationRecoveryCli({
     args: [
+      "--budget",
+      "2",
       "--module",
       "editing",
       "--module",
@@ -381,6 +400,7 @@ test("governed execution orchestration replay forwards scoped recovery options",
   });
 
   assert.deepEqual(receivedOptions, {
+    budget: 2,
     modules: ["editing", "proofreading"],
     logIds: ["execution-log-1", "execution-log-3"],
   });

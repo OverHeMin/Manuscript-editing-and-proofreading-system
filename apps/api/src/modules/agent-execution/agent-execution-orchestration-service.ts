@@ -12,11 +12,19 @@ export interface AgentExecutionOrchestrationRecoverySummary {
   retryable_count: number;
   failed_count: number;
   deferred_count: number;
+  eligible_count?: number;
+  remaining_count?: number;
+  budget?: number;
 }
 
 export interface AgentExecutionOrchestrationScopeOptions {
   modules?: AgentExecutionLogRecord["module"][];
   logIds?: string[];
+}
+
+export interface AgentExecutionOrchestrationRecoveryOptions
+  extends AgentExecutionOrchestrationScopeOptions {
+  budget?: number;
 }
 
 export type AgentExecutionOrchestrationInspectionCategory =
@@ -223,9 +231,11 @@ export class AgentExecutionOrchestrationService {
   }
 
   async recoverPending(
-    scope: AgentExecutionOrchestrationScopeOptions = {},
+    options: AgentExecutionOrchestrationRecoveryOptions = {},
   ): Promise<AgentExecutionOrchestrationRecoverySummary> {
-    const logs = this.scopeLogs(await this.agentExecutionService.listLogs(), scope);
+    const logs = this.scopeLogs(await this.agentExecutionService.listLogs(), options);
+    const currentTime = this.now();
+    const normalizedBudget = normalizeOptionalNonNegativeInteger(options.budget);
     const summary: AgentExecutionOrchestrationRecoverySummary = {
       processed_count: 0,
       completed_count: 0,
@@ -233,17 +243,36 @@ export class AgentExecutionOrchestrationService {
       failed_count: 0,
       deferred_count: 0,
     };
+    const recoverableLogs: AgentExecutionLogRecord[] = [];
 
     for (const log of logs) {
-      if (isDeferredRetry(log, this.now())) {
+      if (isDeferredRetry(log, currentTime)) {
         summary.deferred_count += 1;
         continue;
       }
 
-      if (!this.isRecoverable(log)) {
+      if (!this.isRecoverableAt(log, currentTime)) {
         continue;
       }
 
+      recoverableLogs.push(log);
+    }
+
+    const logsToProcess =
+      normalizedBudget != null
+        ? recoverableLogs.slice(0, normalizedBudget)
+        : recoverableLogs;
+
+    if (normalizedBudget != null) {
+      summary.eligible_count = recoverableLogs.length;
+      summary.remaining_count = Math.max(
+        0,
+        recoverableLogs.length - logsToProcess.length,
+      );
+      summary.budget = normalizedBudget;
+    }
+
+    for (const log of logsToProcess) {
       const updated = await this.dispatchWithOwnership(log.id);
       if (!updated.claimed) {
         continue;
@@ -352,6 +381,10 @@ export class AgentExecutionOrchestrationService {
   }
 
   private isRecoverable(log: AgentExecutionLogRecord): boolean {
+    return this.isRecoverableAt(log, this.now());
+  }
+
+  private isRecoverableAt(log: AgentExecutionLogRecord, now: Date): boolean {
     if (log.status !== "completed") {
       return false;
     }
@@ -359,13 +392,9 @@ export class AgentExecutionOrchestrationService {
     return (
       log.orchestration_status === "pending" ||
       (log.orchestration_status === "retryable" &&
-        isRetryEligible(log, this.now())) ||
+        isRetryEligible(log, now)) ||
       (log.orchestration_status === "running" &&
-        isStaleRunningAttempt(
-          log,
-          this.now(),
-          this.runningAttemptStaleAfterMs,
-        ))
+        isStaleRunningAttempt(log, now, this.runningAttemptStaleAfterMs))
     );
   }
 
@@ -489,6 +518,21 @@ function normalizeStringFilter(values?: string[]): Set<string> | undefined {
   }
 
   return new Set(normalized);
+}
+
+function normalizeOptionalNonNegativeInteger(
+  value?: number,
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  const truncated = Math.trunc(value);
+  if (!Number.isFinite(truncated)) {
+    return undefined;
+  }
+
+  return Math.max(0, truncated);
 }
 
 function formatError(error: unknown): string {

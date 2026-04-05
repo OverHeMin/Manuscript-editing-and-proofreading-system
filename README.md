@@ -88,12 +88,13 @@
 4. 在启动 persistent API 前执行共享 preflight
    `pnpm --filter @medical/api run preflight:persistent`
    - If you need to replay pending, retryable, or stale-running governed follow-up orchestration after a restart or operator intervention, run `pnpm --filter @medical/api run recover:governed-orchestration`.
-   - If you need to inspect the same governed orchestration backlog without mutating it first, run `pnpm --filter @medical/api run recover:governed-orchestration -- --dry-run`.
+  - If you need to inspect the same governed orchestration backlog without mutating it first, run `pnpm --filter @medical/api run recover:governed-orchestration -- --dry-run`.
   - Add `-- --dry-run --actionable-only --limit <n>` to narrow the same read-only view down to the highest-priority actionable backlog items first.
   - Add repeatable `--module <module>` and `--log-id <execution-log-id>` flags to scope either recovery replay or dry-run inspection down to a bounded subset of logs without overriding retryability or terminal-failure rules.
-   - Retryable logs now honor a bounded next-eligible retry timestamp, so recovery only replays work that is actually due.
-   - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
-   - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
+  - Add `--budget <n>` to replay only the next bounded slice of eligible scoped logs. This does not change retryability or dry-run behavior; replay summary output reports the scoped eligible and remaining counts for that budget window.
+  - Retryable logs now honor a bounded next-eligible retry timestamp, so recovery only replays work that is actually due.
+  - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
+  - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
 5. 启动本地 demo API
    `pnpm --filter @medical/api run serve:demo`
 6. 启动 PostgreSQL 持久化 API
@@ -207,6 +208,7 @@
 - `Phase 10L` adds a repo-owned dry-run inspection mode on top of the same orchestration rules, so operators can see `recoverable_now` / `deferred_retry` / `stale_running` / `attention_required` / `not_recoverable` backlog state before choosing to replay recovery.
 - `Phase 10M` adds bounded actionable focus ordering to that dry-run lane. Operators can keep the full summary counts while asking for `--actionable-only` and `--limit <n>` so the CLI shows the most urgent replay candidates first without turning into a new orchestration control plane.
 - `Phase 10N` adds bounded replay scoping to the same repo-owned lane. Operators can repeat `--module <module>` and `--log-id <execution-log-id>` to inspect or replay only a narrow subset of logs, while all existing retry-eligibility, stale-running, and terminal-failure protections stay unchanged.
+- `Phase 10O` adds bounded replay budgeting to the same repo-owned lane. Operators can ask recovery to process only the next `n` eligible scoped logs via `--budget <n>`, while the summary reports scoped eligible-versus-remaining backlog counts and all existing recoverability protections stay unchanged.
 - Admin Governance 只新增 read-only orchestration 观测字段，不获得新的写控制权；Evaluation Workbench 仍然只是 evidence surface，不成为 routing 或 release control plane。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
   当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。
