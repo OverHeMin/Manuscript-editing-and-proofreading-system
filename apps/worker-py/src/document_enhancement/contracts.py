@@ -135,6 +135,29 @@ class IndexConsistencyAuditResult:
 
 
 @dataclass(frozen=True)
+class RepairHandoffItem:
+    handoff_type: str
+    sources: list[str]
+    document_path: str | None
+    artifact_path: str | None
+    summary: str
+    manual_steps: list[str]
+
+
+@dataclass(frozen=True)
+class RepairHandoffResult:
+    status: str
+    output_dir: Path | None
+    index_path: Path | None
+    handoff_path: Path | None
+    cleanup_action_count: int
+    consistency_issue_count: int
+    actionable_item_count: int
+    items: list[RepairHandoffItem]
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult
