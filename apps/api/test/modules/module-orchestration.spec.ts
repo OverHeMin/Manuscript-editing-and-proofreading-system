@@ -1028,6 +1028,7 @@ test("screening produces a final report asset with routed template, knowledge, a
     screeningApi,
     manuscriptRepository,
     agentExecutionRepository,
+    executionTrackingRepository,
     verificationOpsRepository,
     originalAsset,
   } =
@@ -1062,6 +1063,10 @@ test("screening produces a final report asset with routed template, knowledge, a
   const executionLog = await agentExecutionRepository.findById(
     response.body.agent_execution_log_id,
   );
+  const snapshot = await executionTrackingRepository.findSnapshotById(
+    response.body.snapshot_id,
+  );
+  assert.equal(snapshot?.agent_execution_log_id, response.body.agent_execution_log_id);
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
   assert.equal(
     executionLog?.routing_policy_version_id,
@@ -1165,6 +1170,7 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     editingApi,
     manuscriptRepository,
     agentExecutionRepository,
+    executionTrackingRepository,
     verificationOpsRepository,
     originalAsset,
   } =
@@ -1196,6 +1202,10 @@ test("editing produces a final docx asset with routed template, knowledge, and m
   const executionLog = await agentExecutionRepository.findById(
     response.body.agent_execution_log_id,
   );
+  const snapshot = await executionTrackingRepository.findSnapshotById(
+    response.body.snapshot_id,
+  );
+  assert.equal(snapshot?.agent_execution_log_id, response.body.agent_execution_log_id);
   assert.equal(executionLog?.execution_snapshot_id, response.body.snapshot_id);
   assert.equal(
     executionLog?.routing_policy_version_id,
@@ -1342,6 +1352,13 @@ test("proofreading produces a draft first and only advances the final pointer af
   const draftExecutionLog = await agentExecutionRepository.findById(
     draftResponse.body.agent_execution_log_id,
   );
+  const draftSnapshot = await executionTrackingRepository.findSnapshotById(
+    draftResponse.body.snapshot_id,
+  );
+  assert.equal(
+    draftSnapshot?.agent_execution_log_id,
+    draftResponse.body.agent_execution_log_id,
+  );
   assert.equal(
     draftExecutionLog?.routing_policy_version_id,
     "policy-version-proofreading-1",
@@ -1426,6 +1443,10 @@ test("proofreading produces a draft first and only advances the final pointer af
     finalResponse.body.snapshot_id,
   );
   assert.equal(finalSnapshot?.draft_snapshot_id, draftResponse.body.snapshot_id);
+  assert.equal(
+    finalSnapshot?.agent_execution_log_id,
+    draftResponse.body.agent_execution_log_id,
+  );
   const executionLog = await agentExecutionRepository.findById(
     draftResponse.body.agent_execution_log_id,
   );

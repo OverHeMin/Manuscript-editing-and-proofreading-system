@@ -39,6 +39,7 @@ export interface RecordExecutionSnapshotInput {
   modelId: string;
   modelVersion?: string;
   createdAssetIds?: string[];
+  agentExecutionLogId?: string;
   draftSnapshotId?: string;
   knowledgeHits: RecordKnowledgeHitInput[];
 }
@@ -107,6 +108,7 @@ export class ExecutionTrackingService {
         model_version: input.modelVersion,
         knowledge_item_ids: knowledgeItemIds,
         created_asset_ids: input.createdAssetIds ? [...input.createdAssetIds] : [],
+        agent_execution_log_id: input.agentExecutionLogId,
         draft_snapshot_id: input.draftSnapshotId,
         created_at: timestamp,
       };

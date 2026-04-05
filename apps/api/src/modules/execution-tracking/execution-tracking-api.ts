@@ -1,9 +1,16 @@
 import type {
+  ExecutionTrackingAgentExecutionObservationRecord,
   KnowledgeHitLogRecord,
   ModuleExecutionSnapshotRecord,
   ModuleExecutionSnapshotViewRecord,
   ExecutionTrackingRuntimeBindingReadinessObservationRecord,
 } from "./execution-tracking-record.ts";
+import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
+import {
+  DEFAULT_RUNNING_ATTEMPT_STALE_AFTER_MS,
+  deriveCompletionSummary,
+  deriveRecoverySummary,
+} from "../agent-execution/agent-execution-view.ts";
 import type {
   ExecutionTrackingService,
   RecordExecutionSnapshotInput,
@@ -26,12 +33,20 @@ export interface CreateExecutionTrackingApiOptions {
     RuntimeBindingReadinessService,
     "getActiveBindingReadinessForScope"
   >;
+  agentExecutionService?: Pick<AgentExecutionService, "getLog">;
+  now?: () => Date;
+  runningAttemptStaleAfterMs?: number;
 }
 
 export function createExecutionTrackingApi(
   options: CreateExecutionTrackingApiOptions,
 ) {
   const { executionTrackingService } = options;
+  const observeNow = options.now ?? (() => new Date());
+  const runningAttemptStaleAfterMs = Math.max(
+    0,
+    options.runningAttemptStaleAfterMs ?? DEFAULT_RUNNING_ATTEMPT_STALE_AFTER_MS,
+  );
 
   return {
     async recordSnapshot({
@@ -42,7 +57,11 @@ export function createExecutionTrackingApi(
       const snapshot = await executionTrackingService.recordSnapshot(input);
       return {
         status: 201,
-        body: await enrichSnapshotView(snapshot, options),
+        body: await enrichSnapshotView(snapshot, {
+          ...options,
+          observationTime: observeNow(),
+          runningAttemptStaleAfterMs,
+        }),
       };
     },
 
@@ -54,7 +73,13 @@ export function createExecutionTrackingApi(
       const snapshot = await executionTrackingService.getSnapshot(snapshotId);
       return {
         status: 200,
-        body: snapshot ? await enrichSnapshotView(snapshot, options) : undefined,
+        body: snapshot
+          ? await enrichSnapshotView(snapshot, {
+              ...options,
+              observationTime: observeNow(),
+              runningAttemptStaleAfterMs,
+            })
+          : undefined,
       };
     },
 
@@ -77,8 +102,13 @@ async function enrichSnapshotView(
   record: ModuleExecutionSnapshotRecord,
   options: Pick<
     CreateExecutionTrackingApiOptions,
-    "executionGovernanceRepository" | "runtimeBindingReadinessService"
-  >,
+    | "executionGovernanceRepository"
+    | "runtimeBindingReadinessService"
+    | "agentExecutionService"
+  > & {
+    observationTime: Date;
+    runningAttemptStaleAfterMs: number;
+  },
 ): Promise<ModuleExecutionSnapshotViewRecord> {
   return {
     ...record,
@@ -86,6 +116,12 @@ async function enrichSnapshotView(
     skill_package_versions: [...record.skill_package_versions],
     knowledge_item_ids: [...record.knowledge_item_ids],
     created_asset_ids: [...record.created_asset_ids],
+    agent_execution: await observeLinkedAgentExecution({
+      logId: record.agent_execution_log_id,
+      agentExecutionService: options.agentExecutionService,
+      observationTime: options.observationTime,
+      runningAttemptStaleAfterMs: options.runningAttemptStaleAfterMs,
+    }),
     runtime_binding_readiness: await observeRuntimeBindingReadiness({
       executionProfileId: record.execution_profile_id,
       executionGovernanceRepository: options.executionGovernanceRepository,
@@ -148,6 +184,55 @@ async function observeRuntimeBindingReadiness(input: {
         error instanceof Error
           ? error.message
           : "Unknown runtime binding readiness observation error.",
+    };
+  }
+}
+
+async function observeLinkedAgentExecution(input: {
+  logId?: string;
+  agentExecutionService?: Pick<AgentExecutionService, "getLog">;
+  observationTime: Date;
+  runningAttemptStaleAfterMs: number;
+}): Promise<ExecutionTrackingAgentExecutionObservationRecord> {
+  if (!input.logId) {
+    return {
+      observation_status: "not_linked",
+    };
+  }
+
+  if (!input.agentExecutionService) {
+    return {
+      observation_status: "failed_open",
+      log_id: input.logId,
+      error: "Agent execution service is unavailable.",
+    };
+  }
+
+  try {
+    const log = await input.agentExecutionService.getLog(input.logId);
+    return {
+      observation_status: "reported",
+      log_id: log.id,
+      log: {
+        id: log.id,
+        status: log.status,
+        orchestration_status: log.orchestration_status,
+        completion_summary: deriveCompletionSummary(log),
+        recovery_summary: deriveRecoverySummary({
+          record: log,
+          now: input.observationTime,
+          runningAttemptStaleAfterMs: input.runningAttemptStaleAfterMs,
+        }),
+      },
+    };
+  } catch (error) {
+    return {
+      observation_status: "failed_open",
+      log_id: input.logId,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown linked agent execution observation error.",
     };
   }
 }

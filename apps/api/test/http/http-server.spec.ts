@@ -1658,6 +1658,52 @@ test("http server resolves governed execution bundles and records execution snap
       ),
     );
 
+    const createExecutionLogResponse = await fetch(
+      `${baseUrl}/api/v1/agent-execution`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            manuscriptId: "manuscript-demo-1",
+            module: "editing",
+            triggeredBy: "dev-admin",
+            runtimeId: "runtime-http-1",
+            sandboxProfileId: "sandbox-http-1",
+            agentProfileId: "agent-profile-http-1",
+            runtimeBindingId: "binding-http-1",
+            toolPermissionPolicyId: "policy-http-1",
+            knowledgeItemIds: ["knowledge-demo-1"],
+            evaluationSuiteIds: ["suite-http-1"],
+          },
+        }),
+      },
+    );
+    const executionLog = (await createExecutionLogResponse.json()) as {
+      id: string;
+    };
+
+    assert.equal(createExecutionLogResponse.status, 201);
+
+    const completeExecutionLogResponse = await fetch(
+      `${baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          executionSnapshotId: "snapshot-http-link-placeholder",
+        }),
+      },
+    );
+
+    assert.equal(completeExecutionLogResponse.status, 200);
+
     const snapshotResponse = await fetch(
       `${baseUrl}/api/v1/execution-tracking/snapshots`,
       {
@@ -1679,6 +1725,7 @@ test("http server resolves governed execution bundles and records execution snap
             skillPackageIds: [skillPackage.id],
             skillPackageVersions: ["1.0.0"],
             modelId: model.id,
+            agentExecutionLogId: executionLog.id,
             knowledgeHits: [
               {
                 knowledgeItemId: "knowledge-demo-1",
@@ -1693,6 +1740,23 @@ test("http server resolves governed execution bundles and records execution snap
     const snapshot = (await snapshotResponse.json()) as {
       id: string;
       model_id: string;
+      agent_execution_log_id?: string;
+      agent_execution: {
+        observation_status: string;
+        log_id?: string;
+        log?: {
+          id: string;
+          status: string;
+          orchestration_status: string;
+          completion_summary: {
+            derived_status: string;
+          };
+          recovery_summary: {
+            category: string;
+            recovery_readiness: string;
+          };
+        };
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -1704,6 +1768,24 @@ test("http server resolves governed execution bundles and records execution snap
 
     assert.equal(snapshotResponse.status, 201);
     assert.equal(snapshot.model_id, model.id);
+    assert.equal(snapshot.agent_execution_log_id, executionLog.id);
+    assert.equal(snapshot.agent_execution.observation_status, "reported");
+    assert.equal(snapshot.agent_execution.log_id, executionLog.id);
+    assert.equal(snapshot.agent_execution.log?.id, executionLog.id);
+    assert.equal(snapshot.agent_execution.log?.status, "completed");
+    assert.equal(snapshot.agent_execution.log?.orchestration_status, "pending");
+    assert.equal(
+      snapshot.agent_execution.log?.completion_summary.derived_status,
+      "business_completed_follow_up_pending",
+    );
+    assert.equal(
+      snapshot.agent_execution.log?.recovery_summary.category,
+      "recoverable_now",
+    );
+    assert.equal(
+      snapshot.agent_execution.log?.recovery_summary.recovery_readiness,
+      "ready_now",
+    );
     assert.equal(snapshot.runtime_binding_readiness.observation_status, "reported");
     assert.equal(snapshot.runtime_binding_readiness.report?.status, "missing");
     assert.ok(
@@ -1730,6 +1812,23 @@ test("http server resolves governed execution bundles and records execution snap
     );
     const loadedSnapshot = (await loadedSnapshotResponse.json()) as {
       id: string;
+      agent_execution_log_id?: string;
+      agent_execution: {
+        observation_status: string;
+        log_id?: string;
+        log?: {
+          id: string;
+          status: string;
+          orchestration_status: string;
+          completion_summary: {
+            derived_status: string;
+          };
+          recovery_summary: {
+            category: string;
+            recovery_readiness: string;
+          };
+        };
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -1743,6 +1842,18 @@ test("http server resolves governed execution bundles and records execution snap
     assert.equal(loadedSnapshotResponse.status, 200);
     assert.equal(hitLogsResponse.status, 200);
     assert.equal(loadedSnapshot.id, snapshot.id);
+    assert.equal(loadedSnapshot.agent_execution_log_id, executionLog.id);
+    assert.equal(loadedSnapshot.agent_execution.observation_status, "reported");
+    assert.equal(loadedSnapshot.agent_execution.log_id, executionLog.id);
+    assert.equal(loadedSnapshot.agent_execution.log?.id, executionLog.id);
+    assert.equal(
+      loadedSnapshot.agent_execution.log?.completion_summary.derived_status,
+      "business_completed_follow_up_pending",
+    );
+    assert.equal(
+      loadedSnapshot.agent_execution.log?.recovery_summary.category,
+      "recoverable_now",
+    );
     assert.equal(
       loadedSnapshot.runtime_binding_readiness.observation_status,
       "reported",

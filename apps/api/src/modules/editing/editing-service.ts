@@ -251,6 +251,7 @@ export class EditingService {
         modelId: moduleContext.modelSelection.model.id,
         modelVersion: moduleContext.modelSelection.model.model_version,
         createdAssetIds: [asset.id],
+        agentExecutionLogId: executionLog.id,
         knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
           knowledgeItemId: selection.knowledgeItem.id,
           matchSourceId: selection.matchSourceId,

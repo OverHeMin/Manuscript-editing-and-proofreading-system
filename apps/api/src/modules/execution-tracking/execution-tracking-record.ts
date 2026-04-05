@@ -1,4 +1,9 @@
 import type { TemplateModule } from "../templates/template-record.ts";
+import type {
+  AgentExecutionCompletionSummaryRecord,
+  AgentExecutionLogRecord,
+  AgentExecutionRecoverySummaryRecord,
+} from "../agent-execution/agent-execution-record.ts";
 import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
 
 export type KnowledgeHitMatchSource =
@@ -23,6 +28,7 @@ export interface ModuleExecutionSnapshotRecord {
   model_version?: string;
   knowledge_item_ids: string[];
   created_asset_ids: string[];
+  agent_execution_log_id?: string;
   draft_snapshot_id?: string;
   created_at: string;
 }
@@ -46,7 +52,23 @@ export interface ExecutionTrackingRuntimeBindingReadinessObservationRecord {
   error?: string;
 }
 
+export interface LinkedAgentExecutionSnapshotRecord {
+  id: string;
+  status: AgentExecutionLogRecord["status"];
+  orchestration_status: AgentExecutionLogRecord["orchestration_status"];
+  completion_summary: AgentExecutionCompletionSummaryRecord;
+  recovery_summary: AgentExecutionRecoverySummaryRecord;
+}
+
+export interface ExecutionTrackingAgentExecutionObservationRecord {
+  observation_status: "reported" | "not_linked" | "failed_open";
+  log_id?: string;
+  log?: LinkedAgentExecutionSnapshotRecord;
+  error?: string;
+}
+
 export interface ModuleExecutionSnapshotViewRecord
   extends ModuleExecutionSnapshotRecord {
+  agent_execution: ExecutionTrackingAgentExecutionObservationRecord;
   runtime_binding_readiness: ExecutionTrackingRuntimeBindingReadinessObservationRecord;
 }

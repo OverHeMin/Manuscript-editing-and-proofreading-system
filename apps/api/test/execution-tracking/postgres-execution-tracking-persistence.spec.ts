@@ -27,6 +27,7 @@ test("postgres execution tracking repository persists snapshots and knowledge hi
       model_version: "2026-03-01",
       knowledge_item_ids: ["77777777-7777-7777-7777-777777777777"],
       created_asset_ids: ["88888888-8888-8888-8888-888888888888"],
+      agent_execution_log_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
       created_at: "2026-03-30T12:00:00.000Z",
     });
     await repository.saveKnowledgeHitLog({
@@ -65,6 +66,7 @@ test("postgres execution tracking repository persists snapshots and knowledge hi
       model_version: "2026-03-01",
       knowledge_item_ids: ["77777777-7777-7777-7777-777777777777"],
       created_asset_ids: ["88888888-8888-8888-8888-888888888888"],
+      agent_execution_log_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
       created_at: "2026-03-30T12:00:00.000Z",
     });
     assert.equal(snapshots.length, 1);

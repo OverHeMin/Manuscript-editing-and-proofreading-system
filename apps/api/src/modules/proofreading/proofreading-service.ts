@@ -446,6 +446,7 @@ export class ProofreadingService {
         modelId: resolvedContext.modelId,
         modelVersion: resolvedContext.modelVersion,
         createdAssetIds: [asset.id],
+        agentExecutionLogId,
         draftSnapshotId: resolvedContext.draftSnapshotId,
         knowledgeHits: resolvedContext.knowledgeHits,
       });

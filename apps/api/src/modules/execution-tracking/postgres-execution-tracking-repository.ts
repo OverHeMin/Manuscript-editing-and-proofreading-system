@@ -27,6 +27,7 @@ interface ExecutionSnapshotRow {
   model_version: string | null;
   knowledge_item_ids: string[] | string;
   created_asset_ids: string[] | string;
+  agent_execution_log_id: string | null;
   draft_snapshot_id: string | null;
   created_at: Date | string;
 }
@@ -68,6 +69,7 @@ export class PostgresExecutionTrackingRepository
           model_version,
           knowledge_item_ids,
           created_asset_ids,
+          agent_execution_log_id,
           draft_snapshot_id,
           created_at
         )
@@ -88,7 +90,8 @@ export class PostgresExecutionTrackingRepository
           $14::text[],
           $15::text[],
           $16,
-          $17
+          $17,
+          $18
         )
         on conflict (id) do update
         set
@@ -106,6 +109,7 @@ export class PostgresExecutionTrackingRepository
           model_version = excluded.model_version,
           knowledge_item_ids = excluded.knowledge_item_ids,
           created_asset_ids = excluded.created_asset_ids,
+          agent_execution_log_id = excluded.agent_execution_log_id,
           draft_snapshot_id = excluded.draft_snapshot_id,
           created_at = excluded.created_at
       `,
@@ -125,6 +129,7 @@ export class PostgresExecutionTrackingRepository
         record.model_version ?? null,
         record.knowledge_item_ids,
         record.created_asset_ids,
+        record.agent_execution_log_id ?? null,
         record.draft_snapshot_id ?? null,
         record.created_at,
       ],
@@ -152,6 +157,7 @@ export class PostgresExecutionTrackingRepository
           model_version,
           knowledge_item_ids,
           created_asset_ids,
+          agent_execution_log_id,
           draft_snapshot_id,
           created_at
         from execution_snapshots
@@ -182,6 +188,7 @@ export class PostgresExecutionTrackingRepository
           model_version,
           knowledge_item_ids,
           created_asset_ids,
+          agent_execution_log_id,
           draft_snapshot_id,
           created_at
         from execution_snapshots
@@ -297,6 +304,9 @@ function mapExecutionSnapshotRow(
     ...(row.model_version ? { model_version: row.model_version } : {}),
     knowledge_item_ids: decodeTextArray(row.knowledge_item_ids),
     created_asset_ids: decodeTextArray(row.created_asset_ids),
+    ...(row.agent_execution_log_id
+      ? { agent_execution_log_id: row.agent_execution_log_id }
+      : {}),
     ...(row.draft_snapshot_id ? { draft_snapshot_id: row.draft_snapshot_id } : {}),
     created_at: createdAt,
   };

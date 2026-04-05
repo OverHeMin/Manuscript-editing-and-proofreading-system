@@ -1322,6 +1322,7 @@ export function createInMemoryApiRuntime(input: {
       executionTrackingService,
       executionGovernanceRepository,
       runtimeBindingReadinessService,
+      agentExecutionService,
     }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,

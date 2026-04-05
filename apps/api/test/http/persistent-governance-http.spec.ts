@@ -754,6 +754,52 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           },
         );
 
+        const createExecutionLogResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-execution`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                manuscriptId: "11111111-1111-1111-1111-111111111111",
+                module: "editing",
+                triggeredBy: "persistent.admin",
+                runtimeId: "persistent-runtime-1",
+                sandboxProfileId: "persistent-sandbox-1",
+                agentProfileId: "persistent-agent-profile-1",
+                runtimeBindingId: "persistent-binding-1",
+                toolPermissionPolicyId: "persistent-policy-1",
+                knowledgeItemIds: ["11111111-1111-1111-1111-111111111111"],
+                evaluationSuiteIds: ["persistent-suite-1"],
+              },
+            }),
+          },
+        );
+        const executionLog = (await createExecutionLogResponse.json()) as {
+          id: string;
+        };
+
+        assert.equal(createExecutionLogResponse.status, 201);
+
+        const completeExecutionLogResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/agent-execution/${executionLog.id}/complete`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              executionSnapshotId: "snapshot-persistent-link-placeholder",
+            }),
+          },
+        );
+
+        assert.equal(completeExecutionLogResponse.status, 200);
+
         const snapshotResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/execution-tracking/snapshots`,
           {
@@ -775,6 +821,7 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
                 skillPackageIds: [skill.id],
                 skillPackageVersions: ["1.0.0"],
                 modelId: model.id,
+                agentExecutionLogId: executionLog.id,
                 knowledgeHits: [
                   {
                     knowledgeItemId: "11111111-1111-1111-1111-111111111111",
@@ -788,6 +835,23 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
         );
         const snapshot = (await snapshotResponse.json()) as {
           id: string;
+          agent_execution_log_id?: string;
+          agent_execution: {
+            observation_status: string;
+            log_id?: string;
+            log?: {
+              id: string;
+              status: string;
+              orchestration_status: string;
+              completion_summary: {
+                derived_status: string;
+              };
+              recovery_summary: {
+                category: string;
+                recovery_readiness: string;
+              };
+            };
+          };
           runtime_binding_readiness: {
             observation_status: string;
             report?: {
@@ -798,6 +862,27 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
         };
 
         assert.equal(snapshotResponse.status, 201);
+        assert.equal(snapshot.agent_execution_log_id, executionLog.id);
+        assert.equal(snapshot.agent_execution.observation_status, "reported");
+        assert.equal(snapshot.agent_execution.log_id, executionLog.id);
+        assert.equal(snapshot.agent_execution.log?.id, executionLog.id);
+        assert.equal(snapshot.agent_execution.log?.status, "completed");
+        assert.equal(
+          snapshot.agent_execution.log?.orchestration_status,
+          "pending",
+        );
+        assert.equal(
+          snapshot.agent_execution.log?.completion_summary.derived_status,
+          "business_completed_follow_up_pending",
+        );
+        assert.equal(
+          snapshot.agent_execution.log?.recovery_summary.category,
+          "recoverable_now",
+        );
+        assert.equal(
+          snapshot.agent_execution.log?.recovery_summary.recovery_readiness,
+          "ready_now",
+        );
         assert.equal(
           snapshot.runtime_binding_readiness.observation_status,
           "reported",
@@ -835,6 +920,23 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           );
           const snapshotLoaded = (await snapshotLoadedResponse.json()) as {
             id: string;
+            agent_execution_log_id?: string;
+            agent_execution: {
+              observation_status: string;
+              log_id?: string;
+              log?: {
+                id: string;
+                status: string;
+                orchestration_status: string;
+                completion_summary: {
+                  derived_status: string;
+                };
+                recovery_summary: {
+                  category: string;
+                  recovery_readiness: string;
+                };
+              };
+            };
             runtime_binding_readiness: {
               observation_status: string;
               report?: {
@@ -886,6 +988,21 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
             ],
           );
           assert.equal(snapshotLoaded.id, snapshot.id);
+          assert.equal(snapshotLoaded.agent_execution_log_id, executionLog.id);
+          assert.equal(
+            snapshotLoaded.agent_execution.observation_status,
+            "reported",
+          );
+          assert.equal(snapshotLoaded.agent_execution.log_id, executionLog.id);
+          assert.equal(snapshotLoaded.agent_execution.log?.id, executionLog.id);
+          assert.equal(
+            snapshotLoaded.agent_execution.log?.completion_summary.derived_status,
+            "business_completed_follow_up_pending",
+          );
+          assert.equal(
+            snapshotLoaded.agent_execution.log?.recovery_summary.category,
+            "recoverable_now",
+          );
           assert.equal(
             snapshotLoaded.runtime_binding_readiness.observation_status,
             "reported",

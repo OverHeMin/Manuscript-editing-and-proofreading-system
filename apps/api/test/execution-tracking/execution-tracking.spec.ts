@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createExecutionTrackingApi } from "../../src/modules/execution-tracking/execution-tracking-api.ts";
 import { ExecutionTrackingService } from "../../src/modules/execution-tracking/execution-tracking-service.ts";
 import { InMemoryExecutionTrackingRepository } from "../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
+import type { AgentExecutionLogRecord } from "../../src/modules/agent-execution/agent-execution-record.ts";
 import type { ModuleExecutionProfileRecord } from "../../src/modules/execution-governance/execution-governance-record.ts";
 import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/runtime-binding-readiness.ts";
 
@@ -16,6 +17,9 @@ function createExecutionTrackingHarness(input?: {
     getActiveBindingReadinessForScope: (
       scope: RuntimeBindingReadinessReport["scope"],
     ) => Promise<RuntimeBindingReadinessReport>;
+  };
+  agentExecutionService?: {
+    getLog: (logId: string) => Promise<AgentExecutionLogRecord>;
   };
 }) {
   const repository = new InMemoryExecutionTrackingRepository();
@@ -35,6 +39,7 @@ function createExecutionTrackingHarness(input?: {
     executionTrackingService: service,
     executionGovernanceRepository: input?.executionGovernanceRepository,
     runtimeBindingReadinessService: input?.runtimeBindingReadinessService,
+    agentExecutionService: input?.agentExecutionService,
   });
 
   return {
@@ -84,6 +89,7 @@ test("execution tracking stores a frozen snapshot and per-knowledge hit reasons"
   assert.equal(snapshot.module_template_version_no, 3);
   assert.equal(snapshot.prompt_template_version, "1.2.0");
   assert.equal(snapshot.model_version, "2026-03");
+  assert.equal(snapshot.agent_execution_log_id, undefined);
   assert.equal(hitLogs.length, 2);
   assert.deepEqual(hitLogs[0]?.match_reasons, ["template_family", "risk_tag"]);
   assert.equal(hitLogs[1]?.match_source, "template_binding");
@@ -206,13 +212,142 @@ test("execution tracking api enriches snapshot create and get responses with run
     created.body.runtime_binding_readiness.observation_status,
     "reported",
   );
+  assert.equal(created.body.agent_execution_log_id, undefined);
+  assert.equal(created.body.agent_execution.observation_status, "not_linked");
   assert.deepEqual(created.body.runtime_binding_readiness.report, readinessReport);
   assert.equal(loaded.status, 200);
   assert.equal(
     loaded.body?.runtime_binding_readiness.observation_status,
     "reported",
   );
+  assert.equal(loaded.body?.agent_execution_log_id, undefined);
+  assert.equal(loaded.body?.agent_execution.observation_status, "not_linked");
   assert.deepEqual(loaded.body?.runtime_binding_readiness.report, readinessReport);
+});
+
+test("execution tracking api reports linked agent execution settlement and recovery when snapshot stores a durable execution log id", async () => {
+  const linkedLog: AgentExecutionLogRecord = {
+    id: "execution-log-1",
+    manuscript_id: "manuscript-6",
+    module: "editing",
+    triggered_by: "editor-1",
+    runtime_id: "runtime-1",
+    sandbox_profile_id: "sandbox-1",
+    agent_profile_id: "agent-profile-1",
+    runtime_binding_id: "binding-1",
+    tool_permission_policy_id: "policy-1",
+    execution_snapshot_id: "snapshot-existing",
+    knowledge_item_ids: ["knowledge-1"],
+    verification_check_profile_ids: ["check-1"],
+    evaluation_suite_ids: ["suite-1"],
+    release_check_profile_id: "release-1",
+    verification_evidence_ids: [],
+    status: "completed",
+    orchestration_status: "pending",
+    orchestration_attempt_count: 0,
+    orchestration_max_attempts: 3,
+    started_at: "2026-03-28T10:00:00.000Z",
+    finished_at: "2026-03-28T10:05:00.000Z",
+  };
+  const { api } = createExecutionTrackingHarness({
+    executionGovernanceRepository: {
+      async findProfileById() {
+        return {
+          id: "profile-6",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          template_family_id: "family-6",
+          module_template_id: "template-6",
+          prompt_template_id: "prompt-6",
+          skill_package_ids: [],
+          knowledge_binding_mode: "profile_only",
+          status: "active",
+          version: 1,
+        };
+      },
+    },
+    runtimeBindingReadinessService: {
+      async getActiveBindingReadinessForScope(scope) {
+        return {
+          status: "missing",
+          scope,
+          issues: [
+            {
+              code: "missing_active_binding",
+              message: "No active binding is configured.",
+            },
+          ],
+          execution_profile_alignment: {
+            status: "missing_active_profile",
+          },
+        };
+      },
+    },
+    agentExecutionService: {
+      async getLog(logId) {
+        assert.equal(logId, linkedLog.id);
+        return linkedLog;
+      },
+    },
+  });
+
+  const created = await api.recordSnapshot({
+    input: {
+      manuscriptId: "manuscript-6",
+      module: "editing",
+      jobId: "job-6",
+      executionProfileId: "profile-6",
+      moduleTemplateId: "template-6",
+      moduleTemplateVersionNo: 2,
+      promptTemplateId: "prompt-6",
+      promptTemplateVersion: "1.0.0",
+      skillPackageIds: [],
+      skillPackageVersions: [],
+      modelId: "model-6",
+      agentExecutionLogId: linkedLog.id,
+      knowledgeHits: [],
+    },
+  });
+
+  const loaded = await api.getSnapshot({
+    snapshotId: created.body.id,
+  });
+
+  assert.equal(created.status, 201);
+  assert.equal(created.body.agent_execution_log_id, linkedLog.id);
+  assert.equal(created.body.agent_execution.observation_status, "reported");
+  assert.equal(created.body.agent_execution.log_id, linkedLog.id);
+  assert.equal(created.body.agent_execution.log?.id, linkedLog.id);
+  assert.equal(created.body.agent_execution.log?.status, "completed");
+  assert.equal(
+    created.body.agent_execution.log?.orchestration_status,
+    "pending",
+  );
+  assert.equal(
+    created.body.agent_execution.log?.completion_summary.derived_status,
+    "business_completed_follow_up_pending",
+  );
+  assert.equal(
+    created.body.agent_execution.log?.recovery_summary.category,
+    "recoverable_now",
+  );
+  assert.equal(
+    created.body.agent_execution.log?.recovery_summary.recovery_readiness,
+    "ready_now",
+  );
+  assert.equal(
+    loaded.body?.agent_execution.observation_status,
+    "reported",
+  );
+  assert.equal(loaded.body?.agent_execution.log?.id, linkedLog.id);
+  assert.equal(
+    loaded.body?.agent_execution.log?.completion_summary.derived_status,
+    "business_completed_follow_up_pending",
+  );
+  assert.equal(
+    loaded.body?.agent_execution.log?.recovery_summary.category,
+    "recoverable_now",
+  );
 });
 
 test("execution tracking api fails open when snapshot readiness cannot recover execution profile scope", async () => {
@@ -256,6 +391,7 @@ test("execution tracking api fails open when snapshot readiness cannot recover e
     created.body.runtime_binding_readiness.error ?? "",
     /profile-missing/,
   );
+  assert.equal(created.body.agent_execution.observation_status, "not_linked");
   assert.equal(created.body.runtime_binding_readiness.report, undefined);
 });
 
@@ -310,5 +446,73 @@ test("execution tracking api fails open when runtime binding readiness observati
     created.body.runtime_binding_readiness.error,
     "snapshot readiness exploded",
   );
+  assert.equal(created.body.agent_execution.observation_status, "not_linked");
   assert.equal(created.body.runtime_binding_readiness.report, undefined);
+});
+
+test("execution tracking api fails open when linked agent execution observation throws unexpectedly", async () => {
+  const { api } = createExecutionTrackingHarness({
+    executionGovernanceRepository: {
+      async findProfileById() {
+        return {
+          id: "profile-7",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          template_family_id: "family-7",
+          module_template_id: "template-7",
+          prompt_template_id: "prompt-7",
+          skill_package_ids: [],
+          knowledge_binding_mode: "profile_only",
+          status: "active",
+          version: 1,
+        };
+      },
+    },
+    runtimeBindingReadinessService: {
+      async getActiveBindingReadinessForScope(scope) {
+        return {
+          status: "missing",
+          scope,
+          issues: [],
+          execution_profile_alignment: {
+            status: "missing_active_profile",
+          },
+        };
+      },
+    },
+    agentExecutionService: {
+      async getLog(logId) {
+        assert.equal(logId, "execution-log-missing");
+        throw new Error("linked execution lookup exploded");
+      },
+    },
+  });
+
+  const created = await api.recordSnapshot({
+    input: {
+      manuscriptId: "manuscript-7",
+      module: "editing",
+      jobId: "job-7",
+      executionProfileId: "profile-7",
+      moduleTemplateId: "template-7",
+      moduleTemplateVersionNo: 1,
+      promptTemplateId: "prompt-7",
+      promptTemplateVersion: "1.0.0",
+      skillPackageIds: [],
+      skillPackageVersions: [],
+      modelId: "model-7",
+      agentExecutionLogId: "execution-log-missing",
+      knowledgeHits: [],
+    },
+  });
+
+  assert.equal(created.status, 201);
+  assert.equal(created.body.agent_execution_log_id, "execution-log-missing");
+  assert.equal(created.body.agent_execution.observation_status, "failed_open");
+  assert.equal(created.body.agent_execution.log_id, "execution-log-missing");
+  assert.equal(
+    created.body.agent_execution.error,
+    "linked execution lookup exploded",
+  );
+  assert.equal(created.body.agent_execution.log, undefined);
 });
