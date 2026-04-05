@@ -335,6 +335,66 @@ test("governed execution orchestration dry-run item output appends readiness win
   assert.equal(messages[0], JSON.stringify(inspection, null, 2));
 });
 
+test("governed execution orchestration dry-run summary appends readiness rollup", async () => {
+  const messages: string[] = [];
+  const inspection: AgentExecutionOrchestrationInspectionReport = {
+    summary: {
+      total_count: 3,
+      recoverable_now_count: 1,
+      stale_running_count: 0,
+      deferred_retry_count: 1,
+      attention_required_count: 0,
+      not_recoverable_count: 1,
+    },
+    focus: {
+      actionable_count: 2,
+      displayed_count: 1,
+      omitted_count: 0,
+      actionable_only: false,
+      limit: 1,
+    },
+    readiness_summary: {
+      ready_now_count: 1,
+      waiting_retry_eligibility_count: 1,
+      waiting_running_timeout_count: 0,
+      next_ready_at: "2026-04-05T09:06:00.000Z",
+    },
+    items: [
+      {
+        log_id: "execution-log-1",
+        manuscript_id: "manuscript-1",
+        module: "editing",
+        business_status: "completed",
+        orchestration_status: "pending",
+        orchestration_attempt_count: 0,
+        orchestration_max_attempts: 3,
+        category: "recoverable_now",
+        recovery_readiness: "ready_now",
+        reason: "Pending orchestration is ready to replay now.",
+      },
+    ],
+  };
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run"],
+    createInspectionRunner: async () => inspection,
+    log: (message) => messages.push(message),
+  });
+
+  assert.match(messages[0] ?? "", /ready_now=1/i);
+  assert.match(messages[0] ?? "", /waiting_retry_eligibility=1/i);
+  assert.match(messages[0] ?? "", /waiting_running_timeout=0/i);
+  assert.match(messages[0] ?? "", /next_ready_at=2026-04-05T09:06:00.000Z/i);
+
+  messages.length = 0;
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: ["--dry-run", "--json"],
+    createInspectionRunner: async () => inspection,
+    log: (message) => messages.push(message),
+  });
+  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+});
+
 test("governed execution orchestration dry-run forwards actionable focus options", async () => {
   const messages: string[] = [];
   let receivedOptions:

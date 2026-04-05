@@ -74,6 +74,13 @@ export interface AgentExecutionOrchestrationInspectionFocus {
   limit?: number;
 }
 
+export interface AgentExecutionOrchestrationReadinessSummary {
+  ready_now_count: number;
+  waiting_retry_eligibility_count: number;
+  waiting_running_timeout_count: number;
+  next_ready_at?: string;
+}
+
 export interface AgentExecutionOrchestrationReplayPreview {
   budget: number;
   eligible_count: number;
@@ -84,6 +91,7 @@ export interface AgentExecutionOrchestrationReplayPreview {
 export interface AgentExecutionOrchestrationInspectionReport {
   summary: AgentExecutionOrchestrationInspectionSummary;
   focus: AgentExecutionOrchestrationInspectionFocus;
+  readiness_summary?: AgentExecutionOrchestrationReadinessSummary;
   replay_preview?: AgentExecutionOrchestrationReplayPreview;
   items: AgentExecutionOrchestrationInspectionItem[];
 }
@@ -319,6 +327,11 @@ export class AgentExecutionOrchestrationService {
     const normalizedLimit =
       options.limit != null ? Math.max(0, Math.trunc(options.limit)) : undefined;
     const normalizedBudget = normalizeOptionalNonNegativeInteger(options.budget);
+    const readinessSummary: AgentExecutionOrchestrationReadinessSummary = {
+      ready_now_count: 0,
+      waiting_retry_eligibility_count: 0,
+      waiting_running_timeout_count: 0,
+    };
     const report: AgentExecutionOrchestrationInspectionReport = {
       summary: {
         total_count: logs.length,
@@ -335,6 +348,7 @@ export class AgentExecutionOrchestrationService {
         actionable_only: options.actionableOnly === true,
         limit: normalizedLimit,
       },
+      readiness_summary: readinessSummary,
       items: [],
     };
     const items: AgentExecutionOrchestrationInspectionItem[] = [];
@@ -357,6 +371,27 @@ export class AgentExecutionOrchestrationService {
         report.summary.attention_required_count += 1;
       } else {
         report.summary.not_recoverable_count += 1;
+      }
+
+      const readiness = item.recovery_readiness;
+      if (readiness === "ready_now") {
+        readinessSummary.ready_now_count += 1;
+      } else if (readiness === "waiting_retry_eligibility") {
+        readinessSummary.waiting_retry_eligibility_count += 1;
+      } else if (readiness === "waiting_running_timeout") {
+        readinessSummary.waiting_running_timeout_count += 1;
+      }
+
+      if (
+        (readiness === "waiting_retry_eligibility" ||
+          readiness === "waiting_running_timeout") &&
+        item.recovery_ready_at != null &&
+        (readinessSummary.next_ready_at == null ||
+          item.recovery_ready_at.localeCompare(
+            readinessSummary.next_ready_at,
+          ) < 0)
+      ) {
+        readinessSummary.next_ready_at = item.recovery_ready_at;
       }
     }
 

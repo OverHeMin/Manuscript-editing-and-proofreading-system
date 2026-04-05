@@ -1054,6 +1054,54 @@ test("inspection exposes normalized recovery readiness windows", async () => {
   );
 });
 
+test("inspection reports a readiness summary rollup independent of item display limits", async () => {
+  const harness = createOrchestrationHarness();
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-ready",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-deferred",
+  });
+  await harness.agentExecutionService.failOrchestrationAttempt({
+    logId: "execution-log-2",
+    errorMessage: "Retry later",
+    nextRetryAt: "2026-04-05T09:06:00.000Z",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-running",
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-3",
+    claimToken: "claim-fresh",
+  });
+
+  const report = await new AgentExecutionOrchestrationService({
+    agentExecutionService: harness.agentExecutionService,
+    executionTrackingService: harness.executionTrackingService,
+    verificationOpsService: harness.verificationOpsService,
+    now: () => new Date("2026-04-05T09:04:00.000Z"),
+  }).inspectBacklog({
+    limit: 1,
+  });
+
+  assert.deepEqual(report.readiness_summary, {
+    ready_now_count: 1,
+    waiting_retry_eligibility_count: 1,
+    waiting_running_timeout_count: 1,
+    next_ready_at: "2026-04-05T09:05:00.000Z",
+  });
+  assert.equal(report.focus.displayed_count, 1);
+});
+
 test("inspection supports actionable focus ordering and bounded limits", async () => {
   const harness = createOrchestrationHarness();
 

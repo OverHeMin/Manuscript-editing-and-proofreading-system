@@ -122,6 +122,7 @@ export function formatGovernedExecutionOrchestrationInspectionSummary(
     `actionable=${report.focus.actionable_count} ` +
     `displayed=${report.focus.displayed_count} ` +
     `omitted=${report.focus.omitted_count}` +
+    formatGovernedExecutionOrchestrationInspectionReadinessDetails(report) +
     formatGovernedExecutionOrchestrationInspectionPreviewDetails(report)
   );
 }
@@ -334,6 +335,24 @@ function formatGovernedExecutionOrchestrationInspectionPreviewDetails(
     ` preview_eligible=${preview.eligible_count}` +
     ` preview_remaining=${preview.remaining_count}` +
     ` preview_budget=${preview.budget}`
+  );
+}
+
+function formatGovernedExecutionOrchestrationInspectionReadinessDetails(
+  report: AgentExecutionOrchestrationInspectionReport,
+): string {
+  const readiness = report.readiness_summary;
+  if (readiness == null) {
+    return "";
+  }
+
+  return (
+    ` ready_now=${readiness.ready_now_count}` +
+    ` waiting_retry_eligibility=${readiness.waiting_retry_eligibility_count}` +
+    ` waiting_running_timeout=${readiness.waiting_running_timeout_count}` +
+    (readiness.next_ready_at != null
+      ? ` next_ready_at=${readiness.next_ready_at}`
+      : "")
   );
 }
 

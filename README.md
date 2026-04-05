@@ -95,6 +95,7 @@
   - `Phase 10P` further aligns budgeted replay with dry-run recoverable priority: under `--budget <n>`, stale-running reclaim candidates are replayed before plain recoverable-now candidates inside the same scope, while no-budget replay keeps its prior behavior.
   - `Phase 10R` extends the same budget semantics into read-only inspection: add `-- --dry-run --budget <n>` to preview the exact next bounded replay window before mutating orchestration state. This keeps full backlog summary counts while narrowing the dry-run item list to the selected replay slice.
   - `Phase 10S` extends the same dry-run lane with normalized readiness windows: item output now shows `readiness=` and, when blocked work has a concrete next-ready timestamp, `ready_at=` so operators can see when deferred retries or fresh running attempts become replayable next.
+  - `Phase 10T` adds a summary-level readiness rollup to the same dry-run lane, so the top summary line now shows how much actionable backlog is `ready_now`, how much is still waiting on retry eligibility or running-timeout expiry, and the earliest `next_ready_at` timestamp.
   - Retryable logs now honor a bounded next-eligible retry timestamp, so recovery only replays work that is actually due.
   - Add `-- --json` for machine-readable output. `--dry-run` stays read-only and classifies backlog items into recoverable/deferred/stale/attention buckets before replay; it does not change routing policy, release state, or existing business outputs.
   - Set `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT=true` to trigger the same recovery path automatically after persistent server startup. This boot replay stays best-effort and fail-open.
@@ -217,6 +218,7 @@
 - `Phase 10Q` extends the same semantics to startup wiring: if boot recovery is enabled, operators may optionally bound each auto-recovery pass with `AGENT_EXECUTION_ORCHESTRATION_RECOVERY_ON_BOOT_BUDGET`, while invalid values degrade to the prior full-pass boot behavior.
 - `Phase 10R` closes the remaining preview gap in that same lane: `--dry-run --budget <n>` now shows the exact next replay slice and its eligible / selected / remaining counts without mutating durable orchestration state or adding a new control plane.
 - `Phase 10S` makes recovery-state timing more explicit in that same read-only lane: dry-run items now surface normalized readiness states plus concrete `ready_at` timestamps for deferred retry eligibility and fresh running reclaim windows, without changing replay policy.
+- `Phase 10T` makes that same timing posture glanceable at summary level: dry-run reports now roll up `ready_now`, `waiting_retry_eligibility`, `waiting_running_timeout`, and the earliest `next_ready_at`, again without adding replay authority.
 - Admin Governance 只新增 read-only orchestration 观测字段，不获得新的写控制权；Evaluation Workbench 仍然只是 evidence surface，不成为 routing 或 release control plane。
 - Web workbench 对持久化稿件链路与治理接口的完整接线与深度运营能力
   当前 manuscript workbench、knowledge review、template governance、admin governance 与 evaluation workbench 都已经接入真实 HTTP / 持久化主干，但更深的运营视角、批量化操作能力与最终生产化细节仍待补齐。
