@@ -9,12 +9,14 @@ import type {
 import type { ModelRegistryRecord } from "../model-registry/model-record.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
 import type { SkillPackageRecord } from "../prompt-skill-registry/prompt-skill-record.ts";
+import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type {
   ExecutionResolutionModelSource,
   ResolvedExecutionBundleRecord,
+  RuntimeBindingReadinessObservationRecord,
 } from "./execution-resolution-record.ts";
 
 export interface ResolveExecutionBundleInput {
@@ -31,6 +33,10 @@ export interface ExecutionResolutionServiceOptions {
   modelRegistryRepository: ModelRegistryRepository;
   modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
   modelRoutingGovernanceService?: ModelRoutingGovernanceService;
+  runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getActiveBindingReadinessForScope"
+  >;
 }
 
 export class ExecutionResolutionProfileAssetNotFoundError extends Error {
@@ -71,6 +77,10 @@ export class ExecutionResolutionService {
   private readonly modelRegistryRepository: ModelRegistryRepository;
   private readonly modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
   private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
+  private readonly runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getActiveBindingReadinessForScope"
+  >;
 
   constructor(options: ExecutionResolutionServiceOptions) {
     this.executionGovernanceService = options.executionGovernanceService;
@@ -80,6 +90,7 @@ export class ExecutionResolutionService {
     this.modelRegistryRepository = options.modelRegistryRepository;
     this.modelRoutingPolicyRepository = options.modelRoutingPolicyRepository;
     this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
+    this.runtimeBindingReadinessService = options.runtimeBindingReadinessService;
   }
 
   async resolveExecutionBundle(
@@ -149,6 +160,12 @@ export class ExecutionResolutionService {
       knowledgeItems.push(knowledgeItem);
     }
 
+    const runtimeBindingReadiness = await this.observeRuntimeBindingReadiness({
+      module: profile.module,
+      manuscriptType: profile.manuscript_type,
+      templateFamilyId: profile.template_family_id,
+    });
+
     return {
       profile,
       module_template: moduleTemplate,
@@ -158,7 +175,38 @@ export class ExecutionResolutionService {
       model_source: source,
       knowledge_binding_rules: knowledgeBindingRules,
       knowledge_items: dedupeKnowledgeItems(knowledgeItems),
+      runtime_binding_readiness: runtimeBindingReadiness,
     };
+  }
+
+  private async observeRuntimeBindingReadiness(
+    scope: ResolveExecutionBundleInput,
+  ): Promise<RuntimeBindingReadinessObservationRecord> {
+    if (!this.runtimeBindingReadinessService) {
+      return {
+        observation_status: "failed_open",
+        error: "Runtime binding readiness service is unavailable.",
+      };
+    }
+
+    try {
+      const report =
+        await this.runtimeBindingReadinessService.getActiveBindingReadinessForScope(
+          scope,
+        );
+      return {
+        observation_status: "reported",
+        report,
+      };
+    } catch (error) {
+      return {
+        observation_status: "failed_open",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown runtime binding readiness observation error.",
+      };
+    }
   }
 
   private async resolveModel(profile: {

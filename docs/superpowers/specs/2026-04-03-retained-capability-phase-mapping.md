@@ -46,7 +46,7 @@ The table below translates the retained capabilities into current repository rea
 | Knowledge Retrieval Stack | `04-knowledge-learning-and-retrieval.md`, Phase 5, Phase 7A, Phase 7B, Phase 8AB, Phase 8AC, Phase 8Z | Knowledge governance, review, writeback, provenance, and review handoff are real | `pgvector`-backed vector retrieval, hybrid retrieval, reranking, retrieval-quality evaluation, template knowledge-pack recall depth |
 | Medical Knowledge Ops | Phase 5, Phase 7A, Phase 7B, Phase 8AA, 8AB, 8AC, 8AD, 8Z, current template-governance and knowledge-review workbenches | Governed draft creation, review queue, review history, writeback, and persistent review handoff are already present | Bulk ingest, deduplication, expiry and supersession governance, periodic review, richer operator workbench views, Yuxi-style backstage depth |
 | Model Governance / Routing Linkage | `05-ai-model-routing-and-evaluation.md`, Phase 9R, Phase 9S, Phase 9T | Model registry, runtime-binding expectations, governed seeded evaluation runs, and inline governed check execution are already partially linked | Stronger routing-policy feedback loops, fallback and gray-release policy, module/template-level promotion rules, deeper evaluation-to-routing governance |
-| Agent Runtime Platform | Phase 4, Phase 8G, Phase 8H, Phase 9R, `11-agent-runtime-and-portable-skills.md` | Registry, runtime binding, tool permission policy, admin governance visibility, and execution evidence are already partially live | Deeper adapter-based runtime integration, portable skill-package operations, richer sandbox governance, stronger MCP / tool gateway platform boundary |
+| Agent Runtime Platform | Phase 4, Phase 8G, Phase 8H, Phase 9R, Phase 11A, Phase 11B, `11-agent-runtime-and-portable-skills.md` | Registry, runtime binding, tool permission policy, readiness observation, execution-resolution visibility, admin governance visibility, and execution evidence are already partially live | Deeper adapter-based runtime integration, portable skill-package operations, richer sandbox governance, stronger MCP / tool gateway platform boundary |
 | Evaluation And Verification Platform | Phase 6A, Phase 8W, Phase 9A, Phase 9Q, Phase 9R, Phase 9S, Phase 9T | Evaluation Workbench, run persistence, governed-source runs, machine evidence, and release-gate verification are already real | Sample-set detail depth, historical evidence-pack retrieval, multi-run comparison, operator analytics, stronger release-facing analysis surfaces |
 | Execution And Orchestration Platform | Phase 4 execution governance foundations, Phase 8F, Phase 8I, Phase 9R, current execution-governance records | The repo has execution governance, resolution, snapshots, and observability precursors | Durable async orchestration, retries, recovery flows, restart-safe job handling, queue-state observability, `Temporal`-class orchestration depth |
 | Production Operations And Security Platform | `09-platform-ops-migration-and-maintenance.md`, `08-security-auth-and-compliance.md`, `2026-04-03-phase10a-production-operations-baseline-design.md`, current `README.md` and `docs/OPERATIONS.md` | Production preflight, release contract, readiness split, backup/rollback guidance, and remote-maintenance discipline now have a real baseline direction | Standardized deploy automation, monitoring, rollback automation, remote-maintenance standardization depth, secret/key hardening, upgrade choreography, migration automation |
@@ -253,14 +253,32 @@ This phase does **not** absorb:
 - new workbench or control-plane behavior
 - deeper portable-skill package lifecycle work
 
-### 4.10 Still-Open Retained Capability Lanes After 11A
+### 4.10 Phase 11B: Execution Resolution Runtime Binding Readiness
 
-After reconciling actual landed numbering through `11A`, two retained capability lanes remain
+**Primary capability lane:** Agent Runtime Platform  
+**Actual landed scope:** additive fail-open runtime-binding readiness observation on the existing `execution-governance/resolve` bundle
+
+This phase now owns:
+
+- readiness observation attached directly to the governed execution-resolution read path
+- explicit distinction between `reported` readiness observations and `failed_open` observation failures
+- one-bundle visibility into resolved execution profile, resolved assets, model selection, knowledge scope, and active binding posture
+
+This phase does **not** absorb:
+
+- new resolve gating or activation requirements
+- runtime binding mutation authority
+- execution behavior changes
+- new workbench, console, or control-plane surfaces
+
+### 4.11 Still-Open Retained Capability Lanes After 11B
+
+After reconciling actual landed numbering through `11B`, two retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
-- broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A` runtime-binding readiness preflight
+- broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11B` readiness observation slices
 
 ## 5. Recommended Sequence
 
@@ -273,16 +291,17 @@ The repository has now landed the following actual sequence after `10A`:
 5. `10I` privacy / OCR advisory baseline
 6. `10J-10W` durable execution-orchestration mainline
 7. `11A` runtime-binding readiness preflight under the fresh runtime-platform lane
+8. `11B` execution-resolution runtime-binding readiness under the same additive runtime-platform lane
 
-The practical planning implication after `11A` is:
+The practical planning implication after `11B` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
 - assign any remaining retained capability line a fresh adjacent label when it becomes active again
 - treat `Phase 10` itself as closed through `10W`, so any further orchestration
   deepening or new retained-capability work opens under a new phase label
-- treat `11A` as a narrow runtime-platform safety slice, not as permission to
-  reopen workbench or control-plane expansion under the same lane
+- treat `11A-11B` as narrow runtime-platform safety/visibility slices, not as
+  permission to reopen workbench or control-plane expansion under the same lane
 
 ## 6. What This Mapping Prevents
 

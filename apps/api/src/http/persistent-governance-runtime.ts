@@ -428,15 +428,6 @@ export function createPersistentGovernanceRuntime(
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
   });
-  const executionResolutionService = new ExecutionResolutionService({
-    executionGovernanceService,
-    moduleTemplateRepository,
-    promptSkillRegistryRepository,
-    knowledgeRepository,
-    modelRegistryRepository,
-    modelRoutingPolicyRepository,
-    modelRoutingGovernanceService,
-  });
   const runtimeBindingService = new RuntimeBindingService({
     repository: runtimeBindingRepository,
     agentRuntimeRepository,
@@ -455,6 +446,16 @@ export function createPersistentGovernanceRuntime(
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     verificationOpsRepository,
+  });
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceService,
+    runtimeBindingReadinessService,
   });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,

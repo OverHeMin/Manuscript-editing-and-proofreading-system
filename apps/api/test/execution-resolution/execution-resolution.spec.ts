@@ -17,8 +17,13 @@ import {
   ExecutionResolutionService,
   ExecutionResolutionModelNotFoundError,
 } from "../../src/modules/execution-resolution/index.ts";
+import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/index.ts";
 
-function createExecutionResolutionHarness() {
+function createExecutionResolutionHarness(input?: {
+  runtimeBindingReadinessService?: {
+    getActiveBindingReadinessForScope: () => Promise<RuntimeBindingReadinessReport>;
+  };
+}) {
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
@@ -67,6 +72,7 @@ function createExecutionResolutionHarness() {
     modelRegistryRepository,
     modelRoutingPolicyRepository,
     modelRoutingGovernanceService,
+    runtimeBindingReadinessService: input?.runtimeBindingReadinessService,
   });
 
   return {
@@ -228,6 +234,357 @@ test("execution resolution expands the active profile into a concrete runtime bu
     resolved.knowledge_items.map((record) => record.id),
     ["knowledge-1"],
   );
+  assert.equal(resolved.runtime_binding_readiness.observation_status, "failed_open");
+  assert.equal(
+    resolved.runtime_binding_readiness.error,
+    "Runtime binding readiness service is unavailable.",
+  );
+  assert.equal(resolved.runtime_binding_readiness.report, undefined);
+});
+
+test("execution resolution reports runtime binding readiness when observation succeeds", async () => {
+  const {
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+  } = createExecutionResolutionHarness();
+
+  const expectedScope = {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  } as const;
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "ready",
+    scope: expectedScope,
+    binding: {
+      id: "binding-1",
+      status: "active",
+      version: 1,
+      runtime_id: "runtime-1",
+      sandbox_profile_id: "sandbox-1",
+      agent_profile_id: "agent-profile-1",
+      tool_permission_policy_id: "policy-1",
+      prompt_template_id: "prompt-editing-1",
+      skill_package_ids: ["skill-editing-1"],
+      execution_profile_id: "profile-1",
+      verification_check_profile_ids: [],
+      evaluation_suite_ids: [],
+      release_check_profile_id: undefined,
+    },
+    issues: [],
+    execution_profile_alignment: {
+      status: "aligned",
+      binding_execution_profile_id: "profile-1",
+      active_execution_profile_id: "profile-1",
+    },
+  };
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceService: new ModelRoutingGovernanceService({
+      repository: modelRoutingGovernanceRepository,
+      modelRegistryRepository,
+      createId: () => "unused-governance-id",
+      now: () => new Date("2026-03-28T12:00:00.000Z"),
+    }),
+    runtimeBindingReadinessService: {
+      async getActiveBindingReadinessForScope(scope) {
+        assert.deepEqual(scope, expectedScope);
+        return readinessReport;
+      },
+    },
+  });
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 3,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.1.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-editing-1",
+    name: "editing_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
+  });
+  await knowledgeRepository.save({
+    id: "knowledge-1",
+    title: "Editing rule",
+    canonical_text: "Approved editing knowledge item.",
+    knowledge_kind: "rule",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["editing", "proofreading"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-1",
+  });
+
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: ["skill-editing-1"],
+    knowledgeBindingMode: "profile_plus_dynamic",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(resolved.runtime_binding_readiness.observation_status, "reported");
+  assert.deepEqual(resolved.runtime_binding_readiness.report, readinessReport);
+  assert.equal(resolved.runtime_binding_readiness.error, undefined);
+});
+
+test("execution resolution surfaces missing runtime binding readiness reports without failing resolve", async () => {
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "missing",
+    scope: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+    issues: [
+      {
+        code: "missing_active_binding",
+        message: "No active runtime binding exists for editing/clinical_study/family-1.",
+      },
+    ],
+    execution_profile_alignment: {
+      status: "missing_active_profile",
+    },
+  };
+  const {
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+  } = createExecutionResolutionHarness();
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceService: new ModelRoutingGovernanceService({
+      repository: modelRoutingGovernanceRepository,
+      modelRegistryRepository,
+      createId: () => "unused-governance-id",
+      now: () => new Date("2026-03-28T12:00:00.000Z"),
+    }),
+    runtimeBindingReadinessService: {
+      async getActiveBindingReadinessForScope() {
+        return readinessReport;
+      },
+    },
+  });
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 3,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.1.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["editing", "proofreading"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-1",
+  });
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(resolved.runtime_binding_readiness.observation_status, "reported");
+  assert.deepEqual(resolved.runtime_binding_readiness.report, readinessReport);
+});
+
+test("execution resolution fails open when runtime binding readiness observation throws unexpectedly", async () => {
+  const {
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+  } = createExecutionResolutionHarness();
+  const executionResolutionService = new ExecutionResolutionService({
+    executionGovernanceService,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceService: new ModelRoutingGovernanceService({
+      repository: modelRoutingGovernanceRepository,
+      modelRegistryRepository,
+      createId: () => "unused-governance-id",
+      now: () => new Date("2026-03-28T12:00:00.000Z"),
+    }),
+    runtimeBindingReadinessService: {
+      async getActiveBindingReadinessForScope() {
+        throw new Error("readiness observation exploded");
+      },
+    },
+  });
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 3,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.1.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["editing", "proofreading"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-1",
+  });
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(resolved.profile.id, "profile-1");
+  assert.equal(resolved.runtime_binding_readiness.observation_status, "failed_open");
+  assert.equal(
+    resolved.runtime_binding_readiness.error,
+    "readiness observation exploded",
+  );
+  assert.equal(resolved.runtime_binding_readiness.report, undefined);
 });
 
 test("execution resolution fails when no compatible routed model exists", async () => {

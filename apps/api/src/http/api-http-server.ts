@@ -1139,6 +1139,7 @@ export function createInMemoryApiRuntime(input: {
     modelRegistryRepository,
     modelRoutingPolicyRepository,
     modelRoutingGovernanceService,
+    runtimeBindingReadinessService,
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,

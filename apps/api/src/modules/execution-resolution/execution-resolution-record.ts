@@ -8,6 +8,7 @@ import type {
   PromptTemplateRecord,
   SkillPackageRecord,
 } from "../prompt-skill-registry/prompt-skill-record.ts";
+import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
 import type { ModuleTemplateRecord } from "../templates/template-record.ts";
 
 export type ExecutionResolutionModelSource =
@@ -16,6 +17,12 @@ export type ExecutionResolutionModelSource =
   | "legacy_template_override"
   | "legacy_module_default"
   | "legacy_system_default";
+
+export interface RuntimeBindingReadinessObservationRecord {
+  observation_status: "reported" | "failed_open";
+  report?: RuntimeBindingReadinessReport;
+  error?: string;
+}
 
 export interface ResolvedExecutionBundleRecord {
   profile: ModuleExecutionProfileRecord;
@@ -26,4 +33,5 @@ export interface ResolvedExecutionBundleRecord {
   model_source: ExecutionResolutionModelSource;
   knowledge_binding_rules: KnowledgeBindingRuleRecord[];
   knowledge_items: KnowledgeRecord[];
+  runtime_binding_readiness: RuntimeBindingReadinessObservationRecord;
 }

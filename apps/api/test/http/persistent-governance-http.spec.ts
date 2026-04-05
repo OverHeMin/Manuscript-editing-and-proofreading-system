@@ -831,6 +831,13 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           const resolved = (await resolveResponse.json()) as {
             profile: { id: string };
             resolved_model: { id: string };
+            runtime_binding_readiness: {
+              observation_status: string;
+              report?: {
+                status: string;
+                issues: Array<{ code: string }>;
+              };
+            };
           };
 
           assert.equal(profilesResponse.status, 200);
@@ -851,6 +858,16 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           assert.equal(snapshotLoaded.id, snapshot.id);
           assert.equal(resolved.profile.id, profile.id);
           assert.equal(resolved.resolved_model.id, model.id);
+          assert.equal(
+            resolved.runtime_binding_readiness.observation_status,
+            "reported",
+          );
+          assert.equal(resolved.runtime_binding_readiness.report?.status, "missing");
+          assert.ok(
+            resolved.runtime_binding_readiness.report?.issues.some(
+              (issue) => issue.code === "missing_active_binding",
+            ),
+          );
         } finally {
           await stopServer(secondServer.server);
         }

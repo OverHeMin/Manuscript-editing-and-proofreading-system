@@ -1631,6 +1631,13 @@ test("http server resolves governed execution bundles and records execution snap
       profile: { id: string };
       resolved_model: { id: string };
       skill_packages: Array<{ id: string }>;
+      runtime_binding_readiness: {
+        observation_status: string;
+        report?: {
+          status: string;
+          issues: Array<{ code: string }>;
+        };
+      };
     };
 
     assert.equal(resolveResponse.status, 200);
@@ -1639,6 +1646,16 @@ test("http server resolves governed execution bundles and records execution snap
     assert.deepEqual(
       resolved.skill_packages.map((record) => record.id),
       [skillPackage.id],
+    );
+    assert.equal(
+      resolved.runtime_binding_readiness.observation_status,
+      "reported",
+    );
+    assert.equal(resolved.runtime_binding_readiness.report?.status, "missing");
+    assert.ok(
+      resolved.runtime_binding_readiness.report?.issues.some(
+        (issue) => issue.code === "missing_active_binding",
+      ),
     );
 
     const snapshotResponse = await fetch(
