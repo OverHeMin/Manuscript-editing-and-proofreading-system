@@ -596,6 +596,77 @@ test("recovery applies replay budget after scope and recoverability screening", 
   assert.equal(remaining.orchestration_attempt_count, 0);
 });
 
+test("budgeted replay aligns with the existing dry-run recoverable priority order", async () => {
+  const harness = createOrchestrationHarness();
+  const editingSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
+    name: "Editing Alignment Suite",
+  });
+  const screeningSuite = await createActiveSuiteForModule(harness, {
+    module: "screening",
+    name: "Screening Alignment Suite",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-pending",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-stale",
+    module: "screening",
+    suiteIds: [screeningSuite.id],
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-2",
+    claimToken: "claim-stale",
+  });
+
+  const preview = await harness.orchestrationService.inspectBacklog({
+    actionableOnly: true,
+    limit: 1,
+  });
+  assert.deepEqual(
+    preview.items.map((item) => ({
+      logId: item.log_id,
+      category: item.category,
+    })),
+    [
+      {
+        logId: "execution-log-2",
+        category: "stale_running",
+      },
+    ],
+  );
+
+  const summary = await harness.orchestrationService.recoverPending({
+    budget: 1,
+  });
+  assert.deepEqual(summary, {
+    processed_count: 1,
+    completed_count: 1,
+    retryable_count: 0,
+    failed_count: 0,
+    deferred_count: 0,
+    eligible_count: 2,
+    remaining_count: 1,
+    budget: 1,
+  });
+
+  const stillPending = await harness.agentExecutionService.getLog("execution-log-1");
+  assert.equal(stillPending.orchestration_status, "pending");
+  assert.equal(stillPending.orchestration_attempt_count, 0);
+
+  const recoveredStale = await harness.agentExecutionService.getLog("execution-log-2");
+  assert.equal(recoveredStale.orchestration_status, "completed");
+  assert.equal(recoveredStale.orchestration_attempt_count, 2);
+});
+
 test("only one orchestration claimant can win the same persisted attempt snapshot", async () => {
   const { agentExecutionService } = await seedPendingExecutionLog();
 

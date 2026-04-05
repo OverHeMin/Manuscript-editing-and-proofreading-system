@@ -194,7 +194,7 @@ This phase does **not** absorb:
 - deployment automation
 - durable execution orchestration
 
-### 4.8 Phase 10J Through Phase 10O: Durable Execution Orchestration Mainline
+### 4.8 Phase 10J Through Phase 10P: Durable Execution Orchestration Mainline
 
 **Primary capability lane:** Execution And Orchestration Platform  
 **Actual landed scope:** the execution/orchestration lane was split into adjacent bounded slices instead of landing under the earlier predicted `10G` label
@@ -207,6 +207,7 @@ The current ownership is:
 - `10M`: actionable focus ordering and bounded display limits
 - `10N`: bounded scoped replay and inspection filters
 - `10O`: bounded replay budgeting and scoped remaining-work summaries
+- `10P`: budgeted replay alignment with existing recoverable priority ordering
 
 Together these phases now own:
 
@@ -220,7 +221,7 @@ These phases still do **not** claim full `Temporal`-class workflow depth.
 Deeper multi-node orchestration, hosted schedulers, and broader workflow-engine
 substitution remain future work inside the same capability lane.
 
-### 4.9 Still-Open Retained Capability Lanes After 10O
+### 4.9 Still-Open Retained Capability Lanes After 10P
 
 After reconciling actual landed numbering, two retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
@@ -238,9 +239,9 @@ The repository has now landed the following actual sequence after `10A`:
 3. `10D-10F` harness/governed-dataset/retrieval-support work
 4. `10G-10H` production-hardening continuation
 5. `10I` privacy / OCR advisory baseline
-6. `10J-10O` durable execution-orchestration mainline
+6. `10J-10P` durable execution-orchestration mainline
 
-The practical planning implication after `10O` is:
+The practical planning implication after `10P` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here

@@ -260,7 +260,11 @@ export class AgentExecutionOrchestrationService {
 
     const logsToProcess =
       normalizedBudget != null
-        ? recoverableLogs.slice(0, normalizedBudget)
+        ? sortRecoverableLogsForBudgetedReplay(
+            recoverableLogs,
+            currentTime,
+            this.runningAttemptStaleAfterMs,
+          ).slice(0, normalizedBudget)
         : recoverableLogs;
 
     if (normalizedBudget != null) {
@@ -646,6 +650,22 @@ function inspectOrchestrationLog(
     category,
     reason,
   };
+}
+
+function sortRecoverableLogsForBudgetedReplay(
+  logs: AgentExecutionLogRecord[],
+  now: Date,
+  staleAfterMs: number,
+): AgentExecutionLogRecord[] {
+  return logs
+    .map((log) => ({
+      log,
+      inspection: inspectOrchestrationLog(log, now, staleAfterMs),
+    }))
+    .sort((left, right) =>
+      compareInspectionItems(left.inspection, right.inspection),
+    )
+    .map((entry) => entry.log);
 }
 
 function compareInspectionItems(
