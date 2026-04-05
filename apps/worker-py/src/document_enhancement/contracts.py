@@ -115,6 +115,26 @@ class CleanupPlanResult:
 
 
 @dataclass(frozen=True)
+class IndexConsistencyIssue:
+    issue_type: str
+    artifact_path: str | None
+    index_position: int | None
+    detail: str
+    recommended_action: str
+
+
+@dataclass(frozen=True)
+class IndexConsistencyAuditResult:
+    status: str
+    output_dir: Path | None
+    index_path: Path | None
+    evaluated_entry_count: int
+    issue_count: int
+    issues: list[IndexConsistencyIssue]
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult

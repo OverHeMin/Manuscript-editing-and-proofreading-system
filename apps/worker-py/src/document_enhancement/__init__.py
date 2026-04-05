@@ -10,6 +10,8 @@ from .contracts import (
     CleanupPlanAction,
     CleanupPlanResult,
     DocumentEnhancementAuditReport,
+    IndexConsistencyAuditResult,
+    IndexConsistencyIssue,
     PrivacyAdvisoryResult,
     PrivacyFinding,
     RetentionAuditResult,
@@ -17,6 +19,7 @@ from .contracts import (
 )
 from .academic_structure import build_academic_structure_advisory
 from .history import list_audit_history, replay_audit_artifact
+from .index_consistency import evaluate_index_consistency
 from .privacy import build_privacy_advisory
 from .retention import evaluate_retention_audit
 
@@ -30,6 +33,8 @@ __all__ = [
     "CleanupPlanAction",
     "CleanupPlanResult",
     "DocumentEnhancementAuditReport",
+    "IndexConsistencyAuditResult",
+    "IndexConsistencyIssue",
     "PrivacyAdvisoryResult",
     "PrivacyFinding",
     "RetentionAuditResult",
@@ -39,6 +44,7 @@ __all__ = [
     "build_privacy_advisory",
     "default_cleanup_plan_output_dir",
     "default_audit_output_dir",
+    "evaluate_index_consistency",
     "evaluate_retention_audit",
     "list_audit_history",
     "replay_audit_artifact",
