@@ -259,5 +259,6 @@
 - Add `--write-artifact` to persist the same advisory report under `.local-data/document-enhancement-audits/manual`, or pair it with `--output-dir <local-dir>` to override the local artifact directory.
 - The local artifact lane keeps additive JSON history plus `audit-index.json` for replay. It remains manual and repository-local rather than API-backed persistence.
 - `pnpm --filter @medical/worker-py run audit:document-enhancement:history -- --list [--limit <n>] [--output-dir <local-dir>]` lists the local artifact index, and `--artifact-path <local-json>` replays one persisted advisory report.
+- `pnpm --filter @medical/worker-py run audit:document-enhancement:retention -- --keep-last <n> [--max-age-days <n>] [--output-dir <local-dir>]` produces a read-only retention audit that recommends which local artifacts are safe candidates for cleanup review.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters degrade to advisory evidence. They do not block screening, editing, proofreading, routing, or verification-ops contracts.
 - This baseline does not auto-anonymize, auto-run OCR, auto-publish governed assets, or promote itself into a routing or release control plane.

@@ -5,6 +5,7 @@
   "scripts": {
     "audit:document-enhancement": "python -m src.document_enhancement.cli",
     "audit:document-enhancement:history": "python -m src.document_enhancement.history_cli",
+    "audit:document-enhancement:retention": "python -m src.document_enhancement.retention_cli",
     "lint": "python -m compileall src",
     "smoke:boot": "python -m src.smoke_boot",
     "typecheck": "python -m compileall src",

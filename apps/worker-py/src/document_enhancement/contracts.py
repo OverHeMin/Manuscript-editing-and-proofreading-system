@@ -70,6 +70,28 @@ class AuditReplayResult:
 
 
 @dataclass(frozen=True)
+class RetentionCandidate:
+    created_at: str
+    document_path: str
+    artifact_path: str
+    age_days: int | None
+    recommendation: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class RetentionAuditResult:
+    status: str
+    output_dir: Path | None
+    index_path: Path | None
+    evaluated_item_count: int
+    keep_count: int
+    cleanup_review_count: int
+    candidates: list[RetentionCandidate]
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class DocumentEnhancementAuditReport:
     document_path: str
     privacy: PrivacyAdvisoryResult
