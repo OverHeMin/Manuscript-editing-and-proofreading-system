@@ -259,6 +259,8 @@ The practical planning implication after `10W` is:
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
 - assign any remaining retained capability line a fresh adjacent label when it becomes active again
+- treat `Phase 10` itself as closed through `10W`, so any further orchestration
+  deepening or new retained-capability work opens under a new phase label
 
 ## 6. What This Mapping Prevents
 

@@ -95,9 +95,13 @@ delivered through one cleanly isolated branch or one PR with the same name.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.
+- Treat `Phase 10` as closed at `10W`. Future work that deepens orchestration or
+  any other retained capability lane should use a fresh phase label rather than
+  continuing with `10X+`.
 
 ## Related Documents
 
 - `2026-04-03-phase4-7b-8-boundary-reconciliation.md`
+- `2026-04-05-phase10-closeout-anti-drift-review.md`
 - `README.md`
 - `docs/OPERATIONS.md`
