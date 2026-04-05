@@ -1,7 +1,7 @@
 # Phase 10N Governed Orchestration Scoped Replay Design
 
 **Date:** 2026-04-05  
-**Status:** Proposed for the current Phase 10 execution/orchestration mainline  
+**Status:** Implemented and locally verified under the current Phase 10 roadmap  
 **Scope:** Add bounded scope filters to the existing governed orchestration recovery and dry-run inspection paths so operators can replay or inspect a narrow subset of logs without changing recoverability rules or creating a new control plane.
 
 ## 1. Goal

@@ -58,6 +58,20 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 9R | `2026-04-03-phase9r-runtime-binding-verification-linkage.md` | focused mainline delivery around commit `b9c26c3` | Clean | Narrow, traceable slice with aligned plan/spec/implementation. |
 | Phase 9S | `2026-04-03-phase9s-governed-evaluation-run-seeding.md` | PR #9 / merge `91792a1` | Clean | Focused scope, aligned branch naming. |
 | Phase 9T | `2026-04-03-phase9t-governed-run-check-execution.md` | PR #10 / merge `098d016` | Clean | Focused scope, aligned branch naming. |
+| Phase 10A | `2026-04-03-phase10a-production-operations-baseline-design.md` | focused mainline delivery around the production-baseline rollout | Clean | Narrow operations baseline with clear repo-owned contract. |
+| Phase 10B | `2026-04-03-phase10b-model-governance-routing-linkage-design.md` | focused mainline delivery around the routing-governance rollout | Clean | Focused governance slice with aligned README/runtime/docs. |
+| Phase 10C | `2026-04-04-phase10c-evaluation-workbench-operations-depth-design.md` | focused mainline delivery around the evaluation-ops deepening rollout | Clean | Focused evaluation evidence slice, still read-only by design. |
+| Phase 10D | `2026-04-04-phase10d-gold-set-and-harness-ops-design.md` | focused mainline delivery around the gold-set and harness dataset rollout | Clean | Distinct harness/governed-dataset lane; not a boundary anomaly. |
+| Phase 10E | `2026-04-04-phase10e-retrieval-quality-harness-completion-design.md` | focused mainline delivery around retrieval-quality harness completion | Clean | Retrieval substrate and retrieval-quality evidence remain aligned. |
+| Phase 10F | `2026-04-04-phase10f-local-first-harness-adapter-platform-design.md` | focused mainline delivery around harness adapter isolation | Clean | Optional adapter boundary landed as its own focused slice. |
+| Phase 10G | `2026-04-04-phase10g-release-and-migration-reliability-hardening-design.md` | focused mainline delivery around release/migration hardening | Clean | Production-ops continuation with aligned manifest/migration scope. |
+| Phase 10H | `2026-04-05-phase10h-secrets-contract-and-upgrade-rehearsal-guardrails-design.md` | focused mainline delivery around secrets/rehearsal guardrails | Clean | Narrow continuation of the production-ops lane. |
+| Phase 10I | `2026-04-05-phase10i-privacy-evidence-and-academic-structure-baseline-design.md` plus adjacent `phase10i-*` plan/spec files | cumulative, acceptable | Intentional bounded sub-slicing under one worker-only advisory lane, not a naming problem. |
+| Phase 10J | `2026-04-05-phase10j-durable-execution-orchestration-baseline-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | `10J-10M` landed together in one focused orchestration commit; per-phase plan/spec files remain the canonical scope split. |
+| Phase 10K | `2026-04-05-phase10k-execution-orchestration-attempt-claim-guardrails-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | Adjacent orchestration ownership guardrail landed in the same delivery container as `10J-10M`. |
+| Phase 10L | `2026-04-05-phase10l-governed-orchestration-dry-run-inspection-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | Read-only inspection slice landed in the same focused delivery container as `10J-10M`. |
+| Phase 10M | `2026-04-05-phase10m-governed-orchestration-focus-ordering-design.md` | commit `19299dd` on `main` | Cumulative, acceptable | Focus-ordering slice shares the same orchestrator commit without creating scope ambiguity in the docs. |
+| Phase 10N | `2026-04-05-phase10n-governed-orchestration-scoped-replay-design.md` | commit `3765e0a` on `main` | Clean | Returns to the one focused slice / one clear verification story pattern. |
 
 ## Practical Guidance For Future Work
 
@@ -66,9 +80,12 @@ delivered through one cleanly isolated branch or one PR with the same name.
 - Do not create separate reconciliation tracks for `phase2`, `phase3`,
   `phase6a`, `phase7a`, or `phase9a` unless later evidence shows that current
   documentation remains too ambiguous.
+- Treat `10I` as intentionally sub-sliced but still boundary-clean, and treat
+  `10J-10M` as one acceptable adjacent cumulative delivery cluster whose
+  per-phase plan/spec files remain canonical.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
-  story.
+  story. `10N` is the current best Phase 10 example of that pattern.
 
 ## Related Documents
 

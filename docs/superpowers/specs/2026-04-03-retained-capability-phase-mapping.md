@@ -54,12 +54,20 @@ The table below translates the retained capabilities into current repository rea
 | Academic Structure And OCR Enhancement | `06-pdf-consistency-and-ocr.md`, V1 foundation tech direction | PDF and document pipelines exist, and OCR/parsing routes are reserved | First-class `OCRmyPDF`, `PaddleOCR`, and `GROBID` integration with auditable outputs and downstream structured consumption |
 | Specialized Human Review / Annotation Route | Current knowledge review, learning review, evaluation workbench, retained-capability decision | Core human review remains inside the main system and already has durable governance surfaces | External annotation integration boundary, including optional `Label Studio` scenarios where specialized annotation is justified |
 
-## 4. Future Phase Ownership
+## 4. Reconciled Phase Ownership
 
 The next step is not to reopen the retained-capability decision.
-The next step is to assign each still-open capability line to a future phase lane.
+The next step is to keep the capability ownership mapping aligned with the
+actual numbered phases that have now landed.
 
-The recommended future mapping is:
+The original recommendation below `10A` was written before the later `10D-10N`
+delivery sequence was finalized.
+That means some capability lanes were later split differently in the real
+repository than this document first predicted.
+
+The reconciled ownership below reflects the actual landed `Phase 10` sequence.
+When a retained capability is still open after `10N`, this document should say
+so explicitly rather than pretending an already-used label still owns it.
 
 ### 4.1 Phase 10B: Model Governance, Routing, And Evaluation Linkage
 
@@ -97,32 +105,29 @@ This phase should **not** absorb:
 - core knowledge-ingest operations
 - general worker orchestration
 
-### 4.3 Phase 10D: Medical Knowledge Ops Deepening
+### 4.3 Phase 10D: Gold Set And Harness Ops
 
-**Primary capability lane:** Medical Knowledge Ops  
-**Preferred route:** Yuxi-style knowledge-ops and backstage-workbench reference, implemented inside the repository's own governance surface
+**Primary capability lane:** Harness dataset governance on top of existing human-reviewed assets  
+**Actual landed scope:** gold-set families, gold-set versions, rubric definitions, and local harness dataset publication
 
-This phase should own:
+This phase now owns:
 
-- richer knowledge draft and review operations
-- bulk ingest and bulk review support
-- deduplication
-- expiry and supersession governance
-- periodic review workflow
-- operator-facing knowledge workbench depth
-- optional specialized annotation adapter boundaries when needed
+- gold-set curation from governed reviewed assets
+- rubric definition and publication
+- reusable local harness dataset publication history
+- an additive operator lane for harness-ready editorial reference assets
 
-This phase should **not** absorb:
-
-- the retrieval engine internals of Phase 10E
-- full production-security hardening of later phases
+This phase does **not** fully satisfy the broader retained `Medical Knowledge Ops`
+deepening lane.
+That larger capability remains open after `10N` and needs a fresh future phase
+label rather than reuse of `10D`.
 
 ### 4.4 Phase 10E: Retrieval Stack Completion
 
 **Primary capability lane:** Knowledge Retrieval Stack  
-**Preferred route:** `PostgreSQL + pgvector`
+**Actual landed scope:** `PostgreSQL + pgvector`, retrieval snapshots, template knowledge-pack recall, and local retrieval-quality evaluation
 
-This phase should own:
+This phase owns:
 
 - vector embedding storage and retrieval
 - hybrid retrieval over structured, full-text, and vector signals
@@ -130,115 +135,124 @@ This phase should own:
 - template knowledge-pack recall
 - retrieval-quality evaluation assets and operator checks
 
-This phase should **not** absorb:
+This phase does **not** absorb:
 
 - bulk knowledge ingest operations
-- durable worker orchestration
+- durable execution orchestration
 - production deploy automation
 
-### 4.5 Phase 10F: Agent Runtime And Portable Skill Platform Deepening
+### 4.5 Phase 10F: Local-First Harness Adapter Platform
 
-**Primary capability lane:** Agent Runtime Platform  
-**Preferred route:** internal registry + adapter-based runtime integration inspired by `deepagents`, with packaging ideas borrowed from `agency-agents`
+**Primary capability lane:** local-first optional harness adapter boundaries  
+**Actual landed scope:** self-hosted tracing, local prompt-eval adapters, local judge-reliability calibration, and fail-open harness isolation
 
-This phase should own:
+This phase owns:
 
-- clearer runtime adapter boundaries
-- portable prompt and skill package governance
-- stronger MCP / tool gateway hardening
-- sandbox policy maturity
-- richer runtime and tool-permission governance
-- deeper execution evidence capture tied to runtime boundaries
+- optional harness adapter boundaries
+- self-hosted trace sink integration
+- local prompt-eval and judge adapter execution
+- fail-open tool isolation so harness tooling stays outside the manuscript sync path
 
-This phase should **not** absorb:
+This phase does **not** fulfill the broader retained `Agent Runtime Platform`
+deepening lane by itself.
+That runtime/portable-skill capability remains open after `10N` and needs a new
+future label rather than backfilling `10F`.
 
-- long-running workflow orchestration
-- production release automation
-
-### 4.6 Phase 10G: Durable Execution Orchestration
-
-**Primary capability lane:** Execution And Orchestration Platform  
-**Preferred route:** `Temporal` remains the current preferred orchestration route
-
-This phase should own:
-
-- durable async task orchestration
-- retries and recovery semantics
-- restart-safe long-running flow handling
-- queue-state and incident-friendly execution observability
-- stronger separation between business completion and orchestration completion
-
-This phase should **not** absorb:
-
-- secret-management hardening
-- OCR or privacy-gate work
-
-### 4.7 Phase 10H: Production Hardening, Secrets, Upgrade, And Migration Automation
+### 4.6 Phase 10G And Phase 10H: Production Hardening Continuation
 
 **Primary capability lane:** Production Operations And Security Platform  
-**Preferred route:** build on `Phase 10A`'s repo-owned release contract
+**Actual landed scope:** `10G` hardens release and migration reliability, and `10H` continues the same lane with secret placeholder protection and upgrade-rehearsal guardrails
 
-This phase should own:
+Together, `10A`, `10G`, and `10H` now own:
 
-- deploy automation and standardization
-- monitoring and post-deploy operating discipline
-- rollback automation and recovery drills
-- remote-maintenance standardization depth
-- secret and key management hardening
-- upgrade choreography
-- platform and environment migration automation
+- release-contract hardening
+- migration-doctor and manifest reliability gates
+- secret placeholder protection
+- upgrade-rehearsal proof
+- bounded local-first production guardrails
 
-This phase should **not** absorb:
+These phases do **not** absorb:
 
 - retrieval-stack completion
 - model-routing governance deepening
+- durable execution orchestration
 
-### 4.8 Phase 10I: Privacy, Academic Structure, And OCR Enhancement
+### 4.7 Phase 10I: Privacy, Academic Structure, And OCR Enhancement
 
 **Primary capability lane:** Privacy / Compliance Gate plus Academic Structure And OCR Enhancement  
-**Preferred route:** `Presidio` for privacy gating, `OCRmyPDF + PaddleOCR + GROBID` for academic structure enhancement
+**Actual landed scope:** worker-only advisory evidence for privacy prechecks and OCR / academic-structure readiness
 
-This phase should own:
+This phase owns:
 
-- privacy and de-identification gates in governed flows
-- auditable privacy-check evidence
-- scanned PDF enhancement
-- academic-structure parsing
-- parser-confidence and fallback handling
-- downstream structured outputs that later retrieval and review flows can consume
+- local-first privacy precheck evidence
+- local-first OCR / academic-structure readiness evidence
+- additive worker-side advisory artifact history
+- fail-open adapter boundaries for privacy and OCR tooling
 
-This phase should **not** absorb:
+This phase does **not** absorb:
 
 - deployment automation
-- durable workflow orchestration
+- durable execution orchestration
+
+### 4.8 Phase 10J Through Phase 10N: Durable Execution Orchestration Mainline
+
+**Primary capability lane:** Execution And Orchestration Platform  
+**Actual landed scope:** the execution/orchestration lane was split into adjacent bounded slices instead of landing under the earlier predicted `10G` label
+
+The current ownership is:
+
+- `10J`: durable orchestration baseline
+- `10K`: single-owner attempt claim guardrails
+- `10L`: read-only dry-run backlog inspection
+- `10M`: actionable focus ordering and bounded display limits
+- `10N`: bounded scoped replay and inspection filters
+
+Together these phases now own:
+
+- durable post-business follow-up orchestration
+- retries and recovery semantics
+- restart-safe replay handling
+- stronger separation between business completion and orchestration completion
+- repo-owned queue-state observability through read-only inspection
+
+These phases still do **not** claim full `Temporal`-class workflow depth.
+Deeper multi-node orchestration, hosted schedulers, and broader workflow-engine
+substitution remain future work inside the same capability lane.
+
+### 4.9 Still-Open Retained Capability Lanes After 10N
+
+After reconciling actual landed numbering, two retained capability lanes remain
+explicitly open and should receive fresh future labels instead of being
+silently mapped back onto already-used phase numbers:
+
+- broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
+- broader `Agent Runtime Platform` and portable skill-package deepening beyond the harness adapter boundary work
 
 ## 5. Recommended Sequence
 
-The repository does not need to execute every future phase immediately.
-It does need a sequence that matches current maturity.
+The repository has now landed the following actual sequence after `10A`:
 
-Recommended sequencing after `Phase 10A`:
+1. `10B` model-governance and routing linkage
+2. `10C` evaluation workbench operations depth
+3. `10D-10F` harness/governed-dataset/retrieval-support work
+4. `10G-10H` production-hardening continuation
+5. `10I` privacy / OCR advisory baseline
+6. `10J-10N` durable execution-orchestration mainline
 
-1. `Phase 10B` to deepen model-governance and routing decisions around the already-live evaluation and runtime-binding surfaces
-2. `Phase 10C` to deepen Evaluation Workbench operations while the current governed-run path is still fresh and bounded
-3. `Phase 10D` to deepen medical knowledge operations and make the knowledge layer more production-usable
-4. `Phase 10E` to complete the retrieval substrate that the knowledge layer ultimately depends on
-5. `Phase 10F` to deepen runtime portability and skill packaging once the near-term governance path is clearer
-6. `Phase 10G` to introduce durable orchestration after the current inline governed-run model has been fully pressure-tested
-7. `Phase 10H` to harden production automation on top of the `Phase 10A` baseline
-8. `Phase 10I` to formalize privacy and academic-structure enhancement without diluting the earlier platform-core phases
+The practical planning implication after `10N` is:
 
-This sequence is recommended, not irreversible.
-What is fixed is the capability ownership, not the exact calendar.
+- keep using actual landed phase numbers as the source of truth
+- do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
+- assign any remaining retained capability line a fresh adjacent label when it becomes active again
 
 ## 6. What This Mapping Prevents
 
 After this document lands:
 
 - `Phase 10A` should no longer be expanded into a generic "finish production" bucket
-- `pgvector`, Yuxi-style knowledge ops, `deepagents`-inspired runtime adaptation, `Temporal`, `Presidio`, `OCRmyPDF`, `PaddleOCR`, and `GROBID` all have a documented future landing zone
+- `pgvector`, harness adapters, durable execution recovery, `Presidio`, `OCRmyPDF`, `PaddleOCR`, and `GROBID` all have a reconciled landed ownership record
 - already-landed Phase 5 / 7 / 8 / 9 work is recognized as partial platform delivery rather than ignored
-- future contributors have a concrete answer to "which phase owns the rest of this capability?"
+- future contributors have a concrete answer to "which phase owns the rest of this capability?" without being misled by stale predicted numbering
 
 ## 7. Governance Rule For Future Phase Authoring
 

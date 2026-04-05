@@ -40,7 +40,7 @@
 - Modify: `apps/api/src/modules/agent-execution/agent-execution-orchestration-service.ts`
 - Modify: `apps/api/test/agent-execution/agent-execution-orchestration.spec.ts`
 
-- [ ] **Step 1: Write the failing service tests**
+- [x] **Step 1: Write the failing service tests**
 
 Add coverage that proves:
 
@@ -49,7 +49,7 @@ Add coverage that proves:
 - scoped recovery still skips fresh `running`, deferred `retryable`, and terminal `failed` logs
 - `inspectBacklog({ modules: ["editing"], actionableOnly: true, limit: 1 })` scopes first, then applies focus ordering and limit
 
-- [ ] **Step 2: Run the targeted orchestration tests and confirm they fail**
+- [x] **Step 2: Run the targeted orchestration tests and confirm they fail**
 
 Run:
 
@@ -59,7 +59,7 @@ pnpm --filter @medical/api test -- agent-execution-orchestration
 
 Expected: FAIL because scoped replay/inspection does not exist yet.
 
-- [ ] **Step 3: Implement the minimal shared scope object**
+- [x] **Step 3: Implement the minimal shared scope object**
 
 Implementation rules:
 
@@ -67,7 +67,7 @@ Implementation rules:
 - scope logic is shared by recovery and inspection
 - no recoverability rules are relaxed
 
-- [ ] **Step 4: Re-run the targeted orchestration tests and confirm they pass**
+- [x] **Step 4: Re-run the targeted orchestration tests and confirm they pass**
 
 Run:
 
@@ -83,7 +83,7 @@ Expected: PASS.
 - Modify: `apps/api/src/ops/recover-governed-execution-orchestration.ts`
 - Modify: `apps/api/test/ops/recover-governed-execution-orchestration.spec.ts`
 
-- [ ] **Step 1: Write the failing CLI scope tests**
+- [x] **Step 1: Write the failing CLI scope tests**
 
 Add coverage that proves:
 
@@ -92,7 +92,7 @@ Add coverage that proves:
 - repeated flags are preserved as arrays
 - default recovery mode remains unchanged when no scope flags are supplied
 
-- [ ] **Step 2: Run the targeted CLI tests and confirm they fail**
+- [x] **Step 2: Run the targeted CLI tests and confirm they fail**
 
 Run:
 
@@ -102,7 +102,7 @@ pnpm --filter @medical/api test -- recover-governed-execution-orchestration
 
 Expected: FAIL because the CLI does not yet parse or forward scope flags.
 
-- [ ] **Step 3: Implement the minimal CLI scope parsing**
+- [x] **Step 3: Implement the minimal CLI scope parsing**
 
 Implementation rules:
 
@@ -111,7 +111,7 @@ Implementation rules:
 - apply the same parsing path to replay and dry-run
 - do not add new override flags
 
-- [ ] **Step 4: Re-run the targeted CLI tests and confirm they pass**
+- [x] **Step 4: Re-run the targeted CLI tests and confirm they pass**
 
 Run:
 
@@ -127,7 +127,7 @@ Expected: PASS.
 - Modify: `README.md`
 - Modify: `docs/OPERATIONS.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document:
 
@@ -135,7 +135,7 @@ Document:
 - `--log-id <execution-log-id>`
 - that scope narrows the inspected/replayed set but does not override retryability or terminal failure rules
 
-- [ ] **Step 2: Run the final serial verification set**
+- [x] **Step 2: Run the final serial verification set**
 
 Run:
 
