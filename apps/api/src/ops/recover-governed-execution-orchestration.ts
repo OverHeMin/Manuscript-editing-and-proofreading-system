@@ -72,6 +72,7 @@ export interface RunGovernedExecutionOrchestrationRecoveryCliOptions {
 }
 
 const appRoot = path.resolve(import.meta.dirname, "../..");
+const GOVERNED_EXECUTION_ORCHESTRATION_JSON_CONTRACT_VERSION = 1;
 
 export type {
   AgentExecutionOrchestrationInspectionReport,
@@ -162,7 +163,16 @@ export async function runGovernedExecutionOrchestrationRecoveryCli(
           }, inspectionOptions);
 
     if (args.includes("--json")) {
-      log(JSON.stringify(report, null, 2));
+      log(
+        JSON.stringify(
+          createGovernedExecutionOrchestrationInspectionJsonPayload(
+            report,
+            inspectionOptions,
+          ),
+          null,
+          2,
+        ),
+      );
       return;
     }
 
@@ -184,7 +194,16 @@ export async function runGovernedExecutionOrchestrationRecoveryCli(
         }, recoveryOptions);
 
   if (args.includes("--json")) {
-    log(JSON.stringify(summary, null, 2));
+    log(
+      JSON.stringify(
+        createGovernedExecutionOrchestrationRecoveryJsonPayload(
+          summary,
+          recoveryOptions,
+        ),
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -367,6 +386,40 @@ function formatGovernedExecutionOrchestrationInspectionItemReadiness(
     item.recovery_ready_at != null ? ` ready_at=${item.recovery_ready_at}` : "";
 
   return `readiness=${item.recovery_readiness}${readyAt} `;
+}
+
+function createGovernedExecutionOrchestrationRecoveryJsonPayload(
+  summary: AgentExecutionOrchestrationRecoverySummary,
+  options: AgentExecutionOrchestrationRecoveryOptions,
+): Record<string, unknown> {
+  return {
+    report_kind: "governed_execution_orchestration_recovery",
+    contract_version: GOVERNED_EXECUTION_ORCHESTRATION_JSON_CONTRACT_VERSION,
+    requested_options: {
+      budget: options.budget,
+      modules: options.modules,
+      log_ids: options.logIds,
+    },
+    ...summary,
+  };
+}
+
+function createGovernedExecutionOrchestrationInspectionJsonPayload(
+  report: AgentExecutionOrchestrationInspectionReport,
+  options: AgentExecutionOrchestrationInspectionOptions,
+): Record<string, unknown> {
+  return {
+    report_kind: "governed_execution_orchestration_inspection",
+    contract_version: GOVERNED_EXECUTION_ORCHESTRATION_JSON_CONTRACT_VERSION,
+    requested_options: {
+      actionable_only: options.actionableOnly === true,
+      budget: options.budget,
+      limit: options.limit,
+      modules: options.modules,
+      log_ids: options.logIds,
+    },
+    ...report,
+  };
 }
 
 function readOptionalIntegerFlag(args: string[], flag: string): number | undefined {

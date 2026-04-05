@@ -16,6 +16,50 @@ import {
   runGovernedExecutionOrchestrationRecoveryCli,
 } from "../../src/ops/recover-governed-execution-orchestration.ts";
 
+function withExpectedRecoveryJsonMetadata(
+  summary: Record<string, unknown>,
+  requestedOptions?: {
+    budget?: number;
+    modules?: string[];
+    log_ids?: string[];
+  },
+) {
+  return {
+    report_kind: "governed_execution_orchestration_recovery",
+    contract_version: 1,
+    requested_options: {
+      budget: requestedOptions?.budget,
+      modules: requestedOptions?.modules,
+      log_ids: requestedOptions?.log_ids,
+    },
+    ...summary,
+  };
+}
+
+function withExpectedInspectionJsonMetadata(
+  report: AgentExecutionOrchestrationInspectionReport,
+  requestedOptions?: {
+    actionable_only?: boolean;
+    budget?: number;
+    limit?: number;
+    modules?: string[];
+    log_ids?: string[];
+  },
+) {
+  return {
+    report_kind: "governed_execution_orchestration_inspection",
+    contract_version: 1,
+    requested_options: {
+      actionable_only: requestedOptions?.actionable_only ?? false,
+      budget: requestedOptions?.budget,
+      limit: requestedOptions?.limit,
+      modules: requestedOptions?.modules,
+      log_ids: requestedOptions?.log_ids,
+    },
+    ...report,
+  };
+}
+
 function createRecoveryHarness(input?: {
   failingCheckProfileIds?: string[];
 }) {
@@ -203,7 +247,10 @@ test("governed execution orchestration recovery cli prints json and human summar
     createRecoveryRunner: async () => summary,
     log: (message) => messages.push(message),
   });
-  assert.equal(messages[0], JSON.stringify(summary, null, 2));
+  assert.equal(
+    messages[0],
+    JSON.stringify(withExpectedRecoveryJsonMetadata(summary), null, 2),
+  );
 
   assert.equal(
     formatGovernedExecutionOrchestrationRecoverySummary(summary),
@@ -278,7 +325,10 @@ test("governed execution orchestration recovery cli supports dry-run inspection 
     createInspectionRunner: async () => inspection,
     log: (message) => messages.push(message),
   });
-  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+  assert.equal(
+    messages[0],
+    JSON.stringify(withExpectedInspectionJsonMetadata(inspection), null, 2),
+  );
 });
 
 test("governed execution orchestration dry-run item output appends readiness windows", async () => {
@@ -332,7 +382,10 @@ test("governed execution orchestration dry-run item output appends readiness win
     createInspectionRunner: async () => inspection,
     log: (message) => messages.push(message),
   });
-  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+  assert.equal(
+    messages[0],
+    JSON.stringify(withExpectedInspectionJsonMetadata(inspection), null, 2),
+  );
 });
 
 test("governed execution orchestration dry-run summary appends readiness rollup", async () => {
@@ -392,7 +445,10 @@ test("governed execution orchestration dry-run summary appends readiness rollup"
     createInspectionRunner: async () => inspection,
     log: (message) => messages.push(message),
   });
-  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+  assert.equal(
+    messages[0],
+    JSON.stringify(withExpectedInspectionJsonMetadata(inspection), null, 2),
+  );
 });
 
 test("governed execution orchestration dry-run forwards actionable focus options", async () => {
@@ -547,7 +603,16 @@ test("governed execution orchestration dry-run can preview a bounded replay wind
     createInspectionRunner: async () => inspection,
     log: (message) => messages.push(message),
   });
-  assert.equal(messages[0], JSON.stringify(inspection, null, 2));
+  assert.equal(
+    messages[0],
+    JSON.stringify(
+      withExpectedInspectionJsonMetadata(inspection, {
+        budget: 1,
+      }),
+      null,
+      2,
+    ),
+  );
 });
 
 test("governed execution orchestration replay forwards scoped recovery options", async () => {
