@@ -81,6 +81,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 10U | `2026-04-05-phase10u-governed-orchestration-json-contract-stabilization-design.md` | focused mainline delivery around orchestration json-contract stabilization | Clean | Stabilizes machine-readable replay and dry-run output with additive metadata while keeping the same local read-only / replay semantics. |
 | Phase 10V | `2026-04-05-phase10v-boot-recovery-residual-observation-design.md` | focused mainline delivery around boot-recovery residual observation | Clean | Extends enabled boot replay with one additive read-only residual summary so startup logs expose remaining actionable/readiness posture without adding new replay authority. |
 | Phase 10W | `2026-04-05-phase10w-governed-orchestration-post-recovery-residual-observation-design.md` | focused mainline delivery around post-recovery residual observation | Clean | Extends human recovery replay with one additive residual summary for the same scope while keeping replay semantics and the stabilized json contract unchanged. |
+| Phase 11A | `2026-04-05-phase11a-runtime-binding-readiness-preflight-design.md` | focused mainline delivery around runtime-binding readiness preflight | Clean | Opens a fresh post-`10W` runtime-platform slice with additive read-only readiness reporting for active bindings and execution-facing drift. |
 
 ## Practical Guidance For Future Work
 
@@ -92,6 +93,9 @@ delivered through one cleanly isolated branch or one PR with the same name.
 - Treat `10I` as intentionally sub-sliced but still boundary-clean, and treat
   `10J-10M` as one acceptable adjacent cumulative delivery cluster whose
   per-phase plan/spec files remain canonical.
+- Treat `11A` as the first clean post-`10W` fresh-label slice: it advances the
+  `Agent Runtime Platform` lane without reopening the closed `Phase 10`
+  orchestration sequence.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

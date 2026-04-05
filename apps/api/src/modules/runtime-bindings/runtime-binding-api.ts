@@ -1,9 +1,11 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type { RuntimeBindingReadinessReport } from "./runtime-binding-readiness.ts";
 import type { RuntimeBindingRecord } from "./runtime-binding-record.ts";
 import type {
   CreateRuntimeBindingInput,
   RuntimeBindingService,
 } from "./runtime-binding-service.ts";
+import type { RuntimeBindingReadinessService } from "./runtime-binding-readiness-service.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -12,12 +14,13 @@ interface RouteResponse<T> {
 
 export interface CreateRuntimeBindingApiOptions {
   runtimeBindingService: RuntimeBindingService;
+  runtimeBindingReadinessService: RuntimeBindingReadinessService;
 }
 
 export function createRuntimeBindingApi(
   options: CreateRuntimeBindingApiOptions,
 ) {
-  const { runtimeBindingService } = options;
+  const { runtimeBindingService, runtimeBindingReadinessService } = options;
 
   return {
     async createBinding({
@@ -70,6 +73,36 @@ export function createRuntimeBindingApi(
       return {
         status: 200,
         body: await runtimeBindingService.getBinding(bindingId),
+      };
+    },
+
+    async getBindingReadiness({
+      bindingId,
+    }: {
+      bindingId: string;
+    }): Promise<RouteResponse<RuntimeBindingReadinessReport>> {
+      return {
+        status: 200,
+        body: await runtimeBindingReadinessService.getBindingReadiness(bindingId),
+      };
+    },
+
+    async getActiveBindingReadinessForScope({
+      module,
+      manuscriptType,
+      templateFamilyId,
+    }: {
+      module: RuntimeBindingRecord["module"];
+      manuscriptType: RuntimeBindingRecord["manuscript_type"];
+      templateFamilyId: RuntimeBindingRecord["template_family_id"];
+    }): Promise<RouteResponse<RuntimeBindingReadinessReport>> {
+      return {
+        status: 200,
+        body: await runtimeBindingReadinessService.getActiveBindingReadinessForScope({
+          module,
+          manuscriptType,
+          templateFamilyId,
+        }),
       };
     },
 

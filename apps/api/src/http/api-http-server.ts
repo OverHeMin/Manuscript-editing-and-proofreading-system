@@ -215,6 +215,7 @@ import {
 import {
   createRuntimeBindingApi,
   InMemoryRuntimeBindingRepository,
+  RuntimeBindingReadinessService,
   RuntimeBindingCompatibilityError,
   RuntimeBindingDependencyStateError,
   RuntimeBindingNotFoundError,
@@ -460,8 +461,18 @@ type HttpRouteMatch =
       bindingId: string;
     }
   | {
+      route: "runtime-binding-get-readiness";
+      bindingId: string;
+    }
+  | {
       route: "runtime-binding-activate";
       bindingId: string;
+    }
+  | {
+      route: "runtime-binding-active-readiness";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
     }
   | {
       route: "runtime-binding-archive";
@@ -1062,6 +1073,16 @@ export function createInMemoryApiRuntime(input: {
     promptSkillRegistryRepository,
     verificationOpsRepository,
   });
+  const runtimeBindingReadinessService = new RuntimeBindingReadinessService({
+    runtimeBindingService,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
+    executionGovernanceRepository,
+    verificationOpsRepository,
+  });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
     governedRunRuntime: runtimeBindingService,
@@ -1323,6 +1344,7 @@ export function createInMemoryApiRuntime(input: {
     }),
     runtimeBindingApi: createRuntimeBindingApi({
       runtimeBindingService,
+      runtimeBindingReadinessService,
     }),
     sandboxProfileApi: createSandboxProfileApi({
       sandboxProfileService,
@@ -2430,6 +2452,11 @@ async function handleRoute(
       return runtime.runtimeBindingApi.getBinding({
         bindingId: routeMatch.bindingId,
       });
+    case "runtime-binding-get-readiness":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.getBindingReadiness({
+        bindingId: routeMatch.bindingId,
+      });
     case "runtime-binding-activate": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       return runtime.runtimeBindingApi.activateBinding({
@@ -2437,6 +2464,17 @@ async function handleRoute(
         bindingId: routeMatch.bindingId,
       });
     }
+    case "runtime-binding-active-readiness":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.runtimeBindingApi.getActiveBindingReadinessForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.runtimeBindingApi.getActiveBindingReadinessForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.runtimeBindingApi.getActiveBindingReadinessForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+      });
     case "runtime-binding-archive": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       return runtime.runtimeBindingApi.archiveBinding({
@@ -3766,6 +3804,18 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const runtimeBindingActiveReadinessByScopeMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)\/active-readiness$/,
+  );
+  if (method === "GET" && runtimeBindingActiveReadinessByScopeMatch) {
+    return {
+      route: "runtime-binding-active-readiness",
+      module: runtimeBindingActiveReadinessByScopeMatch[1],
+      manuscriptType: runtimeBindingActiveReadinessByScopeMatch[2],
+      templateFamilyId: runtimeBindingActiveReadinessByScopeMatch[3],
+    };
+  }
+
   const templateFamilyUpdateMatch = path.match(/^\/api\/v1\/templates\/families\/([^/]+)$/);
   if (method === "POST" && templateFamilyUpdateMatch) {
     return {
@@ -4009,6 +4059,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "runtime-binding-get",
       bindingId: runtimeBindingGetMatch[1],
+    };
+  }
+
+  const runtimeBindingReadinessMatch = path.match(
+    /^\/api\/v1\/runtime-bindings\/([^/]+)\/readiness$/,
+  );
+  if (method === "GET" && runtimeBindingReadinessMatch) {
+    return {
+      route: "runtime-binding-get-readiness",
+      bindingId: runtimeBindingReadinessMatch[1],
     };
   }
 

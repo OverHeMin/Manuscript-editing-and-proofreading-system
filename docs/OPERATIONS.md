@@ -244,6 +244,14 @@ Web 关键环境变量：
 - Phase 10V extends that same boot lane with one read-only residual summary after a successful boot replay pass, so startup logs also show remaining `actionable`, readiness rollup, and optional `next_ready_at` posture. Residual inspection failures degrade to a separate fail-open log and do not block startup.
 - Phase 10W extends the same manual replay lane for human operators: after a successful `recover:governed-orchestration` replay, the CLI now prints one residual summary for the same scope using the existing read-only readiness model. This residual observation ignores replay `budget`, degrades fail-open if inspection itself fails, and intentionally leaves `--json` output unchanged in this phase.
 
+### 5.5A Runtime Binding Readiness Preflight
+
+- `Phase 11A` adds a local-first, read-only runtime-binding readiness lane on the existing governance HTTP surface.
+- `GET /api/v1/runtime-bindings/:bindingId/readiness` returns the readiness report for one binding id.
+- `GET /api/v1/runtime-bindings/by-scope/:module/:manuscriptType/:templateFamilyId/active-readiness` returns the readiness report for the currently active binding that governed mainline execution would resolve for that scope.
+- These endpoints stay additive and fail-open. They report inactive or incompatible runtime, sandbox, agent profile, prompt template, skill package, verification, release-check, and execution-profile drift conditions, but they do not activate, archive, route, repair, or otherwise mutate governance state.
+- Missing or degraded readiness evidence should be treated as an operator signal, not as a new startup or business-execution hard gate in this phase.
+
 ### 5.6 Post-deploy health confirmation
 
 - `pnpm verify:production-postdeploy -- --base-url http://127.0.0.1:3001`

@@ -111,6 +111,7 @@ import {
 import {
   createRuntimeBindingApi,
   PostgresRuntimeBindingRepository,
+  RuntimeBindingReadinessService,
   RuntimeBindingService,
 } from "../modules/runtime-bindings/index.ts";
 import {
@@ -445,6 +446,16 @@ export function createPersistentGovernanceRuntime(
     promptSkillRegistryRepository,
     verificationOpsRepository,
   });
+  const runtimeBindingReadinessService = new RuntimeBindingReadinessService({
+    runtimeBindingService,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
+    executionGovernanceRepository,
+    verificationOpsRepository,
+  });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
     governedRunRuntime: runtimeBindingService,
@@ -643,6 +654,7 @@ export function createPersistentGovernanceRuntime(
     }),
     runtimeBindingApi: createRuntimeBindingApi({
       runtimeBindingService,
+      runtimeBindingReadinessService,
     }),
     sandboxProfileApi: createSandboxProfileApi({
       sandboxProfileService,

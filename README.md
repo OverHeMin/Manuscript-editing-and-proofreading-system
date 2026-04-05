@@ -307,3 +307,10 @@
 - Repair handoff manifests are human-owned checklists only. They do not repair the index, re-index orphan artifacts, or execute cleanup automatically.
 - Operator-summary snapshots are local-only evidence summaries. They may write one JSON snapshot under `operator-summaries/`, but they do not trigger repair, cleanup, routing, or release actions.
 - This baseline does not auto-anonymize, auto-run OCR, auto-publish governed assets, or promote itself into a routing or release control plane.
+
+## Runtime Binding Readiness Preflight (Phase 11A)
+
+- `Phase 11A` opens the fresh post-`10W` `Agent Runtime Platform` lane with one bounded, read-only readiness report for runtime bindings.
+- Use `GET /api/v1/runtime-bindings/:bindingId/readiness` to inspect one specific binding, or `GET /api/v1/runtime-bindings/by-scope/:module/:manuscriptType/:templateFamilyId/active-readiness` to inspect the binding that governed mainline execution would use for that scope right now.
+- The report is additive and fail-open. It explains missing, inactive, or incompatible runtime/prompt/skill/policy/check/suite references plus execution-profile drift, but it does not activate, archive, route, repair, or auto-switch anything.
+- This slice serves execution safety for `screening`, `editing`, and `proofreading` without reopening `Phase 10`, adding a new workbench, or turning runtime readiness into a startup or execution hard gate.

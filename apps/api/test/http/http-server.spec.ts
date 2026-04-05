@@ -2122,6 +2122,59 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(publishAgentProfileResponse.status, 200);
     assert.equal(publishedAgentProfile.status, "published");
 
+    const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "clinical_study",
+        name: "Agent tooling family",
+      }),
+    });
+    const family = (await familyResponse.json()) as { id: string };
+
+    assert.equal(familyResponse.status, 201);
+
+    const moduleTemplateDraftResponse = await fetch(
+      `${baseUrl}/api/v1/templates/module-drafts`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          templateFamilyId: family.id,
+          module: "editing",
+          manuscriptType: "clinical_study",
+          prompt: "Agent tooling editing template",
+        }),
+      },
+    );
+    const moduleTemplateDraft = (await moduleTemplateDraftResponse.json()) as {
+      id: string;
+    };
+
+    assert.equal(moduleTemplateDraftResponse.status, 201);
+
+    const publishModuleTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/module-templates/${moduleTemplateDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishModuleTemplateResponse.status, 200);
+
     const promptDraftResponse = await fetch(
       `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
       {
@@ -2196,6 +2249,50 @@ test("http server exposes admin agent-tooling governance routes and execution lo
 
     assert.equal(publishSkillResponse.status, 200);
 
+    const executionProfileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: family.id,
+            moduleTemplateId: moduleTemplateDraft.id,
+            promptTemplateId: promptDraft.id,
+            skillPackageIds: [skillDraft.id],
+            knowledgeBindingMode: "profile_only",
+          },
+        }),
+      },
+    );
+    const executionProfile = (await executionProfileResponse.json()) as {
+      id: string;
+    };
+
+    assert.equal(executionProfileResponse.status, 201);
+
+    const publishExecutionProfileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles/${executionProfile.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishExecutionProfileResponse.status, 200);
+
     const bindingDraftResponse = await fetch(
       `${baseUrl}/api/v1/runtime-bindings`,
       {
@@ -2209,13 +2306,14 @@ test("http server exposes admin agent-tooling governance routes and execution lo
           input: {
             module: "editing",
             manuscriptType: "clinical_study",
-            templateFamilyId: "family-agent-tooling-1",
+            templateFamilyId: family.id,
             runtimeId: runtimeDraft.id,
             sandboxProfileId: sandboxDraft.id,
             agentProfileId: agentProfileDraft.id,
             toolPermissionPolicyId: policyDraft.id,
             promptTemplateId: promptDraft.id,
             skillPackageIds: [skillDraft.id],
+            executionProfileId: executionProfile.id,
           },
         }),
       },
@@ -2252,7 +2350,7 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(activeBinding.status, "active");
 
     const bindingScopeResponse = await fetch(
-      `${baseUrl}/api/v1/runtime-bindings/by-scope/editing/clinical_study/family-agent-tooling-1?activeOnly=true`,
+      `${baseUrl}/api/v1/runtime-bindings/by-scope/editing/clinical_study/${family.id}?activeOnly=true`,
       {
         headers: {
           Cookie: cookie,
@@ -2265,6 +2363,52 @@ test("http server exposes admin agent-tooling governance routes and execution lo
 
     assert.equal(bindingScopeResponse.status, 200);
     assert.deepEqual(bindingsByScope.map((record) => record.id), [bindingDraft.id]);
+
+    const bindingReadinessResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/${bindingDraft.id}/readiness`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const bindingReadiness = (await bindingReadinessResponse.json()) as {
+      status: string;
+      execution_profile_alignment: {
+        status: string;
+      };
+      issues: Array<{ code: string }>;
+    };
+
+    assert.equal(bindingReadinessResponse.status, 200);
+    assert.equal(bindingReadiness.status, "ready");
+    assert.equal(bindingReadiness.execution_profile_alignment.status, "aligned");
+    assert.deepEqual(bindingReadiness.issues, []);
+
+    const activeReadinessResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/by-scope/editing/clinical_study/${family.id}/active-readiness`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const activeReadiness = (await activeReadinessResponse.json()) as {
+      status: string;
+      binding?: {
+        id: string;
+      };
+    };
+
+    assert.equal(activeReadinessResponse.status, 200);
+    assert.equal(activeReadiness.status, "ready");
+    assert.equal(activeReadiness.binding?.id, bindingDraft.id);
+
+    const unauthorizedReadinessResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/${bindingDraft.id}/readiness`,
+    );
+
+    assert.equal(unauthorizedReadinessResponse.status, 401);
 
     const createExecutionLogResponse = await fetch(
       `${baseUrl}/api/v1/agent-execution`,
@@ -2354,6 +2498,41 @@ test("http server exposes admin agent-tooling governance routes and execution lo
         status: "completed",
       },
     ]);
+
+    const archiveRuntimeResponse = await fetch(
+      `${baseUrl}/api/v1/agent-runtime/${runtimeDraft.id}/archive`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(archiveRuntimeResponse.status, 200);
+
+    const degradedReadinessResponse = await fetch(
+      `${baseUrl}/api/v1/runtime-bindings/${bindingDraft.id}/readiness`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const degradedReadiness = (await degradedReadinessResponse.json()) as {
+      status: string;
+      issues: Array<{ code: string }>;
+    };
+
+    assert.equal(degradedReadinessResponse.status, 200);
+    assert.equal(degradedReadiness.status, "degraded");
+    assert.ok(
+      degradedReadiness.issues.some((issue) => issue.code === "runtime_not_active"),
+    );
   } finally {
     await stopServer(server);
   }

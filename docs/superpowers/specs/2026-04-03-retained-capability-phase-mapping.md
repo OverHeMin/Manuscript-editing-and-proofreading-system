@@ -234,14 +234,33 @@ These phases still do **not** claim full `Temporal`-class workflow depth.
 Deeper multi-node orchestration, hosted schedulers, and broader workflow-engine
 substitution remain future work inside the same capability lane.
 
-### 4.9 Still-Open Retained Capability Lanes After 10W
+### 4.9 Phase 11A: Runtime Binding Readiness Preflight
 
-After reconciling actual landed numbering, two retained capability lanes remain
+**Primary capability lane:** Agent Runtime Platform  
+**Actual landed scope:** additive, read-only readiness reporting for runtime bindings and active governed scope resolution
+
+This phase now owns:
+
+- binding-level readiness inspection by id
+- active-scope readiness inspection for `module + manuscript type + template family`
+- dependency-state reporting for runtime, sandbox, agent profile, tool policy, prompt, skill, verification, and release-check references
+- execution-profile alignment and drift reporting for the governed mainline
+
+This phase does **not** absorb:
+
+- activation hard gates
+- runtime auto-repair
+- new workbench or control-plane behavior
+- deeper portable-skill package lifecycle work
+
+### 4.10 Still-Open Retained Capability Lanes After 11A
+
+After reconciling actual landed numbering through `11A`, two retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
-- broader `Agent Runtime Platform` and portable skill-package deepening beyond the harness adapter boundary work
+- broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A` runtime-binding readiness preflight
 
 ## 5. Recommended Sequence
 
@@ -253,14 +272,17 @@ The repository has now landed the following actual sequence after `10A`:
 4. `10G-10H` production-hardening continuation
 5. `10I` privacy / OCR advisory baseline
 6. `10J-10W` durable execution-orchestration mainline
+7. `11A` runtime-binding readiness preflight under the fresh runtime-platform lane
 
-The practical planning implication after `10W` is:
+The practical planning implication after `11A` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
 - assign any remaining retained capability line a fresh adjacent label when it becomes active again
 - treat `Phase 10` itself as closed through `10W`, so any further orchestration
   deepening or new retained-capability work opens under a new phase label
+- treat `11A` as a narrow runtime-platform safety slice, not as permission to
+  reopen workbench or control-plane expansion under the same lane
 
 ## 6. What This Mapping Prevents
 

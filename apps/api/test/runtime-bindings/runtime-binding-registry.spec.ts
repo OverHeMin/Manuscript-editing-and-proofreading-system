@@ -10,12 +10,18 @@ import { AgentProfileService } from "../../src/modules/agent-profiles/agent-prof
 import { createPromptSkillRegistryApi } from "../../src/modules/prompt-skill-registry/prompt-skill-api.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { PromptSkillRegistryService } from "../../src/modules/prompt-skill-registry/prompt-skill-service.ts";
+import { createExecutionGovernanceApi } from "../../src/modules/execution-governance/execution-governance-api.ts";
+import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
+import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
+import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { createRuntimeBindingApi } from "../../src/modules/runtime-bindings/runtime-binding-api.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
+import { RuntimeBindingReadinessService } from "../../src/modules/runtime-bindings/runtime-binding-readiness-service.ts";
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { createSandboxProfileApi } from "../../src/modules/sandbox-profiles/sandbox-profile-api.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
+import { InMemoryModuleTemplateRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import { createToolGatewayApi } from "../../src/modules/tool-gateway/tool-gateway-api.ts";
 import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in-memory-tool-gateway-repository.ts";
 import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
@@ -34,7 +40,8 @@ function createRuntimeBindingHarness() {
     agentProfile: ["agent-profile-1"],
     toolPolicy: ["tool-policy-1"],
     tool: ["tool-1", "tool-2"],
-    promptSkill: ["skill-1", "prompt-1"],
+    promptSkill: ["skill-1", "prompt-1", "skill-2", "prompt-2"],
+    executionGovernance: ["execution-profile-1", "execution-profile-2"],
     verificationOps: [
       "check-profile-1",
       "release-profile-1",
@@ -53,6 +60,9 @@ function createRuntimeBindingHarness() {
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
+  const executionGovernanceRepository =
+    new InMemoryExecutionGovernanceRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
 
   const runtimeBindingService = new RuntimeBindingService({
@@ -69,8 +79,34 @@ function createRuntimeBindingHarness() {
       return value;
     },
   });
+  const executionGovernanceApi = createExecutionGovernanceApi({
+    executionGovernanceService: new ExecutionGovernanceService({
+      repository: executionGovernanceRepository,
+      moduleTemplateRepository,
+      promptSkillRegistryRepository,
+      knowledgeRepository: new InMemoryKnowledgeRepository(),
+      createId: () => {
+        const value = ids.executionGovernance.shift();
+        assert.ok(value, "Expected an execution governance id to be available.");
+        return value;
+      },
+    }),
+  });
+  const readinessService = new RuntimeBindingReadinessService({
+    runtimeBindingService,
+    agentRuntimeRepository,
+    sandboxProfileRepository,
+    agentProfileRepository,
+    toolPermissionPolicyRepository,
+    promptSkillRegistryRepository,
+    executionGovernanceRepository,
+    verificationOpsRepository,
+  });
 
   return {
+    executionGovernanceApi,
+    moduleTemplateRepository,
+    readinessService,
     runtimeApi: createAgentRuntimeApi({
       agentRuntimeService: new AgentRuntimeService({
         repository: agentRuntimeRepository,
@@ -145,6 +181,7 @@ function createRuntimeBindingHarness() {
     }),
     runtimeBindingApi: createRuntimeBindingApi({
       runtimeBindingService,
+      runtimeBindingReadinessService: readinessService,
     }),
   };
 }
@@ -242,6 +279,31 @@ async function seedPublishableBindingDependencies() {
     actorRole: "admin",
     promptTemplateId: promptTemplate.body.id,
   });
+  await harness.moduleTemplateRepository.save({
+    id: "module-template-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Editing template",
+  });
+  const executionProfile = await harness.executionGovernanceApi.createProfile({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      moduleTemplateId: "module-template-1",
+      promptTemplateId: promptTemplate.body.id,
+      skillPackageIds: [skillPackage.body.id],
+      knowledgeBindingMode: "profile_only",
+    },
+  });
+  await harness.executionGovernanceApi.publishProfile({
+    actorRole: "admin",
+    profileId: executionProfile.body.id,
+  });
 
   const checkProfile = await harness.verificationOpsApi.createVerificationCheckProfile({
     actorRole: "admin",
@@ -291,6 +353,7 @@ async function seedPublishableBindingDependencies() {
     toolPermissionPolicyId: policy.body.id,
     promptTemplateId: promptTemplate.body.id,
     skillPackageId: skillPackage.body.id,
+    executionProfileId: executionProfile.body.id,
     verificationCheckProfileId: checkProfile.body.id,
     evaluationSuiteId: suite.body.id,
     releaseCheckProfileId: releaseProfile.body.id,
@@ -516,5 +579,185 @@ test("runtime bindings reject draft dependencies and require active or published
         },
       }),
     /active|published/i,
+  );
+});
+
+test("runtime binding readiness reports ready for an active aligned binding", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const created = await harness.runtimeBindingApi.createBinding({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: harness.runtimeId,
+      sandboxProfileId: harness.sandboxProfileId,
+      agentProfileId: harness.agentProfileId,
+      toolPermissionPolicyId: harness.toolPermissionPolicyId,
+      promptTemplateId: harness.promptTemplateId,
+      skillPackageIds: [harness.skillPackageId],
+      executionProfileId: harness.executionProfileId,
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
+    },
+  });
+  await harness.runtimeBindingApi.activateBinding({
+    actorRole: "admin",
+    bindingId: created.body.id,
+  });
+
+  const readiness = await harness.readinessService.getBindingReadiness(
+    created.body.id,
+  );
+
+  assert.equal(readiness.status, "ready");
+  assert.deepEqual(readiness.issues, []);
+  assert.equal(readiness.execution_profile_alignment.status, "aligned");
+});
+
+test("runtime binding readiness reports missing when no active binding exists for the scope", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const readiness = await harness.readinessService.getActiveBindingReadinessForScope(
+    {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+  );
+
+  assert.equal(readiness.status, "missing");
+  assert.deepEqual(readiness.issues.map((issue) => issue.code), [
+    "missing_active_binding",
+  ]);
+});
+
+test("runtime binding readiness reports degraded dependency state after activation drift", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const created = await harness.runtimeBindingApi.createBinding({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: harness.runtimeId,
+      sandboxProfileId: harness.sandboxProfileId,
+      agentProfileId: harness.agentProfileId,
+      toolPermissionPolicyId: harness.toolPermissionPolicyId,
+      promptTemplateId: harness.promptTemplateId,
+      skillPackageIds: [harness.skillPackageId],
+      executionProfileId: harness.executionProfileId,
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
+    },
+  });
+  await harness.runtimeBindingApi.activateBinding({
+    actorRole: "admin",
+    bindingId: created.body.id,
+  });
+  await harness.runtimeApi.archiveRuntime({
+    actorRole: "admin",
+    runtimeId: harness.runtimeId,
+  });
+
+  const readiness = await harness.readinessService.getBindingReadiness(
+    created.body.id,
+  );
+
+  assert.equal(readiness.status, "degraded");
+  assert.ok(
+    readiness.issues.some((issue) => issue.code === "runtime_not_active"),
+  );
+});
+
+test("runtime binding readiness reports execution-profile prompt and skill drift against the active scope profile", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const created = await harness.runtimeBindingApi.createBinding({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: harness.runtimeId,
+      sandboxProfileId: harness.sandboxProfileId,
+      agentProfileId: harness.agentProfileId,
+      toolPermissionPolicyId: harness.toolPermissionPolicyId,
+      promptTemplateId: harness.promptTemplateId,
+      skillPackageIds: [harness.skillPackageId],
+      executionProfileId: harness.executionProfileId,
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
+    },
+  });
+  await harness.runtimeBindingApi.activateBinding({
+    actorRole: "admin",
+    bindingId: created.body.id,
+  });
+
+  const secondSkillPackage = await harness.promptSkillApi.createSkillPackage({
+    actorRole: "admin",
+    input: {
+      name: "Editing Skills V2",
+      version: "2.0.0",
+      appliesToModules: ["editing"],
+    },
+  });
+  await harness.promptSkillApi.publishSkillPackage({
+    actorRole: "admin",
+    skillPackageId: secondSkillPackage.body.id,
+  });
+  const secondPromptTemplate = await harness.promptSkillApi.createPromptTemplate({
+    actorRole: "admin",
+    input: {
+      name: "Editing Prompt V2",
+      version: "2.0.0",
+      module: "editing",
+      manuscriptTypes: ["clinical_study"],
+    },
+  });
+  await harness.promptSkillApi.publishPromptTemplate({
+    actorRole: "admin",
+    promptTemplateId: secondPromptTemplate.body.id,
+  });
+  const secondExecutionProfile = await harness.executionGovernanceApi.createProfile({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      moduleTemplateId: "module-template-1",
+      promptTemplateId: secondPromptTemplate.body.id,
+      skillPackageIds: [secondSkillPackage.body.id],
+      knowledgeBindingMode: "profile_only",
+    },
+  });
+  await harness.executionGovernanceApi.publishProfile({
+    actorRole: "admin",
+    profileId: secondExecutionProfile.body.id,
+  });
+
+  const readiness = await harness.readinessService.getBindingReadiness(
+    created.body.id,
+  );
+
+  assert.equal(readiness.status, "degraded");
+  assert.ok(
+    readiness.issues.some(
+      (issue) => issue.code === "binding_execution_profile_drift",
+    ),
+  );
+  assert.ok(
+    readiness.issues.some((issue) => issue.code === "binding_prompt_drift"),
+  );
+  assert.ok(
+    readiness.issues.some(
+      (issue) => issue.code === "binding_skill_package_drift",
+    ),
   );
 });
