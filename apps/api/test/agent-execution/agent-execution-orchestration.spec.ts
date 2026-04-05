@@ -18,10 +18,16 @@ function createOrchestrationHarness(input?: {
     "evaluation-suite-1",
     "evaluation-run-1",
     "verification-evidence-1",
+    "check-profile-2",
+    "evaluation-suite-2",
     "evaluation-run-2",
     "verification-evidence-2",
+    "check-profile-3",
+    "evaluation-suite-3",
+    "evaluation-run-3",
+    "verification-evidence-3",
   ];
-  const toolIds = ["tool-1"];
+  const toolIds = ["tool-1", "tool-2", "tool-3"];
   const executionIds = [
     "execution-log-1",
     "execution-log-2",
@@ -127,33 +133,10 @@ async function seedPendingExecutionLog(input?: {
   const harness = createOrchestrationHarness({
     failingCheckProfileIds: input?.failingCheckProfileIds,
   });
-  const tool = await harness.toolGatewayService.createTool("admin", {
-    name: "gstack.browser.qa",
-    scope: "browser_qa",
-  });
-  const checkProfile = await harness.verificationOpsService.createVerificationCheckProfile(
-    "admin",
-    {
-      name: "Governed Check",
-      checkType: "browser_qa",
-      toolIds: [tool.id],
-    },
-  );
-  const publishedCheckProfile =
-    await harness.verificationOpsService.publishVerificationCheckProfile(
-      checkProfile.id,
-      "admin",
-    );
-  const suite = await harness.verificationOpsService.createEvaluationSuite("admin", {
+  const activeSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
     name: "Governed Suite",
-    suiteType: "regression",
-    verificationCheckProfileIds: [publishedCheckProfile.id],
-    moduleScope: ["editing"],
   });
-  const activeSuite = await harness.verificationOpsService.activateEvaluationSuite(
-    suite.id,
-    "admin",
-  );
 
   const created = await harness.agentExecutionService.createLog({
     manuscriptId: "manuscript-1",
@@ -209,12 +192,14 @@ async function createCompletedInspectionLog(input: {
   harness: ReturnType<typeof createOrchestrationHarness>;
   logId: string;
   manuscriptId: string;
+  module?: "screening" | "editing" | "proofreading";
   suiteIds?: string[];
   maxAttempts?: number;
 }) {
+  const module = input.module ?? "editing";
   const created = await input.harness.agentExecutionService.createLog({
     manuscriptId: input.manuscriptId,
-    module: "editing",
+    module,
     triggeredBy: "editor-1",
     runtimeId: "runtime-1",
     sandboxProfileId: "sandbox-1",
@@ -229,7 +214,7 @@ async function createCompletedInspectionLog(input: {
 
   const snapshot = await input.harness.executionTrackingService.recordSnapshot({
     manuscriptId: input.manuscriptId,
-    module: "editing",
+    module,
     jobId: `job-${input.logId}`,
     executionProfileId: "profile-1",
     moduleTemplateId: "template-1",
@@ -253,6 +238,37 @@ async function createCompletedInspectionLog(input: {
     logId: created.id,
     executionSnapshotId: snapshot.id,
   });
+}
+
+async function createActiveSuiteForModule(
+  harness: ReturnType<typeof createOrchestrationHarness>,
+  input: {
+    module: "screening" | "editing" | "proofreading";
+    name: string;
+  },
+) {
+  const tool = await harness.toolGatewayService.createTool("admin", {
+    name: `gstack.browser.qa.${input.module}`,
+    scope: "browser_qa",
+  });
+  const checkProfile =
+    await harness.verificationOpsService.createVerificationCheckProfile("admin", {
+      name: `${input.name} Check`,
+      checkType: "browser_qa",
+      toolIds: [tool.id],
+    });
+  const publishedCheckProfile =
+    await harness.verificationOpsService.publishVerificationCheckProfile(
+      checkProfile.id,
+      "admin",
+    );
+  const suite = await harness.verificationOpsService.createEvaluationSuite("admin", {
+    name: input.name,
+    suiteType: "regression",
+    verificationCheckProfileIds: [publishedCheckProfile.id],
+    moduleScope: [input.module],
+  });
+  return harness.verificationOpsService.activateEvaluationSuite(suite.id, "admin");
 }
 
 test("orchestration service completes a pending governed follow-up and reuses the existing run on replay", async () => {
@@ -445,6 +461,70 @@ test("recovery waits until retryable orchestration becomes eligible again", asyn
     failed_count: 0,
     deferred_count: 0,
   });
+});
+
+test("recovery can scope replay candidates by module and explicit log id", async () => {
+  const harness = createOrchestrationHarness();
+  const editingSuite = await createActiveSuiteForModule(harness, {
+    module: "editing",
+    name: "Editing Recovery Suite",
+  });
+  const screeningSuite = await createActiveSuiteForModule(harness, {
+    module: "screening",
+    name: "Screening Recovery Suite",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-editing",
+    module: "editing",
+    suiteIds: [editingSuite.id],
+  });
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-screening",
+    module: "screening",
+    suiteIds: [screeningSuite.id],
+  });
+
+  const scopedByModule = await harness.orchestrationService.recoverPending({
+    modules: ["screening"],
+  });
+  assert.deepEqual(scopedByModule, {
+    processed_count: 1,
+    completed_count: 1,
+    retryable_count: 0,
+    failed_count: 0,
+    deferred_count: 0,
+  });
+  assert.equal(
+    (await harness.agentExecutionService.getLog("execution-log-1"))
+      .orchestration_status,
+    "pending",
+  );
+  assert.equal(
+    (await harness.agentExecutionService.getLog("execution-log-2"))
+      .orchestration_status,
+    "completed",
+  );
+
+  const scopedByLog = await harness.orchestrationService.recoverPending({
+    logIds: ["execution-log-1"],
+  });
+  assert.deepEqual(scopedByLog, {
+    processed_count: 1,
+    completed_count: 1,
+    retryable_count: 0,
+    failed_count: 0,
+    deferred_count: 0,
+  });
+  assert.equal(
+    (await harness.agentExecutionService.getLog("execution-log-1"))
+      .orchestration_status,
+    "completed",
+  );
 });
 
 test("only one orchestration claimant can win the same persisted attempt snapshot", async () => {
@@ -684,5 +764,74 @@ test("inspection supports actionable focus ordering and bounded limits", async (
   assert.deepEqual(
     report.items.map((item) => item.log_id),
     ["execution-log-4", "execution-log-3"],
+  );
+});
+
+test("inspection scopes backlog before applying actionable focus ordering", async () => {
+  const harness = createOrchestrationHarness();
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-1",
+    manuscriptId: "manuscript-editing",
+    module: "editing",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-2",
+    manuscriptId: "manuscript-screening",
+    module: "screening",
+    maxAttempts: 1,
+  });
+  await harness.agentExecutionService.markOrchestrationRunning({
+    logId: "execution-log-2",
+    claimToken: "claim-failed",
+  });
+  await harness.agentExecutionService.failOrchestrationAttempt({
+    logId: "execution-log-2",
+    claimToken: "claim-failed",
+    errorMessage: "Exhausted",
+  });
+
+  await createCompletedInspectionLog({
+    harness,
+    logId: "execution-log-3",
+    manuscriptId: "manuscript-proofreading",
+    module: "proofreading",
+  });
+  await harness.agentExecutionService.completeOrchestration({
+    logId: "execution-log-3",
+  });
+
+  const report = await harness.orchestrationService.inspectBacklog({
+    modules: ["screening", "proofreading"],
+    logIds: ["execution-log-2", "execution-log-3"],
+    actionableOnly: true,
+    limit: 1,
+  });
+
+  assert.deepEqual(report.summary, {
+    total_count: 2,
+    recoverable_now_count: 0,
+    stale_running_count: 0,
+    deferred_retry_count: 0,
+    attention_required_count: 1,
+    not_recoverable_count: 1,
+  });
+  assert.deepEqual(report.focus, {
+    actionable_count: 1,
+    displayed_count: 1,
+    omitted_count: 0,
+    actionable_only: true,
+    limit: 1,
+  });
+  assert.deepEqual(
+    report.items.map((item) => item.log_id),
+    ["execution-log-2"],
+  );
+  assert.deepEqual(
+    report.items.map((item) => item.category),
+    ["attention_required"],
   );
 });

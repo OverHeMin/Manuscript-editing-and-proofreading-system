@@ -270,6 +270,8 @@ test("governed execution orchestration dry-run forwards actionable focus options
     | {
         actionableOnly?: boolean;
         limit?: number;
+        modules?: string[];
+        logIds?: string[];
       }
     | undefined;
 
@@ -316,7 +318,18 @@ test("governed execution orchestration dry-run forwards actionable focus options
   };
 
   await runGovernedExecutionOrchestrationRecoveryCli({
-    args: ["--dry-run", "--actionable-only", "--limit", "2"],
+    args: [
+      "--dry-run",
+      "--actionable-only",
+      "--limit",
+      "2",
+      "--module",
+      "editing",
+      "--module",
+      "screening",
+      "--log-id",
+      "execution-log-4",
+    ],
     createInspectionRunner: async (input) => {
       receivedOptions = input.inspectionOptions;
       return inspection;
@@ -327,7 +340,49 @@ test("governed execution orchestration dry-run forwards actionable focus options
   assert.deepEqual(receivedOptions, {
     actionableOnly: true,
     limit: 2,
+    modules: ["editing", "screening"],
+    logIds: ["execution-log-4"],
   });
   assert.match(messages[0] ?? "", /displayed=2/i);
   assert.match(messages[0] ?? "", /omitted=1/i);
+});
+
+test("governed execution orchestration replay forwards scoped recovery options", async () => {
+  const messages: string[] = [];
+  let receivedOptions:
+    | {
+        modules?: string[];
+        logIds?: string[];
+      }
+    | undefined;
+
+  await runGovernedExecutionOrchestrationRecoveryCli({
+    args: [
+      "--module",
+      "editing",
+      "--module",
+      "proofreading",
+      "--log-id",
+      "execution-log-1",
+      "--log-id",
+      "execution-log-3",
+    ],
+    createRecoveryRunner: async (input) => {
+      receivedOptions = input.recoveryOptions;
+      return {
+        processed_count: 1,
+        completed_count: 1,
+        retryable_count: 0,
+        failed_count: 0,
+        deferred_count: 0,
+      };
+    },
+    log: (message) => messages.push(message),
+  });
+
+  assert.deepEqual(receivedOptions, {
+    modules: ["editing", "proofreading"],
+    logIds: ["execution-log-1", "execution-log-3"],
+  });
+  assert.match(messages[0] ?? "", /processed=1/i);
 });

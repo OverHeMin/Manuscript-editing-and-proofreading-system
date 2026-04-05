@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import {
+  type AgentExecutionOrchestrationScopeOptions,
   type AgentExecutionOrchestrationInspectionOptions,
   AgentExecutionOrchestrationService,
   AgentExecutionService,
@@ -34,7 +35,9 @@ type QueryableClient = {
 };
 
 export interface GovernedExecutionOrchestrationRecoveryRunner {
-  recoverPending(): Promise<AgentExecutionOrchestrationRecoverySummary>;
+  recoverPending(
+    options?: AgentExecutionOrchestrationScopeOptions,
+  ): Promise<AgentExecutionOrchestrationRecoverySummary>;
 }
 
 export interface GovernedExecutionOrchestrationInspectionRunner {
@@ -45,6 +48,7 @@ export interface GovernedExecutionOrchestrationInspectionRunner {
 
 export interface RunGovernedExecutionOrchestrationRecoveryOptions {
   orchestrationService: GovernedExecutionOrchestrationRecoveryRunner;
+  recoveryOptions?: AgentExecutionOrchestrationScopeOptions;
 }
 
 export interface RunGovernedExecutionOrchestrationInspectionOptions {
@@ -57,6 +61,7 @@ export interface RunGovernedExecutionOrchestrationRecoveryCliOptions {
   loadEnvDefaults?: () => void;
   createRecoveryRunner?: (input: {
     env: NodeJS.ProcessEnv;
+    recoveryOptions: AgentExecutionOrchestrationScopeOptions;
   }) => Promise<AgentExecutionOrchestrationRecoverySummary>;
   createInspectionRunner?: (input: {
     env: NodeJS.ProcessEnv;
@@ -75,7 +80,7 @@ export type {
 export async function runGovernedExecutionOrchestrationRecovery(
   options: RunGovernedExecutionOrchestrationRecoveryOptions,
 ): Promise<AgentExecutionOrchestrationRecoverySummary> {
-  return options.orchestrationService.recoverPending();
+  return options.orchestrationService.recoverPending(options.recoveryOptions);
 }
 
 export async function runGovernedExecutionOrchestrationInspection(
@@ -136,6 +141,7 @@ export async function runGovernedExecutionOrchestrationRecoveryCli(
   const env = options.env ?? process.env;
   const log = options.log ?? console.log;
   const isDryRun = args.includes("--dry-run");
+  const recoveryOptions = resolveRecoveryCliOptions(args);
   const inspectionOptions = resolveInspectionCliOptions(args);
 
   if (isDryRun) {
@@ -163,10 +169,13 @@ export async function runGovernedExecutionOrchestrationRecoveryCli(
 
   const summary =
     options.createRecoveryRunner != null
-      ? await options.createRecoveryRunner({ env })
+      ? await options.createRecoveryRunner({
+          env,
+          recoveryOptions,
+        })
       : await runPersistentGovernedExecutionOrchestrationRecovery(env, {
           loadEnvDefaults: options.loadEnvDefaults,
-        });
+        }, recoveryOptions);
 
   if (args.includes("--json")) {
     log(JSON.stringify(summary, null, 2));
@@ -181,6 +190,7 @@ export async function runPersistentGovernedExecutionOrchestrationRecovery(
   options?: {
     loadEnvDefaults?: () => void;
   },
+  recoveryOptions?: AgentExecutionOrchestrationScopeOptions,
 ): Promise<AgentExecutionOrchestrationRecoverySummary> {
   const loadDefaults = options?.loadEnvDefaults ?? (() => loadAppEnvDefaults(appRoot));
   loadDefaults();
@@ -201,6 +211,7 @@ export async function runPersistentGovernedExecutionOrchestrationRecovery(
     const orchestrationService = createPersistentRecoveryService(pool);
     return await runGovernedExecutionOrchestrationRecovery({
       orchestrationService,
+      recoveryOptions,
     });
   } finally {
     await pool.end().catch(() => undefined);
@@ -282,6 +293,16 @@ function resolveInspectionCliOptions(
   return {
     actionableOnly: args.includes("--actionable-only"),
     limit: readOptionalIntegerFlag(args, "--limit"),
+    ...resolveRecoveryCliOptions(args),
+  };
+}
+
+function resolveRecoveryCliOptions(
+  args: string[],
+): AgentExecutionOrchestrationScopeOptions {
+  return {
+    modules: readRepeatedModuleFlag(args, "--module"),
+    logIds: readRepeatedStringFlag(args, "--log-id"),
   };
 }
 
@@ -298,4 +319,32 @@ function readOptionalIntegerFlag(args: string[], flag: string): number | undefin
 
   const parsed = Number.parseInt(rawValue, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readRepeatedStringFlag(args: string[], flag: string): string[] | undefined {
+  const values: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== flag) {
+      continue;
+    }
+
+    const rawValue = args[index + 1];
+    if (rawValue == null) {
+      continue;
+    }
+
+    values.push(rawValue);
+    index += 1;
+  }
+
+  return values.length > 0 ? values : undefined;
+}
+
+function readRepeatedModuleFlag(
+  args: string[],
+  flag: string,
+): AgentExecutionOrchestrationScopeOptions["modules"] {
+  const values = readRepeatedStringFlag(args, flag);
+  return values as AgentExecutionOrchestrationScopeOptions["modules"];
 }

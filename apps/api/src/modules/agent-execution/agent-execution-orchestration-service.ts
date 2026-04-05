@@ -14,6 +14,11 @@ export interface AgentExecutionOrchestrationRecoverySummary {
   deferred_count: number;
 }
 
+export interface AgentExecutionOrchestrationScopeOptions {
+  modules?: AgentExecutionLogRecord["module"][];
+  logIds?: string[];
+}
+
 export type AgentExecutionOrchestrationInspectionCategory =
   | "recoverable_now"
   | "stale_running"
@@ -59,7 +64,8 @@ export interface AgentExecutionOrchestrationInspectionReport {
   items: AgentExecutionOrchestrationInspectionItem[];
 }
 
-export interface AgentExecutionOrchestrationInspectionOptions {
+export interface AgentExecutionOrchestrationInspectionOptions
+  extends AgentExecutionOrchestrationScopeOptions {
   actionableOnly?: boolean;
   limit?: number;
 }
@@ -216,8 +222,10 @@ export class AgentExecutionOrchestrationService {
     }
   }
 
-  async recoverPending(): Promise<AgentExecutionOrchestrationRecoverySummary> {
-    const logs = await this.agentExecutionService.listLogs();
+  async recoverPending(
+    scope: AgentExecutionOrchestrationScopeOptions = {},
+  ): Promise<AgentExecutionOrchestrationRecoverySummary> {
+    const logs = this.scopeLogs(await this.agentExecutionService.listLogs(), scope);
     const summary: AgentExecutionOrchestrationRecoverySummary = {
       processed_count: 0,
       completed_count: 0,
@@ -257,7 +265,7 @@ export class AgentExecutionOrchestrationService {
   async inspectBacklog(
     options: AgentExecutionOrchestrationInspectionOptions = {},
   ): Promise<AgentExecutionOrchestrationInspectionReport> {
-    const logs = await this.agentExecutionService.listLogs();
+    const logs = this.scopeLogs(await this.agentExecutionService.listLogs(), options);
     const normalizedLimit =
       options.limit != null ? Math.max(0, Math.trunc(options.limit)) : undefined;
     const report: AgentExecutionOrchestrationInspectionReport = {
@@ -317,6 +325,30 @@ export class AgentExecutionOrchestrationService {
     report.items = visible;
 
     return report;
+  }
+
+  private scopeLogs(
+    logs: AgentExecutionLogRecord[],
+    scope: AgentExecutionOrchestrationScopeOptions,
+  ): AgentExecutionLogRecord[] {
+    const moduleFilter = normalizeStringFilter(scope.modules);
+    const logIdFilter = normalizeStringFilter(scope.logIds);
+
+    if (moduleFilter == null && logIdFilter == null) {
+      return logs;
+    }
+
+    return logs.filter((log) => {
+      if (moduleFilter != null && !moduleFilter.has(log.module)) {
+        return false;
+      }
+
+      if (logIdFilter != null && !logIdFilter.has(log.id)) {
+        return false;
+      }
+
+      return true;
+    });
   }
 
   private isRecoverable(log: AgentExecutionLogRecord): boolean {
@@ -442,6 +474,21 @@ function dedupePreserveOrder(values: string[]): string[] {
   }
 
   return result;
+}
+
+function normalizeStringFilter(values?: string[]): Set<string> | undefined {
+  if (values == null || values.length === 0) {
+    return undefined;
+  }
+
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  return new Set(normalized);
 }
 
 function formatError(error: unknown): string {
