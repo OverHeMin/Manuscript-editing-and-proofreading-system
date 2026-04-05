@@ -15,6 +15,7 @@ import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
@@ -56,6 +57,10 @@ export interface ScreeningServiceOptions {
   agentProfileService: AgentProfileService;
   agentRuntimeService: AgentRuntimeService;
   runtimeBindingService: RuntimeBindingService;
+  runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getBindingReadiness"
+  >;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
@@ -84,6 +89,10 @@ export class ScreeningService {
   private readonly agentProfileService: AgentProfileService;
   private readonly agentRuntimeService: AgentRuntimeService;
   private readonly runtimeBindingService: RuntimeBindingService;
+  private readonly runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getBindingReadiness"
+  >;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
@@ -106,6 +115,7 @@ export class ScreeningService {
     this.agentProfileService = options.agentProfileService;
     this.agentRuntimeService = options.agentRuntimeService;
     this.runtimeBindingService = options.runtimeBindingService;
+    this.runtimeBindingReadinessService = options.runtimeBindingReadinessService;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
@@ -153,6 +163,7 @@ export class ScreeningService {
         agentProfileService: this.agentProfileService,
         agentRuntimeService: this.agentRuntimeService,
         runtimeBindingService: this.runtimeBindingService,
+        runtimeBindingReadinessService: this.runtimeBindingReadinessService,
         toolPermissionPolicyService: this.toolPermissionPolicyService,
       });
       const moduleContext = governedContext.moduleContext;

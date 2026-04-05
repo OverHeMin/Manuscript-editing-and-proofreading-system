@@ -9,6 +9,8 @@ import {
   type AgentRuntimeService,
 } from "../agent-runtime/agent-runtime-service.ts";
 import type { RuntimeBindingRecord } from "../runtime-bindings/runtime-binding-record.ts";
+import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
+import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import {
   RuntimeBindingNotFoundError,
   type RuntimeBindingService,
@@ -42,6 +44,12 @@ export interface GovernedAgentRetrievalContext {
   failure_reason?: string;
 }
 
+export interface GovernedAgentRuntimeBindingReadinessObservation {
+  observation_status: "reported" | "failed_open";
+  report?: RuntimeBindingReadinessReport;
+  error?: string;
+}
+
 export interface GovernedAgentContext {
   moduleContext: GovernedModuleContext;
   manuscript: GovernedModuleContext["manuscript"];
@@ -53,6 +61,7 @@ export interface GovernedAgentContext {
   toolPolicy: ToolPermissionPolicyRecord;
   verificationExpectations: GovernedAgentVerificationExpectations;
   retrievalContext: GovernedAgentRetrievalContext;
+  runtimeBindingReadiness: GovernedAgentRuntimeBindingReadinessObservation;
 }
 
 export interface ResolveGovernedAgentContextInput
@@ -65,6 +74,10 @@ export interface ResolveGovernedAgentContextInput
   knowledgeRetrievalService?: Pick<
     KnowledgeRetrievalService,
     "recordRetrievalSnapshot"
+  >;
+  runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getBindingReadiness"
   >;
 }
 
@@ -123,6 +136,10 @@ export async function resolveGovernedAgentContext(
     moduleContext,
     knowledgeRetrievalService: input.knowledgeRetrievalService,
   });
+  const runtimeBindingReadiness = await observeRuntimeBindingReadiness({
+    bindingId: activeBinding.id,
+    runtimeBindingReadinessService: input.runtimeBindingReadinessService,
+  });
 
   return {
     moduleContext,
@@ -141,6 +158,7 @@ export async function resolveGovernedAgentContext(
       release_check_profile_id: activeBinding.release_check_profile_id,
     },
     retrievalContext,
+    runtimeBindingReadiness,
   };
 }
 
@@ -331,6 +349,39 @@ function sameOrderedIds(left: string[], right: string[]): boolean {
   }
 
   return left.every((value, index) => value === right[index]);
+}
+
+async function observeRuntimeBindingReadiness(input: {
+  bindingId: string;
+  runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getBindingReadiness"
+  >;
+}): Promise<GovernedAgentRuntimeBindingReadinessObservation> {
+  if (!input.runtimeBindingReadinessService) {
+    return {
+      observation_status: "failed_open",
+      error: "Runtime binding readiness service is unavailable.",
+    };
+  }
+
+  try {
+    const report = await input.runtimeBindingReadinessService.getBindingReadiness(
+      input.bindingId,
+    );
+    return {
+      observation_status: "reported",
+      report,
+    };
+  } catch (error) {
+    return {
+      observation_status: "failed_open",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown runtime binding readiness observation error.",
+    };
+  }
 }
 
 async function maybeRecordGovernedRetrievalSnapshot(input: {

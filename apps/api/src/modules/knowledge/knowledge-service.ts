@@ -13,6 +13,7 @@ import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
@@ -103,6 +104,10 @@ export interface GovernedRetrievalResolverDependencies {
   agentProfileService: AgentProfileService;
   agentRuntimeService: AgentRuntimeService;
   runtimeBindingService: RuntimeBindingService;
+  runtimeBindingReadinessService?: Pick<
+    RuntimeBindingReadinessService,
+    "getBindingReadiness"
+  >;
   toolPermissionPolicyService: ToolPermissionPolicyService;
 }
 
@@ -457,6 +462,8 @@ export class KnowledgeService {
         this.governedRetrievalResolverDependencies.agentRuntimeService,
       runtimeBindingService:
         this.governedRetrievalResolverDependencies.runtimeBindingService,
+      runtimeBindingReadinessService:
+        this.governedRetrievalResolverDependencies.runtimeBindingReadinessService,
       toolPermissionPolicyService:
         this.governedRetrievalResolverDependencies.toolPermissionPolicyService,
       knowledgeRetrievalService: this.knowledgeRetrievalService,

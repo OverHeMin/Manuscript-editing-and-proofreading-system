@@ -83,6 +83,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 10W | `2026-04-05-phase10w-governed-orchestration-post-recovery-residual-observation-design.md` | focused mainline delivery around post-recovery residual observation | Clean | Extends human recovery replay with one additive residual summary for the same scope while keeping replay semantics and the stabilized json contract unchanged. |
 | Phase 11A | `2026-04-05-phase11a-runtime-binding-readiness-preflight-design.md` | focused mainline delivery around runtime-binding readiness preflight | Clean | Opens a fresh post-`10W` runtime-platform slice with additive read-only readiness reporting for active bindings and execution-facing drift. |
 | Phase 11B | `2026-04-05-phase11b-execution-resolution-runtime-binding-readiness-design.md` | focused mainline delivery around execution-resolution runtime-binding readiness | Clean | Extends the existing execution-resolution read path with one additive fail-open readiness observation so callers can inspect governed bundle resolution and active binding posture together. |
+| Phase 11C | `2026-04-05-phase11c-governed-agent-context-runtime-binding-readiness-design.md` | focused mainline delivery around governed-agent-context runtime-binding readiness | Clean | Extends the governed agent-context resolver with one additive fail-open readiness observation so execution callers can inspect runtime dependency posture together with the resolved binding/runtime/sandbox/agent/tool context. |
 
 ## Practical Guidance For Future Work
 
@@ -94,10 +95,11 @@ delivered through one cleanly isolated branch or one PR with the same name.
 - Treat `10I` as intentionally sub-sliced but still boundary-clean, and treat
   `10J-10M` as one acceptable adjacent cumulative delivery cluster whose
   per-phase plan/spec files remain canonical.
-- Treat `11A-11B` as the first clean post-`10W` fresh-label runtime-platform
+- Treat `11A-11C` as the first clean post-`10W` fresh-label runtime-platform
   slices: they advance the `Agent Runtime Platform` lane through additive
-  readiness observation without reopening the closed `Phase 10`
-  orchestration sequence or drifting into new control-plane scope.
+  readiness observation on inspection, resolve, and governed-agent-context
+  paths without reopening the closed `Phase 10` orchestration sequence or
+  drifting into new control-plane scope.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

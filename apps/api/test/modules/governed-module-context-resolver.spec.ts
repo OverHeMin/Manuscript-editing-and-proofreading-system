@@ -21,6 +21,7 @@ import {
 import { ModelRegistryService } from "../../src/modules/model-registry/model-registry-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
+import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/runtime-binding-readiness.ts";
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
@@ -448,6 +449,35 @@ test("resolver fails when no active execution profile exists for the module scop
 
 test("agent resolver returns the active runtime binding with profile runtime sandbox and tool policy context", async () => {
   const harness = await createResolverHarness();
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "ready",
+    scope: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+    binding: {
+      id: "binding-1",
+      status: "active",
+      version: 1,
+      runtime_id: "runtime-1",
+      sandbox_profile_id: "sandbox-1",
+      agent_profile_id: "agent-profile-1",
+      tool_permission_policy_id: "policy-1",
+      prompt_template_id: "prompt-editing-1",
+      skill_package_ids: ["skill-editing-1"],
+      execution_profile_id: "profile-1",
+      verification_check_profile_ids: [],
+      evaluation_suite_ids: [],
+      release_check_profile_id: undefined,
+    },
+    issues: [],
+    execution_profile_alignment: {
+      status: "aligned",
+      binding_execution_profile_id: "profile-1",
+      active_execution_profile_id: "profile-1",
+    },
+  };
 
   const context = await resolveGovernedAgentContext({
     manuscriptId: "manuscript-1",
@@ -466,6 +496,12 @@ test("agent resolver returns the active runtime binding with profile runtime san
     agentRuntimeService: harness.agentRuntimeService,
     runtimeBindingService: harness.runtimeBindingService,
     toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    runtimeBindingReadinessService: {
+      async getBindingReadiness(bindingId) {
+        assert.equal(bindingId, "binding-1");
+        return readinessReport;
+      },
+    },
   });
 
   assert.equal(context.agentProfile.role_key, "subagent");
@@ -474,6 +510,8 @@ test("agent resolver returns the active runtime binding with profile runtime san
   assert.equal(context.toolPolicy.id, "policy-1");
   assert.equal(context.runtimeBinding.id, "binding-1");
   assert.equal(context.moduleContext.executionProfile.id, "profile-1");
+  assert.equal(context.runtimeBindingReadiness.observation_status, "reported");
+  assert.deepEqual(context.runtimeBindingReadiness.report, readinessReport);
 });
 
 test("agent resolver fails when no active runtime binding exists for the governed module scope", async () => {

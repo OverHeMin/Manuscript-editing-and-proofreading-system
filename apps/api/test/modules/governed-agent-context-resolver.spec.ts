@@ -17,6 +17,7 @@ import {
 import { ModelRegistryService } from "../../src/modules/model-registry/model-registry-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
+import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/runtime-binding-readiness.ts";
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
@@ -343,6 +344,35 @@ async function createResolverHarness() {
 
 test("resolver returns the active runtime binding with profile runtime sandbox and tool policy context", async () => {
   const harness = await createResolverHarness();
+  const readinessReport: RuntimeBindingReadinessReport = {
+    status: "ready",
+    scope: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+    },
+    binding: {
+      id: "binding-1",
+      status: "active",
+      version: 1,
+      runtime_id: "runtime-1",
+      sandbox_profile_id: "sandbox-1",
+      agent_profile_id: "agent-profile-1",
+      tool_permission_policy_id: "policy-1",
+      prompt_template_id: "prompt-editing-1",
+      skill_package_ids: ["skill-editing-1"],
+      execution_profile_id: "profile-1",
+      verification_check_profile_ids: ["check-profile-1"],
+      evaluation_suite_ids: ["suite-1"],
+      release_check_profile_id: "release-profile-1",
+    },
+    issues: [],
+    execution_profile_alignment: {
+      status: "aligned",
+      binding_execution_profile_id: "profile-1",
+      active_execution_profile_id: "profile-1",
+    },
+  };
 
   const context = await resolveGovernedAgentContext({
     manuscriptId: "manuscript-1",
@@ -361,6 +391,12 @@ test("resolver returns the active runtime binding with profile runtime sandbox a
     agentRuntimeService: harness.agentRuntimeService,
     runtimeBindingService: harness.runtimeBindingService,
     toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    runtimeBindingReadinessService: {
+      async getBindingReadiness(bindingId) {
+        assert.equal(bindingId, "binding-1");
+        return readinessReport;
+      },
+    },
   });
 
   assert.equal(context.agentProfile.role_key, "subagent");
@@ -374,6 +410,9 @@ test("resolver returns the active runtime binding with profile runtime sandbox a
     evaluation_suite_ids: ["suite-1"],
     release_check_profile_id: "release-profile-1",
   });
+  assert.equal(context.runtimeBindingReadiness.observation_status, "reported");
+  assert.deepEqual(context.runtimeBindingReadiness.report, readinessReport);
+  assert.equal(context.runtimeBindingReadiness.error, undefined);
 });
 
 test("resolver fails when no active runtime binding exists for the governed module scope", async () => {
@@ -409,4 +448,37 @@ test("resolver fails when no active runtime binding exists for the governed modu
       }),
     ActiveRuntimeBindingNotFoundError,
   );
+});
+
+test("resolver fails open when runtime binding readiness observation throws unexpectedly", async () => {
+  const harness = await createResolverHarness();
+
+  const context = await resolveGovernedAgentContext({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    jobId: "job-3",
+    actorId: "admin-1",
+    actorRole: "admin",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    runtimeBindingReadinessService: {
+      async getBindingReadiness() {
+        throw new Error("governed readiness exploded");
+      },
+    },
+  });
+
+  assert.equal(context.runtimeBinding.id, "binding-1");
+  assert.equal(context.runtimeBindingReadiness.observation_status, "failed_open");
+  assert.equal(context.runtimeBindingReadiness.error, "governed readiness exploded");
+  assert.equal(context.runtimeBindingReadiness.report, undefined);
 });
