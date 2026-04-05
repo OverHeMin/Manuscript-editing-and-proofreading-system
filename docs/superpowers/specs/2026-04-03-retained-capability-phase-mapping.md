@@ -48,7 +48,7 @@ The table below translates the retained capabilities into current repository rea
 | Model Governance / Routing Linkage | `05-ai-model-routing-and-evaluation.md`, Phase 9R, Phase 9S, Phase 9T | Model registry, runtime-binding expectations, governed seeded evaluation runs, and inline governed check execution are already partially linked | Stronger routing-policy feedback loops, fallback and gray-release policy, module/template-level promotion rules, deeper evaluation-to-routing governance |
 | Agent Runtime Platform | Phase 4, Phase 8G, Phase 8H, Phase 9R, Phase 11A, Phase 11B, Phase 11C, Phase 11D, Phase 11E, `11-agent-runtime-and-portable-skills.md` | Registry, runtime binding, tool permission policy, readiness observation, execution-resolution visibility, governed-agent-context visibility, execution-log visibility, execution-snapshot visibility, admin governance visibility, and execution evidence are already partially live | Deeper adapter-based runtime integration, portable skill-package operations, richer sandbox governance, stronger MCP / tool gateway platform boundary |
 | Evaluation And Verification Platform | Phase 6A, Phase 8W, Phase 9A, Phase 9Q, Phase 9R, Phase 9S, Phase 9T | Evaluation Workbench, run persistence, governed-source runs, machine evidence, and release-gate verification are already real | Sample-set detail depth, historical evidence-pack retrieval, multi-run comparison, operator analytics, stronger release-facing analysis surfaces |
-| Execution And Orchestration Platform | Phase 4 execution governance foundations, Phase 8F, Phase 8I, Phase 9R, Phase 10J-10W, Phase 11F, current execution-governance records | The repo now has governed execution resolution, durable follow-up orchestration, bounded retries, restart-safe recovery, read-only backlog inspection, residual observation, and per-log completion settlement visibility | Deeper workflow-engine substitution, richer queue ownership and scheduling depth, broader per-stage settlement visibility, `Temporal`-class orchestration depth |
+| Execution And Orchestration Platform | Phase 4 execution governance foundations, Phase 8F, Phase 8I, Phase 9R, Phase 10J-10W, Phase 11F, Phase 11G, current execution-governance records | The repo now has governed execution resolution, durable follow-up orchestration, bounded retries, restart-safe recovery, read-only backlog inspection, residual observation, per-log completion settlement visibility, and per-log recovery posture visibility | Deeper workflow-engine substitution, richer queue ownership and scheduling depth, broader per-stage settlement visibility, `Temporal`-class orchestration depth |
 | Production Operations And Security Platform | `09-platform-ops-migration-and-maintenance.md`, `08-security-auth-and-compliance.md`, `2026-04-03-phase10a-production-operations-baseline-design.md`, current `README.md` and `docs/OPERATIONS.md` | Production preflight, release contract, readiness split, backup/rollback guidance, and remote-maintenance discipline now have a real baseline direction | Standardized deploy automation, monitoring, rollback automation, remote-maintenance standardization depth, secret/key hardening, upgrade choreography, migration automation |
 | Privacy And Compliance Gate | `08-security-auth-and-compliance.md`, retained-capability decision | Security and compliance direction exists at spec level | `Presidio`-style privacy gate integration, de-identification checks in governed flows, privacy evidence hooks |
 | Academic Structure And OCR Enhancement | `06-pdf-consistency-and-ocr.md`, V1 foundation tech direction | PDF and document pipelines exist, and OCR/parsing routes are reserved | First-class `OCRmyPDF`, `PaddleOCR`, and `GROBID` integration with auditable outputs and downstream structured consumption |
@@ -343,15 +343,33 @@ This phase does **not** absorb:
 - execution-log schema or migration changes
 - new workbench or control-plane surfaces
 
-### 4.15 Still-Open Retained Capability Lanes After 11F
+### 4.15 Phase 11G: Agent Execution Recovery Summary
 
-After reconciling actual landed numbering through `11F`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** additive derived `recovery_summary` on the existing `agent-execution` create/get/list/complete read path
+
+This phase now owns:
+
+- direct read-model visibility into whether a log is recoverable now, stale-running, retry-deferred, terminally attention-required, or not recoverable
+- one stable per-log recovery posture contract on the existing execution-log API view so callers do not need a separate backlog inspection call for single-log readiness
+- demo and persistent HTTP exposure of the same derived summary without route or persistence changes
+
+This phase does **not** absorb:
+
+- orchestration replay, ownership, or scheduling changes
+- recovery algorithm or focus-order changes
+- execution-log schema or migration changes
+- new workbench or control-plane surfaces
+
+### 4.16 Still-Open Retained Capability Lanes After 11G
+
+After reconciling actual landed numbering through `11G`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W` and `11F` read-model settlement visibility
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W` and `11F-11G` execution-log read-model visibility
 
 ## 5. Recommended Sequence
 
@@ -369,8 +387,9 @@ The repository has now landed the following actual sequence after `10A`:
 10. `11D` agent-execution runtime-binding readiness under the same additive runtime-platform lane
 11. `11E` execution-tracking runtime-binding readiness under the same additive runtime-platform lane
 12. `11F` agent-execution completion summary under a fresh adjacent execution/orchestration label
+13. `11G` agent-execution recovery summary under the same fresh adjacent execution/orchestration label
 
-The practical planning implication after `11F` is:
+The practical planning implication after `11G` is:
 
 - keep using actual landed phase numbers as the source of truth
 - do not pretend `10D`, `10F`, or `10G` still own the broader lanes originally predicted here
@@ -379,7 +398,7 @@ The practical planning implication after `11F` is:
   deepening or new retained-capability work opens under a new phase label
 - treat `11A-11E` as narrow runtime-platform safety/visibility slices, not as
   permission to reopen workbench or control-plane expansion under the same lane
-- treat `11F` as a narrow execution/orchestration read-model slice, not as
+- treat `11F-11G` as narrow execution/orchestration read-model slices, not as
   permission to reopen replay, recovery, or queue-control expansion without a
   new fresh label
 

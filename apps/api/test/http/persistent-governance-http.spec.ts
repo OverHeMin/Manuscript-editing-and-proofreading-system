@@ -1391,6 +1391,12 @@ test("persistent governance runtime keeps agent-tooling governance records acros
             fully_settled: boolean;
             attention_required: boolean;
           };
+          recovery_summary: {
+            category: string;
+            recovery_readiness: string;
+            recovery_ready_at?: string;
+            reason: string;
+          };
           runtime_binding_readiness: {
             observation_status: string;
             report?: {
@@ -1409,6 +1415,15 @@ test("persistent governance runtime keeps agent-tooling governance records acros
         assert.equal(executionLog.completion_summary.follow_up_required, false);
         assert.equal(executionLog.completion_summary.fully_settled, false);
         assert.equal(executionLog.completion_summary.attention_required, false);
+        assert.equal(executionLog.recovery_summary.category, "not_recoverable");
+        assert.equal(
+          executionLog.recovery_summary.recovery_readiness,
+          "not_recoverable",
+        );
+        assert.equal(
+          executionLog.recovery_summary.reason,
+          "Business execution is running, so governed follow-up is not recoverable yet.",
+        );
         assert.equal(
           executionLog.runtime_binding_readiness.observation_status,
           "reported",
@@ -1516,6 +1531,12 @@ test("persistent governance runtime keeps agent-tooling governance records acros
               fully_settled: boolean;
               attention_required: boolean;
             };
+            recovery_summary: {
+              category: string;
+              recovery_readiness: string;
+              recovery_ready_at?: string;
+              reason: string;
+            };
             runtime_binding_readiness: {
               observation_status: string;
               report?: {
@@ -1584,6 +1605,18 @@ test("persistent governance runtime keeps agent-tooling governance records acros
           assert.equal(
             persistedExecutionLog.completion_summary.attention_required,
             false,
+          );
+          assert.equal(
+            persistedExecutionLog.recovery_summary.category,
+            "not_recoverable",
+          );
+          assert.equal(
+            persistedExecutionLog.recovery_summary.recovery_readiness,
+            "not_recoverable",
+          );
+          assert.equal(
+            persistedExecutionLog.recovery_summary.reason,
+            "No governed follow-up orchestration is required for this execution.",
           );
           assert.equal(
             persistedExecutionLog.runtime_binding_readiness.observation_status,

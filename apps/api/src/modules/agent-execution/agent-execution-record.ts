@@ -22,6 +22,17 @@ export type AgentExecutionCompletionDerivedStatus =
   | "business_completed_follow_up_retryable"
   | "business_completed_follow_up_failed"
   | "business_completed_settled";
+export type AgentExecutionRecoveryCategory =
+  | "recoverable_now"
+  | "stale_running"
+  | "deferred_retry"
+  | "attention_required"
+  | "not_recoverable";
+export type AgentExecutionRecoveryReadiness =
+  | "ready_now"
+  | "waiting_retry_eligibility"
+  | "waiting_running_timeout"
+  | "not_recoverable";
 
 export interface AgentExecutionLogRecord {
   id: string;
@@ -72,7 +83,15 @@ export interface AgentExecutionCompletionSummaryRecord {
   attention_required: boolean;
 }
 
+export interface AgentExecutionRecoverySummaryRecord {
+  category: AgentExecutionRecoveryCategory;
+  recovery_readiness: AgentExecutionRecoveryReadiness;
+  recovery_ready_at?: string;
+  reason: string;
+}
+
 export interface AgentExecutionLogViewRecord extends AgentExecutionLogRecord {
   completion_summary: AgentExecutionCompletionSummaryRecord;
+  recovery_summary: AgentExecutionRecoverySummaryRecord;
   runtime_binding_readiness: AgentExecutionRuntimeBindingReadinessObservationRecord;
 }

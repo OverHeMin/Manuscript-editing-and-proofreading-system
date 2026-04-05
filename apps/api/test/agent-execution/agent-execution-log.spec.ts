@@ -12,25 +12,39 @@ function createAgentExecutionHarness(input?: {
   runtimeBindingReadinessService?: {
     getBindingReadiness: (bindingId: string) => Promise<RuntimeBindingReadinessReport>;
   };
+  initialNow?: string;
+  now?: () => Date;
+  runningAttemptStaleAfterMs?: number;
 }) {
-  const ids = ["execution-log-1", "execution-log-2"];
+  let idCounter = 0;
+  let currentTime = new Date(input?.initialNow ?? "2026-03-28T13:00:00.000Z");
   const service = new AgentExecutionService({
     repository: new InMemoryAgentExecutionRepository(),
     createId: () => {
-      const value = ids.shift();
-      assert.ok(value, "Expected an agent execution log id to be available.");
-      return value;
+      idCounter += 1;
+      return `execution-log-${idCounter}`;
     },
-    now: () => new Date("2026-03-28T13:00:00.000Z"),
+    now: () => currentTime,
   });
-  const api = createAgentExecutionApi({
+  const apiOptions: Parameters<typeof createAgentExecutionApi>[0] & {
+    now?: () => Date;
+    runningAttemptStaleAfterMs?: number;
+  } = {
     agentExecutionService: service,
     runtimeBindingReadinessService: input?.runtimeBindingReadinessService,
+    now: input?.now ?? (() => currentTime),
+    runningAttemptStaleAfterMs: input?.runningAttemptStaleAfterMs,
+  };
+  const api = createAgentExecutionApi({
+    ...apiOptions,
   });
 
   return {
     api,
     service,
+    setNow(value: string) {
+      currentTime = new Date(value);
+    },
   };
 }
 
@@ -371,6 +385,263 @@ test("agent execution api derives retryable and terminal follow-up completion su
   assert.equal(failedView.body.completion_summary.follow_up_required, true);
   assert.equal(failedView.body.completion_summary.fully_settled, false);
   assert.equal(failedView.body.completion_summary.attention_required, true);
+});
+
+test("agent execution api derives per-log recovery summary without changing orchestration behavior", async () => {
+  const { api, service, setNow } = createAgentExecutionHarness({
+    initialNow: "2026-03-28T12:55:00.000Z",
+    runningAttemptStaleAfterMs: 5 * 60 * 1000,
+  });
+
+  const staleRunning = await service.createLog({
+    manuscriptId: "manuscript-stale-running",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-stale"],
+  });
+  await service.completeLog({
+    logId: staleRunning.id,
+    executionSnapshotId: "snapshot-stale-running",
+  });
+  await service.markOrchestrationRunning({
+    logId: staleRunning.id,
+  });
+
+  setNow("2026-03-28T13:00:00.000Z");
+
+  const pending = await service.createLog({
+    manuscriptId: "manuscript-pending",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-pending"],
+  });
+  await service.completeLog({
+    logId: pending.id,
+    executionSnapshotId: "snapshot-pending",
+  });
+
+  const deferredRetry = await service.createLog({
+    manuscriptId: "manuscript-deferred-retry",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-deferred"],
+  });
+  await service.completeLog({
+    logId: deferredRetry.id,
+    executionSnapshotId: "snapshot-deferred-retry",
+  });
+  await service.failOrchestrationAttempt({
+    logId: deferredRetry.id,
+    errorMessage: "retry later",
+    nextRetryAt: "2026-03-28T13:10:00.000Z",
+  });
+
+  const failed = await service.createLog({
+    manuscriptId: "manuscript-failed",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-failed"],
+    orchestrationMaxAttempts: 1,
+  });
+  await service.completeLog({
+    logId: failed.id,
+    executionSnapshotId: "snapshot-failed",
+  });
+  await service.markOrchestrationRunning({
+    logId: failed.id,
+  });
+  await service.failOrchestrationAttempt({
+    logId: failed.id,
+    errorMessage: "exhausted",
+  });
+
+  const settled = await service.createLog({
+    manuscriptId: "manuscript-settled",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+  });
+  await service.completeLog({
+    logId: settled.id,
+    executionSnapshotId: "snapshot-settled",
+  });
+
+  const inProgress = await service.createLog({
+    manuscriptId: "manuscript-in-progress",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+  });
+
+  setNow("2026-03-28T13:02:00.000Z");
+
+  const freshRunning = await service.createLog({
+    manuscriptId: "manuscript-fresh-running",
+    module: "editing",
+    triggeredBy: "editor-1",
+    runtimeId: "runtime-1",
+    sandboxProfileId: "sandbox-1",
+    agentProfileId: "agent-profile-1",
+    runtimeBindingId: "binding-1",
+    toolPermissionPolicyId: "policy-1",
+    knowledgeItemIds: [],
+    evaluationSuiteIds: ["suite-fresh"],
+  });
+  await service.completeLog({
+    logId: freshRunning.id,
+    executionSnapshotId: "snapshot-fresh-running",
+  });
+  await service.markOrchestrationRunning({
+    logId: freshRunning.id,
+  });
+
+  setNow("2026-03-28T13:04:00.000Z");
+
+  type RecoverySummary = {
+    category: string;
+    recovery_readiness: string;
+    recovery_ready_at?: string;
+    reason: string;
+  };
+
+  function readRecoverySummary(body: object): RecoverySummary {
+    return (body as { recovery_summary: RecoverySummary }).recovery_summary;
+  }
+
+  const pendingView = await api.getLog({ logId: pending.id });
+  const deferredRetryView = await api.getLog({ logId: deferredRetry.id });
+  const failedView = await api.getLog({ logId: failed.id });
+  const staleRunningView = await api.getLog({ logId: staleRunning.id });
+  const freshRunningView = await api.getLog({ logId: freshRunning.id });
+  const settledView = await api.getLog({ logId: settled.id });
+  const inProgressView = await api.getLog({ logId: inProgress.id });
+
+  assert.equal(readRecoverySummary(pendingView.body).category, "recoverable_now");
+  assert.equal(readRecoverySummary(pendingView.body).recovery_readiness, "ready_now");
+  assert.equal(
+    readRecoverySummary(pendingView.body).reason,
+    "Pending orchestration is ready to replay now.",
+  );
+
+  assert.equal(
+    readRecoverySummary(deferredRetryView.body).category,
+    "deferred_retry",
+  );
+  assert.equal(
+    readRecoverySummary(deferredRetryView.body).recovery_readiness,
+    "waiting_retry_eligibility",
+  );
+  assert.equal(
+    readRecoverySummary(deferredRetryView.body).recovery_ready_at,
+    "2026-03-28T13:10:00.000Z",
+  );
+  assert.equal(
+    readRecoverySummary(deferredRetryView.body).reason,
+    "Retryable orchestration is deferred until 2026-03-28T13:10:00.000Z.",
+  );
+
+  assert.equal(
+    readRecoverySummary(failedView.body).category,
+    "attention_required",
+  );
+  assert.equal(
+    readRecoverySummary(failedView.body).recovery_readiness,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(failedView.body).reason,
+    "Orchestration failed terminally: exhausted",
+  );
+
+  assert.equal(
+    readRecoverySummary(staleRunningView.body).category,
+    "stale_running",
+  );
+  assert.equal(
+    readRecoverySummary(staleRunningView.body).recovery_readiness,
+    "ready_now",
+  );
+  assert.equal(
+    readRecoverySummary(staleRunningView.body).reason,
+    "Running orchestration attempt is stale and reclaimable.",
+  );
+
+  assert.equal(
+    readRecoverySummary(freshRunningView.body).category,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(freshRunningView.body).recovery_readiness,
+    "waiting_running_timeout",
+  );
+  assert.equal(
+    readRecoverySummary(freshRunningView.body).recovery_ready_at,
+    "2026-03-28T13:07:00.000Z",
+  );
+  assert.equal(
+    readRecoverySummary(freshRunningView.body).reason,
+    "Running orchestration attempt is still fresh and should not be reclaimed yet.",
+  );
+
+  assert.equal(
+    readRecoverySummary(settledView.body).category,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(settledView.body).recovery_readiness,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(settledView.body).reason,
+    "No governed follow-up orchestration is required for this execution.",
+  );
+
+  assert.equal(
+    readRecoverySummary(inProgressView.body).category,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(inProgressView.body).recovery_readiness,
+    "not_recoverable",
+  );
+  assert.equal(
+    readRecoverySummary(inProgressView.body).reason,
+    "Business execution is running, so governed follow-up is not recoverable yet.",
+  );
 });
 
 test("agent execution api fails open when runtime binding readiness observation throws unexpectedly", async () => {

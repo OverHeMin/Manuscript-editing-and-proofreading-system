@@ -87,6 +87,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 11D | `2026-04-05-phase11d-agent-execution-runtime-binding-readiness-design.md` | focused mainline delivery around agent-execution runtime-binding readiness | Clean | Extends the existing execution-log read path with one additive fail-open readiness observation so execution evidence can be read together with current binding posture without changing persistence or orchestration contracts. |
 | Phase 11E | `2026-04-06-phase11e-execution-tracking-runtime-binding-readiness-design.md` | focused mainline delivery around execution-tracking runtime-binding readiness | Clean | Extends the existing execution-tracking snapshot read path with one additive fail-open readiness observation so frozen snapshot evidence can be read together with current active binding posture without changing storage contracts. |
 | Phase 11F | `2026-04-06-phase11f-agent-execution-completion-summary-design.md` | focused mainline delivery around agent-execution completion summary | Clean | Re-enters the execution/orchestration lane under a fresh label with one additive read-only settlement summary so business completion and follow-up completion can be read directly from existing execution logs without changing orchestration behavior. |
+| Phase 11G | `2026-04-06-phase11g-agent-execution-recovery-summary-design.md` | focused mainline delivery around agent-execution recovery summary | Clean | Deepens the same fresh execution/orchestration lane with one additive read-only recovery posture summary so per-log replay readiness can be read directly from existing execution logs without reopening recovery control surfaces. |
 
 ## Practical Guidance For Future Work
 
@@ -108,6 +109,10 @@ delivered through one cleanly isolated branch or one PR with the same name.
   business-vs-orchestration separation contract through an additive read-only
   execution-log summary rather than reopening replay, recovery, or control-plane
   scope.
+- Treat `11G` as the adjacent continuation of that same fresh-label
+  execution/orchestration lane: it adds per-log recovery posture visibility on
+  the existing execution-log read path without reopening replay authority,
+  queue-control, or orchestration-core work.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

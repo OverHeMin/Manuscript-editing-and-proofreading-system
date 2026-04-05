@@ -2500,6 +2500,12 @@ test("http server exposes admin agent-tooling governance routes and execution lo
         fully_settled: boolean;
         attention_required: boolean;
       };
+      recovery_summary: {
+        category: string;
+        recovery_readiness: string;
+        recovery_ready_at?: string;
+        reason: string;
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -2520,6 +2526,15 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(executionLog.completion_summary.follow_up_required, false);
     assert.equal(executionLog.completion_summary.fully_settled, false);
     assert.equal(executionLog.completion_summary.attention_required, false);
+    assert.equal(executionLog.recovery_summary.category, "not_recoverable");
+    assert.equal(
+      executionLog.recovery_summary.recovery_readiness,
+      "not_recoverable",
+    );
+    assert.equal(
+      executionLog.recovery_summary.reason,
+      "Business execution is running, so governed follow-up is not recoverable yet.",
+    );
     assert.equal(
       executionLog.runtime_binding_readiness.observation_status,
       "reported",
@@ -2556,6 +2571,12 @@ test("http server exposes admin agent-tooling governance routes and execution lo
         fully_settled: boolean;
         attention_required: boolean;
       };
+      recovery_summary: {
+        category: string;
+        recovery_readiness: string;
+        recovery_ready_at?: string;
+        reason: string;
+      };
       runtime_binding_readiness: {
         observation_status: string;
         report?: {
@@ -2583,6 +2604,18 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(completedExecutionLog.completion_summary.fully_settled, true);
     assert.equal(completedExecutionLog.completion_summary.attention_required, false);
     assert.equal(
+      completedExecutionLog.recovery_summary.category,
+      "not_recoverable",
+    );
+    assert.equal(
+      completedExecutionLog.recovery_summary.recovery_readiness,
+      "not_recoverable",
+    );
+    assert.equal(
+      completedExecutionLog.recovery_summary.reason,
+      "No governed follow-up orchestration is required for this execution.",
+    );
+    assert.equal(
       completedExecutionLog.runtime_binding_readiness.observation_status,
       "reported",
     );
@@ -2608,6 +2641,12 @@ test("http server exposes admin agent-tooling governance routes and execution lo
         follow_up_required: boolean;
         fully_settled: boolean;
         attention_required: boolean;
+      };
+      recovery_summary: {
+        category: string;
+        recovery_readiness: string;
+        recovery_ready_at?: string;
+        reason: string;
       };
       runtime_binding_readiness: {
         observation_status: string;
@@ -2640,6 +2679,15 @@ test("http server exposes admin agent-tooling governance routes and execution lo
     assert.equal(executionLogs[0]?.completion_summary.follow_up_required, false);
     assert.equal(executionLogs[0]?.completion_summary.fully_settled, true);
     assert.equal(executionLogs[0]?.completion_summary.attention_required, false);
+    assert.equal(executionLogs[0]?.recovery_summary.category, "not_recoverable");
+    assert.equal(
+      executionLogs[0]?.recovery_summary.recovery_readiness,
+      "not_recoverable",
+    );
+    assert.equal(
+      executionLogs[0]?.recovery_summary.reason,
+      "No governed follow-up orchestration is required for this execution.",
+    );
 
     const archiveRuntimeResponse = await fetch(
       `${baseUrl}/api/v1/agent-runtime/${runtimeDraft.id}/archive`,
