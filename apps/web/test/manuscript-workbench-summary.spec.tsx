@@ -1649,6 +1649,292 @@ test("manuscript workbench summary keeps overview module metrics visible and use
   assert.match(markup, /Not reported/);
 });
 
+test("manuscript workbench summary reuses matching overview posture in the Latest Job card when the latest job is a raw fallback candidate", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-latest-job-overview-fallback-1",
+            title: "Latest job overview fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_editing_asset_id: "asset-edited-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "reported",
+                latest_job: {
+                  id: "job-editing-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-overview-fallback-1",
+                  module: "editing",
+                  job_type: "editing_run",
+                  status: "completed",
+                  requested_by: "operator-1",
+                  attempt_count: 2,
+                  created_at: "2026-04-06T09:40:00.000Z",
+                  updated_at: "2026-04-06T09:45:00.000Z",
+                },
+                latest_snapshot: {
+                  id: "snapshot-editing-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-overview-fallback-1",
+                  module: "editing",
+                  job_id: "job-editing-overview-card-1",
+                  execution_profile_id: "profile-editing",
+                  module_template_id: "template-editing",
+                  module_template_version_no: 4,
+                  prompt_template_id: "prompt-editing",
+                  prompt_template_version: "2026-04-06",
+                  skill_package_ids: ["editing-skill-pack"],
+                  skill_package_versions: ["1.0.0"],
+                  model_id: "model-editing",
+                  knowledge_item_ids: ["knowledge-editing-1"],
+                  created_asset_ids: ["asset-edited-1"],
+                  created_at: "2026-04-06T09:45:00.000Z",
+                  agent_execution: {
+                    observation_status: "reported",
+                    log_id: "agent-log-editing-overview-card-1",
+                    log: {
+                      id: "agent-log-editing-overview-card-1",
+                      status: "completed",
+                      orchestration_status: "retryable",
+                      completion_summary: {
+                        derived_status: "business_completed_follow_up_retryable",
+                        business_completed: true,
+                        follow_up_required: true,
+                        fully_settled: false,
+                        attention_required: false,
+                      },
+                      recovery_summary: {
+                        category: "recoverable_now",
+                        recovery_readiness: "ready_now",
+                        reason: "Retryable orchestration is ready now.",
+                      },
+                    },
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "degraded",
+                      scope: {
+                        module: "editing",
+                        manuscriptType: "review",
+                        templateFamilyId: "template-family-1",
+                      },
+                      issues: [
+                        {
+                          code: "runtime_not_active",
+                          message: "Runtime is not active.",
+                        },
+                      ],
+                      execution_profile_alignment: {
+                        status: "drifted",
+                        binding_execution_profile_id: "profile-editing",
+                        active_execution_profile_id: "profile-editing-active",
+                      },
+                    },
+                  },
+                },
+                settlement: {
+                  derived_status: "business_completed_follow_up_retryable",
+                  business_completed: true,
+                  orchestration_completed: false,
+                  attention_required: false,
+                  reason: "Business execution is complete and governed follow-up is retryable.",
+                },
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-overview-card-1",
+          manuscript_id: "manuscript-latest-job-overview-fallback-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 2,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Latest Job/);
+  assert.match(markup, /Execution Settlement/);
+  assert.match(markup, /Business complete, follow-up retryable/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /Recoverable now/);
+  assert.match(markup, /Runtime Binding Readiness/);
+  assert.match(markup, /Degraded \(1 issue\)/);
+  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /snapshot-editing-overview-card-1/);
+});
+
+test("manuscript workbench summary reuses settled overview posture in the Latest Job card when the raw latest job matches screening overview", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "screening",
+        accessibleHandoffModes: ["screening", "editing"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-latest-job-screening-overview-1",
+            title: "Latest job screening overview fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_screening_asset_id: "asset-screen-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                latest_job: {
+                  id: "job-screening-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-screening-overview-1",
+                  module: "screening",
+                  job_type: "screening_run",
+                  status: "completed",
+                  requested_by: "operator-1",
+                  attempt_count: 1,
+                  created_at: "2026-04-06T09:40:00.000Z",
+                  updated_at: "2026-04-06T09:45:00.000Z",
+                },
+                latest_snapshot: {
+                  id: "snapshot-screening-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-screening-overview-1",
+                  module: "screening",
+                  job_id: "job-screening-overview-card-1",
+                  execution_profile_id: "profile-screening",
+                  module_template_id: "template-screening",
+                  module_template_version_no: 4,
+                  prompt_template_id: "prompt-screening",
+                  prompt_template_version: "2026-04-06",
+                  skill_package_ids: ["screening-skill-pack"],
+                  skill_package_versions: ["1.0.0"],
+                  model_id: "model-screening",
+                  knowledge_item_ids: ["knowledge-screening-1"],
+                  created_asset_ids: ["asset-screen-1"],
+                  created_at: "2026-04-06T09:45:00.000Z",
+                  agent_execution: {
+                    observation_status: "reported",
+                    log_id: "agent-log-screening-overview-card-1",
+                    log: {
+                      id: "agent-log-screening-overview-card-1",
+                      status: "completed",
+                      orchestration_status: "completed",
+                      completion_summary: {
+                        derived_status: "business_completed_settled",
+                        business_completed: true,
+                        follow_up_required: false,
+                        fully_settled: true,
+                        attention_required: false,
+                      },
+                      recovery_summary: {
+                        category: "not_recoverable",
+                        recovery_readiness: "not_recoverable",
+                        reason: "No recovery needed.",
+                      },
+                    },
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "ready",
+                      scope: {
+                        module: "screening",
+                        manuscriptType: "review",
+                        templateFamilyId: "template-family-1",
+                      },
+                      issues: [],
+                      execution_profile_alignment: {
+                        status: "aligned",
+                        binding_execution_profile_id: "profile-screening",
+                        active_execution_profile_id: "profile-screening",
+                      },
+                    },
+                  },
+                },
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "not_started",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-screening-overview-card-1",
+          manuscript_id: "manuscript-latest-job-screening-overview-1",
+          module: "screening",
+          job_type: "screening_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Latest Job/);
+  assert.match(markup, /Execution Settlement/);
+  assert.match(markup, /Settled/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /No recovery needed/);
+  assert.match(markup, /Runtime Binding Readiness/);
+  assert.match(markup, /Ready/);
+  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /snapshot-screening-overview-card-1/);
+});
+
 test("manuscript workbench summary shows latest job execution tracking alongside raw job status", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary

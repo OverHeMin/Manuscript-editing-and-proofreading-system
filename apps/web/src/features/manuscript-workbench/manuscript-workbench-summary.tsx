@@ -296,7 +296,10 @@ export function ManuscriptWorkbenchSummary({
                 label="Last Updated"
                 value={formatTimestamp(latestJob.updated_at)}
               />
-              {renderLatestJobExecutionTrackingMetrics(latestJob)}
+              {renderLatestJobExecutionTrackingMetrics(
+                latestJob,
+                workspace.manuscript.module_execution_overview,
+              )}
             </>
           ) : (
             <p className="manuscript-workbench-empty">
@@ -488,89 +491,165 @@ function renderModuleExecutionOverviewMetrics(
 
 function renderLatestJobExecutionTrackingMetrics(
   latestJob: AnyWorkbenchJob,
+  overview: ManuscriptModuleExecutionOverviewViewModel | undefined,
 ): ReactNode[] | null {
   const executionTracking = getJobExecutionTracking(latestJob);
-  if (!executionTracking) {
+  if (executionTracking) {
+    const metrics: ReactNode[] = [
+      <SummaryMetric
+        key="job-execution-settlement"
+        label="Execution Settlement"
+        value={describeJobExecutionTracking(executionTracking)}
+      />,
+    ];
+
+    const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+    if (recoveryPosture) {
+      metrics.push(
+        <SummaryMetric
+          key="job-execution-recovery"
+          label="Recovery Posture"
+          value={recoveryPosture}
+        />,
+      );
+    }
+
+    const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+    if (recoveryReadyAt) {
+      metrics.push(
+        <SummaryMetric
+          key="job-execution-recovery-ready-at"
+          label="Recovery Ready At"
+          value={formatTimestamp(recoveryReadyAt)}
+        />,
+      );
+    }
+
+    const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
+      executionTracking,
+    );
+    if (runtimeBindingReadiness) {
+      metrics.push(
+        <SummaryMetric
+          key="job-runtime-binding-readiness"
+          label="Runtime Binding Readiness"
+          value={runtimeBindingReadiness}
+        />,
+      );
+    }
+
+    if (executionTracking.snapshot) {
+      metrics.push(
+        <SummaryMetric
+          key="job-execution-snapshot"
+          label="Execution Snapshot"
+          value={<code>{executionTracking.snapshot.id}</code>}
+        />,
+      );
+    }
+
+    if (executionTracking.observation_status === "failed_open" && executionTracking.error) {
+      metrics.push(
+        <SummaryMetric
+          key="job-execution-error"
+          label="Execution Tracking Error"
+          value={executionTracking.error}
+        />,
+      );
+    }
+
+    if (
+      executionTracking.snapshot?.runtime_binding_readiness.observation_status === "failed_open" &&
+      executionTracking.snapshot.runtime_binding_readiness.error
+    ) {
+      metrics.push(
+        <SummaryMetric
+          key="job-runtime-binding-error"
+          label="Runtime Binding Readiness Error"
+          value={executionTracking.snapshot.runtime_binding_readiness.error}
+        />,
+      );
+    }
+
+    return metrics;
+  }
+
+  const fallbackOverview = resolveLatestJobOverviewFallback(overview, latestJob);
+  if (!fallbackOverview) {
     return null;
   }
 
   const metrics: ReactNode[] = [
     <SummaryMetric
-      key="job-execution-settlement"
+      key="job-overview-fallback-settlement"
       label="Execution Settlement"
-      value={describeJobExecutionTracking(executionTracking)}
+      value={formatSettlementStatusLabel(fallbackOverview.settlement?.derived_status)}
     />,
   ];
 
-  const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+  const recoveryPosture = describeModuleExecutionRecoveryPosture(fallbackOverview);
   if (recoveryPosture) {
     metrics.push(
       <SummaryMetric
-        key="job-execution-recovery"
+        key="job-overview-fallback-recovery"
         label="Recovery Posture"
         value={recoveryPosture}
       />,
     );
   }
 
-  const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+  const recoveryReadyAt = getModuleExecutionRecoveryReadyAt(fallbackOverview);
   if (recoveryReadyAt) {
     metrics.push(
       <SummaryMetric
-        key="job-execution-recovery-ready-at"
+        key="job-overview-fallback-recovery-ready-at"
         label="Recovery Ready At"
         value={formatTimestamp(recoveryReadyAt)}
       />,
     );
   }
 
-  const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
-    executionTracking,
+  const runtimeBindingReadiness = describeModuleExecutionRuntimeBindingReadiness(
+    fallbackOverview,
   );
   if (runtimeBindingReadiness) {
     metrics.push(
       <SummaryMetric
-        key="job-runtime-binding-readiness"
+        key="job-overview-fallback-runtime-binding-readiness"
         label="Runtime Binding Readiness"
         value={runtimeBindingReadiness}
       />,
     );
   }
 
-  if (executionTracking.snapshot) {
+  if (fallbackOverview.latest_snapshot) {
     metrics.push(
       <SummaryMetric
-        key="job-execution-snapshot"
+        key="job-overview-fallback-execution-snapshot"
         label="Execution Snapshot"
-        value={<code>{executionTracking.snapshot.id}</code>}
-      />,
-    );
-  }
-
-  if (executionTracking.observation_status === "failed_open" && executionTracking.error) {
-    metrics.push(
-      <SummaryMetric
-        key="job-execution-error"
-        label="Execution Tracking Error"
-        value={executionTracking.error}
-      />,
-    );
-  }
-
-  if (
-    executionTracking.snapshot?.runtime_binding_readiness.observation_status === "failed_open" &&
-    executionTracking.snapshot.runtime_binding_readiness.error
-  ) {
-    metrics.push(
-      <SummaryMetric
-        key="job-runtime-binding-error"
-        label="Runtime Binding Readiness Error"
-        value={executionTracking.snapshot.runtime_binding_readiness.error}
+        value={<code>{fallbackOverview.latest_snapshot.id}</code>}
       />,
     );
   }
 
   return metrics;
+}
+
+function resolveLatestJobOverviewFallback(
+  overview: ManuscriptModuleExecutionOverviewViewModel | undefined,
+  latestJob: AnyWorkbenchJob,
+): ModuleExecutionOverviewViewModel | undefined {
+  const moduleOverview = overview?.[latestJob.module as MainlineSettlementModule];
+  if (
+    !moduleOverview ||
+    moduleOverview.observation_status !== "reported" ||
+    !moduleOverview.latest_job ||
+    moduleOverview.latest_job.id !== latestJob.id
+  ) {
+    return undefined;
+  }
+
+  return moduleOverview;
 }
 
 interface RecommendedNextStepViewModel {
