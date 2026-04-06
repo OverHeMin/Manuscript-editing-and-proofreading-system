@@ -443,6 +443,68 @@ test("loadPrefilledWorkbenchWorkspace fails open when latest tracked job hydrati
           module: "proofreading" as const,
           observation_status: "reported" as const,
           latest_job: fallbackJob,
+          latest_snapshot: {
+            id: "snapshot-proof-3",
+            manuscript_id: "manuscript-11",
+            module: "proofreading" as const,
+            job_id: "job-proof-3",
+            execution_profile_id: "profile-proofreading",
+            module_template_id: "template-proofreading",
+            module_template_version_no: 4,
+            prompt_template_id: "prompt-proofreading",
+            prompt_template_version: "2026-04-06",
+            skill_package_ids: ["proofreading-skill-pack"],
+            skill_package_versions: ["1.0.0"],
+            model_id: "model-proofreading",
+            knowledge_item_ids: ["knowledge-proofreading-1"],
+            created_asset_ids: ["asset-proof-3"],
+            created_at: "2026-04-06T10:00:00.000Z",
+            agent_execution: {
+              observation_status: "reported" as const,
+              log_id: "agent-log-proof-3",
+              log: {
+                id: "agent-log-proof-3",
+                status: "completed" as const,
+                orchestration_status: "retryable" as const,
+                completion_summary: {
+                  derived_status: "business_completed_follow_up_retryable" as const,
+                  business_completed: true,
+                  follow_up_required: true,
+                  fully_settled: false,
+                  attention_required: false,
+                },
+                recovery_summary: {
+                  category: "recoverable_now" as const,
+                  recovery_readiness: "ready_now" as const,
+                  reason: "Retryable orchestration is ready now.",
+                },
+              },
+            },
+            runtime_binding_readiness: {
+              observation_status: "reported" as const,
+              report: {
+                status: "ready" as const,
+                scope: {
+                  module: "proofreading" as const,
+                  manuscriptType: "review" as const,
+                  templateFamilyId: "template-family-1",
+                },
+                issues: [],
+                execution_profile_alignment: {
+                  status: "aligned" as const,
+                  binding_execution_profile_id: "profile-proofreading",
+                  active_execution_profile_id: "profile-proofreading",
+                },
+              },
+            },
+          },
+          settlement: {
+            derived_status: "business_completed_follow_up_retryable" as const,
+            business_completed: true,
+            orchestration_completed: false,
+            attention_required: false,
+            reason: "Proofreading follow-up is retryable.",
+          },
         },
       },
     },
@@ -476,6 +538,18 @@ test("loadPrefilledWorkbenchWorkspace fails open when latest tracked job hydrati
     {
       label: "Latest Job",
       value: "job-proof-3",
+    },
+    {
+      label: "Latest Job Settlement",
+      value: "Business complete, follow-up retryable",
+    },
+    {
+      label: "Latest Job Recovery",
+      value: "Recoverable now",
+    },
+    {
+      label: "Latest Job Runtime Readiness",
+      value: "Ready",
     },
   ]);
 });
@@ -600,6 +674,300 @@ test("buildWorkbenchJobActionResultDetails appends hydrated execution posture fo
     {
       label: "Job Runtime Readiness",
       value: "Degraded (1 issue)",
+    },
+  ]);
+});
+
+test("buildWorkbenchJobActionResultDetails reuses matching overview posture for raw fail-open action-result jobs", () => {
+  const buildDetailsWithOverview = buildWorkbenchJobActionResultDetails as unknown as (
+    baseDetails: unknown,
+    job: unknown,
+    overview: unknown,
+  ) => Array<{ label: string; value: string }>;
+  const details = buildDetailsWithOverview(
+    [
+      {
+        label: "Job",
+        value: "job-editing-fallback-1",
+      },
+      {
+        label: "Status",
+        value: "completed",
+      },
+    ],
+    {
+      id: "job-editing-fallback-1",
+      manuscript_id: "manuscript-action-fallback-1",
+      module: "editing",
+      job_type: "editing_run",
+      status: "completed",
+      requested_by: "operator-1",
+      attempt_count: 1,
+      created_at: "2026-04-06T09:40:00.000Z",
+      updated_at: "2026-04-06T09:45:00.000Z",
+    },
+    {
+      screening: {
+        module: "screening",
+        observation_status: "not_started",
+      },
+      editing: {
+        module: "editing",
+        observation_status: "reported",
+        latest_job: {
+          id: "job-editing-fallback-1",
+          manuscript_id: "manuscript-action-fallback-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latest_snapshot: {
+          id: "snapshot-editing-fallback-1",
+          manuscript_id: "manuscript-action-fallback-1",
+          module: "editing",
+          job_id: "job-editing-fallback-1",
+          execution_profile_id: "profile-editing",
+          module_template_id: "template-editing",
+          module_template_version_no: 4,
+          prompt_template_id: "prompt-editing",
+          prompt_template_version: "2026-04-06",
+          skill_package_ids: ["editing-skill-pack"],
+          skill_package_versions: ["1.0.0"],
+          model_id: "model-editing",
+          knowledge_item_ids: ["knowledge-editing-1"],
+          created_asset_ids: ["asset-editing-1"],
+          created_at: "2026-04-06T09:45:00.000Z",
+          agent_execution: {
+            observation_status: "reported",
+            log_id: "agent-log-editing-fallback-1",
+            log: {
+              id: "agent-log-editing-fallback-1",
+              status: "completed",
+              orchestration_status: "retryable",
+              completion_summary: {
+                derived_status: "business_completed_follow_up_retryable",
+                business_completed: true,
+                follow_up_required: true,
+                fully_settled: false,
+                attention_required: false,
+              },
+              recovery_summary: {
+                category: "recoverable_now",
+                recovery_readiness: "ready_now",
+                reason: "Retryable orchestration is ready now.",
+              },
+            },
+          },
+          runtime_binding_readiness: {
+            observation_status: "reported",
+            report: {
+              status: "degraded",
+              scope: {
+                module: "editing",
+                manuscriptType: "review",
+                templateFamilyId: "template-family-1",
+              },
+              issues: [
+                {
+                  code: "runtime_not_active",
+                  message: "Runtime is not active.",
+                },
+              ],
+              execution_profile_alignment: {
+                status: "drifted",
+                binding_execution_profile_id: "profile-editing",
+                active_execution_profile_id: "profile-editing-active",
+              },
+            },
+          },
+        },
+        settlement: {
+          derived_status: "business_completed_follow_up_retryable",
+          business_completed: true,
+          orchestration_completed: false,
+          attention_required: false,
+          reason: "Business execution is complete and governed follow-up is retryable.",
+        },
+      },
+      proofreading: {
+        module: "proofreading",
+        observation_status: "not_started",
+      },
+    },
+  );
+
+  assert.deepEqual(details, [
+    {
+      label: "Job",
+      value: "job-editing-fallback-1",
+    },
+    {
+      label: "Status",
+      value: "completed",
+    },
+    {
+      label: "Job Settlement",
+      value: "Business complete, follow-up retryable",
+    },
+    {
+      label: "Job Recovery",
+      value: "Recoverable now",
+    },
+    {
+      label: "Job Runtime Readiness",
+      value: "Degraded (1 issue)",
+    },
+  ]);
+});
+
+test("buildWorkbenchJobActionResultDetails keeps hydrated execution posture ahead of overview fallback", () => {
+  const buildDetailsWithOverview = buildWorkbenchJobActionResultDetails as unknown as (
+    baseDetails: unknown,
+    job: unknown,
+    overview: unknown,
+  ) => Array<{ label: string; value: string }>;
+  const details = buildDetailsWithOverview(
+    [
+      {
+        label: "Job",
+        value: "job-editing-hydrated-wins-1",
+      },
+    ],
+    {
+      id: "job-editing-hydrated-wins-1",
+      manuscript_id: "manuscript-action-hydrated-wins-1",
+      module: "editing",
+      job_type: "editing_run",
+      status: "completed",
+      requested_by: "operator-1",
+      attempt_count: 1,
+      created_at: "2026-04-06T09:40:00.000Z",
+      updated_at: "2026-04-06T09:45:00.000Z",
+      execution_tracking: {
+        observation_status: "reported",
+        snapshot: {
+          id: "snapshot-editing-hydrated-wins-1",
+          manuscript_id: "manuscript-action-hydrated-wins-1",
+          module: "editing",
+          job_id: "job-editing-hydrated-wins-1",
+          execution_profile_id: "profile-editing",
+          module_template_id: "template-editing",
+          module_template_version_no: 4,
+          prompt_template_id: "prompt-editing",
+          prompt_template_version: "2026-04-06",
+          skill_package_ids: ["editing-skill-pack"],
+          skill_package_versions: ["1.0.0"],
+          model_id: "model-editing",
+          knowledge_item_ids: ["knowledge-editing-1"],
+          created_asset_ids: ["asset-editing-1"],
+          created_at: "2026-04-06T09:45:00.000Z",
+          agent_execution: {
+            observation_status: "reported",
+            log_id: "agent-log-editing-hydrated-wins-1",
+            log: {
+              id: "agent-log-editing-hydrated-wins-1",
+              status: "completed",
+              orchestration_status: "retryable",
+              completion_summary: {
+                derived_status: "business_completed_follow_up_retryable",
+                business_completed: true,
+                follow_up_required: true,
+                fully_settled: false,
+                attention_required: false,
+              },
+              recovery_summary: {
+                category: "deferred_retry",
+                recovery_readiness: "waiting_retry_eligibility",
+                recovery_ready_at: "2026-04-06T11:30:00.000Z",
+                reason: "Retryable orchestration is deferred until 2026-04-06T11:30:00.000Z.",
+              },
+            },
+          },
+          runtime_binding_readiness: {
+            observation_status: "reported",
+            report: {
+              status: "ready",
+              scope: {
+                module: "editing",
+                manuscriptType: "review",
+                templateFamilyId: "template-family-1",
+              },
+              issues: [],
+              execution_profile_alignment: {
+                status: "aligned",
+                binding_execution_profile_id: "profile-editing",
+                active_execution_profile_id: "profile-editing",
+              },
+            },
+          },
+        },
+        settlement: {
+          derived_status: "business_completed_follow_up_retryable",
+          business_completed: true,
+          orchestration_completed: false,
+          attention_required: false,
+          reason: "Business execution is complete and governed follow-up is retryable.",
+        },
+      },
+    },
+    {
+      screening: {
+        module: "screening",
+        observation_status: "not_started",
+      },
+      editing: {
+        module: "editing",
+        observation_status: "reported",
+        latest_job: {
+          id: "job-editing-hydrated-wins-1",
+          manuscript_id: "manuscript-action-hydrated-wins-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        settlement: {
+          derived_status: "business_completed_settled",
+          business_completed: true,
+          orchestration_completed: true,
+          attention_required: false,
+          reason: "Editing is settled.",
+        },
+      },
+      proofreading: {
+        module: "proofreading",
+        observation_status: "not_started",
+      },
+    },
+  );
+
+  assert.deepEqual(details, [
+    {
+      label: "Job",
+      value: "job-editing-hydrated-wins-1",
+    },
+    {
+      label: "Job Settlement",
+      value: "Business complete, follow-up retryable",
+    },
+    {
+      label: "Job Recovery",
+      value: "Waiting for retry window",
+    },
+    {
+      label: "Job Recovery Ready At",
+      value: "2026-04-06 11:30:00Z",
+    },
+    {
+      label: "Job Runtime Readiness",
+      value: "Ready",
     },
   ]);
 });

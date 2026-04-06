@@ -61,12 +61,15 @@ export async function loadPrefilledWorkbenchWorkspace(
       value: workspace.currentAsset?.id ?? "Not available",
     },
     ...(latestJob
-      ? [
+        ? [
           {
             label: "Latest Job",
             value: latestJob.id,
           },
-          ...buildLatestJobPostureDetails(latestJob),
+          ...buildLatestJobPostureDetails(
+            latestJob,
+            workspace.manuscript.module_execution_overview,
+          ),
         ]
       : []),
   ];
@@ -87,8 +90,9 @@ export async function loadPrefilledWorkbenchWorkspace(
 export function buildWorkbenchJobActionResultDetails(
   baseDetails: WorkbenchActionResultDetail[],
   job: JobViewModel | ModuleJobViewModel,
+  overview?: ManuscriptWorkbenchWorkspace["manuscript"]["module_execution_overview"],
 ): WorkbenchActionResultDetail[] {
-  return [...baseDetails, ...buildJobPostureDetails(job, "Job")];
+  return [...baseDetails, ...buildJobPostureDetails(job, "Job", overview)];
 }
 
 export async function refreshLatestWorkbenchJobContext(
@@ -134,6 +138,7 @@ export async function refreshLatestWorkbenchJobContext(
           },
         ],
         latestJob,
+        workspace?.manuscript.module_execution_overview,
       ),
     },
   };
@@ -467,6 +472,7 @@ export function ManuscriptWorkbenchPage({
                           },
                         ],
                         result.upload.job,
+                        result.workspace.manuscript.module_execution_overview,
                       ),
                     };
                   }),
@@ -532,6 +538,7 @@ export function ManuscriptWorkbenchPage({
                           },
                         ],
                         result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
                       ),
                     };
                   }),
@@ -581,6 +588,7 @@ export function ManuscriptWorkbenchPage({
                           },
                         ],
                         result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
                       ),
                     };
                   }),
@@ -661,6 +669,7 @@ export function ManuscriptWorkbenchPage({
                           },
                         ],
                         result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
                       ),
                     };
                   }),

@@ -41,27 +41,67 @@ export interface WorkbenchActionResultViewModel {
 
 export function buildLatestJobPostureDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
+  overview?: ManuscriptModuleExecutionOverviewViewModel,
 ): WorkbenchActionResultDetail[] {
-  return buildJobPostureDetails(latestJob, "Latest Job");
+  return buildJobPostureDetails(latestJob, "Latest Job", overview);
 }
 
 export function buildJobPostureDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
   labelPrefix: string,
+  overview?: ManuscriptModuleExecutionOverviewViewModel,
 ): WorkbenchActionResultDetail[] {
   const executionTracking = getJobExecutionTracking(latestJob);
-  if (!executionTracking) {
+  if (executionTracking) {
+    const details: WorkbenchActionResultDetail[] = [
+      {
+        label: `${labelPrefix} Settlement`,
+        value: describeJobExecutionTracking(executionTracking),
+      },
+    ];
+
+    const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+    if (recoveryPosture) {
+      details.push({
+        label: `${labelPrefix} Recovery`,
+        value: recoveryPosture,
+      });
+    }
+
+    const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+    if (recoveryReadyAt) {
+      details.push({
+        label: `${labelPrefix} Recovery Ready At`,
+        value: formatTimestamp(recoveryReadyAt),
+      });
+    }
+
+    const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
+      executionTracking,
+    );
+    if (runtimeBindingReadiness) {
+      details.push({
+        label: `${labelPrefix} Runtime Readiness`,
+        value: runtimeBindingReadiness,
+      });
+    }
+
+    return details;
+  }
+
+  const fallbackOverview = resolveLatestJobOverviewFallback(overview, latestJob);
+  if (!fallbackOverview) {
     return [];
   }
 
   const details: WorkbenchActionResultDetail[] = [
     {
       label: `${labelPrefix} Settlement`,
-      value: describeJobExecutionTracking(executionTracking),
+      value: formatSettlementStatusLabel(fallbackOverview.settlement?.derived_status),
     },
   ];
 
-  const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+  const recoveryPosture = describeModuleExecutionRecoveryPosture(fallbackOverview);
   if (recoveryPosture) {
     details.push({
       label: `${labelPrefix} Recovery`,
@@ -69,7 +109,7 @@ export function buildJobPostureDetails(
     });
   }
 
-  const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+  const recoveryReadyAt = getModuleExecutionRecoveryReadyAt(fallbackOverview);
   if (recoveryReadyAt) {
     details.push({
       label: `${labelPrefix} Recovery Ready At`,
@@ -77,8 +117,8 @@ export function buildJobPostureDetails(
     });
   }
 
-  const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
-    executionTracking,
+  const runtimeBindingReadiness = describeModuleExecutionRuntimeBindingReadiness(
+    fallbackOverview,
   );
   if (runtimeBindingReadiness) {
     details.push({
@@ -637,8 +677,12 @@ function renderLatestJobExecutionTrackingMetrics(
 
 function resolveLatestJobOverviewFallback(
   overview: ManuscriptModuleExecutionOverviewViewModel | undefined,
-  latestJob: AnyWorkbenchJob,
+  latestJob: AnyWorkbenchJob | null,
 ): ModuleExecutionOverviewViewModel | undefined {
+  if (!latestJob) {
+    return undefined;
+  }
+
   const moduleOverview = overview?.[latestJob.module as MainlineSettlementModule];
   if (
     !moduleOverview ||
