@@ -13,6 +13,7 @@ import {
 import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
+  buildLatestJobPostureDetails,
   ManuscriptWorkbenchSummary,
   type WorkbenchActionResultViewModel,
 } from "./manuscript-workbench-summary.tsx";
@@ -63,6 +64,7 @@ export async function loadPrefilledWorkbenchWorkspace(
             label: "Latest Job",
             value: latestJob.id,
           },
+          ...buildLatestJobPostureDetails(latestJob),
         ]
       : []),
   ];

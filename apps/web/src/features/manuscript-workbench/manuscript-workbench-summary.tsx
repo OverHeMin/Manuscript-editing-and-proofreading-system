@@ -6,10 +6,12 @@ import type {
   DocumentAssetViewModel,
   JobExecutionTrackingObservationViewModel,
   JobViewModel,
+  LinkedAgentExecutionRecoverySummaryViewModel,
   MainlineSettlementModule,
   ManuscriptModuleExecutionOverviewViewModel,
   ModuleExecutionOverviewViewModel,
   ModuleMainlineSettlementDerivedStatus,
+  RuntimeBindingReadinessReportViewModel,
 } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
@@ -35,6 +37,50 @@ export interface WorkbenchActionResultViewModel {
   actionLabel: string;
   message: string;
   details: WorkbenchActionResultDetail[];
+}
+
+export function buildLatestJobPostureDetails(
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+): WorkbenchActionResultDetail[] {
+  const executionTracking = getJobExecutionTracking(latestJob);
+  if (!executionTracking) {
+    return [];
+  }
+
+  const details: WorkbenchActionResultDetail[] = [
+    {
+      label: "Latest Job Settlement",
+      value: describeJobExecutionTracking(executionTracking),
+    },
+  ];
+
+  const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+  if (recoveryPosture) {
+    details.push({
+      label: "Latest Job Recovery",
+      value: recoveryPosture,
+    });
+  }
+
+  const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+  if (recoveryReadyAt) {
+    details.push({
+      label: "Latest Job Recovery Ready At",
+      value: formatTimestamp(recoveryReadyAt),
+    });
+  }
+
+  const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
+    executionTracking,
+  );
+  if (runtimeBindingReadiness) {
+    details.push({
+      label: "Latest Job Runtime Readiness",
+      value: runtimeBindingReadiness,
+    });
+  }
+
+  return details;
 }
 
 export interface ManuscriptWorkbenchSummaryProps {
@@ -451,6 +497,41 @@ function renderLatestJobExecutionTrackingMetrics(
     />,
   ];
 
+  const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+  if (recoveryPosture) {
+    metrics.push(
+      <SummaryMetric
+        key="job-execution-recovery"
+        label="Recovery Posture"
+        value={recoveryPosture}
+      />,
+    );
+  }
+
+  const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
+  if (recoveryReadyAt) {
+    metrics.push(
+      <SummaryMetric
+        key="job-execution-recovery-ready-at"
+        label="Recovery Ready At"
+        value={formatTimestamp(recoveryReadyAt)}
+      />,
+    );
+  }
+
+  const runtimeBindingReadiness = describeExecutionTrackingRuntimeBindingReadiness(
+    executionTracking,
+  );
+  if (runtimeBindingReadiness) {
+    metrics.push(
+      <SummaryMetric
+        key="job-runtime-binding-readiness"
+        label="Runtime Binding Readiness"
+        value={runtimeBindingReadiness}
+      />,
+    );
+  }
+
   if (executionTracking.snapshot) {
     metrics.push(
       <SummaryMetric
@@ -467,6 +548,19 @@ function renderLatestJobExecutionTrackingMetrics(
         key="job-execution-error"
         label="Execution Tracking Error"
         value={executionTracking.error}
+      />,
+    );
+  }
+
+  if (
+    executionTracking.snapshot?.runtime_binding_readiness.observation_status === "failed_open" &&
+    executionTracking.snapshot.runtime_binding_readiness.error
+  ) {
+    metrics.push(
+      <SummaryMetric
+        key="job-runtime-binding-error"
+        label="Runtime Binding Readiness Error"
+        value={executionTracking.snapshot.runtime_binding_readiness.error}
       />,
     );
   }
@@ -768,6 +862,30 @@ function buildSettlementDetails(
     },
   ];
 
+  const recoveryPosture = describeModuleExecutionRecoveryPosture(overview);
+  if (recoveryPosture) {
+    details.push({
+      label: "Recovery Posture",
+      value: recoveryPosture,
+    });
+  }
+
+  const recoveryReadyAt = getModuleExecutionRecoveryReadyAt(overview);
+  if (recoveryReadyAt) {
+    details.push({
+      label: "Recovery Ready At",
+      value: formatTimestamp(recoveryReadyAt),
+    });
+  }
+
+  const runtimeReadiness = describeModuleExecutionRuntimeBindingReadiness(overview);
+  if (runtimeReadiness) {
+    details.push({
+      label: "Runtime Readiness",
+      value: runtimeReadiness,
+    });
+  }
+
   if (overview.latest_snapshot) {
     details.push({
       label: "Snapshot",
@@ -818,6 +936,23 @@ function describeModuleExecutionOverview(
     parts.push("Reported");
   }
 
+  const recoveryPosture = describeModuleExecutionRecoveryPosture(overview);
+  if (recoveryPosture) {
+    parts.push(recoveryPosture);
+  }
+
+  const recoveryReadyAt = getModuleExecutionRecoveryReadyAt(overview);
+  if (recoveryReadyAt) {
+    parts.push(`ready at ${formatTimestamp(recoveryReadyAt)}`);
+  }
+
+  const compactRuntimeBindingReadiness = describeCompactModuleRuntimeBindingReadiness(
+    overview,
+  );
+  if (compactRuntimeBindingReadiness) {
+    parts.push(compactRuntimeBindingReadiness);
+  }
+
   if (overview.latest_job) {
     parts.push(`latest job ${overview.latest_job.status}`);
   }
@@ -841,6 +976,96 @@ function describeJobExecutionTracking(
   }
 
   return formatSettlementStatusLabel(executionTracking.settlement?.derived_status);
+}
+
+function describeExecutionTrackingRecoveryPosture(
+  executionTracking: JobExecutionTrackingObservationViewModel,
+): string | undefined {
+  if (executionTracking.observation_status !== "reported") {
+    return undefined;
+  }
+
+  return formatRecoveryPostureLabel({
+    settlementStatus: executionTracking.settlement?.derived_status,
+    recoverySummary:
+      executionTracking.snapshot?.agent_execution.observation_status === "reported"
+        ? executionTracking.snapshot.agent_execution.log?.recovery_summary
+        : undefined,
+  });
+}
+
+function getExecutionTrackingRecoveryReadyAt(
+  executionTracking: JobExecutionTrackingObservationViewModel,
+): string | undefined {
+  if (executionTracking.observation_status !== "reported") {
+    return undefined;
+  }
+
+  return executionTracking.snapshot?.agent_execution.observation_status === "reported"
+    ? executionTracking.snapshot.agent_execution.log?.recovery_summary.recovery_ready_at
+    : undefined;
+}
+
+function describeExecutionTrackingRuntimeBindingReadiness(
+  executionTracking: JobExecutionTrackingObservationViewModel,
+): string | undefined {
+  if (executionTracking.observation_status !== "reported") {
+    return undefined;
+  }
+
+  return formatRuntimeBindingReadinessLabel(
+    executionTracking.snapshot?.runtime_binding_readiness,
+  );
+}
+
+function describeModuleExecutionRecoveryPosture(
+  overview: ModuleExecutionOverviewViewModel,
+): string | undefined {
+  return formatRecoveryPostureLabel({
+    settlementStatus: overview.settlement?.derived_status,
+    recoverySummary:
+      overview.latest_snapshot?.agent_execution.observation_status === "reported"
+        ? overview.latest_snapshot.agent_execution.log?.recovery_summary
+        : undefined,
+  });
+}
+
+function getModuleExecutionRecoveryReadyAt(
+  overview: ModuleExecutionOverviewViewModel,
+): string | undefined {
+  return overview.latest_snapshot?.agent_execution.observation_status === "reported"
+    ? overview.latest_snapshot.agent_execution.log?.recovery_summary.recovery_ready_at
+    : undefined;
+}
+
+function describeModuleExecutionRuntimeBindingReadiness(
+  overview: ModuleExecutionOverviewViewModel,
+): string | undefined {
+  return formatRuntimeBindingReadinessLabel(overview.latest_snapshot?.runtime_binding_readiness);
+}
+
+function describeCompactModuleRuntimeBindingReadiness(
+  overview: ModuleExecutionOverviewViewModel,
+): string | undefined {
+  const observation = overview.latest_snapshot?.runtime_binding_readiness;
+  if (!observation) {
+    return undefined;
+  }
+
+  if (observation.observation_status === "failed_open") {
+    return "binding observation unavailable";
+  }
+
+  const status = observation.report?.status;
+  if (status === "degraded") {
+    return "binding degraded";
+  }
+
+  if (status === "missing") {
+    return "binding missing";
+  }
+
+  return undefined;
 }
 
 function formatSettlementStatusLabel(
@@ -868,6 +1093,75 @@ function formatSettlementStatusLabel(
     default:
       return "Reported";
   }
+}
+
+function formatRecoveryPostureLabel(input: {
+  settlementStatus?: ModuleMainlineSettlementDerivedStatus;
+  recoverySummary?: LinkedAgentExecutionRecoverySummaryViewModel;
+}): string | undefined {
+  const recoverySummary = input.recoverySummary;
+  if (!recoverySummary) {
+    return undefined;
+  }
+
+  if (
+    input.settlementStatus === "business_completed_settled" &&
+    recoverySummary.category === "not_recoverable"
+  ) {
+    return "No recovery needed";
+  }
+
+  switch (recoverySummary.category) {
+    case "recoverable_now":
+      return "Recoverable now";
+    case "stale_running":
+      return "Stale running reclaimable now";
+    case "deferred_retry":
+      return "Waiting for retry window";
+    case "attention_required":
+      return "Attention required";
+    case "not_recoverable":
+      if (recoverySummary.recovery_readiness === "waiting_running_timeout") {
+        return "Waiting for running-timeout window";
+      }
+      return "Not recoverable";
+  }
+}
+
+function formatRuntimeBindingReadinessLabel(
+  observation:
+    | {
+        observation_status: "reported" | "failed_open";
+        report?: RuntimeBindingReadinessReportViewModel;
+        error?: string;
+      }
+    | undefined,
+): string | undefined {
+  if (!observation) {
+    return undefined;
+  }
+
+  if (observation.observation_status === "failed_open") {
+    return "Observation unavailable (failed open)";
+  }
+
+  const report = observation.report;
+  if (!report) {
+    return "Reported";
+  }
+
+  const issueCount = report.issues.length;
+  const issueLabel = `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
+
+  if (report.status === "degraded") {
+    return `Degraded (${issueLabel})`;
+  }
+
+  if (report.status === "missing") {
+    return `Missing (${issueLabel})`;
+  }
+
+  return "Ready";
 }
 
 function getJobExecutionTracking(

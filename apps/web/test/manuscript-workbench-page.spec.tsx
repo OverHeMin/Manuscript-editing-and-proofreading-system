@@ -310,9 +310,49 @@ test("loadPrefilledWorkbenchWorkspace restores the newest tracked mainline job f
         agent_execution: {
           observation_status: "reported" as const,
           log_id: "agent-log-edit-2",
+          log: {
+            id: "agent-log-edit-2",
+            status: "completed",
+            orchestration_status: "pending",
+            completion_summary: {
+              derived_status: "business_completed_follow_up_pending",
+              business_completed: true,
+              follow_up_required: true,
+              fully_settled: false,
+              attention_required: false,
+            },
+            recovery_summary: {
+              category: "recoverable_now",
+              recovery_readiness: "ready_now",
+              reason: "Pending orchestration is ready to replay now.",
+            },
+          },
         },
         runtime_binding_readiness: {
           observation_status: "reported" as const,
+          report: {
+            status: "degraded",
+            scope: {
+              module: "editing",
+              manuscriptType: "review",
+              templateFamilyId: "template-family-1",
+            },
+            issues: [
+              {
+                code: "runtime_not_active",
+                message: "Runtime is not active.",
+              },
+              {
+                code: "binding_execution_profile_drift",
+                message: "Binding execution profile drift detected.",
+              },
+            ],
+            execution_profile_alignment: {
+              status: "drifted",
+              binding_execution_profile_id: "profile-editing",
+              active_execution_profile_id: "profile-editing-active",
+            },
+          },
         },
       },
       settlement: {
@@ -351,6 +391,18 @@ test("loadPrefilledWorkbenchWorkspace restores the newest tracked mainline job f
     {
       label: "Latest Job",
       value: "job-edit-2",
+    },
+    {
+      label: "Latest Job Settlement",
+      value: "Business complete, follow-up pending",
+    },
+    {
+      label: "Latest Job Recovery",
+      value: "Recoverable now",
+    },
+    {
+      label: "Latest Job Runtime Readiness",
+      value: "Degraded (2 issues)",
     },
   ]);
 });

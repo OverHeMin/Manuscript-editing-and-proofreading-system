@@ -92,6 +92,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 13 | `2026-04-06-phase13-manuscript-mainline-settlement-view-design.md` | focused mainline delivery around manuscript mainline settlement visibility | Clean | Continues the same fresh execution/orchestration lane by exposing additive per-module settlement visibility on the existing manuscript/job read paths without adding a new control plane. |
 | Phase 14 | `2026-04-06-phase14-manuscript-workbench-settlement-adoption-design.md` | focused mainline delivery around manuscript workbench settlement adoption | Clean | Continues the same execution/orchestration lane by adopting the existing settlement read model into the current manuscript workbench summary path without adding a new page, panel, or routing authority. |
 | Phase 15 | `2026-04-06-phase15-manuscript-workbench-restart-safe-execution-hydration-design.md` | focused mainline delivery around manuscript workbench restart-safe execution hydration | Clean | Continues the same execution/orchestration lane by restoring latest tracked job context during workbench reload through existing manuscript/job read paths only, without adding a new route or control surface. |
+| Phase 16 | `2026-04-06-phase16-manuscript-workbench-recovery-and-readiness-posture-adoption-design.md` | focused mainline delivery around manuscript workbench recovery/readiness posture adoption | Clean | Continues the same execution/orchestration lane by adopting existing recovery and runtime-readiness read models into the current manuscript workbench cards and load-result path without adding a new page, panel, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -137,6 +138,11 @@ delivered through one cleanly isolated branch or one PR with the same name.
   makes the current manuscript workbench reload path restart-safe by restoring
   latest tracked job context through the existing manuscript/job read model,
   without adding a new route, panel, or mutation authority.
+- Treat `Phase 16` as the next adjacent continuation of that same lane: it
+  adopts existing recovery and runtime-readiness posture into the current
+  manuscript workbench summary and load-result path so restored execution
+  context stays readable and explainable without introducing a new page,
+  panel, or control-plane action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

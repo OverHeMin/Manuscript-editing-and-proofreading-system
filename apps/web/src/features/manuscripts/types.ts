@@ -73,12 +73,90 @@ export interface ModuleMainlineSettlementViewModel {
   reason: string;
 }
 
+export type AgentExecutionCompletionDerivedStatus =
+  | "business_in_progress"
+  | "business_failed"
+  | "business_completed_follow_up_pending"
+  | "business_completed_follow_up_running"
+  | "business_completed_follow_up_retryable"
+  | "business_completed_follow_up_failed"
+  | "business_completed_settled";
+
+export type AgentExecutionRecoveryCategory =
+  | "recoverable_now"
+  | "stale_running"
+  | "deferred_retry"
+  | "attention_required"
+  | "not_recoverable";
+
+export type AgentExecutionRecoveryReadiness =
+  | "ready_now"
+  | "waiting_retry_eligibility"
+  | "waiting_running_timeout"
+  | "not_recoverable";
+
+export interface LinkedAgentExecutionCompletionSummaryViewModel {
+  derived_status: AgentExecutionCompletionDerivedStatus;
+  business_completed: boolean;
+  follow_up_required: boolean;
+  fully_settled: boolean;
+  attention_required: boolean;
+}
+
+export interface LinkedAgentExecutionRecoverySummaryViewModel {
+  category: AgentExecutionRecoveryCategory;
+  recovery_readiness: AgentExecutionRecoveryReadiness;
+  recovery_ready_at?: string;
+  reason: string;
+}
+
+export type RuntimeBindingReadinessStatus = "ready" | "degraded" | "missing";
+
+export interface RuntimeBindingReadinessIssueViewModel {
+  code: string;
+  message: string;
+}
+
+export interface RuntimeBindingExecutionProfileAlignmentViewModel {
+  status: "aligned" | "drifted" | "missing_active_profile";
+  binding_execution_profile_id?: string;
+  active_execution_profile_id?: string;
+}
+
+export interface RuntimeBindingReadinessScopeViewModel {
+  module: ManuscriptModule;
+  manuscriptType: ManuscriptType;
+  templateFamilyId: string;
+}
+
+export interface RuntimeBindingReadinessReportViewModel {
+  status: RuntimeBindingReadinessStatus;
+  scope: RuntimeBindingReadinessScopeViewModel;
+  binding?: {
+    id: string;
+    status: string;
+    version: number;
+    runtime_id: string;
+    sandbox_profile_id: string;
+    agent_profile_id: string;
+    tool_permission_policy_id: string;
+    prompt_template_id: string;
+    skill_package_ids: string[];
+    execution_profile_id: string;
+    verification_check_profile_ids: string[];
+    evaluation_suite_ids: string[];
+    release_check_profile_id?: string;
+  };
+  issues: RuntimeBindingReadinessIssueViewModel[];
+  execution_profile_alignment: RuntimeBindingExecutionProfileAlignmentViewModel;
+}
+
 export interface LinkedAgentExecutionSnapshotViewModel {
   id: string;
   status: string;
   orchestration_status: string;
-  completion_summary: Record<string, unknown>;
-  recovery_summary: Record<string, unknown>;
+  completion_summary: LinkedAgentExecutionCompletionSummaryViewModel;
+  recovery_summary: LinkedAgentExecutionRecoverySummaryViewModel;
 }
 
 export interface ExecutionTrackingAgentExecutionObservationViewModel {
@@ -90,7 +168,7 @@ export interface ExecutionTrackingAgentExecutionObservationViewModel {
 
 export interface ExecutionTrackingRuntimeBindingReadinessObservationViewModel {
   observation_status: "reported" | "failed_open";
-  report?: Record<string, unknown>;
+  report?: RuntimeBindingReadinessReportViewModel;
   error?: string;
 }
 
