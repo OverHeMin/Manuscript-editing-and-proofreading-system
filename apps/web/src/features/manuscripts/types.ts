@@ -49,6 +49,96 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
+export type MainlineSettlementModule =
+  | "screening"
+  | "editing"
+  | "proofreading";
+
+export type ModuleMainlineSettlementDerivedStatus =
+  | "not_started"
+  | "job_in_progress"
+  | "job_failed"
+  | "business_completed_unlinked"
+  | "business_completed_follow_up_pending"
+  | "business_completed_follow_up_running"
+  | "business_completed_follow_up_retryable"
+  | "business_completed_follow_up_failed"
+  | "business_completed_settled";
+
+export interface ModuleMainlineSettlementViewModel {
+  derived_status: ModuleMainlineSettlementDerivedStatus;
+  business_completed: boolean;
+  orchestration_completed: boolean;
+  attention_required: boolean;
+  reason: string;
+}
+
+export interface LinkedAgentExecutionSnapshotViewModel {
+  id: string;
+  status: string;
+  orchestration_status: string;
+  completion_summary: Record<string, unknown>;
+  recovery_summary: Record<string, unknown>;
+}
+
+export interface ExecutionTrackingAgentExecutionObservationViewModel {
+  observation_status: "reported" | "not_linked" | "failed_open";
+  log_id?: string;
+  log?: LinkedAgentExecutionSnapshotViewModel;
+  error?: string;
+}
+
+export interface ExecutionTrackingRuntimeBindingReadinessObservationViewModel {
+  observation_status: "reported" | "failed_open";
+  report?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface ModuleExecutionSnapshotViewModel {
+  id: string;
+  manuscript_id: string;
+  module: ManuscriptModule;
+  job_id: string;
+  execution_profile_id: string;
+  module_template_id: string;
+  module_template_version_no: number;
+  prompt_template_id: string;
+  prompt_template_version: string;
+  skill_package_ids: string[];
+  skill_package_versions: string[];
+  model_id: string;
+  model_version?: string;
+  knowledge_item_ids: string[];
+  created_asset_ids: string[];
+  agent_execution_log_id?: string;
+  draft_snapshot_id?: string;
+  created_at: string;
+  agent_execution: ExecutionTrackingAgentExecutionObservationViewModel;
+  runtime_binding_readiness: ExecutionTrackingRuntimeBindingReadinessObservationViewModel;
+}
+
+export interface ModuleExecutionOverviewViewModel {
+  module: MainlineSettlementModule;
+  observation_status: "reported" | "not_started" | "failed_open";
+  latest_job?: JobViewModel;
+  latest_snapshot?: ModuleExecutionSnapshotViewModel;
+  settlement?: ModuleMainlineSettlementViewModel;
+  error?: string;
+}
+
+export interface ManuscriptModuleExecutionOverviewViewModel {
+  screening: ModuleExecutionOverviewViewModel;
+  editing: ModuleExecutionOverviewViewModel;
+  proofreading: ModuleExecutionOverviewViewModel;
+}
+
+export interface JobExecutionTrackingObservationViewModel {
+  observation_status: "reported" | "not_tracked" | "failed_open";
+  snapshot?: ModuleExecutionSnapshotViewModel;
+  settlement?: ModuleMainlineSettlementViewModel;
+  error?: string;
+}
+
 export interface ManuscriptViewModel {
   id: string;
   title: string;
@@ -61,6 +151,7 @@ export interface ManuscriptViewModel {
   current_template_family_id?: string;
   created_at: string;
   updated_at: string;
+  module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
 }
 
 export interface DocumentAssetViewModel {
@@ -106,6 +197,7 @@ export interface JobViewModel {
   error_message?: string;
   created_at: string;
   updated_at: string;
+  execution_tracking?: JobExecutionTrackingObservationViewModel;
 }
 
 export interface UploadManuscriptInput {

@@ -399,15 +399,34 @@ This phase does **not** absorb:
 - manuscript/job schema changes
 - new control-plane or workbench authority
 
-### 4.18 Still-Open Retained Capability Lanes After Phase 13
+### 4.18 Phase 14: Manuscript Workbench Settlement Adoption
 
-After reconciling actual landed numbering through `Phase 13`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only adoption of the existing settlement read model inside the current manuscript workbench summary
+
+This phase now owns:
+
+- workbench-side consumption of manuscript `module_execution_overview`
+- workbench-side consumption of job `execution_tracking`
+- settlement-first operator guidance on the existing manuscript summary path, with fail-open fallback to the prior heuristic asset/job view
+- compact visibility into per-module business-versus-orchestration posture without introducing a new workbench surface
+
+This phase does **not** absorb:
+
+- new manuscript or job routes
+- orchestration replay, ownership, or scheduling changes
+- new workbench pages, panels, or routing authority
+- mutation/control-plane expansion beyond the existing workbench actions
+
+### 4.19 Still-Open Retained Capability Lanes After Phase 14
+
+After reconciling actual landed numbering through `Phase 14`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, and `Phase 13` mainline settlement visibility
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, and `Phase 14` workbench settlement adoption
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -433,6 +452,7 @@ The repository has now landed the following actual sequence after `10A`:
 13. `11G` agent-execution recovery summary under the same fresh adjacent execution/orchestration label
 14. `Phase 12` durable execution evidence linkage under the next fresh execution/orchestration label
 15. `Phase 13` manuscript/job mainline settlement visibility under the same fresh execution/orchestration continuation
+16. `Phase 14` manuscript workbench settlement adoption under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -452,6 +472,9 @@ The practical planning implication after `11G` is:
   permission to reopen replay controls, workflow-engine substitution, or control-plane growth under the same label
 - treat `Phase 13` as a mainline settlement-visibility slice in that same lane,
   not as permission to introduce new ledger routes, route-level mutation authority, or broader UI/control-plane expansion under the same label
+- treat `Phase 14` as a workbench-adoption slice in that same lane, not as
+  permission to create a new settlement panel, expand routing authority, or
+  reopen control-plane growth under the same label
 
 ## 6. What This Mapping Prevents
 

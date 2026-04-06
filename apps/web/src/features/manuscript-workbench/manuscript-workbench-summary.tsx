@@ -4,7 +4,12 @@ import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
 import type {
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
+  JobExecutionTrackingObservationViewModel,
   JobViewModel,
+  MainlineSettlementModule,
+  ManuscriptModuleExecutionOverviewViewModel,
+  ModuleExecutionOverviewViewModel,
+  ModuleMainlineSettlementDerivedStatus,
 } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
@@ -13,6 +18,12 @@ import type {
 } from "./manuscript-workbench-controller.ts";
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
+
+const MAINLINE_SETTLEMENT_MODULE_ORDER: readonly MainlineSettlementModule[] = [
+  "screening",
+  "editing",
+  "proofreading",
+];
 
 export interface WorkbenchActionResultDetail {
   label: string;
@@ -159,6 +170,9 @@ export function ManuscriptWorkbenchSummary({
             label="Last Updated"
             value={formatTimestamp(workspace.manuscript.updated_at)}
           />
+          {renderModuleExecutionOverviewMetrics(
+            workspace.manuscript.module_execution_overview,
+          )}
           {canOpenEvaluationWorkbench ? (
             <SummaryMetric
               label="Evaluation Context"
@@ -228,6 +242,7 @@ export function ManuscriptWorkbenchSummary({
                 label="Last Updated"
                 value={formatTimestamp(latestJob.updated_at)}
               />
+              {renderLatestJobExecutionTrackingMetrics(latestJob)}
             </>
           ) : (
             <p className="manuscript-workbench-empty">
@@ -404,6 +419,61 @@ function formatTimestamp(value: string | undefined): string {
   return value.replace("T", " ").replace(".000Z", "Z");
 }
 
+function renderModuleExecutionOverviewMetrics(
+  overview: ManuscriptModuleExecutionOverviewViewModel | undefined,
+): ReactNode[] | null {
+  if (!overview) {
+    return null;
+  }
+
+  return MAINLINE_SETTLEMENT_MODULE_ORDER.map((module) => (
+    <SummaryMetric
+      key={`module-overview:${module}`}
+      label={`${formatMainlineModuleLabel(module)} Settlement`}
+      value={describeModuleExecutionOverview(overview[module])}
+    />
+  ));
+}
+
+function renderLatestJobExecutionTrackingMetrics(
+  latestJob: AnyWorkbenchJob,
+): ReactNode[] | null {
+  const executionTracking = getJobExecutionTracking(latestJob);
+  if (!executionTracking) {
+    return null;
+  }
+
+  const metrics: ReactNode[] = [
+    <SummaryMetric
+      key="job-execution-settlement"
+      label="Execution Settlement"
+      value={describeJobExecutionTracking(executionTracking)}
+    />,
+  ];
+
+  if (executionTracking.snapshot) {
+    metrics.push(
+      <SummaryMetric
+        key="job-execution-snapshot"
+        label="Execution Snapshot"
+        value={<code>{executionTracking.snapshot.id}</code>}
+      />,
+    );
+  }
+
+  if (executionTracking.observation_status === "failed_open" && executionTracking.error) {
+    metrics.push(
+      <SummaryMetric
+        key="job-execution-error"
+        label="Execution Tracking Error"
+        value={executionTracking.error}
+      />,
+    );
+  }
+
+  return metrics;
+}
+
 interface RecommendedNextStepViewModel {
   focus: string;
   guidance: string;
@@ -455,6 +525,16 @@ function buildRecommendedNextStep(
   }
 
   if (mode === "screening") {
+    const screeningRecommendation = buildModuleSettlementRecommendedNextStep({
+      module: "screening",
+      nextMode: "editing",
+      nextStageLabel: "editing",
+      workspace,
+    });
+    if (screeningRecommendation) {
+      return screeningRecommendation;
+    }
+
     if (latestJob?.module === "screening" && latestJob.status === "completed") {
       return {
         focus: "Advance this manuscript into editing",
@@ -491,6 +571,16 @@ function buildRecommendedNextStep(
   }
 
   if (mode === "editing") {
+    const editingRecommendation = buildModuleSettlementRecommendedNextStep({
+      module: "editing",
+      nextMode: "proofreading",
+      nextStageLabel: "proofreading",
+      workspace,
+    });
+    if (editingRecommendation) {
+      return editingRecommendation;
+    }
+
     if (latestJob?.module === "editing" && latestJob.status === "completed") {
       return {
         focus: "Advance this manuscript into proofreading",
@@ -595,6 +685,199 @@ function buildRecommendedNextStep(
       },
     ],
   };
+}
+
+function buildModuleSettlementRecommendedNextStep(input: {
+  module: MainlineSettlementModule;
+  nextMode: Exclude<ManuscriptWorkbenchMode, "submission">;
+  nextStageLabel: string;
+  workspace: ManuscriptWorkbenchWorkspace;
+}): RecommendedNextStepViewModel | undefined {
+  const overview = input.workspace.manuscript.module_execution_overview?.[input.module];
+  if (!overview || overview.observation_status !== "reported" || !overview.settlement) {
+    return undefined;
+  }
+
+  const details = buildSettlementDetails(overview, input.workspace.currentAsset);
+
+  switch (overview.settlement.derived_status) {
+    case "business_completed_settled":
+      return {
+        focus: `Advance this manuscript into ${input.nextStageLabel}`,
+        guidance: `${formatMainlineModuleLabel(input.module)} output is settled and ready for the next governed ${input.nextStageLabel} handoff.`,
+        details: [
+          {
+            label: "Manuscript",
+            value: input.workspace.manuscript.id,
+          },
+          ...details,
+        ],
+        targetMode: input.nextMode,
+        targetLabel: `Open ${formatWorkbenchModeLabel(input.nextMode)} Workbench`,
+      };
+    case "business_completed_follow_up_pending":
+    case "business_completed_follow_up_running":
+      return {
+        focus: `Wait for ${input.module} follow-up before ${input.nextStageLabel} handoff`,
+        guidance: "Business output exists, but orchestration follow-up is not settled yet.",
+        details,
+      };
+    case "business_completed_follow_up_retryable":
+      return {
+        focus: `Inspect ${input.module} follow-up before ${input.nextStageLabel} handoff`,
+        guidance: "Business output exists, but governed follow-up is retryable and not settled yet.",
+        details,
+      };
+    case "business_completed_follow_up_failed":
+      return {
+        focus: `Inspect ${input.module} follow-up failure before ${input.nextStageLabel} handoff`,
+        guidance: "Business output exists, but governed follow-up failed and needs operator attention.",
+        details,
+      };
+    case "business_completed_unlinked":
+      return {
+        focus: `Inspect ${input.module} settlement linkage before ${input.nextStageLabel} handoff`,
+        guidance: "Business output exists, but settlement linkage is incomplete, so the handoff should pause.",
+        details,
+      };
+    case "job_failed":
+      return {
+        focus: `Inspect the failed ${input.module} run`,
+        guidance: "The latest governed attempt failed and needs inspection before the handoff can continue.",
+        details,
+      };
+    case "job_in_progress":
+      return {
+        focus: `Wait for ${input.module} execution to finish`,
+        guidance: "The current governed run is still in progress.",
+        details,
+      };
+    case "not_started":
+      return undefined;
+  }
+}
+
+function buildSettlementDetails(
+  overview: ModuleExecutionOverviewViewModel,
+  currentAsset: DocumentAssetViewModel | null,
+): WorkbenchActionResultDetail[] {
+  const details: WorkbenchActionResultDetail[] = [
+    {
+      label: "Settlement",
+      value: formatSettlementStatusLabel(overview.settlement?.derived_status),
+    },
+  ];
+
+  if (overview.latest_snapshot) {
+    details.push({
+      label: "Snapshot",
+      value: overview.latest_snapshot.id,
+    });
+  }
+
+  if (currentAsset) {
+    details.push({
+      label: "Current Asset",
+      value: describeAsset(currentAsset),
+    });
+  }
+
+  return details;
+}
+
+function formatMainlineModuleLabel(module: MainlineSettlementModule): string {
+  if (module === "screening") {
+    return "Screening";
+  }
+  if (module === "editing") {
+    return "Editing";
+  }
+
+  return "Proofreading";
+}
+
+function describeModuleExecutionOverview(
+  overview: ModuleExecutionOverviewViewModel | undefined,
+): string {
+  if (!overview) {
+    return "Not reported";
+  }
+
+  if (overview.observation_status === "failed_open") {
+    return "Observation unavailable (failed open)";
+  }
+
+  if (overview.observation_status === "not_started") {
+    return "Not started";
+  }
+
+  const parts: string[] = [];
+  if (overview.settlement) {
+    parts.push(formatSettlementStatusLabel(overview.settlement.derived_status));
+  } else {
+    parts.push("Reported");
+  }
+
+  if (overview.latest_job) {
+    parts.push(`latest job ${overview.latest_job.status}`);
+  }
+
+  if (overview.latest_snapshot) {
+    parts.push(`snapshot ${overview.latest_snapshot.id}`);
+  }
+
+  return parts.join(" · ");
+}
+
+function describeJobExecutionTracking(
+  executionTracking: JobExecutionTrackingObservationViewModel,
+): string {
+  if (executionTracking.observation_status === "failed_open") {
+    return "Observation unavailable (failed open)";
+  }
+
+  if (executionTracking.observation_status === "not_tracked") {
+    return "Not tracked";
+  }
+
+  return formatSettlementStatusLabel(executionTracking.settlement?.derived_status);
+}
+
+function formatSettlementStatusLabel(
+  status: ModuleMainlineSettlementDerivedStatus | undefined,
+): string {
+  switch (status) {
+    case "business_completed_settled":
+      return "Settled";
+    case "business_completed_follow_up_pending":
+      return "Business complete, follow-up pending";
+    case "business_completed_follow_up_running":
+      return "Business complete, follow-up running";
+    case "business_completed_follow_up_retryable":
+      return "Business complete, follow-up retryable";
+    case "business_completed_follow_up_failed":
+      return "Business complete, follow-up failed";
+    case "business_completed_unlinked":
+      return "Business complete, settlement unlinked";
+    case "job_failed":
+      return "Job failed";
+    case "job_in_progress":
+      return "Job in progress";
+    case "not_started":
+      return "Not started";
+    default:
+      return "Reported";
+  }
+}
+
+function getJobExecutionTracking(
+  latestJob: AnyWorkbenchJob | null,
+): JobExecutionTrackingObservationViewModel | undefined {
+  if (!latestJob || !("execution_tracking" in latestJob)) {
+    return undefined;
+  }
+
+  return latestJob.execution_tracking;
 }
 
 function describeAsset(asset: DocumentAssetViewModel | null): string {
