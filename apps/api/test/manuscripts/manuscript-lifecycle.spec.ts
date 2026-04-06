@@ -1235,4 +1235,49 @@ test("manuscript reads expose a bounded mainline attempt ledger ordered by newes
     manuscriptResponse.body.mainline_attempt_ledger?.items[1]?.settlement_status,
     "business_completed_settled",
   );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.observation_status,
+    "reported",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.attention_status,
+    "action_required",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.handoff_status,
+    "blocked_by_attention",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.focus_module,
+    "editing",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.from_module,
+    "editing",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.to_module,
+    "proofreading",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.latest_job_id,
+    "job-editing-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.latest_snapshot_id,
+    "snapshot-editing-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.attention_items.length,
+    1,
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.attention_items[0]?.kind,
+    "follow_up_retryable",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attention_handoff_pack?.attention_items[0]
+      ?.severity,
+    "action_required",
+  );
 });

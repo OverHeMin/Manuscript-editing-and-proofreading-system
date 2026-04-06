@@ -84,6 +84,13 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         derived_status?: string;
         next_module?: string;
       };
+      mainline_attention_handoff_pack?: {
+        observation_status: string;
+        attention_status?: string;
+        handoff_status?: string;
+        to_module?: string;
+        attention_items: Array<{ kind: string }>;
+      };
       mainline_attempt_ledger?: {
         observation_status: string;
         total_attempts: number;
@@ -172,6 +179,26 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
     assert.equal(
       manuscript.mainline_readiness_summary?.next_module,
       "screening",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.observation_status,
+      "reported",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.attention_status,
+      "clear",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.handoff_status,
+      "ready_now",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.to_module,
+      "screening",
+    );
+    assert.deepEqual(
+      manuscript.mainline_attention_handoff_pack?.attention_items,
+      [],
     );
     assert.equal(
       manuscript.mainline_attempt_ledger?.observation_status,

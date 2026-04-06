@@ -732,6 +732,14 @@ test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when ma
         next_module: "screening" as const,
         reason: "The manuscript is ready for governed screening.",
       },
+      mainline_attention_handoff_pack: {
+        observation_status: "reported" as const,
+        attention_status: "clear" as const,
+        handoff_status: "ready_now" as const,
+        to_module: "screening" as const,
+        reason: "The manuscript is ready for governed screening.",
+        attention_items: [],
+      },
       mainline_attempt_ledger: {
         observation_status: "reported" as const,
         total_attempts: 2,
@@ -822,6 +830,18 @@ test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when ma
     },
     {
       label: "Readiness Reason",
+      value: "The manuscript is ready for governed screening.",
+    },
+    {
+      label: "Attention Status",
+      value: "Clear",
+    },
+    {
+      label: "Next Mainline Handoff",
+      value: "screening ready now",
+    },
+    {
+      label: "Primary Attention Reason",
       value: "The manuscript is ready for governed screening.",
     },
     {
@@ -1624,6 +1644,23 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
       status: "processing" as const,
       created_by: "operator-1",
       current_editing_asset_id: "asset-edited-2",
+      mainline_readiness_summary: {
+        observation_status: "reported" as const,
+        derived_status: "ready_for_next_step" as const,
+        next_module: "proofreading" as const,
+        reason: "Editing is settled and proofreading can begin.",
+      },
+      mainline_attention_handoff_pack: {
+        observation_status: "reported" as const,
+        attention_status: "clear" as const,
+        handoff_status: "ready_now" as const,
+        from_module: "editing" as const,
+        to_module: "proofreading" as const,
+        latest_job_id: "job-editing-refresh-1",
+        latest_snapshot_id: "snapshot-refresh-1",
+        reason: "Editing is settled and proofreading can begin.",
+        attention_items: [],
+      },
       mainline_attempt_ledger: {
         observation_status: "reported" as const,
         total_attempts: 2,
@@ -1861,6 +1898,30 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
       value: "Ready",
     },
     {
+      label: "Mainline Readiness",
+      value: "Ready for next step",
+    },
+    {
+      label: "Next Module",
+      value: "proofreading",
+    },
+    {
+      label: "Readiness Reason",
+      value: "Editing is settled and proofreading can begin.",
+    },
+    {
+      label: "Attention Status",
+      value: "Clear",
+    },
+    {
+      label: "Next Mainline Handoff",
+      value: "editing -> proofreading ready now",
+    },
+    {
+      label: "Primary Attention Reason",
+      value: "Editing is settled and proofreading can begin.",
+    },
+    {
       label: "Mainline Attempts",
       value: "2 total (showing 2)",
     },
@@ -2096,6 +2157,28 @@ test("manuscript workbench summary renders recent mainline activity inside the m
           created_by: "editor-ledger",
           created_at: "2026-04-06T08:00:00.000Z",
           updated_at: "2026-04-06T10:30:00.000Z",
+          mainline_attention_handoff_pack: {
+            observation_status: "reported",
+            attention_status: "action_required",
+            handoff_status: "blocked_by_attention",
+            focus_module: "editing",
+            from_module: "editing",
+            to_module: "proofreading",
+            latest_job_id: "job-editing-ledger-2",
+            latest_snapshot_id: "snapshot-editing-ledger-2",
+            reason: "Editing follow-up is retryable before proofreading can begin.",
+            attention_items: [
+              {
+                module: "editing",
+                kind: "follow_up_retryable",
+                severity: "action_required",
+                job_id: "job-editing-ledger-2",
+                snapshot_id: "snapshot-editing-ledger-2",
+                recovery_ready_at: "2026-04-06T10:31:00.000Z",
+                summary: "Governed follow-up can be retried before proofreading handoff.",
+              },
+            ],
+          },
           mainline_attempt_ledger: {
             observation_status: "reported",
             total_attempts: 3,
@@ -2158,6 +2241,20 @@ test("manuscript workbench summary renders recent mainline activity inside the m
     />,
   );
 
+  assert.match(markup, /Attention Status/);
+  assert.match(markup, /Action required/i);
+  assert.match(markup, /Next Mainline Handoff/);
+  assert.match(markup, /editing -&gt; proofreading/i);
+  assert.match(markup, /Primary Attention Reason/);
+  assert.match(
+    markup,
+    /Editing follow-up is retryable before proofreading can begin\./i,
+  );
+  assert.match(markup, /Attention Items/);
+  assert.match(
+    markup,
+    /Governed follow-up can be retried before proofreading handoff\./i,
+  );
   assert.match(markup, /Mainline Attempts/);
   assert.match(markup, /3 total/);
   assert.match(markup, /Recent Mainline Activity/);

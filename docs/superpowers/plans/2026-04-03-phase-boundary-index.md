@@ -104,6 +104,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 25 | `2026-04-06-phase25-manuscript-workbench-execution-posture-pill-adoption-design.md` | focused mainline delivery around manuscript workbench execution posture pill adoption | Clean | Continues the same execution/orchestration lane by keeping the existing summary-card pills honest about durable follow-up posture for action results and latest-job evidence, without adding a new page, panel, route, or control-plane action. |
 | Phase 26 | `2026-04-06-phase26-manuscript-mainline-internal-trial-readiness-summary-design.md` | focused mainline delivery around manuscript mainline internal-trial readiness summary adoption | Clean | Continues the same execution/orchestration lane by deriving one additive manuscript mainline readiness summary from existing posture evidence and adopting it inside the current workbench summary path, without adding a new page, panel, route, or control-plane action. |
 | Phase 27 | `2026-04-06-phase27-manuscript-mainline-timeline-and-attempt-ledger-design.md` | focused mainline delivery around manuscript mainline timeline and attempt-ledger adoption | Clean | Continues the same execution/orchestration lane by deriving one additive bounded mainline attempt ledger from existing manuscript job and snapshot evidence and adopting it inside the current workbench overview/load-result path, without adding a new page, panel, route, or control-plane action. |
+| Phase 28 | `2026-04-06-phase28-manuscript-workbench-attention-and-handoff-pack-design.md` | focused mainline delivery around manuscript attention and handoff-pack adoption | Clean | Continues the same execution/orchestration lane by deriving one additive attention/handoff pack from existing readiness, ledger, and module posture evidence and adopting it inside the current workbench overview/load-result path, without adding a new page, panel, route, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -205,6 +206,12 @@ delivered through one cleanly isolated branch or one PR with the same name.
   evidence so the current workbench can explain how the manuscript reached its
   present posture without introducing a new page, panel, route, or
   control-plane action.
+- Treat `Phase 28` as the next adjacent continuation of that same lane: it
+  derives one additive attention/handoff pack from the existing readiness,
+  attempt-ledger, settlement, recovery, and runtime posture evidence so the
+  current workbench can explain what currently needs attention and whether the
+  next governed handoff is ready, blocked, or completed, without introducing a
+  new page, panel, route, or control-plane action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

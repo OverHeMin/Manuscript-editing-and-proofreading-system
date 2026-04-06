@@ -38,5 +38,6 @@ export interface ManuscriptRecord {
 export interface ManuscriptViewRecord extends ManuscriptRecord {
   module_execution_overview: import("./manuscript-mainline-settlement.ts").ManuscriptModuleExecutionOverviewRecord;
   mainline_readiness_summary: import("./manuscript-mainline-settlement.ts").ManuscriptMainlineReadinessSummaryRecord;
+  mainline_attention_handoff_pack: import("./manuscript-mainline-settlement.ts").ManuscriptMainlineAttentionHandoffPackRecord;
   mainline_attempt_ledger: import("./manuscript-mainline-settlement.ts").ManuscriptMainlineAttemptLedgerRecord;
 }

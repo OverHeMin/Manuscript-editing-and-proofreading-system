@@ -152,6 +152,18 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
               editing: { observation_status: string };
               proofreading: { observation_status: string };
             };
+            mainline_readiness_summary?: {
+              observation_status: string;
+              derived_status?: string;
+              next_module?: string;
+            };
+            mainline_attention_handoff_pack?: {
+              observation_status: string;
+              attention_status?: string;
+              handoff_status?: string;
+              to_module?: string;
+              attention_items: Array<{ kind: string }>;
+            };
             mainline_attempt_ledger?: {
               observation_status: string;
               total_attempts: number;
@@ -242,6 +254,38 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
           assert.equal(
             manuscript.module_execution_overview?.proofreading.observation_status,
             "not_started",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.observation_status,
+            "reported",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.derived_status,
+            "ready_for_next_step",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.next_module,
+            "screening",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.observation_status,
+            "reported",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.attention_status,
+            "clear",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.handoff_status,
+            "ready_now",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.to_module,
+            "screening",
+          );
+          assert.deepEqual(
+            manuscript.mainline_attention_handoff_pack?.attention_items,
+            [],
           );
           assert.equal(
             manuscript.mainline_attempt_ledger?.observation_status,
@@ -375,6 +419,14 @@ test("persistent workbench screening routes keep governed execution evidence acr
               derived_status?: string;
               next_module?: string;
             };
+            mainline_attention_handoff_pack?: {
+              observation_status: string;
+              attention_status?: string;
+              handoff_status?: string;
+              from_module?: string;
+              to_module?: string;
+              attention_items: Array<{ kind: string }>;
+            };
             mainline_attempt_ledger?: {
               observation_status: string;
               total_attempts: number;
@@ -474,6 +526,30 @@ test("persistent workbench screening routes keep governed execution evidence acr
           assert.equal(
             manuscript.mainline_readiness_summary?.next_module,
             "editing",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.observation_status,
+            "reported",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.attention_status,
+            "clear",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.handoff_status,
+            "ready_now",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.from_module,
+            "screening",
+          );
+          assert.equal(
+            manuscript.mainline_attention_handoff_pack?.to_module,
+            "editing",
+          );
+          assert.deepEqual(
+            manuscript.mainline_attention_handoff_pack?.attention_items,
+            [],
           );
           assert.equal(
             manuscript.mainline_attempt_ledger?.observation_status,

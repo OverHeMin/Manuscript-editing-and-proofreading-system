@@ -230,6 +230,55 @@ export interface ManuscriptMainlineReadinessSummaryViewModel {
   error?: string;
 }
 
+export type MainlineAttentionStatus = "clear" | "monitoring" | "action_required";
+
+export type MainlineHandoffStatus =
+  | "ready_now"
+  | "blocked_by_in_progress"
+  | "blocked_by_follow_up"
+  | "blocked_by_attention"
+  | "completed";
+
+export type MainlineAttentionItemKind =
+  | "job_in_progress"
+  | "follow_up_pending"
+  | "follow_up_running"
+  | "follow_up_retryable"
+  | "follow_up_failed"
+  | "settlement_unlinked"
+  | "job_failed"
+  | "runtime_binding_degraded"
+  | "runtime_binding_missing";
+
+export type MainlineAttentionItemSeverity = "monitoring" | "action_required";
+
+export interface MainlineAttentionItemViewModel {
+  module: MainlineSettlementModule;
+  kind: MainlineAttentionItemKind;
+  severity: MainlineAttentionItemSeverity;
+  job_id?: string;
+  snapshot_id?: string;
+  recovery_ready_at?: string;
+  summary: string;
+}
+
+export interface ManuscriptMainlineAttentionHandoffPackViewModel {
+  observation_status: "reported" | "failed_open";
+  attention_status?: MainlineAttentionStatus;
+  handoff_status?: MainlineHandoffStatus;
+  focus_module?: MainlineSettlementModule;
+  from_module?: MainlineSettlementModule;
+  to_module?: MainlineSettlementModule;
+  latest_job_id?: string;
+  latest_snapshot_id?: string;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  reason?: string;
+  attention_items: MainlineAttentionItemViewModel[];
+  error?: string;
+}
+
 export type MainlineAttemptLedgerEvidenceStatus =
   | "snapshot_linked"
   | "job_only"
@@ -288,6 +337,7 @@ export interface ManuscriptViewModel {
   updated_at: string;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
   mainline_readiness_summary?: ManuscriptMainlineReadinessSummaryViewModel;
+  mainline_attention_handoff_pack?: ManuscriptMainlineAttentionHandoffPackViewModel;
   mainline_attempt_ledger?: ManuscriptMainlineAttemptLedgerViewModel;
 }
 

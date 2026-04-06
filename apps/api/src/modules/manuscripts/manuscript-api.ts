@@ -19,6 +19,7 @@ import {
   buildEmptyManuscriptModuleExecutionOverview,
   createNotStartedModuleOverview,
   createNotTrackedJobExecutionObservation,
+  deriveManuscriptMainlineAttentionHandoffPack,
   deriveManuscriptMainlineReadinessSummary,
   deriveModuleMainlineSettlement,
   MAINLINE_SETTLEMENT_MODULES,
@@ -189,11 +190,20 @@ async function enrichManuscriptView(
       };
     }
 
+    const readinessSummary = deriveManuscriptMainlineReadinessSummary(overview);
+    const attemptLedger = buildFailedOpenMainlineAttemptLedger(message);
+
     return {
       ...manuscript,
       module_execution_overview: overview,
-      mainline_readiness_summary: deriveManuscriptMainlineReadinessSummary(overview),
-      mainline_attempt_ledger: buildFailedOpenMainlineAttemptLedger(message),
+      mainline_readiness_summary: readinessSummary,
+      mainline_attention_handoff_pack:
+        deriveManuscriptMainlineAttentionHandoffPack({
+          overview,
+          readiness: readinessSummary,
+          attemptLedger,
+        }),
+      mainline_attempt_ledger: attemptLedger,
     };
   }
 
@@ -304,10 +314,17 @@ async function enrichManuscriptView(
     );
   }
 
+  const readinessSummary = deriveManuscriptMainlineReadinessSummary(overview);
+
   return {
     ...manuscript,
     module_execution_overview: overview,
-    mainline_readiness_summary: deriveManuscriptMainlineReadinessSummary(overview),
+    mainline_readiness_summary: readinessSummary,
+    mainline_attention_handoff_pack: deriveManuscriptMainlineAttentionHandoffPack({
+      overview,
+      readiness: readinessSummary,
+      attemptLedger,
+    }),
     mainline_attempt_ledger: attemptLedger,
   };
 }

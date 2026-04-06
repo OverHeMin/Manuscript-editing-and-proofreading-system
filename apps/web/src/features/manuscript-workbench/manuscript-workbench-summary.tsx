@@ -7,8 +7,10 @@ import type {
   JobExecutionTrackingObservationViewModel,
   JobViewModel,
   LinkedAgentExecutionRecoverySummaryViewModel,
+  MainlineAttentionItemViewModel,
   MainlineAttemptLedgerItemViewModel,
   MainlineSettlementModule,
+  ManuscriptMainlineAttentionHandoffPackViewModel,
   ManuscriptMainlineAttemptLedgerViewModel,
   ManuscriptMainlineReadinessSummaryViewModel,
   ManuscriptModuleExecutionOverviewViewModel,
@@ -232,6 +234,63 @@ export function buildManuscriptMainlineAttemptLedgerDetails(
   return details;
 }
 
+export function buildManuscriptMainlineAttentionHandoffPackDetails(
+  pack?: ManuscriptMainlineAttentionHandoffPackViewModel,
+): WorkbenchActionResultDetail[] {
+  if (!pack) {
+    return [];
+  }
+
+  if (pack.observation_status === "failed_open") {
+    const details: WorkbenchActionResultDetail[] = [
+      {
+        label: "Attention Status",
+        value: "Attention unavailable",
+      },
+    ];
+
+    if (pack.error) {
+      details.push({
+        label: "Attention Error",
+        value: pack.error,
+      });
+    }
+
+    return details;
+  }
+
+  const details: WorkbenchActionResultDetail[] = [];
+  if (pack.attention_status) {
+    details.push({
+      label: "Attention Status",
+      value: formatAttentionStatusLabel(pack.attention_status),
+    });
+  }
+
+  if (pack.handoff_status) {
+    details.push({
+      label: "Next Mainline Handoff",
+      value: formatMainlineAttentionHandoffLabel(pack),
+    });
+  }
+
+  if (pack.reason) {
+    details.push({
+      label: "Primary Attention Reason",
+      value: pack.reason,
+    });
+  }
+
+  if (pack.attention_items.length > 0) {
+    details.push({
+      label: "Attention Items",
+      value: pack.attention_items.map(formatAttentionItemDetail).join(" | "),
+    });
+  }
+
+  return details;
+}
+
 export function resolveWorkbenchActionOutcomePill(
   latestActionResult: WorkbenchActionResultViewModel,
 ): WorkbenchStatusPillViewModel {
@@ -320,11 +379,17 @@ export function ManuscriptWorkbenchSummary({
       : undefined,
   };
   const mainlineReadinessSummary = workspace.manuscript.mainline_readiness_summary;
+  const mainlineAttentionHandoffPack =
+    workspace.manuscript.mainline_attention_handoff_pack;
   const mainlineAttemptLedger = workspace.manuscript.mainline_attempt_ledger;
   const mainlineReadinessDetails =
     buildManuscriptMainlineReadinessDetails(mainlineReadinessSummary);
+  const mainlineAttentionHandoffDetails =
+    buildManuscriptMainlineAttentionHandoffPackDetails(mainlineAttentionHandoffPack);
   const mainlineReadinessPill =
     resolveWorkbenchMainlineReadinessPill(mainlineReadinessSummary);
+  const mainlineAttentionHandoffPill =
+    resolveWorkbenchAttentionStatusPill(mainlineAttentionHandoffPack);
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -452,6 +517,27 @@ export function ManuscriptWorkbenchSummary({
                 value={detail.value}
               />
             ))}
+          {mainlineAttentionHandoffPill ? (
+            <SummaryMetric
+              label="Attention Status"
+              value={
+                <StatusPill tone={mainlineAttentionHandoffPill.tone}>
+                  {mainlineAttentionHandoffPill.label}
+                </StatusPill>
+              }
+            />
+          ) : null}
+          {mainlineAttentionHandoffDetails
+            .filter((detail) => detail.label !== "Attention Status")
+            .filter((detail) => detail.label !== "Attention Items")
+            .map((detail) => (
+              <SummaryMetric
+                key={`${detail.label}:${detail.value}`}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
+          {renderMainlineAttentionItemsSection(mainlineAttentionHandoffPack)}
           {renderModuleExecutionOverviewMetrics(
             workspace.manuscript.module_execution_overview,
             latestJob,
@@ -721,6 +807,41 @@ function renderMainlineAttemptLedgerSection(
   );
 }
 
+function renderMainlineAttentionItemsSection(
+  pack?: ManuscriptMainlineAttentionHandoffPackViewModel,
+): ReactNode | null {
+  if (!pack || pack.observation_status !== "reported" || pack.attention_items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="manuscript-workbench-metric manuscript-workbench-attention-section">
+      <span>Attention Items</span>
+      <ul className="manuscript-workbench-attention-list">
+        {pack.attention_items.map((item) => (
+          <li
+            key={`${item.module}:${item.kind}:${item.job_id ?? item.snapshot_id ?? item.summary}`}
+            className="manuscript-workbench-attention-item"
+          >
+            <div className="manuscript-workbench-attention-meta">
+              <strong>{formatAttentionItemHeading(item)}</strong>
+              <StatusPill
+                tone={item.severity === "action_required" ? "error" : "neutral"}
+              >
+                {formatAttentionSeverityLabel(item.severity)}
+              </StatusPill>
+            </div>
+            <p>{item.summary}</p>
+            {item.recovery_ready_at ? (
+              <small>{`Recovery ready ${formatTimestamp(item.recovery_ready_at)}`}</small>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
   return (
     <span className="manuscript-workbench-asset-identity">
@@ -766,6 +887,45 @@ function resolveWorkbenchMainlineReadinessPill(
   if (
     summary.derived_status === "attention_required"
   ) {
+    return {
+      tone: "error",
+      label,
+    };
+  }
+
+  return {
+    tone: "neutral",
+    label,
+  };
+}
+
+function resolveWorkbenchAttentionStatusPill(
+  pack?: ManuscriptMainlineAttentionHandoffPackViewModel,
+): WorkbenchStatusPillViewModel | null {
+  if (!pack) {
+    return null;
+  }
+
+  if (pack.observation_status === "failed_open") {
+    return {
+      tone: "error",
+      label: "attention unavailable",
+    };
+  }
+
+  if (!pack.attention_status) {
+    return null;
+  }
+
+  const label = formatAttentionStatusLabel(pack.attention_status);
+  if (pack.attention_status === "clear") {
+    return {
+      tone: "success",
+      label,
+    };
+  }
+
+  if (pack.attention_status === "action_required") {
     return {
       tone: "error",
       label,
@@ -1992,6 +2152,105 @@ function formatSummaryRuntimeBindingReadiness(
   }
 
   return "Ready";
+}
+
+function formatAttentionStatusLabel(
+  status: NonNullable<ManuscriptMainlineAttentionHandoffPackViewModel["attention_status"]>,
+): string {
+  switch (status) {
+    case "clear":
+      return "Clear";
+    case "monitoring":
+      return "Monitoring";
+    case "action_required":
+      return "Action required";
+  }
+}
+
+function formatMainlineAttentionHandoffLabel(
+  pack: ManuscriptMainlineAttentionHandoffPackViewModel,
+): string {
+  if (pack.observation_status === "failed_open") {
+    return "Attention unavailable";
+  }
+
+  switch (pack.handoff_status) {
+    case "ready_now":
+      if (pack.from_module && pack.to_module) {
+        return `${pack.from_module} -> ${pack.to_module} ready now`;
+      }
+      if (pack.to_module) {
+        return `${pack.to_module} ready now`;
+      }
+      return "Ready now";
+    case "blocked_by_in_progress":
+      if (pack.focus_module && pack.to_module) {
+        return `${pack.focus_module} still running before ${pack.to_module}`;
+      }
+      if (pack.focus_module) {
+        return `${pack.focus_module} still running`;
+      }
+      return "Blocked by in-progress work";
+    case "blocked_by_follow_up":
+      if (pack.focus_module && pack.to_module) {
+        return `${pack.focus_module} follow-up still unsettled before ${pack.to_module}`;
+      }
+      if (pack.focus_module) {
+        return `${pack.focus_module} follow-up still unsettled`;
+      }
+      return "Blocked by unsettled follow-up";
+    case "blocked_by_attention":
+      if (pack.from_module && pack.to_module) {
+        return `${pack.from_module} -> ${pack.to_module} blocked by attention`;
+      }
+      if (pack.focus_module) {
+        return `${pack.focus_module} blocked by attention`;
+      }
+      return "Blocked by attention";
+    case "completed":
+      return "Mainline completed";
+    default:
+      return "Handoff reported";
+  }
+}
+
+function formatAttentionItemDetail(item: MainlineAttentionItemViewModel): string {
+  return `${item.module} ${formatAttentionSeverityLabel(item.severity).toLowerCase()}: ${item.summary}`;
+}
+
+function formatAttentionItemHeading(item: MainlineAttentionItemViewModel): string {
+  return `${item.module} ${formatAttentionItemKindLabel(item.kind)}`;
+}
+
+function formatAttentionItemKindLabel(
+  kind: MainlineAttentionItemViewModel["kind"],
+): string {
+  switch (kind) {
+    case "job_in_progress":
+      return "job in progress";
+    case "follow_up_pending":
+      return "follow-up pending";
+    case "follow_up_running":
+      return "follow-up running";
+    case "follow_up_retryable":
+      return "follow-up retryable";
+    case "follow_up_failed":
+      return "follow-up failed";
+    case "settlement_unlinked":
+      return "settlement unlinked";
+    case "job_failed":
+      return "job failed";
+    case "runtime_binding_degraded":
+      return "runtime degraded";
+    case "runtime_binding_missing":
+      return "runtime missing";
+  }
+}
+
+function formatAttentionSeverityLabel(
+  severity: MainlineAttentionItemViewModel["severity"],
+): string {
+  return severity === "action_required" ? "Action required" : "Monitoring";
 }
 
 function formatSettlementStatusLabel(
