@@ -199,6 +199,40 @@ export class PostgresExecutionTrackingRepository
     return result.rows.map(mapExecutionSnapshotRow);
   }
 
+  async listSnapshotsByManuscriptId(
+    manuscriptId: string,
+  ): Promise<ModuleExecutionSnapshotRecord[]> {
+    const result = await this.dependencies.client.query<ExecutionSnapshotRow>(
+      `
+        select
+          id,
+          manuscript_id,
+          module,
+          job_id,
+          execution_profile_id,
+          module_template_id,
+          module_template_version_no,
+          prompt_template_id,
+          prompt_template_version,
+          skill_package_ids,
+          skill_package_versions,
+          model_id,
+          model_version,
+          knowledge_item_ids,
+          created_asset_ids,
+          agent_execution_log_id,
+          draft_snapshot_id,
+          created_at
+        from execution_snapshots
+        where manuscript_id = $1
+        order by created_at asc, id asc
+      `,
+      [manuscriptId],
+    );
+
+    return result.rows.map(mapExecutionSnapshotRow);
+  }
+
   async saveKnowledgeHitLog(record: KnowledgeHitLogRecord): Promise<void> {
     await this.dependencies.client.query(
       `

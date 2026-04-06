@@ -78,6 +78,15 @@ export class InMemoryExecutionTrackingRepository
       .map(cloneSnapshotRecord);
   }
 
+  async listSnapshotsByManuscriptId(
+    manuscriptId: string,
+  ): Promise<ModuleExecutionSnapshotRecord[]> {
+    return [...this.snapshots.values()]
+      .filter((record) => record.manuscript_id === manuscriptId)
+      .sort(compareSnapshots)
+      .map(cloneSnapshotRecord);
+  }
+
   async saveKnowledgeHitLog(record: KnowledgeHitLogRecord): Promise<void> {
     this.hitLogs.set(record.id, cloneKnowledgeHitLogRecord(record));
   }

@@ -104,6 +104,33 @@ export class PostgresJobRepository implements JobRepository {
 
     return result.rows[0] ? mapJobRow(result.rows[0]) : undefined;
   }
+
+  async listByManuscriptId(manuscriptId: string): Promise<JobRecord[]> {
+    const result = await this.dependencies.client.query<JobRow>(
+      `
+        select
+          id,
+          manuscript_id,
+          module,
+          job_type,
+          status,
+          requested_by,
+          payload,
+          attempt_count,
+          started_at,
+          finished_at,
+          error_message,
+          created_at,
+          updated_at
+        from jobs
+        where manuscript_id = $1
+        order by updated_at asc, id asc
+      `,
+      [manuscriptId],
+    );
+
+    return result.rows.map(mapJobRow);
+  }
 }
 
 function mapJobRow(row: JobRow): JobRecord {

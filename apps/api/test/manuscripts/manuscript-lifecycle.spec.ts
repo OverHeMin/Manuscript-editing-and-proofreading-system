@@ -6,8 +6,11 @@ import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-m
 import { DocumentAssetService } from "../../src/modules/assets/document-asset-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
+import { InMemoryExecutionTrackingRepository } from "../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
+import { ExecutionTrackingService } from "../../src/modules/execution-tracking/execution-tracking-service.ts";
 import { createWriteTransactionManager } from "../../src/modules/shared/write-transaction-manager.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import type { AgentExecutionLogRecord } from "../../src/modules/agent-execution/agent-execution-record.ts";
 import type { DocumentAssetRecord } from "../../src/modules/assets/document-asset-record.ts";
 import type { ManuscriptRecord } from "../../src/modules/manuscripts/manuscript-record.ts";
 
@@ -100,6 +103,86 @@ function createLifecycleHarness(
     assetRepository,
     jobRepository,
     templateFamilyRepository,
+  };
+}
+
+function createSettlementLifecycleHarness(options?: {
+  issuedIds?: string[];
+  agentExecutionLogs?: AgentExecutionLogRecord[];
+}) {
+  const issuedIds = options?.issuedIds ?? [
+    "manuscript-1",
+    "asset-1",
+    "job-1",
+    "asset-2",
+    "asset-3",
+  ];
+  const manuscriptRepository = new InMemoryManuscriptRepository();
+  const assetRepository = new InMemoryDocumentAssetRepository();
+  const jobRepository = new InMemoryJobRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const executionTrackingService = new ExecutionTrackingService({
+    repository: executionTrackingRepository,
+  });
+  const executionLogs = new Map(
+    (options?.agentExecutionLogs ?? []).map((record) => [record.id, record]),
+  );
+
+  const nextId = () => {
+    const value = issuedIds.shift();
+
+    assert.ok(value, "Expected a test id to be available.");
+    return value;
+  };
+
+  const manuscriptService = new ManuscriptLifecycleService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    templateFamilyRepository,
+    now: () => new Date("2026-03-26T10:00:00.000Z"),
+    createId: nextId,
+  });
+  const assetService = new DocumentAssetService({
+    assetRepository,
+    manuscriptRepository,
+    now: () => new Date("2026-03-26T10:05:00.000Z"),
+    createId: nextId,
+  });
+  const api = createManuscriptApi({
+    manuscriptService,
+    assetService,
+    executionTrackingService,
+    agentExecutionService: {
+      async getLog(logId) {
+        const record = executionLogs.get(logId);
+        if (!record) {
+          throw new Error(`Execution log ${logId} was not found.`);
+        }
+
+        return {
+          ...record,
+          knowledge_item_ids: [...record.knowledge_item_ids],
+          verification_check_profile_ids: [
+            ...record.verification_check_profile_ids,
+          ],
+          evaluation_suite_ids: [...record.evaluation_suite_ids],
+          verification_evidence_ids: [...record.verification_evidence_ids],
+        };
+      },
+    },
+    now: () => new Date("2026-03-26T10:10:00.000Z"),
+  });
+
+  return {
+    api,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    executionTrackingRepository,
+    executionTrackingService,
+    executionLogs,
   };
 }
 
@@ -709,4 +792,236 @@ test("re-entering the same in-memory write transaction completes without deadloc
   const result = await Promise.race([nestedTransaction, timeout]);
 
   assert.equal(result, "nested-ok");
+});
+
+test("manuscript api reports not-started mainline settlement for untouched execution modules", async () => {
+  const { api } = createLifecycleHarness();
+
+  const uploadResponse = await api.upload({
+    title: "Settlement Baseline",
+    manuscriptType: "clinical_study",
+    createdBy: "user-settlement",
+    fileName: "settlement-baseline.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/settlement-baseline.docx",
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.deepEqual(
+    (manuscriptResponse.body as ManuscriptRecord & {
+      module_execution_overview?: unknown;
+    }).module_execution_overview,
+    {
+      screening: {
+        module: "screening",
+        observation_status: "not_started",
+      },
+      editing: {
+        module: "editing",
+        observation_status: "not_started",
+      },
+      proofreading: {
+        module: "proofreading",
+        observation_status: "not_started",
+      },
+    },
+  );
+});
+
+test("job reads mark upload jobs as untracked when no execution snapshot exists", async () => {
+  const { api } = createLifecycleHarness();
+
+  const uploadResponse = await api.upload({
+    title: "Untracked Upload Job",
+    manuscriptType: "review",
+    createdBy: "user-job",
+    fileName: "untracked-upload.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/untracked-upload.docx",
+  });
+
+  const jobResponse = await api.getJob({
+    jobId: uploadResponse.body.job.id,
+  });
+
+  assert.equal(jobResponse.status, 200);
+  assert.deepEqual(
+    (jobResponse.body as typeof jobResponse.body & {
+      execution_tracking?: unknown;
+    }).execution_tracking,
+    {
+      observation_status: "not_tracked",
+    },
+  );
+});
+
+test("manuscript settlement fails open for tracked modules when execution tracking is unavailable", async () => {
+  const { api, jobRepository } = createLifecycleHarness();
+
+  const uploadResponse = await api.upload({
+    title: "Tracked Module Without Snapshot Service",
+    manuscriptType: "review",
+    createdBy: "user-fail-open",
+    fileName: "tracked-module.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/tracked-module.docx",
+  });
+
+  await jobRepository.save({
+    id: "job-screening-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "screening",
+    job_type: "screening_run",
+    status: "completed",
+    requested_by: "user-fail-open",
+    payload: {
+      snapshotId: "snapshot-screening-1",
+    },
+    attempt_count: 1,
+    started_at: "2026-03-26T10:20:00.000Z",
+    finished_at: "2026-03-26T10:21:00.000Z",
+    created_at: "2026-03-26T10:20:00.000Z",
+    updated_at: "2026-03-26T10:21:00.000Z",
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.screening.observation_status,
+    "failed_open",
+  );
+  assert.match(
+    manuscriptResponse.body.module_execution_overview.screening.error ?? "",
+    /Execution tracking service is unavailable/i,
+  );
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.editing.observation_status,
+    "not_started",
+  );
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.proofreading
+      .observation_status,
+    "not_started",
+  );
+});
+
+test("manuscript and job reads expose linked settlement when snapshot evidence is available", async () => {
+  const linkedLog: AgentExecutionLogRecord = {
+    id: "execution-log-1",
+    manuscript_id: "manuscript-1",
+    module: "screening",
+    triggered_by: "user-tracked",
+    runtime_id: "runtime-1",
+    sandbox_profile_id: "sandbox-1",
+    agent_profile_id: "agent-profile-1",
+    runtime_binding_id: "binding-1",
+    tool_permission_policy_id: "policy-1",
+    execution_snapshot_id: "snapshot-screening-1",
+    knowledge_item_ids: [],
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    verification_evidence_ids: [],
+    status: "completed",
+    orchestration_status: "pending",
+    orchestration_attempt_count: 0,
+    orchestration_max_attempts: 3,
+    started_at: "2026-03-26T10:20:00.000Z",
+    finished_at: "2026-03-26T10:21:00.000Z",
+  };
+  const {
+    api,
+    jobRepository,
+    executionTrackingRepository,
+  } = createSettlementLifecycleHarness({
+    agentExecutionLogs: [linkedLog],
+  });
+
+  const uploadResponse = await api.upload({
+    title: "Tracked Mainline Settlement",
+    manuscriptType: "clinical_study",
+    createdBy: "user-tracked",
+    fileName: "tracked-mainline.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/tracked-mainline.docx",
+  });
+
+  await jobRepository.save({
+    id: "job-screening-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "screening",
+    job_type: "screening_run",
+    status: "completed",
+    requested_by: "user-tracked",
+    payload: {
+      snapshotId: "snapshot-screening-1",
+      agentExecutionLogId: linkedLog.id,
+    },
+    attempt_count: 1,
+    started_at: "2026-03-26T10:20:00.000Z",
+    finished_at: "2026-03-26T10:21:00.000Z",
+    created_at: "2026-03-26T10:20:00.000Z",
+    updated_at: "2026-03-26T10:21:00.000Z",
+  });
+  await executionTrackingRepository.saveSnapshot({
+    id: "snapshot-screening-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "screening",
+    job_id: "job-screening-1",
+    execution_profile_id: "profile-1",
+    module_template_id: "template-1",
+    module_template_version_no: 1,
+    prompt_template_id: "prompt-1",
+    prompt_template_version: "1.0.0",
+    skill_package_ids: [],
+    skill_package_versions: [],
+    model_id: "model-1",
+    knowledge_item_ids: [],
+    created_asset_ids: ["asset-screening-1"],
+    agent_execution_log_id: linkedLog.id,
+    created_at: "2026-03-26T10:21:00.000Z",
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+  const jobResponse = await api.getJob({
+    jobId: "job-screening-1",
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.screening.observation_status,
+    "reported",
+  );
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.screening.latest_job?.id,
+    "job-screening-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.screening.latest_snapshot?.id,
+    "snapshot-screening-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.module_execution_overview.screening.settlement
+      ?.derived_status,
+    "business_completed_follow_up_pending",
+  );
+
+  assert.equal(jobResponse.status, 200);
+  assert.equal(jobResponse.body.execution_tracking.observation_status, "reported");
+  assert.equal(
+    jobResponse.body.execution_tracking.snapshot?.id,
+    "snapshot-screening-1",
+  );
+  assert.equal(
+    jobResponse.body.execution_tracking.settlement?.derived_status,
+    "business_completed_follow_up_pending",
+  );
 });

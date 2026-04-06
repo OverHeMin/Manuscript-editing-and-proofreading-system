@@ -166,4 +166,8 @@ export class ManuscriptLifecycleService {
   getJob(jobId: string): Promise<JobRecord | undefined> {
     return this.jobRepository.findById(jobId);
   }
+
+  listJobsByManuscriptId(manuscriptId: string): Promise<JobRecord[]> {
+    return this.jobRepository.listByManuscriptId(manuscriptId);
+  }
 }

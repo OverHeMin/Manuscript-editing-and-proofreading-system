@@ -139,6 +139,12 @@ export class ExecutionTrackingService {
     return this.repository.findSnapshotById(snapshotId);
   }
 
+  listSnapshotsByManuscriptId(
+    manuscriptId: string,
+  ): Promise<ModuleExecutionSnapshotRecord[]> {
+    return this.repository.listSnapshotsByManuscriptId(manuscriptId);
+  }
+
   listKnowledgeHitLogsBySnapshotId(
     snapshotId: string,
   ): Promise<KnowledgeHitLogRecord[]> {

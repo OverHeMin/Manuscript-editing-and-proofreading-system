@@ -38,6 +38,17 @@ export interface CreateExecutionTrackingApiOptions {
   runningAttemptStaleAfterMs?: number;
 }
 
+export interface ExecutionTrackingSnapshotViewOptions
+  extends Pick<
+    CreateExecutionTrackingApiOptions,
+    | "executionGovernanceRepository"
+    | "runtimeBindingReadinessService"
+    | "agentExecutionService"
+  > {
+  observationTime: Date;
+  runningAttemptStaleAfterMs: number;
+}
+
 export function createExecutionTrackingApi(
   options: CreateExecutionTrackingApiOptions,
 ) {
@@ -57,7 +68,7 @@ export function createExecutionTrackingApi(
       const snapshot = await executionTrackingService.recordSnapshot(input);
       return {
         status: 201,
-        body: await enrichSnapshotView(snapshot, {
+        body: await enrichExecutionTrackingSnapshotView(snapshot, {
           ...options,
           observationTime: observeNow(),
           runningAttemptStaleAfterMs,
@@ -74,7 +85,7 @@ export function createExecutionTrackingApi(
       return {
         status: 200,
         body: snapshot
-          ? await enrichSnapshotView(snapshot, {
+          ? await enrichExecutionTrackingSnapshotView(snapshot, {
               ...options,
               observationTime: observeNow(),
               runningAttemptStaleAfterMs,
@@ -98,17 +109,9 @@ export function createExecutionTrackingApi(
   };
 }
 
-async function enrichSnapshotView(
+export async function enrichExecutionTrackingSnapshotView(
   record: ModuleExecutionSnapshotRecord,
-  options: Pick<
-    CreateExecutionTrackingApiOptions,
-    | "executionGovernanceRepository"
-    | "runtimeBindingReadinessService"
-    | "agentExecutionService"
-  > & {
-    observationTime: Date;
-    runningAttemptStaleAfterMs: number;
-  },
+  options: ExecutionTrackingSnapshotViewOptions,
 ): Promise<ModuleExecutionSnapshotViewRecord> {
   return {
     ...record,

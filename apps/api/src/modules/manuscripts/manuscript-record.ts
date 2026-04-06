@@ -34,3 +34,7 @@ export interface ManuscriptRecord {
   created_at: string;
   updated_at: string;
 }
+
+export interface ManuscriptViewRecord extends ManuscriptRecord {
+  module_execution_overview: import("./manuscript-mainline-settlement.ts").ManuscriptModuleExecutionOverviewRecord;
+}

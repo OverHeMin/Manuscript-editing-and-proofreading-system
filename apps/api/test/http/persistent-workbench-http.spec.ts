@@ -145,7 +145,14 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
               headers: { Cookie: cookie },
             },
           );
-          const manuscript = (await manuscriptResponse.json()) as { id: string };
+          const manuscript = (await manuscriptResponse.json()) as {
+            id: string;
+            module_execution_overview?: {
+              screening: { observation_status: string };
+              editing: { observation_status: string };
+              proofreading: { observation_status: string };
+            };
+          };
 
           const assetsResponse = await fetch(
             `${secondServer.baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/assets`,
@@ -168,6 +175,7 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
             id: string;
             requested_by: string;
             module: string;
+            execution_tracking?: { observation_status: string };
           };
 
           const exportResponse = await fetch(
@@ -217,6 +225,18 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
           assert.equal(exportResponse.status, 200);
           assert.equal(downloadResponse.status, 200);
           assert.equal(manuscript.id, uploaded.manuscript.id);
+          assert.equal(
+            manuscript.module_execution_overview?.screening.observation_status,
+            "not_started",
+          );
+          assert.equal(
+            manuscript.module_execution_overview?.editing.observation_status,
+            "not_started",
+          );
+          assert.equal(
+            manuscript.module_execution_overview?.proofreading.observation_status,
+            "not_started",
+          );
           assert.deepEqual(
             assets.map((asset) => ({
               id: asset.id,
@@ -232,6 +252,7 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
           assert.equal(job.id, uploaded.job.id);
           assert.equal(job.requested_by, "persistent-user");
           assert.equal(job.module, "upload");
+          assert.equal(job.execution_tracking?.observation_status, "not_tracked");
           assert.equal(exported.manuscript_id, uploaded.manuscript.id);
           assert.equal(exported.asset.id, uploaded.asset.id);
           assert.equal(
@@ -336,6 +357,13 @@ test("persistent workbench screening routes keep governed execution evidence acr
           );
           const manuscript = (await manuscriptResponse.json()) as {
             current_screening_asset_id?: string;
+            module_execution_overview?: {
+              screening?: {
+                observation_status: string;
+                latest_snapshot?: { id: string };
+                settlement?: { derived_status: string };
+              };
+            };
           };
 
           const assetsResponse = await fetch(
@@ -358,6 +386,11 @@ test("persistent workbench screening routes keep governed execution evidence acr
           const job = (await jobResponse.json()) as {
             id: string;
             payload?: Record<string, unknown>;
+            execution_tracking?: {
+              observation_status: string;
+              snapshot?: { id: string };
+              settlement?: { derived_status: string };
+            };
           };
 
           const exportResponse = await fetch(
@@ -389,6 +422,28 @@ test("persistent workbench screening routes keep governed execution evidence acr
           );
           assert.equal(job.id, screening.job.id);
           assert.equal(job.payload?.outputAssetId, screening.asset.id);
+          assert.equal(
+            manuscript.module_execution_overview?.screening?.observation_status,
+            "reported",
+          );
+          assert.equal(
+            manuscript.module_execution_overview?.screening?.latest_snapshot?.id,
+            screening.snapshot_id,
+          );
+          assert.equal(
+            manuscript.module_execution_overview?.screening?.settlement
+              ?.derived_status,
+            "business_completed_settled",
+          );
+          assert.equal(job.execution_tracking?.observation_status, "reported");
+          assert.equal(
+            job.execution_tracking?.snapshot?.id,
+            screening.snapshot_id,
+          );
+          assert.equal(
+            job.execution_tracking?.settlement?.derived_status,
+            "business_completed_settled",
+          );
           assert.equal(exported.asset.id, screening.asset.id);
 
           const runsResponse = await fetch(

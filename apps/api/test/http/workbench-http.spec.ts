@@ -72,7 +72,14 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         },
       },
     );
-    const manuscript = (await manuscriptResponse.json()) as { id: string };
+    const manuscript = (await manuscriptResponse.json()) as {
+      id: string;
+      module_execution_overview?: {
+        screening: { observation_status: string };
+        editing: { observation_status: string };
+        proofreading: { observation_status: string };
+      };
+    };
 
     const assetsResponse = await fetch(
       `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/assets`,
@@ -89,7 +96,10 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         Cookie: cookie,
       },
     });
-    const job = (await jobResponse.json()) as { id: string };
+    const job = (await jobResponse.json()) as {
+      id: string;
+      execution_tracking?: { observation_status: string };
+    };
 
     const exportResponse = await fetch(
       `${baseUrl}/api/v1/document-pipeline/export-current-asset`,
@@ -128,6 +138,19 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
     assert.equal(assetsResponse.status, 200);
     assert.equal(jobResponse.status, 200);
     assert.equal(exportResponse.status, 200);
+    assert.equal(
+      manuscript.module_execution_overview?.screening.observation_status,
+      "not_started",
+    );
+    assert.equal(
+      manuscript.module_execution_overview?.editing.observation_status,
+      "not_started",
+    );
+    assert.equal(
+      manuscript.module_execution_overview?.proofreading.observation_status,
+      "not_started",
+    );
+    assert.equal(job.execution_tracking?.observation_status, "not_tracked");
     assert.equal(downloadResponse.status, 200);
     assert.equal(manuscript.id, uploaded.manuscript.id);
     assert.deepEqual(assets.map((asset) => asset.id), [uploaded.asset.id]);

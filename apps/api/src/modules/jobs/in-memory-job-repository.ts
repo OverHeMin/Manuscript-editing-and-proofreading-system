@@ -21,6 +21,13 @@ export class InMemoryJobRepository implements JobRepository {
     return record ? cloneRecord(record) : undefined;
   }
 
+  async listByManuscriptId(manuscriptId: string): Promise<JobRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.manuscript_id === manuscriptId)
+      .sort(compareJobs)
+      .map(cloneRecord);
+  }
+
   snapshotState(): Map<string, JobRecord> {
     return new Map(
       [...this.records.entries()].map(([id, record]) => [id, cloneRecord(record)]),
@@ -33,4 +40,12 @@ export class InMemoryJobRepository implements JobRepository {
       this.records.set(id, cloneRecord(record));
     }
   }
+}
+
+function compareJobs(left: JobRecord, right: JobRecord): number {
+  if (left.updated_at !== right.updated_at) {
+    return left.updated_at.localeCompare(right.updated_at);
+  }
+
+  return left.id.localeCompare(right.id);
 }

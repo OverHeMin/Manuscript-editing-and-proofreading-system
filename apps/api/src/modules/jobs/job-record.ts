@@ -29,3 +29,7 @@ export interface JobRecord {
   created_at: string;
   updated_at: string;
 }
+
+export interface JobViewRecord extends JobRecord {
+  execution_tracking: import("../manuscripts/manuscript-mainline-settlement.ts").JobExecutionTrackingObservationRecord;
+}

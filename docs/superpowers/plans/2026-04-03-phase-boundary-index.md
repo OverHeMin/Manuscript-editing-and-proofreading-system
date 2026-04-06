@@ -89,6 +89,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 11F | `2026-04-06-phase11f-agent-execution-completion-summary-design.md` | focused mainline delivery around agent-execution completion summary | Clean | Re-enters the execution/orchestration lane under a fresh label with one additive read-only settlement summary so business completion and follow-up completion can be read directly from existing execution logs without changing orchestration behavior. |
 | Phase 11G | `2026-04-06-phase11g-agent-execution-recovery-summary-design.md` | focused mainline delivery around agent-execution recovery summary | Clean | Deepens the same fresh execution/orchestration lane with one additive read-only recovery posture summary so per-log replay readiness can be read directly from existing execution logs without reopening recovery control surfaces. |
 | Phase 12 | `2026-04-06-phase12-durable-execution-evidence-linkage-design.md` | focused mainline delivery around durable execution evidence linkage | Clean | Opens the fresh post-`11G` execution/orchestration continuation by durably linking execution snapshots back to agent-execution logs and exposing additive linked settlement/recovery observation on the existing snapshot read path. |
+| Phase 13 | `2026-04-06-phase13-manuscript-mainline-settlement-view-design.md` | focused mainline delivery around manuscript mainline settlement visibility | Clean | Continues the same fresh execution/orchestration lane by exposing additive per-module settlement visibility on the existing manuscript/job read paths without adding a new control plane. |
 
 ## Practical Guidance For Future Work
 
@@ -121,6 +122,10 @@ delivered through one cleanly isolated branch or one PR with the same name.
   continuation: it closes the durable snapshot-to-log evidence gap through one
   additive linkage/read-model slice without reopening replay authority,
   orchestration-core mutation, or control-plane expansion.
+- Treat `Phase 13` as the adjacent continuation of that same post-`11G`
+  execution/orchestration lane: it lifts the settled evidence chain up onto the
+  existing manuscript/job mainline read paths so operators can inspect per-stage
+  posture without introducing a new ledger route or control surface.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

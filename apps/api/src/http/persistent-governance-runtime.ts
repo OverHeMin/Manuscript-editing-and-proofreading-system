@@ -587,6 +587,10 @@ export function createPersistentGovernanceRuntime(
     manuscriptApi: createManuscriptApi({
       manuscriptService,
       assetService: documentAssetService,
+      executionTrackingService,
+      executionGovernanceRepository,
+      runtimeBindingReadinessService,
+      agentExecutionService,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,
