@@ -95,6 +95,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 16 | `2026-04-06-phase16-manuscript-workbench-recovery-and-readiness-posture-adoption-design.md` | focused mainline delivery around manuscript workbench recovery/readiness posture adoption | Clean | Continues the same execution/orchestration lane by adopting existing recovery and runtime-readiness read models into the current manuscript workbench cards and load-result path without adding a new page, panel, or control-plane action. |
 | Phase 17 | `2026-04-06-phase17-manuscript-workbench-action-time-execution-hydration-design.md` | focused mainline delivery around manuscript workbench action-time execution hydration | Clean | Continues the same execution/orchestration lane by hydrating returned action jobs through the existing job read path so the current workbench shows durable posture immediately after action completion without adding a new page, panel, route, or control-plane action. |
 | Phase 18 | `2026-04-06-phase18-manuscript-workbench-action-result-posture-adoption-design.md` | focused mainline delivery around manuscript workbench action-result posture adoption | Clean | Continues the same execution/orchestration lane by adopting hydrated job posture into the current Latest Action Result card for job-bearing actions, without adding a new page, panel, route, or control-plane action. |
+| Phase 19 | `2026-04-06-phase19-manuscript-workbench-refresh-time-workspace-resynchronization-design.md` | focused mainline delivery around manuscript workbench refresh-time workspace resynchronization | Clean | Continues the same execution/orchestration lane by best-effort reloading the current workspace after Refresh Latest Job so summary and recommendation surfaces stay aligned with refreshed job posture, without adding a new page, panel, route, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -155,6 +156,10 @@ delivered through one cleanly isolated branch or one PR with the same name.
   card for job-bearing actions, so action-time feedback becomes readable and
   explainable without introducing a new page, panel, route, or control-plane
   action.
+- Treat `Phase 19` as the next adjacent continuation of that same lane: it
+  aligns refresh-time job observation with the current workspace read model so
+  overview and recommendation surfaces stay in sync after Refresh Latest Job,
+  without introducing a new page, panel, route, or control-plane action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

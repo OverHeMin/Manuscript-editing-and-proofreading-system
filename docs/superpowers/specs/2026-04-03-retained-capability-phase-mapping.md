@@ -506,15 +506,35 @@ This phase does **not** absorb:
 - action-history persistence or new result panels
 - replay, retry, routing, or runtime mutation authority
 
-### 4.23 Still-Open Retained Capability Lanes After Phase 18
+### 4.23 Phase 19: Manuscript Workbench Refresh-Time Workspace Resynchronization
 
-After reconciling actual landed numbering through `Phase 18`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** best-effort workspace reload after the existing
+`Refresh Latest Job` path succeeds
+
+This phase now owns:
+
+- refresh-time resynchronization of manuscript overview and recommendation
+  surfaces with refreshed job posture
+- reuse of the existing `loadJob` and `loadWorkspace` read paths only
+- fail-open preservation of refreshed latest-job observation when workspace
+  reload is temporarily unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new refresh controls, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.24 Still-Open Retained Capability Lanes After Phase 19
+
+After reconciling actual landed numbering through `Phase 19`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, and `Phase 18` workbench adoption slices
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, and `Phase 19` workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -545,6 +565,7 @@ The repository has now landed the following actual sequence after `10A`:
 18. `Phase 16` manuscript workbench recovery/readiness posture adoption under the same fresh execution/orchestration continuation
 19. `Phase 17` manuscript workbench action-time execution hydration under the same fresh execution/orchestration continuation
 20. `Phase 18` manuscript workbench action-result posture adoption under the same fresh execution/orchestration continuation
+21. `Phase 19` manuscript workbench refresh-time workspace resynchronization under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -579,6 +600,9 @@ The practical planning implication after `11G` is:
 - treat `Phase 18` as an action-result posture-adoption slice in that same
   lane, not as permission to add new result-history surfaces, backend route
   expansion, or any replay/control-plane authority under the same label
+- treat `Phase 19` as a refresh-time workspace-resync slice in that same lane,
+  not as permission to add new refresh controls, backend route expansion, or
+  any replay/control-plane authority under the same label
 
 ## 6. What This Mapping Prevents
 

@@ -91,6 +91,54 @@ export function buildWorkbenchJobActionResultDetails(
   return [...baseDetails, ...buildJobPostureDetails(job, "Job")];
 }
 
+export async function refreshLatestWorkbenchJobContext(
+  controller: Pick<ManuscriptWorkbenchController, "loadJob" | "loadWorkspace">,
+  input: {
+    manuscriptId: string;
+    latestJobId: string;
+  },
+): Promise<{
+  latestJob: JobViewModel;
+  workspace: ManuscriptWorkbenchWorkspace | null;
+  status: string;
+  latestActionResult: WorkbenchActionResultViewModel;
+}> {
+  const latestJob = await controller.loadJob(input.latestJobId);
+  let workspace: ManuscriptWorkbenchWorkspace | null = null;
+
+  try {
+    workspace = await controller.loadWorkspace(input.manuscriptId);
+  } catch {
+    workspace = null;
+  }
+
+  const status = `Refreshed job ${latestJob.id}`;
+
+  return {
+    latestJob,
+    workspace,
+    status,
+    latestActionResult: {
+      tone: "success",
+      actionLabel: "Refresh Latest Job",
+      message: status,
+      details: buildWorkbenchJobActionResultDetails(
+        [
+          {
+            label: "Job",
+            value: latestJob.id,
+          },
+          {
+            label: "Status",
+            value: latestJob.status,
+          },
+        ],
+        latestJob,
+      ),
+    },
+  };
+}
+
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
@@ -622,27 +670,16 @@ export function ManuscriptWorkbenchPage({
                   }
 
                   void run("Refresh Latest Job", async () => {
-                    const nextJob = await controller.loadJob(latestJob.id);
-                    setLatestJob(nextJob);
-                    setStatus(`Refreshed job ${nextJob.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Refresh Latest Job",
-                      message: `Refreshed job ${nextJob.id}`,
-                      details: buildWorkbenchJobActionResultDetails(
-                        [
-                          {
-                            label: "Job",
-                            value: nextJob.id,
-                          },
-                          {
-                            label: "Status",
-                            value: nextJob.status,
-                          },
-                        ],
-                        nextJob,
-                      ),
-                    };
+                    const result = await refreshLatestWorkbenchJobContext(controller, {
+                      manuscriptId: workspace.manuscript.id,
+                      latestJobId: latestJob.id,
+                    });
+                    setLatestJob(result.latestJob);
+                    if (result.workspace) {
+                      setWorkspace(result.workspace);
+                    }
+                    setStatus(result.status);
+                    return result.latestActionResult;
                   });
                 },
               }

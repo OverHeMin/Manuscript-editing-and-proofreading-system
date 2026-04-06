@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildWorkbenchJobActionResultDetails,
   loadPrefilledWorkbenchWorkspace,
+  refreshLatestWorkbenchJobContext,
   ManuscriptWorkbenchPage,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
 import { ManuscriptWorkbenchSummary } from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
@@ -636,6 +637,342 @@ test("buildWorkbenchJobActionResultDetails fails open to base details when execu
     {
       label: "Status",
       value: "queued",
+    },
+  ]);
+});
+
+test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchronizes workspace when both reads succeed", async () => {
+  const refreshedWorkspace = {
+    manuscript: {
+      id: "manuscript-refresh-1",
+      title: "Resynchronized manuscript",
+      manuscript_type: "review" as const,
+      status: "processing" as const,
+      created_by: "operator-1",
+      current_editing_asset_id: "asset-edited-2",
+      module_execution_overview: {
+        screening: {
+          module: "screening" as const,
+          observation_status: "reported" as const,
+          settlement: {
+            derived_status: "business_completed_settled" as const,
+            business_completed: true,
+            orchestration_completed: true,
+            attention_required: false,
+            reason: "Screening is settled.",
+          },
+        },
+        editing: {
+          module: "editing" as const,
+          observation_status: "reported" as const,
+          settlement: {
+            derived_status: "business_completed_settled" as const,
+            business_completed: true,
+            orchestration_completed: true,
+            attention_required: false,
+            reason: "Editing is settled.",
+          },
+        },
+        proofreading: {
+          module: "proofreading" as const,
+          observation_status: "not_started" as const,
+        },
+      },
+      created_at: "2026-04-06T09:00:00.000Z",
+      updated_at: "2026-04-06T11:45:00.000Z",
+    },
+    assets: [
+      {
+        id: "asset-edited-2",
+        manuscript_id: "manuscript-refresh-1",
+        asset_type: "edited_docx" as const,
+        status: "active" as const,
+        storage_key: "runs/editing/settled.docx",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "editing" as const,
+        source_job_id: "job-editing-refresh-1",
+        created_by: "operator-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "editing-settled.docx",
+        created_at: "2026-04-06T11:40:00.000Z",
+        updated_at: "2026-04-06T11:40:00.000Z",
+      },
+    ],
+    currentAsset: {
+      id: "asset-edited-2",
+      manuscript_id: "manuscript-refresh-1",
+      asset_type: "edited_docx" as const,
+      status: "active" as const,
+      storage_key: "runs/editing/settled.docx",
+      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "editing" as const,
+      source_job_id: "job-editing-refresh-1",
+      created_by: "operator-1",
+      version_no: 2,
+      is_current: true,
+      file_name: "editing-settled.docx",
+      created_at: "2026-04-06T11:40:00.000Z",
+      updated_at: "2026-04-06T11:40:00.000Z",
+    },
+    suggestedParentAsset: {
+      id: "asset-edited-2",
+      manuscript_id: "manuscript-refresh-1",
+      asset_type: "edited_docx" as const,
+      status: "active" as const,
+      storage_key: "runs/editing/settled.docx",
+      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "editing" as const,
+      source_job_id: "job-editing-refresh-1",
+      created_by: "operator-1",
+      version_no: 2,
+      is_current: true,
+      file_name: "editing-settled.docx",
+      created_at: "2026-04-06T11:40:00.000Z",
+      updated_at: "2026-04-06T11:40:00.000Z",
+    },
+    latestProofreadingDraftAsset: null,
+  };
+  const refreshedJob = {
+    id: "job-editing-refresh-1",
+    manuscript_id: "manuscript-refresh-1",
+    module: "editing" as const,
+    job_type: "editing_run",
+    status: "completed" as const,
+    requested_by: "operator-1",
+    attempt_count: 2,
+    created_at: "2026-04-06T11:30:00.000Z",
+    updated_at: "2026-04-06T11:45:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      settlement: {
+        derived_status: "business_completed_settled" as const,
+        business_completed: true,
+        orchestration_completed: true,
+        attention_required: false,
+        reason: "Editing is settled.",
+      },
+      snapshot: {
+        id: "snapshot-refresh-1",
+        manuscript_id: "manuscript-refresh-1",
+        module: "editing" as const,
+        job_id: "job-editing-refresh-1",
+        execution_profile_id: "profile-editing",
+        module_template_id: "template-editing",
+        module_template_version_no: 4,
+        prompt_template_id: "prompt-editing",
+        prompt_template_version: "2026-04-06",
+        skill_package_ids: ["editing-skill-pack"],
+        skill_package_versions: ["1.0.0"],
+        model_id: "model-editing",
+        knowledge_item_ids: ["knowledge-editing-1"],
+        created_asset_ids: ["asset-edited-2"],
+        created_at: "2026-04-06T11:45:00.000Z",
+        agent_execution: {
+          observation_status: "reported" as const,
+          log_id: "agent-log-refresh-1",
+          log: {
+            id: "agent-log-refresh-1",
+            status: "completed",
+            orchestration_status: "completed",
+            completion_summary: {
+              derived_status: "business_completed_settled",
+              business_completed: true,
+              follow_up_required: false,
+              fully_settled: true,
+              attention_required: false,
+            },
+            recovery_summary: {
+              category: "not_recoverable" as const,
+              recovery_readiness: "not_recoverable" as const,
+              reason: "No recovery needed.",
+            },
+          },
+        },
+        runtime_binding_readiness: {
+          observation_status: "reported" as const,
+          report: {
+            status: "ready" as const,
+            scope: {
+              module: "editing" as const,
+              manuscriptType: "review" as const,
+              templateFamilyId: "template-family-1",
+            },
+            issues: [],
+            execution_profile_alignment: {
+              status: "aligned" as const,
+              binding_execution_profile_id: "profile-editing",
+              active_execution_profile_id: "profile-editing",
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const result = await refreshLatestWorkbenchJobContext(
+    {
+      loadJob: async (jobId: string) => {
+        assert.equal(jobId, "job-editing-refresh-1");
+        return refreshedJob;
+      },
+      loadWorkspace: async (manuscriptId: string) => {
+        assert.equal(manuscriptId, "manuscript-refresh-1");
+        return refreshedWorkspace;
+      },
+    },
+    {
+      manuscriptId: "manuscript-refresh-1",
+      latestJobId: "job-editing-refresh-1",
+    },
+  );
+
+  assert.deepEqual(result.latestJob, refreshedJob);
+  assert.deepEqual(result.workspace, refreshedWorkspace);
+  assert.equal(result.status, "Refreshed job job-editing-refresh-1");
+  assert.deepEqual(result.latestActionResult.details, [
+    {
+      label: "Job",
+      value: "job-editing-refresh-1",
+    },
+    {
+      label: "Status",
+      value: "completed",
+    },
+    {
+      label: "Job Settlement",
+      value: "Settled",
+    },
+    {
+      label: "Job Recovery",
+      value: "No recovery needed",
+    },
+    {
+      label: "Job Runtime Readiness",
+      value: "Ready",
+    },
+  ]);
+});
+
+test("refreshLatestWorkbenchJobContext fails open when workspace resynchronization fails after job refresh", async () => {
+  const refreshedJob = {
+    id: "job-editing-refresh-2",
+    manuscript_id: "manuscript-refresh-2",
+    module: "editing" as const,
+    job_type: "editing_run",
+    status: "completed" as const,
+    requested_by: "operator-1",
+    attempt_count: 2,
+    created_at: "2026-04-06T11:30:00.000Z",
+    updated_at: "2026-04-06T11:45:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      settlement: {
+        derived_status: "business_completed_follow_up_retryable" as const,
+        business_completed: true,
+        orchestration_completed: false,
+        attention_required: false,
+        reason: "Editing follow-up is retryable.",
+      },
+      snapshot: {
+        id: "snapshot-refresh-2",
+        manuscript_id: "manuscript-refresh-2",
+        module: "editing" as const,
+        job_id: "job-editing-refresh-2",
+        execution_profile_id: "profile-editing",
+        module_template_id: "template-editing",
+        module_template_version_no: 4,
+        prompt_template_id: "prompt-editing",
+        prompt_template_version: "2026-04-06",
+        skill_package_ids: ["editing-skill-pack"],
+        skill_package_versions: ["1.0.0"],
+        model_id: "model-editing",
+        knowledge_item_ids: ["knowledge-editing-1"],
+        created_asset_ids: ["asset-edited-2"],
+        created_at: "2026-04-06T11:45:00.000Z",
+        agent_execution: {
+          observation_status: "reported" as const,
+          log_id: "agent-log-refresh-2",
+          log: {
+            id: "agent-log-refresh-2",
+            status: "completed",
+            orchestration_status: "retryable",
+            completion_summary: {
+              derived_status: "business_completed_follow_up_retryable",
+              business_completed: true,
+              follow_up_required: true,
+              fully_settled: false,
+              attention_required: false,
+            },
+            recovery_summary: {
+              category: "recoverable_now" as const,
+              recovery_readiness: "ready_now" as const,
+              reason: "Retryable orchestration is ready now.",
+            },
+          },
+        },
+        runtime_binding_readiness: {
+          observation_status: "reported" as const,
+          report: {
+            status: "degraded" as const,
+            scope: {
+              module: "editing" as const,
+              manuscriptType: "review" as const,
+              templateFamilyId: "template-family-1",
+            },
+            issues: [
+              {
+                code: "runtime_not_active",
+                message: "Runtime is not active.",
+              },
+            ],
+            execution_profile_alignment: {
+              status: "drifted" as const,
+              binding_execution_profile_id: "profile-editing",
+              active_execution_profile_id: "profile-editing-active",
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const result = await refreshLatestWorkbenchJobContext(
+    {
+      loadJob: async () => refreshedJob,
+      loadWorkspace: async () => {
+        throw new Error("temporary workspace read failure");
+      },
+    },
+    {
+      manuscriptId: "manuscript-refresh-2",
+      latestJobId: "job-editing-refresh-2",
+    },
+  );
+
+  assert.deepEqual(result.latestJob, refreshedJob);
+  assert.equal(result.workspace, null);
+  assert.equal(result.status, "Refreshed job job-editing-refresh-2");
+  assert.deepEqual(result.latestActionResult.details, [
+    {
+      label: "Job",
+      value: "job-editing-refresh-2",
+    },
+    {
+      label: "Status",
+      value: "completed",
+    },
+    {
+      label: "Job Settlement",
+      value: "Business complete, follow-up retryable",
+    },
+    {
+      label: "Job Recovery",
+      value: "Recoverable now",
+    },
+    {
+      label: "Job Runtime Readiness",
+      value: "Degraded (1 issue)",
     },
   ]);
 });
