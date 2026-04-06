@@ -10,7 +10,10 @@ import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
 } from "./manuscript-workbench-controls.tsx";
-import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
+import {
+  ManuscriptWorkbenchNotice,
+  type ManuscriptWorkbenchNoticeProps,
+} from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
   buildJobPostureDetails,
@@ -93,6 +96,54 @@ export function buildWorkbenchJobActionResultDetails(
   overview?: ManuscriptWorkbenchWorkspace["manuscript"]["module_execution_overview"],
 ): WorkbenchActionResultDetail[] {
   return [...baseDetails, ...buildJobPostureDetails(job, "Job", overview)];
+}
+
+export function resolveWorkbenchNotice(input: {
+  error: string;
+  status: string;
+  latestActionResult: WorkbenchActionResultViewModel | null;
+}): ManuscriptWorkbenchNoticeProps | null {
+  if (input.error) {
+    return {
+      tone: "error",
+      title: "Action Error",
+      message: input.error,
+    };
+  }
+
+  const fallbackMessage =
+    input.status.trim() || input.latestActionResult?.message.trim() || "";
+  if (!fallbackMessage) {
+    return null;
+  }
+
+  if (!input.latestActionResult || input.latestActionResult.tone !== "success") {
+    return {
+      tone: "success",
+      title: "Action Complete",
+      message: fallbackMessage,
+    };
+  }
+
+  const settlement = findWorkbenchActionDetailValue(input.latestActionResult.details, "Settlement");
+  if (!settlement || settlement === "Settled") {
+    return {
+      tone: "success",
+      title: "Action Complete",
+      message: fallbackMessage,
+    };
+  }
+
+  return {
+    tone: "success",
+    title: "Action Recorded",
+    message: buildWorkbenchActionNoticeMessage(
+      fallbackMessage,
+      settlement,
+      findWorkbenchActionDetailValue(input.latestActionResult.details, "Recovery"),
+      findWorkbenchActionDetailValue(input.latestActionResult.details, "Recovery Ready At"),
+    ),
+  };
 }
 
 export async function refreshLatestWorkbenchJobContext(
@@ -198,6 +249,11 @@ export function ManuscriptWorkbenchPage({
     uploadForm.mimeType.trim().length > 0 &&
     hasUploadPayload(uploadForm);
   const workbenchBusy = busy || isPrefillLoading;
+  const notice = resolveWorkbenchNotice({
+    error,
+    status,
+    latestActionResult,
+  });
 
   useEffect(() => {
     if (!workspace) {
@@ -385,20 +441,7 @@ export function ManuscriptWorkbenchPage({
           </dl>
         </section>
       ) : null}
-      {error ? (
-        <ManuscriptWorkbenchNotice
-          tone="error"
-          title="Action Error"
-          message={error}
-        />
-      ) : null}
-      {!error && status ? (
-        <ManuscriptWorkbenchNotice
-          tone="success"
-          title="Action Complete"
-          message={status}
-        />
-      ) : null}
+      {notice ? <ManuscriptWorkbenchNotice {...notice} /> : null}
       {normalizedPrefilledManuscriptId.length > 0 && isPrefillLoading && !workspace ? (
         <section
           className="manuscript-workbench-loading-card"
@@ -752,6 +795,44 @@ function formatError(error: unknown): string {
   }
 
   return "Unknown workbench error";
+}
+
+function findWorkbenchActionDetailValue(
+  details: WorkbenchActionResultDetail[],
+  labelSuffix: string,
+): string | undefined {
+  return details.find((detail) => detail.label.endsWith(labelSuffix))?.value;
+}
+
+function buildWorkbenchActionNoticeMessage(
+  status: string,
+  settlement: string,
+  recovery?: string,
+  recoveryReadyAt?: string,
+): string {
+  switch (settlement) {
+    case "Business complete, follow-up pending":
+    case "Business complete, follow-up running":
+      return `${status} Governed follow-up is not settled yet.`;
+    case "Business complete, follow-up retryable":
+      if (recovery === "Waiting for retry window" && recoveryReadyAt) {
+        return `${status} Governed follow-up is retryable after ${recoveryReadyAt} and still needs attention.`;
+      }
+
+      return `${status} Governed follow-up is retryable and still needs attention.`;
+    case "Business complete, follow-up failed":
+      return `${status} Governed follow-up failed and needs inspection.`;
+    case "Business complete, settlement unlinked":
+      return `${status} Settlement linkage is incomplete and needs inspection.`;
+    case "Job failed":
+      return `${status} The latest governed attempt failed and needs inspection.`;
+    case "Job in progress":
+      return `${status} The latest governed run is still in progress.`;
+    case "Not started":
+      return `${status} The latest governed follow-up has not started yet.`;
+    default:
+      return status;
+  }
 }
 
 const MAINLINE_WORKBENCH_MODULE_ORDER = ["screening", "editing", "proofreading"] as const;

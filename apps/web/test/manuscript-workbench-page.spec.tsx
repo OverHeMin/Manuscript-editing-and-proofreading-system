@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildWorkbenchJobActionResultDetails,
   loadPrefilledWorkbenchWorkspace,
+  resolveWorkbenchNotice,
   refreshLatestWorkbenchJobContext,
   ManuscriptWorkbenchPage,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
@@ -158,6 +159,113 @@ test("manuscript workbench page shows an explicit loading state while a handed-o
     /Fetching workspace assets and latest governed state before enabling actions\./,
   );
   assert.match(markup, /manuscript-workbench-loading-card/);
+});
+
+test("resolveWorkbenchNotice keeps the generic success notice when no posture details are present", () => {
+  assert.deepEqual(
+    resolveWorkbenchNotice({
+      error: "",
+      status: "Attached file manuscript.docx",
+      latestActionResult: {
+        tone: "success",
+        actionLabel: "Attach Manuscript File",
+        message: "Attached file manuscript.docx",
+        details: [
+          {
+            label: "File",
+            value: "manuscript.docx",
+          },
+        ],
+      },
+    }),
+    {
+      tone: "success",
+      title: "Action Complete",
+      message: "Attached file manuscript.docx",
+    },
+  );
+});
+
+test("resolveWorkbenchNotice keeps the complete notice when job settlement is settled", () => {
+  assert.deepEqual(
+    resolveWorkbenchNotice({
+      error: "",
+      status: "Created asset asset-proof-1",
+      latestActionResult: {
+        tone: "success",
+        actionLabel: "Create Draft",
+        message: "Created asset asset-proof-1",
+        details: [
+          {
+            label: "Asset",
+            value: "asset-proof-1",
+          },
+          {
+            label: "Job Settlement",
+            value: "Settled",
+          },
+        ],
+      },
+    }),
+    {
+      tone: "success",
+      title: "Action Complete",
+      message: "Created asset asset-proof-1",
+    },
+  );
+});
+
+test("resolveWorkbenchNotice downgrades success wording when governed follow-up is retryable", () => {
+  assert.deepEqual(
+    resolveWorkbenchNotice({
+      error: "",
+      status: "Created asset asset-edit-2",
+      latestActionResult: {
+        tone: "success",
+        actionLabel: "Run Editing",
+        message: "Created asset asset-edit-2",
+        details: [
+          {
+            label: "Asset",
+            value: "asset-edit-2",
+          },
+          {
+            label: "Job Settlement",
+            value: "Business complete, follow-up retryable",
+          },
+          {
+            label: "Job Recovery",
+            value: "Recoverable now",
+          },
+        ],
+      },
+    }),
+    {
+      tone: "success",
+      title: "Action Recorded",
+      message: "Created asset asset-edit-2 Governed follow-up is retryable and still needs attention.",
+    },
+  );
+});
+
+test("resolveWorkbenchNotice keeps the error notice unchanged", () => {
+  assert.deepEqual(
+    resolveWorkbenchNotice({
+      error: "temporary workspace read failure",
+      status: "",
+      latestActionResult: {
+        tone: "error",
+        actionLabel: "Load Workspace",
+        message: "temporary workspace read failure",
+        details: [],
+      },
+    }),
+    {
+      tone: "error",
+      title: "Action Error",
+      message: "temporary workspace read failure",
+    },
+  );
 });
 
 test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operator-facing status result", async () => {
