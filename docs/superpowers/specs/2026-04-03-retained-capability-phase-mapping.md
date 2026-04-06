@@ -637,15 +637,37 @@ This phase does **not** absorb:
 - page/controller request choreography expansion
 - replay, retry, routing, or runtime mutation authority
 
-### 4.29 Still-Open Retained Capability Lanes After Phase 24
+### 4.29 Phase 25: Manuscript Workbench Execution Posture Pill Adoption
 
-After reconciling actual landed numbering through `Phase 24`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only posture-aware compact pill adoption inside
+the existing manuscript workbench summary cards
+
+This phase now owns:
+
+- posture-aware compact outcome pills for the existing `Latest Action Result`
+  card
+- posture-aware compact `Execution Posture` pill visibility for the existing
+  `Latest Job` card
+- fail-open preservation of the current generic pills when posture evidence is
+  missing
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new workbench pages, panels, banners, or dashboards
+- controller request choreography expansion
+- replay, retry, routing, or runtime mutation authority
+
+### 4.30 Still-Open Retained Capability Lanes After Phase 25
+
+After reconciling actual landed numbering through `Phase 25`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, `Phase 21`, `Phase 22`, `Phase 23`, and `Phase 24` workbench adoption slices
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, `Phase 21`, `Phase 22`, `Phase 23`, `Phase 24`, and `Phase 25` workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -682,6 +704,7 @@ The repository has now landed the following actual sequence after `10A`:
 24. `Phase 22` manuscript workbench latest-job overview posture fallback under the same fresh execution/orchestration continuation
 25. `Phase 23` manuscript workbench action-result overview posture fallback under the same fresh execution/orchestration continuation
 26. `Phase 24` manuscript workbench action-notice posture adoption under the same fresh execution/orchestration continuation
+27. `Phase 25` manuscript workbench execution posture pill adoption under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -735,6 +758,10 @@ The practical planning implication after `11G` is:
 - treat `Phase 24` as a top-notice posture-adoption slice in that same lane,
   not as permission to add new banners, panels, page/controller choreography
   growth, or any replay/control-plane authority under the same label
+- treat `Phase 25` as a compact posture-pill adoption slice in that same lane,
+  not as permission to add new status panels, new summary surfaces,
+  controller choreography growth, or any replay/control-plane authority under
+  the same label
 
 ## 6. What This Mapping Prevents
 

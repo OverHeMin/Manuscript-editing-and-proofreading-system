@@ -39,6 +39,11 @@ export interface WorkbenchActionResultViewModel {
   details: WorkbenchActionResultDetail[];
 }
 
+export interface WorkbenchStatusPillViewModel {
+  tone: "neutral" | "success" | "error";
+  label: string;
+}
+
 export function buildLatestJobPostureDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
   overview?: ManuscriptModuleExecutionOverviewViewModel,
@@ -130,6 +135,50 @@ export function buildJobPostureDetails(
   return details;
 }
 
+export function resolveWorkbenchActionOutcomePill(
+  latestActionResult: WorkbenchActionResultViewModel,
+): WorkbenchStatusPillViewModel {
+  const fallback: WorkbenchStatusPillViewModel =
+    latestActionResult.tone === "success"
+      ? {
+          tone: "success",
+          label: "success",
+        }
+      : {
+          tone: "error",
+          label: "attention needed",
+        };
+
+  return resolveWorkbenchPosturePillFromDetails(latestActionResult.details, fallback) ?? fallback;
+}
+
+export function resolveWorkbenchLatestJobExecutionPosturePill(
+  latestJob: JobViewModel | ModuleJobViewModel,
+  overview?: ManuscriptModuleExecutionOverviewViewModel,
+): WorkbenchStatusPillViewModel | null {
+  return resolveWorkbenchPosturePillFromDetails(
+    buildLatestJobPostureDetails(latestJob, overview),
+    null,
+  );
+}
+
+export function resolveWorkbenchLatestJobStatusPill(
+  latestJob: JobViewModel | ModuleJobViewModel,
+  overview?: ManuscriptModuleExecutionOverviewViewModel,
+): WorkbenchStatusPillViewModel {
+  if (resolveWorkbenchLatestJobExecutionPosturePill(latestJob, overview)) {
+    return {
+      tone: "neutral",
+      label: latestJob.status,
+    };
+  }
+
+  return {
+    tone: latestJob.status === "completed" ? "success" : "neutral",
+    label: latestJob.status,
+  };
+}
+
 export interface ManuscriptWorkbenchSummaryProps {
   mode: ManuscriptWorkbenchMode;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
@@ -180,6 +229,21 @@ export function ManuscriptWorkbenchSummary({
     latestExport,
     canOpenLearningReview,
   );
+  const actionOutcomePill = latestActionResult
+    ? resolveWorkbenchActionOutcomePill(latestActionResult)
+    : null;
+  const latestJobExecutionPosturePill = latestJob
+    ? resolveWorkbenchLatestJobExecutionPosturePill(
+        latestJob,
+        workspace.manuscript.module_execution_overview,
+      )
+    : null;
+  const latestJobStatusPill = latestJob
+    ? resolveWorkbenchLatestJobStatusPill(
+        latestJob,
+        workspace.manuscript.module_execution_overview,
+      )
+    : null;
 
   return (
     <section className="manuscript-workbench-summary">
@@ -191,8 +255,11 @@ export function ManuscriptWorkbenchSummary({
               <SummaryMetric
                 label="Outcome"
                 value={
-                  <StatusPill tone={latestActionResult.tone}>
-                    {latestActionResult.tone === "success" ? "success" : "attention needed"}
+                  <StatusPill tone={actionOutcomePill?.tone ?? latestActionResult.tone}>
+                    {actionOutcomePill?.label ??
+                      (latestActionResult.tone === "success"
+                        ? "success"
+                        : "attention needed")}
                   </StatusPill>
                 }
               />
@@ -326,11 +393,21 @@ export function ManuscriptWorkbenchSummary({
               <SummaryMetric
                 label="Status"
                 value={
-                  <StatusPill tone={latestJob.status === "completed" ? "success" : "neutral"}>
-                    {latestJob.status}
+                  <StatusPill tone={latestJobStatusPill?.tone ?? "neutral"}>
+                    {latestJobStatusPill?.label ?? latestJob.status}
                   </StatusPill>
                 }
               />
+              {latestJobExecutionPosturePill ? (
+                <SummaryMetric
+                  label="Execution Posture"
+                  value={
+                    <StatusPill tone={latestJobExecutionPosturePill.tone}>
+                      {latestJobExecutionPosturePill.label}
+                    </StatusPill>
+                  }
+                />
+              ) : null}
               <SummaryMetric label="Requested By" value={latestJob.requested_by} />
               <SummaryMetric
                 label="Last Updated"
@@ -506,6 +583,77 @@ function StatusPill({ tone, children }: StatusPillProps) {
   return (
     <span className={`manuscript-workbench-status-pill is-${tone}`}>{children}</span>
   );
+}
+
+function resolveWorkbenchPosturePillFromDetails(
+  details: WorkbenchActionResultDetail[],
+  fallback: WorkbenchStatusPillViewModel | null,
+): WorkbenchStatusPillViewModel | null {
+  const settlement = details.find((detail) => detail.label.endsWith("Settlement"))?.value;
+  if (!settlement) {
+    return fallback;
+  }
+
+  return resolveWorkbenchSettlementPill(settlement) ?? fallback;
+}
+
+function resolveWorkbenchSettlementPill(
+  settlement: string,
+): WorkbenchStatusPillViewModel | null {
+  switch (settlement) {
+    case "Settled":
+      return {
+        tone: "success",
+        label: "settled",
+      };
+    case "Business complete, follow-up pending":
+      return {
+        tone: "neutral",
+        label: "follow-up pending",
+      };
+    case "Business complete, follow-up running":
+      return {
+        tone: "neutral",
+        label: "follow-up running",
+      };
+    case "Business complete, follow-up retryable":
+      return {
+        tone: "error",
+        label: "follow-up retryable",
+      };
+    case "Business complete, follow-up failed":
+      return {
+        tone: "error",
+        label: "follow-up failed",
+      };
+    case "Business complete, settlement unlinked":
+      return {
+        tone: "error",
+        label: "settlement unlinked",
+      };
+    case "Job failed":
+      return {
+        tone: "error",
+        label: "job failed",
+      };
+    case "Job in progress":
+      return {
+        tone: "neutral",
+        label: "job in progress",
+      };
+    case "Not started":
+      return {
+        tone: "neutral",
+        label: "not started",
+      };
+    case "Reported":
+      return {
+        tone: "neutral",
+        label: "reported",
+      };
+    default:
+      return null;
+  }
 }
 
 function formatTimestamp(value: string | undefined): string {

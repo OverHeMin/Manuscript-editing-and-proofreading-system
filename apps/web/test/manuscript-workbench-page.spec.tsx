@@ -9,7 +9,12 @@ import {
   refreshLatestWorkbenchJobContext,
   ManuscriptWorkbenchPage,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
-import { ManuscriptWorkbenchSummary } from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
+import {
+  ManuscriptWorkbenchSummary,
+  resolveWorkbenchActionOutcomePill,
+  resolveWorkbenchLatestJobExecutionPosturePill,
+  resolveWorkbenchLatestJobStatusPill,
+} from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
 
 test("submission workbench renders a real file picker for inline uploads", () => {
   const markup = renderToStaticMarkup(
@@ -264,6 +269,380 @@ test("resolveWorkbenchNotice keeps the error notice unchanged", () => {
       tone: "error",
       title: "Action Error",
       message: "temporary workspace read failure",
+    },
+  );
+});
+
+test("resolveWorkbenchActionOutcomePill keeps the generic success pill when no posture details are present", () => {
+  assert.deepEqual(
+    resolveWorkbenchActionOutcomePill({
+      tone: "success",
+      actionLabel: "Attach Manuscript File",
+      message: "Attached file manuscript.docx",
+      details: [
+        {
+          label: "File",
+          value: "manuscript.docx",
+        },
+      ],
+    }),
+    {
+      tone: "success",
+      label: "success",
+    },
+  );
+});
+
+test("resolveWorkbenchActionOutcomePill downgrades retryable action posture to an attention pill", () => {
+  assert.deepEqual(
+    resolveWorkbenchActionOutcomePill({
+      tone: "success",
+      actionLabel: "Run Editing",
+      message: "Created asset asset-edit-2",
+      details: [
+        {
+          label: "Asset",
+          value: "asset-edit-2",
+        },
+        {
+          label: "Job Settlement",
+          value: "Business complete, follow-up retryable",
+        },
+      ],
+    }),
+    {
+      tone: "error",
+      label: "follow-up retryable",
+    },
+  );
+});
+
+test("resolveWorkbenchLatestJobExecutionPosturePill prefers hydrated execution tracking over overview fallback", () => {
+  assert.deepEqual(
+    resolveWorkbenchLatestJobExecutionPosturePill(
+      {
+        id: "job-editing-1",
+        manuscript_id: "manuscript-1",
+        module: "editing",
+        job_type: "editing_run",
+        status: "completed",
+        requested_by: "operator-1",
+        attempt_count: 2,
+        created_at: "2026-04-06T09:40:00.000Z",
+        updated_at: "2026-04-06T09:45:00.000Z",
+        execution_tracking: {
+          observation_status: "reported",
+          settlement: {
+            derived_status: "business_completed_follow_up_retryable",
+            business_completed: true,
+            orchestration_completed: false,
+            attention_required: false,
+            reason: "Editing follow-up is retryable.",
+          },
+          snapshot: {
+            id: "snapshot-editing-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_id: "job-editing-1",
+            execution_profile_id: "profile-editing",
+            module_template_id: "template-editing",
+            module_template_version_no: 4,
+            prompt_template_id: "prompt-editing",
+            prompt_template_version: "2026-04-06",
+            skill_package_ids: ["editing-skill-pack"],
+            skill_package_versions: ["1.0.0"],
+            model_id: "model-editing",
+            knowledge_item_ids: ["knowledge-editing-1"],
+            created_asset_ids: ["asset-edit-2"],
+            created_at: "2026-04-06T09:45:00.000Z",
+            agent_execution: {
+              observation_status: "reported",
+              log_id: "agent-log-editing-1",
+              log: {
+                id: "agent-log-editing-1",
+                status: "completed",
+                orchestration_status: "retryable",
+                completion_summary: {
+                  derived_status: "business_completed_follow_up_retryable",
+                  business_completed: true,
+                  follow_up_required: true,
+                  fully_settled: false,
+                  attention_required: false,
+                },
+                recovery_summary: {
+                  category: "recoverable_now",
+                  recovery_readiness: "ready_now",
+                  reason: "Retryable orchestration is ready now.",
+                },
+              },
+            },
+            runtime_binding_readiness: {
+              observation_status: "reported",
+              report: {
+                status: "ready",
+                scope: {
+                  module: "editing",
+                  manuscriptType: "review",
+                  templateFamilyId: "template-family-1",
+                },
+                issues: [],
+                execution_profile_alignment: {
+                  status: "aligned",
+                  binding_execution_profile_id: "profile-editing",
+                  active_execution_profile_id: "profile-editing",
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        screening: {
+          module: "screening",
+          observation_status: "not_started",
+        },
+        editing: {
+          module: "editing",
+          observation_status: "reported",
+          latest_job: {
+            id: "job-editing-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_type: "editing_run",
+            status: "completed",
+            requested_by: "operator-1",
+            attempt_count: 2,
+            created_at: "2026-04-06T09:40:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+          settlement: {
+            derived_status: "business_completed_settled",
+            business_completed: true,
+            orchestration_completed: true,
+            attention_required: false,
+            reason: "Editing is settled.",
+          },
+        },
+        proofreading: {
+          module: "proofreading",
+          observation_status: "not_started",
+        },
+      },
+    ),
+    {
+      tone: "error",
+      label: "follow-up retryable",
+    },
+  );
+});
+
+test("resolveWorkbenchLatestJobExecutionPosturePill falls back to overview-backed posture when hydration is unavailable", () => {
+  assert.deepEqual(
+    resolveWorkbenchLatestJobExecutionPosturePill(
+      {
+        id: "job-proofreading-1",
+        manuscript_id: "manuscript-2",
+        module: "proofreading",
+        job_type: "proofreading_finalize",
+        status: "completed",
+        requested_by: "operator-1",
+        attempt_count: 1,
+        created_at: "2026-04-06T10:00:00.000Z",
+        updated_at: "2026-04-06T10:05:00.000Z",
+      },
+      {
+        screening: {
+          module: "screening",
+          observation_status: "reported",
+          settlement: {
+            derived_status: "business_completed_settled",
+            business_completed: true,
+            orchestration_completed: true,
+            attention_required: false,
+            reason: "Screening is settled.",
+          },
+        },
+        editing: {
+          module: "editing",
+          observation_status: "reported",
+          settlement: {
+            derived_status: "business_completed_settled",
+            business_completed: true,
+            orchestration_completed: true,
+            attention_required: false,
+            reason: "Editing is settled.",
+          },
+        },
+        proofreading: {
+          module: "proofreading",
+          observation_status: "reported",
+          latest_job: {
+            id: "job-proofreading-1",
+            manuscript_id: "manuscript-2",
+            module: "proofreading",
+            job_type: "proofreading_finalize",
+            status: "completed",
+            requested_by: "operator-1",
+            attempt_count: 1,
+            created_at: "2026-04-06T10:00:00.000Z",
+            updated_at: "2026-04-06T10:05:00.000Z",
+          },
+          settlement: {
+            derived_status: "business_completed_follow_up_pending",
+            business_completed: true,
+            orchestration_completed: false,
+            attention_required: false,
+            reason: "Proofreading follow-up is pending.",
+          },
+          latest_snapshot: {
+            id: "snapshot-proofreading-1",
+            manuscript_id: "manuscript-2",
+            module: "proofreading",
+            job_id: "job-proofreading-1",
+            execution_profile_id: "profile-proofreading",
+            module_template_id: "template-proofreading",
+            module_template_version_no: 4,
+            prompt_template_id: "prompt-proofreading",
+            prompt_template_version: "2026-04-06",
+            skill_package_ids: ["proofreading-skill-pack"],
+            skill_package_versions: ["1.0.0"],
+            model_id: "model-proofreading",
+            knowledge_item_ids: ["knowledge-proofreading-1"],
+            created_asset_ids: ["asset-proof-1"],
+            created_at: "2026-04-06T10:05:00.000Z",
+            agent_execution: {
+              observation_status: "reported",
+              log_id: "agent-log-proofreading-1",
+              log: {
+                id: "agent-log-proofreading-1",
+                status: "completed",
+                orchestration_status: "pending",
+                completion_summary: {
+                  derived_status: "business_completed_follow_up_pending",
+                  business_completed: true,
+                  follow_up_required: true,
+                  fully_settled: false,
+                  attention_required: false,
+                },
+                recovery_summary: {
+                  category: "recoverable_now",
+                  recovery_readiness: "ready_now",
+                  reason: "Pending orchestration is recoverable now.",
+                },
+              },
+            },
+            runtime_binding_readiness: {
+              observation_status: "reported",
+              report: {
+                status: "ready",
+                scope: {
+                  module: "proofreading",
+                  manuscriptType: "review",
+                  templateFamilyId: "template-family-1",
+                },
+                issues: [],
+                execution_profile_alignment: {
+                  status: "aligned",
+                  binding_execution_profile_id: "profile-proofreading",
+                  active_execution_profile_id: "profile-proofreading",
+                },
+              },
+            },
+          },
+        },
+      },
+    ),
+    {
+      tone: "neutral",
+      label: "follow-up pending",
+    },
+  );
+});
+
+test("resolveWorkbenchLatestJobStatusPill keeps raw completed status as neutral evidence when posture is available", () => {
+  assert.deepEqual(
+    resolveWorkbenchLatestJobStatusPill(
+      {
+        id: "job-editing-2",
+        manuscript_id: "manuscript-3",
+        module: "editing",
+        job_type: "editing_run",
+        status: "completed",
+        requested_by: "operator-1",
+        attempt_count: 1,
+        created_at: "2026-04-06T10:10:00.000Z",
+        updated_at: "2026-04-06T10:15:00.000Z",
+        execution_tracking: {
+          observation_status: "reported",
+          settlement: {
+            derived_status: "business_completed_follow_up_pending",
+            business_completed: true,
+            orchestration_completed: false,
+            attention_required: false,
+            reason: "Editing follow-up is pending.",
+          },
+          snapshot: {
+            id: "snapshot-editing-2",
+            manuscript_id: "manuscript-3",
+            module: "editing",
+            job_id: "job-editing-2",
+            execution_profile_id: "profile-editing",
+            module_template_id: "template-editing",
+            module_template_version_no: 4,
+            prompt_template_id: "prompt-editing",
+            prompt_template_version: "2026-04-06",
+            skill_package_ids: ["editing-skill-pack"],
+            skill_package_versions: ["1.0.0"],
+            model_id: "model-editing",
+            knowledge_item_ids: ["knowledge-editing-1"],
+            created_asset_ids: ["asset-edit-3"],
+            created_at: "2026-04-06T10:15:00.000Z",
+            agent_execution: {
+              observation_status: "reported",
+              log_id: "agent-log-editing-2",
+              log: {
+                id: "agent-log-editing-2",
+                status: "completed",
+                orchestration_status: "pending",
+                completion_summary: {
+                  derived_status: "business_completed_follow_up_pending",
+                  business_completed: true,
+                  follow_up_required: true,
+                  fully_settled: false,
+                  attention_required: false,
+                },
+                recovery_summary: {
+                  category: "recoverable_now",
+                  recovery_readiness: "ready_now",
+                  reason: "Pending orchestration is recoverable now.",
+                },
+              },
+            },
+            runtime_binding_readiness: {
+              observation_status: "reported",
+              report: {
+                status: "ready",
+                scope: {
+                  module: "editing",
+                  manuscriptType: "review",
+                  templateFamilyId: "template-family-1",
+                },
+                issues: [],
+                execution_profile_alignment: {
+                  status: "aligned",
+                  binding_execution_profile_id: "profile-editing",
+                  active_execution_profile_id: "profile-editing",
+                },
+              },
+            },
+          },
+        },
+      },
+      undefined,
+    ),
+    {
+      tone: "neutral",
+      label: "completed",
     },
   );
 });
