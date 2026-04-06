@@ -3,6 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildWorkbenchJobActionResultDetails,
   loadPrefilledWorkbenchWorkspace,
   ManuscriptWorkbenchPage,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
@@ -474,6 +475,167 @@ test("loadPrefilledWorkbenchWorkspace fails open when latest tracked job hydrati
     {
       label: "Latest Job",
       value: "job-proof-3",
+    },
+  ]);
+});
+
+test("buildWorkbenchJobActionResultDetails appends hydrated execution posture for job-bearing actions", () => {
+  const details = buildWorkbenchJobActionResultDetails(
+    [
+      {
+        label: "Asset",
+        value: "asset-editing-1",
+      },
+      {
+        label: "Job",
+        value: "job-editing-1",
+      },
+    ],
+    {
+      id: "job-editing-1",
+      manuscript_id: "manuscript-action-1",
+      module: "editing",
+      job_type: "editing_run",
+      status: "completed",
+      requested_by: "operator-1",
+      attempt_count: 1,
+      created_at: "2026-04-06T09:40:00.000Z",
+      updated_at: "2026-04-06T09:45:00.000Z",
+      execution_tracking: {
+        observation_status: "reported",
+        snapshot: {
+          id: "snapshot-editing-1",
+          manuscript_id: "manuscript-action-1",
+          module: "editing",
+          job_id: "job-editing-1",
+          execution_profile_id: "profile-editing",
+          module_template_id: "template-editing",
+          module_template_version_no: 4,
+          prompt_template_id: "prompt-editing",
+          prompt_template_version: "2026-04-06",
+          skill_package_ids: ["editing-skill-pack"],
+          skill_package_versions: ["1.0.0"],
+          model_id: "model-editing",
+          knowledge_item_ids: ["knowledge-editing-1"],
+          created_asset_ids: ["asset-editing-1"],
+          created_at: "2026-04-06T09:45:00.000Z",
+          agent_execution: {
+            observation_status: "reported",
+            log_id: "agent-log-editing-1",
+            log: {
+              id: "agent-log-editing-1",
+              status: "completed",
+              orchestration_status: "retryable",
+              completion_summary: {
+                derived_status: "business_completed_follow_up_retryable",
+                business_completed: true,
+                follow_up_required: true,
+                fully_settled: false,
+                attention_required: false,
+              },
+              recovery_summary: {
+                category: "deferred_retry",
+                recovery_readiness: "waiting_retry_eligibility",
+                recovery_ready_at: "2026-04-06T11:30:00.000Z",
+                reason: "Retryable orchestration is deferred until 2026-04-06T11:30:00.000Z.",
+              },
+            },
+          },
+          runtime_binding_readiness: {
+            observation_status: "reported",
+            report: {
+              status: "degraded",
+              scope: {
+                module: "editing",
+                manuscriptType: "review",
+                templateFamilyId: "template-family-1",
+              },
+              issues: [
+                {
+                  code: "runtime_not_active",
+                  message: "Runtime is not active.",
+                },
+              ],
+              execution_profile_alignment: {
+                status: "drifted",
+                binding_execution_profile_id: "profile-editing",
+                active_execution_profile_id: "profile-editing-active",
+              },
+            },
+          },
+        },
+        settlement: {
+          derived_status: "business_completed_follow_up_retryable",
+          business_completed: true,
+          orchestration_completed: false,
+          attention_required: false,
+          reason: "Business execution is complete and governed follow-up is retryable.",
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(details, [
+    {
+      label: "Asset",
+      value: "asset-editing-1",
+    },
+    {
+      label: "Job",
+      value: "job-editing-1",
+    },
+    {
+      label: "Job Settlement",
+      value: "Business complete, follow-up retryable",
+    },
+    {
+      label: "Job Recovery",
+      value: "Waiting for retry window",
+    },
+    {
+      label: "Job Recovery Ready At",
+      value: "2026-04-06 11:30:00Z",
+    },
+    {
+      label: "Job Runtime Readiness",
+      value: "Degraded (1 issue)",
+    },
+  ]);
+});
+
+test("buildWorkbenchJobActionResultDetails fails open to base details when execution posture is unavailable", () => {
+  const details = buildWorkbenchJobActionResultDetails(
+    [
+      {
+        label: "Job",
+        value: "job-upload-1",
+      },
+      {
+        label: "Status",
+        value: "queued",
+      },
+    ],
+    {
+      id: "job-upload-1",
+      manuscript_id: "manuscript-action-2",
+      module: "upload",
+      job_type: "manuscript_upload",
+      status: "queued",
+      requested_by: "operator-1",
+      attempt_count: 0,
+      created_at: "2026-04-06T09:00:00.000Z",
+      updated_at: "2026-04-06T09:00:00.000Z",
+    },
+  );
+
+  assert.deepEqual(details, [
+    {
+      label: "Job",
+      value: "job-upload-1",
+    },
+    {
+      label: "Status",
+      value: "queued",
     },
   ]);
 });

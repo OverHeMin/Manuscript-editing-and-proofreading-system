@@ -42,6 +42,13 @@ export interface WorkbenchActionResultViewModel {
 export function buildLatestJobPostureDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
 ): WorkbenchActionResultDetail[] {
+  return buildJobPostureDetails(latestJob, "Latest Job");
+}
+
+export function buildJobPostureDetails(
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+  labelPrefix: string,
+): WorkbenchActionResultDetail[] {
   const executionTracking = getJobExecutionTracking(latestJob);
   if (!executionTracking) {
     return [];
@@ -49,7 +56,7 @@ export function buildLatestJobPostureDetails(
 
   const details: WorkbenchActionResultDetail[] = [
     {
-      label: "Latest Job Settlement",
+      label: `${labelPrefix} Settlement`,
       value: describeJobExecutionTracking(executionTracking),
     },
   ];
@@ -57,7 +64,7 @@ export function buildLatestJobPostureDetails(
   const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
   if (recoveryPosture) {
     details.push({
-      label: "Latest Job Recovery",
+      label: `${labelPrefix} Recovery`,
       value: recoveryPosture,
     });
   }
@@ -65,7 +72,7 @@ export function buildLatestJobPostureDetails(
   const recoveryReadyAt = getExecutionTrackingRecoveryReadyAt(executionTracking);
   if (recoveryReadyAt) {
     details.push({
-      label: "Latest Job Recovery Ready At",
+      label: `${labelPrefix} Recovery Ready At`,
       value: formatTimestamp(recoveryReadyAt),
     });
   }
@@ -75,7 +82,7 @@ export function buildLatestJobPostureDetails(
   );
   if (runtimeBindingReadiness) {
     details.push({
-      label: "Latest Job Runtime Readiness",
+      label: `${labelPrefix} Runtime Readiness`,
       value: runtimeBindingReadiness,
     });
   }

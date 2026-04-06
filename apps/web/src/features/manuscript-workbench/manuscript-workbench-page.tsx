@@ -13,9 +13,11 @@ import {
 import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
+  buildJobPostureDetails,
   buildLatestJobPostureDetails,
   ManuscriptWorkbenchSummary,
   type WorkbenchActionResultViewModel,
+  type WorkbenchActionResultDetail,
 } from "./manuscript-workbench-summary.tsx";
 import {
   createManuscriptWorkbenchController,
@@ -80,6 +82,13 @@ export async function loadPrefilledWorkbenchWorkspace(
       details,
     },
   };
+}
+
+export function buildWorkbenchJobActionResultDetails(
+  baseDetails: WorkbenchActionResultDetail[],
+  job: JobViewModel | ModuleJobViewModel,
+): WorkbenchActionResultDetail[] {
+  return [...baseDetails, ...buildJobPostureDetails(job, "Job")];
 }
 
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
@@ -398,16 +407,19 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Upload Manuscript",
                       message: `Uploaded manuscript ${result.upload.manuscript.id}`,
-                      details: [
-                        {
-                          label: "Manuscript",
-                          value: result.upload.manuscript.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.upload.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Manuscript",
+                            value: result.upload.manuscript.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.upload.job.id,
+                          },
+                        ],
+                        result.upload.job,
+                      ),
                     };
                   }),
               }
@@ -460,16 +472,19 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: resolveActionLabel(mode),
                       message: `Created asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                      ),
                     };
                   }),
               }
@@ -506,16 +521,19 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Finalize Proofreading",
                       message: `Finalized asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                      ),
                     };
                   }),
               }
@@ -583,16 +601,19 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Publish Human Final",
                       message: `Published human-final asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                      ),
                     };
                   }),
                 onRefreshLatestJob: () => {
@@ -608,16 +629,19 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Refresh Latest Job",
                       message: `Refreshed job ${nextJob.id}`,
-                      details: [
-                        {
-                          label: "Job",
-                          value: nextJob.id,
-                        },
-                        {
-                          label: "Status",
-                          value: nextJob.status,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Job",
+                            value: nextJob.id,
+                          },
+                          {
+                            label: "Status",
+                            value: nextJob.status,
+                          },
+                        ],
+                        nextJob,
+                      ),
                     };
                   });
                 },
