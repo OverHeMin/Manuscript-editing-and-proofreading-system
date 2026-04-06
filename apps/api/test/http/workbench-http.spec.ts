@@ -79,6 +79,11 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         editing: { observation_status: string };
         proofreading: { observation_status: string };
       };
+      mainline_readiness_summary?: {
+        observation_status: string;
+        derived_status?: string;
+        next_module?: string;
+      };
     };
 
     const assetsResponse = await fetch(
@@ -149,6 +154,18 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
     assert.equal(
       manuscript.module_execution_overview?.proofreading.observation_status,
       "not_started",
+    );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.observation_status,
+      "reported",
+    );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.derived_status,
+      "ready_for_next_step",
+    );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.next_module,
+      "screening",
     );
     assert.equal(job.execution_tracking?.observation_status, "not_tracked");
     assert.equal(downloadResponse.status, 200);

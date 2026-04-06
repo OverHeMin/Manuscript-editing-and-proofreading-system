@@ -716,6 +716,78 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
   });
 });
 
+test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when manuscript readiness is reported", async () => {
+  const workspace = {
+    manuscript: {
+      id: "manuscript-11",
+      title: "Restart-safe readiness",
+      manuscript_type: "review" as const,
+      status: "processing" as const,
+      created_by: "editor-2",
+      created_at: "2026-04-06T09:00:00.000Z",
+      updated_at: "2026-04-06T10:00:00.000Z",
+      mainline_readiness_summary: {
+        observation_status: "reported" as const,
+        derived_status: "ready_for_next_step" as const,
+        next_module: "screening" as const,
+        reason: "The manuscript is ready for governed screening.",
+      },
+    },
+    assets: [],
+    currentAsset: null,
+    suggestedParentAsset: null,
+    latestProofreadingDraftAsset: null,
+  };
+
+  const result = await loadPrefilledWorkbenchWorkspace(
+    {
+      loadWorkspace: async () => workspace,
+      uploadManuscriptAndLoad: async () => {
+        throw new Error("not used");
+      },
+      runModuleAndLoad: async () => {
+        throw new Error("not used");
+      },
+      finalizeProofreadingAndLoad: async () => {
+        throw new Error("not used");
+      },
+      publishHumanFinalAndLoad: async () => {
+        throw new Error("not used");
+      },
+      loadJob: async () => {
+        throw new Error("not used");
+      },
+      exportCurrentAsset: async () => {
+        throw new Error("not used");
+      },
+    },
+    "manuscript-11",
+  );
+
+  assert.deepEqual(result.latestActionResult.details, [
+    {
+      label: "Manuscript",
+      value: "manuscript-11",
+    },
+    {
+      label: "Current Asset",
+      value: "Not available",
+    },
+    {
+      label: "Mainline Readiness",
+      value: "Ready for next step",
+    },
+    {
+      label: "Next Module",
+      value: "screening",
+    },
+    {
+      label: "Readiness Reason",
+      value: "The manuscript is ready for governed screening.",
+    },
+  ]);
+});
+
 test("loadPrefilledWorkbenchWorkspace restores the newest tracked mainline job from manuscript settlement overview", async () => {
   const workspace = {
     manuscript: {
@@ -1830,6 +1902,95 @@ test("refreshLatestWorkbenchJobContext fails open when workspace resynchronizati
       value: "Degraded (1 issue)",
     },
   ]);
+});
+
+test("manuscript workbench summary renders mainline readiness and uses it for mainline recommendation when available", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="screening"
+      accessibleHandoffModes={["editing"]}
+      workspace={{
+        manuscript: {
+          id: "manuscript-ready-1",
+          title: "Ready manuscript",
+          manuscript_type: "review",
+          status: "processing",
+          created_by: "editor-1",
+          current_screening_asset_id: "asset-screening-ready-1",
+          created_at: "2026-04-06T08:00:00.000Z",
+          updated_at: "2026-04-06T08:30:00.000Z",
+          mainline_readiness_summary: {
+            observation_status: "reported",
+            derived_status: "ready_for_next_step",
+            next_module: "editing",
+            reason: "Screening is settled and editing can begin.",
+          },
+        },
+        assets: [
+          {
+            id: "asset-screening-ready-1",
+            manuscript_id: "manuscript-ready-1",
+            asset_type: "screening_report",
+            status: "active",
+            storage_key: "runs/manuscript-ready-1/screening/output.md",
+            mime_type: "text/markdown",
+            source_module: "screening",
+            source_job_id: "job-screening-ready-1",
+            created_by: "editor-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "screening-output.md",
+            created_at: "2026-04-06T08:20:00.000Z",
+            updated_at: "2026-04-06T08:20:00.000Z",
+          },
+        ],
+        currentAsset: {
+          id: "asset-screening-ready-1",
+          manuscript_id: "manuscript-ready-1",
+          asset_type: "screening_report",
+          status: "active",
+          storage_key: "runs/manuscript-ready-1/screening/output.md",
+          mime_type: "text/markdown",
+          source_module: "screening",
+          source_job_id: "job-screening-ready-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "screening-output.md",
+          created_at: "2026-04-06T08:20:00.000Z",
+          updated_at: "2026-04-06T08:20:00.000Z",
+        },
+        suggestedParentAsset: {
+          id: "asset-screening-ready-1",
+          manuscript_id: "manuscript-ready-1",
+          asset_type: "screening_report",
+          status: "active",
+          storage_key: "runs/manuscript-ready-1/screening/output.md",
+          mime_type: "text/markdown",
+          source_module: "screening",
+          source_job_id: "job-screening-ready-1",
+          created_by: "editor-1",
+          version_no: 2,
+          is_current: true,
+          file_name: "screening-output.md",
+          created_at: "2026-04-06T08:20:00.000Z",
+          updated_at: "2026-04-06T08:20:00.000Z",
+        },
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /Mainline Readiness/);
+  assert.match(markup, /Ready for next step/);
+  assert.match(markup, /Next Module/);
+  assert.match(markup, /editing/);
+  assert.match(markup, /Advance this manuscript into editing/);
+  assert.match(markup, /Screening is settled and editing can begin\./);
+  assert.match(markup, /Open Editing Workbench/);
 });
 
 test("manuscript workbench summary shows prepared export metadata for finalized proofreading output", () => {

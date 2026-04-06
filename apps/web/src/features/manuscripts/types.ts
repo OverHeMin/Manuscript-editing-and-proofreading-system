@@ -210,6 +210,25 @@ export interface ManuscriptModuleExecutionOverviewViewModel {
   proofreading: ModuleExecutionOverviewViewModel;
 }
 
+export type ManuscriptMainlineReadinessDerivedStatus =
+  | "ready_for_next_step"
+  | "in_progress"
+  | "waiting_for_follow_up"
+  | "attention_required"
+  | "completed";
+
+export interface ManuscriptMainlineReadinessSummaryViewModel {
+  observation_status: "reported" | "failed_open";
+  derived_status?: ManuscriptMainlineReadinessDerivedStatus;
+  active_module?: MainlineSettlementModule;
+  next_module?: MainlineSettlementModule;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  reason?: string;
+  error?: string;
+}
+
 export interface JobExecutionTrackingObservationViewModel {
   observation_status: "reported" | "not_tracked" | "failed_open";
   snapshot?: ModuleExecutionSnapshotViewModel;
@@ -230,6 +249,7 @@ export interface ManuscriptViewModel {
   created_at: string;
   updated_at: string;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
+  mainline_readiness_summary?: ManuscriptMainlineReadinessSummaryViewModel;
 }
 
 export interface DocumentAssetViewModel {

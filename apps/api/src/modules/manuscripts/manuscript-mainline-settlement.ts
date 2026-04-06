@@ -44,6 +44,25 @@ export interface ManuscriptModuleExecutionOverviewRecord {
   proofreading: ModuleExecutionOverviewRecord;
 }
 
+export type ManuscriptMainlineReadinessDerivedStatus =
+  | "ready_for_next_step"
+  | "in_progress"
+  | "waiting_for_follow_up"
+  | "attention_required"
+  | "completed";
+
+export interface ManuscriptMainlineReadinessSummaryRecord {
+  observation_status: "reported" | "failed_open";
+  derived_status?: ManuscriptMainlineReadinessDerivedStatus;
+  active_module?: MainlineSettlementModule;
+  next_module?: MainlineSettlementModule;
+  recovery_ready_at?: string;
+  runtime_binding_status?: "ready" | "degraded" | "missing";
+  runtime_binding_issue_count?: number;
+  reason?: string;
+  error?: string;
+}
+
 export interface JobExecutionTrackingObservationRecord {
   observation_status: "reported" | "not_tracked" | "failed_open";
   snapshot?: ModuleExecutionSnapshotViewRecord;
@@ -181,4 +200,120 @@ export function buildEmptyManuscriptModuleExecutionOverview(): ManuscriptModuleE
     editing: createNotStartedModuleOverview("editing"),
     proofreading: createNotStartedModuleOverview("proofreading"),
   };
+}
+
+export function deriveManuscriptMainlineReadinessSummary(
+  overview: ManuscriptModuleExecutionOverviewRecord,
+): ManuscriptMainlineReadinessSummaryRecord {
+  for (const module of MAINLINE_SETTLEMENT_MODULES) {
+    const moduleOverview = overview[module];
+    if (moduleOverview.observation_status === "failed_open") {
+      return {
+        observation_status: "failed_open",
+        active_module: module,
+        error:
+          moduleOverview.error ??
+          `${formatMainlineModuleLabel(module)} readiness observation failed open.`,
+      };
+    }
+
+    if (moduleOverview.observation_status === "not_started") {
+      return {
+        observation_status: "reported",
+        derived_status: "ready_for_next_step",
+        next_module: module,
+        reason: `The manuscript is ready for governed ${module}ing.`.replace(
+          "proofreadinging",
+          "proofreading",
+        ),
+      };
+    }
+
+    const settlement = moduleOverview.settlement;
+    if (!settlement) {
+      return {
+        observation_status: "failed_open",
+        active_module: module,
+        error: `${formatMainlineModuleLabel(module)} readiness summary could not be derived because settlement is missing.`,
+      };
+    }
+
+    if (settlement.derived_status === "business_completed_settled") {
+      continue;
+    }
+
+    const shared = {
+      observation_status: "reported" as const,
+      active_module: module,
+      recovery_ready_at: deriveModuleRecoveryReadyAt(moduleOverview),
+      ...deriveModuleRuntimeBindingSummary(moduleOverview),
+      reason: settlement.reason,
+    };
+
+    if (settlement.derived_status === "job_in_progress") {
+      return {
+        ...shared,
+        derived_status: "in_progress",
+      };
+    }
+
+    if (
+      settlement.derived_status === "business_completed_follow_up_pending" ||
+      settlement.derived_status === "business_completed_follow_up_running"
+    ) {
+      return {
+        ...shared,
+        derived_status: "waiting_for_follow_up",
+      };
+    }
+
+    return {
+      ...shared,
+      derived_status: "attention_required",
+    };
+  }
+
+  return {
+    observation_status: "reported",
+    derived_status: "completed",
+    reason: "Screening, editing, and proofreading are all settled.",
+  };
+}
+
+function deriveModuleRecoveryReadyAt(
+  overview: ModuleExecutionOverviewRecord,
+): string | undefined {
+  if (overview.latest_snapshot?.agent_execution.observation_status !== "reported") {
+    return undefined;
+  }
+
+  return overview.latest_snapshot.agent_execution.log?.recovery_summary.recovery_ready_at;
+}
+
+function deriveModuleRuntimeBindingSummary(
+  overview: ModuleExecutionOverviewRecord,
+): Pick<
+  ManuscriptMainlineReadinessSummaryRecord,
+  "runtime_binding_status" | "runtime_binding_issue_count"
+> {
+  const observation = overview.latest_snapshot?.runtime_binding_readiness;
+  if (!observation || observation.observation_status !== "reported" || !observation.report) {
+    return {};
+  }
+
+  return {
+    runtime_binding_status: observation.report.status,
+    runtime_binding_issue_count: observation.report.issues.length,
+  };
+}
+
+function formatMainlineModuleLabel(module: MainlineSettlementModule): string {
+  if (module === "screening") {
+    return "Screening";
+  }
+  if (module === "editing") {
+    return "Editing";
+  }
+
+  return "Proofreading";
 }

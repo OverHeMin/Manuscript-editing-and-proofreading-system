@@ -265,6 +265,18 @@ test("upload creates manuscript, original asset, and queued upload job records",
 
   assert.equal(manuscriptResponse.status, 200);
   assert.equal(manuscriptResponse.body.id, "manuscript-1");
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.observation_status,
+    "reported",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.derived_status,
+    "ready_for_next_step",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.next_module,
+    "screening",
+  );
 
   assert.equal(assetsResponse.status, 200);
   assert.equal(assetsResponse.body.length, 1);
@@ -902,6 +914,14 @@ test("manuscript settlement fails open for tracked modules when execution tracki
     /Execution tracking service is unavailable/i,
   );
   assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.observation_status,
+    "failed_open",
+  );
+  assert.match(
+    manuscriptResponse.body.mainline_readiness_summary?.error ?? "",
+    /Execution tracking service is unavailable/i,
+  );
+  assert.equal(
     manuscriptResponse.body.module_execution_overview.editing.observation_status,
     "not_started",
   );
@@ -1012,6 +1032,18 @@ test("manuscript and job reads expose linked settlement when snapshot evidence i
     manuscriptResponse.body.module_execution_overview.screening.settlement
       ?.derived_status,
     "business_completed_follow_up_pending",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.observation_status,
+    "reported",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.derived_status,
+    "waiting_for_follow_up",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.active_module,
+    "screening",
   );
 
   assert.equal(jobResponse.status, 200);

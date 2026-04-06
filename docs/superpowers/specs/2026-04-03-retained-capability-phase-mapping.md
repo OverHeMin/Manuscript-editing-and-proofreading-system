@@ -659,15 +659,39 @@ This phase does **not** absorb:
 - controller request choreography expansion
 - replay, retry, routing, or runtime mutation authority
 
-### 4.30 Still-Open Retained Capability Lanes After Phase 25
+### 4.30 Phase 26: Manuscript Mainline Internal Trial Readiness Summary
 
-After reconciling actual landed numbering through `Phase 25`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** additive manuscript-level readiness summary on the
+existing mainline read path plus adoption inside the current workbench summary
+path
+
+This phase now owns:
+
+- one stable `mainline_readiness_summary` on manuscript reads derived from the
+  current per-module settlement, recovery timing, and snapshot-linked runtime
+  posture
+- one workbench-side adoption of that summary inside the existing
+  `Manuscript Overview`, `Recommended Next Step`, and reload/refresh detail path
+- fail-open fallback back to the current local heuristics when summary
+  observation is missing or failed open
+
+This phase does **not** absorb:
+
+- new manuscript or job routes
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+- internal-trial control-plane or release-gate mutation behavior
+
+### 4.31 Still-Open Retained Capability Lanes After Phase 26
+
+After reconciling actual landed numbering through `Phase 26`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, `Phase 21`, `Phase 22`, `Phase 23`, `Phase 24`, and `Phase 25` workbench adoption slices
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, `Phase 21`, `Phase 22`, `Phase 23`, `Phase 24`, `Phase 25`, and `Phase 26` mainline/workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -705,6 +729,7 @@ The repository has now landed the following actual sequence after `10A`:
 25. `Phase 23` manuscript workbench action-result overview posture fallback under the same fresh execution/orchestration continuation
 26. `Phase 24` manuscript workbench action-notice posture adoption under the same fresh execution/orchestration continuation
 27. `Phase 25` manuscript workbench execution posture pill adoption under the same fresh execution/orchestration continuation
+28. `Phase 26` manuscript mainline internal-trial readiness summary under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -762,6 +787,10 @@ The practical planning implication after `11G` is:
   not as permission to add new status panels, new summary surfaces,
   controller choreography growth, or any replay/control-plane authority under
   the same label
+- treat `Phase 26` as a manuscript mainline readiness-summary slice in that
+  same lane, not as permission to add new trial dashboards, new workbench
+  surfaces, new control-plane actions, or any replay/control-plane authority
+  under the same label
 
 ## 6. What This Mapping Prevents
 

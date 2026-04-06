@@ -16,6 +16,7 @@ import {
   buildEmptyManuscriptModuleExecutionOverview,
   createNotStartedModuleOverview,
   createNotTrackedJobExecutionObservation,
+  deriveManuscriptMainlineReadinessSummary,
   deriveModuleMainlineSettlement,
   MAINLINE_SETTLEMENT_MODULES,
   type MainlineSettlementModule,
@@ -235,6 +236,7 @@ async function enrichManuscriptView(
   return {
     ...manuscript,
     module_execution_overview: overview,
+    mainline_readiness_summary: deriveManuscriptMainlineReadinessSummary(overview),
   };
 }
 

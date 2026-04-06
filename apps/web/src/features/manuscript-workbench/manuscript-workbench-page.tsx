@@ -18,6 +18,7 @@ import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
   buildJobPostureDetails,
   buildLatestJobPostureDetails,
+  buildManuscriptMainlineReadinessDetails,
   ManuscriptWorkbenchSummary,
   type WorkbenchActionResultViewModel,
   type WorkbenchActionResultDetail,
@@ -63,6 +64,9 @@ export async function loadPrefilledWorkbenchWorkspace(
       label: "Current Asset",
       value: workspace.currentAsset?.id ?? "Not available",
     },
+    ...buildManuscriptMainlineReadinessDetails(
+      workspace.manuscript.mainline_readiness_summary,
+    ),
     ...(latestJob
         ? [
           {
@@ -177,20 +181,25 @@ export async function refreshLatestWorkbenchJobContext(
       tone: "success",
       actionLabel: "Refresh Latest Job",
       message: status,
-      details: buildWorkbenchJobActionResultDetails(
-        [
-          {
-            label: "Job",
-            value: latestJob.id,
-          },
-          {
-            label: "Status",
-            value: latestJob.status,
-          },
-        ],
-        latestJob,
-        workspace?.manuscript.module_execution_overview,
-      ),
+      details: [
+        ...buildWorkbenchJobActionResultDetails(
+          [
+            {
+              label: "Job",
+              value: latestJob.id,
+            },
+            {
+              label: "Status",
+              value: latestJob.status,
+            },
+          ],
+          latestJob,
+          workspace?.manuscript.module_execution_overview,
+        ),
+        ...buildManuscriptMainlineReadinessDetails(
+          workspace?.manuscript.mainline_readiness_summary,
+        ),
+      ],
     },
   };
 }

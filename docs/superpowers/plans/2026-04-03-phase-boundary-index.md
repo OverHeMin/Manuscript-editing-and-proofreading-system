@@ -102,6 +102,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 23 | `2026-04-06-phase23-manuscript-workbench-action-result-overview-posture-fallback-design.md` | focused mainline delivery around manuscript workbench action-result overview posture fallback | Clean | Continues the same execution/orchestration lane by keeping the existing Latest Action Result card posture-aware when action-time or load-time results fail open to a raw overview-backed job candidate, without adding a new page, panel, route, or control-plane action. |
 | Phase 24 | `2026-04-06-phase24-manuscript-workbench-action-notice-posture-adoption-design.md` | focused mainline delivery around manuscript workbench action-notice posture adoption | Clean | Continues the same execution/orchestration lane by keeping the existing top workbench notice honest about durable follow-up posture for job-bearing action results, without adding a new page, panel, route, or control-plane action. |
 | Phase 25 | `2026-04-06-phase25-manuscript-workbench-execution-posture-pill-adoption-design.md` | focused mainline delivery around manuscript workbench execution posture pill adoption | Clean | Continues the same execution/orchestration lane by keeping the existing summary-card pills honest about durable follow-up posture for action results and latest-job evidence, without adding a new page, panel, route, or control-plane action. |
+| Phase 26 | `2026-04-06-phase26-manuscript-mainline-internal-trial-readiness-summary-design.md` | focused mainline delivery around manuscript mainline internal-trial readiness summary adoption | Clean | Continues the same execution/orchestration lane by deriving one additive manuscript mainline readiness summary from existing posture evidence and adopting it inside the current workbench summary path, without adding a new page, panel, route, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -192,6 +193,11 @@ delivered through one cleanly isolated branch or one PR with the same name.
   keeps the current summary-card pills honest about durable follow-up posture
   by reusing existing action-result and latest-job evidence, without
   introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 26` as the next adjacent continuation of that same lane: it
+  derives one additive manuscript mainline readiness summary from the existing
+  settlement, recovery, and runtime-readiness evidence and adopts that summary
+  inside the current workbench overview/recommendation/load-result path,
+  without introducing a new page, panel, route, or control-plane action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

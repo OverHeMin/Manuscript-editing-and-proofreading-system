@@ -357,6 +357,11 @@ test("persistent workbench screening routes keep governed execution evidence acr
           );
           const manuscript = (await manuscriptResponse.json()) as {
             current_screening_asset_id?: string;
+            mainline_readiness_summary?: {
+              observation_status: string;
+              derived_status?: string;
+              next_module?: string;
+            };
             module_execution_overview?: {
               screening?: {
                 observation_status: string;
@@ -434,6 +439,18 @@ test("persistent workbench screening routes keep governed execution evidence acr
             manuscript.module_execution_overview?.screening?.settlement
               ?.derived_status,
             "business_completed_settled",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.observation_status,
+            "reported",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.derived_status,
+            "ready_for_next_step",
+          );
+          assert.equal(
+            manuscript.mainline_readiness_summary?.next_module,
+            "editing",
           );
           assert.equal(job.execution_tracking?.observation_status, "reported");
           assert.equal(

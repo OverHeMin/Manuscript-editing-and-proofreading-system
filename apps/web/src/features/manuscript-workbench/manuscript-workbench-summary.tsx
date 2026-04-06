@@ -8,6 +8,7 @@ import type {
   JobViewModel,
   LinkedAgentExecutionRecoverySummaryViewModel,
   MainlineSettlementModule,
+  ManuscriptMainlineReadinessSummaryViewModel,
   ManuscriptModuleExecutionOverviewViewModel,
   ModuleExecutionOverviewViewModel,
   ModuleMainlineSettlementDerivedStatus,
@@ -135,6 +136,75 @@ export function buildJobPostureDetails(
   return details;
 }
 
+export function buildManuscriptMainlineReadinessDetails(
+  summary?: ManuscriptMainlineReadinessSummaryViewModel,
+): WorkbenchActionResultDetail[] {
+  if (!summary) {
+    return [];
+  }
+
+  if (summary.observation_status === "failed_open") {
+    const details: WorkbenchActionResultDetail[] = [
+      {
+        label: "Mainline Readiness",
+        value: "Readiness unavailable",
+      },
+    ];
+    if (summary.error) {
+      details.push({
+        label: "Readiness Error",
+        value: summary.error,
+      });
+    }
+    return details;
+  }
+
+  const details: WorkbenchActionResultDetail[] = [
+    {
+      label: "Mainline Readiness",
+      value: formatMainlineReadinessLabel(summary),
+    },
+  ];
+
+  if (summary.active_module) {
+    details.push({
+      label: "Active Module",
+      value: summary.active_module,
+    });
+  }
+
+  if (summary.next_module) {
+    details.push({
+      label: "Next Module",
+      value: summary.next_module,
+    });
+  }
+
+  if (summary.recovery_ready_at) {
+    details.push({
+      label: "Recovery Ready At",
+      value: formatTimestamp(summary.recovery_ready_at),
+    });
+  }
+
+  const runtimeReadiness = formatSummaryRuntimeBindingReadiness(summary);
+  if (runtimeReadiness) {
+    details.push({
+      label: "Runtime Readiness",
+      value: runtimeReadiness,
+    });
+  }
+
+  if (summary.reason) {
+    details.push({
+      label: "Readiness Reason",
+      value: summary.reason,
+    });
+  }
+
+  return details;
+}
+
 export function resolveWorkbenchActionOutcomePill(
   latestActionResult: WorkbenchActionResultViewModel,
 ): WorkbenchStatusPillViewModel {
@@ -222,6 +292,11 @@ export function ManuscriptWorkbenchSummary({
       ? normalizedPrefilledSampleSetItemId
       : undefined,
   };
+  const mainlineReadinessSummary = workspace.manuscript.mainline_readiness_summary;
+  const mainlineReadinessDetails =
+    buildManuscriptMainlineReadinessDetails(mainlineReadinessSummary);
+  const mainlineReadinessPill =
+    resolveWorkbenchMainlineReadinessPill(mainlineReadinessSummary);
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -330,6 +405,25 @@ export function ManuscriptWorkbenchSummary({
             label="Last Updated"
             value={formatTimestamp(workspace.manuscript.updated_at)}
           />
+          {mainlineReadinessPill ? (
+            <SummaryMetric
+              label="Mainline Readiness"
+              value={
+                <StatusPill tone={mainlineReadinessPill.tone}>
+                  {mainlineReadinessPill.label}
+                </StatusPill>
+              }
+            />
+          ) : null}
+          {mainlineReadinessDetails
+            .filter((detail) => detail.label !== "Mainline Readiness")
+            .map((detail) => (
+              <SummaryMetric
+                key={`${detail.label}:${detail.value}`}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
           {renderModuleExecutionOverviewMetrics(
             workspace.manuscript.module_execution_overview,
             latestJob,
@@ -583,6 +677,43 @@ function StatusPill({ tone, children }: StatusPillProps) {
   return (
     <span className={`manuscript-workbench-status-pill is-${tone}`}>{children}</span>
   );
+}
+
+function resolveWorkbenchMainlineReadinessPill(
+  summary?: ManuscriptMainlineReadinessSummaryViewModel,
+): WorkbenchStatusPillViewModel | null {
+  if (!summary) {
+    return null;
+  }
+
+  if (summary.observation_status === "failed_open") {
+    return {
+      tone: "error",
+      label: "readiness unavailable",
+    };
+  }
+
+  const label = formatMainlineReadinessLabel(summary);
+  if (summary.derived_status === "ready_for_next_step" || summary.derived_status === "completed") {
+    return {
+      tone: "success",
+      label,
+    };
+  }
+
+  if (
+    summary.derived_status === "attention_required"
+  ) {
+    return {
+      tone: "error",
+      label,
+    };
+  }
+
+  return {
+    tone: "neutral",
+    label,
+  };
 }
 
 function resolveWorkbenchPosturePillFromDetails(
@@ -853,6 +984,133 @@ interface RecommendedNextStepViewModel {
   targetHref?: string;
 }
 
+function buildMainlineReadinessRecommendedNextStep(
+  mode: ManuscriptWorkbenchMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+): RecommendedNextStepViewModel | undefined {
+  if (mode === "submission") {
+    return undefined;
+  }
+
+  const summary = workspace.manuscript.mainline_readiness_summary;
+  if (
+    !summary ||
+    summary.observation_status !== "reported" ||
+    !summary.derived_status
+  ) {
+    return undefined;
+  }
+
+  const details = [
+    {
+      label: "Manuscript",
+      value: workspace.manuscript.id,
+    },
+    ...buildManuscriptMainlineReadinessDetails(summary),
+    {
+      label: "Current Asset",
+      value: describeAsset(workspace.currentAsset),
+    },
+  ];
+
+  if (summary.derived_status === "ready_for_next_step" && summary.next_module) {
+    if (summary.next_module === mode) {
+      if (mode === "screening") {
+        return {
+          focus: "Run screening on the recommended parent asset",
+          guidance:
+            summary.reason ?? "The manuscript is ready for governed screening.",
+          details: [
+            ...details,
+            {
+              label: "Recommended Parent",
+              value: describeAsset(workspace.suggestedParentAsset),
+            },
+          ],
+        };
+      }
+
+      if (mode === "editing") {
+        return {
+          focus: "Run editing on the screened manuscript asset",
+          guidance:
+            summary.reason ?? "The manuscript is ready for governed editing.",
+          details: [
+            ...details,
+            {
+              label: "Recommended Parent",
+              value: describeAsset(workspace.suggestedParentAsset),
+            },
+          ],
+        };
+      }
+
+      return {
+        focus: "Create the proofreading draft",
+        guidance:
+          summary.reason ?? "The manuscript is ready for governed proofreading.",
+        details: [
+          ...details,
+          {
+            label: "Recommended Parent",
+            value: describeAsset(workspace.suggestedParentAsset),
+          },
+        ],
+      };
+    }
+
+    return {
+      focus: `Advance this manuscript into ${summary.next_module}`,
+      guidance:
+        summary.reason ??
+        `The manuscript is ready for governed ${summary.next_module}.`,
+      details,
+      targetMode: summary.next_module,
+      targetLabel: `Open ${formatWorkbenchModeLabel(summary.next_module)} Workbench`,
+    };
+  }
+
+  if (summary.derived_status === "in_progress") {
+    return {
+      focus: `Wait for ${summary.active_module ?? "mainline"} execution to finish`,
+      guidance: summary.reason ?? "The current governed run is still in progress.",
+      details,
+    };
+  }
+
+  if (summary.derived_status === "waiting_for_follow_up") {
+    return {
+      focus: `Wait for ${summary.active_module ?? "mainline"} follow-up to settle`,
+      guidance:
+        summary.reason ??
+        "Business output exists, but governed follow-up is not settled yet.",
+      details,
+    };
+  }
+
+  if (summary.derived_status === "attention_required") {
+    return {
+      focus: `Inspect ${summary.active_module ?? "mainline"} posture before continuing`,
+      guidance:
+        summary.reason ??
+        "The current mainline posture needs operator attention before the handoff can continue.",
+      details,
+    };
+  }
+
+  if (summary.derived_status === "completed" && mode !== "proofreading") {
+    return {
+      focus: "Mainline execution is already settled",
+      guidance:
+        summary.reason ??
+        "Screening, editing, and proofreading are already settled.",
+      details,
+    };
+  }
+
+  return undefined;
+}
+
 function buildRecommendedNextStep(
   mode: ManuscriptWorkbenchMode,
   workspace: ManuscriptWorkbenchWorkspace,
@@ -860,6 +1118,14 @@ function buildRecommendedNextStep(
   latestExport: DocumentAssetExportViewModel | null,
   canOpenLearningReview: boolean,
 ): RecommendedNextStepViewModel {
+  const summaryRecommendation = buildMainlineReadinessRecommendedNextStep(
+    mode,
+    workspace,
+  );
+  if (summaryRecommendation) {
+    return summaryRecommendation;
+  }
+
   if (mode === "submission") {
     if (latestExport) {
       return {
@@ -1580,6 +1846,50 @@ function describeCompactRuntimeBindingReadinessObservation(
   }
 
   return undefined;
+}
+
+function formatMainlineReadinessLabel(
+  summary: ManuscriptMainlineReadinessSummaryViewModel,
+): string {
+  if (summary.observation_status === "failed_open") {
+    return "Readiness unavailable";
+  }
+
+  switch (summary.derived_status) {
+    case "ready_for_next_step":
+      return "Ready for next step";
+    case "in_progress":
+      return "In progress";
+    case "waiting_for_follow_up":
+      return "Waiting for follow-up";
+    case "attention_required":
+      return "Attention required";
+    case "completed":
+      return "Mainline settled";
+    default:
+      return "Readiness reported";
+  }
+}
+
+function formatSummaryRuntimeBindingReadiness(
+  summary: ManuscriptMainlineReadinessSummaryViewModel,
+): string | undefined {
+  if (!summary.runtime_binding_status) {
+    return undefined;
+  }
+
+  const issueCount = summary.runtime_binding_issue_count ?? 0;
+  const issueLabel = `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
+
+  if (summary.runtime_binding_status === "degraded") {
+    return `Degraded (${issueLabel})`;
+  }
+
+  if (summary.runtime_binding_status === "missing") {
+    return `Missing (${issueLabel})`;
+  }
+
+  return "Ready";
 }
 
 function formatSettlementStatusLabel(
