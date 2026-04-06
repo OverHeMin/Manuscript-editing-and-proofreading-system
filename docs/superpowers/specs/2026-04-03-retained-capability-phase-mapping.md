@@ -462,15 +462,37 @@ This phase does **not** absorb:
 - new workbench pages, panels, or dashboards
 - new control-plane behavior beyond the existing summary path
 
-### 4.21 Still-Open Retained Capability Lanes After Phase 16
+### 4.21 Phase 17: Manuscript Workbench Action-Time Execution Hydration
 
-After reconciling actual landed numbering through `Phase 16`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** best-effort hydration of returned workbench action jobs
+through the existing `GET /jobs/:id` read path
+
+This phase now owns:
+
+- action-time adoption of hydrated `execution_tracking` on upload, module-run,
+  proofreading-finalize, and human-final-publish flows
+- alignment between reload-time restored latest-job posture and immediate
+  post-action latest-job posture
+- one controller-local fail-open adapter so action success still stands when
+  hydration reads fail
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new job list APIs
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.22 Still-Open Retained Capability Lanes After Phase 17
+
+After reconciling actual landed numbering through `Phase 17`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, and `Phase 16` workbench posture adoption
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, and `Phase 17` workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -499,6 +521,7 @@ The repository has now landed the following actual sequence after `10A`:
 16. `Phase 14` manuscript workbench settlement adoption under the same fresh execution/orchestration continuation
 17. `Phase 15` manuscript workbench restart-safe execution hydration under the same fresh execution/orchestration continuation
 18. `Phase 16` manuscript workbench recovery/readiness posture adoption under the same fresh execution/orchestration continuation
+19. `Phase 17` manuscript workbench action-time execution hydration under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -527,6 +550,9 @@ The practical planning implication after `11G` is:
 - treat `Phase 16` as a read-only posture-adoption slice in that same lane, not
   as permission to add recovery controls, readiness gates, or any new
   workbench/dashboard authority under the same label
+- treat `Phase 17` as an action-time hydration-adoption slice in that same
+  lane, not as permission to add backend route expansion, new job-list
+  surfaces, or any replay/control-plane authority under the same label
 
 ## 6. What This Mapping Prevents
 

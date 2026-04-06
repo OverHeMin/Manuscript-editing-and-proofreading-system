@@ -132,19 +132,31 @@ export function createManuscriptWorkbenchController(
     },
     async uploadManuscriptAndLoad(input) {
       const response = await uploadManuscript(client, input);
-      const workspace = await loadWorkspace(client, response.body.manuscript.id);
+      const [job, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, response.body.job),
+        loadWorkspace(client, response.body.manuscript.id),
+      ]);
 
       return {
-        upload: response.body,
+        upload: {
+          ...response.body,
+          job,
+        },
         workspace,
       };
     },
     async runModuleAndLoad(input) {
       const runResult = await runModule(client, input);
-      const workspace = await loadWorkspace(client, input.manuscriptId);
+      const [job, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, runResult.job),
+        loadWorkspace(client, input.manuscriptId),
+      ]);
 
       return {
-        runResult,
+        runResult: {
+          ...runResult,
+          job,
+        },
         workspace,
       };
     },
@@ -157,10 +169,16 @@ export function createManuscriptWorkbenchController(
         storageKey: input.storageKey,
         fileName: input.fileName,
       });
-      const workspace = await loadWorkspace(client, input.manuscriptId);
+      const [job, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, response.body.job),
+        loadWorkspace(client, input.manuscriptId),
+      ]);
 
       return {
-        runResult: response.body,
+        runResult: {
+          ...response.body,
+          job,
+        },
         workspace,
       };
     },
@@ -173,10 +191,16 @@ export function createManuscriptWorkbenchController(
         storageKey: input.storageKey,
         fileName: input.fileName,
       });
-      const workspace = await loadWorkspace(client, input.manuscriptId);
+      const [job, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, response.body.job),
+        loadWorkspace(client, input.manuscriptId),
+      ]);
 
       return {
-        runResult: response.body,
+        runResult: {
+          ...response.body,
+          job,
+        },
         workspace,
       };
     },
@@ -248,6 +272,18 @@ async function runModule(
       });
       return response.body;
     }
+  }
+}
+
+async function hydrateWorkbenchActionJob<TJob extends { id: string }>(
+  client: ManuscriptWorkbenchHttpClient,
+  job: TJob,
+): Promise<TJob> {
+  try {
+    const response = await getJob(client, job.id);
+    return response.body as unknown as TJob;
+  } catch {
+    return job;
   }
 }
 

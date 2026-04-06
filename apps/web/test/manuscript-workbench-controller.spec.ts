@@ -6,6 +6,20 @@ import {
 
 test("manuscript workbench controller uploads a manuscript and hydrates workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const hydratedUploadJob = {
+    id: "job-upload-1",
+    manuscript_id: "manuscript-1",
+    module: "upload",
+    job_type: "manuscript_upload",
+    status: "queued",
+    requested_by: "user-1",
+    attempt_count: 0,
+    created_at: "2026-03-31T09:00:00.000Z",
+    updated_at: "2026-03-31T09:00:00.000Z",
+    execution_tracking: {
+      observation_status: "not_tracked" as const,
+    },
+  };
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
       method: "GET" | "POST";
@@ -55,6 +69,13 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
               updated_at: "2026-03-31T09:00:00.000Z",
             },
           } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-upload-1") {
+        return {
+          status: 200,
+          body: hydratedUploadJob as TResponse,
         };
       }
 
@@ -113,7 +134,7 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
     storageKey: "uploads/review/review.docx",
   });
 
-  assert.equal(result.upload.job.id, "job-upload-1");
+  assert.deepEqual(result.upload.job, hydratedUploadJob);
   assert.equal(result.workspace.manuscript.id, "manuscript-1");
   assert.equal(result.workspace.assets.length, 1);
   assert.equal(result.workspace.currentAsset?.id, "asset-original-1");
@@ -123,6 +144,7 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
     requests.map((request) => `${request.method} ${request.url}`),
     [
       "POST /api/v1/manuscripts/upload",
+      "GET /api/v1/jobs/job-upload-1",
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
     ],
@@ -259,6 +281,48 @@ test("manuscript workbench controller forwards inline file content uploads witho
 test("manuscript workbench controller runs proofreading draft and finalize flows while reloading workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   let assetPhase: "draft" | "final" = "draft";
+  const hydratedDraftJob = {
+    id: "job-proof-draft-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "proofreading_draft",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    created_at: "2026-03-31T10:00:00.000Z",
+    updated_at: "2026-03-31T10:01:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      settlement: {
+        derived_status: "business_completed_follow_up_pending" as const,
+        business_completed: true,
+        orchestration_completed: false,
+        attention_required: false,
+        reason: "Draft asset exists and governed follow-up is pending.",
+      },
+    },
+  };
+  const hydratedFinalizeJob = {
+    id: "job-proof-final-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "proofreading_finalize",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    created_at: "2026-03-31T10:02:00.000Z",
+    updated_at: "2026-03-31T10:03:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      settlement: {
+        derived_status: "business_completed_settled" as const,
+        business_completed: true,
+        orchestration_completed: true,
+        attention_required: false,
+        reason: "Proofreading finalize output is fully settled.",
+      },
+    },
+  };
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
       method: "GET" | "POST";
@@ -306,6 +370,13 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
         };
       }
 
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-proof-draft-1") {
+        return {
+          status: 200,
+          body: hydratedDraftJob as TResponse,
+        };
+      }
+
       if (
         input.method === "POST" &&
         input.url === "/api/v1/modules/proofreading/finalize"
@@ -346,6 +417,13 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
             knowledge_item_ids: ["knowledge-proof-1"],
             model_id: "model-proof-1",
           } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-proof-final-1") {
+        return {
+          status: 200,
+          body: hydratedFinalizeJob as TResponse,
         };
       }
 
@@ -448,6 +526,7 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
   });
 
   assert.equal(draftResult.runResult.asset.id, "asset-proof-draft-1");
+  assert.deepEqual(draftResult.runResult.job, hydratedDraftJob);
   assert.equal(draftResult.workspace.currentAsset?.id, "asset-edited-1");
   assert.equal(
     draftResult.workspace.latestProofreadingDraftAsset?.id,
@@ -464,6 +543,7 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
   });
 
   assert.equal(finalizeResult.runResult.asset.id, "asset-proof-final-1");
+  assert.deepEqual(finalizeResult.runResult.job, hydratedFinalizeJob);
   assert.equal(finalizeResult.workspace.currentAsset?.id, "asset-proof-final-1");
   assert.equal(
     finalizeResult.workspace.latestProofreadingDraftAsset?.id,
@@ -473,9 +553,11 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
     requests.map((request) => `${request.method} ${request.url}`),
     [
       "POST /api/v1/modules/proofreading/draft",
+      "GET /api/v1/jobs/job-proof-draft-1",
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
       "POST /api/v1/modules/proofreading/finalize",
+      "GET /api/v1/jobs/job-proof-final-1",
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
     ],
@@ -560,6 +642,30 @@ test("manuscript workbench controller exports the current asset through the docu
 
 test("manuscript workbench controller publishes a proofreading human-final asset and reloads the workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const hydratedPublishJob = {
+    id: "job-human-final-1",
+    manuscript_id: "manuscript-1",
+    module: "manual",
+    job_type: "publish_human_final",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {
+      sourceAssetId: "asset-proof-final-1",
+    },
+    created_at: "2026-03-31T10:05:00.000Z",
+    updated_at: "2026-03-31T10:05:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      settlement: {
+        derived_status: "business_completed_settled" as const,
+        business_completed: true,
+        orchestration_completed: true,
+        attention_required: false,
+        reason: "Human-final publication is fully settled.",
+      },
+    },
+  };
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
       method: "GET" | "POST";
@@ -608,6 +714,13 @@ test("manuscript workbench controller publishes a proofreading human-final asset
               updated_at: "2026-03-31T10:05:00.000Z",
             },
           } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-human-final-1") {
+        return {
+          status: 200,
+          body: hydratedPublishJob as TResponse,
         };
       }
 
@@ -686,14 +799,14 @@ test("manuscript workbench controller publishes a proofreading human-final asset
     fileName: "human-final.docx",
   });
 
-  assert.equal(result.runResult.job.id, "job-human-final-1");
-  assert.equal(result.runResult.job.module, "manual");
+  assert.deepEqual(result.runResult.job, hydratedPublishJob);
   assert.equal(result.runResult.asset.id, "asset-human-final-1");
   assert.equal(result.workspace.currentAsset?.id, "asset-human-final-1");
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
       "POST /api/v1/modules/proofreading/publish-human-final",
+      "GET /api/v1/jobs/job-human-final-1",
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
     ],
@@ -706,4 +819,127 @@ test("manuscript workbench controller publishes a proofreading human-final asset
     storageKey: "runs/manuscript-1/proofreading/human-final.docx",
     fileName: "human-final.docx",
   });
+});
+
+test("manuscript workbench controller fails open when action-time job hydration cannot be loaded", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const rawJob = {
+    id: "job-screen-1",
+    module: "screening",
+    job_type: "screening_run",
+    status: "completed",
+    requested_by: "screening-editor",
+    attempt_count: 1,
+    created_at: "2026-04-06T12:00:00.000Z",
+    updated_at: "2026-04-06T12:01:00.000Z",
+  };
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/modules/screening/run") {
+        return {
+          status: 201,
+          body: {
+            job: rawJob,
+            asset: {
+              id: "asset-screen-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-original-1",
+              source_module: "screening",
+              source_job_id: "job-screen-1",
+              created_by: "screening-editor",
+              version_no: 2,
+              is_current: true,
+              file_name: "screening-output.md",
+              created_at: "2026-04-06T12:01:00.000Z",
+              updated_at: "2026-04-06T12:01:00.000Z",
+            },
+            template_id: "template-screen-1",
+            knowledge_item_ids: ["knowledge-screen-1"],
+            model_id: "model-screen-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-screen-1") {
+        throw new Error("temporary read failure");
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Screening candidate",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_screening_asset_id: "asset-screen-1",
+            created_at: "2026-04-06T11:30:00.000Z",
+            updated_at: "2026-04-06T12:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-screen-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-original-1",
+              source_module: "screening",
+              source_job_id: "job-screen-1",
+              created_by: "screening-editor",
+              version_no: 2,
+              is_current: true,
+              file_name: "screening-output.md",
+              created_at: "2026-04-06T12:01:00.000Z",
+              updated_at: "2026-04-06T12:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.runModuleAndLoad({
+    mode: "screening",
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    actorRole: "editor",
+    storageKey: "runs/screening/output.md",
+    fileName: "screening-output.md",
+  });
+
+  assert.deepEqual(result.runResult.job, rawJob);
+  assert.equal(result.workspace.currentAsset?.id, "asset-screen-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/modules/screening/run",
+      "GET /api/v1/jobs/job-screen-1",
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+    ],
+  );
 });
