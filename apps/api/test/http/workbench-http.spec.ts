@@ -84,6 +84,12 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         derived_status?: string;
         next_module?: string;
       };
+      mainline_attempt_ledger?: {
+        observation_status: string;
+        total_attempts: number;
+        visible_attempts: number;
+        items: Array<{ job_id: string }>;
+      };
     };
 
     const assetsResponse = await fetch(
@@ -167,6 +173,13 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
       manuscript.mainline_readiness_summary?.next_module,
       "screening",
     );
+    assert.equal(
+      manuscript.mainline_attempt_ledger?.observation_status,
+      "reported",
+    );
+    assert.equal(manuscript.mainline_attempt_ledger?.total_attempts, 0);
+    assert.equal(manuscript.mainline_attempt_ledger?.visible_attempts, 0);
+    assert.deepEqual(manuscript.mainline_attempt_ledger?.items, []);
     assert.equal(job.execution_tracking?.observation_status, "not_tracked");
     assert.equal(downloadResponse.status, 200);
     assert.equal(manuscript.id, uploaded.manuscript.id);

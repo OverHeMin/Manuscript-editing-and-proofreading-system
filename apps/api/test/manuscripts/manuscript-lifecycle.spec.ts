@@ -1057,3 +1057,182 @@ test("manuscript and job reads expose linked settlement when snapshot evidence i
     "business_completed_follow_up_pending",
   );
 });
+
+test("manuscript reads expose a bounded mainline attempt ledger ordered by newest activity", async () => {
+  const screeningLog: AgentExecutionLogRecord = {
+    id: "execution-log-screening-1",
+    manuscript_id: "manuscript-1",
+    module: "screening",
+    triggered_by: "user-ledger",
+    runtime_id: "runtime-1",
+    sandbox_profile_id: "sandbox-1",
+    agent_profile_id: "agent-profile-1",
+    runtime_binding_id: "binding-1",
+    tool_permission_policy_id: "policy-1",
+    execution_snapshot_id: "snapshot-screening-1",
+    knowledge_item_ids: [],
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    verification_evidence_ids: [],
+    status: "completed",
+    orchestration_status: "completed",
+    orchestration_attempt_count: 1,
+    orchestration_max_attempts: 3,
+    started_at: "2026-03-26T10:20:00.000Z",
+    finished_at: "2026-03-26T10:21:00.000Z",
+  };
+  const editingLog: AgentExecutionLogRecord = {
+    id: "execution-log-editing-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    triggered_by: "user-ledger",
+    runtime_id: "runtime-1",
+    sandbox_profile_id: "sandbox-1",
+    agent_profile_id: "agent-profile-1",
+    runtime_binding_id: "binding-1",
+    tool_permission_policy_id: "policy-1",
+    execution_snapshot_id: "snapshot-editing-1",
+    knowledge_item_ids: [],
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    verification_evidence_ids: [],
+    status: "completed",
+    orchestration_status: "retryable",
+    orchestration_attempt_count: 2,
+    orchestration_max_attempts: 3,
+    started_at: "2026-03-26T10:30:00.000Z",
+    finished_at: "2026-03-26T10:31:00.000Z",
+  };
+  const { api, jobRepository, executionTrackingRepository } =
+    createSettlementLifecycleHarness({
+      agentExecutionLogs: [screeningLog, editingLog],
+    });
+
+  const uploadResponse = await api.upload({
+    title: "Tracked Mainline Ledger",
+    manuscriptType: "review",
+    createdBy: "user-ledger",
+    fileName: "tracked-mainline-ledger.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/tracked-mainline-ledger.docx",
+  });
+
+  await jobRepository.save({
+    id: "job-screening-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "screening",
+    job_type: "screening_run",
+    status: "completed",
+    requested_by: "user-ledger",
+    payload: {
+      snapshotId: "snapshot-screening-1",
+      agentExecutionLogId: screeningLog.id,
+    },
+    attempt_count: 1,
+    started_at: "2026-03-26T10:20:00.000Z",
+    finished_at: "2026-03-26T10:21:00.000Z",
+    created_at: "2026-03-26T10:20:00.000Z",
+    updated_at: "2026-03-26T10:21:00.000Z",
+  });
+  await executionTrackingRepository.saveSnapshot({
+    id: "snapshot-screening-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "screening",
+    job_id: "job-screening-1",
+    execution_profile_id: "profile-1",
+    module_template_id: "template-1",
+    module_template_version_no: 1,
+    prompt_template_id: "prompt-1",
+    prompt_template_version: "1.0.0",
+    skill_package_ids: [],
+    skill_package_versions: [],
+    model_id: "model-1",
+    knowledge_item_ids: [],
+    created_asset_ids: ["asset-screening-1"],
+    agent_execution_log_id: screeningLog.id,
+    created_at: "2026-03-26T10:21:00.000Z",
+  });
+
+  await jobRepository.save({
+    id: "job-editing-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "editing",
+    job_type: "editing_run",
+    status: "completed",
+    requested_by: "user-ledger",
+    payload: {
+      snapshotId: "snapshot-editing-1",
+      agentExecutionLogId: editingLog.id,
+    },
+    attempt_count: 2,
+    started_at: "2026-03-26T10:30:00.000Z",
+    finished_at: "2026-03-26T10:31:00.000Z",
+    created_at: "2026-03-26T10:30:00.000Z",
+    updated_at: "2026-03-26T10:31:00.000Z",
+  });
+  await executionTrackingRepository.saveSnapshot({
+    id: "snapshot-editing-1",
+    manuscript_id: uploadResponse.body.manuscript.id,
+    module: "editing",
+    job_id: "job-editing-1",
+    execution_profile_id: "profile-1",
+    module_template_id: "template-2",
+    module_template_version_no: 1,
+    prompt_template_id: "prompt-2",
+    prompt_template_version: "1.0.0",
+    skill_package_ids: [],
+    skill_package_versions: [],
+    model_id: "model-2",
+    knowledge_item_ids: [],
+    created_asset_ids: ["asset-editing-1"],
+    agent_execution_log_id: editingLog.id,
+    created_at: "2026-03-26T10:31:00.000Z",
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.observation_status,
+    "reported",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.total_attempts,
+    2,
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.visible_attempts,
+    2,
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[0]?.job_id,
+    "job-editing-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[0]?.module,
+    "editing",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[0]?.orchestration_status,
+    "retryable",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[0]
+      ?.orchestration_attempt_count,
+    2,
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[0]?.is_latest_for_module,
+    true,
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[1]?.job_id,
+    "job-screening-1",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_attempt_ledger?.items[1]?.settlement_status,
+    "business_completed_settled",
+  );
+});

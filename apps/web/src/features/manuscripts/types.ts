@@ -155,6 +155,7 @@ export interface LinkedAgentExecutionSnapshotViewModel {
   id: string;
   status: string;
   orchestration_status: string;
+  orchestration_attempt_count?: number;
   completion_summary: LinkedAgentExecutionCompletionSummaryViewModel;
   recovery_summary: LinkedAgentExecutionRecoverySummaryViewModel;
 }
@@ -229,6 +230,43 @@ export interface ManuscriptMainlineReadinessSummaryViewModel {
   error?: string;
 }
 
+export type MainlineAttemptLedgerEvidenceStatus =
+  | "snapshot_linked"
+  | "job_only"
+  | "failed_open";
+
+export interface MainlineAttemptLedgerItemViewModel {
+  module: MainlineSettlementModule;
+  job_id: string;
+  job_status: JobStatus;
+  job_attempt_count: number;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+  snapshot_id?: string;
+  evidence_status: MainlineAttemptLedgerEvidenceStatus;
+  settlement_status?: ModuleMainlineSettlementDerivedStatus;
+  orchestration_status?: string;
+  orchestration_attempt_count?: number;
+  recovery_category?: AgentExecutionRecoveryCategory;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  is_latest_for_module: boolean;
+  reason: string;
+}
+
+export interface ManuscriptMainlineAttemptLedgerViewModel {
+  observation_status: "reported" | "failed_open";
+  total_attempts: number;
+  visible_attempts: number;
+  truncated: boolean;
+  latest_event_at?: string;
+  items: MainlineAttemptLedgerItemViewModel[];
+  error?: string;
+}
+
 export interface JobExecutionTrackingObservationViewModel {
   observation_status: "reported" | "not_tracked" | "failed_open";
   snapshot?: ModuleExecutionSnapshotViewModel;
@@ -250,6 +288,7 @@ export interface ManuscriptViewModel {
   updated_at: string;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
   mainline_readiness_summary?: ManuscriptMainlineReadinessSummaryViewModel;
+  mainline_attempt_ledger?: ManuscriptMainlineAttemptLedgerViewModel;
 }
 
 export interface DocumentAssetViewModel {

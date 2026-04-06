@@ -732,6 +732,45 @@ test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when ma
         next_module: "screening" as const,
         reason: "The manuscript is ready for governed screening.",
       },
+      mainline_attempt_ledger: {
+        observation_status: "reported" as const,
+        total_attempts: 2,
+        visible_attempts: 2,
+        latest_event_at: "2026-04-06T10:00:00.000Z",
+        truncated: false,
+        items: [
+          {
+            module: "editing" as const,
+            job_id: "job-editing-ledger-1",
+            job_status: "completed" as const,
+            job_attempt_count: 2,
+            created_at: "2026-04-06T09:50:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            evidence_status: "snapshot_linked" as const,
+            settlement_status: "business_completed_follow_up_retryable" as const,
+            orchestration_status: "retryable",
+            orchestration_attempt_count: 2,
+            recovery_category: "recoverable_now" as const,
+            is_latest_for_module: true,
+            reason: "Editing follow-up is retryable.",
+          },
+          {
+            module: "screening" as const,
+            job_id: "job-screening-ledger-1",
+            job_status: "completed" as const,
+            job_attempt_count: 1,
+            created_at: "2026-04-06T09:20:00.000Z",
+            updated_at: "2026-04-06T09:30:00.000Z",
+            evidence_status: "snapshot_linked" as const,
+            settlement_status: "business_completed_settled" as const,
+            orchestration_status: "completed",
+            orchestration_attempt_count: 1,
+            recovery_category: "not_recoverable" as const,
+            is_latest_for_module: true,
+            reason: "Screening is settled.",
+          },
+        ],
+      },
     },
     assets: [],
     currentAsset: null,
@@ -784,6 +823,14 @@ test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when ma
     {
       label: "Readiness Reason",
       value: "The manuscript is ready for governed screening.",
+    },
+    {
+      label: "Mainline Attempts",
+      value: "2 total (showing 2)",
+    },
+    {
+      label: "Latest Mainline Activity",
+      value: "editing attempt 2 - Business complete, follow-up retryable",
     },
   ]);
 });
@@ -1577,6 +1624,41 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
       status: "processing" as const,
       created_by: "operator-1",
       current_editing_asset_id: "asset-edited-2",
+      mainline_attempt_ledger: {
+        observation_status: "reported" as const,
+        total_attempts: 2,
+        visible_attempts: 2,
+        latest_event_at: "2026-04-06T11:45:00.000Z",
+        truncated: false,
+        items: [
+          {
+            module: "editing" as const,
+            job_id: "job-editing-refresh-1",
+            job_status: "completed" as const,
+            job_attempt_count: 2,
+            created_at: "2026-04-06T11:30:00.000Z",
+            updated_at: "2026-04-06T11:45:00.000Z",
+            evidence_status: "snapshot_linked" as const,
+            settlement_status: "business_completed_settled" as const,
+            orchestration_status: "completed",
+            orchestration_attempt_count: 1,
+            recovery_category: "not_recoverable" as const,
+            is_latest_for_module: true,
+            reason: "Editing is settled.",
+          },
+          {
+            module: "screening" as const,
+            job_id: "job-screening-refresh-1",
+            job_status: "completed" as const,
+            job_attempt_count: 1,
+            created_at: "2026-04-06T10:40:00.000Z",
+            updated_at: "2026-04-06T10:55:00.000Z",
+            evidence_status: "job_only" as const,
+            is_latest_for_module: true,
+            reason: "Screening completed without linked snapshot evidence.",
+          },
+        ],
+      },
       module_execution_overview: {
         screening: {
           module: "screening" as const,
@@ -1777,6 +1859,14 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
     {
       label: "Job Runtime Readiness",
       value: "Ready",
+    },
+    {
+      label: "Mainline Attempts",
+      value: "2 total (showing 2)",
+    },
+    {
+      label: "Latest Mainline Activity",
+      value: "editing attempt 2 - Settled",
     },
   ]);
 });
@@ -1991,6 +2081,89 @@ test("manuscript workbench summary renders mainline readiness and uses it for ma
   assert.match(markup, /Advance this manuscript into editing/);
   assert.match(markup, /Screening is settled and editing can begin\./);
   assert.match(markup, /Open Editing Workbench/);
+});
+
+test("manuscript workbench summary renders recent mainline activity inside the manuscript overview card", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={{
+        manuscript: {
+          id: "manuscript-ledger-1",
+          title: "Timeline manuscript",
+          manuscript_type: "review",
+          status: "processing",
+          created_by: "editor-ledger",
+          created_at: "2026-04-06T08:00:00.000Z",
+          updated_at: "2026-04-06T10:30:00.000Z",
+          mainline_attempt_ledger: {
+            observation_status: "reported",
+            total_attempts: 3,
+            visible_attempts: 3,
+            latest_event_at: "2026-04-06T10:30:00.000Z",
+            truncated: false,
+            items: [
+              {
+                module: "editing",
+                job_id: "job-editing-ledger-2",
+                job_status: "completed",
+                job_attempt_count: 2,
+                created_at: "2026-04-06T10:00:00.000Z",
+                updated_at: "2026-04-06T10:30:00.000Z",
+                evidence_status: "snapshot_linked",
+                settlement_status: "business_completed_follow_up_retryable",
+                orchestration_status: "retryable",
+                orchestration_attempt_count: 2,
+                recovery_category: "recoverable_now",
+                is_latest_for_module: true,
+                reason: "Editing follow-up is retryable.",
+              },
+              {
+                module: "editing",
+                job_id: "job-editing-ledger-1",
+                job_status: "failed",
+                job_attempt_count: 1,
+                created_at: "2026-04-06T09:20:00.000Z",
+                updated_at: "2026-04-06T09:30:00.000Z",
+                evidence_status: "job_only",
+                is_latest_for_module: false,
+                reason: "Latest job failed before snapshot evidence was written.",
+              },
+              {
+                module: "screening",
+                job_id: "job-screening-ledger-1",
+                job_status: "completed",
+                job_attempt_count: 1,
+                created_at: "2026-04-06T08:20:00.000Z",
+                updated_at: "2026-04-06T08:40:00.000Z",
+                evidence_status: "snapshot_linked",
+                settlement_status: "business_completed_settled",
+                orchestration_status: "completed",
+                orchestration_attempt_count: 1,
+                recovery_category: "not_recoverable",
+                is_latest_for_module: true,
+                reason: "Screening is settled.",
+              },
+            ],
+          },
+        },
+        assets: [],
+        currentAsset: null,
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /Mainline Attempts/);
+  assert.match(markup, /3 total/);
+  assert.match(markup, /Recent Mainline Activity/);
+  assert.match(markup, /editing attempt 2/i);
+  assert.match(markup, /editing follow-up is retryable\./i);
+  assert.match(markup, /screening attempt 1/i);
 });
 
 test("manuscript workbench summary shows prepared export metadata for finalized proofreading output", () => {

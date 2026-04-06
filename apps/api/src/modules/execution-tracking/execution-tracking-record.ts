@@ -56,6 +56,7 @@ export interface LinkedAgentExecutionSnapshotRecord {
   id: string;
   status: AgentExecutionLogRecord["status"];
   orchestration_status: AgentExecutionLogRecord["orchestration_status"];
+  orchestration_attempt_count?: AgentExecutionLogRecord["orchestration_attempt_count"];
   completion_summary: AgentExecutionCompletionSummaryRecord;
   recovery_summary: AgentExecutionRecoverySummaryRecord;
 }

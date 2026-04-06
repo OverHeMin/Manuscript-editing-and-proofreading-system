@@ -18,6 +18,7 @@ import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
   buildJobPostureDetails,
   buildLatestJobPostureDetails,
+  buildManuscriptMainlineAttemptLedgerDetails,
   buildManuscriptMainlineReadinessDetails,
   ManuscriptWorkbenchSummary,
   type WorkbenchActionResultViewModel,
@@ -66,6 +67,9 @@ export async function loadPrefilledWorkbenchWorkspace(
     },
     ...buildManuscriptMainlineReadinessDetails(
       workspace.manuscript.mainline_readiness_summary,
+    ),
+    ...buildManuscriptMainlineAttemptLedgerDetails(
+      workspace.manuscript.mainline_attempt_ledger,
     ),
     ...(latestJob
         ? [
@@ -198,6 +202,9 @@ export async function refreshLatestWorkbenchJobContext(
         ),
         ...buildManuscriptMainlineReadinessDetails(
           workspace?.manuscript.mainline_readiness_summary,
+        ),
+        ...buildManuscriptMainlineAttemptLedgerDetails(
+          workspace?.manuscript.mainline_attempt_ledger,
         ),
       ],
     },

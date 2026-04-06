@@ -7,7 +7,9 @@ import type {
   JobExecutionTrackingObservationViewModel,
   JobViewModel,
   LinkedAgentExecutionRecoverySummaryViewModel,
+  MainlineAttemptLedgerItemViewModel,
   MainlineSettlementModule,
+  ManuscriptMainlineAttemptLedgerViewModel,
   ManuscriptMainlineReadinessSummaryViewModel,
   ManuscriptModuleExecutionOverviewViewModel,
   ModuleExecutionOverviewViewModel,
@@ -205,6 +207,31 @@ export function buildManuscriptMainlineReadinessDetails(
   return details;
 }
 
+export function buildManuscriptMainlineAttemptLedgerDetails(
+  ledger?: ManuscriptMainlineAttemptLedgerViewModel,
+): WorkbenchActionResultDetail[] {
+  if (!ledger || ledger.observation_status !== "reported") {
+    return [];
+  }
+
+  const details: WorkbenchActionResultDetail[] = [
+    {
+      label: "Mainline Attempts",
+      value: formatMainlineAttemptLedgerSummary(ledger),
+    },
+  ];
+
+  const latestActivity = ledger.items[0];
+  if (latestActivity) {
+    details.push({
+      label: "Latest Mainline Activity",
+      value: formatMainlineAttemptActivityDetail(latestActivity),
+    });
+  }
+
+  return details;
+}
+
 export function resolveWorkbenchActionOutcomePill(
   latestActionResult: WorkbenchActionResultViewModel,
 ): WorkbenchStatusPillViewModel {
@@ -293,6 +320,7 @@ export function ManuscriptWorkbenchSummary({
       : undefined,
   };
   const mainlineReadinessSummary = workspace.manuscript.mainline_readiness_summary;
+  const mainlineAttemptLedger = workspace.manuscript.mainline_attempt_ledger;
   const mainlineReadinessDetails =
     buildManuscriptMainlineReadinessDetails(mainlineReadinessSummary);
   const mainlineReadinessPill =
@@ -428,6 +456,13 @@ export function ManuscriptWorkbenchSummary({
             workspace.manuscript.module_execution_overview,
             latestJob,
           )}
+          {mainlineAttemptLedger?.observation_status === "reported" ? (
+            <SummaryMetric
+              label="Mainline Attempts"
+              value={formatMainlineAttemptLedgerSummary(mainlineAttemptLedger)}
+            />
+          ) : null}
+          {renderMainlineAttemptLedgerSection(mainlineAttemptLedger)}
           {canOpenEvaluationWorkbench ? (
             <SummaryMetric
               label="Evaluation Context"
@@ -659,6 +694,33 @@ function SummaryMetric({ label, value }: SummaryMetricProps) {
   );
 }
 
+function renderMainlineAttemptLedgerSection(
+  ledger?: ManuscriptMainlineAttemptLedgerViewModel,
+): ReactNode | null {
+  if (!ledger || ledger.observation_status !== "reported" || ledger.items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+      <span>Recent Mainline Activity</span>
+      <ul className="manuscript-workbench-activity-list">
+        {ledger.items.map((item) => (
+          <li
+            key={`${item.job_id}:${item.updated_at}`}
+            className="manuscript-workbench-activity-item"
+          >
+            <strong>{formatMainlineAttemptHeading(item)}</strong>
+            <p>{formatMainlineAttemptActivityStatus(item)}</p>
+            <p>{item.reason}</p>
+            <small>{`Updated ${formatTimestamp(item.updated_at)}`}</small>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
   return (
     <span className="manuscript-workbench-asset-identity">
@@ -793,6 +855,46 @@ function formatTimestamp(value: string | undefined): string {
   }
 
   return value.replace("T", " ").replace(".000Z", "Z");
+}
+
+function formatMainlineAttemptLedgerSummary(
+  ledger: ManuscriptMainlineAttemptLedgerViewModel,
+): string {
+  if (ledger.truncated) {
+    return `${ledger.total_attempts} total (showing latest ${ledger.visible_attempts})`;
+  }
+
+  return `${ledger.total_attempts} total (showing ${ledger.visible_attempts})`;
+}
+
+function formatMainlineAttemptActivityDetail(
+  item: MainlineAttemptLedgerItemViewModel,
+): string {
+  return `${formatMainlineAttemptHeading(item)} - ${formatMainlineAttemptActivityStatus(item)}`;
+}
+
+function formatMainlineAttemptHeading(
+  item: MainlineAttemptLedgerItemViewModel,
+): string {
+  return `${item.module} attempt ${item.job_attempt_count}`;
+}
+
+function formatMainlineAttemptActivityStatus(
+  item: MainlineAttemptLedgerItemViewModel,
+): string {
+  if (item.settlement_status) {
+    return formatSettlementStatusLabel(item.settlement_status);
+  }
+
+  if (item.evidence_status === "failed_open") {
+    return "Observation unavailable";
+  }
+
+  if (item.evidence_status === "job_only") {
+    return `${formatJobStatusLabel(item.job_status)} (job-only evidence)`;
+  }
+
+  return "Reported";
 }
 
 function renderModuleExecutionOverviewMetrics(
@@ -1916,6 +2018,21 @@ function formatSettlementStatusLabel(
       return "Not started";
     default:
       return "Reported";
+  }
+}
+
+function formatJobStatusLabel(status: JobViewModel["status"]): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    case "running":
+      return "Running";
+    case "queued":
+      return "Queued";
   }
 }
 

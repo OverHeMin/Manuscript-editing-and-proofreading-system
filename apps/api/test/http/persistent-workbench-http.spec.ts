@@ -152,6 +152,12 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
               editing: { observation_status: string };
               proofreading: { observation_status: string };
             };
+            mainline_attempt_ledger?: {
+              observation_status: string;
+              total_attempts: number;
+              visible_attempts: number;
+              items: Array<{ job_id: string }>;
+            };
           };
 
           const assetsResponse = await fetch(
@@ -237,6 +243,13 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
             manuscript.module_execution_overview?.proofreading.observation_status,
             "not_started",
           );
+          assert.equal(
+            manuscript.mainline_attempt_ledger?.observation_status,
+            "reported",
+          );
+          assert.equal(manuscript.mainline_attempt_ledger?.total_attempts, 0);
+          assert.equal(manuscript.mainline_attempt_ledger?.visible_attempts, 0);
+          assert.deepEqual(manuscript.mainline_attempt_ledger?.items, []);
           assert.deepEqual(
             assets.map((asset) => ({
               id: asset.id,
@@ -362,6 +375,16 @@ test("persistent workbench screening routes keep governed execution evidence acr
               derived_status?: string;
               next_module?: string;
             };
+            mainline_attempt_ledger?: {
+              observation_status: string;
+              total_attempts: number;
+              visible_attempts: number;
+              items: Array<{
+                job_id: string;
+                module: string;
+                settlement_status?: string;
+              }>;
+            };
             module_execution_overview?: {
               screening?: {
                 observation_status: string;
@@ -451,6 +474,24 @@ test("persistent workbench screening routes keep governed execution evidence acr
           assert.equal(
             manuscript.mainline_readiness_summary?.next_module,
             "editing",
+          );
+          assert.equal(
+            manuscript.mainline_attempt_ledger?.observation_status,
+            "reported",
+          );
+          assert.equal(manuscript.mainline_attempt_ledger?.total_attempts, 1);
+          assert.equal(manuscript.mainline_attempt_ledger?.visible_attempts, 1);
+          assert.equal(
+            manuscript.mainline_attempt_ledger?.items[0]?.job_id,
+            screening.job.id,
+          );
+          assert.equal(
+            manuscript.mainline_attempt_ledger?.items[0]?.module,
+            "screening",
+          );
+          assert.equal(
+            manuscript.mainline_attempt_ledger?.items[0]?.settlement_status,
+            "business_completed_settled",
           );
           assert.equal(job.execution_tracking?.observation_status, "reported");
           assert.equal(
