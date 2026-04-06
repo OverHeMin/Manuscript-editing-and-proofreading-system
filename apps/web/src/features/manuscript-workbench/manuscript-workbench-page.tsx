@@ -37,33 +37,45 @@ export interface ManuscriptWorkbenchPageProps {
 }
 
 export async function loadPrefilledWorkbenchWorkspace(
-  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace">,
+  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob">,
   manuscriptId: string,
 ): Promise<{
   workspace: ManuscriptWorkbenchWorkspace;
+  latestJob: JobViewModel | null;
   status: string;
   latestActionResult: WorkbenchActionResultViewModel;
 }> {
   const workspace = await controller.loadWorkspace(manuscriptId);
+  const latestJob = await hydrateLatestWorkbenchJob(controller, workspace);
   const status = `Auto-loaded manuscript ${workspace.manuscript.id}`;
+  const details = [
+    {
+      label: "Manuscript",
+      value: workspace.manuscript.id,
+    },
+    {
+      label: "Current Asset",
+      value: workspace.currentAsset?.id ?? "Not available",
+    },
+    ...(latestJob
+      ? [
+          {
+            label: "Latest Job",
+            value: latestJob.id,
+          },
+        ]
+      : []),
+  ];
 
   return {
     workspace,
+    latestJob,
     status,
     latestActionResult: {
       tone: "success",
       actionLabel: "Load Workspace",
       message: status,
-      details: [
-        {
-          label: "Manuscript",
-          value: workspace.manuscript.id,
-        },
-        {
-          label: "Current Asset",
-          value: workspace.currentAsset?.id ?? "Not available",
-        },
-      ],
+      details,
     },
   };
 }
@@ -175,7 +187,7 @@ export function ManuscriptWorkbenchPage({
         }
 
         setWorkspace(result.workspace);
-        setLatestJob(null);
+        setLatestJob(result.latestJob);
         setLatestExport(null);
         setStatus(result.status);
         setLatestActionResult(result.latestActionResult);
@@ -406,6 +418,7 @@ export function ManuscriptWorkbenchPage({
             void run("Load Workspace", async () => {
               const result = await loadPrefilledWorkbenchWorkspace(controller, lookupId.trim());
               setWorkspace(result.workspace);
+              setLatestJob(result.latestJob);
               setStatus(`Loaded manuscript ${result.workspace.manuscript.id}`);
               return {
                 ...result.latestActionResult,
@@ -667,6 +680,69 @@ function formatError(error: unknown): string {
   }
 
   return "Unknown workbench error";
+}
+
+const MAINLINE_WORKBENCH_MODULE_ORDER = ["screening", "editing", "proofreading"] as const;
+
+function resolveLatestWorkbenchJobCandidate(
+  workspace: ManuscriptWorkbenchWorkspace,
+): JobViewModel | null {
+  const overview = workspace.manuscript.module_execution_overview;
+  if (!overview) {
+    return null;
+  }
+
+  let candidate: JobViewModel | null = null;
+
+  for (const module of MAINLINE_WORKBENCH_MODULE_ORDER) {
+    const nextJob = overview[module].latest_job;
+    if (!nextJob) {
+      continue;
+    }
+
+    if (!candidate || compareWorkbenchJobRecency(nextJob, candidate) > 0) {
+      candidate = nextJob;
+    }
+  }
+
+  return candidate;
+}
+
+function compareWorkbenchJobRecency(left: JobViewModel, right: JobViewModel): number {
+  const updatedComparison = left.updated_at.localeCompare(right.updated_at);
+  if (updatedComparison !== 0) {
+    return updatedComparison;
+  }
+
+  const createdComparison = left.created_at.localeCompare(right.created_at);
+  if (createdComparison !== 0) {
+    return createdComparison;
+  }
+
+  const leftIndex = MAINLINE_WORKBENCH_MODULE_ORDER.indexOf(
+    left.module as (typeof MAINLINE_WORKBENCH_MODULE_ORDER)[number],
+  );
+  const rightIndex = MAINLINE_WORKBENCH_MODULE_ORDER.indexOf(
+    right.module as (typeof MAINLINE_WORKBENCH_MODULE_ORDER)[number],
+  );
+
+  return rightIndex - leftIndex;
+}
+
+async function hydrateLatestWorkbenchJob(
+  controller: Pick<ManuscriptWorkbenchController, "loadJob">,
+  workspace: ManuscriptWorkbenchWorkspace,
+): Promise<JobViewModel | null> {
+  const candidate = resolveLatestWorkbenchJobCandidate(workspace);
+  if (!candidate) {
+    return null;
+  }
+
+  try {
+    return await controller.loadJob(candidate.id);
+  } catch {
+    return candidate;
+  }
 }
 
 function normalizeOptionalText(value: string): string | undefined {

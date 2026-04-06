@@ -207,6 +207,7 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
   );
 
   assert.equal(result.workspace, workspace);
+  assert.equal(result.latestJob, null);
   assert.equal(result.status, "Auto-loaded manuscript manuscript-9");
   assert.deepEqual(loadWorkspaceArgs, ["manuscript-9"]);
   assert.deepEqual(result.latestActionResult, {
@@ -224,6 +225,205 @@ test("loadPrefilledWorkbenchWorkspace loads workspace data and creates an operat
       },
     ],
   });
+});
+
+test("loadPrefilledWorkbenchWorkspace restores the newest tracked mainline job from manuscript settlement overview", async () => {
+  const workspace = {
+    manuscript: {
+      id: "manuscript-10",
+      title: "Cardiology review",
+      manuscript_type: "review" as const,
+      status: "processing" as const,
+      created_by: "editor-1",
+      created_at: "2026-04-06T09:00:00.000Z",
+      updated_at: "2026-04-06T10:00:00.000Z",
+      module_execution_overview: {
+        screening: {
+          module: "screening" as const,
+          observation_status: "reported" as const,
+          latest_job: {
+            id: "job-screen-1",
+            manuscript_id: "manuscript-10",
+            module: "screening" as const,
+            job_type: "screening_run",
+            status: "completed" as const,
+            requested_by: "editor-1",
+            attempt_count: 1,
+            created_at: "2026-04-06T09:20:00.000Z",
+            updated_at: "2026-04-06T09:21:00.000Z",
+          },
+        },
+        editing: {
+          module: "editing" as const,
+          observation_status: "reported" as const,
+          latest_job: {
+            id: "job-edit-2",
+            manuscript_id: "manuscript-10",
+            module: "editing" as const,
+            job_type: "editing_run",
+            status: "completed" as const,
+            requested_by: "editor-1",
+            attempt_count: 2,
+            created_at: "2026-04-06T09:40:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+        },
+        proofreading: {
+          module: "proofreading" as const,
+          observation_status: "not_started" as const,
+        },
+      },
+    },
+    assets: [],
+    currentAsset: null,
+    suggestedParentAsset: null,
+    latestProofreadingDraftAsset: null,
+  };
+  const hydratedJob = {
+    id: "job-edit-2",
+    manuscript_id: "manuscript-10",
+    module: "editing" as const,
+    job_type: "editing_run",
+    status: "completed" as const,
+    requested_by: "editor-1",
+    attempt_count: 2,
+    created_at: "2026-04-06T09:40:00.000Z",
+    updated_at: "2026-04-06T09:45:00.000Z",
+    execution_tracking: {
+      observation_status: "reported" as const,
+      snapshot: {
+        id: "snapshot-edit-2",
+        manuscript_id: "manuscript-10",
+        module: "editing" as const,
+        job_id: "job-edit-2",
+        execution_profile_id: "profile-editing",
+        module_template_id: "template-editing",
+        module_template_version_no: 4,
+        prompt_template_id: "prompt-editing",
+        prompt_template_version: "2026-04-06",
+        skill_package_ids: ["editing-skill-pack"],
+        skill_package_versions: ["1.0.0"],
+        model_id: "model-editing",
+        knowledge_item_ids: ["knowledge-editing-1"],
+        created_asset_ids: ["asset-edit-2"],
+        created_at: "2026-04-06T09:45:00.000Z",
+        agent_execution: {
+          observation_status: "reported" as const,
+          log_id: "agent-log-edit-2",
+        },
+        runtime_binding_readiness: {
+          observation_status: "reported" as const,
+        },
+      },
+      settlement: {
+        derived_status: "business_completed_follow_up_pending" as const,
+        business_completed: true,
+        orchestration_completed: false,
+        attention_required: false,
+        reason: "Business execution is complete and governed follow-up is pending.",
+      },
+    },
+  };
+
+  let loadedJobId = "";
+  const result = await loadPrefilledWorkbenchWorkspace(
+    {
+      loadWorkspace: async () => workspace,
+      loadJob: async (jobId: string) => {
+        loadedJobId = jobId;
+        return hydratedJob;
+      },
+    },
+    "manuscript-10",
+  );
+
+  assert.equal(loadedJobId, "job-edit-2");
+  assert.deepEqual(result.latestJob, hydratedJob);
+  assert.deepEqual(result.latestActionResult.details, [
+    {
+      label: "Manuscript",
+      value: "manuscript-10",
+    },
+    {
+      label: "Current Asset",
+      value: "Not available",
+    },
+    {
+      label: "Latest Job",
+      value: "job-edit-2",
+    },
+  ]);
+});
+
+test("loadPrefilledWorkbenchWorkspace fails open when latest tracked job hydration cannot be loaded", async () => {
+  const fallbackJob = {
+    id: "job-proof-3",
+    manuscript_id: "manuscript-11",
+    module: "proofreading" as const,
+    job_type: "proofreading_finalize",
+    status: "completed" as const,
+    requested_by: "editor-1",
+    attempt_count: 3,
+    created_at: "2026-04-06T09:50:00.000Z",
+    updated_at: "2026-04-06T09:55:00.000Z",
+  };
+  const workspace = {
+    manuscript: {
+      id: "manuscript-11",
+      title: "Neurology review",
+      manuscript_type: "review" as const,
+      status: "processing" as const,
+      created_by: "editor-1",
+      created_at: "2026-04-06T09:00:00.000Z",
+      updated_at: "2026-04-06T10:00:00.000Z",
+      module_execution_overview: {
+        screening: {
+          module: "screening" as const,
+          observation_status: "not_started" as const,
+        },
+        editing: {
+          module: "editing" as const,
+          observation_status: "not_started" as const,
+        },
+        proofreading: {
+          module: "proofreading" as const,
+          observation_status: "reported" as const,
+          latest_job: fallbackJob,
+        },
+      },
+    },
+    assets: [],
+    currentAsset: null,
+    suggestedParentAsset: null,
+    latestProofreadingDraftAsset: null,
+  };
+
+  const result = await loadPrefilledWorkbenchWorkspace(
+    {
+      loadWorkspace: async () => workspace,
+      loadJob: async () => {
+        throw new Error("temporary read failure");
+      },
+    },
+    "manuscript-11",
+  );
+
+  assert.equal(result.workspace, workspace);
+  assert.deepEqual(result.latestJob, fallbackJob);
+  assert.deepEqual(result.latestActionResult.details, [
+    {
+      label: "Manuscript",
+      value: "manuscript-11",
+    },
+    {
+      label: "Current Asset",
+      value: "Not available",
+    },
+    {
+      label: "Latest Job",
+      value: "job-proof-3",
+    },
+  ]);
 });
 
 test("manuscript workbench summary shows prepared export metadata for finalized proofreading output", () => {
