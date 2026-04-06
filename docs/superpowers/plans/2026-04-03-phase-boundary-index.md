@@ -97,6 +97,7 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 18 | `2026-04-06-phase18-manuscript-workbench-action-result-posture-adoption-design.md` | focused mainline delivery around manuscript workbench action-result posture adoption | Clean | Continues the same execution/orchestration lane by adopting hydrated job posture into the current Latest Action Result card for job-bearing actions, without adding a new page, panel, route, or control-plane action. |
 | Phase 19 | `2026-04-06-phase19-manuscript-workbench-refresh-time-workspace-resynchronization-design.md` | focused mainline delivery around manuscript workbench refresh-time workspace resynchronization | Clean | Continues the same execution/orchestration lane by best-effort reloading the current workspace after Refresh Latest Job so summary and recommendation surfaces stay aligned with refreshed job posture, without adding a new page, panel, route, or control-plane action. |
 | Phase 20 | `2026-04-06-phase20-manuscript-workbench-latest-job-fallback-guidance-design.md` | focused mainline delivery around manuscript workbench latest-job fallback guidance | Clean | Continues the same execution/orchestration lane by using hydrated latest-job execution tracking as the recommendation fallback before raw heuristics, so guidance stays posture-aware without adding a new page, panel, route, or control-plane action. |
+| Phase 21 | `2026-04-06-phase21-manuscript-workbench-overview-latest-job-fallback-visibility-design.md` | focused mainline delivery around manuscript workbench overview latest-job fallback visibility | Clean | Continues the same execution/orchestration lane by keeping the existing manuscript overview metrics readable from hydrated latest-job execution tracking when overview observation is missing or degraded, without adding a new page, panel, route, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -166,6 +167,11 @@ delivered through one cleanly isolated branch or one PR with the same name.
   even when manuscript overview observation is missing, by falling back to
   hydrated latest-job execution tracking before raw heuristics, without
   introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 21` as the next adjacent continuation of that same lane: it
+  keeps the current workbench overview card readable from the same hydrated
+  latest-job posture when manuscript overview observation is missing or
+  degraded, without introducing a new page, panel, route, or control-plane
+  action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

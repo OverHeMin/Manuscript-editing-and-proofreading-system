@@ -225,6 +225,7 @@ export function ManuscriptWorkbenchSummary({
           />
           {renderModuleExecutionOverviewMetrics(
             workspace.manuscript.module_execution_overview,
+            latestJob,
           )}
           {canOpenEvaluationWorkbench ? (
             <SummaryMetric
@@ -474,16 +475,13 @@ function formatTimestamp(value: string | undefined): string {
 
 function renderModuleExecutionOverviewMetrics(
   overview: ManuscriptModuleExecutionOverviewViewModel | undefined,
+  latestJob: AnyWorkbenchJob | null,
 ): ReactNode[] | null {
-  if (!overview) {
-    return null;
-  }
-
   return MAINLINE_SETTLEMENT_MODULE_ORDER.map((module) => (
     <SummaryMetric
       key={`module-overview:${module}`}
       label={`${formatMainlineModuleLabel(module)} Settlement`}
-      value={describeModuleExecutionOverview(overview[module])}
+      value={describeModuleExecutionOverviewMetric(module, overview?.[module], latestJob)}
     />
   ));
 }
@@ -1131,6 +1129,64 @@ function describeModuleExecutionOverview(
   return parts.join(" · ");
 }
 
+function describeModuleExecutionOverviewMetric(
+  module: MainlineSettlementModule,
+  overview: ModuleExecutionOverviewViewModel | undefined,
+  latestJob: AnyWorkbenchJob | null,
+): string {
+  if (overview?.observation_status === "reported") {
+    return describeModuleExecutionOverview(overview);
+  }
+
+  const latestJobFallback = describeLatestJobExecutionTrackingOverview(module, latestJob);
+  if (latestJobFallback) {
+    return latestJobFallback;
+  }
+
+  return describeModuleExecutionOverview(overview);
+}
+
+function describeLatestJobExecutionTrackingOverview(
+  module: MainlineSettlementModule,
+  latestJob: AnyWorkbenchJob | null,
+): string | undefined {
+  if (!latestJob || latestJob.module !== module) {
+    return undefined;
+  }
+
+  const executionTracking = getJobExecutionTracking(latestJob);
+  if (
+    !executionTracking ||
+    executionTracking.observation_status !== "reported" ||
+    !executionTracking.settlement
+  ) {
+    return undefined;
+  }
+
+  const parts: string[] = [
+    formatSettlementStatusLabel(executionTracking.settlement.derived_status),
+  ];
+
+  const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
+  if (recoveryPosture) {
+    parts.push(recoveryPosture);
+  }
+
+  const compactRuntimeBindingReadiness =
+    describeCompactExecutionTrackingRuntimeBindingReadiness(executionTracking);
+  if (compactRuntimeBindingReadiness) {
+    parts.push(compactRuntimeBindingReadiness);
+  }
+
+  if (executionTracking.snapshot) {
+    parts.push(`snapshot ${executionTracking.snapshot.id}`);
+  }
+
+  parts.push("latest tracked job");
+
+  return parts.join(" · ");
+}
+
 function describeJobExecutionTracking(
   executionTracking: JobExecutionTrackingObservationViewModel,
 ): string {
@@ -1214,7 +1270,27 @@ function describeModuleExecutionRuntimeBindingReadiness(
 function describeCompactModuleRuntimeBindingReadiness(
   overview: ModuleExecutionOverviewViewModel,
 ): string | undefined {
-  const observation = overview.latest_snapshot?.runtime_binding_readiness;
+  return describeCompactRuntimeBindingReadinessObservation(
+    overview.latest_snapshot?.runtime_binding_readiness,
+  );
+}
+
+function describeCompactExecutionTrackingRuntimeBindingReadiness(
+  executionTracking: JobExecutionTrackingObservationViewModel,
+): string | undefined {
+  return describeCompactRuntimeBindingReadinessObservation(
+    executionTracking.snapshot?.runtime_binding_readiness,
+  );
+}
+
+function describeCompactRuntimeBindingReadinessObservation(
+  observation:
+    | {
+        observation_status: "reported" | "failed_open";
+        report?: RuntimeBindingReadinessReportViewModel;
+      }
+    | undefined,
+): string | undefined {
   if (!observation) {
     return undefined;
   }

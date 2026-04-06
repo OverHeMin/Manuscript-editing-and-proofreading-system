@@ -548,15 +548,37 @@ This phase does **not** absorb:
 - new workbench panels, pages, or dashboards
 - replay, retry, routing, or runtime mutation authority
 
-### 4.25 Still-Open Retained Capability Lanes After Phase 20
+### 4.25 Phase 21: Manuscript Workbench Overview Latest-Job Fallback Visibility
 
-After reconciling actual landed numbering through `Phase 20`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** overview-card fallback visibility from hydrated
+latest-job execution tracking inside the existing manuscript workbench summary
+
+This phase now owns:
+
+- continued module-settlement visibility on the existing `Manuscript Overview`
+  card when manuscript overview observation is missing or degraded
+- compact fallback rendering from hydrated latest-job settlement, recovery,
+  runtime readiness, and snapshot posture for the matching module
+- fail-open preservation of current overview text when latest-job tracking is
+  unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- controller or request choreography changes
+- new workbench panels, pages, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.26 Still-Open Retained Capability Lanes After Phase 21
+
+After reconciling actual landed numbering through `Phase 21`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, and `Phase 20` workbench adoption slices
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, and `Phase 21` workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -589,6 +611,7 @@ The repository has now landed the following actual sequence after `10A`:
 20. `Phase 18` manuscript workbench action-result posture adoption under the same fresh execution/orchestration continuation
 21. `Phase 19` manuscript workbench refresh-time workspace resynchronization under the same fresh execution/orchestration continuation
 22. `Phase 20` manuscript workbench latest-job fallback guidance under the same fresh execution/orchestration continuation
+23. `Phase 21` manuscript workbench overview latest-job fallback visibility under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -629,6 +652,9 @@ The practical planning implication after `11G` is:
 - treat `Phase 20` as a recommendation-fallback adoption slice in that same
   lane, not as permission to add backend route expansion, new summary panels,
   or any replay/control-plane authority under the same label
+- treat `Phase 21` as an overview-fallback visibility slice in that same lane,
+  not as permission to add backend route expansion, new workbench panels, or
+  any replay/control-plane authority under the same label
 
 ## 6. What This Mapping Prevents
 
