@@ -10,11 +10,20 @@ import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
 } from "./manuscript-workbench-controls.tsx";
-import { ManuscriptWorkbenchNotice } from "./manuscript-workbench-notice.tsx";
+import {
+  ManuscriptWorkbenchNotice,
+  type ManuscriptWorkbenchNoticeProps,
+} from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
+  buildJobPostureDetails,
+  buildLatestJobPostureDetails,
+  buildManuscriptMainlineAttentionHandoffPackDetails,
+  buildManuscriptMainlineAttemptLedgerDetails,
+  buildManuscriptMainlineReadinessDetails,
   ManuscriptWorkbenchSummary,
   type WorkbenchActionResultViewModel,
+  type WorkbenchActionResultDetail,
 } from "./manuscript-workbench-summary.tsx";
 import {
   createManuscriptWorkbenchController,
@@ -57,12 +66,25 @@ export async function loadPrefilledWorkbenchWorkspace(
       label: "Current Asset",
       value: workspace.currentAsset?.id ?? "Not available",
     },
+    ...buildManuscriptMainlineReadinessDetails(
+      workspace.manuscript.mainline_readiness_summary,
+    ),
+    ...buildManuscriptMainlineAttentionHandoffPackDetails(
+      workspace.manuscript.mainline_attention_handoff_pack,
+    ),
+    ...buildManuscriptMainlineAttemptLedgerDetails(
+      workspace.manuscript.mainline_attempt_ledger,
+    ),
     ...(latestJob
-      ? [
+        ? [
           {
             label: "Latest Job",
             value: latestJob.id,
           },
+          ...buildLatestJobPostureDetails(
+            latestJob,
+            workspace.manuscript.module_execution_overview,
+          ),
         ]
       : []),
   ];
@@ -76,6 +98,122 @@ export async function loadPrefilledWorkbenchWorkspace(
       actionLabel: "Load Workspace",
       message: status,
       details,
+    },
+  };
+}
+
+export function buildWorkbenchJobActionResultDetails(
+  baseDetails: WorkbenchActionResultDetail[],
+  job: JobViewModel | ModuleJobViewModel,
+  overview?: ManuscriptWorkbenchWorkspace["manuscript"]["module_execution_overview"],
+): WorkbenchActionResultDetail[] {
+  return [...baseDetails, ...buildJobPostureDetails(job, "Job", overview)];
+}
+
+export function resolveWorkbenchNotice(input: {
+  error: string;
+  status: string;
+  latestActionResult: WorkbenchActionResultViewModel | null;
+}): ManuscriptWorkbenchNoticeProps | null {
+  if (input.error) {
+    return {
+      tone: "error",
+      title: "Action Error",
+      message: input.error,
+    };
+  }
+
+  const fallbackMessage =
+    input.status.trim() || input.latestActionResult?.message.trim() || "";
+  if (!fallbackMessage) {
+    return null;
+  }
+
+  if (!input.latestActionResult || input.latestActionResult.tone !== "success") {
+    return {
+      tone: "success",
+      title: "Action Complete",
+      message: fallbackMessage,
+    };
+  }
+
+  const settlement = findWorkbenchActionDetailValue(input.latestActionResult.details, "Settlement");
+  if (!settlement || settlement === "Settled") {
+    return {
+      tone: "success",
+      title: "Action Complete",
+      message: fallbackMessage,
+    };
+  }
+
+  return {
+    tone: "success",
+    title: "Action Recorded",
+    message: buildWorkbenchActionNoticeMessage(
+      fallbackMessage,
+      settlement,
+      findWorkbenchActionDetailValue(input.latestActionResult.details, "Recovery"),
+      findWorkbenchActionDetailValue(input.latestActionResult.details, "Recovery Ready At"),
+    ),
+  };
+}
+
+export async function refreshLatestWorkbenchJobContext(
+  controller: Pick<ManuscriptWorkbenchController, "loadJob" | "loadWorkspace">,
+  input: {
+    manuscriptId: string;
+    latestJobId: string;
+  },
+): Promise<{
+  latestJob: JobViewModel;
+  workspace: ManuscriptWorkbenchWorkspace | null;
+  status: string;
+  latestActionResult: WorkbenchActionResultViewModel;
+}> {
+  const latestJob = await controller.loadJob(input.latestJobId);
+  let workspace: ManuscriptWorkbenchWorkspace | null = null;
+
+  try {
+    workspace = await controller.loadWorkspace(input.manuscriptId);
+  } catch {
+    workspace = null;
+  }
+
+  const status = `Refreshed job ${latestJob.id}`;
+
+  return {
+    latestJob,
+    workspace,
+    status,
+    latestActionResult: {
+      tone: "success",
+      actionLabel: "Refresh Latest Job",
+      message: status,
+      details: [
+        ...buildWorkbenchJobActionResultDetails(
+          [
+            {
+              label: "Job",
+              value: latestJob.id,
+            },
+            {
+              label: "Status",
+              value: latestJob.status,
+            },
+          ],
+          latestJob,
+          workspace?.manuscript.module_execution_overview,
+        ),
+        ...buildManuscriptMainlineReadinessDetails(
+          workspace?.manuscript.mainline_readiness_summary,
+        ),
+        ...buildManuscriptMainlineAttentionHandoffPackDetails(
+          workspace?.manuscript.mainline_attention_handoff_pack,
+        ),
+        ...buildManuscriptMainlineAttemptLedgerDetails(
+          workspace?.manuscript.mainline_attempt_ledger,
+        ),
+      ],
     },
   };
 }
@@ -134,6 +272,11 @@ export function ManuscriptWorkbenchPage({
     uploadForm.mimeType.trim().length > 0 &&
     hasUploadPayload(uploadForm);
   const workbenchBusy = busy || isPrefillLoading;
+  const notice = resolveWorkbenchNotice({
+    error,
+    status,
+    latestActionResult,
+  });
 
   useEffect(() => {
     if (!workspace) {
@@ -321,20 +464,7 @@ export function ManuscriptWorkbenchPage({
           </dl>
         </section>
       ) : null}
-      {error ? (
-        <ManuscriptWorkbenchNotice
-          tone="error"
-          title="Action Error"
-          message={error}
-        />
-      ) : null}
-      {!error && status ? (
-        <ManuscriptWorkbenchNotice
-          tone="success"
-          title="Action Complete"
-          message={status}
-        />
-      ) : null}
+      {notice ? <ManuscriptWorkbenchNotice {...notice} /> : null}
       {normalizedPrefilledManuscriptId.length > 0 && isPrefillLoading && !workspace ? (
         <section
           className="manuscript-workbench-loading-card"
@@ -396,16 +526,20 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Upload Manuscript",
                       message: `Uploaded manuscript ${result.upload.manuscript.id}`,
-                      details: [
-                        {
-                          label: "Manuscript",
-                          value: result.upload.manuscript.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.upload.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Manuscript",
+                            value: result.upload.manuscript.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.upload.job.id,
+                          },
+                        ],
+                        result.upload.job,
+                        result.workspace.manuscript.module_execution_overview,
+                      ),
                     };
                   }),
               }
@@ -458,16 +592,20 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: resolveActionLabel(mode),
                       message: `Created asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
+                      ),
                     };
                   }),
               }
@@ -504,16 +642,20 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Finalize Proofreading",
                       message: `Finalized asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
+                      ),
                     };
                   }),
               }
@@ -581,16 +723,20 @@ export function ManuscriptWorkbenchPage({
                       tone: "success",
                       actionLabel: "Publish Human Final",
                       message: `Published human-final asset ${result.runResult.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: result.runResult.asset.id,
-                        },
-                        {
-                          label: "Job",
-                          value: result.runResult.job.id,
-                        },
-                      ],
+                      details: buildWorkbenchJobActionResultDetails(
+                        [
+                          {
+                            label: "Asset",
+                            value: result.runResult.asset.id,
+                          },
+                          {
+                            label: "Job",
+                            value: result.runResult.job.id,
+                          },
+                        ],
+                        result.runResult.job,
+                        result.workspace.manuscript.module_execution_overview,
+                      ),
                     };
                   }),
                 onRefreshLatestJob: () => {
@@ -599,24 +745,16 @@ export function ManuscriptWorkbenchPage({
                   }
 
                   void run("Refresh Latest Job", async () => {
-                    const nextJob = await controller.loadJob(latestJob.id);
-                    setLatestJob(nextJob);
-                    setStatus(`Refreshed job ${nextJob.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Refresh Latest Job",
-                      message: `Refreshed job ${nextJob.id}`,
-                      details: [
-                        {
-                          label: "Job",
-                          value: nextJob.id,
-                        },
-                        {
-                          label: "Status",
-                          value: nextJob.status,
-                        },
-                      ],
-                    };
+                    const result = await refreshLatestWorkbenchJobContext(controller, {
+                      manuscriptId: workspace.manuscript.id,
+                      latestJobId: latestJob.id,
+                    });
+                    setLatestJob(result.latestJob);
+                    if (result.workspace) {
+                      setWorkspace(result.workspace);
+                    }
+                    setStatus(result.status);
+                    return result.latestActionResult;
                   });
                 },
               }
@@ -680,6 +818,44 @@ function formatError(error: unknown): string {
   }
 
   return "Unknown workbench error";
+}
+
+function findWorkbenchActionDetailValue(
+  details: WorkbenchActionResultDetail[],
+  labelSuffix: string,
+): string | undefined {
+  return details.find((detail) => detail.label.endsWith(labelSuffix))?.value;
+}
+
+function buildWorkbenchActionNoticeMessage(
+  status: string,
+  settlement: string,
+  recovery?: string,
+  recoveryReadyAt?: string,
+): string {
+  switch (settlement) {
+    case "Business complete, follow-up pending":
+    case "Business complete, follow-up running":
+      return `${status} Governed follow-up is not settled yet.`;
+    case "Business complete, follow-up retryable":
+      if (recovery === "Waiting for retry window" && recoveryReadyAt) {
+        return `${status} Governed follow-up is retryable after ${recoveryReadyAt} and still needs attention.`;
+      }
+
+      return `${status} Governed follow-up is retryable and still needs attention.`;
+    case "Business complete, follow-up failed":
+      return `${status} Governed follow-up failed and needs inspection.`;
+    case "Business complete, settlement unlinked":
+      return `${status} Settlement linkage is incomplete and needs inspection.`;
+    case "Job failed":
+      return `${status} The latest governed attempt failed and needs inspection.`;
+    case "Job in progress":
+      return `${status} The latest governed run is still in progress.`;
+    case "Not started":
+      return `${status} The latest governed follow-up has not started yet.`;
+    default:
+      return status;
+  }
 }
 
 const MAINLINE_WORKBENCH_MODULE_ORDER = ["screening", "editing", "proofreading"] as const;

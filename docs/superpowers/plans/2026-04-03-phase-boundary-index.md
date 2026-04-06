@@ -92,6 +92,19 @@ delivered through one cleanly isolated branch or one PR with the same name.
 | Phase 13 | `2026-04-06-phase13-manuscript-mainline-settlement-view-design.md` | focused mainline delivery around manuscript mainline settlement visibility | Clean | Continues the same fresh execution/orchestration lane by exposing additive per-module settlement visibility on the existing manuscript/job read paths without adding a new control plane. |
 | Phase 14 | `2026-04-06-phase14-manuscript-workbench-settlement-adoption-design.md` | focused mainline delivery around manuscript workbench settlement adoption | Clean | Continues the same execution/orchestration lane by adopting the existing settlement read model into the current manuscript workbench summary path without adding a new page, panel, or routing authority. |
 | Phase 15 | `2026-04-06-phase15-manuscript-workbench-restart-safe-execution-hydration-design.md` | focused mainline delivery around manuscript workbench restart-safe execution hydration | Clean | Continues the same execution/orchestration lane by restoring latest tracked job context during workbench reload through existing manuscript/job read paths only, without adding a new route or control surface. |
+| Phase 16 | `2026-04-06-phase16-manuscript-workbench-recovery-and-readiness-posture-adoption-design.md` | focused mainline delivery around manuscript workbench recovery/readiness posture adoption | Clean | Continues the same execution/orchestration lane by adopting existing recovery and runtime-readiness read models into the current manuscript workbench cards and load-result path without adding a new page, panel, or control-plane action. |
+| Phase 17 | `2026-04-06-phase17-manuscript-workbench-action-time-execution-hydration-design.md` | focused mainline delivery around manuscript workbench action-time execution hydration | Clean | Continues the same execution/orchestration lane by hydrating returned action jobs through the existing job read path so the current workbench shows durable posture immediately after action completion without adding a new page, panel, route, or control-plane action. |
+| Phase 18 | `2026-04-06-phase18-manuscript-workbench-action-result-posture-adoption-design.md` | focused mainline delivery around manuscript workbench action-result posture adoption | Clean | Continues the same execution/orchestration lane by adopting hydrated job posture into the current Latest Action Result card for job-bearing actions, without adding a new page, panel, route, or control-plane action. |
+| Phase 19 | `2026-04-06-phase19-manuscript-workbench-refresh-time-workspace-resynchronization-design.md` | focused mainline delivery around manuscript workbench refresh-time workspace resynchronization | Clean | Continues the same execution/orchestration lane by best-effort reloading the current workspace after Refresh Latest Job so summary and recommendation surfaces stay aligned with refreshed job posture, without adding a new page, panel, route, or control-plane action. |
+| Phase 20 | `2026-04-06-phase20-manuscript-workbench-latest-job-fallback-guidance-design.md` | focused mainline delivery around manuscript workbench latest-job fallback guidance | Clean | Continues the same execution/orchestration lane by using hydrated latest-job execution tracking as the recommendation fallback before raw heuristics, so guidance stays posture-aware without adding a new page, panel, route, or control-plane action. |
+| Phase 21 | `2026-04-06-phase21-manuscript-workbench-overview-latest-job-fallback-visibility-design.md` | focused mainline delivery around manuscript workbench overview latest-job fallback visibility | Clean | Continues the same execution/orchestration lane by keeping the existing manuscript overview metrics readable from hydrated latest-job execution tracking when overview observation is missing or degraded, without adding a new page, panel, route, or control-plane action. |
+| Phase 22 | `2026-04-06-phase22-manuscript-workbench-latest-job-overview-posture-fallback-design.md` | focused mainline delivery around manuscript workbench latest-job overview posture fallback | Clean | Continues the same execution/orchestration lane by keeping the existing Latest Job card posture-aware when the workbench is fail-opened onto a raw overview latest-job candidate, without adding a new page, panel, route, or control-plane action. |
+| Phase 23 | `2026-04-06-phase23-manuscript-workbench-action-result-overview-posture-fallback-design.md` | focused mainline delivery around manuscript workbench action-result overview posture fallback | Clean | Continues the same execution/orchestration lane by keeping the existing Latest Action Result card posture-aware when action-time or load-time results fail open to a raw overview-backed job candidate, without adding a new page, panel, route, or control-plane action. |
+| Phase 24 | `2026-04-06-phase24-manuscript-workbench-action-notice-posture-adoption-design.md` | focused mainline delivery around manuscript workbench action-notice posture adoption | Clean | Continues the same execution/orchestration lane by keeping the existing top workbench notice honest about durable follow-up posture for job-bearing action results, without adding a new page, panel, route, or control-plane action. |
+| Phase 25 | `2026-04-06-phase25-manuscript-workbench-execution-posture-pill-adoption-design.md` | focused mainline delivery around manuscript workbench execution posture pill adoption | Clean | Continues the same execution/orchestration lane by keeping the existing summary-card pills honest about durable follow-up posture for action results and latest-job evidence, without adding a new page, panel, route, or control-plane action. |
+| Phase 26 | `2026-04-06-phase26-manuscript-mainline-internal-trial-readiness-summary-design.md` | focused mainline delivery around manuscript mainline internal-trial readiness summary adoption | Clean | Continues the same execution/orchestration lane by deriving one additive manuscript mainline readiness summary from existing posture evidence and adopting it inside the current workbench summary path, without adding a new page, panel, route, or control-plane action. |
+| Phase 27 | `2026-04-06-phase27-manuscript-mainline-timeline-and-attempt-ledger-design.md` | focused mainline delivery around manuscript mainline timeline and attempt-ledger adoption | Clean | Continues the same execution/orchestration lane by deriving one additive bounded mainline attempt ledger from existing manuscript job and snapshot evidence and adopting it inside the current workbench overview/load-result path, without adding a new page, panel, route, or control-plane action. |
+| Phase 28 | `2026-04-06-phase28-manuscript-workbench-attention-and-handoff-pack-design.md` | focused mainline delivery around manuscript attention and handoff-pack adoption | Clean | Continues the same execution/orchestration lane by deriving one additive attention/handoff pack from existing readiness, ledger, and module posture evidence and adopting it inside the current workbench overview/load-result path, without adding a new page, panel, route, or control-plane action. |
 
 ## Practical Guidance For Future Work
 
@@ -137,6 +150,68 @@ delivered through one cleanly isolated branch or one PR with the same name.
   makes the current manuscript workbench reload path restart-safe by restoring
   latest tracked job context through the existing manuscript/job read model,
   without adding a new route, panel, or mutation authority.
+- Treat `Phase 16` as the next adjacent continuation of that same lane: it
+  adopts existing recovery and runtime-readiness posture into the current
+  manuscript workbench summary and load-result path so restored execution
+  context stays readable and explainable without introducing a new page,
+  panel, or control-plane action.
+- Treat `Phase 17` as the next adjacent continuation of that same lane: it
+  aligns action-time workbench state with the existing hydrated job read model
+  so immediate operator feedback shows durable execution posture without
+  requiring reload and without introducing a new page, panel, route, or
+  control-plane action.
+- Treat `Phase 18` as the next adjacent continuation of that same lane: it
+  adopts that same hydrated job posture into the current Latest Action Result
+  card for job-bearing actions, so action-time feedback becomes readable and
+  explainable without introducing a new page, panel, route, or control-plane
+  action.
+- Treat `Phase 19` as the next adjacent continuation of that same lane: it
+  aligns refresh-time job observation with the current workspace read model so
+  overview and recommendation surfaces stay in sync after Refresh Latest Job,
+  without introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 20` as the next adjacent continuation of that same lane: it
+  keeps the current workbench recommendation path on posture-aware read models
+  even when manuscript overview observation is missing, by falling back to
+  hydrated latest-job execution tracking before raw heuristics, without
+  introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 21` as the next adjacent continuation of that same lane: it
+  keeps the current workbench overview card readable from the same hydrated
+  latest-job posture when manuscript overview observation is missing or
+  degraded, without introducing a new page, panel, route, or control-plane
+  action.
+- Treat `Phase 22` as the next adjacent continuation of that same lane: it
+  keeps the current Latest Job card posture-aware under the existing fail-open
+  overview-job fallback path, without introducing a new page, panel, route, or
+  control-plane action.
+- Treat `Phase 23` as the next adjacent continuation of that same lane: it
+  keeps the current Latest Action Result card posture-aware under the existing
+  raw-job fail-open path, without introducing a new page, panel, route, or
+  control-plane action.
+- Treat `Phase 24` as the next adjacent continuation of that same lane: it
+  keeps the current top workbench notice honest about durable follow-up
+  posture by reusing existing action-result details, without introducing a new
+  page, panel, route, or control-plane action.
+- Treat `Phase 25` as the next adjacent continuation of that same lane: it
+  keeps the current summary-card pills honest about durable follow-up posture
+  by reusing existing action-result and latest-job evidence, without
+  introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 26` as the next adjacent continuation of that same lane: it
+  derives one additive manuscript mainline readiness summary from the existing
+  settlement, recovery, and runtime-readiness evidence and adopts that summary
+  inside the current workbench overview/recommendation/load-result path,
+  without introducing a new page, panel, route, or control-plane action.
+- Treat `Phase 27` as the next adjacent continuation of that same lane: it
+  derives one additive bounded mainline attempt ledger from the existing
+  manuscript job, snapshot, settlement, recovery, and runtime-readiness
+  evidence so the current workbench can explain how the manuscript reached its
+  present posture without introducing a new page, panel, route, or
+  control-plane action.
+- Treat `Phase 28` as the next adjacent continuation of that same lane: it
+  derives one additive attention/handoff pack from the existing readiness,
+  attempt-ledger, settlement, recovery, and runtime posture evidence so the
+  current workbench can explain what currently needs attention and whether the
+  next governed handoff is ready, blocked, or completed, without introducing a
+  new page, panel, route, or control-plane action.
 - When creating future phases, prefer the Phase 9Q / 9R / 9S / 9T pattern: one
   design, one plan, one focused delivery slice, and one clear verification
   story. `10N`, `10O`, `10P`, `10Q`, `10R`, `10S`, `10T`, `10U`, `10V`, and `10W` are the current best Phase 10 examples of that pattern.

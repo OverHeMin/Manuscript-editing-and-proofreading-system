@@ -1044,6 +1044,897 @@ test("manuscript workbench summary fails open to heuristic guidance when settlem
   assert.match(markup, /Observation unavailable \(failed open\)/);
 });
 
+test("manuscript workbench summary uses latest job execution tracking as fallback guidance when overview is unavailable", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-editing-fallback-track-1",
+            title: "Editing tracked fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_editing_asset_id: "asset-edited-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is fully settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "failed_open",
+                error: "Execution tracking service is unavailable for manuscript settlement overview.",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [
+            {
+              id: "asset-edited-1",
+              manuscript_id: "manuscript-editing-fallback-track-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/fallback-track.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "editing",
+              source_job_id: "job-editing-track-9",
+              created_by: "operator-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "editing-fallback-track.docx",
+              created_at: "2026-04-06T09:45:00.000Z",
+              updated_at: "2026-04-06T09:45:00.000Z",
+            },
+          ],
+          currentAsset: {
+            id: "asset-edited-1",
+            manuscript_id: "manuscript-editing-fallback-track-1",
+            asset_type: "edited_docx",
+            status: "active",
+            storage_key: "runs/editing/fallback-track.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            source_module: "editing",
+            source_job_id: "job-editing-track-9",
+            created_by: "operator-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "editing-fallback-track.docx",
+            created_at: "2026-04-06T09:45:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+          suggestedParentAsset: {
+            id: "asset-edited-1",
+            manuscript_id: "manuscript-editing-fallback-track-1",
+            asset_type: "edited_docx",
+            status: "active",
+            storage_key: "runs/editing/fallback-track.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            source_module: "editing",
+            source_job_id: "job-editing-track-9",
+            created_by: "operator-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "editing-fallback-track.docx",
+            created_at: "2026-04-06T09:45:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-track-9",
+          manuscript_id: "manuscript-editing-fallback-track-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 2,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+          execution_tracking: {
+            observation_status: "reported",
+            snapshot: {
+              id: "snapshot-editing-track-9",
+              manuscript_id: "manuscript-editing-fallback-track-1",
+              module: "editing",
+              job_id: "job-editing-track-9",
+              execution_profile_id: "profile-editing",
+              module_template_id: "template-editing",
+              module_template_version_no: 4,
+              prompt_template_id: "prompt-editing",
+              prompt_template_version: "2026-04-06",
+              skill_package_ids: ["editing-skill-pack"],
+              skill_package_versions: ["1.0.0"],
+              model_id: "model-editing",
+              knowledge_item_ids: ["knowledge-editing-1"],
+              created_asset_ids: ["asset-edited-1"],
+              created_at: "2026-04-06T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-editing-track-9",
+                log: {
+                  id: "agent-log-editing-track-9",
+                  status: "completed",
+                  orchestration_status: "retryable",
+                  completion_summary: {
+                    derived_status: "business_completed_follow_up_retryable",
+                    business_completed: true,
+                    follow_up_required: true,
+                    fully_settled: false,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "recoverable_now",
+                    recovery_readiness: "ready_now",
+                    reason: "Retryable orchestration is ready now.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "degraded",
+                  scope: {
+                    module: "editing",
+                    manuscriptType: "review",
+                    templateFamilyId: "template-family-1",
+                  },
+                  issues: [
+                    {
+                      code: "runtime_not_active",
+                      message: "Runtime is not active.",
+                    },
+                  ],
+                  execution_profile_alignment: {
+                    status: "drifted",
+                    binding_execution_profile_id: "profile-editing",
+                    active_execution_profile_id: "profile-editing-active",
+                  },
+                },
+              },
+            },
+            settlement: {
+              derived_status: "business_completed_follow_up_retryable",
+              business_completed: true,
+              orchestration_completed: false,
+              attention_required: false,
+              reason: "Business execution is complete and governed follow-up is retryable.",
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Inspect editing follow-up before proofreading handoff/);
+  assert.match(markup, /Settlement/);
+  assert.match(markup, /Business complete, follow-up retryable/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /Recoverable now/);
+  assert.match(markup, /Runtime Readiness/);
+  assert.match(markup, /Degraded \(1 issue\)/);
+  assert.doesNotMatch(markup, /Open Proofreading Workbench/);
+});
+
+test("manuscript workbench summary uses settled latest job execution tracking to advance when overview is missing", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "screening",
+        accessibleHandoffModes: ["screening", "editing"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-screening-track-1",
+            title: "Screening tracked fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_screening_asset_id: "asset-screen-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+          },
+          assets: [
+            {
+              id: "asset-screen-1",
+              manuscript_id: "manuscript-screening-track-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/settled.md",
+              mime_type: "text/markdown",
+              source_module: "screening",
+              source_job_id: "job-screening-track-1",
+              created_by: "operator-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "screening-settled.md",
+              created_at: "2026-04-06T09:45:00.000Z",
+              updated_at: "2026-04-06T09:45:00.000Z",
+            },
+          ],
+          currentAsset: {
+            id: "asset-screen-1",
+            manuscript_id: "manuscript-screening-track-1",
+            asset_type: "screening_report",
+            status: "active",
+            storage_key: "runs/screening/settled.md",
+            mime_type: "text/markdown",
+            source_module: "screening",
+            source_job_id: "job-screening-track-1",
+            created_by: "operator-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "screening-settled.md",
+            created_at: "2026-04-06T09:45:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+          suggestedParentAsset: {
+            id: "asset-screen-1",
+            manuscript_id: "manuscript-screening-track-1",
+            asset_type: "screening_report",
+            status: "active",
+            storage_key: "runs/screening/settled.md",
+            mime_type: "text/markdown",
+            source_module: "screening",
+            source_job_id: "job-screening-track-1",
+            created_by: "operator-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "screening-settled.md",
+            created_at: "2026-04-06T09:45:00.000Z",
+            updated_at: "2026-04-06T09:45:00.000Z",
+          },
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-screening-track-1",
+          manuscript_id: "manuscript-screening-track-1",
+          module: "screening",
+          job_type: "screening_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+          execution_tracking: {
+            observation_status: "reported",
+            snapshot: {
+              id: "snapshot-screening-track-1",
+              manuscript_id: "manuscript-screening-track-1",
+              module: "screening",
+              job_id: "job-screening-track-1",
+              execution_profile_id: "profile-screening",
+              module_template_id: "template-screening",
+              module_template_version_no: 4,
+              prompt_template_id: "prompt-screening",
+              prompt_template_version: "2026-04-06",
+              skill_package_ids: ["screening-skill-pack"],
+              skill_package_versions: ["1.0.0"],
+              model_id: "model-screening",
+              knowledge_item_ids: ["knowledge-screening-1"],
+              created_asset_ids: ["asset-screen-1"],
+              created_at: "2026-04-06T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-screening-track-1",
+                log: {
+                  id: "agent-log-screening-track-1",
+                  status: "completed",
+                  orchestration_status: "completed",
+                  completion_summary: {
+                    derived_status: "business_completed_settled",
+                    business_completed: true,
+                    follow_up_required: false,
+                    fully_settled: true,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "not_recoverable",
+                    recovery_readiness: "not_recoverable",
+                    reason: "No recovery needed.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "ready",
+                  scope: {
+                    module: "screening",
+                    manuscriptType: "review",
+                    templateFamilyId: "template-family-1",
+                  },
+                  issues: [],
+                  execution_profile_alignment: {
+                    status: "aligned",
+                    binding_execution_profile_id: "profile-screening",
+                    active_execution_profile_id: "profile-screening",
+                  },
+                },
+              },
+            },
+            settlement: {
+              derived_status: "business_completed_settled",
+              business_completed: true,
+              orchestration_completed: true,
+              attention_required: false,
+              reason: "Screening is settled.",
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Advance this manuscript into editing/);
+  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /Settlement/);
+  assert.match(markup, /Settled/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /No recovery needed/);
+  assert.match(markup, /Runtime Readiness/);
+  assert.match(markup, /Ready/);
+});
+
+test("manuscript workbench summary falls back to latest job posture inside module overview when overview is failed open", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-editing-overview-fallback-1",
+            title: "Editing overview fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_editing_asset_id: "asset-edited-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "failed_open",
+                error: "Overview observation failed open.",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-overview-fallback-1",
+          manuscript_id: "manuscript-editing-overview-fallback-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 2,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+          execution_tracking: {
+            observation_status: "reported",
+            snapshot: {
+              id: "snapshot-editing-overview-fallback-1",
+              manuscript_id: "manuscript-editing-overview-fallback-1",
+              module: "editing",
+              job_id: "job-editing-overview-fallback-1",
+              execution_profile_id: "profile-editing",
+              module_template_id: "template-editing",
+              module_template_version_no: 4,
+              prompt_template_id: "prompt-editing",
+              prompt_template_version: "2026-04-06",
+              skill_package_ids: ["editing-skill-pack"],
+              skill_package_versions: ["1.0.0"],
+              model_id: "model-editing",
+              knowledge_item_ids: ["knowledge-editing-1"],
+              created_asset_ids: ["asset-edited-1"],
+              created_at: "2026-04-06T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-editing-overview-fallback-1",
+                log: {
+                  id: "agent-log-editing-overview-fallback-1",
+                  status: "completed",
+                  orchestration_status: "retryable",
+                  completion_summary: {
+                    derived_status: "business_completed_follow_up_retryable",
+                    business_completed: true,
+                    follow_up_required: true,
+                    fully_settled: false,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "recoverable_now",
+                    recovery_readiness: "ready_now",
+                    reason: "Retryable orchestration is ready now.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "degraded",
+                  scope: {
+                    module: "editing",
+                    manuscriptType: "review",
+                    templateFamilyId: "template-family-1",
+                  },
+                  issues: [
+                    {
+                      code: "runtime_not_active",
+                      message: "Runtime is not active.",
+                    },
+                  ],
+                  execution_profile_alignment: {
+                    status: "drifted",
+                    binding_execution_profile_id: "profile-editing",
+                    active_execution_profile_id: "profile-editing-active",
+                  },
+                },
+              },
+            },
+            settlement: {
+              derived_status: "business_completed_follow_up_retryable",
+              business_completed: true,
+              orchestration_completed: false,
+              attention_required: false,
+              reason: "Business execution is complete and governed follow-up is retryable.",
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Editing Settlement/);
+  assert.match(markup, /Business complete, follow-up retryable/);
+  assert.match(markup, /Recoverable now/);
+  assert.match(markup, /binding degraded/);
+  assert.match(markup, /latest tracked job/);
+  assert.doesNotMatch(markup, /Observation unavailable \(failed open\)/);
+});
+
+test("manuscript workbench summary keeps overview module metrics visible and uses latest job fallback when manuscript overview is missing", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "screening",
+        accessibleHandoffModes: ["screening", "editing"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-overview-missing-1",
+            title: "Overview missing fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_screening_asset_id: "asset-screen-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-screening-overview-fallback-1",
+          manuscript_id: "manuscript-overview-missing-1",
+          module: "screening",
+          job_type: "screening_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+          execution_tracking: {
+            observation_status: "reported",
+            snapshot: {
+              id: "snapshot-screening-overview-fallback-1",
+              manuscript_id: "manuscript-overview-missing-1",
+              module: "screening",
+              job_id: "job-screening-overview-fallback-1",
+              execution_profile_id: "profile-screening",
+              module_template_id: "template-screening",
+              module_template_version_no: 4,
+              prompt_template_id: "prompt-screening",
+              prompt_template_version: "2026-04-06",
+              skill_package_ids: ["screening-skill-pack"],
+              skill_package_versions: ["1.0.0"],
+              model_id: "model-screening",
+              knowledge_item_ids: ["knowledge-screening-1"],
+              created_asset_ids: ["asset-screen-1"],
+              created_at: "2026-04-06T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-screening-overview-fallback-1",
+                log: {
+                  id: "agent-log-screening-overview-fallback-1",
+                  status: "completed",
+                  orchestration_status: "completed",
+                  completion_summary: {
+                    derived_status: "business_completed_settled",
+                    business_completed: true,
+                    follow_up_required: false,
+                    fully_settled: true,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "not_recoverable",
+                    recovery_readiness: "not_recoverable",
+                    reason: "No recovery needed.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "ready",
+                  scope: {
+                    module: "screening",
+                    manuscriptType: "review",
+                    templateFamilyId: "template-family-1",
+                  },
+                  issues: [],
+                  execution_profile_alignment: {
+                    status: "aligned",
+                    binding_execution_profile_id: "profile-screening",
+                    active_execution_profile_id: "profile-screening",
+                  },
+                },
+              },
+            },
+            settlement: {
+              derived_status: "business_completed_settled",
+              business_completed: true,
+              orchestration_completed: true,
+              attention_required: false,
+              reason: "Screening is settled.",
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Screening Settlement/);
+  assert.match(markup, /Settled/);
+  assert.match(markup, /No recovery needed/);
+  assert.match(markup, /snapshot snapshot-screening-overview-fallback-1/);
+  assert.match(markup, /latest tracked job/);
+  assert.match(markup, /Editing Settlement/);
+  assert.match(markup, /Proofreading Settlement/);
+  assert.match(markup, /Not reported/);
+});
+
+test("manuscript workbench summary reuses matching overview posture in the Latest Job card when the latest job is a raw fallback candidate", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-latest-job-overview-fallback-1",
+            title: "Latest job overview fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_editing_asset_id: "asset-edited-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "reported",
+                latest_job: {
+                  id: "job-editing-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-overview-fallback-1",
+                  module: "editing",
+                  job_type: "editing_run",
+                  status: "completed",
+                  requested_by: "operator-1",
+                  attempt_count: 2,
+                  created_at: "2026-04-06T09:40:00.000Z",
+                  updated_at: "2026-04-06T09:45:00.000Z",
+                },
+                latest_snapshot: {
+                  id: "snapshot-editing-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-overview-fallback-1",
+                  module: "editing",
+                  job_id: "job-editing-overview-card-1",
+                  execution_profile_id: "profile-editing",
+                  module_template_id: "template-editing",
+                  module_template_version_no: 4,
+                  prompt_template_id: "prompt-editing",
+                  prompt_template_version: "2026-04-06",
+                  skill_package_ids: ["editing-skill-pack"],
+                  skill_package_versions: ["1.0.0"],
+                  model_id: "model-editing",
+                  knowledge_item_ids: ["knowledge-editing-1"],
+                  created_asset_ids: ["asset-edited-1"],
+                  created_at: "2026-04-06T09:45:00.000Z",
+                  agent_execution: {
+                    observation_status: "reported",
+                    log_id: "agent-log-editing-overview-card-1",
+                    log: {
+                      id: "agent-log-editing-overview-card-1",
+                      status: "completed",
+                      orchestration_status: "retryable",
+                      completion_summary: {
+                        derived_status: "business_completed_follow_up_retryable",
+                        business_completed: true,
+                        follow_up_required: true,
+                        fully_settled: false,
+                        attention_required: false,
+                      },
+                      recovery_summary: {
+                        category: "recoverable_now",
+                        recovery_readiness: "ready_now",
+                        reason: "Retryable orchestration is ready now.",
+                      },
+                    },
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "degraded",
+                      scope: {
+                        module: "editing",
+                        manuscriptType: "review",
+                        templateFamilyId: "template-family-1",
+                      },
+                      issues: [
+                        {
+                          code: "runtime_not_active",
+                          message: "Runtime is not active.",
+                        },
+                      ],
+                      execution_profile_alignment: {
+                        status: "drifted",
+                        binding_execution_profile_id: "profile-editing",
+                        active_execution_profile_id: "profile-editing-active",
+                      },
+                    },
+                  },
+                },
+                settlement: {
+                  derived_status: "business_completed_follow_up_retryable",
+                  business_completed: true,
+                  orchestration_completed: false,
+                  attention_required: false,
+                  reason: "Business execution is complete and governed follow-up is retryable.",
+                },
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-overview-card-1",
+          manuscript_id: "manuscript-latest-job-overview-fallback-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 2,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Latest Job/);
+  assert.match(markup, /Execution Settlement/);
+  assert.match(markup, /Business complete, follow-up retryable/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /Recoverable now/);
+  assert.match(markup, /Runtime Binding Readiness/);
+  assert.match(markup, /Degraded \(1 issue\)/);
+  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /snapshot-editing-overview-card-1/);
+});
+
+test("manuscript workbench summary reuses settled overview posture in the Latest Job card when the raw latest job matches screening overview", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "screening",
+        accessibleHandoffModes: ["screening", "editing"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-latest-job-screening-overview-1",
+            title: "Latest job screening overview fallback manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_screening_asset_id: "asset-screen-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                latest_job: {
+                  id: "job-screening-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-screening-overview-1",
+                  module: "screening",
+                  job_type: "screening_run",
+                  status: "completed",
+                  requested_by: "operator-1",
+                  attempt_count: 1,
+                  created_at: "2026-04-06T09:40:00.000Z",
+                  updated_at: "2026-04-06T09:45:00.000Z",
+                },
+                latest_snapshot: {
+                  id: "snapshot-screening-overview-card-1",
+                  manuscript_id: "manuscript-latest-job-screening-overview-1",
+                  module: "screening",
+                  job_id: "job-screening-overview-card-1",
+                  execution_profile_id: "profile-screening",
+                  module_template_id: "template-screening",
+                  module_template_version_no: 4,
+                  prompt_template_id: "prompt-screening",
+                  prompt_template_version: "2026-04-06",
+                  skill_package_ids: ["screening-skill-pack"],
+                  skill_package_versions: ["1.0.0"],
+                  model_id: "model-screening",
+                  knowledge_item_ids: ["knowledge-screening-1"],
+                  created_asset_ids: ["asset-screen-1"],
+                  created_at: "2026-04-06T09:45:00.000Z",
+                  agent_execution: {
+                    observation_status: "reported",
+                    log_id: "agent-log-screening-overview-card-1",
+                    log: {
+                      id: "agent-log-screening-overview-card-1",
+                      status: "completed",
+                      orchestration_status: "completed",
+                      completion_summary: {
+                        derived_status: "business_completed_settled",
+                        business_completed: true,
+                        follow_up_required: false,
+                        fully_settled: true,
+                        attention_required: false,
+                      },
+                      recovery_summary: {
+                        category: "not_recoverable",
+                        recovery_readiness: "not_recoverable",
+                        reason: "No recovery needed.",
+                      },
+                    },
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "ready",
+                      scope: {
+                        module: "screening",
+                        manuscriptType: "review",
+                        templateFamilyId: "template-family-1",
+                      },
+                      issues: [],
+                      execution_profile_alignment: {
+                        status: "aligned",
+                        binding_execution_profile_id: "profile-screening",
+                        active_execution_profile_id: "profile-screening",
+                      },
+                    },
+                  },
+                },
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "not_started",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-screening-overview-card-1",
+          manuscript_id: "manuscript-latest-job-screening-overview-1",
+          module: "screening",
+          job_type: "screening_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Latest Job/);
+  assert.match(markup, /Execution Settlement/);
+  assert.match(markup, /Settled/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /No recovery needed/);
+  assert.match(markup, /Runtime Binding Readiness/);
+  assert.match(markup, /Ready/);
+  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /snapshot-screening-overview-card-1/);
+});
+
 test("manuscript workbench summary shows latest job execution tracking alongside raw job status", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
@@ -1122,4 +2013,272 @@ test("manuscript workbench summary shows latest job execution tracking alongside
   assert.match(markup, /Business complete, follow-up pending/);
   assert.match(markup, /Execution Snapshot/);
   assert.match(markup, /tracked-snapshot-1/);
+});
+
+test("manuscript workbench summary shows latest job recovery and runtime readiness posture", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-job-posture-1",
+            title: "Tracked editing posture",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-posture-1",
+          manuscript_id: "manuscript-job-posture-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 1,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+          execution_tracking: {
+            observation_status: "reported",
+            snapshot: {
+              id: "tracked-snapshot-posture-1",
+              manuscript_id: "manuscript-job-posture-1",
+              module: "editing",
+              job_id: "job-editing-posture-1",
+              execution_profile_id: "profile-editing",
+              module_template_id: "template-editing",
+              module_template_version_no: 4,
+              prompt_template_id: "prompt-editing",
+              prompt_template_version: "2026-04-06",
+              skill_package_ids: ["editing-skill-pack"],
+              skill_package_versions: ["1.0.0"],
+              model_id: "model-editing",
+              knowledge_item_ids: ["knowledge-editing-1"],
+              created_asset_ids: ["asset-edited-1"],
+              created_at: "2026-04-06T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-editing-posture-1",
+                log: {
+                  id: "agent-log-editing-posture-1",
+                  status: "completed",
+                  orchestration_status: "retryable",
+                  completion_summary: {
+                    derived_status: "business_completed_follow_up_retryable",
+                    business_completed: true,
+                    follow_up_required: true,
+                    fully_settled: false,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "deferred_retry",
+                    recovery_readiness: "waiting_retry_eligibility",
+                    recovery_ready_at: "2026-04-06T11:30:00.000Z",
+                    reason: "Retryable orchestration is deferred until 2026-04-06T11:30:00.000Z.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "degraded",
+                  scope: {
+                    module: "editing",
+                    manuscriptType: "review",
+                    templateFamilyId: "template-family-1",
+                  },
+                  issues: [
+                    {
+                      code: "runtime_not_active",
+                      message: "Runtime is not active.",
+                    },
+                    {
+                      code: "binding_execution_profile_drift",
+                      message: "Binding execution profile drift detected.",
+                    },
+                  ],
+                  execution_profile_alignment: {
+                    status: "drifted",
+                    binding_execution_profile_id: "profile-editing",
+                    active_execution_profile_id: "profile-editing-active",
+                  },
+                },
+              },
+            },
+            settlement: {
+              derived_status: "business_completed_follow_up_retryable",
+              business_completed: true,
+              orchestration_completed: false,
+              attention_required: false,
+              reason: "Business execution is complete and governed follow-up is retryable.",
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /Waiting for retry window/);
+  assert.match(markup, /Recovery Ready At/);
+  assert.match(markup, /2026-04-06 11:30:00Z/);
+  assert.match(markup, /Runtime Binding Readiness/);
+  assert.match(markup, /Degraded \(2 issues\)/);
+});
+
+test("manuscript workbench summary incorporates recovery and readiness posture into module overview and read-only guidance details", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "editing",
+        accessibleHandoffModes: ["editing", "proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-posture-overview-1",
+            title: "Respiratory editing posture",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "operator-1",
+            current_editing_asset_id: "asset-edited-1",
+            created_at: "2026-04-06T09:00:00.000Z",
+            updated_at: "2026-04-06T10:00:00.000Z",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                settlement: {
+                  derived_status: "business_completed_settled",
+                  business_completed: true,
+                  orchestration_completed: true,
+                  attention_required: false,
+                  reason: "Screening is fully settled.",
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "reported",
+                latest_job: {
+                  id: "job-editing-posture-2",
+                  manuscript_id: "manuscript-posture-overview-1",
+                  module: "editing",
+                  job_type: "editing_run",
+                  status: "completed",
+                  requested_by: "operator-1",
+                  attempt_count: 2,
+                  created_at: "2026-04-06T09:40:00.000Z",
+                  updated_at: "2026-04-06T09:45:00.000Z",
+                },
+                latest_snapshot: {
+                  id: "snapshot-edit-posture-1",
+                  manuscript_id: "manuscript-posture-overview-1",
+                  module: "editing",
+                  job_id: "job-editing-posture-2",
+                  execution_profile_id: "profile-editing",
+                  module_template_id: "template-editing",
+                  module_template_version_no: 4,
+                  prompt_template_id: "prompt-editing",
+                  prompt_template_version: "2026-04-06",
+                  skill_package_ids: ["editing-skill-pack"],
+                  skill_package_versions: ["1.0.0"],
+                  model_id: "model-editing",
+                  knowledge_item_ids: ["knowledge-editing-1"],
+                  created_asset_ids: ["asset-edited-1"],
+                  created_at: "2026-04-06T09:45:00.000Z",
+                  agent_execution: {
+                    observation_status: "reported",
+                    log_id: "agent-log-editing-posture-2",
+                    log: {
+                      id: "agent-log-editing-posture-2",
+                      status: "completed",
+                      orchestration_status: "retryable",
+                      completion_summary: {
+                        derived_status: "business_completed_follow_up_retryable",
+                        business_completed: true,
+                        follow_up_required: true,
+                        fully_settled: false,
+                        attention_required: false,
+                      },
+                      recovery_summary: {
+                        category: "deferred_retry",
+                        recovery_readiness: "waiting_retry_eligibility",
+                        recovery_ready_at: "2026-04-06T11:30:00.000Z",
+                        reason: "Retryable orchestration is deferred until 2026-04-06T11:30:00.000Z.",
+                      },
+                    },
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "missing",
+                      scope: {
+                        module: "editing",
+                        manuscriptType: "review",
+                        templateFamilyId: "template-family-1",
+                      },
+                      issues: [
+                        {
+                          code: "missing_active_binding",
+                          message: "Missing active binding.",
+                        },
+                      ],
+                      execution_profile_alignment: {
+                        status: "missing_active_profile",
+                        binding_execution_profile_id: "profile-editing",
+                      },
+                    },
+                  },
+                },
+                settlement: {
+                  derived_status: "business_completed_follow_up_retryable",
+                  business_completed: true,
+                  orchestration_completed: false,
+                  attention_required: false,
+                  reason: "Business execution is complete and governed follow-up is retryable.",
+                },
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+          },
+          assets: [],
+          currentAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        },
+        latestJob: {
+          id: "job-editing-posture-2",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "operator-1",
+          attempt_count: 2,
+          created_at: "2026-04-06T09:40:00.000Z",
+          updated_at: "2026-04-06T09:45:00.000Z",
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /Editing Settlement/);
+  assert.match(markup, /Waiting for retry window/);
+  assert.match(markup, /ready at 2026-04-06 11:30:00Z/);
+  assert.match(markup, /binding missing/);
+  assert.match(markup, /Recovery Posture/);
+  assert.match(markup, /Runtime Readiness/);
+  assert.match(markup, /Missing \(1 issue\)/);
+  assert.doesNotMatch(markup, /Open Proofreading Workbench/);
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { createMigrationChecksum } from "../../src/database/migration-checksum.ts";
@@ -12,28 +12,9 @@ import {
 import { withTemporaryDatabase } from "./support/postgres.ts";
 
 const migrationsDirectory = path.join(import.meta.dirname, "../../src/database/migrations");
-const repositoryMigrationFiles = [
-  "0001_initial.sql",
-  "0002_model_registry_version_guard.sql",
-  "0003_document_assets_file_name.sql",
-  "0004_auth_persistence.sql",
-  "0005_governed_registry_persistence.sql",
-  "0006_prompt_skill_registry_persistence.sql",
-  "0007_model_routing_policy_persistence.sql",
-  "0008_execution_runtime_persistence.sql",
-  "0009_agent_tooling_persistence.sql",
-  "0010_learning_review_persistence.sql",
-  "0011_verification_ops_persistence.sql",
-  "0012_template_family_active_uniqueness.sql",
-  "0013_governed_evaluation_run_seeding.sql",
-  "0014_agent_tooling_verification_expectations.sql",
-  "0015_model_routing_governance_persistence.sql",
-  "0016_harness_dataset_governance.sql",
-  "0017_retrieval_quality_harness.sql",
-  "0018_retrieval_quality_verification_ops.sql",
-  "0019_local_first_harness_adapter_platform.sql",
-  "0020_agent_execution_model_routing_resolution.sql",
-] as const;
+const repositoryMigrationFiles = readdirSync(migrationsDirectory)
+  .filter((entry) => entry.endsWith(".sql"))
+  .sort((left, right) => left.localeCompare(right));
 const legacyAgentToolingChecksum =
   "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
 
@@ -197,7 +178,12 @@ test("migration doctor reports pending repository migrations without treating th
     assert.equal(result.status, "clean");
     assert.deepEqual(result.repairableMigrations, []);
     assert.deepEqual(result.blockingMigrations, []);
-    assert.deepEqual(result.pendingMigrations, ["0020_agent_execution_model_routing_resolution.sql"]);
+    assert.deepEqual(
+      result.pendingMigrations,
+      repositoryMigrationFiles.slice(
+        repositoryMigrationFiles.indexOf("0020_agent_execution_model_routing_resolution.sql"),
+      ),
+    );
   });
 });
 

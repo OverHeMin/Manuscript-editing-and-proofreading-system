@@ -220,6 +220,7 @@ async function observeLinkedAgentExecution(input: {
         id: log.id,
         status: log.status,
         orchestration_status: log.orchestration_status,
+        orchestration_attempt_count: log.orchestration_attempt_count,
         completion_summary: deriveCompletionSummary(log),
         recovery_summary: deriveRecoverySummary({
           record: log,

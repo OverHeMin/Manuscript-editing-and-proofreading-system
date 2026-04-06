@@ -48,7 +48,7 @@ The table below translates the retained capabilities into current repository rea
 | Model Governance / Routing Linkage | `05-ai-model-routing-and-evaluation.md`, Phase 9R, Phase 9S, Phase 9T | Model registry, runtime-binding expectations, governed seeded evaluation runs, and inline governed check execution are already partially linked | Stronger routing-policy feedback loops, fallback and gray-release policy, module/template-level promotion rules, deeper evaluation-to-routing governance |
 | Agent Runtime Platform | Phase 4, Phase 8G, Phase 8H, Phase 9R, Phase 11A, Phase 11B, Phase 11C, Phase 11D, Phase 11E, `11-agent-runtime-and-portable-skills.md` | Registry, runtime binding, tool permission policy, readiness observation, execution-resolution visibility, governed-agent-context visibility, execution-log visibility, execution-snapshot visibility, admin governance visibility, and execution evidence are already partially live | Deeper adapter-based runtime integration, portable skill-package operations, richer sandbox governance, stronger MCP / tool gateway platform boundary |
 | Evaluation And Verification Platform | Phase 6A, Phase 8W, Phase 9A, Phase 9Q, Phase 9R, Phase 9S, Phase 9T | Evaluation Workbench, run persistence, governed-source runs, machine evidence, and release-gate verification are already real | Sample-set detail depth, historical evidence-pack retrieval, multi-run comparison, operator analytics, stronger release-facing analysis surfaces |
-| Execution And Orchestration Platform | Phase 4 execution governance foundations, Phase 8F, Phase 8I, Phase 9R, Phase 10J-10W, Phase 11F, Phase 11G, Phase 12, Phase 13, current execution-governance records | The repo now has governed execution resolution, durable follow-up orchestration, bounded retries, restart-safe recovery, read-only backlog inspection, residual observation, per-log completion settlement visibility, per-log recovery posture visibility, durable snapshot-to-log evidence linkage, and additive manuscript/job mainline settlement visibility | Deeper workflow-engine substitution, richer queue ownership and scheduling depth, `Temporal`-class orchestration depth |
+| Execution And Orchestration Platform | Phase 4 execution governance foundations, Phase 8F, Phase 8I, Phase 9R, Phase 10J-10W, Phase 11F, Phase 11G, Phase 12, Phase 13, current execution-governance records | The repo now has governed execution resolution, durable follow-up orchestration, bounded retries, restart-safe recovery, read-only backlog inspection, residual observation, per-log completion settlement visibility, per-log recovery posture visibility, durable snapshot-to-log evidence linkage, additive manuscript/job mainline settlement visibility, additive manuscript mainline readiness visibility, and additive manuscript attention/handoff visibility | Deeper workflow-engine substitution, richer queue ownership and scheduling depth, `Temporal`-class orchestration depth |
 | Production Operations And Security Platform | `09-platform-ops-migration-and-maintenance.md`, `08-security-auth-and-compliance.md`, `2026-04-03-phase10a-production-operations-baseline-design.md`, current `README.md` and `docs/OPERATIONS.md` | Production preflight, release contract, readiness split, backup/rollback guidance, and remote-maintenance discipline now have a real baseline direction | Standardized deploy automation, monitoring, rollback automation, remote-maintenance standardization depth, secret/key hardening, upgrade choreography, migration automation |
 | Privacy And Compliance Gate | `08-security-auth-and-compliance.md`, retained-capability decision | Security and compliance direction exists at spec level | `Presidio`-style privacy gate integration, de-identification checks in governed flows, privacy evidence hooks |
 | Academic Structure And OCR Enhancement | `06-pdf-consistency-and-ocr.md`, V1 foundation tech direction | PDF and document pipelines exist, and OCR/parsing routes are reserved | First-class `OCRmyPDF`, `PaddleOCR`, and `GROBID` integration with auditable outputs and downstream structured consumption |
@@ -437,15 +437,313 @@ This phase does **not** absorb:
 - new workbench pages, panels, or routing authority
 - new mutation/control-plane behavior
 
-### 4.20 Still-Open Retained Capability Lanes After Phase 15
+### 4.20 Phase 16: Manuscript Workbench Recovery And Readiness Posture Adoption
 
-After reconciling actual landed numbering through `Phase 15`, three retained capability lanes remain
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only adoption of linked recovery posture and
+runtime-binding readiness into the existing manuscript workbench summary and
+load-result path
+
+This phase now owns:
+
+- workbench-side explanation of linked execution recovery posture after restart-
+  safe latest-job restoration
+- workbench-side explanation of runtime-binding readiness posture on existing
+  manuscript and latest-job cards
+- posture-aware read-only guidance details for unsettled follow-up without
+  adding replay or routing authority
+- tighter frontend adoption of the existing execution-tracking read model
+  without backend route changes
+
+This phase does **not** absorb:
+
+- replay, retry, or queue-state mutation
+- runtime binding mutation or activation authority
+- new workbench pages, panels, or dashboards
+- new control-plane behavior beyond the existing summary path
+
+### 4.21 Phase 17: Manuscript Workbench Action-Time Execution Hydration
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** best-effort hydration of returned workbench action jobs
+through the existing `GET /jobs/:id` read path
+
+This phase now owns:
+
+- action-time adoption of hydrated `execution_tracking` on upload, module-run,
+  proofreading-finalize, and human-final-publish flows
+- alignment between reload-time restored latest-job posture and immediate
+  post-action latest-job posture
+- one controller-local fail-open adapter so action success still stands when
+  hydration reads fail
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new job list APIs
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.22 Phase 18: Manuscript Workbench Action Result Posture Adoption
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only adoption of hydrated job posture into the
+existing `Latest Action Result` card for job-bearing workbench actions
+
+This phase now owns:
+
+- action-result visibility for hydrated settlement, recovery, and runtime
+  readiness posture on upload, module-run, proofreading-finalize,
+  human-final-publish, and refresh-latest-job flows
+- reuse of the current workbench posture formatters so action-time and
+  reload-time operator guidance stay aligned
+- fail-open preservation of base action details when posture observations are
+  missing or unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- action-history persistence or new result panels
+- replay, retry, routing, or runtime mutation authority
+
+### 4.23 Phase 19: Manuscript Workbench Refresh-Time Workspace Resynchronization
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** best-effort workspace reload after the existing
+`Refresh Latest Job` path succeeds
+
+This phase now owns:
+
+- refresh-time resynchronization of manuscript overview and recommendation
+  surfaces with refreshed job posture
+- reuse of the existing `loadJob` and `loadWorkspace` read paths only
+- fail-open preservation of refreshed latest-job observation when workspace
+  reload is temporarily unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new refresh controls, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.24 Phase 20: Manuscript Workbench Latest-Job Fallback Guidance
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** recommendation fallback adoption from hydrated
+latest-job execution tracking inside the existing manuscript workbench summary
+
+This phase now owns:
+
+- overview-missing or overview-failed-open fallback guidance from hydrated
+  latest-job `execution_tracking`
+- posture-aware screening/editing recommendation details for settled,
+  follow-up-pending, retryable, failed, unlinked, and in-progress job states
+- preservation of the current raw status heuristic as the final fail-open
+  fallback when execution tracking is unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- controller or request choreography changes
+- new workbench panels, pages, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.25 Phase 21: Manuscript Workbench Overview Latest-Job Fallback Visibility
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** overview-card fallback visibility from hydrated
+latest-job execution tracking inside the existing manuscript workbench summary
+
+This phase now owns:
+
+- continued module-settlement visibility on the existing `Manuscript Overview`
+  card when manuscript overview observation is missing or degraded
+- compact fallback rendering from hydrated latest-job settlement, recovery,
+  runtime readiness, and snapshot posture for the matching module
+- fail-open preservation of current overview text when latest-job tracking is
+  unavailable
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- controller or request choreography changes
+- new workbench panels, pages, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.26 Phase 22: Manuscript Workbench Latest-Job Overview Posture Fallback
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** Latest Job card posture fallback from matching reported
+module overview when the current latest job is a raw fail-open overview
+candidate without hydrated execution tracking
+
+This phase now owns:
+
+- continued settlement, recovery, runtime-readiness, and snapshot visibility on
+  the existing `Latest Job` card under the current fail-open overview-job path
+- one bounded latest-job-card fallback that reuses matching reported
+  `module_execution_overview[module]` posture for the same job id
+- preservation of the current hydrated-job-first path and raw-card-last fallback
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- page/controller hydration changes
+- new workbench panels, pages, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.27 Phase 23: Manuscript Workbench Action-Result Overview Posture Fallback
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** Latest Action Result posture fallback from matching
+reported module overview when a job-bearing action result or load result is
+bound to a raw fail-open job without hydrated `execution_tracking`
+
+This phase now owns:
+
+- continued settlement, recovery, readiness, and timing visibility on the
+  existing `Latest Action Result` card under the current raw-job fail-open path
+- one bounded action-result fallback that reuses matching reported
+  `module_execution_overview[module]` posture for the same job id
+- preservation of the current hydrated-job-first path and base-details-last
+  fallback
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- page/controller request choreography expansion
+- new workbench panels, pages, or dashboards
+- replay, retry, routing, or runtime mutation authority
+
+### 4.28 Phase 24: Manuscript Workbench Action Notice Posture Adoption
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only posture-aware wording adoption on the
+existing top manuscript workbench notice
+
+This phase now owns:
+
+- notice-level reuse of existing action-result settlement detail rows for
+  job-bearing workbench actions
+- more honest success wording when governed follow-up is pending, retryable,
+  failed, unlinked, or still running
+- fail-open preservation of the current generic success and error notice
+  behavior when posture evidence is missing or non-job actions are involved
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new workbench pages, panels, banners, or dashboards
+- page/controller request choreography expansion
+- replay, retry, routing, or runtime mutation authority
+
+### 4.29 Phase 25: Manuscript Workbench Execution Posture Pill Adoption
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** read-only posture-aware compact pill adoption inside
+the existing manuscript workbench summary cards
+
+This phase now owns:
+
+- posture-aware compact outcome pills for the existing `Latest Action Result`
+  card
+- posture-aware compact `Execution Posture` pill visibility for the existing
+  `Latest Job` card
+- fail-open preservation of the current generic pills when posture evidence is
+  missing
+
+This phase does **not** absorb:
+
+- backend route or persistence changes
+- new workbench pages, panels, banners, or dashboards
+- controller request choreography expansion
+- replay, retry, routing, or runtime mutation authority
+
+### 4.30 Phase 26: Manuscript Mainline Internal Trial Readiness Summary
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** additive manuscript-level readiness summary on the
+existing mainline read path plus adoption inside the current workbench summary
+path
+
+This phase now owns:
+
+- one stable `mainline_readiness_summary` on manuscript reads derived from the
+  current per-module settlement, recovery timing, and snapshot-linked runtime
+  posture
+- one workbench-side adoption of that summary inside the existing
+  `Manuscript Overview`, `Recommended Next Step`, and reload/refresh detail path
+- fail-open fallback back to the current local heuristics when summary
+  observation is missing or failed open
+
+This phase does **not** absorb:
+
+- new manuscript or job routes
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+- internal-trial control-plane or release-gate mutation behavior
+
+### 4.31 Phase 27: Manuscript Mainline Timeline And Attempt Ledger
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** additive bounded manuscript-level mainline attempt
+ledger on the existing mainline read path plus adoption inside the current
+workbench overview and reload/refresh detail path
+
+This phase now owns:
+
+- one stable `mainline_attempt_ledger` on manuscript reads derived from the
+  existing mainline job, snapshot, settlement, recovery, and runtime-readiness
+  evidence
+- one bounded workbench-side adoption of that ledger inside the existing
+  `Manuscript Overview` card without creating a new page or panel
+- reload/refresh detail-path explanation of the latest bounded mainline
+  activity trail when ledger observation is available
+- fail-open preservation of the current workbench summary path when ledger
+  observation is missing or failed open
+
+This phase does **not** absorb:
+
+- new manuscript, job-history, or timeline routes
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, or runtime mutation authority
+- internal-trial control-plane or release-gate mutation behavior
+
+### 4.32 Phase 28: Manuscript Workbench Attention And Handoff Pack
+
+**Primary capability lane:** Execution And Orchestration Platform
+**Actual landed scope:** additive manuscript-level attention/handoff pack on
+the existing mainline read path plus adoption inside the current workbench
+overview and load/refresh detail path
+
+This phase now owns:
+
+- one stable `mainline_attention_handoff_pack` on manuscript reads derived from
+  existing readiness, attempt-ledger, settlement, recovery, and runtime
+  posture evidence
+- one bounded workbench-side adoption of that pack inside the existing
+  `Manuscript Overview` card without creating a new page or panel
+- reload/refresh detail-path explanation of current attention posture and next
+  governed handoff posture when pack observation is available
+- fail-open preservation of the current workbench summary path when pack
+  observation is missing or failed open
+
+This phase does **not** absorb:
+
+- new manuscript, handoff, or job-history routes
+- new workbench pages, panels, or dashboards
+- replay, retry, routing, handoff, or runtime mutation authority
+- internal-trial control-plane or release-gate mutation behavior
+
+### 4.33 Still-Open Retained Capability Lanes After Phase 28
+
+After reconciling actual landed numbering through `Phase 28`, three retained capability lanes remain
 explicitly open and should receive fresh future labels instead of being
 silently mapped back onto already-used phase numbers:
 
 - broader `Medical Knowledge Ops` deepening beyond the harness/gold-set bridge
 - broader `Agent Runtime Platform` and portable skill-package deepening beyond `11A-11E` readiness observation slices
-- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, and `Phase 15` workbench restart-safe hydration
+- broader `Execution And Orchestration Platform` deepening beyond `10J-10W`, `11F-11G`, `Phase 12`, `Phase 13`, `Phase 14`, `Phase 15`, `Phase 16`, `Phase 17`, `Phase 18`, `Phase 19`, `Phase 20`, `Phase 21`, `Phase 22`, `Phase 23`, `Phase 24`, `Phase 25`, `Phase 26`, `Phase 27`, and `Phase 28` mainline/workbench adoption slices
 
 This means the capability lanes remain open, but `Phase 11` itself does not.
 `Phase 12` is now the first such fresh post-`11` label for the execution/orchestration lane.
@@ -473,6 +771,19 @@ The repository has now landed the following actual sequence after `10A`:
 15. `Phase 13` manuscript/job mainline settlement visibility under the same fresh execution/orchestration continuation
 16. `Phase 14` manuscript workbench settlement adoption under the same fresh execution/orchestration continuation
 17. `Phase 15` manuscript workbench restart-safe execution hydration under the same fresh execution/orchestration continuation
+18. `Phase 16` manuscript workbench recovery/readiness posture adoption under the same fresh execution/orchestration continuation
+19. `Phase 17` manuscript workbench action-time execution hydration under the same fresh execution/orchestration continuation
+20. `Phase 18` manuscript workbench action-result posture adoption under the same fresh execution/orchestration continuation
+21. `Phase 19` manuscript workbench refresh-time workspace resynchronization under the same fresh execution/orchestration continuation
+22. `Phase 20` manuscript workbench latest-job fallback guidance under the same fresh execution/orchestration continuation
+23. `Phase 21` manuscript workbench overview latest-job fallback visibility under the same fresh execution/orchestration continuation
+24. `Phase 22` manuscript workbench latest-job overview posture fallback under the same fresh execution/orchestration continuation
+25. `Phase 23` manuscript workbench action-result overview posture fallback under the same fresh execution/orchestration continuation
+26. `Phase 24` manuscript workbench action-notice posture adoption under the same fresh execution/orchestration continuation
+27. `Phase 25` manuscript workbench execution posture pill adoption under the same fresh execution/orchestration continuation
+28. `Phase 26` manuscript mainline internal-trial readiness summary under the same fresh execution/orchestration continuation
+29. `Phase 27` manuscript mainline timeline and attempt ledger under the same fresh execution/orchestration continuation
+30. `Phase 28` manuscript workbench attention and handoff pack under the same fresh execution/orchestration continuation
 
 The practical planning implication after `11G` is:
 
@@ -498,6 +809,50 @@ The practical planning implication after `11G` is:
 - treat `Phase 15` as a restart-safe reload slice in that same lane, not as
   permission to add new job-list APIs, new workbench panels, or any replay /
   queue-control authority under the same label
+- treat `Phase 16` as a read-only posture-adoption slice in that same lane, not
+  as permission to add recovery controls, readiness gates, or any new
+  workbench/dashboard authority under the same label
+- treat `Phase 17` as an action-time hydration-adoption slice in that same
+  lane, not as permission to add backend route expansion, new job-list
+  surfaces, or any replay/control-plane authority under the same label
+- treat `Phase 18` as an action-result posture-adoption slice in that same
+  lane, not as permission to add new result-history surfaces, backend route
+  expansion, or any replay/control-plane authority under the same label
+- treat `Phase 19` as a refresh-time workspace-resync slice in that same lane,
+  not as permission to add new refresh controls, backend route expansion, or
+  any replay/control-plane authority under the same label
+- treat `Phase 20` as a recommendation-fallback adoption slice in that same
+  lane, not as permission to add backend route expansion, new summary panels,
+  or any replay/control-plane authority under the same label
+- treat `Phase 21` as an overview-fallback visibility slice in that same lane,
+  not as permission to add backend route expansion, new workbench panels, or
+  any replay/control-plane authority under the same label
+- treat `Phase 22` as a latest-job-card posture-fallback slice in that same
+  lane, not as permission to add page/controller choreography, new workbench
+  panels, or any replay/control-plane authority under the same label
+- treat `Phase 23` as an action-result-card posture-fallback slice in that same
+  lane, not as permission to add backend route expansion, page/controller
+  choreography growth, new workbench panels, or any replay/control-plane
+  authority under the same label
+- treat `Phase 24` as a top-notice posture-adoption slice in that same lane,
+  not as permission to add new banners, panels, page/controller choreography
+  growth, or any replay/control-plane authority under the same label
+- treat `Phase 25` as a compact posture-pill adoption slice in that same lane,
+  not as permission to add new status panels, new summary surfaces,
+  controller choreography growth, or any replay/control-plane authority under
+  the same label
+- treat `Phase 26` as a manuscript mainline readiness-summary slice in that
+  same lane, not as permission to add new trial dashboards, new workbench
+  surfaces, new control-plane actions, or any replay/control-plane authority
+  under the same label
+- treat `Phase 27` as a manuscript mainline attempt-ledger slice in that same
+  lane, not as permission to add new timeline routes, new workbench panels,
+  new history consoles, or any replay/control-plane authority under the same
+  label
+- treat `Phase 28` as a manuscript attention/handoff slice in that same lane,
+  not as permission to add new handoff routes, new workbench panels, new
+  control-plane actions, or any replay/control-plane authority under the same
+  label
 
 ## 6. What This Mapping Prevents
 

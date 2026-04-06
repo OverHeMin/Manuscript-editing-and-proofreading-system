@@ -73,12 +73,91 @@ export interface ModuleMainlineSettlementViewModel {
   reason: string;
 }
 
+export type AgentExecutionCompletionDerivedStatus =
+  | "business_in_progress"
+  | "business_failed"
+  | "business_completed_follow_up_pending"
+  | "business_completed_follow_up_running"
+  | "business_completed_follow_up_retryable"
+  | "business_completed_follow_up_failed"
+  | "business_completed_settled";
+
+export type AgentExecutionRecoveryCategory =
+  | "recoverable_now"
+  | "stale_running"
+  | "deferred_retry"
+  | "attention_required"
+  | "not_recoverable";
+
+export type AgentExecutionRecoveryReadiness =
+  | "ready_now"
+  | "waiting_retry_eligibility"
+  | "waiting_running_timeout"
+  | "not_recoverable";
+
+export interface LinkedAgentExecutionCompletionSummaryViewModel {
+  derived_status: AgentExecutionCompletionDerivedStatus;
+  business_completed: boolean;
+  follow_up_required: boolean;
+  fully_settled: boolean;
+  attention_required: boolean;
+}
+
+export interface LinkedAgentExecutionRecoverySummaryViewModel {
+  category: AgentExecutionRecoveryCategory;
+  recovery_readiness: AgentExecutionRecoveryReadiness;
+  recovery_ready_at?: string;
+  reason: string;
+}
+
+export type RuntimeBindingReadinessStatus = "ready" | "degraded" | "missing";
+
+export interface RuntimeBindingReadinessIssueViewModel {
+  code: string;
+  message: string;
+}
+
+export interface RuntimeBindingExecutionProfileAlignmentViewModel {
+  status: "aligned" | "drifted" | "missing_active_profile";
+  binding_execution_profile_id?: string;
+  active_execution_profile_id?: string;
+}
+
+export interface RuntimeBindingReadinessScopeViewModel {
+  module: ManuscriptModule;
+  manuscriptType: ManuscriptType;
+  templateFamilyId: string;
+}
+
+export interface RuntimeBindingReadinessReportViewModel {
+  status: RuntimeBindingReadinessStatus;
+  scope: RuntimeBindingReadinessScopeViewModel;
+  binding?: {
+    id: string;
+    status: string;
+    version: number;
+    runtime_id: string;
+    sandbox_profile_id: string;
+    agent_profile_id: string;
+    tool_permission_policy_id: string;
+    prompt_template_id: string;
+    skill_package_ids: string[];
+    execution_profile_id: string;
+    verification_check_profile_ids: string[];
+    evaluation_suite_ids: string[];
+    release_check_profile_id?: string;
+  };
+  issues: RuntimeBindingReadinessIssueViewModel[];
+  execution_profile_alignment: RuntimeBindingExecutionProfileAlignmentViewModel;
+}
+
 export interface LinkedAgentExecutionSnapshotViewModel {
   id: string;
   status: string;
   orchestration_status: string;
-  completion_summary: Record<string, unknown>;
-  recovery_summary: Record<string, unknown>;
+  orchestration_attempt_count?: number;
+  completion_summary: LinkedAgentExecutionCompletionSummaryViewModel;
+  recovery_summary: LinkedAgentExecutionRecoverySummaryViewModel;
 }
 
 export interface ExecutionTrackingAgentExecutionObservationViewModel {
@@ -90,7 +169,7 @@ export interface ExecutionTrackingAgentExecutionObservationViewModel {
 
 export interface ExecutionTrackingRuntimeBindingReadinessObservationViewModel {
   observation_status: "reported" | "failed_open";
-  report?: Record<string, unknown>;
+  report?: RuntimeBindingReadinessReportViewModel;
   error?: string;
 }
 
@@ -132,6 +211,111 @@ export interface ManuscriptModuleExecutionOverviewViewModel {
   proofreading: ModuleExecutionOverviewViewModel;
 }
 
+export type ManuscriptMainlineReadinessDerivedStatus =
+  | "ready_for_next_step"
+  | "in_progress"
+  | "waiting_for_follow_up"
+  | "attention_required"
+  | "completed";
+
+export interface ManuscriptMainlineReadinessSummaryViewModel {
+  observation_status: "reported" | "failed_open";
+  derived_status?: ManuscriptMainlineReadinessDerivedStatus;
+  active_module?: MainlineSettlementModule;
+  next_module?: MainlineSettlementModule;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  reason?: string;
+  error?: string;
+}
+
+export type MainlineAttentionStatus = "clear" | "monitoring" | "action_required";
+
+export type MainlineHandoffStatus =
+  | "ready_now"
+  | "blocked_by_in_progress"
+  | "blocked_by_follow_up"
+  | "blocked_by_attention"
+  | "completed";
+
+export type MainlineAttentionItemKind =
+  | "job_in_progress"
+  | "follow_up_pending"
+  | "follow_up_running"
+  | "follow_up_retryable"
+  | "follow_up_failed"
+  | "settlement_unlinked"
+  | "job_failed"
+  | "runtime_binding_degraded"
+  | "runtime_binding_missing";
+
+export type MainlineAttentionItemSeverity = "monitoring" | "action_required";
+
+export interface MainlineAttentionItemViewModel {
+  module: MainlineSettlementModule;
+  kind: MainlineAttentionItemKind;
+  severity: MainlineAttentionItemSeverity;
+  job_id?: string;
+  snapshot_id?: string;
+  recovery_ready_at?: string;
+  summary: string;
+}
+
+export interface ManuscriptMainlineAttentionHandoffPackViewModel {
+  observation_status: "reported" | "failed_open";
+  attention_status?: MainlineAttentionStatus;
+  handoff_status?: MainlineHandoffStatus;
+  focus_module?: MainlineSettlementModule;
+  from_module?: MainlineSettlementModule;
+  to_module?: MainlineSettlementModule;
+  latest_job_id?: string;
+  latest_snapshot_id?: string;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  reason?: string;
+  attention_items: MainlineAttentionItemViewModel[];
+  error?: string;
+}
+
+export type MainlineAttemptLedgerEvidenceStatus =
+  | "snapshot_linked"
+  | "job_only"
+  | "failed_open";
+
+export interface MainlineAttemptLedgerItemViewModel {
+  module: MainlineSettlementModule;
+  job_id: string;
+  job_status: JobStatus;
+  job_attempt_count: number;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+  snapshot_id?: string;
+  evidence_status: MainlineAttemptLedgerEvidenceStatus;
+  settlement_status?: ModuleMainlineSettlementDerivedStatus;
+  orchestration_status?: string;
+  orchestration_attempt_count?: number;
+  recovery_category?: AgentExecutionRecoveryCategory;
+  recovery_ready_at?: string;
+  runtime_binding_status?: RuntimeBindingReadinessStatus;
+  runtime_binding_issue_count?: number;
+  is_latest_for_module: boolean;
+  reason: string;
+}
+
+export interface ManuscriptMainlineAttemptLedgerViewModel {
+  observation_status: "reported" | "failed_open";
+  total_attempts: number;
+  visible_attempts: number;
+  truncated: boolean;
+  latest_event_at?: string;
+  items: MainlineAttemptLedgerItemViewModel[];
+  error?: string;
+}
+
 export interface JobExecutionTrackingObservationViewModel {
   observation_status: "reported" | "not_tracked" | "failed_open";
   snapshot?: ModuleExecutionSnapshotViewModel;
@@ -152,6 +336,9 @@ export interface ManuscriptViewModel {
   created_at: string;
   updated_at: string;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
+  mainline_readiness_summary?: ManuscriptMainlineReadinessSummaryViewModel;
+  mainline_attention_handoff_pack?: ManuscriptMainlineAttentionHandoffPackViewModel;
+  mainline_attempt_ledger?: ManuscriptMainlineAttemptLedgerViewModel;
 }
 
 export interface DocumentAssetViewModel {

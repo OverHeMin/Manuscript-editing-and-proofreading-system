@@ -79,6 +79,24 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         editing: { observation_status: string };
         proofreading: { observation_status: string };
       };
+      mainline_readiness_summary?: {
+        observation_status: string;
+        derived_status?: string;
+        next_module?: string;
+      };
+      mainline_attention_handoff_pack?: {
+        observation_status: string;
+        attention_status?: string;
+        handoff_status?: string;
+        to_module?: string;
+        attention_items: Array<{ kind: string }>;
+      };
+      mainline_attempt_ledger?: {
+        observation_status: string;
+        total_attempts: number;
+        visible_attempts: number;
+        items: Array<{ job_id: string }>;
+      };
     };
 
     const assetsResponse = await fetch(
@@ -150,6 +168,45 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
       manuscript.module_execution_overview?.proofreading.observation_status,
       "not_started",
     );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.observation_status,
+      "reported",
+    );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.derived_status,
+      "ready_for_next_step",
+    );
+    assert.equal(
+      manuscript.mainline_readiness_summary?.next_module,
+      "screening",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.observation_status,
+      "reported",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.attention_status,
+      "clear",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.handoff_status,
+      "ready_now",
+    );
+    assert.equal(
+      manuscript.mainline_attention_handoff_pack?.to_module,
+      "screening",
+    );
+    assert.deepEqual(
+      manuscript.mainline_attention_handoff_pack?.attention_items,
+      [],
+    );
+    assert.equal(
+      manuscript.mainline_attempt_ledger?.observation_status,
+      "reported",
+    );
+    assert.equal(manuscript.mainline_attempt_ledger?.total_attempts, 0);
+    assert.equal(manuscript.mainline_attempt_ledger?.visible_attempts, 0);
+    assert.deepEqual(manuscript.mainline_attempt_ledger?.items, []);
     assert.equal(job.execution_tracking?.observation_status, "not_tracked");
     assert.equal(downloadResponse.status, 200);
     assert.equal(manuscript.id, uploaded.manuscript.id);
