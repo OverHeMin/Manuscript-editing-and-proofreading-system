@@ -1,5 +1,8 @@
 import path from "node:path";
 import { PermissionGuard } from "../auth/permission-guard.ts";
+import { BcryptPasswordHasher } from "../auth/password-hasher.ts";
+import { PostgresAuthSessionRepository } from "../auth/postgres-auth-session-repository.ts";
+import { PostgresLoginAttemptStore } from "../auth/postgres-login-attempt-store.ts";
 import { PostgresAuditService } from "../audit/index.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
 import type { ApiServerRuntime } from "./api-http-server.ts";
@@ -155,6 +158,11 @@ import {
   PostgresToolPermissionPolicyRepository,
   ToolPermissionPolicyService,
 } from "../modules/tool-permission-policies/index.ts";
+import {
+  createUserAdminApi,
+  PostgresUserAdminRepository,
+  UserAdminService,
+} from "../users/index.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -267,8 +275,8 @@ export function createPersistentGovernanceRuntime(
     });
   const promptSkillRegistryRepository =
     new PostgresPromptSkillRegistryRepository({
-    client: options.client,
-  });
+      client: options.client,
+    });
   const verificationOpsRepository = new PostgresVerificationOpsRepository({
     client: options.client,
   });
@@ -276,6 +284,18 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const harnessIntegrationRepository = new PostgresHarnessIntegrationRepository({
+    client: options.client,
+  });
+  const userAdminRepository = new PostgresUserAdminRepository({
+    client: options.client,
+  });
+  const authSessionRepository = new PostgresAuthSessionRepository({
+    client: options.client,
+  });
+  const loginAttemptStore = new PostgresLoginAttemptStore({
+    client: options.client,
+  });
+  const auditService = new PostgresAuditService({
     client: options.client,
   });
 
@@ -459,9 +479,7 @@ export function createPersistentGovernanceRuntime(
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
     modelRoutingGovernanceService,
-    auditService: new PostgresAuditService({
-      client: options.client,
-    }),
+    auditService,
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
@@ -615,6 +633,13 @@ export function createPersistentGovernanceRuntime(
     documentStructureService,
     transactionManager: workbenchTransactionManager,
   });
+  const userAdminService = new UserAdminService({
+    repository: userAdminRepository,
+    authSessionRepository,
+    loginAttemptStore,
+    auditService,
+    passwordHasher: new BcryptPasswordHasher(),
+  });
 
   return {
     authRuntime: options.authRuntime,
@@ -727,6 +752,9 @@ export function createPersistentGovernanceRuntime(
     }),
     toolPermissionPolicyApi: createToolPermissionPolicyApi({
       toolPermissionPolicyService,
+    }),
+    userAdminApi: createUserAdminApi({
+      userAdminService,
     }),
     permissionGuard,
   };

@@ -16,6 +16,7 @@ test("workbench routing exposes manuscript processing surfaces as implemented", 
   assert.equal(isWorkbenchImplemented("evaluation-workbench"), true);
   assert.equal(isWorkbenchImplemented("harness-datasets"), true);
   assert.equal(isWorkbenchImplemented("template-governance"), true);
+  assert.equal(isWorkbenchImplemented("system-settings"), true);
 });
 
 test("workbench routing maps manuscript processing surfaces to the manuscript workbench", () => {
@@ -28,6 +29,7 @@ test("workbench routing maps manuscript processing surfaces to the manuscript wo
   assert.equal(resolveWorkbenchRenderKind("evaluation-workbench"), "evaluation-workbench");
   assert.equal(resolveWorkbenchRenderKind("harness-datasets"), "harness-datasets");
   assert.equal(resolveWorkbenchRenderKind("template-governance"), "template-governance");
+  assert.equal(resolveWorkbenchRenderKind("system-settings"), "system-settings");
 });
 
 test("workbench routing formats and resolves manuscript handoff hashes", () => {

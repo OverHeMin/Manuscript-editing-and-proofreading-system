@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Client } from "pg";
+import { Client, Pool } from "pg";
 import {
   createPersistentServiceHealthProvider,
   type HttpServiceHealthProvider,
@@ -10,6 +10,7 @@ import {
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { runPersistentStartupPreflight } from "../../src/ops/persistent-startup-preflight.ts";
 import { resolvePersistentRuntimeContract } from "../../src/ops/persistent-runtime-contract.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
@@ -158,6 +159,73 @@ test("persistent auth runtime restores the server-side user identity on protecte
     assert.equal(response.status, 201);
     assert.ok(body.id);
     assert.equal(body.created_by, "persistent-knowledge-reviewer");
+  });
+});
+
+test("persistent auth runtime rejects session reads after an admin disables the user", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent http database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      const userRepository = new PostgresUserRepository({ client: seedPool });
+      await userRepository.save({
+        id: "persistent-admin",
+        username: "persistent.admin",
+        displayName: "Persistent Admin",
+        role: "admin",
+        passwordHash:
+          "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+      });
+      await userRepository.save({
+        id: "persistent-knowledge-reviewer",
+        username: "persistent.reviewer",
+        displayName: "Persistent Reviewer",
+        role: "knowledge_reviewer",
+        passwordHash:
+          "$2b$10$H4DZZv8KueEgqk1cjSAanewEhIoXTuGm2ixzaupe6QwfpA3Vr7HpW",
+      });
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const userCookie = await loginAsPersistentUser(serverHandle.baseUrl);
+        const adminCookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const disableResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/users/persistent-knowledge-reviewer/disable`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+
+        assert.equal(disableResponse.status, 200);
+
+        const sessionResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/auth/session`,
+          {
+            headers: {
+              Cookie: userCookie,
+            },
+          },
+        );
+        const sessionBody = (await sessionResponse.json()) as { error: string };
+
+        assert.equal(sessionResponse.status, 401);
+        assert.equal(sessionBody.error, "unauthorized");
+      } finally {
+        await stopHttpTestServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
   });
 });
 
@@ -338,4 +406,47 @@ async function loginAsPersistentUser(baseUrl: string): Promise<string> {
   const setCookie = response.headers.get("set-cookie");
   assert.ok(setCookie, "Expected auth login to return a persistent session cookie.");
   return setCookie.split(";")[0] ?? "";
+}
+
+async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username: "persistent.admin",
+      password: "demo-password",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie, "Expected admin login to return a persistent session cookie.");
+  return setCookie.split(";")[0] ?? "";
+}
+
+async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
+  server: ApiHttpServer;
+  baseUrl: string;
+}> {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const authRuntime = createPersistentHttpAuthRuntime({
+    client: pool,
+  });
+  const server = createApiHttpServer({
+    appEnv: "development",
+    allowedOrigins: ["http://127.0.0.1:4173"],
+    seedDemoKnowledgeReviewData: false,
+    runtime: createPersistentGovernanceRuntime({
+      client: pool,
+      authRuntime,
+    }),
+  });
+
+  server.on("close", () => {
+    void pool.end();
+  });
+
+  return startHttpTestServer(server);
 }

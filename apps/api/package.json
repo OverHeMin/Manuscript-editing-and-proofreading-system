@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",
     "db:migrate": "tsx ./src/database/scripts/migrate.ts",
+    "db:manage-user": "tsx ./src/database/scripts/manage-user.ts",
     "db:migration-doctor": "tsx ./src/database/scripts/migration-doctor.ts"
   },
   "dependencies": {

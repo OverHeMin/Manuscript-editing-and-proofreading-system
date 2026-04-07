@@ -4,6 +4,7 @@ export const PERMISSIONS = [
   "workbench.screening",
   "workbench.editing",
   "workbench.proofreading",
+  "system-settings.manage-users",
   "knowledge.review",
   "learning.review",
   "templates.publish",

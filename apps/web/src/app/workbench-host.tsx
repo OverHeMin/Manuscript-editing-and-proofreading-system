@@ -14,6 +14,7 @@ import {
   ManuscriptWorkbenchPage,
   type ManuscriptWorkbenchMode,
 } from "../features/manuscript-workbench/index.ts";
+import { SystemSettingsWorkbenchPage } from "../features/system-settings/index.ts";
 import { TemplateGovernanceWorkbenchPage } from "../features/template-governance/index.ts";
 import {
   formatWorkbenchHash,
@@ -22,10 +23,11 @@ import {
   resolveWorkbenchRenderKind,
   type RuleCenterMode,
 } from "./workbench-routing.ts";
-import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
-import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
 import { buildWorkbenchNavigationGroups } from "./workbench-navigation.ts";
 import { WorkbenchNavigationMenu } from "./workbench-navigation-menu.tsx";
+import { resolveWorkbenchRuntimeMode } from "./persistent-session.ts";
+import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
+import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
@@ -275,6 +277,12 @@ export function WorkbenchHost({
             initialMode={routeState.ruleCenterMode ?? "authoring"}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+          />
+        );
+      case "system-settings":
+        return (
+          <SystemSettingsWorkbenchPage
+            runtimeMode={resolveWorkbenchRuntimeMode(import.meta.env)}
           />
         );
       case "placeholder":
