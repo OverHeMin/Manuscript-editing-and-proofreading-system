@@ -1,4 +1,5 @@
 import type {
+  JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateFamilyRecord,
   TemplateModule,
@@ -8,6 +9,17 @@ export interface TemplateFamilyRepository {
   save(record: TemplateFamilyRecord): Promise<void>;
   findById(id: string): Promise<TemplateFamilyRecord | undefined>;
   list(): Promise<TemplateFamilyRecord[]>;
+  saveJournalTemplateProfile(record: JournalTemplateProfileRecord): Promise<void>;
+  findJournalTemplateProfileById(
+    id: string,
+  ): Promise<JournalTemplateProfileRecord | undefined>;
+  findJournalTemplateProfileByTemplateFamilyIdAndJournalKey(
+    templateFamilyId: string,
+    journalKey: string,
+  ): Promise<JournalTemplateProfileRecord | undefined>;
+  listJournalTemplateProfilesByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<JournalTemplateProfileRecord[]>;
 }
 
 export interface ModuleTemplateRepository {

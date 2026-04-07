@@ -332,6 +332,120 @@ test("module template manuscript type must match its parent template family", as
   );
 });
 
+test("journal template profiles can be created under a base template family", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1"],
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review journal parent family",
+  });
+
+  const created = await api.createJournalTemplateProfile({
+    templateFamilyId: family.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "New England Journal of Medicine",
+  });
+
+  assert.equal(created.status, 201);
+  assert.deepEqual(created.body, {
+    id: "journal-template-1",
+    template_family_id: family.body.id,
+    journal_key: "nejm",
+    journal_name: "New England Journal of Medicine",
+    status: "draft",
+  });
+});
+
+test("journal template profiles cannot point at a template family from a different manuscript type", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1"],
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review family",
+  });
+
+  await assert.rejects(
+    () =>
+      api.createJournalTemplateProfile({
+        templateFamilyId: family.body.id,
+        manuscriptType: "clinical_study",
+        journalKey: "nejm",
+        journalName: "NEJM",
+      }),
+    /manuscript type/i,
+  );
+});
+
+test("journal template profiles can be listed by template family", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: [
+      "family-1",
+      "family-2",
+      "journal-template-1",
+      "journal-template-2",
+      "journal-template-3",
+    ],
+  });
+
+  const reviewFamily = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review family",
+  });
+  const clinicalFamily = await api.createTemplateFamily({
+    manuscriptType: "clinical_study",
+    name: "Clinical family",
+  });
+
+  await api.createJournalTemplateProfile({
+    templateFamilyId: reviewFamily.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "NEJM",
+  });
+  await api.createJournalTemplateProfile({
+    templateFamilyId: reviewFamily.body.id,
+    manuscriptType: "review",
+    journalKey: "jama",
+    journalName: "JAMA",
+  });
+  await api.createJournalTemplateProfile({
+    templateFamilyId: clinicalFamily.body.id,
+    manuscriptType: "clinical_study",
+    journalKey: "lancet",
+    journalName: "Lancet",
+  });
+
+  const listed = await api.listJournalTemplateProfilesByTemplateFamilyId({
+    templateFamilyId: reviewFamily.body.id,
+  });
+
+  assert.equal(listed.status, 200);
+  assert.deepEqual(
+    listed.body.map((profile) => ({
+      id: profile.id,
+      template_family_id: profile.template_family_id,
+      journal_key: profile.journal_key,
+    })),
+    [
+      {
+        id: "journal-template-1",
+        template_family_id: reviewFamily.body.id,
+        journal_key: "nejm",
+      },
+      {
+        id: "journal-template-2",
+        template_family_id: reviewFamily.body.id,
+        journal_key: "jama",
+      },
+    ],
+  );
+});
+
 test("concurrent module template drafts receive unique version numbers within a family and module", async () => {
   const { api } = createTemplateHarness();
 

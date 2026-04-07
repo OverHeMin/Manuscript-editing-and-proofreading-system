@@ -21,6 +21,7 @@ import type {
   TemplateFamilyRepository,
 } from "./template-repository.ts";
 import type {
+  JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateFamilyRecord,
   TemplateModule,
@@ -55,6 +56,13 @@ export interface UpdateModuleTemplateDraftInput {
 export interface CreateModuleTemplateDraftFromLearningCandidateInput
   extends CreateModuleTemplateDraftInput {
   sourceLearningCandidateId: string;
+}
+
+export interface CreateJournalTemplateProfileInput {
+  templateFamilyId: string;
+  manuscriptType: TemplateFamilyRecord["manuscript_type"];
+  journalKey: string;
+  journalName: string;
 }
 
 export interface CreateTemplateRetrievalQualityRunInput {
@@ -167,6 +175,22 @@ export class TemplateFamilyActiveConflictError extends Error {
   }
 }
 
+export class JournalTemplateProfileNotFoundError extends Error {
+  constructor(journalTemplateProfileId: string) {
+    super(`Journal template profile ${journalTemplateProfileId} was not found.`);
+    this.name = "JournalTemplateProfileNotFoundError";
+  }
+}
+
+export class JournalTemplateProfileKeyConflictError extends Error {
+  constructor(templateFamilyId: string, journalKey: string) {
+    super(
+      `Template family ${templateFamilyId} already contains a journal template profile with key ${journalKey}.`,
+    );
+    this.name = "JournalTemplateProfileKeyConflictError";
+  }
+}
+
 export class TemplateRetrievalQualityDependencyError extends Error {
   constructor() {
     super("Retrieval quality dependencies are not configured.");
@@ -236,6 +260,53 @@ export class TemplateGovernanceService {
 
     await this.templateFamilyRepository.save(record);
     return record;
+  }
+
+  async createJournalTemplateProfile(
+    input: CreateJournalTemplateProfileInput,
+  ): Promise<JournalTemplateProfileRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ templateFamilyRepository }) => {
+        const templateFamily = await templateFamilyRepository.findById(
+          input.templateFamilyId,
+        );
+
+        if (!templateFamily) {
+          throw new TemplateFamilyNotFoundError(input.templateFamilyId);
+        }
+
+        if (templateFamily.manuscript_type !== input.manuscriptType) {
+          throw new TemplateFamilyManuscriptTypeMismatchError(
+            input.templateFamilyId,
+            templateFamily.manuscript_type,
+            input.manuscriptType,
+          );
+        }
+
+        const existingTemplate =
+          await templateFamilyRepository.findJournalTemplateProfileByTemplateFamilyIdAndJournalKey(
+            input.templateFamilyId,
+            input.journalKey,
+          );
+        if (existingTemplate) {
+          throw new JournalTemplateProfileKeyConflictError(
+            input.templateFamilyId,
+            input.journalKey,
+          );
+        }
+
+        const record: JournalTemplateProfileRecord = {
+          id: this.createId(),
+          template_family_id: input.templateFamilyId,
+          journal_key: input.journalKey,
+          journal_name: input.journalName,
+          status: "draft",
+        };
+
+        await templateFamilyRepository.saveJournalTemplateProfile(record);
+        return record;
+      },
+    );
   }
 
   async createModuleTemplateDraft(
@@ -425,6 +496,70 @@ export class TemplateGovernanceService {
     );
   }
 
+  async activateJournalTemplateProfile(
+    journalTemplateProfileId: string,
+    actorRole: RoleKey,
+  ): Promise<JournalTemplateProfileRecord> {
+    this.permissionGuard.assert(actorRole, "templates.publish");
+
+    return this.transactionManager.withTransaction(
+      async ({ templateFamilyRepository }) => {
+        const template =
+          await templateFamilyRepository.findJournalTemplateProfileById(
+            journalTemplateProfileId,
+          );
+
+        if (!template) {
+          throw new JournalTemplateProfileNotFoundError(journalTemplateProfileId);
+        }
+
+        if (template.status === "active") {
+          return template;
+        }
+
+        const updatedTemplate: JournalTemplateProfileRecord = {
+          ...template,
+          status: "active",
+        };
+
+        await templateFamilyRepository.saveJournalTemplateProfile(updatedTemplate);
+        return updatedTemplate;
+      },
+    );
+  }
+
+  async archiveJournalTemplateProfile(
+    journalTemplateProfileId: string,
+    actorRole: RoleKey,
+  ): Promise<JournalTemplateProfileRecord> {
+    this.permissionGuard.assert(actorRole, "templates.publish");
+
+    return this.transactionManager.withTransaction(
+      async ({ templateFamilyRepository }) => {
+        const template =
+          await templateFamilyRepository.findJournalTemplateProfileById(
+            journalTemplateProfileId,
+          );
+
+        if (!template) {
+          throw new JournalTemplateProfileNotFoundError(journalTemplateProfileId);
+        }
+
+        if (template.status === "archived") {
+          return template;
+        }
+
+        const updatedTemplate: JournalTemplateProfileRecord = {
+          ...template,
+          status: "archived",
+        };
+
+        await templateFamilyRepository.saveJournalTemplateProfile(updatedTemplate);
+        return updatedTemplate;
+      },
+    );
+  }
+
   async listModuleTemplatesByTemplateFamilyId(
     templateFamilyId: string,
   ): Promise<ModuleTemplateRecord[]> {
@@ -436,6 +571,21 @@ export class TemplateGovernanceService {
     }
 
     return this.moduleTemplateRepository.listByTemplateFamilyId(templateFamilyId);
+  }
+
+  async listJournalTemplateProfilesByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<JournalTemplateProfileRecord[]> {
+    const templateFamily = await this.templateFamilyRepository.findById(
+      templateFamilyId,
+    );
+    if (!templateFamily) {
+      throw new TemplateFamilyNotFoundError(templateFamilyId);
+    }
+
+    return this.templateFamilyRepository.listJournalTemplateProfilesByTemplateFamilyId(
+      templateFamilyId,
+    );
   }
 
   async createRetrievalQualityRun(

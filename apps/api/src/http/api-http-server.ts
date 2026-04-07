@@ -244,6 +244,8 @@ import {
 } from "../modules/screening/index.ts";
 import {
   createTemplateApi,
+  JournalTemplateProfileKeyConflictError,
+  JournalTemplateProfileNotFoundError,
   TemplateFamilyActiveConflictError,
   ModuleTemplateDraftNotEditableError,
   InMemoryModuleTemplateRepository,
@@ -538,11 +540,18 @@ type HttpRouteMatch =
       route: "templates-create-module-draft";
     }
   | {
+      route: "templates-create-journal-template";
+    }
+  | {
       route: "templates-update-module-draft";
       moduleTemplateId: string;
     }
   | {
       route: "templates-list-module-templates";
+      templateFamilyId: string;
+    }
+  | {
+      route: "templates-list-journal-templates";
       templateFamilyId: string;
     }
   | {
@@ -556,6 +565,14 @@ type HttpRouteMatch =
   | {
       route: "templates-publish-module-template";
       moduleTemplateId: string;
+    }
+  | {
+      route: "templates-activate-journal-template";
+      journalTemplateProfileId: string;
+    }
+  | {
+      route: "templates-archive-journal-template";
+      journalTemplateProfileId: string;
     }
   | {
       route: "editorial-rules-create-rule-set";
@@ -2726,6 +2743,13 @@ async function handleRoute(
           typeof runtime.templateApi.createModuleTemplateDraft
         >[0],
       );
+    case "templates-create-journal-template":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createJournalTemplateProfile(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createJournalTemplateProfile
+        >[0],
+      );
     case "templates-update-module-draft":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.updateModuleTemplateDraft({
@@ -2737,6 +2761,11 @@ async function handleRoute(
     case "templates-list-module-templates":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
+        templateFamilyId: routeMatch.templateFamilyId,
+      });
+    case "templates-list-journal-templates":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.listJournalTemplateProfilesByTemplateFamilyId({
         templateFamilyId: routeMatch.templateFamilyId,
       });
     case "templates-create-retrieval-quality-run": {
@@ -2761,6 +2790,20 @@ async function handleRoute(
       const session = await requirePermission(req, runtime, "templates.publish");
       return runtime.templateApi.publishModuleTemplate({
         moduleTemplateId: routeMatch.moduleTemplateId,
+        actorRole: session.user.role,
+      });
+    }
+    case "templates-activate-journal-template": {
+      const session = await requirePermission(req, runtime, "templates.publish");
+      return runtime.templateApi.activateJournalTemplateProfile({
+        journalTemplateProfileId: routeMatch.journalTemplateProfileId,
+        actorRole: session.user.role,
+      });
+    }
+    case "templates-archive-journal-template": {
+      const session = await requirePermission(req, runtime, "templates.publish");
+      return runtime.templateApi.archiveJournalTemplateProfile({
+        journalTemplateProfileId: routeMatch.journalTemplateProfileId,
         actorRole: session.user.role,
       });
     }
@@ -3784,6 +3827,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "templates-create-module-draft" };
   }
 
+  if (method === "POST" && path === "/api/v1/templates/journal-templates") {
+    return { route: "templates-create-journal-template" };
+  }
+
   if (method === "POST" && path === "/api/v1/editorial-rules/rule-sets") {
     return { route: "editorial-rules-create-rule-set" };
   }
@@ -4030,6 +4077,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const journalTemplateListMatch = path.match(
+    /^\/api\/v1\/templates\/families\/([^/]+)\/journal-templates$/,
+  );
+  if (method === "GET" && journalTemplateListMatch) {
+    return {
+      route: "templates-list-journal-templates",
+      templateFamilyId: journalTemplateListMatch[1],
+    };
+  }
+
   const createTemplateRetrievalQualityRunMatch = path.match(
     /^\/api\/v1\/templates\/families\/([^/]+)\/retrieval-quality-runs$/,
   );
@@ -4067,6 +4124,26 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "templates-publish-module-template",
       moduleTemplateId: publishModuleTemplateMatch[1],
+    };
+  }
+
+  const activateJournalTemplateMatch = path.match(
+    /^\/api\/v1\/templates\/journal-templates\/([^/]+)\/activate$/,
+  );
+  if (method === "POST" && activateJournalTemplateMatch) {
+    return {
+      route: "templates-activate-journal-template",
+      journalTemplateProfileId: activateJournalTemplateMatch[1],
+    };
+  }
+
+  const archiveJournalTemplateMatch = path.match(
+    /^\/api\/v1\/templates\/journal-templates\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && archiveJournalTemplateMatch) {
+    return {
+      route: "templates-archive-journal-template",
+      journalTemplateProfileId: archiveJournalTemplateMatch[1],
     };
   }
 
@@ -4820,6 +4897,7 @@ function mapErrorToHttpResponse(
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
+    error instanceof JournalTemplateProfileNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
     error instanceof TemplateRetrievalQualityRunNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
@@ -4861,6 +4939,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackTargetMismatchError ||
     error instanceof LearningWritebackStatusTransitionError ||
     error instanceof LearningGovernanceConflictError ||
+    error instanceof JournalTemplateProfileKeyConflictError ||
     error instanceof TemplateFamilyActiveConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ModuleTemplateDraftNotEditableError ||

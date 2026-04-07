@@ -1,6 +1,7 @@
 import type { RoleKey } from "../../users/roles.ts";
 import { TemplateGovernanceService } from "./template-governance-service.ts";
 import type {
+  CreateJournalTemplateProfileInput,
   CreateTemplateRetrievalQualityRunInput,
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
@@ -9,6 +10,7 @@ import type {
 } from "./template-governance-service.ts";
 import type { KnowledgeRetrievalQualityRunRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type {
+  JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateFamilyRecord,
 } from "./template-record.ts";
@@ -41,6 +43,15 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
       return {
         status: 201,
         body: await templateService.createModuleTemplateDraft(input),
+      };
+    },
+
+    async createJournalTemplateProfile(
+      input: CreateJournalTemplateProfileInput,
+    ): Promise<RouteResponse<JournalTemplateProfileRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createJournalTemplateProfile(input),
       };
     },
 
@@ -105,6 +116,51 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
         status: 200,
         body: await templateService.listModuleTemplatesByTemplateFamilyId(
           templateFamilyId,
+        ),
+      };
+    },
+
+    async listJournalTemplateProfilesByTemplateFamilyId({
+      templateFamilyId,
+    }: {
+      templateFamilyId: string;
+    }): Promise<RouteResponse<JournalTemplateProfileRecord[]>> {
+      return {
+        status: 200,
+        body: await templateService.listJournalTemplateProfilesByTemplateFamilyId(
+          templateFamilyId,
+        ),
+      };
+    },
+
+    async activateJournalTemplateProfile({
+      journalTemplateProfileId,
+      actorRole,
+    }: {
+      journalTemplateProfileId: string;
+      actorRole: RoleKey;
+    }): Promise<RouteResponse<JournalTemplateProfileRecord>> {
+      return {
+        status: 200,
+        body: await templateService.activateJournalTemplateProfile(
+          journalTemplateProfileId,
+          actorRole,
+        ),
+      };
+    },
+
+    async archiveJournalTemplateProfile({
+      journalTemplateProfileId,
+      actorRole,
+    }: {
+      journalTemplateProfileId: string;
+      actorRole: RoleKey;
+    }): Promise<RouteResponse<JournalTemplateProfileRecord>> {
+      return {
+        status: 200,
+        body: await templateService.archiveJournalTemplateProfile(
+          journalTemplateProfileId,
+          actorRole,
         ),
       };
     },

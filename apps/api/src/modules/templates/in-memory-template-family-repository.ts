@@ -3,6 +3,7 @@ import type {
   TemplateFamilyRepository,
 } from "./template-repository.ts";
 import type {
+  JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateFamilyRecord,
   TemplateModule,
@@ -26,12 +27,22 @@ function cloneModuleTemplateRecord(
   };
 }
 
+function cloneJournalTemplateProfileRecord(
+  record: JournalTemplateProfileRecord,
+): JournalTemplateProfileRecord {
+  return { ...record };
+}
+
 function versionKey(templateFamilyId: string, module: TemplateModule): string {
   return `${templateFamilyId}:${module}`;
 }
 
 export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepository {
   private readonly records = new Map<string, TemplateFamilyRecord>();
+  private readonly journalTemplateProfileRecords = new Map<
+    string,
+    JournalTemplateProfileRecord
+  >();
 
   async save(record: TemplateFamilyRecord): Promise<void> {
     this.records.set(record.id, cloneTemplateFamilyRecord(record));
@@ -46,19 +57,76 @@ export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepositor
     return [...this.records.values()].map(cloneTemplateFamilyRecord);
   }
 
-  snapshotState(): Map<string, TemplateFamilyRecord> {
-    return new Map(
-      [...this.records.entries()].map(([id, record]) => [
-        id,
-        cloneTemplateFamilyRecord(record),
-      ]),
+  async saveJournalTemplateProfile(
+    record: JournalTemplateProfileRecord,
+  ): Promise<void> {
+    this.journalTemplateProfileRecords.set(
+      record.id,
+      cloneJournalTemplateProfileRecord(record),
     );
   }
 
-  restoreState(snapshot: Map<string, TemplateFamilyRecord>): void {
+  async findJournalTemplateProfileById(
+    id: string,
+  ): Promise<JournalTemplateProfileRecord | undefined> {
+    const record = this.journalTemplateProfileRecords.get(id);
+    return record ? cloneJournalTemplateProfileRecord(record) : undefined;
+  }
+
+  async findJournalTemplateProfileByTemplateFamilyIdAndJournalKey(
+    templateFamilyId: string,
+    journalKey: string,
+  ): Promise<JournalTemplateProfileRecord | undefined> {
+    const record = [...this.journalTemplateProfileRecords.values()].find(
+      (candidate) =>
+        candidate.template_family_id === templateFamilyId &&
+        candidate.journal_key === journalKey,
+    );
+    return record ? cloneJournalTemplateProfileRecord(record) : undefined;
+  }
+
+  async listJournalTemplateProfilesByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<JournalTemplateProfileRecord[]> {
+    return [...this.journalTemplateProfileRecords.values()]
+      .filter((record) => record.template_family_id === templateFamilyId)
+      .map(cloneJournalTemplateProfileRecord);
+  }
+
+  snapshotState(): {
+    records: Map<string, TemplateFamilyRecord>;
+    journalTemplateProfileRecords: Map<string, JournalTemplateProfileRecord>;
+  } {
+    return {
+      records: new Map(
+        [...this.records.entries()].map(([id, record]) => [
+          id,
+          cloneTemplateFamilyRecord(record),
+        ]),
+      ),
+      journalTemplateProfileRecords: new Map(
+        [...this.journalTemplateProfileRecords.entries()].map(([id, record]) => [
+          id,
+          cloneJournalTemplateProfileRecord(record),
+        ]),
+      ),
+    };
+  }
+
+  restoreState(snapshot: {
+    records: Map<string, TemplateFamilyRecord>;
+    journalTemplateProfileRecords: Map<string, JournalTemplateProfileRecord>;
+  }): void {
     this.records.clear();
-    for (const [id, record] of snapshot.entries()) {
+    for (const [id, record] of snapshot.records.entries()) {
       this.records.set(id, cloneTemplateFamilyRecord(record));
+    }
+    this.journalTemplateProfileRecords.clear();
+    for (const [id, record] of snapshot.journalTemplateProfileRecords.entries()) {
+      this.journalTemplateProfileRecords.set(
+        id,
+        cloneJournalTemplateProfileRecord(record),
+      );
     }
   }
 }
