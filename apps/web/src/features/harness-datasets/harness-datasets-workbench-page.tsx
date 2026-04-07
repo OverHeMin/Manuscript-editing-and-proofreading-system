@@ -66,7 +66,8 @@ export function HarnessDatasetsWorkbenchPage({
   return (
     <section className="harness-datasets-workbench">
       <header className="harness-datasets-hero">
-        <div>
+        <div className="harness-datasets-hero-copy">
+          <p className="harness-datasets-eyebrow">Operations Management Zone</p>
           <h2>Harness Dataset Workbench</h2>
           <p>
             Bounded admin-only workbench for governed gold-set curation and local

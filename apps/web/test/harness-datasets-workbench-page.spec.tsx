@@ -141,6 +141,7 @@ test("harness datasets workbench page renders a loading state for server-side sh
 test("harness datasets workbench page renders curation queue, published exports, and provenance detail", () => {
   const markup = renderLoadedPage();
 
+  assert.match(markup, /Operations Management Zone/);
   assert.match(markup, /Harness Dataset Workbench/);
   assert.match(markup, /Bounded admin-only workbench for governed gold-set curation and local export\./);
   assert.match(markup, /Draft Queue/);

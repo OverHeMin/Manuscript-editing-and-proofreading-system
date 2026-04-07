@@ -1032,7 +1032,8 @@ export function TemplateGovernanceWorkbenchPage({
   return (
     <section className="template-governance-workbench">
       <header className="template-governance-hero">
-        <div>
+        <div className="template-governance-hero-copy">
+          <p className="template-governance-eyebrow">Governance Management Zone</p>
           <h2>Template Governance</h2>
           <p>
             Govern template families, module template drafts, and knowledge bindings from one

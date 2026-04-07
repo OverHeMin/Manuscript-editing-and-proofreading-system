@@ -330,6 +330,7 @@ test("evaluation workbench page renders an explicit loading state for server-sid
 test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
+  assert.match(markup, /Read-Only Operations Desk/);
   assert.match(markup, /Delta Summary/);
   assert.match(markup, /Classification: better/i);
   assert.match(

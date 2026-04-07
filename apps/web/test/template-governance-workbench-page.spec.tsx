@@ -174,6 +174,7 @@ test("template governance workbench page renders journal-aware rule authoring na
     />,
   );
 
+  assert.match(markup, /Governance Management Zone/);
   assert.match(markup, /Rule Authoring Navigator/);
   assert.match(markup, /Rule Authoring Form/);
   assert.match(markup, /Rule Authoring Preview/);

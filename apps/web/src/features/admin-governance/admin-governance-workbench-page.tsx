@@ -298,7 +298,8 @@ export function AdminGovernanceWorkbenchPage({
   return (
     <section className="admin-governance-workbench">
       <header className="admin-governance-hero">
-        <div>
+        <div className="admin-governance-hero-copy">
+          <p className="admin-governance-eyebrow">Management Zone</p>
           <h2>Admin Governance Console</h2>
           <p>
             Manage template governance, model routing, and the agent-tooling runtime registry that

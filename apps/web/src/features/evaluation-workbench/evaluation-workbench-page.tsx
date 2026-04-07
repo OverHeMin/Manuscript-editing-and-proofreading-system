@@ -231,7 +231,8 @@ function EvaluationWorkbenchOperationsView(props: {
   return (
     <section className="evaluation-workbench">
       <header className="evaluation-workbench-hero">
-        <div>
+        <div className="evaluation-workbench-hero-copy">
+          <p className="evaluation-workbench-eyebrow">Read-Only Operations Desk</p>
           <h2>Evaluation Workbench</h2>
           <p>
             Delta-first operations view for finalized suite movement, bounded history, and
