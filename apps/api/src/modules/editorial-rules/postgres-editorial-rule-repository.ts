@@ -142,12 +142,15 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
   async reserveNextRuleSetVersion(
     templateFamilyId: string,
     module: EditorialRuleSetRecord["module"],
+    journalTemplateId?: string,
   ): Promise<number> {
     await this.dependencies.client.query(
       `
         select pg_advisory_xact_lock(hashtext($1))
       `,
-      [`editorial-rule-set-version:${templateFamilyId}:${module}`],
+      [
+        `editorial-rule-set-version:${templateFamilyId}:${journalTemplateId ?? "<base>"}:${module}`,
+      ],
     );
 
     const result = await this.dependencies.client.query<{ next_version: number }>(
@@ -156,8 +159,12 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
         from editorial_rule_sets
         where template_family_id = $1
           and module = $2
+          and (
+            ($3::uuid is null and journal_template_id is null)
+            or journal_template_id = $3::uuid
+          )
       `,
-      [templateFamilyId, module],
+      [templateFamilyId, module, journalTemplateId ?? null],
     );
 
     return Number(result.rows[0]?.next_version ?? 1);

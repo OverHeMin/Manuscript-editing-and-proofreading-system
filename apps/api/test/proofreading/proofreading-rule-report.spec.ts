@@ -504,12 +504,14 @@ async function seedHarness() {
     id: "rule-abstract-objective-editing",
     rule_set_id: "rule-set-editing-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "format",
     execution_mode: "apply_and_inspect",
     scope: {
       sections: ["abstract"],
       block_kind: "heading",
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: BEFORE_HEADING,
@@ -518,6 +520,7 @@ async function seedHarness() {
       kind: "replace_heading",
       to: AFTER_HEADING,
     },
+    authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,
@@ -528,12 +531,14 @@ async function seedHarness() {
     id: "rule-discussion-reshape-editing",
     rule_set_id: "rule-set-editing-1",
     order_no: 20,
+    rule_object: "generic",
     rule_type: "content",
     execution_mode: "apply",
     scope: {
       sections: ["discussion"],
       block_kind: "paragraph",
     },
+    selector: {},
     trigger: {
       kind: "semantic_pattern",
       tag: "needs_clarity",
@@ -541,6 +546,7 @@ async function seedHarness() {
     action: {
       kind: "rewrite_content",
     },
+    authoring_payload: {},
     confidence_policy: "high_confidence_only",
     severity: "warning",
     enabled: true,
@@ -549,12 +555,14 @@ async function seedHarness() {
     id: "rule-abstract-objective-proofreading",
     rule_set_id: "rule-set-proofreading-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "format",
     execution_mode: "inspect",
     scope: {
       sections: ["abstract"],
       block_kind: "heading",
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: BEFORE_HEADING,
@@ -563,6 +571,7 @@ async function seedHarness() {
       kind: "replace_heading",
       to: AFTER_HEADING,
     },
+    authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,

@@ -118,9 +118,19 @@ test("postgres editorial rule repository persists journal templates, scoped rule
     const listedRules = await repository.listRulesByRuleSetId(
       "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     );
-    const nextVersion = await repository.reserveNextRuleSetVersion(
+    const nextBaseVersion = await repository.reserveNextRuleSetVersion(
       "11111111-1111-1111-1111-111111111111",
       "editing",
+    );
+    const nextJournalVersion = await repository.reserveNextRuleSetVersion(
+      "11111111-1111-1111-1111-111111111111",
+      "editing",
+      "22222222-2222-2222-2222-222222222222",
+    );
+    const firstOtherJournalVersion = await repository.reserveNextRuleSetVersion(
+      "11111111-1111-1111-1111-111111111111",
+      "editing",
+      "33333333-3333-3333-3333-333333333333",
     );
 
     assert.deepEqual(persistedJournalTemplateResult.rows[0], {
@@ -169,7 +179,9 @@ test("postgres editorial rule repository persists journal templates, scoped rule
     );
 
     assert.equal(listedRules.length, 1);
-    assert.equal(nextVersion, 2);
+    assert.equal(nextBaseVersion, 2);
+    assert.equal(nextJournalVersion, 2);
+    assert.equal(firstOtherJournalVersion, 1);
   });
 });
 

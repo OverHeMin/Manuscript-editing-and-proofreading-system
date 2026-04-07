@@ -12,12 +12,14 @@ function createRules() {
       id: "rule-abstract-objective",
       rule_set_id: "rule-set-1",
       order_no: 10,
+      rule_object: "generic",
       rule_type: "format" as const,
       execution_mode: "apply_and_inspect" as const,
       scope: {
         sections: ["abstract"],
         block_kind: "heading",
       },
+      selector: {},
       trigger: {
         kind: "exact_text",
         text: BEFORE_HEADING,
@@ -26,6 +28,7 @@ function createRules() {
         kind: "replace_heading",
         to: AFTER_HEADING,
       },
+      authoring_payload: {},
       confidence_policy: "always_auto" as const,
       severity: "error" as const,
       enabled: true,
@@ -36,12 +39,14 @@ function createRules() {
       id: "rule-discussion-reshape",
       rule_set_id: "rule-set-1",
       order_no: 20,
+      rule_object: "generic",
       rule_type: "content" as const,
       execution_mode: "apply" as const,
       scope: {
         sections: ["discussion"],
         block_kind: "paragraph",
       },
+      selector: {},
       trigger: {
         kind: "semantic_pattern",
         tag: "needs_clarity",
@@ -49,6 +54,7 @@ function createRules() {
       action: {
         kind: "rewrite_content",
       },
+      authoring_payload: {},
       confidence_policy: "high_confidence_only" as const,
       severity: "warning" as const,
       enabled: true,

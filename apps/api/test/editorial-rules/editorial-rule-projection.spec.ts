@@ -77,6 +77,7 @@ async function seedPublishedRuleSet() {
       sections: ["abstract"],
       block_kind: "heading",
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: "摘要 目的",
@@ -138,12 +139,14 @@ test("refreshing projected rule knowledge updates existing projections instead o
     id: "rule-1",
     rule_set_id: "rule-set-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "format",
     execution_mode: "apply_and_inspect",
     scope: {
       sections: ["abstract"],
       block_kind: "heading",
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: "摘要 目的",
@@ -152,6 +155,7 @@ test("refreshing projected rule knowledge updates existing projections instead o
       kind: "replace_heading",
       to: "（摘要　目的）：",
     },
+    authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,
