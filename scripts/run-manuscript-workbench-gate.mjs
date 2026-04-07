@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpmCommand = "pnpm";
 const useShell = process.platform === "win32";
+const isolatedPlaywrightEnv = {
+  ...process.env,
+  PLAYWRIGHT_API_BASE_URL: process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3101",
+  PLAYWRIGHT_WEB_BASE_URL: process.env.PLAYWRIGHT_WEB_BASE_URL ?? "http://127.0.0.1:4273",
+};
 
 const steps = [
   {
@@ -67,6 +72,7 @@ const steps = [
       "--browser=chromium",
       "playwright/evaluation-workbench.spec.ts",
     ],
+    env: isolatedPlaywrightEnv,
   },
   {
     label: "Browser admin governance smoke",
@@ -80,6 +86,7 @@ const steps = [
       "--browser=chromium",
       "playwright/admin-governance.spec.ts",
     ],
+    env: isolatedPlaywrightEnv,
   },
   {
     label: "Browser manuscript handoff smoke",
@@ -93,6 +100,7 @@ const steps = [
       "--browser=chromium",
       "playwright/manuscript-handoff.spec.ts",
     ],
+    env: isolatedPlaywrightEnv,
   },
   {
     label: "Browser learning review smoke",
@@ -106,6 +114,7 @@ const steps = [
       "--browser=chromium",
       "playwright/learning-review-flow.spec.ts",
     ],
+    env: isolatedPlaywrightEnv,
   },
   {
     label: "Browser knowledge review handoff smoke",
@@ -119,6 +128,7 @@ const steps = [
       "--browser=chromium",
       "playwright/knowledge-review-handoff.spec.ts",
     ],
+    env: isolatedPlaywrightEnv,
   },
 ];
 
@@ -128,13 +138,13 @@ for (const step of steps) {
     ? spawnSync(formatShellCommand(step.command, step.args), {
         cwd: repoRoot,
         stdio: "inherit",
-        env: process.env,
+        env: step.env ?? process.env,
         shell: true,
       })
     : spawnSync(step.command, step.args, {
         cwd: repoRoot,
         stdio: "inherit",
-        env: process.env,
+        env: step.env ?? process.env,
       });
 
   if (result.error) {

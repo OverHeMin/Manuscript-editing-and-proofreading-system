@@ -3,11 +3,15 @@ import type {
   TemplateFamilyRepository,
 } from "./template-repository.ts";
 import type {
+  JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateFamilyRecord,
   TemplateModule,
 } from "./template-record.ts";
-import { TemplateFamilyActiveConflictError } from "./template-governance-service.ts";
+import {
+  JournalTemplateProfileKeyConflictError,
+  TemplateFamilyActiveConflictError,
+} from "./template-governance-service.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -38,8 +42,19 @@ interface ModuleTemplateRow {
   created_at: Date;
 }
 
+interface JournalTemplateProfileRow {
+  id: string;
+  template_family_id: string;
+  journal_key: string;
+  journal_name: string;
+  status: JournalTemplateProfileRecord["status"];
+  created_at: Date;
+}
+
 const activeTemplateFamilyConstraintName =
   "template_families_active_manuscript_type_uidx";
+const journalTemplateProfileFamilyKeyConstraintName =
+  "journal_template_profiles_template_family_journal_key_key";
 
 interface PostgresConstraintError {
   code?: string;
@@ -116,6 +131,118 @@ export class PostgresTemplateFamilyRepository
     );
 
     return result.rows.map(mapTemplateFamilyRow);
+  }
+
+  async saveJournalTemplateProfile(
+    record: JournalTemplateProfileRecord,
+  ): Promise<void> {
+    try {
+      await this.dependencies.client.query(
+        `
+          insert into journal_template_profiles (
+            id,
+            template_family_id,
+            journal_key,
+            journal_name,
+            status
+          )
+          values ($1, $2, $3, $4, $5)
+          on conflict (id) do update
+          set
+            template_family_id = excluded.template_family_id,
+            journal_key = excluded.journal_key,
+            journal_name = excluded.journal_name,
+            status = excluded.status,
+            updated_at = now()
+        `,
+        [
+          record.id,
+          record.template_family_id,
+          record.journal_key,
+          record.journal_name,
+          record.status,
+        ],
+      );
+    } catch (error) {
+      if (isJournalTemplateFamilyKeyConstraintError(error)) {
+        throw new JournalTemplateProfileKeyConflictError(
+          record.template_family_id,
+          record.journal_key,
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async findJournalTemplateProfileById(
+    id: string,
+  ): Promise<JournalTemplateProfileRecord | undefined> {
+    const result = await this.dependencies.client.query<JournalTemplateProfileRow>(
+      `
+        select
+          id,
+          template_family_id,
+          journal_key,
+          journal_name,
+          status,
+          created_at
+        from journal_template_profiles
+        where id = $1
+      `,
+      [id],
+    );
+
+    return result.rows[0]
+      ? mapJournalTemplateProfileRow(result.rows[0])
+      : undefined;
+  }
+
+  async findJournalTemplateProfileByTemplateFamilyIdAndJournalKey(
+    templateFamilyId: string,
+    journalKey: string,
+  ): Promise<JournalTemplateProfileRecord | undefined> {
+    const result = await this.dependencies.client.query<JournalTemplateProfileRow>(
+      `
+        select
+          id,
+          template_family_id,
+          journal_key,
+          journal_name,
+          status,
+          created_at
+        from journal_template_profiles
+        where template_family_id = $1
+          and journal_key = $2
+      `,
+      [templateFamilyId, journalKey],
+    );
+
+    return result.rows[0]
+      ? mapJournalTemplateProfileRow(result.rows[0])
+      : undefined;
+  }
+
+  async listJournalTemplateProfilesByTemplateFamilyId(
+    templateFamilyId: string,
+  ): Promise<JournalTemplateProfileRecord[]> {
+    const result = await this.dependencies.client.query<JournalTemplateProfileRow>(
+      `
+        select
+          id,
+          template_family_id,
+          journal_key,
+          journal_name,
+          status,
+          created_at
+        from journal_template_profiles
+        where template_family_id = $1
+        order by created_at asc, id asc
+      `,
+      [templateFamilyId],
+    );
+
+    return result.rows.map(mapJournalTemplateProfileRow);
   }
 }
 
@@ -293,6 +420,18 @@ function mapTemplateFamilyRow(row: TemplateFamilyRow): TemplateFamilyRecord {
   };
 }
 
+function mapJournalTemplateProfileRow(
+  row: JournalTemplateProfileRow,
+): JournalTemplateProfileRecord {
+  return {
+    id: row.id,
+    template_family_id: row.template_family_id,
+    journal_key: row.journal_key,
+    journal_name: row.journal_name,
+    status: row.status,
+  };
+}
+
 function mapModuleTemplateRow(row: ModuleTemplateRow): ModuleTemplateRecord {
   const checklist = decodeTextArray(row.checklist);
   const sectionRequirements = decodeTextArray(row.section_requirements);
@@ -341,5 +480,17 @@ function isActiveTemplateFamilyConstraintError(
     (error as PostgresConstraintError).code === "23505" &&
     (error as PostgresConstraintError).constraint ===
       activeTemplateFamilyConstraintName
+  );
+}
+
+function isJournalTemplateFamilyKeyConstraintError(
+  error: unknown,
+): error is PostgresConstraintError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as PostgresConstraintError).code === "23505" &&
+    (error as PostgresConstraintError).constraint ===
+      journalTemplateProfileFamilyKeyConstraintName
   );
 }

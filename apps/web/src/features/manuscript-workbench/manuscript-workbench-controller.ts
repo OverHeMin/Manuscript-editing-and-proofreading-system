@@ -5,6 +5,7 @@ import {
   getManuscript,
   listManuscriptAssets,
   uploadManuscript,
+  updateManuscriptTemplateSelection,
   type DocumentAssetExportViewModel,
   type DocumentAssetViewModel,
   type JobViewModel,
@@ -12,6 +13,12 @@ import {
   type UploadManuscriptInput,
   type UploadManuscriptResult,
 } from "../manuscripts/index.ts";
+import {
+  listJournalTemplateProfilesByTemplateFamilyId,
+  listTemplateFamilies,
+  type JournalTemplateProfileViewModel,
+  type TemplateFamilyViewModel,
+} from "../templates/index.ts";
 import {
   runEditing,
   type EditingRunResultViewModel,
@@ -57,6 +64,9 @@ export interface ManuscriptWorkbenchWorkspace {
   currentAsset: DocumentAssetViewModel | null;
   suggestedParentAsset: DocumentAssetViewModel | null;
   latestProofreadingDraftAsset: DocumentAssetViewModel | null;
+  templateFamily?: TemplateFamilyViewModel | null;
+  journalTemplateProfiles?: JournalTemplateProfileViewModel[];
+  selectedJournalTemplateProfile?: JournalTemplateProfileViewModel | null;
 }
 
 export interface UploadManuscriptAndLoadResult {
@@ -104,11 +114,19 @@ export interface PublishHumanFinalAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface UpdateTemplateSelectionAndLoadInput {
+  manuscriptId: string;
+  journalTemplateId?: string | null;
+}
+
 export interface ManuscriptWorkbenchController {
   loadWorkspace(manuscriptId: string): Promise<ManuscriptWorkbenchWorkspace>;
   uploadManuscriptAndLoad(
     input: UploadManuscriptInput,
   ): Promise<UploadManuscriptAndLoadResult>;
+  updateTemplateSelectionAndLoad(
+    input: UpdateTemplateSelectionAndLoadInput,
+  ): Promise<{ workspace: ManuscriptWorkbenchWorkspace }>;
   runModuleAndLoad(input: RunModuleAndLoadInput): Promise<RunModuleAndLoadResult>;
   finalizeProofreadingAndLoad(
     input: FinalizeProofreadingAndLoadInput,
@@ -143,6 +161,13 @@ export function createManuscriptWorkbenchController(
           job,
         },
         workspace,
+      };
+    },
+    async updateTemplateSelectionAndLoad(input) {
+      await updateManuscriptTemplateSelection(client, input);
+
+      return {
+        workspace: await loadWorkspace(client, input.manuscriptId),
       };
     },
     async runModuleAndLoad(input) {
@@ -224,6 +249,13 @@ async function loadWorkspace(
     listManuscriptAssets(client, manuscriptId),
   ]);
   const assets = sortAssetsNewestFirst(assetsResponse.body);
+  const [templateFamily, journalTemplateProfiles] =
+    manuscriptResponse.body.current_template_family_id != null
+      ? await loadTemplateContext(
+          client,
+          manuscriptResponse.body.current_template_family_id,
+        )
+      : [null, [] as JournalTemplateProfileViewModel[]];
 
   return {
     manuscript: manuscriptResponse.body,
@@ -231,7 +263,35 @@ async function loadWorkspace(
     currentAsset: resolveCurrentAsset(manuscriptResponse.body, assets),
     suggestedParentAsset: resolveSuggestedParentAsset(manuscriptResponse.body, assets),
     latestProofreadingDraftAsset: resolveLatestProofreadingDraftAsset(assets),
+    templateFamily,
+    journalTemplateProfiles,
+    selectedJournalTemplateProfile:
+      journalTemplateProfiles.find(
+        (profile) =>
+          profile.id === manuscriptResponse.body.current_journal_template_id,
+      ) ?? null,
   };
+}
+
+async function loadTemplateContext(
+  client: ManuscriptWorkbenchHttpClient,
+  templateFamilyId: string,
+): Promise<
+  [TemplateFamilyViewModel | null, JournalTemplateProfileViewModel[]]
+> {
+  const templateFamilies = (await listTemplateFamilies(client)).body;
+  const templateFamily =
+    templateFamilies.find((family) => family.id === templateFamilyId) ?? null;
+
+  if (!templateFamily) {
+    return [null, []];
+  }
+
+  const journalTemplateProfiles = (
+    await listJournalTemplateProfilesByTemplateFamilyId(client, templateFamily.id)
+  ).body;
+
+  return [templateFamily, journalTemplateProfiles];
 }
 
 async function runModule(

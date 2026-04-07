@@ -9,6 +9,9 @@ import {
 } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 
+const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
+const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+
 function createEditorialRuleHarness() {
   const repository = new InMemoryEditorialRuleRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
@@ -16,7 +19,16 @@ function createEditorialRuleHarness() {
     repository,
     templateFamilyRepository,
     createId: (() => {
-      const ids = ["rule-set-1", "rule-1", "rule-set-2", "rule-2"];
+      const ids = [
+        "rule-set-1",
+        "rule-1",
+        "rule-set-2",
+        "rule-2",
+        "rule-set-3",
+        "rule-3",
+        "rule-set-4",
+        "rule-4",
+      ];
       return () => {
         const value = ids.shift();
         assert.ok(value, "Expected an editorial rule id to be available.");
@@ -165,5 +177,224 @@ test("rule sets are versioned, rules preserve structured actions, and earlier pu
         },
       }),
     EditorialRuleSetNotEditableError,
+  );
+});
+
+test("journal-scoped rule sets preserve rule objects, selectors, and authoring payloads end-to-end", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-1",
+      module: "editing",
+    },
+  });
+
+  const createdRule = await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: ruleSet.body.id,
+      orderNo: 10,
+      ruleObject: "abstract",
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      scope: {
+        sections: ["abstract"],
+        block_kind: "heading",
+      },
+      selector: {
+        section_selector: "abstract",
+        label_selector: {
+          text: BEFORE_HEADING,
+        },
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING,
+      },
+      authoringPayload: {
+        normalized_example: AFTER_HEADING,
+        source: "manual_authoring",
+      },
+      confidencePolicy: "always_auto",
+      severity: "error",
+      enabled: true,
+    },
+  });
+  const listedRules = await api.listRules({
+    ruleSetId: ruleSet.body.id,
+  });
+
+  assert.deepEqual(ruleSet.body, {
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    journal_template_id: "journal-template-1",
+    module: "editing",
+    version_no: 1,
+    status: "draft",
+  });
+  assert.equal(createdRule.body.rule_object, "abstract");
+  assert.deepEqual(createdRule.body.selector, {
+    section_selector: "abstract",
+    label_selector: {
+      text: BEFORE_HEADING,
+    },
+  });
+  assert.deepEqual(createdRule.body.authoring_payload, {
+    normalized_example: AFTER_HEADING,
+    source: "manual_authoring",
+  });
+  assert.equal(listedRules.body[0]?.rule_object, "abstract");
+  assert.deepEqual(listedRules.body[0]?.selector, {
+    section_selector: "abstract",
+    label_selector: {
+      text: BEFORE_HEADING,
+    },
+  });
+  assert.deepEqual(listedRules.body[0]?.authoring_payload, {
+    normalized_example: AFTER_HEADING,
+    source: "manual_authoring",
+  });
+});
+
+test("publishing a journal-scoped rule set only archives published rule sets in the same scope", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-2",
+    template_family_id: "family-1",
+    journal_key: "journal-beta",
+    journal_name: "Journal Beta",
+    status: "active",
+  });
+
+  const baseRuleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+  const journalAlphaV1 = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-1",
+      module: "editing",
+    },
+  });
+  const journalBetaV1 = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-2",
+      module: "editing",
+    },
+  });
+
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: baseRuleSet.body.id,
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: journalAlphaV1.body.id,
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: journalBetaV1.body.id,
+  });
+
+  const journalAlphaV2 = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-1",
+      module: "editing",
+    },
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: journalAlphaV2.body.id,
+  });
+
+  const listedRuleSets = await api.listRuleSets();
+  const statusesById = new Map(
+    listedRuleSets.body.map((record) => [record.id, record.status]),
+  );
+
+  assert.equal(statusesById.get(baseRuleSet.body.id), "published");
+  assert.equal(statusesById.get(journalAlphaV1.body.id), "archived");
+  assert.equal(statusesById.get(journalAlphaV2.body.id), "published");
+  assert.equal(statusesById.get(journalBetaV1.body.id), "published");
+});
+
+test("creating a journal-scoped rule set rejects a journal template from a different template family", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.save({
+    id: "family-2",
+    manuscript_type: "review",
+    name: "Review family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-2",
+    template_family_id: "family-2",
+    journal_key: "review-journal",
+    journal_name: "Review Journal",
+    status: "active",
+  });
+
+  await assert.rejects(
+    () =>
+      api.createRuleSet({
+        actorRole: "admin",
+        input: {
+          templateFamilyId: "family-1",
+          journalTemplateId: "journal-template-2",
+          module: "editing",
+        },
+      }),
+    /journal template/i,
   );
 });

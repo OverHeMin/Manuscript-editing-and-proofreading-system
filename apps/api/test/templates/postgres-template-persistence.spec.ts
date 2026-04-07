@@ -8,6 +8,7 @@ import {
   PostgresTemplateFamilyRepository,
 } from "../../src/modules/templates/postgres-template-repository.ts";
 import {
+  JournalTemplateProfileKeyConflictError,
   TemplateFamilyActiveConflictError,
   TemplateGovernanceService,
 } from "../../src/modules/templates/template-governance-service.ts";
@@ -143,6 +144,62 @@ test("postgres template repositories persist template families, versions, and pr
         },
       ],
     );
+  });
+});
+
+test("postgres template repository translates duplicate journal template keys into a domain error", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+      client: pool,
+    });
+
+    await templateFamilyRepository.save({
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      manuscript_type: "review",
+      name: "Review family",
+      status: "active",
+    });
+    await templateFamilyRepository.save({
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      manuscript_type: "clinical_study",
+      name: "Clinical family",
+      status: "active",
+    });
+
+    await templateFamilyRepository.saveJournalTemplateProfile({
+      id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      template_family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      journal_key: "nejm",
+      journal_name: "NEJM",
+      status: "draft",
+    });
+    await templateFamilyRepository.saveJournalTemplateProfile({
+      id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      template_family_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      journal_key: "nejm",
+      journal_name: "NEJM Clinical",
+      status: "draft",
+    });
+
+    await assert.rejects(
+      () =>
+        templateFamilyRepository.saveJournalTemplateProfile({
+          id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          template_family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          journal_key: "nejm",
+          journal_name: "Duplicate NEJM",
+          status: "draft",
+        }),
+      JournalTemplateProfileKeyConflictError,
+    );
+
+    const listed =
+      await templateFamilyRepository.listJournalTemplateProfilesByTemplateFamilyId(
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      );
+
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.journal_key, "nejm");
   });
 });
 

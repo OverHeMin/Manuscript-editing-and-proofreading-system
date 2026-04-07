@@ -16,8 +16,10 @@ function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {
   return {
     ...record,
     scope: cloneJsonObject(record.scope),
+    selector: cloneJsonObject(record.selector),
     trigger: cloneJsonObject(record.trigger),
     action: cloneJsonObject(record.action),
+    authoring_payload: cloneJsonObject(record.authoring_payload),
   };
 }
 
@@ -51,8 +53,9 @@ function compareRules(left: EditorialRuleRecord, right: EditorialRuleRecord): nu
 function versionKey(
   templateFamilyId: string,
   module: EditorialRuleSetRecord["module"],
+  journalTemplateId?: string,
 ): string {
-  return `${templateFamilyId}:${module}`;
+  return `${templateFamilyId}:${journalTemplateId ?? "<base>"}:${module}`;
 }
 
 export class InMemoryEditorialRuleRepository implements EditorialRuleRepository {
@@ -62,7 +65,11 @@ export class InMemoryEditorialRuleRepository implements EditorialRuleRepository 
 
   async saveRuleSet(record: EditorialRuleSetRecord): Promise<void> {
     this.ruleSets.set(record.id, cloneRuleSet(record));
-    const key = versionKey(record.template_family_id, record.module);
+    const key = versionKey(
+      record.template_family_id,
+      record.module,
+      record.journal_template_id,
+    );
     const currentReserved = this.reservedVersions.get(key) ?? 0;
     if (record.version_no > currentReserved) {
       this.reservedVersions.set(key, record.version_no);
@@ -99,8 +106,9 @@ export class InMemoryEditorialRuleRepository implements EditorialRuleRepository 
   async reserveNextRuleSetVersion(
     templateFamilyId: string,
     module: EditorialRuleSetRecord["module"],
+    journalTemplateId?: string,
   ): Promise<number> {
-    const key = versionKey(templateFamilyId, module);
+    const key = versionKey(templateFamilyId, module, journalTemplateId);
     const currentReserved = this.reservedVersions.get(key);
 
     if (currentReserved !== undefined) {
@@ -112,10 +120,16 @@ export class InMemoryEditorialRuleRepository implements EditorialRuleRepository 
     const highestStoredVersion = (await this.listRuleSetsByTemplateFamilyAndModule(
       templateFamilyId,
       module,
-    )).reduce(
+    ))
+      .filter(
+        (record) =>
+          (record.journal_template_id ?? undefined) ===
+          (journalTemplateId ?? undefined),
+      )
+      .reduce(
       (currentHighest, record) => Math.max(currentHighest, record.version_no),
       0,
-    );
+      );
     const nextVersion = highestStoredVersion + 1;
     this.reservedVersions.set(key, nextVersion);
     return nextVersion;

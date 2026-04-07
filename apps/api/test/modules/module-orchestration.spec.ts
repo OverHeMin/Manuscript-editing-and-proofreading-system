@@ -26,6 +26,7 @@ import { ExecutionTrackingService } from "../../src/modules/execution-tracking/e
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
@@ -59,6 +60,7 @@ function createModuleHarness(input?: {
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
@@ -185,6 +187,7 @@ function createModuleHarness(input?: {
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -331,6 +334,7 @@ function createModuleHarness(input?: {
   return {
     manuscriptRepository,
     assetRepository,
+    editorialRuleRepository,
     jobRepository,
     knowledgeRepository,
     templateFamilyRepository,
@@ -437,6 +441,27 @@ async function seedWorkflowContext(input?: {
     status: "published",
     prompt: "Proofreading prompt",
   });
+  await harness.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  await harness.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  await harness.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-proofreading-1",
+    template_family_id: "family-1",
+    module: "proofreading",
+    version_no: 1,
+    status: "published",
+  });
   await harness.promptSkillRegistryRepository.savePromptTemplate({
     id: "prompt-screening-1",
     name: "screening_mainline",
@@ -491,6 +516,7 @@ async function seedWorkflowContext(input?: {
     manuscript_type: "clinical_study",
     template_family_id: "family-1",
     module_template_id: "template-screening-1",
+    rule_set_id: "rule-set-screening-1",
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -503,6 +529,7 @@ async function seedWorkflowContext(input?: {
     manuscript_type: "clinical_study",
     template_family_id: "family-1",
     module_template_id: "template-editing-1",
+    rule_set_id: "rule-set-editing-1",
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -515,6 +542,7 @@ async function seedWorkflowContext(input?: {
     manuscript_type: "clinical_study",
     template_family_id: "family-1",
     module_template_id: "template-proofreading-1",
+    rule_set_id: "rule-set-proofreading-1",
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     knowledge_binding_mode: "profile_plus_dynamic",

@@ -3,12 +3,21 @@ import type { ManuscriptType } from "../manuscripts/types.ts";
 export type TemplateModule = "screening" | "editing" | "proofreading";
 export type ModuleTemplateStatus = "draft" | "published" | "archived";
 export type TemplateFamilyStatus = "draft" | "active" | "archived";
+export type JournalTemplateProfileStatus = TemplateFamilyStatus;
 
 export interface TemplateFamilyViewModel {
   id: string;
   manuscript_type: ManuscriptType;
   name: string;
   status: TemplateFamilyStatus;
+}
+
+export interface JournalTemplateProfileViewModel {
+  id: string;
+  template_family_id: string;
+  journal_key: string;
+  journal_name: string;
+  status: JournalTemplateProfileStatus;
 }
 
 export interface ModuleTemplateViewModel {
@@ -40,6 +49,13 @@ export interface CreateModuleTemplateDraftInput {
   prompt: string;
   checklist?: string[];
   sectionRequirements?: string[];
+}
+
+export interface CreateJournalTemplateProfileInput {
+  templateFamilyId: string;
+  manuscriptType: ManuscriptType;
+  journalKey: string;
+  journalName: string;
 }
 
 export interface UpdateModuleTemplateDraftInput {

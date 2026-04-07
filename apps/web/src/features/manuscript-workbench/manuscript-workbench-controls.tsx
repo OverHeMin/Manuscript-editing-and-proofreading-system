@@ -38,6 +38,17 @@ export interface ManuscriptWorkbenchLookupPanelProps {
   onLoad(): void;
 }
 
+export interface ManuscriptWorkbenchTemplateSelectionPanelProps {
+  title: string;
+  baseTemplateLabel: string;
+  selectedJournalTemplateId: string;
+  currentAppliedLabel: string;
+  hasPendingChange: boolean;
+  options: WorkbenchSelectOption[];
+  onSelect(value: string): void;
+  onApply(): void;
+}
+
 export interface ManuscriptWorkbenchActionPanelProps {
   title: string;
   selectedAssetId: string;
@@ -63,6 +74,7 @@ export interface ManuscriptWorkbenchControlsProps {
   busy: boolean;
   intake?: ManuscriptWorkbenchIntakePanelProps;
   lookup: ManuscriptWorkbenchLookupPanelProps;
+  templateSelection?: ManuscriptWorkbenchTemplateSelectionPanelProps;
   moduleAction?: ManuscriptWorkbenchActionPanelProps;
   finalizeAction?: ManuscriptWorkbenchActionPanelProps;
   utilities?: ManuscriptWorkbenchUtilitiesPanelProps;
@@ -73,6 +85,7 @@ export function ManuscriptWorkbenchControls({
   busy,
   intake,
   lookup,
+  templateSelection,
   moduleAction,
   finalizeAction,
   utilities,
@@ -88,6 +101,9 @@ export function ManuscriptWorkbenchControls({
   );
   const selectedModuleOption = resolveSelectedOption(moduleAction);
   const selectedFinalizeOption = resolveSelectedOption(finalizeAction);
+  const selectedJournalTemplateOption = templateSelection?.options.find(
+    (option) => option.value === templateSelection.selectedJournalTemplateId,
+  );
 
   return (
     <section className="manuscript-workbench-controls">
@@ -205,6 +221,58 @@ export function ManuscriptWorkbenchControls({
             </div>
           </div>
         </article>
+
+        {templateSelection ? (
+          <article className="manuscript-workbench-panel">
+            <div className="manuscript-workbench-panel-heading">
+              <div>
+                <h3>{templateSelection.title}</h3>
+                <p>
+                  Choose the journal-level small template that should refine the base
+                  manuscript family before governed runs continue.
+                </p>
+              </div>
+            </div>
+            <div className="manuscript-workbench-panel-body">
+              <div className="manuscript-workbench-selection-context">
+                <span>Base Template Family</span>
+                <strong>{templateSelection.baseTemplateLabel}</strong>
+              </div>
+              <label className="manuscript-workbench-field">
+                <span>Journal Template</span>
+                <select
+                  value={templateSelection.selectedJournalTemplateId}
+                  onChange={(event) => templateSelection.onSelect(event.target.value)}
+                >
+                  <option value="">Use Base Family Only</option>
+                  {templateSelection.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="manuscript-workbench-selection-context">
+                <span>Current Applied Context</span>
+                <strong>
+                  {selectedJournalTemplateOption?.label ??
+                    templateSelection.currentAppliedLabel}
+                </strong>
+              </div>
+              {templateSelection.hasPendingChange ? (
+                <p className="manuscript-workbench-help is-warning">
+                  Save the template context so the next governed run uses the selected
+                  journal override.
+                </p>
+              ) : null}
+              <div className="manuscript-workbench-button-row">
+                <button type="button" disabled={busy} onClick={() => templateSelection.onApply()}>
+                  {busy ? "Working..." : "Save Template Context"}
+                </button>
+              </div>
+            </div>
+          </article>
+        ) : null}
 
         {moduleAction ? (
           <article className="manuscript-workbench-panel">

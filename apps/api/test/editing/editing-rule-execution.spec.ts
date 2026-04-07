@@ -175,12 +175,14 @@ test("editing service resolves governed rules and persists deterministic changes
     id: "rule-abstract-objective",
     rule_set_id: "rule-set-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "format",
     execution_mode: "apply_and_inspect",
     scope: {
       sections: ["abstract"],
       block_kind: "heading",
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: BEFORE_HEADING,
@@ -189,6 +191,7 @@ test("editing service resolves governed rules and persists deterministic changes
       kind: "replace_heading",
       to: AFTER_HEADING,
     },
+    authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,
@@ -199,12 +202,14 @@ test("editing service resolves governed rules and persists deterministic changes
     id: "rule-discussion-reshape",
     rule_set_id: "rule-set-1",
     order_no: 20,
+    rule_object: "generic",
     rule_type: "content",
     execution_mode: "apply",
     scope: {
       sections: ["discussion"],
       block_kind: "paragraph",
     },
+    selector: {},
     trigger: {
       kind: "semantic_pattern",
       tag: "needs_clarity",
@@ -212,6 +217,7 @@ test("editing service resolves governed rules and persists deterministic changes
     action: {
       kind: "rewrite_content",
     },
+    authoring_payload: {},
     confidence_policy: "high_confidence_only",
     severity: "warning",
     enabled: true,
@@ -377,12 +383,14 @@ test("editing service resolves governed rules and persists deterministic changes
       id: "rule-abstract-objective",
       rule_set_id: "rule-set-1",
       order_no: 10,
+      rule_object: "generic",
       rule_type: "format",
       execution_mode: "apply_and_inspect",
       scope: {
         sections: ["abstract"],
         block_kind: "heading",
       },
+      selector: {},
       trigger: {
         kind: "exact_text",
         text: BEFORE_HEADING,
@@ -391,6 +399,7 @@ test("editing service resolves governed rules and persists deterministic changes
         kind: "replace_heading",
         to: AFTER_HEADING,
       },
+      authoring_payload: {},
       confidence_policy: "always_auto",
       severity: "error",
       enabled: true,
@@ -401,12 +410,14 @@ test("editing service resolves governed rules and persists deterministic changes
       id: "rule-discussion-reshape",
       rule_set_id: "rule-set-1",
       order_no: 20,
+      rule_object: "generic",
       rule_type: "content",
       execution_mode: "apply",
       scope: {
         sections: ["discussion"],
         block_kind: "paragraph",
       },
+      selector: {},
       trigger: {
         kind: "semantic_pattern",
         tag: "needs_clarity",
@@ -414,6 +425,7 @@ test("editing service resolves governed rules and persists deterministic changes
       action: {
         kind: "rewrite_content",
       },
+      authoring_payload: {},
       confidence_policy: "high_confidence_only",
       severity: "warning",
       enabled: true,

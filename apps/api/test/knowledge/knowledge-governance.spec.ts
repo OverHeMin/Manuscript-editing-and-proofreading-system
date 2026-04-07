@@ -413,11 +413,13 @@ test("generated editorial-rule projections remain traceable and refresh in place
     id: "rule-1",
     rule_set_id: "rule-set-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "format",
     execution_mode: "apply_and_inspect",
     scope: {
       sections: ["abstract"],
     },
+    selector: {},
     trigger: {
       kind: "exact_text",
       text: "摘要 目的",
@@ -426,6 +428,7 @@ test("generated editorial-rule projections remain traceable and refresh in place
       kind: "replace_heading",
       to: "（摘要　目的）",
     },
+    authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,

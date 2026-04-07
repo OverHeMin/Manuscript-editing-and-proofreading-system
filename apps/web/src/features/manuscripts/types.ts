@@ -333,6 +333,7 @@ export interface ManuscriptViewModel {
   current_editing_asset_id?: string;
   current_proofreading_asset_id?: string;
   current_template_family_id?: string;
+  current_journal_template_id?: string;
   created_at: string;
   updated_at: string;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;

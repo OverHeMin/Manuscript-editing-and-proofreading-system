@@ -168,6 +168,63 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /Debug Snapshot/);
 });
 
+test("manuscript workbench summary shows the resolved base family and journal template context", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={{
+        manuscript: {
+          id: "manuscript-template-1",
+          title: "Journal scoped manuscript",
+          manuscript_type: "clinical_study",
+          status: "processing",
+          created_by: "editor-1",
+          current_template_family_id: "family-1",
+          current_journal_template_id: "journal-template-1",
+          created_at: "2026-04-07T09:00:00.000Z",
+          updated_at: "2026-04-07T09:30:00.000Z",
+        },
+        assets: [],
+        currentAsset: null,
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+        templateFamily: {
+          id: "family-1",
+          manuscript_type: "clinical_study",
+          name: "Clinical Study Family",
+          status: "active",
+        },
+        journalTemplateProfiles: [
+          {
+            id: "journal-template-1",
+            template_family_id: "family-1",
+            journal_key: "zxyjhzz",
+            journal_name: "《中西医结合杂志》",
+            status: "active",
+          },
+        ],
+        selectedJournalTemplateProfile: {
+          id: "journal-template-1",
+          template_family_id: "family-1",
+          journal_key: "zxyjhzz",
+          journal_name: "《中西医结合杂志》",
+          status: "active",
+        },
+      }}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /Base Template Family/);
+  assert.match(markup, /Clinical Study Family/);
+  assert.match(markup, /Journal Template/);
+  assert.match(markup, /《中西医结合杂志》/);
+  assert.match(markup, /Journal Overrides/);
+  assert.match(markup, /Active/);
+});
+
 test("manuscript workbench summary preserves evaluation sample context in the evaluation shortcut", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary

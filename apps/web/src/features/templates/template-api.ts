@@ -1,7 +1,9 @@
 import type { AuthRole } from "../auth/roles.ts";
 import type {
+  CreateJournalTemplateProfileInput,
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
+  JournalTemplateProfileViewModel,
   ModuleTemplateViewModel,
   TemplateFamilyViewModel,
   UpdateModuleTemplateDraftInput,
@@ -41,6 +43,17 @@ export function createModuleTemplateDraft(
   });
 }
 
+export function createJournalTemplateProfile(
+  client: TemplateHttpClient,
+  input: CreateJournalTemplateProfileInput,
+) {
+  return client.request<JournalTemplateProfileViewModel>({
+    method: "POST",
+    url: "/api/v1/templates/journal-templates",
+    body: input,
+  });
+}
+
 export function updateModuleTemplateDraft(
   client: TemplateHttpClient,
   moduleTemplateId: string,
@@ -60,6 +73,44 @@ export function listModuleTemplatesByTemplateFamilyId(
   return client.request<ModuleTemplateViewModel[]>({
     method: "GET",
     url: `/api/v1/templates/families/${templateFamilyId}/module-templates`,
+  });
+}
+
+export function listJournalTemplateProfilesByTemplateFamilyId(
+  client: TemplateHttpClient,
+  templateFamilyId: string,
+) {
+  return client.request<JournalTemplateProfileViewModel[]>({
+    method: "GET",
+    url: `/api/v1/templates/families/${templateFamilyId}/journal-templates`,
+  });
+}
+
+export function activateJournalTemplateProfile(
+  client: TemplateHttpClient,
+  journalTemplateProfileId: string,
+  actorRole: AuthRole,
+) {
+  return client.request<JournalTemplateProfileViewModel>({
+    method: "POST",
+    url: `/api/v1/templates/journal-templates/${journalTemplateProfileId}/activate`,
+    body: {
+      actorRole,
+    },
+  });
+}
+
+export function archiveJournalTemplateProfile(
+  client: TemplateHttpClient,
+  journalTemplateProfileId: string,
+  actorRole: AuthRole,
+) {
+  return client.request<JournalTemplateProfileViewModel>({
+    method: "POST",
+    url: `/api/v1/templates/journal-templates/${journalTemplateProfileId}/archive`,
+    body: {
+      actorRole,
+    },
   });
 }
 

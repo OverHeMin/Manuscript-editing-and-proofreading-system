@@ -109,7 +109,10 @@ async function applyPendingMigrations(client: Client): Promise<void> {
       [repairableMigration.expectedChecksum, repairableMigration.version],
     );
     console.log(`Normalized legacy checksum for ${repairableMigration.version}`);
+    await reapplyAdditiveMigrationRepair(client, repairableMigration.version);
   }
+
+  await reconcileAppliedAdditiveMigrations(client);
 
   const repositoryMigrationLedger = getRepositoryMigrationLedgerMap();
 
@@ -139,6 +142,49 @@ async function applyPendingMigrations(client: Client): Promise<void> {
       await client.query("rollback");
       throw error;
     }
+  }
+}
+
+async function reapplyAdditiveMigrationRepair(
+  client: Client,
+  version: string,
+): Promise<void> {
+  if (
+    version !== "0025_editorial_rule_engine_persistence.sql" &&
+    version !== "0027_medical_editorial_rule_authoring_workbench.sql"
+  ) {
+    return;
+  }
+
+  await client.query("begin");
+
+  try {
+    await client.query(readRepositoryMigrationSql(version));
+    await client.query("commit");
+    console.log(`Reapplied additive migration repair for ${version}`);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+}
+
+async function reconcileAppliedAdditiveMigrations(client: Client): Promise<void> {
+  const additiveRepairVersions = [
+    "0025_editorial_rule_engine_persistence.sql",
+    "0027_medical_editorial_rule_authoring_workbench.sql",
+  ];
+  const result = await client.query<{ version: string }>(
+    `
+      select version
+      from schema_migrations
+      where version = any($1::text[])
+      order by version
+    `,
+    [additiveRepairVersions],
+  );
+
+  for (const row of result.rows) {
+    await reapplyAdditiveMigrationRepair(client, row.version);
   }
 }
 

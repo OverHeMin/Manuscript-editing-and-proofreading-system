@@ -119,11 +119,13 @@ async function createGovernedContextHarness() {
     id: "screening-rule-1",
     rule_set_id: "screening-rule-set-1",
     order_no: 10,
+    rule_object: "generic",
     rule_type: "content",
     execution_mode: "inspect",
     scope: {
       sections: ["abstract"],
     },
+    selector: {},
     trigger: {
       kind: "structural_presence",
       field: "abstract",
@@ -132,6 +134,7 @@ async function createGovernedContextHarness() {
       kind: "emit_finding",
       message: "Abstract should be present.",
     },
+    authoring_payload: {},
     confidence_policy: "manual_only",
     severity: "warning",
     enabled: true,

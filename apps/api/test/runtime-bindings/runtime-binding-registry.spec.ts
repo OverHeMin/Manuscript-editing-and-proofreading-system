@@ -13,6 +13,7 @@ import { PromptSkillRegistryService } from "../../src/modules/prompt-skill-regis
 import { createExecutionGovernanceApi } from "../../src/modules/execution-governance/execution-governance-api.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { createRuntimeBindingApi } from "../../src/modules/runtime-bindings/runtime-binding-api.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
@@ -61,6 +62,7 @@ function createRuntimeBindingHarness() {
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const executionGovernanceRepository =
     new InMemoryExecutionGovernanceRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
@@ -82,6 +84,7 @@ function createRuntimeBindingHarness() {
   const executionGovernanceApi = createExecutionGovernanceApi({
     executionGovernanceService: new ExecutionGovernanceService({
       repository: executionGovernanceRepository,
+      editorialRuleRepository,
       moduleTemplateRepository,
       promptSkillRegistryRepository,
       knowledgeRepository: new InMemoryKnowledgeRepository(),
@@ -105,6 +108,7 @@ function createRuntimeBindingHarness() {
 
   return {
     executionGovernanceApi,
+    editorialRuleRepository,
     moduleTemplateRepository,
     readinessService,
     runtimeApi: createAgentRuntimeApi({
@@ -288,6 +292,13 @@ async function seedPublishableBindingDependencies() {
     status: "published",
     prompt: "Editing template",
   });
+  await harness.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
   const executionProfile = await harness.executionGovernanceApi.createProfile({
     actorRole: "admin",
     input: {
@@ -295,6 +306,7 @@ async function seedPublishableBindingDependencies() {
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "module-template-1",
+      ruleSetId: "rule-set-editing-1",
       promptTemplateId: promptTemplate.body.id,
       skillPackageIds: [skillPackage.body.id],
       knowledgeBindingMode: "profile_only",
@@ -732,6 +744,7 @@ test("runtime binding readiness reports execution-profile prompt and skill drift
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "module-template-1",
+      ruleSetId: "rule-set-editing-1",
       promptTemplateId: secondPromptTemplate.body.id,
       skillPackageIds: [secondSkillPackage.body.id],
       knowledgeBindingMode: "profile_only",

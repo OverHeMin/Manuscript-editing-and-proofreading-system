@@ -45,6 +45,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "status",
     "created_by",
     "current_template_family_id",
+    "current_journal_template_id",
   ],
   document_assets: [
     "id",
@@ -565,6 +566,8 @@ const legacyAgentToolingChecksum =
   "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
 const legacyModelRoutingGovernanceChecksum =
   "ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4";
+const legacyEditorialRuleEngineChecksum =
+  "bff19d8b5bcdebe649b314a987a7dac6c02254404f205ea863fee666000c3882";
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withTestClient(async (client) => {
@@ -697,6 +700,8 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0023_agent_execution_orchestration_attempt_claim_token.sql",
       "0024_execution_snapshot_agent_execution_linkage.sql",
       "0025_editorial_rule_engine_persistence.sql",
+      "0026_model_provider_domestic.sql",
+      "0027_medical_editorial_rule_authoring_workbench.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1107,6 +1112,76 @@ test("migrate repairs legacy 0015 model routing databases by normalizing checksu
         ],
         "Expected migrate to normalize legacy 0015 checksum and record the new routed execution migration.",
       );
+    } finally {
+      await verificationClient.end();
+    }
+  });
+});
+
+test("migrate repairs legacy 0025 editorial rule databases by restoring projected knowledge columns", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const initialMigration = runMigrateProcess(databaseUrl);
+    assert.equal(initialMigration.status, 0, "Expected migrate to succeed for a fresh isolated database.");
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        alter table knowledge_items
+          drop column if exists projection_source
+      `);
+      await client.query(
+        `
+          update schema_migrations
+          set checksum = $1
+          where version = '0025_editorial_rule_engine_persistence.sql'
+        `,
+        [legacyEditorialRuleEngineChecksum],
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to repair legacy 0025 editorial-rule databases.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const columnsResult = await verificationClient.query<{ column_name: string }>(
+        `
+          select column_name
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'knowledge_items'
+            and column_name = 'projection_source'
+        `,
+      );
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          where version = '0025_editorial_rule_engine_persistence.sql'
+        `,
+      );
+
+      assert.deepEqual(
+        columnsResult.rows,
+        [{ column_name: "projection_source" }],
+        "Expected migrate to restore the projected knowledge provenance column for legacy 0025 databases.",
+      );
+      assert.deepEqual(migrationResult.rows, [
+        {
+          version: "0025_editorial_rule_engine_persistence.sql",
+          checksum: getMigrationChecksum("0025_editorial_rule_engine_persistence.sql"),
+        },
+      ]);
     } finally {
       await verificationClient.end();
     }

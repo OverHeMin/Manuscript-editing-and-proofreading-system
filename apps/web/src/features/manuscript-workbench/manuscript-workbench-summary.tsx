@@ -487,6 +487,40 @@ export function ManuscriptWorkbenchSummary({
             value={workspace.manuscript.manuscript_type}
           />
           <SummaryMetric
+            label="Base Template Family"
+            value={
+              workspace.templateFamily?.name ??
+              workspace.manuscript.current_template_family_id ??
+              "Not bound"
+            }
+          />
+          <SummaryMetric
+            label="Journal Template"
+            value={
+              workspace.selectedJournalTemplateProfile?.journal_name ??
+              workspace.manuscript.current_journal_template_id ??
+              "Base family only"
+            }
+          />
+          <SummaryMetric
+            label="Journal Overrides"
+            value={
+              <StatusPill
+                tone={
+                  workspace.selectedJournalTemplateProfile ||
+                  workspace.manuscript.current_journal_template_id
+                    ? "success"
+                    : "neutral"
+                }
+              >
+                {workspace.selectedJournalTemplateProfile ||
+                workspace.manuscript.current_journal_template_id
+                  ? "Active"
+                  : "Base only"}
+              </StatusPill>
+            }
+          />
+          <SummaryMetric
             label="Status"
             value={<StatusPill tone="neutral">{workspace.manuscript.status}</StatusPill>}
           />

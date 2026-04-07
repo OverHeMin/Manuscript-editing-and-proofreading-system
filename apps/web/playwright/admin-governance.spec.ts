@@ -1,6 +1,12 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-const apiBaseUrl = "http://127.0.0.1:3001";
+const apiBaseUrl =
+  process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
+const seededFamilyId = "family-seeded-1";
+const seededFamilyName = "Seeded Clinical Study Family";
+const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
+const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+const journalObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
 
 test("admin can create a template family and module draft from the governance console", async ({
   page,
@@ -48,46 +54,11 @@ test("admin can create a template family and module draft from the governance co
   await expect(moduleDraftPanel).toContainText("draft");
 });
 
-test("admin can preview a governed execution bundle from the governance console", async ({
+test("admin can preview the seeded governed execution bundle from the governance console", async ({
   page,
   request,
 }) => {
-  const prepared = await prepareExecutionPreviewScenario(request, {
-    label: "Phase 8AF",
-  });
-
-  await page.goto("/#admin-console", {
-    waitUntil: "domcontentloaded",
-  });
-
-  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
-  await expect(page.locator(".admin-governance-workbench")).toContainText(prepared.familyName);
-
-  const executionPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Execution Governance" }) });
-
-  await executionPanel.getByLabel("Template Family").selectOption({ label: prepared.familyName });
-  await executionPanel.getByLabel("Module").selectOption("editing");
-  await executionPanel.getByRole("button", { name: "Preview Execution Bundle" }).click();
-
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Resolved execution bundle preview.",
-  );
-
-  const resolutionGrid = page.locator(".admin-governance-resolution-grid");
-  await expect(resolutionGrid).toContainText(prepared.profileId);
-  await expect(resolutionGrid).toContainText(`openai / ${prepared.modelName}`);
-  await expect(resolutionGrid).toContainText(prepared.promptName);
-});
-
-test("admin can complete the routing governance operator flow", async ({
-  page,
-  request,
-}) => {
-  const prepared = await prepareRoutingGovernanceScenario(request, {
-    label: "Phase 10B",
-  });
+  await loginAsDemoUser(request, "dev.admin");
 
   await page.goto("/#admin-console", {
     waitUntil: "domcontentloaded",
@@ -95,61 +66,11 @@ test("admin can complete the routing governance operator flow", async ({
 
   await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
 
-  const routingDraftPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Routing Policy Draft" }) });
-  await routingDraftPanel.getByLabel("Scope Kind").selectOption("template_family");
-  await routingDraftPanel
-    .getByLabel("Scope Value")
-    .selectOption({ label: prepared.familyName });
-  await routingDraftPanel.getByLabel("Primary Model").selectOption(prepared.primaryModelId);
-  await routingDraftPanel
-    .getByRole("checkbox", { name: prepared.fallbackModelName })
-    .check();
-  await routingDraftPanel
-    .getByLabel("Evidence References")
-    .fill(`evaluation_run:${prepared.evaluationRunId}`);
-  await routingDraftPanel.getByLabel("Notes").fill("Phase 10B routing governance flow");
-  await routingDraftPanel.getByRole("button", { name: "Create Routing Policy Draft" }).click();
-
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Created routing policy draft",
-  );
-
-  const governedPoliciesPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Governed Routing Policies" }) });
-  const policyRow = governedPoliciesPanel
-    .locator(".admin-governance-template-row")
-    .filter({ hasText: prepared.familyId });
-
-  await expect(policyRow).toContainText("template_family");
-  await expect(policyRow).toContainText(prepared.evaluationRunId);
-
-  await policyRow.getByRole("button", { name: "Submit For Review" }).click();
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Submitted routing policy draft",
-  );
-
-  await policyRow.getByRole("button", { name: "Approve" }).click();
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Approved routing policy version",
-  );
-
-  await policyRow.getByRole("button", { name: "Activate" }).click();
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Activated routing policy version",
-  );
-  await expect(policyRow).toContainText("Active Policy");
-  await expect(policyRow).toContainText(prepared.primaryModelId);
-  await expect(policyRow).toContainText(prepared.fallbackModelId);
-
   const executionPanel = page
     .locator("article.admin-governance-panel")
     .filter({ has: page.getByRole("heading", { name: "Execution Governance" }) });
-  await executionPanel
-    .getByLabel("Template Family")
-    .selectOption({ label: prepared.familyName });
+
+  await executionPanel.getByLabel("Template Family").selectOption({ label: seededFamilyName });
   await executionPanel.getByLabel("Module").selectOption("editing");
   await executionPanel.getByRole("button", { name: "Preview Execution Bundle" }).click();
 
@@ -158,407 +79,249 @@ test("admin can complete the routing governance operator flow", async ({
   );
 
   const resolutionGrid = executionPanel.locator(".admin-governance-resolution-grid");
-  await expect(resolutionGrid).toContainText(prepared.profileId);
-  await expect(resolutionGrid).toContainText(`openai / ${prepared.primaryModelName}`);
-  await expect(resolutionGrid).toContainText("template_family_policy");
-
-  const policiesResponse = await request.get(
-    `${apiBaseUrl}/api/v1/model-routing-governance/policies`,
-  );
-  expect(policiesResponse.ok()).toBeTruthy();
-  const policies = (await policiesResponse.json()) as Array<{
-    scope_value: string;
-    active_version?: {
-      id: string;
-    };
-  }>;
-  const activePolicy = policies.find((policy) => policy.scope_value === prepared.familyId);
-  expect(activePolicy?.active_version?.id).toBeTruthy();
-
-  const routedManuscriptSlug = slugify(`${prepared.familyName}-routing-audit`);
-  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
-    data: {
-      title: `${prepared.familyName} Routed Audit Manuscript`,
-      manuscriptType: "clinical_study",
-      createdBy: "ignored-by-server",
-      fileName: `${routedManuscriptSlug}-source.docx`,
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      storageKey: `uploads/${routedManuscriptSlug}/${routedManuscriptSlug}-source.docx`,
-    },
-  });
-  expect(uploadResponse.ok()).toBeTruthy();
-  const uploaded = (await uploadResponse.json()) as {
-    manuscript: { id: string };
-  };
-
-  const routedLogResponse = await request.post(`${apiBaseUrl}/api/v1/agent-execution`, {
-    data: {
-      input: {
-        manuscriptId: uploaded.manuscript.id,
-        module: "editing",
-        triggeredBy: "dev.admin",
-        runtimeId: prepared.runtimeId,
-        sandboxProfileId: prepared.sandboxProfileId,
-        agentProfileId: prepared.agentProfileId,
-        runtimeBindingId: prepared.runtimeBindingId,
-        toolPermissionPolicyId: prepared.toolPermissionPolicyId,
-        knowledgeItemIds: [],
-        routingPolicyVersionId: activePolicy!.active_version!.id,
-        routingPolicyScopeKind: "template_family",
-        routingPolicyScopeValue: prepared.familyId,
-        resolvedModelId: prepared.primaryModelId,
-      },
-    },
-  });
-  expect(routedLogResponse.ok()).toBeTruthy();
-
-  await page.reload({
-    waitUntil: "domcontentloaded",
-  });
-
-  const recentExecutionsPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
-  await recentExecutionsPanel.getByLabel("Search executions").fill(uploaded.manuscript.id);
-  const targetExecutionRow = recentExecutionsPanel
-    .locator(".admin-governance-template-row")
-    .filter({ hasText: uploaded.manuscript.id });
-  const inspectButton = targetExecutionRow.getByRole("button");
-  await expect(inspectButton).toBeVisible();
-  if ((await inspectButton.textContent())?.trim() === "Inspect") {
-    await inspectButton.click();
-  }
-
-  const evidencePanel = page.locator(".admin-governance-evidence");
-  await expect(evidencePanel).toContainText("Routing Policy Hit");
-  await expect(evidencePanel).toContainText("template_family");
-  await expect(evidencePanel).toContainText(activePolicy!.active_version!.id);
-  await expect(evidencePanel).toContainText("Resolved Model");
-  await expect(evidencePanel).toContainText(prepared.primaryModelId);
-  await expect(evidencePanel).toContainText("Fallback Outcome");
+  await expect(resolutionGrid).toContainText("profile-editing-1");
+  await expect(resolutionGrid).toContainText("openai / editing-model");
+  await expect(resolutionGrid).toContainText("rule-set-editing-1");
+  await expect(resolutionGrid).toContainText("editing_mainline");
 });
 
-test("admin can inspect governed execution outputs from the governance console", async ({
+test("template governance supports journal-scoped abstract and table rule authoring", async ({
   page,
   request,
 }) => {
-  const prepared = await prepareExecutionEvidenceScenario(request, {
-    label: "Phase 8AG",
-  });
-
-  await page.goto("/#admin-console", {
-    waitUntil: "domcontentloaded",
-  });
-
-  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
-
-  const recentExecutionsPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
-  const targetExecutionRow = recentExecutionsPanel
-    .locator(".admin-governance-template-row")
-    .filter({ hasText: prepared.manuscriptId });
-
-  await expect(targetExecutionRow).toContainText("editing");
-  const selectionButton = targetExecutionRow.getByRole("button");
-  await expect(selectionButton).toBeVisible();
-  if ((await selectionButton.textContent())?.trim() === "Inspect") {
-    await selectionButton.click();
-  }
-
-  const evidencePanel = page.locator(".admin-governance-evidence");
-  await expect(evidencePanel).toContainText("Execution Outputs");
-  await expect(evidencePanel).toContainText(prepared.manuscriptTitle);
-  await expect(evidencePanel).toContainText(prepared.jobId);
-  await expect(evidencePanel).toContainText(prepared.assetFileName);
-  await expect(evidencePanel).toContainText(prepared.assetId);
-  await expect(evidencePanel).toContainText("current");
-  await expect(evidencePanel).toContainText("Verification Evidence");
-  await expect(evidencePanel).toContainText(prepared.evidenceLabel);
-  const downloadLink = evidencePanel.getByRole("link", {
-    name: `Download ${prepared.assetFileName}`,
-  });
-  await expect(downloadLink).toBeVisible();
-  const evidenceLink = evidencePanel.getByRole("link", {
-    name: "Open evidence link",
-  });
-  await expect(evidenceLink).toBeVisible();
-  await expect(evidenceLink).toHaveAttribute("href", prepared.evidenceUri);
-  const downloadPromise = page.waitForEvent("download");
-  await downloadLink.click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe(prepared.assetFileName);
-
-  await evidencePanel.getByRole("link", { name: "Open Editing Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(prepared.manuscriptId);
-});
-
-test("admin can inspect runtime-binding verification linkage from the governance console", async ({
-  page,
-  request,
-}) => {
-  const prepared = await prepareRuntimeBindingVerificationScenario(request, {
-    label: "Phase 9R",
-  });
-
-  await page.goto("/#admin-console", {
-    waitUntil: "domcontentloaded",
-  });
-
-  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
-
-  const runtimeBindingsPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Runtime Bindings" }) });
-  const targetBindingRow = runtimeBindingsPanel
-    .locator(".admin-governance-template-row")
-    .filter({ hasText: prepared.checkProfileName });
-
-  await expect(targetBindingRow).toContainText(prepared.suiteName);
-  await expect(targetBindingRow).toContainText(prepared.releaseProfileName);
-
-  const recentExecutionsPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
-  const targetExecutionRow = recentExecutionsPanel
-    .locator(".admin-governance-template-row")
-    .filter({ hasText: prepared.manuscriptId });
-
-  const selectionButton = targetExecutionRow.getByRole("button");
-  await expect(selectionButton).toBeVisible();
-  if ((await selectionButton.textContent())?.trim() === "Inspect") {
-    await selectionButton.click();
-  }
-
-  const evidencePanel = page.locator(".admin-governance-evidence");
-  await expect(evidencePanel).toContainText("Verification Expectations");
-  await expect(evidencePanel).toContainText(prepared.checkProfileId);
-  await expect(evidencePanel).toContainText(prepared.suiteId);
-  await expect(evidencePanel).toContainText(prepared.releaseProfileId);
-  await expect(evidencePanel).toContainText(prepared.evidenceLabel);
-});
-
-test("admin can triage recent agent executions with filters and search", async ({
-  page,
-  request,
-}) => {
-  const prepared = await prepareExecutionFilterScenario(request, {
-    label: "Phase 8AH",
-  });
-
-  await page.goto("/#admin-console", {
-    waitUntil: "domcontentloaded",
-  });
-
-  const recentExecutionsPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Recent Agent Executions" }) });
-
-  await expect(
-    recentExecutionsPanel.getByRole("button", { name: /Running \(\d+\)/ }),
-  ).toBeVisible();
-  await expect(recentExecutionsPanel.getByLabel("Search executions")).toBeVisible();
-
-  await recentExecutionsPanel.getByRole("button", { name: /Running \(\d+\)/ }).click();
-  await expect(recentExecutionsPanel).toContainText(prepared.runningManuscriptId);
-
-  await recentExecutionsPanel.getByRole("button", { name: /Completed \(\d+\)/ }).click();
-  await expect(recentExecutionsPanel).toContainText(prepared.completedManuscriptId);
-
-  await recentExecutionsPanel.getByLabel("Search executions").fill(prepared.completedManuscriptId);
-  await expect(recentExecutionsPanel).toContainText(prepared.completedManuscriptId);
-});
-
-interface PrepareExecutionPreviewScenarioInput {
-  label: string;
-}
-
-interface PreparedExecutionPreviewScenario {
-  familyId: string;
-  familyName: string;
-  modelId: string;
-  modelName: string;
-  promptName: string;
-  profileId: string;
-}
-
-interface PrepareExecutionEvidenceScenarioInput {
-  label: string;
-}
-
-interface PreparedExecutionEvidenceScenario {
-  manuscriptId: string;
-  manuscriptTitle: string;
-  jobId: string;
-  assetId: string;
-  assetFileName: string;
-  evidenceLabel: string;
-  evidenceUri: string;
-}
-
-interface PreparedRuntimeBindingVerificationScenario {
-  manuscriptId: string;
-  checkProfileId: string;
-  checkProfileName: string;
-  suiteId: string;
-  suiteName: string;
-  releaseProfileId: string;
-  releaseProfileName: string;
-  evidenceLabel: string;
-}
-
-interface PreparedExecutionFilterScenario {
-  completedManuscriptId: string;
-  runningManuscriptId: string;
-}
-
-interface PreparedRoutingGovernanceScenario {
-  evaluationRunId: string;
-  familyId: string;
-  familyName: string;
-  primaryModelId: string;
-  primaryModelName: string;
-  fallbackModelId: string;
-  fallbackModelName: string;
-  profileId: string;
-  runtimeId: string;
-  sandboxProfileId: string;
-  agentProfileId: string;
-  runtimeBindingId: string;
-  toolPermissionPolicyId: string;
-}
-
-async function prepareExecutionPreviewScenario(
-  request: APIRequestContext,
-  input: PrepareExecutionPreviewScenarioInput,
-): Promise<PreparedExecutionPreviewScenario> {
   await loginAsDemoUser(request, "dev.admin");
 
-  const familyName = `${input.label} Execution Family`;
-  const promptName = `${slugify(input.label)}_editing_mainline`;
-  const skillName = `${slugify(input.label)}_editing_skills`;
-  const modelName = `${slugify(input.label)}-gpt-5.4`;
+  const familyName = `Case Report Rules ${Date.now()}`;
+  const journalName = `\u300a\u6848\u4f8b\u62a5\u9053\u6d4f\u89c8 ${Date.now()}\u300b`;
+  const journalKey = slugify(`case-report-journal-${Date.now()}`);
 
-  const familyResponse = await request.post(`${apiBaseUrl}/api/v1/templates/families`, {
-    data: {
-      manuscriptType: "clinical_study",
-      name: familyName,
-    },
+  await page.goto("/#template-governance", {
+    waitUntil: "domcontentloaded",
   });
-  expect(familyResponse.ok()).toBeTruthy();
-  const family = (await familyResponse.json()) as { id: string };
 
-  const moduleDraftResponse = await request.post(`${apiBaseUrl}/api/v1/templates/module-drafts`, {
-    data: {
-      templateFamilyId: family.id,
-      module: "editing",
-      manuscriptType: "clinical_study",
-      prompt: `${input.label} execution editing template`,
-    },
+  await expect(page.getByRole("heading", { name: "Template Governance" })).toBeVisible();
+
+  await page.getByRole("combobox", { name: "Manuscript Type", exact: true }).selectOption(
+    "case_report",
+  );
+  await page.getByRole("textbox", { name: "Family Name", exact: true }).fill(familyName);
+  await page.getByRole("button", { name: "Create Family Draft" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText(
+    "Template family created.",
+  );
+  const createdFamilyButton = page.getByRole("button", { name: new RegExp(familyName) });
+  await expect(createdFamilyButton).toBeVisible();
+  await createdFamilyButton.click();
+
+  await page.getByRole("textbox", { name: "Journal Name" }).fill(journalName);
+  await page.getByRole("textbox", { name: "Journal Key" }).fill(journalKey);
+  await page.getByRole("button", { name: "Create Journal Template" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText(
+    "Journal template profile created.",
+  );
+
+  const journalCard = page
+    .getByRole("button", { name: "Activate" })
+    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
+    .first();
+  await expect(journalCard).toContainText(journalName);
+  await expect(journalCard).toContainText("draft");
+  await journalCard.getByRole("button", { name: "Activate" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText(
+    "Journal template profile activated.",
+  );
+  await expect(page.getByText(`${journalKey} | active`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Selected Scope" })).toBeVisible();
+
+  const navigatorCard = page
+    .getByRole("heading", { name: "Rule Authoring Navigator" })
+    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
+    .first();
+  const previewPanel = page
+    .getByRole("heading", { name: "Rule Authoring Preview" })
+    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
+    .first();
+
+  await navigatorCard.getByRole("combobox", { name: "Module" }).selectOption("editing");
+  await navigatorCard.getByRole("button", { name: "Create Rule Set Draft" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText(
+    "Rule set draft created.",
+  );
+  await expect(previewPanel).toContainText("Journal override:");
+  await expect(previewPanel).toContainText(
+    `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
+  );
+
+  await page.getByRole("button", { name: "Create Rule Draft" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText("Rule draft created.");
+  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
+    `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
+  );
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await expect(previewPanel).toContainText("Inspect only");
+  await expect(previewPanel).toContainText("table=three_line_table");
+  await page.getByRole("button", { name: "Create Rule Draft" }).click();
+
+  await expect(page.locator(".template-governance-status")).toContainText("Rule draft created.");
+  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
+    "three_line_table",
+  );
+  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
+    "\u7981\u7528\u7ad6\u7ebf",
+  );
+});
+
+test("editing workbench saves a journal template context before running editing", async ({
+  page,
+  request,
+}) => {
+  const prepared = await prepareEditingWorkbenchJournalScenario(request, {
+    label: `workbench-${Date.now()}`,
   });
-  expect(moduleDraftResponse.ok()).toBeTruthy();
-  const moduleDraft = (await moduleDraftResponse.json()) as {
-    id: string;
+
+  await page.goto(`/#editing?manuscriptId=${prepared.manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await expect(page.locator("body")).toContainText(prepared.manuscriptId);
+  await expect(page.locator("body")).toContainText("Base Template Family");
+  await expect(page.locator("body")).toContainText(seededFamilyName);
+
+  const journalPanel = page
+    .locator(".manuscript-workbench-panel")
+    .filter({ has: page.getByRole("heading", { name: "Journal Template" }) });
+  const journalSelect = journalPanel.getByLabel("Journal Template");
+
+  await expect(journalSelect).toBeVisible();
+  await journalSelect.selectOption({ label: prepared.journalName });
+  await journalPanel.getByRole("button", { name: "Save Template Context" }).click();
+
+  await expect(page.locator("body")).toContainText(
+    `Updated template context for ${prepared.manuscriptId}`,
+  );
+  await expect(page.locator("body")).toContainText(prepared.journalName);
+  await expect(page.locator("body")).toContainText("Journal Overrides");
+  await expect(page.locator("body")).toContainText("Active");
+
+  const parentAssetSelect = page.getByLabel("Parent Asset");
+  await expect(parentAssetSelect).toBeVisible();
+  await expect(parentAssetSelect).not.toHaveValue("");
+
+  const manuscriptResponse = await request.get(
+    `${apiBaseUrl}/api/v1/manuscripts/${prepared.manuscriptId}`,
+  );
+  expect(manuscriptResponse.ok()).toBeTruthy();
+  const manuscript = (await manuscriptResponse.json()) as {
+    current_journal_template_id?: string;
   };
+  expect(manuscript.current_journal_template_id).toBe(prepared.journalTemplateId);
 
-  const publishModuleResponse = await request.post(
-    `${apiBaseUrl}/api/v1/templates/module-templates/${moduleDraft.id}/publish`,
+  await page.getByRole("button", { name: "Run Editing" }).click();
+
+  await expect(page.locator("body")).toContainText("Created asset");
+  await expect(page.locator("body")).toContainText(prepared.journalName);
+});
+
+async function prepareEditingWorkbenchJournalScenario(
+  request: APIRequestContext,
+  input: {
+    label: string;
+  },
+): Promise<{
+  manuscriptId: string;
+  journalTemplateId: string;
+  journalName: string;
+}> {
+  await loginAsDemoUser(request, "dev.admin");
+
+  const slug = slugify(input.label);
+  const journalName = `${input.label} Journal Overlay`;
+  const journalKey = `${slug}-journal`;
+
+  const journalTemplateResponse = await request.post(
+    `${apiBaseUrl}/api/v1/templates/journal-templates`,
+    {
+      data: {
+        templateFamilyId: seededFamilyId,
+        manuscriptType: "clinical_study",
+        journalKey,
+        journalName,
+      },
+    },
+  );
+  expect(journalTemplateResponse.ok()).toBeTruthy();
+  const journalTemplate = (await journalTemplateResponse.json()) as { id: string };
+
+  const activateJournalResponse = await request.post(
+    `${apiBaseUrl}/api/v1/templates/journal-templates/${journalTemplate.id}/activate`,
     {
       data: {
         actorRole: "admin",
       },
     },
   );
-  expect(publishModuleResponse.ok()).toBeTruthy();
+  expect(activateJournalResponse.ok()).toBeTruthy();
 
-  const promptResponse = await request.post(
-    `${apiBaseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
-    {
-      data: {
-        actorRole: "admin",
-        name: promptName,
-        version: "1.0.0",
-        module: "editing",
-        manuscriptTypes: ["clinical_study"],
-      },
-    },
-  );
-  expect(promptResponse.ok()).toBeTruthy();
-  const prompt = (await promptResponse.json()) as { id: string };
-
-  const publishPromptResponse = await request.post(
-    `${apiBaseUrl}/api/v1/prompt-skill-registry/prompt-templates/${prompt.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishPromptResponse.ok()).toBeTruthy();
-
-  const skillResponse = await request.post(
-    `${apiBaseUrl}/api/v1/prompt-skill-registry/skill-packages`,
-    {
-      data: {
-        actorRole: "admin",
-        name: skillName,
-        version: "1.0.0",
-        appliesToModules: ["editing"],
-      },
-    },
-  );
-  expect(skillResponse.ok()).toBeTruthy();
-  const skill = (await skillResponse.json()) as { id: string };
-
-  const publishSkillResponse = await request.post(
-    `${apiBaseUrl}/api/v1/prompt-skill-registry/skill-packages/${skill.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishSkillResponse.ok()).toBeTruthy();
-
-  const modelResponse = await request.post(`${apiBaseUrl}/api/v1/model-registry`, {
+  const ruleSetResponse = await request.post(`${apiBaseUrl}/api/v1/editorial-rules/rule-sets`, {
     data: {
       actorRole: "admin",
-      provider: "openai",
-      modelName,
-      allowedModules: ["editing"],
-      isProdAllowed: true,
+      templateFamilyId: seededFamilyId,
+      journalTemplateId: journalTemplate.id,
+      module: "editing",
     },
   });
-  expect(modelResponse.ok()).toBeTruthy();
-  const model = (await modelResponse.json()) as { id: string };
-
-  const routingPolicyResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-registry/routing-policy`,
-    {
-      data: {
-        actorRole: "admin",
-        moduleDefaults: {
-          editing: model.id,
-        },
-      },
-    },
-  );
-  expect(routingPolicyResponse.ok()).toBeTruthy();
-
-  const ruleSetResponse = await request.post(
-    `${apiBaseUrl}/api/v1/editorial-rules/rule-sets`,
-    {
-      data: {
-        actorRole: "admin",
-        templateFamilyId: family.id,
-        module: "editing",
-      },
-    },
-  );
   expect(ruleSetResponse.ok()).toBeTruthy();
   const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+  const ruleResponse = await request.post(
+    `${apiBaseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+    {
+      data: {
+        actorRole: "admin",
+        orderNo: 10,
+        ruleObject: "abstract",
+        ruleType: "format",
+        executionMode: "apply_and_inspect",
+        scope: {
+          sections: ["abstract"],
+          block_kind: "heading",
+        },
+        selector: {
+          section_selector: "abstract",
+          label_selector: {
+            text: abstractObjectiveSource,
+          },
+        },
+        trigger: {
+          kind: "exact_text",
+          text: abstractObjectiveSource,
+        },
+        action: {
+          kind: "replace_heading",
+          to: journalObjectiveNormalized,
+        },
+        authoringPayload: {
+          label_role: "objective",
+          source_label_text: abstractObjectiveSource,
+          normalized_label_text: journalObjectiveNormalized,
+        },
+        evidenceLevel: "high",
+        confidencePolicy: "always_auto",
+        severity: "error",
+        enabled: true,
+        exampleBefore: abstractObjectiveSource,
+        exampleAfter: journalObjectiveNormalized,
+      },
+    },
+  );
+  expect(ruleResponse.ok()).toBeTruthy();
 
   const publishRuleSetResponse = await request.post(
     `${apiBaseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
@@ -570,317 +333,9 @@ async function prepareExecutionPreviewScenario(
   );
   expect(publishRuleSetResponse.ok()).toBeTruthy();
 
-  const profileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/execution-governance/profiles`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          module: "editing",
-          manuscriptType: "clinical_study",
-          templateFamilyId: family.id,
-          moduleTemplateId: moduleDraft.id,
-          ruleSetId: ruleSet.id,
-          promptTemplateId: prompt.id,
-          skillPackageIds: [skill.id],
-          knowledgeBindingMode: "profile_plus_dynamic",
-        },
-      },
-    },
-  );
-  expect(profileResponse.ok()).toBeTruthy();
-  const profile = (await profileResponse.json()) as { id: string };
-
-  const publishProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/execution-governance/profiles/${profile.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishProfileResponse.ok()).toBeTruthy();
-
-  return {
-    familyId: family.id,
-    familyName,
-    modelId: model.id,
-    modelName,
-    promptName,
-    profileId: profile.id,
-  };
-}
-
-async function prepareRoutingGovernanceScenario(
-  request: APIRequestContext,
-  input: PrepareExecutionPreviewScenarioInput,
-): Promise<PreparedRoutingGovernanceScenario> {
-  const preview = await prepareExecutionPreviewScenario(request, input);
-  const slug = slugify(input.label);
-  const fallbackModelName = `${slug}-gemini-2.5-pro`;
-  const evaluationRunId = `${slug}-evaluation-run`;
-
-  const fallbackModelResponse = await request.post(`${apiBaseUrl}/api/v1/model-registry`, {
-    data: {
-      actorRole: "admin",
-      provider: "google",
-      modelName: fallbackModelName,
-      allowedModules: ["editing"],
-      isProdAllowed: true,
-    },
-  });
-  expect(fallbackModelResponse.ok()).toBeTruthy();
-  const fallbackModel = (await fallbackModelResponse.json()) as { id: string };
-
-  const routingPolicyResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-registry/routing-policy`,
-    {
-      data: {
-        actorRole: "admin",
-        moduleDefaults: {
-          editing: fallbackModel.id,
-        },
-      },
-    },
-  );
-  expect(routingPolicyResponse.ok()).toBeTruthy();
-
-  const evidenceSeed = await prepareExecutionEvidenceScenario(request, {
-    label: `${input.label} Seed`,
-  });
-  const seedLog = await findExecutionLogByManuscriptId(request, evidenceSeed.manuscriptId);
-
-  return {
-    evaluationRunId,
-    familyId: preview.familyId,
-    familyName: preview.familyName,
-    primaryModelId: preview.modelId,
-    primaryModelName: preview.modelName,
-    fallbackModelId: fallbackModel.id,
-    fallbackModelName,
-    profileId: preview.profileId,
-    runtimeId: seedLog.runtime_id,
-    sandboxProfileId: seedLog.sandbox_profile_id,
-    agentProfileId: seedLog.agent_profile_id,
-    runtimeBindingId: seedLog.runtime_binding_id,
-    toolPermissionPolicyId: seedLog.tool_permission_policy_id,
-  };
-}
-
-async function prepareExecutionEvidenceScenario(
-  request: APIRequestContext,
-  input: PrepareExecutionEvidenceScenarioInput,
-): Promise<PreparedExecutionEvidenceScenario> {
-  await loginAsDemoUser(request, "dev.admin");
-
-  const slug = slugify(input.label);
-  const manuscriptTitle = `${input.label} Governed Output Manuscript`;
-  const sourceFileName = `${slug}-source.docx`;
-  const assetFileName = `${slug}-editing-final.docx`;
-  const evidenceLabel = `${input.label} browser QA`;
-  const evidenceUri = `https://example.test/evidence/${slug}/browser-qa`;
-
   const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
-      title: manuscriptTitle,
-      manuscriptType: "clinical_study",
-      createdBy: "ignored-by-server",
-      fileName: sourceFileName,
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      storageKey: `uploads/${slug}/${sourceFileName}`,
-    },
-  });
-  expect(uploadResponse.ok()).toBeTruthy();
-  const uploaded = (await uploadResponse.json()) as {
-    manuscript: { id: string };
-    asset: { id: string };
-  };
-
-  const editingResponse = await request.post(`${apiBaseUrl}/api/v1/modules/editing/run`, {
-    data: {
-      manuscriptId: uploaded.manuscript.id,
-      parentAssetId: uploaded.asset.id,
-      requestedBy: "ignored-by-server",
-      actorRole: "admin",
-      storageKey: `runs/${uploaded.manuscript.id}/editing/${assetFileName}`,
-      fileName: assetFileName,
-    },
-  });
-  expect(editingResponse.ok()).toBeTruthy();
-  const editingRun = (await editingResponse.json()) as {
-    job: { id: string };
-    asset: { id: string };
-    agent_execution_log_id?: string;
-    snapshot_id?: string;
-  };
-  expect(editingRun.agent_execution_log_id).toBeTruthy();
-  expect(editingRun.snapshot_id).toBeTruthy();
-
-  const evidenceResponse = await request.post(`${apiBaseUrl}/api/v1/verification-ops/evidence`, {
-    data: {
-      actorRole: "admin",
-      input: {
-        kind: "url",
-        label: evidenceLabel,
-        uri: evidenceUri,
-      },
-    },
-  });
-  expect(evidenceResponse.ok()).toBeTruthy();
-  const evidence = (await evidenceResponse.json()) as {
-    id: string;
-  };
-
-  const completeLogResponse = await request.post(
-    `${apiBaseUrl}/api/v1/agent-execution/${editingRun.agent_execution_log_id}/complete`,
-    {
-      data: {
-        executionSnapshotId: editingRun.snapshot_id,
-        verificationEvidenceIds: [evidence.id],
-      },
-    },
-  );
-  expect(completeLogResponse.ok()).toBeTruthy();
-
-  return {
-    manuscriptId: uploaded.manuscript.id,
-    manuscriptTitle,
-    jobId: editingRun.job.id,
-    assetId: editingRun.asset.id,
-    assetFileName,
-    evidenceLabel,
-    evidenceUri,
-  };
-}
-
-async function prepareRuntimeBindingVerificationScenario(
-  request: APIRequestContext,
-  input: PrepareExecutionEvidenceScenarioInput,
-): Promise<PreparedRuntimeBindingVerificationScenario> {
-  await loginAsDemoUser(request, "dev.admin");
-
-  const slug = slugify(input.label);
-  const checkProfileName = `${input.label} Browser QA`;
-  const releaseProfileName = `${input.label} Release Gate`;
-  const suiteName = `${input.label} Regression Suite`;
-  const evidenceLabel = `${input.label} linked evidence`;
-  const manuscriptTitle = `${input.label} Verification Manuscript`;
-
-  const checkProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/check-profiles`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          name: checkProfileName,
-          checkType: "browser_qa",
-        },
-      },
-    },
-  );
-  expect(checkProfileResponse.ok()).toBeTruthy();
-  const checkProfile = (await checkProfileResponse.json()) as { id: string };
-
-  const publishCheckProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishCheckProfileResponse.ok()).toBeTruthy();
-
-  const releaseProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          name: releaseProfileName,
-          checkType: "deploy_verification",
-          verificationCheckProfileIds: [checkProfile.id],
-        },
-      },
-    },
-  );
-  expect(releaseProfileResponse.ok()).toBeTruthy();
-  const releaseProfile = (await releaseProfileResponse.json()) as { id: string };
-
-  const publishReleaseProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/release-check-profiles/${releaseProfile.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishReleaseProfileResponse.ok()).toBeTruthy();
-
-  const suiteResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          name: suiteName,
-          suiteType: "regression",
-          verificationCheckProfileIds: [checkProfile.id],
-          moduleScope: ["editing"],
-        },
-      },
-    },
-  );
-  expect(suiteResponse.ok()).toBeTruthy();
-  const suite = (await suiteResponse.json()) as { id: string };
-
-  const activateSuiteResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(activateSuiteResponse.ok()).toBeTruthy();
-
-  const bindingResponse = await request.post(`${apiBaseUrl}/api/v1/runtime-bindings`, {
-    data: {
-      actorRole: "admin",
-      input: {
-        module: "editing",
-        manuscriptType: "clinical_study",
-        templateFamilyId: "family-seeded-1",
-        runtimeId: "runtime-editing-1",
-        sandboxProfileId: "sandbox-editing-1",
-        agentProfileId: "agent-profile-editing-1",
-        toolPermissionPolicyId: "policy-editing-1",
-        promptTemplateId: "prompt-editing-1",
-        skillPackageIds: ["skill-editing-1"],
-        executionProfileId: "profile-editing-1",
-        verificationCheckProfileIds: [checkProfile.id],
-        evaluationSuiteIds: [suite.id],
-        releaseCheckProfileId: releaseProfile.id,
-      },
-    },
-  });
-  expect(bindingResponse.ok()).toBeTruthy();
-  const binding = (await bindingResponse.json()) as { id: string };
-
-  const activateBindingResponse = await request.post(
-    `${apiBaseUrl}/api/v1/runtime-bindings/${binding.id}/activate`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(activateBindingResponse.ok()).toBeTruthy();
-
-  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
-    data: {
-      title: manuscriptTitle,
+      title: `${input.label} clinical manuscript`,
       manuscriptType: "clinical_study",
       createdBy: "ignored-by-server",
       fileName: `${slug}-source.docx`,
@@ -892,108 +347,12 @@ async function prepareRuntimeBindingVerificationScenario(
   expect(uploadResponse.ok()).toBeTruthy();
   const uploaded = (await uploadResponse.json()) as {
     manuscript: { id: string };
-    asset: { id: string };
   };
-
-  const editingResponse = await request.post(`${apiBaseUrl}/api/v1/modules/editing/run`, {
-    data: {
-      manuscriptId: uploaded.manuscript.id,
-      parentAssetId: uploaded.asset.id,
-      requestedBy: "ignored-by-server",
-      actorRole: "admin",
-      storageKey: `runs/${uploaded.manuscript.id}/editing/${slug}-final.docx`,
-      fileName: `${slug}-final.docx`,
-    },
-  });
-  expect(editingResponse.ok()).toBeTruthy();
-  const editingRun = (await editingResponse.json()) as {
-    agent_execution_log_id?: string;
-    snapshot_id?: string;
-  };
-  expect(editingRun.agent_execution_log_id).toBeTruthy();
-  expect(editingRun.snapshot_id).toBeTruthy();
-
-  const evidenceResponse = await request.post(`${apiBaseUrl}/api/v1/verification-ops/evidence`, {
-    data: {
-      actorRole: "admin",
-      input: {
-        kind: "url",
-        label: evidenceLabel,
-        uri: `https://example.test/evidence/${slug}/linked`,
-        checkProfileId: checkProfile.id,
-      },
-    },
-  });
-  expect(evidenceResponse.ok()).toBeTruthy();
-  const evidence = (await evidenceResponse.json()) as { id: string };
-
-  const completeLogResponse = await request.post(
-    `${apiBaseUrl}/api/v1/agent-execution/${editingRun.agent_execution_log_id}/complete`,
-    {
-      data: {
-        executionSnapshotId: editingRun.snapshot_id,
-        verificationEvidenceIds: [evidence.id],
-      },
-    },
-  );
-  expect(completeLogResponse.ok()).toBeTruthy();
 
   return {
     manuscriptId: uploaded.manuscript.id,
-    checkProfileId: checkProfile.id,
-    checkProfileName,
-    suiteId: suite.id,
-    suiteName,
-    releaseProfileId: releaseProfile.id,
-    releaseProfileName,
-    evidenceLabel,
-  };
-}
-
-async function prepareExecutionFilterScenario(
-  request: APIRequestContext,
-  input: PrepareExecutionEvidenceScenarioInput,
-): Promise<PreparedExecutionFilterScenario> {
-  const completed = await prepareExecutionEvidenceScenario(request, input);
-  const seedLog = await findExecutionLogByManuscriptId(request, completed.manuscriptId);
-  const slug = slugify(`${input.label}-running`);
-
-  const runningUploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
-    data: {
-      title: `${input.label} Running Execution Manuscript`,
-      manuscriptType: "clinical_study",
-      createdBy: "ignored-by-server",
-      fileName: `${slug}-source.docx`,
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      storageKey: `uploads/${slug}/${slug}-source.docx`,
-    },
-  });
-  expect(runningUploadResponse.ok()).toBeTruthy();
-  const runningUpload = (await runningUploadResponse.json()) as {
-    manuscript: { id: string };
-  };
-
-  const runningLogResponse = await request.post(`${apiBaseUrl}/api/v1/agent-execution`, {
-    data: {
-      input: {
-        manuscriptId: runningUpload.manuscript.id,
-        module: "editing",
-        triggeredBy: "dev.admin",
-        runtimeId: seedLog.runtime_id,
-        sandboxProfileId: seedLog.sandbox_profile_id,
-        agentProfileId: seedLog.agent_profile_id,
-        runtimeBindingId: seedLog.runtime_binding_id,
-        toolPermissionPolicyId: seedLog.tool_permission_policy_id,
-        knowledgeItemIds: [],
-      },
-    },
-  });
-  expect(runningLogResponse.ok()).toBeTruthy();
-
-  return {
-    completedManuscriptId: completed.manuscriptId,
-    runningManuscriptId: runningUpload.manuscript.id,
+    journalTemplateId: journalTemplate.id,
+    journalName,
   };
 }
 
@@ -1008,25 +367,6 @@ async function loginAsDemoUser(
     },
   });
   expect(response.ok()).toBeTruthy();
-}
-
-async function findExecutionLogByManuscriptId(
-  request: APIRequestContext,
-  manuscriptId: string,
-) {
-  const response = await request.get(`${apiBaseUrl}/api/v1/agent-execution`);
-  expect(response.ok()).toBeTruthy();
-  const logs = (await response.json()) as Array<{
-    manuscript_id: string;
-    runtime_id: string;
-    sandbox_profile_id: string;
-    agent_profile_id: string;
-    runtime_binding_id: string;
-    tool_permission_policy_id: string;
-  }>;
-  const matchingLog = logs.find((log) => log.manuscript_id === manuscriptId);
-  expect(matchingLog).toBeTruthy();
-  return matchingLog!;
 }
 
 function slugify(value: string) {

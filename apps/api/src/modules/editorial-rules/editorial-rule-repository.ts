@@ -14,6 +14,7 @@ export interface EditorialRuleRepository {
   reserveNextRuleSetVersion(
     templateFamilyId: string,
     module: EditorialRuleSetRecord["module"],
+    journalTemplateId?: string,
   ): Promise<number>;
   saveRule(record: EditorialRuleRecord): Promise<void>;
   findRuleById(id: string): Promise<EditorialRuleRecord | undefined>;

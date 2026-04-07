@@ -6,6 +6,14 @@ const webRoot = import.meta.dirname;
 const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 const webBaseUrl = process.env.PLAYWRIGHT_WEB_BASE_URL ?? "http://127.0.0.1:4173";
 const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1";
+const apiOrigin = new URL(apiBaseUrl);
+const webOrigin = new URL(webBaseUrl);
+const apiHost = apiOrigin.hostname;
+const apiPort =
+  apiOrigin.port || (apiOrigin.protocol === "https:" ? "443" : "80");
+const webHost = webOrigin.hostname;
+const webPort =
+  webOrigin.port || (webOrigin.protocol === "https:" ? "443" : "80");
 
 export default defineConfig({
   testDir: "./playwright",
@@ -26,9 +34,15 @@ export default defineConfig({
       timeout: 120_000,
       stdout: "pipe",
       stderr: "pipe",
+      env: {
+        ...process.env,
+        API_HOST: apiHost,
+        API_PORT: apiPort,
+        API_ALLOWED_ORIGINS: webBaseUrl,
+      },
     },
     {
-      command: "pnpm exec vite --host 127.0.0.1 --port 4173",
+      command: `pnpm exec vite --host ${webHost} --port ${webPort}`,
       cwd: webRoot,
       url: webBaseUrl,
       reuseExistingServer,
@@ -41,7 +55,7 @@ export default defineConfig({
         VITE_API_BASE_URL: apiBaseUrl,
         VITE_DEV_ROLE: "admin",
         VITE_DEMO_PASSWORD: "demo-password",
-        WEB_PORT: "4173",
+        WEB_PORT: webPort,
       },
     },
   ],

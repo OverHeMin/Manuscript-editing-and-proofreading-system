@@ -62,18 +62,30 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
       id: "editorial-rule-1",
       rule_set_id: "rule-set-1",
       order_no: 10,
+      rule_object: "abstract",
       rule_type: "format",
       execution_mode: "apply_and_inspect",
       scope: {
         section: "abstract",
       },
+      selector: {
+        section_selector: "abstract",
+        label_selector: {
+          text: "\u6458\u8981 \u76ee\u7684",
+        },
+      },
       trigger: {
         kind: "heading_equals",
-        text: "摘要 目的",
+        text: "\u6458\u8981 \u76ee\u7684",
       },
       action: {
         kind: "replace_heading",
-        to: "（摘要　目的）",
+        to: "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09",
+      },
+      authoring_payload: {
+        label_role: "objective",
+        source_label_text: "\u6458\u8981 \u76ee\u7684",
+        normalized_label_text: "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09",
       },
       confidence_policy: "always_auto",
       severity: "warning",

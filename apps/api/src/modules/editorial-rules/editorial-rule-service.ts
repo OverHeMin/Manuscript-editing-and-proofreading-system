@@ -7,6 +7,7 @@ import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
 import type {
   EditorialRuleAction,
   EditorialRuleConfidencePolicy,
+  EditorialRuleEvidenceLevel,
   EditorialRuleExecutionMode,
   EditorialRuleRecord,
   EditorialRuleScope,
@@ -18,17 +19,22 @@ import type {
 
 export interface CreateEditorialRuleSetInput {
   templateFamilyId: string;
+  journalTemplateId?: string;
   module: EditorialRuleSetRecord["module"];
 }
 
 export interface CreateEditorialRuleInput {
   ruleSetId: string;
   orderNo: number;
+  ruleObject?: string;
   ruleType: EditorialRuleType;
   executionMode: EditorialRuleExecutionMode;
   scope: EditorialRuleScope;
+  selector?: Record<string, unknown>;
   trigger: EditorialRuleTrigger;
   action: EditorialRuleAction;
+  authoringPayload?: Record<string, unknown>;
+  evidenceLevel?: EditorialRuleEvidenceLevel;
   confidencePolicy: EditorialRuleConfidencePolicy;
   severity: EditorialRuleSeverity;
   enabled?: boolean;
@@ -52,6 +58,26 @@ export class EditorialRuleTemplateFamilyNotFoundError extends Error {
   constructor(templateFamilyId: string) {
     super(`Template family ${templateFamilyId} was not found.`);
     this.name = "EditorialRuleTemplateFamilyNotFoundError";
+  }
+}
+
+export class EditorialRuleJournalTemplateNotFoundError extends Error {
+  constructor(journalTemplateId: string) {
+    super(`Journal template ${journalTemplateId} was not found.`);
+    this.name = "EditorialRuleJournalTemplateNotFoundError";
+  }
+}
+
+export class EditorialRuleJournalTemplateFamilyMismatchError extends Error {
+  constructor(
+    journalTemplateId: string,
+    expectedTemplateFamilyId: string,
+    actualTemplateFamilyId: string,
+  ) {
+    super(
+      `Journal template ${journalTemplateId} belongs to template family ${actualTemplateFamilyId}, expected ${expectedTemplateFamilyId}.`,
+    );
+    this.name = "EditorialRuleJournalTemplateFamilyMismatchError";
   }
 }
 
@@ -111,13 +137,37 @@ export class EditorialRuleService {
       throw new EditorialRuleTemplateFamilyNotFoundError(input.templateFamilyId);
     }
 
+    if (input.journalTemplateId) {
+      const journalTemplate =
+        await this.templateFamilyRepository.findJournalTemplateProfileById(
+          input.journalTemplateId,
+        );
+      if (!journalTemplate) {
+        throw new EditorialRuleJournalTemplateNotFoundError(
+          input.journalTemplateId,
+        );
+      }
+
+      if (journalTemplate.template_family_id !== input.templateFamilyId) {
+        throw new EditorialRuleJournalTemplateFamilyMismatchError(
+          input.journalTemplateId,
+          input.templateFamilyId,
+          journalTemplate.template_family_id,
+        );
+      }
+    }
+
     const record: EditorialRuleSetRecord = {
       id: this.createId(),
       template_family_id: input.templateFamilyId,
+      ...(input.journalTemplateId
+        ? { journal_template_id: input.journalTemplateId }
+        : {}),
       module: input.module,
       version_no: await this.repository.reserveNextRuleSetVersion(
         input.templateFamilyId,
         input.module,
+        input.journalTemplateId,
       ),
       status: "draft",
     };
@@ -151,7 +201,12 @@ export class EditorialRuleService {
         ruleSet.module,
       );
     for (const existing of relatedRuleSets) {
-      if (existing.id !== ruleSet.id && existing.status === "published") {
+      if (
+        existing.id !== ruleSet.id &&
+        existing.status === "published" &&
+        (existing.journal_template_id ?? undefined) ===
+          (ruleSet.journal_template_id ?? undefined)
+      ) {
         await this.repository.saveRuleSet({
           ...existing,
           status: "archived",
@@ -195,11 +250,15 @@ export class EditorialRuleService {
       id: this.createId(),
       rule_set_id: input.ruleSetId,
       order_no: input.orderNo,
+      rule_object: input.ruleObject ?? "generic",
       rule_type: input.ruleType,
       execution_mode: input.executionMode,
       scope: input.scope,
+      selector: input.selector ?? {},
       trigger: input.trigger,
       action: input.action,
+      authoring_payload: input.authoringPayload ?? {},
+      ...(input.evidenceLevel ? { evidence_level: input.evidenceLevel } : {}),
       confidence_policy: input.confidencePolicy,
       severity: input.severity,
       enabled: input.enabled ?? true,

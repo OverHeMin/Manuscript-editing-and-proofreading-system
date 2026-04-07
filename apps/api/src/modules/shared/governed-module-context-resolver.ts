@@ -145,6 +145,9 @@ export async function resolveGovernedModuleContext(
   const { ruleSet, rules } =
     await input.executionGovernanceService.resolvePublishedRuleSource(
       executionProfile,
+      {
+        journalTemplateId: manuscript.current_journal_template_id,
+      },
     );
 
   const knowledgeSelectionsById = new Map<string, GovernedKnowledgeSelection>();

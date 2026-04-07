@@ -114,6 +114,34 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
       };
     },
 
+    async updateTemplateSelection({
+      manuscriptId,
+      journalTemplateId,
+    }: {
+      manuscriptId: string;
+      journalTemplateId?: string | null;
+    }): Promise<RouteResponse<ManuscriptViewRecord>> {
+      const manuscript = await manuscriptService.updateTemplateSelection({
+        manuscriptId,
+        journalTemplateId,
+      });
+
+      return {
+        status: 200,
+        body: await enrichManuscriptView(manuscript, {
+          manuscriptService,
+          executionTrackingService: options.executionTrackingService,
+          executionTrackingViewOptions: {
+            executionGovernanceRepository: options.executionGovernanceRepository,
+            runtimeBindingReadinessService: options.runtimeBindingReadinessService,
+            agentExecutionService: options.agentExecutionService,
+            observationTime: observeNow(),
+            runningAttemptStaleAfterMs,
+          },
+        }),
+      };
+    },
+
     async listAssets({
       manuscriptId,
     }: {

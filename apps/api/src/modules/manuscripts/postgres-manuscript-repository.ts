@@ -18,6 +18,7 @@ interface ManuscriptRow {
   current_editing_asset_id: string | null;
   current_proofreading_asset_id: string | null;
   current_template_family_id: string | null;
+  current_journal_template_id: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -38,10 +39,11 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_editing_asset_id,
           current_proofreading_asset_id,
           current_template_family_id,
+          current_journal_template_id,
           created_at,
           updated_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         on conflict (id) do update
         set
           title = excluded.title,
@@ -52,6 +54,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_editing_asset_id = excluded.current_editing_asset_id,
           current_proofreading_asset_id = excluded.current_proofreading_asset_id,
           current_template_family_id = excluded.current_template_family_id,
+          current_journal_template_id = excluded.current_journal_template_id,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
       `,
@@ -65,6 +68,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
         record.current_editing_asset_id ?? null,
         record.current_proofreading_asset_id ?? null,
         record.current_template_family_id ?? null,
+        record.current_journal_template_id ?? null,
         record.created_at,
         record.updated_at,
       ],
@@ -84,6 +88,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_editing_asset_id,
           current_proofreading_asset_id,
           current_template_family_id,
+          current_journal_template_id,
           created_at,
           updated_at
         from manuscripts
@@ -114,6 +119,9 @@ function mapManuscriptRow(row: ManuscriptRow): ManuscriptRecord {
       : {}),
     ...(row.current_template_family_id
       ? { current_template_family_id: row.current_template_family_id }
+      : {}),
+    ...(row.current_journal_template_id
+      ? { current_journal_template_id: row.current_journal_template_id }
       : {}),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),

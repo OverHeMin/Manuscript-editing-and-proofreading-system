@@ -3,6 +3,7 @@ import type { ManuscriptModule } from "../jobs/job-record.ts";
 
 export type ModuleTemplateStatus = "draft" | "published" | "archived";
 export type TemplateFamilyStatus = "draft" | "active" | "archived";
+export type JournalTemplateProfileStatus = TemplateFamilyStatus;
 
 export type TemplateModule = Extract<
   ManuscriptModule,
@@ -14,6 +15,14 @@ export interface TemplateFamilyRecord {
   manuscript_type: ManuscriptType;
   name: string;
   status: TemplateFamilyStatus;
+}
+
+export interface JournalTemplateProfileRecord {
+  id: string;
+  template_family_id: string;
+  journal_key: string;
+  journal_name: string;
+  status: JournalTemplateProfileStatus;
 }
 
 export interface ModuleTemplateRecord {

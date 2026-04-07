@@ -1,17 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+const apiBaseUrl =
+  process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
+
 test("admin can complete the governed learning review flow from manuscript handoff", async ({
   page,
   request,
 }) => {
-  await request.post("http://127.0.0.1:3001/api/v1/auth/local/login", {
+  await request.post(`${apiBaseUrl}/api/v1/auth/local/login`, {
     data: {
       username: "dev.user",
       password: "demo-password",
     },
   });
 
-  const uploadResponse = await request.post("http://127.0.0.1:3001/api/v1/manuscripts/upload", {
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
       title: "Phase 8AA Learning Review Browser Smoke",
       manuscriptType: "clinical_study",
