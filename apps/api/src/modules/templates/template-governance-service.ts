@@ -191,6 +191,19 @@ export class JournalTemplateProfileKeyConflictError extends Error {
   }
 }
 
+export class JournalTemplateProfileStatusTransitionError extends Error {
+  constructor(
+    journalTemplateProfileId: string,
+    fromStatus: string,
+    toStatus: string,
+  ) {
+    super(
+      `Journal template profile ${journalTemplateProfileId} cannot transition from ${fromStatus} to ${toStatus}.`,
+    );
+    this.name = "JournalTemplateProfileStatusTransitionError";
+  }
+}
+
 export class TemplateRetrievalQualityDependencyError extends Error {
   constructor() {
     super("Retrieval quality dependencies are not configured.");
@@ -517,6 +530,14 @@ export class TemplateGovernanceService {
           return template;
         }
 
+        if (template.status !== "draft") {
+          throw new JournalTemplateProfileStatusTransitionError(
+            journalTemplateProfileId,
+            template.status,
+            "active",
+          );
+        }
+
         const updatedTemplate: JournalTemplateProfileRecord = {
           ...template,
           status: "active",
@@ -547,6 +568,14 @@ export class TemplateGovernanceService {
 
         if (template.status === "archived") {
           return template;
+        }
+
+        if (template.status !== "active") {
+          throw new JournalTemplateProfileStatusTransitionError(
+            journalTemplateProfileId,
+            template.status,
+            "archived",
+          );
         }
 
         const updatedTemplate: JournalTemplateProfileRecord = {

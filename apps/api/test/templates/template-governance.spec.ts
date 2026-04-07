@@ -446,6 +446,125 @@ test("journal template profiles can be listed by template family", async () => {
   );
 });
 
+test("journal template profiles reject duplicate journal keys within the same template family", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1", "journal-template-2"],
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review family",
+  });
+
+  await api.createJournalTemplateProfile({
+    templateFamilyId: family.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "NEJM",
+  });
+
+  await assert.rejects(
+    () =>
+      api.createJournalTemplateProfile({
+        templateFamilyId: family.body.id,
+        manuscriptType: "review",
+        journalKey: "nejm",
+        journalName: "Duplicate NEJM",
+      }),
+    /already contains.*key/i,
+  );
+});
+
+test("journal template profiles require admin publish permissions for activate and archive", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1"],
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review family",
+  });
+  const profile = await api.createJournalTemplateProfile({
+    templateFamilyId: family.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "NEJM",
+  });
+
+  await assert.rejects(
+    () =>
+      api.activateJournalTemplateProfile({
+        journalTemplateProfileId: profile.body.id,
+        actorRole: "editor",
+      }),
+    AuthorizationError,
+  );
+  await assert.rejects(
+    () =>
+      api.archiveJournalTemplateProfile({
+        journalTemplateProfileId: profile.body.id,
+        actorRole: "editor",
+      }),
+    AuthorizationError,
+  );
+
+  const activated = await api.activateJournalTemplateProfile({
+    journalTemplateProfileId: profile.body.id,
+    actorRole: "admin",
+  });
+  const archived = await api.archiveJournalTemplateProfile({
+    journalTemplateProfileId: profile.body.id,
+    actorRole: "admin",
+  });
+
+  assert.equal(activated.body.status, "active");
+  assert.equal(archived.body.status, "archived");
+});
+
+test("journal template profiles enforce draft to active to archived lifecycle transitions", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1"],
+  });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review family",
+  });
+  const profile = await api.createJournalTemplateProfile({
+    templateFamilyId: family.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "NEJM",
+  });
+
+  await assert.rejects(
+    () =>
+      api.archiveJournalTemplateProfile({
+        journalTemplateProfileId: profile.body.id,
+        actorRole: "admin",
+      }),
+    /cannot transition/i,
+  );
+
+  await api.activateJournalTemplateProfile({
+    journalTemplateProfileId: profile.body.id,
+    actorRole: "admin",
+  });
+  await api.archiveJournalTemplateProfile({
+    journalTemplateProfileId: profile.body.id,
+    actorRole: "admin",
+  });
+
+  await assert.rejects(
+    () =>
+      api.activateJournalTemplateProfile({
+        journalTemplateProfileId: profile.body.id,
+        actorRole: "admin",
+      }),
+    /cannot transition/i,
+  );
+});
+
 test("concurrent module template drafts receive unique version numbers within a family and module", async () => {
   const { api } = createTemplateHarness();
 

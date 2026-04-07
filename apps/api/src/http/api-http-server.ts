@@ -246,6 +246,7 @@ import {
   createTemplateApi,
   JournalTemplateProfileKeyConflictError,
   JournalTemplateProfileNotFoundError,
+  JournalTemplateProfileStatusTransitionError,
   TemplateFamilyActiveConflictError,
   ModuleTemplateDraftNotEditableError,
   InMemoryModuleTemplateRepository,
@@ -4940,6 +4941,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningWritebackStatusTransitionError ||
     error instanceof LearningGovernanceConflictError ||
     error instanceof JournalTemplateProfileKeyConflictError ||
+    error instanceof JournalTemplateProfileStatusTransitionError ||
     error instanceof TemplateFamilyActiveConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ModuleTemplateDraftNotEditableError ||
