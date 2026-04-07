@@ -28,6 +28,12 @@ import {
   DocumentExportService,
 } from "../modules/document-pipeline/index.ts";
 import {
+  createEditorialRuleApi,
+  EditorialRuleProjectionService,
+  EditorialRuleService,
+  PostgresEditorialRuleRepository,
+} from "../modules/editorial-rules/index.ts";
+import {
   createEditingApi,
   EditingService,
 } from "../modules/editing/index.ts";
@@ -211,6 +217,9 @@ export function createPersistentGovernanceRuntime(
   const moduleTemplateRepository = new PostgresModuleTemplateRepository({
     client: options.client,
   });
+  const editorialRuleRepository = new PostgresEditorialRuleRepository({
+    client: options.client,
+  });
   const learningGovernanceRepository = new PostgresLearningGovernanceRepository({
     client: options.client,
   });
@@ -365,6 +374,16 @@ export function createPersistentGovernanceRuntime(
       }),
     }),
   });
+  const editorialRuleProjectionService = new EditorialRuleProjectionService({
+    editorialRuleRepository,
+    knowledgeRepository,
+    templateFamilyRepository,
+  });
+  const editorialRuleService = new EditorialRuleService({
+    repository: editorialRuleRepository,
+    templateFamilyRepository,
+    projectionService: editorialRuleProjectionService,
+  });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
   });
@@ -383,6 +402,7 @@ export function createPersistentGovernanceRuntime(
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -580,6 +600,9 @@ export function createPersistentGovernanceRuntime(
     }),
     agentRuntimeApi: createAgentRuntimeApi({
       agentRuntimeService,
+    }),
+    editorialRuleApi: createEditorialRuleApi({
+      editorialRuleService,
     }),
     editingApi: createEditingApi({
       editingService,

@@ -31,6 +31,7 @@ const profileViewModelCheck: ModuleExecutionProfileViewModel = {
   manuscript_type: "clinical_study",
   template_family_id: "family-1",
   module_template_id: "template-1",
+  rule_set_id: "rule-set-1",
   prompt_template_id: "prompt-1",
   skill_package_ids: ["skill-1"],
   knowledge_binding_mode: "profile_plus_dynamic",
@@ -49,6 +50,36 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
     status: "published",
     prompt: "Editing template",
   },
+  rule_set: {
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  },
+  rules: [
+    {
+      id: "editorial-rule-1",
+      rule_set_id: "rule-set-1",
+      order_no: 10,
+      rule_type: "format",
+      execution_mode: "apply_and_inspect",
+      scope: {
+        section: "abstract",
+      },
+      trigger: {
+        kind: "heading_equals",
+        text: "摘要 目的",
+      },
+      action: {
+        kind: "replace_heading",
+        to: "（摘要　目的）",
+      },
+      confidence_policy: "always_auto",
+      severity: "warning",
+      enabled: true,
+    },
+  ],
   prompt_template: {
     id: "prompt-1",
     name: "editing_mainline",
@@ -56,6 +87,7 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
     status: "published",
     module: "editing",
     manuscript_types: ["clinical_study"],
+    template_kind: "editing_instruction",
   },
   skill_packages: [
     {
@@ -136,6 +168,7 @@ const executionGovernanceInputCheck: CreateExecutionProfileInput = {
   manuscriptType: "clinical_study",
   templateFamilyId: "family-1",
   moduleTemplateId: "template-1",
+  ruleSetId: "rule-set-1",
   promptTemplateId: "prompt-1",
   skillPackageIds: ["skill-1"],
   knowledgeBindingMode: "profile_only",

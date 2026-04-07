@@ -19,6 +19,15 @@ interface PromptTemplateRow {
   status: PromptTemplateRecord["status"];
   module: PromptTemplateRecord["module"];
   manuscript_types: ManuscriptType[] | string | null;
+  template_kind: PromptTemplateRecord["template_kind"] | null;
+  system_instructions: string | null;
+  task_frame: string | null;
+  hard_rule_summary: string | null;
+  allowed_content_operations: string[] | string | null;
+  forbidden_operations: string[] | string | null;
+  manual_review_policy: string | null;
+  output_contract: string | null;
+  report_style: string | null;
   rollback_target_version: string | null;
   source_learning_candidate_id: string | null;
 }
@@ -159,6 +168,15 @@ export class PostgresPromptSkillRegistryRepository
           status,
           module,
           manuscript_types,
+          template_kind,
+          system_instructions,
+          task_frame,
+          hard_rule_summary,
+          allowed_content_operations,
+          forbidden_operations,
+          manual_review_policy,
+          output_contract,
+          report_style,
           rollback_target_version,
           source_learning_candidate_id
         )
@@ -170,7 +188,16 @@ export class PostgresPromptSkillRegistryRepository
           $5,
           $6::manuscript_type[],
           $7,
-          $8
+          $8,
+          $9,
+          $10,
+          $11::text[],
+          $12::text[],
+          $13,
+          $14,
+          $15,
+          $16,
+          $17
         )
         on conflict (id) do update
         set
@@ -179,6 +206,15 @@ export class PostgresPromptSkillRegistryRepository
           status = excluded.status,
           module = excluded.module,
           manuscript_types = excluded.manuscript_types,
+          template_kind = excluded.template_kind,
+          system_instructions = excluded.system_instructions,
+          task_frame = excluded.task_frame,
+          hard_rule_summary = excluded.hard_rule_summary,
+          allowed_content_operations = excluded.allowed_content_operations,
+          forbidden_operations = excluded.forbidden_operations,
+          manual_review_policy = excluded.manual_review_policy,
+          output_contract = excluded.output_contract,
+          report_style = excluded.report_style,
           rollback_target_version = excluded.rollback_target_version,
           source_learning_candidate_id = excluded.source_learning_candidate_id,
           updated_at = now()
@@ -190,6 +226,15 @@ export class PostgresPromptSkillRegistryRepository
         record.status,
         record.module,
         record.manuscript_types === "any" ? null : record.manuscript_types,
+        record.template_kind ?? null,
+        record.system_instructions ?? null,
+        record.task_frame ?? null,
+        record.hard_rule_summary ?? null,
+        record.allowed_content_operations ?? [],
+        record.forbidden_operations ?? [],
+        record.manual_review_policy ?? null,
+        record.output_contract ?? null,
+        record.report_style ?? null,
         record.rollback_target_version ?? null,
         record.source_learning_candidate_id ?? null,
       ],
@@ -208,6 +253,15 @@ export class PostgresPromptSkillRegistryRepository
           status,
           module,
           manuscript_types,
+          template_kind,
+          system_instructions,
+          task_frame,
+          hard_rule_summary,
+          allowed_content_operations,
+          forbidden_operations,
+          manual_review_policy,
+          output_contract,
+          report_style,
           rollback_target_version,
           source_learning_candidate_id
         from prompt_templates
@@ -229,6 +283,15 @@ export class PostgresPromptSkillRegistryRepository
           status,
           module,
           manuscript_types,
+          template_kind,
+          system_instructions,
+          task_frame,
+          hard_rule_summary,
+          allowed_content_operations,
+          forbidden_operations,
+          manual_review_policy,
+          output_contract,
+          report_style,
           rollback_target_version,
           source_learning_candidate_id
         from prompt_templates
@@ -252,6 +315,15 @@ export class PostgresPromptSkillRegistryRepository
           status,
           module,
           manuscript_types,
+          template_kind,
+          system_instructions,
+          task_frame,
+          hard_rule_summary,
+          allowed_content_operations,
+          forbidden_operations,
+          manual_review_policy,
+          output_contract,
+          report_style,
           rollback_target_version,
           source_learning_candidate_id
         from prompt_templates
@@ -277,6 +349,31 @@ function mapPromptTemplateRow(row: PromptTemplateRow): PromptTemplateRecord {
       row.manuscript_types == null
         ? "any"
         : decodeTextArray(row.manuscript_types) as ManuscriptType[],
+    ...(row.template_kind ? { template_kind: row.template_kind } : {}),
+    ...(row.system_instructions
+      ? { system_instructions: row.system_instructions }
+      : {}),
+    ...(row.task_frame ? { task_frame: row.task_frame } : {}),
+    ...(row.hard_rule_summary
+      ? { hard_rule_summary: row.hard_rule_summary }
+      : {}),
+    ...(decodeTextArray(row.allowed_content_operations).length > 0
+      ? {
+          allowed_content_operations: decodeTextArray(
+            row.allowed_content_operations,
+          ),
+        }
+      : {}),
+    ...(decodeTextArray(row.forbidden_operations).length > 0
+      ? {
+          forbidden_operations: decodeTextArray(row.forbidden_operations),
+        }
+      : {}),
+    ...(row.manual_review_policy
+      ? { manual_review_policy: row.manual_review_policy }
+      : {}),
+    ...(row.output_contract ? { output_contract: row.output_contract } : {}),
+    ...(row.report_style ? { report_style: row.report_style } : {}),
     ...(row.rollback_target_version
       ? {
           rollback_target_version: row.rollback_target_version,
@@ -314,7 +411,11 @@ function mapSkillPackageRow(row: SkillPackageRow): SkillPackageRecord {
   };
 }
 
-function decodeTextArray(value: string[] | string): string[] {
+function decodeTextArray(value: string[] | string | null): string[] {
+  if (value == null) {
+    return [];
+  }
+
   if (Array.isArray(value)) {
     return [...value];
   }

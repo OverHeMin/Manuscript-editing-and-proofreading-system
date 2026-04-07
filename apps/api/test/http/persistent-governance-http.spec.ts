@@ -176,6 +176,17 @@ test("persistent governance runtime keeps prompt and skill registry assets acros
               version: "1.0.0",
               module: "proofreading",
               manuscriptTypes: ["review"],
+              templateKind: "proofreading_instruction",
+              systemInstructions:
+                "Inspect the manuscript against approved editorial rules.",
+              taskFrame: "Create a bounded proofreading report.",
+              hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+              allowedContentOperations: ["issue_explanation"],
+              forbiddenOperations: ["rewrite_manuscript"],
+              manualReviewPolicy:
+                "Escalate uncertain findings to manual review.",
+              outputContract: "Return structured proofreading findings.",
+              reportStyle: "clinical_report",
             }),
           },
         );
@@ -222,17 +233,29 @@ test("persistent governance runtime keeps prompt and skill registry assets acros
               },
             },
           );
-          const prompts = (await promptListResponse.json()) as Array<{ id: string; name: string }>;
+          const prompts = (await promptListResponse.json()) as Array<{
+            id: string;
+            name: string;
+            template_kind?: string;
+            hard_rule_summary?: string;
+          }>;
           const skills = (await skillListResponse.json()) as Array<{ id: string; name: string }>;
 
           assert.equal(promptListResponse.status, 200);
           assert.equal(skillListResponse.status, 200);
           assert.deepEqual(
-            prompts.map((record) => ({ id: record.id, name: record.name })),
+            prompts.map((record) => ({
+              id: record.id,
+              name: record.name,
+              template_kind: record.template_kind,
+              hard_rule_summary: record.hard_rule_summary,
+            })),
             [
               {
                 id: createdPrompt.id,
                 name: "proofreading_mainline",
+                template_kind: "proofreading_instruction",
+                hard_rule_summary: "摘要 目的 -> （摘要　目的）",
               },
             ],
           );
@@ -245,6 +268,197 @@ test("persistent governance runtime keeps prompt and skill registry assets acros
               },
             ],
           );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime keeps editorial rule sets and rules across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const createFamilyResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/templates/families`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptType: "clinical_study",
+              name: "Persistent editorial family",
+            }),
+          },
+        );
+        const createdFamily = (await createFamilyResponse.json()) as { id: string };
+
+        assert.equal(createFamilyResponse.status, 201);
+
+        const createRuleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+              templateFamilyId: createdFamily.id,
+              module: "editing",
+            }),
+          },
+        );
+        const createdRuleSet = (await createRuleSetResponse.json()) as { id: string };
+
+        assert.equal(createRuleSetResponse.status, 201);
+
+        const createRuleResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${createdRuleSet.id}/rules`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+              orderNo: 10,
+              ruleType: "format",
+              executionMode: "apply_and_inspect",
+              scope: {
+                sections: ["abstract"],
+                block_kind: "heading",
+              },
+              trigger: {
+                kind: "exact_text",
+                text: "摘要 目的",
+              },
+              action: {
+                kind: "replace_heading",
+                to: "（摘要　目的）",
+              },
+              confidencePolicy: "always_auto",
+              severity: "error",
+              enabled: true,
+              exampleBefore: "摘要 目的",
+              exampleAfter: "（摘要　目的）",
+              manualReviewReasonTemplate: "medical_meaning_risk",
+            }),
+          },
+        );
+        const createdRule = (await createRuleResponse.json()) as { id: string };
+
+        assert.equal(createRuleResponse.status, 201);
+
+        const publishRuleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${createdRuleSet.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+
+        assert.equal(publishRuleSetResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const ruleSetListResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/editorial-rules/rule-sets`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const ruleListResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/editorial-rules/rule-sets/${createdRuleSet.id}/rules`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const ruleSets = (await ruleSetListResponse.json()) as Array<{
+            id: string;
+            status: string;
+          }>;
+          const rules = (await ruleListResponse.json()) as Array<{
+            id: string;
+            action: {
+              kind: string;
+              to?: string;
+            };
+            example_before?: string;
+            example_after?: string;
+          }>;
+
+          assert.equal(ruleSetListResponse.status, 200);
+          assert.equal(ruleListResponse.status, 200);
+          assert.deepEqual(ruleSets, [
+            {
+              id: createdRuleSet.id,
+              template_family_id: createdFamily.id,
+              module: "editing",
+              version_no: 1,
+              status: "published",
+            },
+          ]);
+          assert.deepEqual(rules, [
+            {
+              id: createdRule.id,
+              rule_set_id: createdRuleSet.id,
+              order_no: 10,
+              rule_type: "format",
+              execution_mode: "apply_and_inspect",
+              scope: {
+                sections: ["abstract"],
+                block_kind: "heading",
+              },
+              trigger: {
+                kind: "exact_text",
+                text: "摘要 目的",
+              },
+              action: {
+                kind: "replace_heading",
+                to: "（摘要　目的）",
+              },
+              confidence_policy: "always_auto",
+              severity: "error",
+              enabled: true,
+              example_before: "摘要 目的",
+              example_after: "（摘要　目的）",
+              manual_review_reason_template: "medical_meaning_risk",
+            },
+          ]);
         } finally {
           await stopServer(secondServer.server);
         }
@@ -625,6 +839,72 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           },
         );
 
+        const ruleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              templateFamilyId: family.id,
+              module: "editing",
+            }),
+          },
+        );
+        const ruleSet = (await ruleSetResponse.json()) as { id: string };
+        assert.equal(ruleSetResponse.status, 201);
+
+        const ruleResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              orderNo: 10,
+              ruleType: "format",
+              executionMode: "apply_and_inspect",
+              scope: {
+                section: "abstract",
+              },
+              trigger: {
+                kind: "heading_equals",
+                text: "摘要 目的",
+              },
+              action: {
+                kind: "replace_heading",
+                to: "（摘要　目的）",
+              },
+              confidencePolicy: "always_auto",
+              severity: "warning",
+              exampleBefore: "摘要 目的",
+              exampleAfter: "（摘要　目的）",
+            }),
+          },
+        );
+        assert.equal(ruleResponse.status, 201);
+
+        const publishRuleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+        assert.equal(publishRuleSetResponse.status, 200);
+
         const promptResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
           {
@@ -639,6 +919,15 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
               version: "1.0.0",
               module: "editing",
               manuscriptTypes: ["clinical_study"],
+              templateKind: "editing_instruction",
+              systemInstructions:
+                "Apply published editorial rules before bounded AI editing.",
+              taskFrame: "Use the active editorial rule set for editing.",
+              hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+              allowedContentOperations: ["sentence_rewrite"],
+              forbiddenOperations: ["fabrication"],
+              manualReviewPolicy: "Escalate uncertain meaning changes.",
+              outputContract: "Return a governed editing payload.",
             }),
           },
         );
@@ -732,6 +1021,7 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
                 manuscriptType: "clinical_study",
                 templateFamilyId: family.id,
                 moduleTemplateId: moduleTemplateDraft.id,
+                ruleSetId: ruleSet.id,
                 promptTemplateId: prompt.id,
                 skillPackageIds: [skill.id],
                 knowledgeBindingMode: "profile_plus_dynamic",
@@ -962,6 +1252,9 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
           );
           const resolved = (await resolveResponse.json()) as {
             profile: { id: string };
+            prompt_template: { template_kind: string };
+            rule_set: { id: string };
+            rules: Array<{ action: { kind: string } }>;
             resolved_model: { id: string };
             runtime_binding_readiness: {
               observation_status: string;
@@ -1017,6 +1310,12 @@ test("persistent governance runtime keeps execution profiles and snapshots acros
             ),
           );
           assert.equal(resolved.profile.id, profile.id);
+          assert.equal(resolved.rule_set.id, ruleSet.id);
+          assert.equal(resolved.rules[0]?.action.kind, "replace_heading");
+          assert.equal(
+            resolved.prompt_template.template_kind,
+            "editing_instruction",
+          );
           assert.equal(resolved.resolved_model.id, model.id);
           assert.equal(
             resolved.runtime_binding_readiness.observation_status,
@@ -1313,6 +1612,73 @@ test("persistent governance runtime keeps agent-tooling governance records acros
 
         assert.equal(publishModuleTemplateResponse.status, 200);
 
+        const ruleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              templateFamilyId: family.id,
+              module: "editing",
+            }),
+          },
+        );
+        const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+        assert.equal(ruleSetResponse.status, 201);
+
+        const ruleResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+              orderNo: 10,
+              ruleType: "format",
+              executionMode: "apply_and_inspect",
+              scope: {
+                section: "abstract",
+              },
+              trigger: {
+                kind: "heading_equals",
+                text: "摘要 目的",
+              },
+              action: {
+                kind: "replace_heading",
+                to: "（摘要　目的）",
+              },
+              confidencePolicy: "always_auto",
+              severity: "warning",
+            }),
+          },
+        );
+
+        assert.equal(ruleResponse.status, 201);
+
+        const publishRuleSetResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "editor",
+            }),
+          },
+        );
+
+        assert.equal(publishRuleSetResponse.status, 200);
+
         const promptResponse = await fetch(
           `${firstServer.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
           {
@@ -1327,6 +1693,15 @@ test("persistent governance runtime keeps agent-tooling governance records acros
               version: "1.0.0",
               module: "editing",
               manuscriptTypes: ["clinical_study"],
+              templateKind: "editing_instruction",
+              systemInstructions:
+                "Apply published editorial rules before bounded AI editing.",
+              taskFrame: "Use the active editorial rule set for editing.",
+              hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+              allowedContentOperations: ["sentence_rewrite"],
+              forbiddenOperations: ["fabrication"],
+              manualReviewPolicy: "Escalate uncertain meaning changes.",
+              outputContract: "Return a governed editing payload.",
             }),
           },
         );
@@ -1402,6 +1777,7 @@ test("persistent governance runtime keeps agent-tooling governance records acros
                 manuscriptType: "clinical_study",
                 templateFamilyId: family.id,
                 moduleTemplateId: moduleTemplateDraft.id,
+                ruleSetId: ruleSet.id,
                 promptTemplateId: prompt.id,
                 skillPackageIds: [skill.id],
                 knowledgeBindingMode: "profile_only",
@@ -2200,9 +2576,12 @@ test("persistent governance runtime records governed retrieval snapshots and ret
 
         assert.equal(retrievalContextResponse.status, 200);
         assert.equal(retrievalContext.template_family_id, governedFixture.familyId);
-        assert.deepEqual(retrievalContext.knowledge_item_ids, [
-          persistentRetrievalQualityFixtureIds.knowledgeItemId,
-        ]);
+        assert.ok(
+          retrievalContext.knowledge_item_ids.includes(
+            persistentRetrievalQualityFixtureIds.knowledgeItemId,
+          ),
+          `Expected retrieval context knowledge items to include manually curated knowledge ${persistentRetrievalQualityFixtureIds.knowledgeItemId}, received ${JSON.stringify(retrievalContext.knowledge_item_ids)}.`,
+        );
         assert.equal(retrievalContext.retrieval_status, "recorded");
         assert.ok(
           retrievalContext.retrieval_snapshot_id,
@@ -2234,13 +2613,21 @@ test("persistent governance runtime records governed retrieval snapshots and ret
         assert.equal(retrievalSnapshot.id, retrievalContext.retrieval_snapshot_id);
         assert.equal(retrievalSnapshot.module, "editing");
         assert.equal(retrievalSnapshot.template_family_id, governedFixture.familyId);
-        assert.equal(
-          retrievalSnapshot.retrieved_items[0]?.knowledge_item_id,
-          persistentRetrievalQualityFixtureIds.knowledgeItemId,
+        assert.ok(
+          retrievalSnapshot.retrieved_items.some(
+            (item) =>
+              item.knowledge_item_id ===
+              persistentRetrievalQualityFixtureIds.knowledgeItemId,
+          ),
+          `Expected retrieval snapshot to include manually curated knowledge ${persistentRetrievalQualityFixtureIds.knowledgeItemId} in retrieved items.`,
         );
-        assert.equal(
-          retrievalSnapshot.reranked_items[0]?.knowledge_item_id,
-          persistentRetrievalQualityFixtureIds.knowledgeItemId,
+        assert.ok(
+          retrievalSnapshot.reranked_items.some(
+            (item) =>
+              item.knowledge_item_id ===
+              persistentRetrievalQualityFixtureIds.knowledgeItemId,
+          ),
+          `Expected retrieval snapshot to include manually curated knowledge ${persistentRetrievalQualityFixtureIds.knowledgeItemId} in reranked items.`,
         );
 
         const checkProfileResponse = await fetch(
@@ -2437,9 +2824,13 @@ test("persistent governance runtime records governed retrieval snapshots and ret
 
           assert.equal(persistedSnapshotResponse.status, 200);
           assert.equal(persistedSnapshot.id, retrievalContext.retrieval_snapshot_id);
-          assert.equal(
-            persistedSnapshot.retrieved_items[0]?.knowledge_item_id,
-            persistentRetrievalQualityFixtureIds.knowledgeItemId,
+          assert.ok(
+            persistedSnapshot.retrieved_items.some(
+              (item) =>
+                item.knowledge_item_id ===
+                persistentRetrievalQualityFixtureIds.knowledgeItemId,
+            ),
+            `Expected persisted retrieval snapshot to include manually curated knowledge ${persistentRetrievalQualityFixtureIds.knowledgeItemId}.`,
           );
           assert.equal(persistedEvidenceResponse.status, 200);
           assert.equal(
@@ -3354,6 +3745,70 @@ async function createPersistentRetrievalQualityFixture(input: {
 
   assert.equal(publishModuleTemplateResponse.status, 200);
 
+  const ruleSetResponse = await fetch(`${input.baseUrl}/api/v1/editorial-rules/rule-sets`, {
+    method: "POST",
+    headers: {
+      Cookie: input.cookie,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actorRole: "editor",
+      templateFamilyId: family.id,
+      module: "editing",
+    }),
+  });
+  const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+  assert.equal(ruleSetResponse.status, 201);
+
+  const ruleResponse = await fetch(
+    `${input.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        orderNo: 10,
+        ruleType: "format",
+        executionMode: "apply_and_inspect",
+        scope: {
+          section: "abstract",
+        },
+        trigger: {
+          kind: "heading_equals",
+          text: "摘要 目的",
+        },
+        action: {
+          kind: "replace_heading",
+          to: "（摘要　目的）",
+        },
+        confidencePolicy: "always_auto",
+        severity: "warning",
+      }),
+    },
+  );
+
+  assert.equal(ruleResponse.status, 201);
+
+  const publishRuleSetResponse = await fetch(
+    `${input.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+      }),
+    },
+  );
+
+  assert.equal(publishRuleSetResponse.status, 200);
+
   const promptResponse = await fetch(
     `${input.baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
     {
@@ -3368,6 +3823,15 @@ async function createPersistentRetrievalQualityFixture(input: {
         version: "1.0.0",
         module: "editing",
         manuscriptTypes: ["clinical_study"],
+        templateKind: "editing_instruction",
+        systemInstructions:
+          "Apply published editorial rules before bounded AI editing.",
+        taskFrame: "Use the active editorial rule set for editing.",
+        hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+        allowedContentOperations: ["sentence_rewrite"],
+        forbiddenOperations: ["fabrication"],
+        manualReviewPolicy: "Escalate uncertain meaning changes.",
+        outputContract: "Return a governed editing payload.",
       }),
     },
   );
@@ -3479,6 +3943,7 @@ async function createPersistentRetrievalQualityFixture(input: {
           manuscriptType: "clinical_study",
           templateFamilyId: family.id,
           moduleTemplateId: moduleTemplate.id,
+          ruleSetId: ruleSet.id,
           promptTemplateId: prompt.id,
           skillPackageIds: [skill.id],
           knowledgeBindingMode: "profile_plus_dynamic",

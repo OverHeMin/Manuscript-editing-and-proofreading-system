@@ -6,7 +6,10 @@ import {
   InMemoryKnowledgeReviewActionRepository,
 } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import { EditorialRuleProjectionService } from "../../src/modules/editorial-rules/editorial-rule-projection-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
+import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import type { KnowledgeReviewActionRecord } from "../../src/modules/knowledge/knowledge-record.ts";
 
 class FailingKnowledgeReviewActionRepository extends InMemoryKnowledgeReviewActionRepository {
@@ -368,4 +371,81 @@ test("knowledge review queue lists pending items and preserves note-aware audit 
       },
     ],
   );
+});
+
+test("generated editorial-rule projections remain traceable and refresh in place", async () => {
+  const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const projectionService = new EditorialRuleProjectionService({
+    editorialRuleRepository,
+    knowledgeRepository,
+    templateFamilyRepository,
+    createId: (() => {
+      const ids = [
+        "knowledge-rule-1",
+        "knowledge-checklist-1",
+        "knowledge-snippet-1",
+        "knowledge-rule-2",
+      ];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a projected knowledge id to be available.");
+        return value;
+      };
+    })(),
+  });
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  await editorialRuleRepository.saveRule({
+    id: "rule-1",
+    rule_set_id: "rule-set-1",
+    order_no: 10,
+    rule_type: "format",
+    execution_mode: "apply_and_inspect",
+    scope: {
+      sections: ["abstract"],
+    },
+    trigger: {
+      kind: "exact_text",
+      text: "摘要 目的",
+    },
+    action: {
+      kind: "replace_heading",
+      to: "（摘要　目的）",
+    },
+    confidence_policy: "always_auto",
+    severity: "error",
+    enabled: true,
+    example_before: "摘要 目的",
+    example_after: "（摘要　目的）",
+  });
+
+  await projectionService.refreshPublishedRuleSet("rule-set-1");
+  await projectionService.refreshPublishedRuleSet("rule-set-1");
+
+  const projected = await knowledgeRepository.list();
+  const projectedRuleKnowledge = projected.find(
+    (record) => record.projection_source?.projection_kind === "rule",
+  );
+
+  assert.equal(projected.length, 3);
+  assert.equal(
+    projectedRuleKnowledge?.projection_source?.source_kind,
+    "editorial_rule_projection",
+  );
+  assert.equal(projectedRuleKnowledge?.projection_source?.rule_set_id, "rule-set-1");
+  assert.equal(projectedRuleKnowledge?.projection_source?.rule_id, "rule-1");
 });

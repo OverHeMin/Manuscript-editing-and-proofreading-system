@@ -35,6 +35,7 @@ export function createExecutionProfile(
         manuscriptType: input.manuscriptType,
         templateFamilyId: input.templateFamilyId,
         moduleTemplateId: input.moduleTemplateId,
+        ruleSetId: input.ruleSetId,
         promptTemplateId: input.promptTemplateId,
         skillPackageIds: input.skillPackageIds,
         knowledgeBindingMode: input.knowledgeBindingMode,

@@ -8,6 +8,15 @@ import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import {
+  EditorialDocxTransformService,
+} from "../document-pipeline/editorial-docx-transform-service.ts";
+import {
+  assembleInstructionTemplate,
+} from "../editorial-execution/instruction-template-assembler.ts";
+import type {
+  DeterministicDocxTransformResult,
+} from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
@@ -64,6 +73,10 @@ export interface EditingServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  editorialDocxTransformService?: Pick<
+    EditorialDocxTransformService,
+    "applyDeterministicRules"
+  >;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -96,6 +109,10 @@ export class EditingService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly editorialDocxTransformService: Pick<
+    EditorialDocxTransformService,
+    "applyDeterministicRules"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -120,6 +137,11 @@ export class EditingService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.editorialDocxTransformService =
+      options.editorialDocxTransformService ??
+      new EditorialDocxTransformService({
+        assetRepository: options.assetRepository,
+      });
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -167,6 +189,12 @@ export class EditingService {
         toolPermissionPolicyService: this.toolPermissionPolicyService,
       });
       const moduleContext = governedContext.moduleContext;
+      const instructionPayload = assembleInstructionTemplate({
+        promptTemplate: moduleContext.promptTemplate,
+        ruleSet: moduleContext.ruleSet,
+        rules: moduleContext.rules,
+        knowledgeSelections: moduleContext.knowledgeSelections,
+      });
       const executionLog = await this.agentExecutionService.createLog({
         manuscriptId: input.manuscriptId,
         module: "editing",
@@ -214,6 +242,21 @@ export class EditingService {
           toolPermissionPolicyId: governedContext.toolPolicy.id,
           agentExecutionLogId: executionLog.id,
           parentAssetId: input.parentAssetId,
+          instructionTemplateId: moduleContext.promptTemplate.id,
+          instructionPayload: {
+            ...instructionPayload,
+            allowedContentOperations: [...instructionPayload.allowedContentOperations],
+            forbiddenOperations: [...instructionPayload.forbiddenOperations],
+            promptSnippets: [...instructionPayload.promptSnippets],
+          },
+          manualReviewItems: instructionPayload.manualReviewItems.map((item) => ({
+            ...item,
+          })),
+          contentRuleCandidates: instructionPayload.contentRuleCandidates.map(
+            (candidate) => ({
+              ...candidate,
+            }),
+          ),
         },
         attempt_count: 0,
         started_at: undefined,
@@ -223,6 +266,15 @@ export class EditingService {
         updated_at: timestamp,
       };
       await jobRepository.save(queuedJob);
+
+      const deterministicTransform =
+        await this.editorialDocxTransformService.applyDeterministicRules({
+          manuscriptId: input.manuscriptId,
+          sourceAssetId: input.parentAssetId,
+          outputStorageKey: input.storageKey,
+          outputFileName: input.fileName,
+          rules: moduleContext.rules,
+        });
 
       const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
@@ -273,6 +325,10 @@ export class EditingService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "edited_docx",
+          appliedRuleIds: [...deterministicTransform.appliedRuleIds],
+          appliedChanges: deterministicTransform.appliedChanges.map((change) => ({
+            ...change,
+          })),
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -310,3 +366,5 @@ export class EditingService {
     return committed.response;
   }
 }
+
+export type { DeterministicDocxTransformResult };

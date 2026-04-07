@@ -16,6 +16,10 @@ const legacyMigrationChecksums = new Map<string, Set<string>>([
     "0015_model_routing_governance_persistence.sql",
     new Set(["ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4"]),
   ],
+  [
+    "0025_editorial_rule_engine_persistence.sql",
+    new Set(["bff19d8b5bcdebe649b314a987a7dac6c02254404f205ea863fee666000c3882"]),
+  ],
 ]);
 
 export interface MigrationLedgerEntry {

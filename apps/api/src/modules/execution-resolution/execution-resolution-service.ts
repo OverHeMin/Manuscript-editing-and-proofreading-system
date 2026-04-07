@@ -137,6 +137,9 @@ export class ExecutionResolutionService {
       skillPackages.push(skillPackage);
     }
 
+    const { ruleSet, rules } =
+      await this.executionGovernanceService.resolvePublishedRuleSource(profile);
+
     const { model, source } = await this.resolveModel(profile);
     const knowledgeBindingRules =
       await this.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
@@ -169,6 +172,8 @@ export class ExecutionResolutionService {
     return {
       profile,
       module_template: moduleTemplate,
+      rule_set: ruleSet,
+      rules,
       prompt_template: promptTemplate,
       skill_packages: skillPackages,
       resolved_model: model,

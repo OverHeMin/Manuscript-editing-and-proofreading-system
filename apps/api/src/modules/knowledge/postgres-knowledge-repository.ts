@@ -32,6 +32,7 @@ interface KnowledgeRow {
   aliases: string[] | string;
   template_bindings: string[] | string;
   source_learning_candidate_id: string | null;
+  projection_source: Record<string, unknown> | string | null;
   created_at: Date;
 }
 
@@ -67,7 +68,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           source_link,
           aliases,
           template_bindings,
-          source_learning_candidate_id
+          source_learning_candidate_id,
+          projection_source
         )
         values (
           $1,
@@ -86,7 +88,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           $14,
           $15::text[],
           $16::text[],
-          $17
+          $17,
+          $18::jsonb
         )
         on conflict (id) do update
         set
@@ -106,6 +109,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           aliases = excluded.aliases,
           template_bindings = excluded.template_bindings,
           source_learning_candidate_id = excluded.source_learning_candidate_id,
+          projection_source = excluded.projection_source,
           updated_at = now()
       `,
       [
@@ -126,6 +130,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
         record.aliases ?? [],
         record.template_bindings ?? [],
         record.source_learning_candidate_id ?? null,
+        record.projection_source ? JSON.stringify(record.projection_source) : null,
       ],
     );
   }
@@ -151,6 +156,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           aliases,
           template_bindings,
           source_learning_candidate_id,
+          projection_source,
           created_at
         from knowledge_items
         where id = $1
@@ -182,6 +188,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           aliases,
           template_bindings,
           source_learning_candidate_id,
+          projection_source,
           created_at
         from knowledge_items
         order by created_at asc, id asc
@@ -212,6 +219,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           aliases,
           template_bindings,
           source_learning_candidate_id,
+          projection_source,
           created_at
         from knowledge_items
         where status = $1
@@ -320,6 +328,13 @@ function mapKnowledgeRow(row: KnowledgeRow): KnowledgeRecord {
     ...(row.source_learning_candidate_id != null
       ? { source_learning_candidate_id: row.source_learning_candidate_id }
       : {}),
+    ...(row.projection_source != null
+      ? {
+          projection_source: parseJsonObject<KnowledgeRecord["projection_source"]>(
+            row.projection_source,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -357,4 +372,18 @@ function decodeTextArray(value: string[] | string): string[] {
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
     .map((item) => item.replace(/^"(.*)"$/, "$1"));
+}
+
+function parseJsonObject<T>(
+  value: Record<string, unknown> | string | null,
+): T {
+  if (value == null) {
+    return undefined as T;
+  }
+
+  if (typeof value === "string") {
+    return JSON.parse(value) as T;
+  }
+
+  return value as T;
 }

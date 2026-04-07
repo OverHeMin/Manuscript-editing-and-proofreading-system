@@ -1,3 +1,5 @@
+import { BrowserHttpClientError } from "../../lib/browser-http-client.ts";
+import type { AuthRole } from "../auth/index.ts";
 import {
   archiveKnowledgeItem,
   createKnowledgeDraft,
@@ -10,7 +12,6 @@ import {
   type KnowledgeItemViewModel,
   type UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
-import { BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import {
   getLatestTemplateFamilyRetrievalQualityRun,
   getRetrievalSnapshot,
@@ -21,6 +22,26 @@ import {
   type TemplateFamilyRetrievalSignalViewModel,
   type TemplateFamilyRetrievalSnapshotSummaryViewModel,
 } from "../knowledge-retrieval/index.ts";
+import {
+  createPromptTemplate,
+  listPromptTemplates,
+  publishPromptTemplate,
+  type CreatePromptTemplateInput,
+  type PromptSkillRegistryHttpClient,
+  type PromptTemplateViewModel,
+} from "../prompt-skill-registry/index.ts";
+import {
+  createEditorialRule,
+  createEditorialRuleSet,
+  listEditorialRulesByRuleSetId,
+  listEditorialRuleSets,
+  publishEditorialRuleSet,
+  type CreateEditorialRuleInput,
+  type CreateEditorialRuleSetInput,
+  type EditorialRulesHttpClient,
+  type EditorialRuleSetViewModel,
+  type EditorialRuleViewModel,
+} from "../editorial-rules/index.ts";
 import {
   createModuleTemplateDraft,
   createTemplateFamily,
@@ -37,7 +58,6 @@ import {
   type UpdateModuleTemplateDraftInput,
   type UpdateTemplateFamilyInput,
 } from "../templates/index.ts";
-import type { AuthRole } from "../auth/index.ts";
 
 export interface TemplateGovernanceWorkbenchFilters {
   searchText: string;
@@ -49,6 +69,13 @@ export interface TemplateGovernanceWorkbenchOverview {
   selectedTemplateFamilyId: string | null;
   selectedTemplateFamily: TemplateFamilyViewModel | null;
   moduleTemplates: ModuleTemplateViewModel[];
+  ruleSets: EditorialRuleSetViewModel[];
+  selectedRuleSetId: string | null;
+  selectedRuleSet: EditorialRuleSetViewModel | null;
+  rules: EditorialRuleViewModel[];
+  instructionTemplates: PromptTemplateViewModel[];
+  selectedInstructionTemplateId: string | null;
+  selectedInstructionTemplate: PromptTemplateViewModel | null;
   retrievalInsights: TemplateFamilyRetrievalInsightsViewModel;
   knowledgeItems: KnowledgeItemViewModel[];
   visibleKnowledgeItems: KnowledgeItemViewModel[];
@@ -60,6 +87,8 @@ export interface TemplateGovernanceWorkbenchOverview {
 
 export interface TemplateGovernanceReloadContext {
   selectedTemplateFamilyId?: string | null;
+  selectedRuleSetId?: string | null;
+  selectedInstructionTemplateId?: string | null;
   selectedKnowledgeItemId?: string | null;
   filters?: Partial<TemplateGovernanceWorkbenchFilters>;
 }
@@ -99,6 +128,39 @@ export interface TemplateGovernanceWorkbenchController {
     moduleTemplate: ModuleTemplateViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
+  createRuleSetAndReload(
+    input: CreateEditorialRuleSetInput & TemplateGovernanceReloadContext,
+  ): Promise<{
+    ruleSet: EditorialRuleSetViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  createRuleAndReload(input: {
+    ruleSetId: string;
+    input: CreateEditorialRuleInput;
+  } & TemplateGovernanceReloadContext): Promise<{
+    rule: EditorialRuleViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  publishRuleSetAndReload(input: {
+    ruleSetId: string;
+    actorRole: AuthRole;
+  } & TemplateGovernanceReloadContext): Promise<{
+    ruleSet: EditorialRuleSetViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  createInstructionTemplateAndReload(
+    input: CreatePromptTemplateInput & TemplateGovernanceReloadContext,
+  ): Promise<{
+    instructionTemplate: PromptTemplateViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  publishInstructionTemplateAndReload(input: {
+    promptTemplateId: string;
+    actorRole: AuthRole;
+  } & TemplateGovernanceReloadContext): Promise<{
+    instructionTemplate: PromptTemplateViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
   createKnowledgeDraftAndReload(
     input: CreateKnowledgeDraftInput & TemplateGovernanceReloadContext,
   ): Promise<{
@@ -129,7 +191,9 @@ export interface TemplateGovernanceWorkbenchController {
 type TemplateGovernanceHttpClient =
   KnowledgeHttpClient &
   TemplateHttpClient &
-  KnowledgeRetrievalHttpClient;
+  KnowledgeRetrievalHttpClient &
+  PromptSkillRegistryHttpClient &
+  EditorialRulesHttpClient;
 
 export function createTemplateGovernanceWorkbenchController(
   client: TemplateGovernanceHttpClient,
@@ -158,14 +222,22 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             input.selectedTemplateFamilyId ?? templateFamily.id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
           filters: input.filters,
         }),
       };
     },
     async createModuleTemplateDraftAndReload(input) {
-      const { selectedKnowledgeItemId, selectedTemplateFamilyId, filters, ...draftInput } =
-        input;
+      const {
+        selectedKnowledgeItemId,
+        selectedInstructionTemplateId,
+        selectedRuleSetId,
+        selectedTemplateFamilyId,
+        filters,
+        ...draftInput
+      } = input;
       const moduleTemplate = (await createModuleTemplateDraft(client, draftInput)).body;
 
       return {
@@ -173,6 +245,8 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             selectedTemplateFamilyId ?? draftInput.templateFamilyId,
+          selectedRuleSetId,
+          selectedInstructionTemplateId,
           selectedKnowledgeItemId,
           filters,
         }),
@@ -188,6 +262,8 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             input.selectedTemplateFamilyId ?? moduleTemplate.template_family_id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
           filters: input.filters,
         }),
@@ -201,21 +277,131 @@ export function createTemplateGovernanceWorkbenchController(
       return {
         moduleTemplate,
         overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? moduleTemplate.template_family_id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
+    async createRuleSetAndReload(input) {
+      const {
+        selectedKnowledgeItemId,
+        selectedInstructionTemplateId,
+        selectedRuleSetId: _selectedRuleSetId,
+        selectedTemplateFamilyId,
+        filters,
+        ...ruleSetInput
+      } = input;
+      const ruleSet = (await createEditorialRuleSet(client, ruleSetInput)).body;
+
+      return {
+        ruleSet,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            selectedTemplateFamilyId ?? ruleSet.template_family_id,
+          selectedRuleSetId: ruleSet.id,
+          selectedInstructionTemplateId,
+          selectedKnowledgeItemId,
+          filters,
+        }),
+      };
+    },
+    async createRuleAndReload(input) {
+      const rule = (await createEditorialRule(client, input.ruleSetId, input.input)).body;
+
+      return {
+        rule,
+        overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedRuleSetId: input.selectedRuleSetId ?? rule.rule_set_id,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
+    async publishRuleSetAndReload(input) {
+      const ruleSet = (
+        await publishEditorialRuleSet(client, input.ruleSetId, {
+          actorRole: input.actorRole,
+        })
+      ).body;
+
+      return {
+        ruleSet,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? ruleSet.template_family_id,
+          selectedRuleSetId: input.selectedRuleSetId ?? ruleSet.id,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
+    async createInstructionTemplateAndReload(input) {
+      const {
+        selectedKnowledgeItemId,
+        selectedInstructionTemplateId: _selectedInstructionTemplateId,
+        selectedRuleSetId,
+        selectedTemplateFamilyId,
+        filters,
+        ...instructionInput
+      } = input;
+      const instructionTemplate = (
+        await createPromptTemplate(client, instructionInput)
+      ).body;
+
+      return {
+        instructionTemplate,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId,
+          selectedRuleSetId,
+          selectedInstructionTemplateId: instructionTemplate.id,
+          selectedKnowledgeItemId,
+          filters,
+        }),
+      };
+    },
+    async publishInstructionTemplateAndReload(input) {
+      const instructionTemplate = (
+        await publishPromptTemplate(client, input.promptTemplateId, {
+          actorRole: input.actorRole,
+        })
+      ).body;
+
+      return {
+        instructionTemplate,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId:
+            input.selectedInstructionTemplateId ?? instructionTemplate.id,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
           filters: input.filters,
         }),
       };
     },
     async createKnowledgeDraftAndReload(input) {
-      const { selectedKnowledgeItemId, selectedTemplateFamilyId, filters, ...draftInput } =
-        input;
+      const {
+        selectedInstructionTemplateId,
+        selectedKnowledgeItemId,
+        selectedRuleSetId,
+        selectedTemplateFamilyId,
+        filters,
+        ...draftInput
+      } = input;
       const knowledgeItem = (await createKnowledgeDraft(client, draftInput)).body;
 
       return {
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId,
+          selectedRuleSetId,
+          selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
           filters,
         }),
@@ -230,6 +416,8 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
           filters: input.filters,
         }),
@@ -244,6 +432,8 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
           filters: input.filters,
         }),
@@ -256,6 +446,8 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
           filters: input.filters,
         }),
@@ -269,9 +461,16 @@ async function loadTemplateGovernanceOverview(
   input: TemplateGovernanceReloadContext = {},
 ): Promise<TemplateGovernanceWorkbenchOverview> {
   const filters = createFilters(input.filters);
-  const [templateFamiliesResponse, knowledgeItemsResponse] = await Promise.all([
+  const [
+    templateFamiliesResponse,
+    knowledgeItemsResponse,
+    ruleSetsResponse,
+    promptTemplatesResponse,
+  ] = await Promise.all([
     listTemplateFamilies(client),
     listKnowledgeItems(client),
+    listEditorialRuleSets(client),
+    listPromptTemplates(client),
   ]);
 
   const templateFamilies = templateFamiliesResponse.body;
@@ -288,6 +487,34 @@ async function loadTemplateGovernanceOverview(
       : (
           await listModuleTemplatesByTemplateFamilyId(client, selectedTemplateFamilyId)
         ).body;
+  const ruleSets =
+    selectedTemplateFamilyId == null
+      ? []
+      : ruleSetsResponse.body.filter(
+          (ruleSet) => ruleSet.template_family_id === selectedTemplateFamilyId,
+        );
+  const selectedRuleSetId = resolveSelectedId(
+    ruleSets.map((ruleSet) => ruleSet.id),
+    input.selectedRuleSetId,
+  );
+  const selectedRuleSet =
+    ruleSets.find((ruleSet) => ruleSet.id === selectedRuleSetId) ?? null;
+  const rules =
+    selectedRuleSetId == null
+      ? []
+      : (await listEditorialRulesByRuleSetId(client, selectedRuleSetId)).body;
+  const instructionTemplates = filterInstructionTemplates(
+    promptTemplatesResponse.body,
+    selectedTemplateFamily,
+  );
+  const selectedInstructionTemplateId = resolveSelectedId(
+    instructionTemplates.map((template) => template.id),
+    input.selectedInstructionTemplateId,
+  );
+  const selectedInstructionTemplate =
+    instructionTemplates.find(
+      (template) => template.id === selectedInstructionTemplateId,
+    ) ?? null;
   const retrievalInsights = await loadTemplateFamilyRetrievalInsights(
     client,
     selectedTemplateFamilyId,
@@ -309,6 +536,13 @@ async function loadTemplateGovernanceOverview(
     selectedTemplateFamilyId,
     selectedTemplateFamily,
     moduleTemplates,
+    ruleSets,
+    selectedRuleSetId,
+    selectedRuleSet,
+    rules,
+    instructionTemplates,
+    selectedInstructionTemplateId,
+    selectedInstructionTemplate,
     retrievalInsights,
     knowledgeItems,
     visibleKnowledgeItems,
@@ -337,6 +571,28 @@ function resolveSelectedId(
   }
 
   return ids[0] ?? null;
+}
+
+function filterInstructionTemplates(
+  templates: readonly PromptTemplateViewModel[],
+  selectedTemplateFamily: TemplateFamilyViewModel | null,
+): PromptTemplateViewModel[] {
+  if (!selectedTemplateFamily) {
+    return [];
+  }
+
+  return templates.filter((template) => {
+    if (
+      template.template_kind !== "editing_instruction" &&
+      template.template_kind !== "proofreading_instruction"
+    ) {
+      return false;
+    }
+
+    return template.manuscript_types === "any"
+      ? true
+      : template.manuscript_types.includes(selectedTemplateFamily.manuscript_type);
+  });
 }
 
 function filterKnowledgeItems(

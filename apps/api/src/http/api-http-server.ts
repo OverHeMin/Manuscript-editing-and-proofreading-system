@@ -61,6 +61,7 @@ import {
   ExecutionProfileKnowledgeItemNotApprovedError,
   ExecutionProfileModuleTemplateNotPublishedError,
   ExecutionProfilePromptTemplateNotPublishedError,
+  ExecutionProfileRuleSetNotPublishedError,
   ExecutionProfileSkillPackageNotPublishedError,
   InMemoryExecutionGovernanceRepository,
   KnowledgeBindingRuleNotFoundError,
@@ -109,6 +110,16 @@ import {
   DocumentExportAssetNotFoundError,
   DocumentExportService,
 } from "../modules/document-pipeline/index.ts";
+import {
+  createEditorialRuleApi,
+  EditorialRuleProjectionService,
+  EditorialRuleService,
+  EditorialRuleSetNotEditableError,
+  EditorialRuleSetNotFoundError,
+  EditorialRuleSetStatusTransitionError,
+  EditorialRuleTemplateFamilyNotFoundError,
+  InMemoryEditorialRuleRepository,
+} from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
   EditingService,
@@ -547,6 +558,24 @@ type HttpRouteMatch =
       moduleTemplateId: string;
     }
   | {
+      route: "editorial-rules-create-rule-set";
+    }
+  | {
+      route: "editorial-rules-list-rule-sets";
+    }
+  | {
+      route: "editorial-rules-publish-rule-set";
+      ruleSetId: string;
+    }
+  | {
+      route: "editorial-rules-create-rule";
+      ruleSetId: string;
+    }
+  | {
+      route: "editorial-rules-list-rules";
+      ruleSetId: string;
+    }
+  | {
       route: "prompt-skill-create-skill-package";
     }
   | {
@@ -841,6 +870,7 @@ export interface ApiServerRuntime {
   agentExecutionApi: ReturnType<typeof createAgentExecutionApi>;
   agentProfileApi: ReturnType<typeof createAgentProfileApi>;
   agentRuntimeApi: ReturnType<typeof createAgentRuntimeApi>;
+  editorialRuleApi: ReturnType<typeof createEditorialRuleApi>;
   editingApi: ReturnType<typeof createEditingApi>;
   manuscriptApi: ReturnType<typeof createManuscriptApi>;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
@@ -989,6 +1019,7 @@ export function createInMemoryApiRuntime(input: {
   const harnessIntegrationRepository = new InMemoryHarnessIntegrationRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
   const modelRoutingGovernanceRepository =
@@ -1048,6 +1079,16 @@ export function createInMemoryApiRuntime(input: {
     knowledgeRetrievalRepository,
     knowledgeRetrievalService,
   });
+  const editorialRuleProjectionService = new EditorialRuleProjectionService({
+    editorialRuleRepository,
+    knowledgeRepository,
+    templateFamilyRepository,
+  });
+  const editorialRuleService = new EditorialRuleService({
+    repository: editorialRuleRepository,
+    templateFamilyRepository,
+    projectionService: editorialRuleProjectionService,
+  });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
   });
@@ -1090,6 +1131,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -1190,6 +1232,7 @@ export function createInMemoryApiRuntime(input: {
       assetRepository,
       templateFamilyRepository,
       knowledgeRepository,
+      editorialRuleRepository,
       moduleTemplateRepository,
       promptSkillRegistryRepository,
       executionGovernanceRepository,
@@ -1275,6 +1318,9 @@ export function createInMemoryApiRuntime(input: {
     }),
     agentRuntimeApi: createAgentRuntimeApi({
       agentRuntimeService,
+    }),
+    editorialRuleApi: createEditorialRuleApi({
+      editorialRuleService,
     }),
     editingApi: createEditingApi({
       editingService,
@@ -1647,6 +1693,7 @@ function seedDemoWorkbenchData(input: {
   assetRepository: InMemoryDocumentAssetRepository;
   templateFamilyRepository: InMemoryTemplateFamilyRepository;
   knowledgeRepository: InMemoryKnowledgeRepository;
+  editorialRuleRepository: InMemoryEditorialRuleRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
   executionGovernanceRepository: InMemoryExecutionGovernanceRepository;
@@ -1809,6 +1856,27 @@ function seedDemoWorkbenchData(input: {
     },
     template_bindings: ["template-proofreading-1"],
   });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-seeded-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-proofreading-1",
+    template_family_id: "family-seeded-1",
+    module: "proofreading",
+    version_no: 1,
+    status: "published",
+  });
 
   void input.executionGovernanceRepository.saveProfile({
     id: "profile-screening-1",
@@ -1816,6 +1884,7 @@ function seedDemoWorkbenchData(input: {
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-screening-1",
+    rule_set_id: "rule-set-screening-1",
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -1828,6 +1897,7 @@ function seedDemoWorkbenchData(input: {
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-editing-1",
+    rule_set_id: "rule-set-editing-1",
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -1840,6 +1910,7 @@ function seedDemoWorkbenchData(input: {
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-proofreading-1",
+    rule_set_id: "rule-set-proofreading-1",
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -2693,6 +2764,90 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "editorial-rules-create-rule-set": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        templateFamilyId: string;
+        module: string;
+      };
+
+      return runtime.editorialRuleApi.createRuleSet({
+        actorRole: session.user.role,
+        input: {
+          templateFamilyId: body.templateFamilyId,
+          module: body.module as Parameters<
+            typeof runtime.editorialRuleApi.createRuleSet
+          >[0]["input"]["module"],
+        },
+      });
+    }
+    case "editorial-rules-list-rule-sets":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.editorialRuleApi.listRuleSets();
+    case "editorial-rules-publish-rule-set": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.editorialRuleApi.publishRuleSet({
+        actorRole: session.user.role,
+        ruleSetId: routeMatch.ruleSetId,
+      });
+    }
+    case "editorial-rules-create-rule": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        orderNo: number;
+        ruleType: string;
+        executionMode: string;
+        scope: Record<string, unknown>;
+        trigger: Record<string, unknown>;
+        action: Record<string, unknown>;
+        confidencePolicy: string;
+        severity: string;
+        enabled?: boolean;
+        exampleBefore?: string;
+        exampleAfter?: string;
+        manualReviewReasonTemplate?: string;
+      };
+
+      return runtime.editorialRuleApi.createRule({
+        actorRole: session.user.role,
+        input: {
+          ruleSetId: routeMatch.ruleSetId,
+          orderNo: body.orderNo,
+          ruleType: body.ruleType as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["ruleType"],
+          executionMode: body.executionMode as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["executionMode"],
+          scope: body.scope,
+          trigger: body.trigger as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["trigger"],
+          action: body.action as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["action"],
+          confidencePolicy: body.confidencePolicy as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["confidencePolicy"],
+          severity: body.severity as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["severity"],
+          enabled: body.enabled,
+          exampleBefore: coalesceOptionalString(body.exampleBefore),
+          exampleAfter: coalesceOptionalString(body.exampleAfter),
+          manualReviewReasonTemplate: coalesceOptionalString(
+            body.manualReviewReasonTemplate,
+          ),
+        },
+      });
+    }
+    case "editorial-rules-list-rules":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.editorialRuleApi.listRules({
+        ruleSetId: routeMatch.ruleSetId,
+      });
     case "prompt-skill-create-skill-package": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -2733,6 +2888,15 @@ async function handleRoute(
         version: string;
         module: string;
         manuscriptTypes: string[] | "any";
+        templateKind?: string;
+        systemInstructions?: string;
+        taskFrame?: string;
+        hardRuleSummary?: string;
+        allowedContentOperations?: string[];
+        forbiddenOperations?: string[];
+        manualReviewPolicy?: string;
+        outputContract?: string;
+        reportStyle?: string;
         rollbackTargetVersion?: string;
       };
 
@@ -2747,6 +2911,17 @@ async function handleRoute(
           manuscriptTypes: body.manuscriptTypes as Parameters<
             typeof runtime.promptSkillRegistryApi.createPromptTemplate
           >[0]["input"]["manuscriptTypes"],
+          templateKind: body.templateKind as Parameters<
+            typeof runtime.promptSkillRegistryApi.createPromptTemplate
+          >[0]["input"]["templateKind"],
+          systemInstructions: coalesceOptionalString(body.systemInstructions),
+          taskFrame: coalesceOptionalString(body.taskFrame),
+          hardRuleSummary: coalesceOptionalString(body.hardRuleSummary),
+          allowedContentOperations: body.allowedContentOperations,
+          forbiddenOperations: body.forbiddenOperations,
+          manualReviewPolicy: coalesceOptionalString(body.manualReviewPolicy),
+          outputContract: coalesceOptionalString(body.outputContract),
+          reportStyle: coalesceOptionalString(body.reportStyle),
           rollbackTargetVersion: coalesceOptionalString(body.rollbackTargetVersion),
         },
       });
@@ -3609,6 +3784,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "templates-create-module-draft" };
   }
 
+  if (method === "POST" && path === "/api/v1/editorial-rules/rule-sets") {
+    return { route: "editorial-rules-create-rule-set" };
+  }
+
+  if (method === "GET" && path === "/api/v1/editorial-rules/rule-sets") {
+    return { route: "editorial-rules-list-rule-sets" };
+  }
+
   if (method === "POST" && path === "/api/v1/prompt-skill-registry/skill-packages") {
     return { route: "prompt-skill-create-skill-package" };
   }
@@ -3904,6 +4087,33 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "prompt-skill-publish-prompt-template",
       promptTemplateId: publishPromptTemplateMatch[1],
+    };
+  }
+
+  const publishEditorialRuleSetMatch = path.match(
+    /^\/api\/v1\/editorial-rules\/rule-sets\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishEditorialRuleSetMatch) {
+    return {
+      route: "editorial-rules-publish-rule-set",
+      ruleSetId: publishEditorialRuleSetMatch[1],
+    };
+  }
+
+  const editorialRulesMatch = path.match(
+    /^\/api\/v1\/editorial-rules\/rule-sets\/([^/]+)\/rules$/,
+  );
+  if (method === "POST" && editorialRulesMatch) {
+    return {
+      route: "editorial-rules-create-rule",
+      ruleSetId: editorialRulesMatch[1],
+    };
+  }
+
+  if (method === "GET" && editorialRulesMatch) {
+    return {
+      route: "editorial-rules-list-rules",
+      ruleSetId: editorialRulesMatch[1],
     };
   }
 
@@ -4619,6 +4829,8 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingPolicyVersionNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError ||
+    error instanceof EditorialRuleSetNotFoundError ||
+    error instanceof EditorialRuleTemplateFamilyNotFoundError ||
     error instanceof RuntimeBindingNotFoundError ||
     error instanceof SandboxProfileNotFoundError ||
     error instanceof ToolGatewayToolNotFoundError ||
@@ -4658,12 +4870,15 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingGovernanceDraftNotEditableError ||
     error instanceof ModelRoutingGovernanceStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
+    error instanceof EditorialRuleSetStatusTransitionError ||
+    error instanceof EditorialRuleSetNotEditableError ||
     error instanceof RuntimeBindingCompatibilityError ||
     error instanceof RuntimeBindingDependencyStateError ||
     error instanceof ModuleExecutionProfileStatusTransitionError ||
     error instanceof KnowledgeBindingRuleStatusTransitionError ||
     error instanceof ExecutionProfileModuleTemplateNotPublishedError ||
     error instanceof ExecutionProfilePromptTemplateNotPublishedError ||
+    error instanceof ExecutionProfileRuleSetNotPublishedError ||
     error instanceof ExecutionProfileSkillPackageNotPublishedError ||
     error instanceof ExecutionProfileKnowledgeItemNotApprovedError ||
     error instanceof ExecutionProfileCompatibilityError ||
