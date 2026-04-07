@@ -547,6 +547,29 @@ async function prepareExecutionPreviewScenario(
   );
   expect(routingPolicyResponse.ok()).toBeTruthy();
 
+  const ruleSetResponse = await request.post(
+    `${apiBaseUrl}/api/v1/editorial-rules/rule-sets`,
+    {
+      data: {
+        actorRole: "admin",
+        templateFamilyId: family.id,
+        module: "editing",
+      },
+    },
+  );
+  expect(ruleSetResponse.ok()).toBeTruthy();
+  const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+  const publishRuleSetResponse = await request.post(
+    `${apiBaseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(publishRuleSetResponse.ok()).toBeTruthy();
+
   const profileResponse = await request.post(
     `${apiBaseUrl}/api/v1/execution-governance/profiles`,
     {
@@ -557,6 +580,7 @@ async function prepareExecutionPreviewScenario(
           manuscriptType: "clinical_study",
           templateFamilyId: family.id,
           moduleTemplateId: moduleDraft.id,
+          ruleSetId: ruleSet.id,
           promptTemplateId: prompt.id,
           skillPackageIds: [skill.id],
           knowledgeBindingMode: "profile_plus_dynamic",
