@@ -41,6 +41,19 @@ export class InMemoryAuthSessionRepository implements AuthSessionRepository {
       revokedAt,
     });
   }
+
+  async revokeAllForUser(userId: string, revokedAt: string): Promise<void> {
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (session.userId !== userId || session.revokedAt) {
+        continue;
+      }
+
+      this.sessions.set(sessionId, {
+        ...session,
+        revokedAt,
+      });
+    }
+  }
 }
 
 function cloneSessionRecord(record: AuthSessionRecord): AuthSessionRecord {

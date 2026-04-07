@@ -28,6 +28,17 @@ test("api package defaults dev and serve entrypoints to the persistent runtime",
   );
 });
 
+test("api package exposes the system-settings account management entrypoint", () => {
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+
+  assert.equal(
+    packageJson.scripts?.["db:manage-user"],
+    "tsx ./src/database/scripts/manage-user.ts",
+  );
+});
+
 test("db:migrate entrypoint loads app env defaults before resolving database urls", () => {
   const migrateEntrypointSource = readFileSync(migrateEntrypointPath, "utf8");
 

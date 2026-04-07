@@ -309,6 +309,13 @@ import {
   ToolPermissionPolicyService,
   ToolPermissionPolicyUnknownToolError,
 } from "../modules/tool-permission-policies/index.ts";
+import {
+  createUserAdminApi,
+  DuplicateUsernameError,
+  LastActiveAdminDemotionError,
+  LastActiveAdminDisableError,
+  UserAdminNotFoundError,
+} from "../users/index.ts";
 
 type RouteResponse<TBody> = {
   status: number;
@@ -334,6 +341,28 @@ type HttpRouteMatch =
     }
   | {
       route: "auth-logout";
+    }
+  | {
+      route: "system-settings-users-list";
+    }
+  | {
+      route: "system-settings-users-create";
+    }
+  | {
+      route: "system-settings-users-update-profile";
+      userId: string;
+    }
+  | {
+      route: "system-settings-users-reset-password";
+      userId: string;
+    }
+  | {
+      route: "system-settings-users-disable";
+      userId: string;
+    }
+  | {
+      route: "system-settings-users-enable";
+      userId: string;
     }
   | {
       route: "manuscripts-upload";
@@ -986,6 +1015,7 @@ export interface ApiServerRuntime {
   sandboxProfileApi: ReturnType<typeof createSandboxProfileApi>;
   toolGatewayApi: ReturnType<typeof createToolGatewayApi>;
   toolPermissionPolicyApi: ReturnType<typeof createToolPermissionPolicyApi>;
+  userAdminApi?: ReturnType<typeof createUserAdminApi>;
   permissionGuard: PermissionGuard;
 }
 
@@ -2337,6 +2367,114 @@ async function handleRoute(
           "Set-Cookie": runtime.authRuntime.createClearedSessionCookieHeader(),
         },
       };
+    case "system-settings-users-list": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      await requirePermission(req, runtime, "system-settings.manage-users");
+      return userAdminApi.listUsers();
+    }
+    case "system-settings-users-create": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      const session = await requirePermission(
+        req,
+        runtime,
+        "system-settings.manage-users",
+      );
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof userAdminApi.createUser
+      >[0]["input"];
+
+      return userAdminApi.createUser({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        input: body,
+      });
+    }
+    case "system-settings-users-update-profile": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      const session = await requirePermission(
+        req,
+        runtime,
+        "system-settings.manage-users",
+      );
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof userAdminApi.updateUserProfile
+      >[0]["input"];
+
+      return userAdminApi.updateUserProfile({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        userId: routeMatch.userId,
+        input: body,
+      });
+    }
+    case "system-settings-users-reset-password": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      const session = await requirePermission(
+        req,
+        runtime,
+        "system-settings.manage-users",
+      );
+      const body = (await readJsonBody(req)) as {
+        nextPassword: string;
+      };
+
+      return userAdminApi.resetUserPassword({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        userId: routeMatch.userId,
+        nextPassword: body.nextPassword,
+      });
+    }
+    case "system-settings-users-disable": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      const session = await requirePermission(
+        req,
+        runtime,
+        "system-settings.manage-users",
+      );
+      return userAdminApi.disableUser({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        userId: routeMatch.userId,
+      });
+    }
+    case "system-settings-users-enable": {
+      const userAdminApi = runtime.userAdminApi;
+      if (!userAdminApi) {
+        return createUnavailableSystemSettingsResponse();
+      }
+
+      const session = await requirePermission(
+        req,
+        runtime,
+        "system-settings.manage-users",
+      );
+      return userAdminApi.enableUser({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        userId: routeMatch.userId,
+      });
+    }
     case "manuscripts-upload": {
       const session = await requirePermission(req, runtime, "manuscripts.submit");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3917,6 +4055,54 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "auth-logout" };
   }
 
+  if (method === "GET" && path === "/api/v1/system-settings/users") {
+    return { route: "system-settings-users-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/system-settings/users") {
+    return { route: "system-settings-users-create" };
+  }
+
+  const systemSettingsUpdateProfileMatch = path.match(
+    /^\/api\/v1\/system-settings\/users\/([^/]+)\/profile$/,
+  );
+  if (method === "POST" && systemSettingsUpdateProfileMatch) {
+    return {
+      route: "system-settings-users-update-profile",
+      userId: systemSettingsUpdateProfileMatch[1],
+    };
+  }
+
+  const systemSettingsResetPasswordMatch = path.match(
+    /^\/api\/v1\/system-settings\/users\/([^/]+)\/reset-password$/,
+  );
+  if (method === "POST" && systemSettingsResetPasswordMatch) {
+    return {
+      route: "system-settings-users-reset-password",
+      userId: systemSettingsResetPasswordMatch[1],
+    };
+  }
+
+  const systemSettingsDisableUserMatch = path.match(
+    /^\/api\/v1\/system-settings\/users\/([^/]+)\/disable$/,
+  );
+  if (method === "POST" && systemSettingsDisableUserMatch) {
+    return {
+      route: "system-settings-users-disable",
+      userId: systemSettingsDisableUserMatch[1],
+    };
+  }
+
+  const systemSettingsEnableUserMatch = path.match(
+    /^\/api\/v1\/system-settings\/users\/([^/]+)\/enable$/,
+  );
+  if (method === "POST" && systemSettingsEnableUserMatch) {
+    return {
+      route: "system-settings-users-enable",
+      userId: systemSettingsEnableUserMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/manuscripts/upload") {
     return { route: "manuscripts-upload" };
   }
@@ -5199,6 +5385,19 @@ function writeResponse(
   res.end(JSON.stringify(body));
 }
 
+function createUnavailableSystemSettingsResponse(): RouteResponse<{
+  error: string;
+  message: string;
+}> {
+  return {
+    status: 404,
+    body: {
+      error: "not_found",
+      message: "System settings account management is unavailable in this runtime.",
+    },
+  };
+}
+
 function mapErrorToHttpResponse(
   error: unknown,
 ): [number, unknown, Record<string, string>?] {
@@ -5239,6 +5438,7 @@ function mapErrorToHttpResponse(
     error instanceof ExecutionResolutionProfileAssetNotFoundError ||
     error instanceof ExecutionResolutionKnowledgeItemNotFoundError ||
     error instanceof ProofreadingDraftContextNotFoundError ||
+    error instanceof UserAdminNotFoundError ||
     error instanceof VerificationCheckProfileNotFoundError ||
     error instanceof ReleaseCheckProfileNotFoundError ||
     error instanceof EvaluationSuiteNotFoundError ||
@@ -5294,7 +5494,10 @@ function mapErrorToHttpResponse(
     error instanceof HarnessDatasetSourceResolutionError ||
     error instanceof HarnessGoldSetVersionExportValidationError ||
     error instanceof HarnessGovernedRunStateError ||
-    error instanceof TemplateRetrievalGoldSetVersionValidationError
+    error instanceof TemplateRetrievalGoldSetVersionValidationError ||
+    error instanceof DuplicateUsernameError ||
+    error instanceof LastActiveAdminDisableError ||
+    error instanceof LastActiveAdminDemotionError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }

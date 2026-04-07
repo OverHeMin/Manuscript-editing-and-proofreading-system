@@ -120,6 +120,47 @@ test("postgres auth session repository creates loads and revokes active sessions
   });
 });
 
+test("postgres auth session repository can revoke all active sessions for a user", async () => {
+  await withMigratedClient(async (client) => {
+    const userRepository = new PostgresUserRepository({ client });
+    const repository = new PostgresAuthSessionRepository({ client });
+
+    await userRepository.save({
+      id: "user-2b",
+      username: "proofreader.zhou",
+      displayName: "Zhou Proofreader",
+      role: "proofreader",
+      passwordHash: "hash-2b",
+    });
+
+    const first = await repository.create({
+      userId: "user-2b",
+      provider: "local",
+      issuedAt: "2026-03-30T10:00:00.000Z",
+      expiresAt: "2026-03-30T18:00:00.000Z",
+      refreshAt: "2026-03-30T10:30:00.000Z",
+    });
+    const second = await repository.create({
+      userId: "user-2b",
+      provider: "local",
+      issuedAt: "2026-03-30T11:00:00.000Z",
+      expiresAt: "2026-03-30T19:00:00.000Z",
+      refreshAt: "2026-03-30T11:30:00.000Z",
+    });
+
+    await repository.revokeAllForUser("user-2b", "2026-03-30T12:00:00.000Z");
+
+    assert.equal(
+      await repository.findActiveById(first.id, new Date("2026-03-30T12:01:00.000Z")),
+      null,
+    );
+    assert.equal(
+      await repository.findActiveById(second.id, new Date("2026-03-30T12:01:00.000Z")),
+      null,
+    );
+  });
+});
+
 test("postgres audit service writes sensitive auth records to audit_logs", async () => {
   await withMigratedClient(async (client) => {
     const auditService = new PostgresAuditService({ client });

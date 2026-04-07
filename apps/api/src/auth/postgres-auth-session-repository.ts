@@ -98,6 +98,18 @@ export class PostgresAuthSessionRepository implements AuthSessionRepository {
       [sessionId, revokedAt],
     );
   }
+
+  async revokeAllForUser(userId: string, revokedAt: string): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        update auth_sessions
+        set revoked_at = coalesce(revoked_at, $2::timestamptz)
+        where user_id = $1
+          and revoked_at is null
+      `,
+      [userId, revokedAt],
+    );
+  }
 }
 
 function mapAuthSessionRow(row: AuthSessionRow): AuthSessionRecord {

@@ -10,6 +10,7 @@ export type WorkbenchRenderKind =
   | "evaluation-workbench"
   | "harness-datasets"
   | "template-governance"
+  | "system-settings"
   | "placeholder";
 
 export type RuleCenterMode = "authoring" | "learning";
@@ -63,6 +64,10 @@ export function resolveWorkbenchRenderKind(
 
   if (workbenchId === "evaluation-workbench") {
     return "evaluation-workbench";
+  }
+
+  if (workbenchId === "system-settings") {
+    return "system-settings";
   }
 
   return "placeholder";

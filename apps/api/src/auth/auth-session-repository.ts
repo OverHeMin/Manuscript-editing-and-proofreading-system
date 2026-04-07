@@ -26,4 +26,5 @@ export interface AuthSessionRepository {
   create(input: CreateAuthSessionInput): Promise<AuthSessionRecord>;
   findActiveById(sessionId: string, at: Date): Promise<AuthSessionRecord | null>;
   revoke(sessionId: string, revokedAt: string): Promise<void>;
+  revokeAllForUser(userId: string, revokedAt: string): Promise<void>;
 }
