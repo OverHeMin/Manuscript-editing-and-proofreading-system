@@ -20,6 +20,8 @@ import {
   resolveWorkbenchLocation,
   resolveWorkbenchRenderKind,
 } from "./workbench-routing.ts";
+import { buildWorkbenchNavigationGroups } from "./workbench-navigation.ts";
+import { WorkbenchNavigationMenu } from "./workbench-navigation-menu.tsx";
 
 export interface WorkbenchHostProps {
   session: AuthSessionViewModel;
@@ -89,6 +91,7 @@ export function WorkbenchHost({
 
   const activeEntry =
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
+  const navigationGroups = buildWorkbenchNavigationGroups(visibleEntries);
 
   return (
     <main className="app-shell">
@@ -124,24 +127,12 @@ export function WorkbenchHost({
           ) : null}
 
           <aside className="workbench-nav" aria-label="Workbench navigation">
-            <h2>Workbenches</h2>
-            <ul className="workbench-nav-list">
-              {visibleEntries.map((entry) => {
-                const isActive = entry.id === activeWorkbenchId;
-                return (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      className={`workbench-nav-button${isActive ? " is-active" : ""}`}
-                      onClick={() => navigateToWorkbench(entry.id)}
-                    >
-                      <span>{entry.label}</span>
-                      <small>{entry.placement}</small>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <h2>Workbench</h2>
+            <WorkbenchNavigationMenu
+              groups={navigationGroups}
+              activeWorkbenchId={activeWorkbenchId}
+              onNavigate={(workbenchId) => navigateToWorkbench(workbenchId)}
+            />
           </aside>
 
           <section className="workbench-content">{renderContent()}</section>

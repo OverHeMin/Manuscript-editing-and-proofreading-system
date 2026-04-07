@@ -45,6 +45,8 @@ const knowledgeReviewActionCheck: KnowledgeReviewActionViewModel = {
 const adminWorkbenchEntryCheck: WorkbenchEntry = {
   id: workbenchIdCheck,
   label: "Evaluation Workbench",
+  navLabel: "评测工作台",
+  navGroup: "governance",
   placement: "admin",
   surfaces: ["web"],
   roles: ["admin"],
