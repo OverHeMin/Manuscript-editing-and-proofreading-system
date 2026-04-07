@@ -528,12 +528,13 @@ export function LearningReviewWorkbenchPage({
   return (
     <section className="learning-review-workbench">
       <header className="learning-review-hero">
-        <div>
+        <div className="learning-review-hero-copy">
           <p className="learning-review-eyebrow">Learning Review</p>
-          <h2>Governed learning review desk</h2>
+          <h2>Knowledge Handoff Bridge</h2>
           <p>
-            The primary path stays review-first: select a pending governed candidate, approve it,
-            and then hand the approved result into a governed knowledge writeback draft.
+            The primary path stays review-first: select a pending governed candidate,
+            approve it, and then bridge the approved result into a governed knowledge
+            writeback draft.
           </p>
           {prefillState === "loading" ? (
             <p>This review desk is loading manuscript handoff context.</p>
@@ -794,7 +795,10 @@ export function LearningReviewWorkbenchPage({
           setIsUtilityPanelOpen((event.currentTarget as HTMLDetailsElement).open)
         }
       >
-        <summary>Admin utilities and candidate generation</summary>
+        <summary>
+          <span className="learning-review-utility-eyebrow">Secondary Admin Zone</span>
+          <strong>Admin utilities and candidate generation</strong>
+        </summary>
         <div className="learning-review-grid learning-review-grid--utilities">
           <article className="learning-review-card">
             <h3>1. Reviewed Case Snapshot</h3>

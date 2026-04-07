@@ -1,8 +1,32 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   loadLearningReviewPrefill,
 } from "../src/features/learning-review/learning-review-prefill.ts";
+
+register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
+
+const {
+  LearningReviewWorkbenchPage,
+} = await import("../src/features/learning-review/learning-review-workbench-page.tsx");
+
+test("learning review workbench page keeps the review queue primary and admin utilities secondary", () => {
+  const markup = renderToStaticMarkup(<LearningReviewWorkbenchPage actorRole="admin" />);
+
+  const queueIndex = markup.indexOf("Pending Review Queue");
+  const selectedCandidateIndex = markup.indexOf("Selected Candidate");
+  const decisionIndex = markup.indexOf("Review Decision");
+  const utilityIndex = markup.indexOf("Admin utilities and candidate generation");
+
+  assert.match(markup, /Knowledge Handoff Bridge/);
+  assert.ok(queueIndex >= 0);
+  assert.ok(selectedCandidateIndex > queueIndex);
+  assert.ok(decisionIndex > selectedCandidateIndex);
+  assert.ok(utilityIndex > decisionIndex);
+});
 
 test("loadLearningReviewPrefill derives snapshot and candidate defaults from the manuscript asset chain", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];

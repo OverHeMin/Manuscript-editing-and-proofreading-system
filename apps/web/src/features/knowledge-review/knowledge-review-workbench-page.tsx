@@ -367,46 +367,88 @@ export function KnowledgeReviewWorkbenchPage({
 
   return (
     <main className="knowledge-review-workbench">
-      <KnowledgeReviewQueuePane
-        filters={{
-          searchText: filters.searchText,
-          knowledgeKind: filters.knowledgeKind,
-          moduleScope: filters.moduleScope,
-        }}
-        queue={visibleQueue}
-        totalQueueCount={totalQueueCount}
-        activeItemId={effectiveSelectedItem?.id ?? null}
-        isLoading={queueLoadStatus === "initial" || queueLoadStatus === "loading"}
-        loadErrorMessage={queueErrorMessage}
-        isQueueEmpty={isQueueEmpty}
-        isNoResults={isNoResults}
-        onSearchTextChange={handleSearchTextChange}
-        onKnowledgeKindChange={handleKnowledgeKindChange}
-        onModuleScopeChange={handleModuleScopeChange}
-        onSelectItem={handleSelectItem}
-        onRetryQueue={handleRetryQueue}
-      />
+      <header className="knowledge-review-hero">
+        <div className="knowledge-review-hero-copy">
+          <span className="knowledge-review-eyebrow">Knowledge Review</span>
+          <h1>Review-First Knowledge Desk</h1>
+          <p>
+            Keep the pending queue, the governed evidence view, and the decision action
+            together in one focused reviewer surface.
+          </p>
+        </div>
+        <dl className="knowledge-review-hero-stats">
+          <div className="knowledge-review-hero-stat">
+            <dt>Reviewer lane</dt>
+            <dd>{actorRole}</dd>
+          </div>
+          <div className="knowledge-review-hero-stat">
+            <dt>Selected item</dt>
+            <dd>{effectiveSelectedItem?.id ?? "Waiting for queue selection"}</dd>
+          </div>
+          <div className="knowledge-review-hero-stat">
+            <dt>Queue state</dt>
+            <dd>{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}</dd>
+          </div>
+        </dl>
+      </header>
 
-      <section className="knowledge-review-main-column">
-        <KnowledgeReviewDetailPane
-          item={effectiveSelectedItem}
-          history={displayedHistory.history}
-          isUsingStableSnapshot={isUsingStableSnapshot}
-          historyScopeNote={displayedHistory.scopeNote}
-          onRetryHistory={handleRetryHistory}
+      <div className="knowledge-review-desk">
+        <KnowledgeReviewQueuePane
+          filters={{
+            searchText: filters.searchText,
+            knowledgeKind: filters.knowledgeKind,
+            moduleScope: filters.moduleScope,
+          }}
+          queue={visibleQueue}
+          totalQueueCount={totalQueueCount}
+          activeItemId={effectiveSelectedItem?.id ?? null}
+          isLoading={queueLoadStatus === "initial" || queueLoadStatus === "loading"}
+          loadErrorMessage={queueErrorMessage}
+          isQueueEmpty={isQueueEmpty}
+          isNoResults={isNoResults}
+          onSearchTextChange={handleSearchTextChange}
+          onKnowledgeKindChange={handleKnowledgeKindChange}
+          onModuleScopeChange={handleModuleScopeChange}
+          onSelectItem={handleSelectItem}
+          onRetryQueue={handleRetryQueue}
         />
-        <KnowledgeReviewActionPanel
-          selectedItemId={effectiveSelectedItem?.id ?? null}
-          reviewNote={reviewNote}
-          feedback={actionFeedback}
-          onReviewNoteChange={setReviewNote}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          onManualRecovery={handleManualRecovery}
-        />
-      </section>
+
+        <section className="knowledge-review-main-column">
+          <KnowledgeReviewDetailPane
+            item={effectiveSelectedItem}
+            history={displayedHistory.history}
+            isUsingStableSnapshot={isUsingStableSnapshot}
+            historyScopeNote={displayedHistory.scopeNote}
+            onRetryHistory={handleRetryHistory}
+          />
+          <KnowledgeReviewActionPanel
+            selectedItemId={effectiveSelectedItem?.id ?? null}
+            reviewNote={reviewNote}
+            feedback={actionFeedback}
+            onReviewNoteChange={setReviewNote}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onManualRecovery={handleManualRecovery}
+          />
+        </section>
+      </div>
     </main>
   );
+}
+
+function resolveQueueStatusLabel(
+  queueLoadStatus: "initial" | "loading" | "ready" | "error",
+  queueErrorMessage: string | null,
+): string {
+  if (queueLoadStatus === "error") {
+    return queueErrorMessage ? "Queue needs recovery" : "Queue load failed";
+  }
+
+  if (queueLoadStatus === "loading" || queueLoadStatus === "initial") {
+    return "Loading queue";
+  }
+
+  return "Queue ready";
 }
 
 function resolveDetailSelection(
