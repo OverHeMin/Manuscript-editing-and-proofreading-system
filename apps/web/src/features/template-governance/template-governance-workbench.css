@@ -219,6 +219,21 @@
   gap: 12px;
 }
 
+.template-governance-rule-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.template-governance-rule-layout-nav,
+.template-governance-rule-layout-main,
+.template-governance-rule-object-list,
+.template-governance-stack {
+  display: grid;
+  gap: 12px;
+}
+
 .template-governance-knowledge-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.4fr);
@@ -239,6 +254,7 @@
   .template-governance-grid,
   .template-governance-form-grid,
   .template-governance-toolbar,
+  .template-governance-rule-layout,
   .template-governance-knowledge-grid {
     grid-template-columns: 1fr;
   }

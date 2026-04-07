@@ -161,6 +161,7 @@ test("template governance controller loads template families, retrieval insights
       "GET /api/v1/knowledge",
       "GET /api/v1/editorial-rules/rule-sets",
       "GET /api/v1/prompt-skill-registry/prompt-templates",
+      "GET /api/v1/templates/families/family-1/journal-templates",
       "GET /api/v1/templates/families/family-1/module-templates",
       "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
       "GET /api/v1/knowledge/retrieval-snapshots/retrieval-snapshot-2",
@@ -532,6 +533,7 @@ test("template governance controller loads rule authoring and instruction author
       "GET /api/v1/knowledge",
       "GET /api/v1/editorial-rules/rule-sets",
       "GET /api/v1/prompt-skill-registry/prompt-templates",
+      "GET /api/v1/templates/families/family-1/journal-templates",
       "GET /api/v1/templates/families/family-1/module-templates",
       "GET /api/v1/editorial-rules/rule-sets/rule-set-editing-1/rules",
       "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
@@ -889,7 +891,8 @@ test("template governance controller updates a template family and keeps it sele
 function createEmptyRuleAuthoringResponse<TResponse>(url: string) {
   if (
     url === "/api/v1/editorial-rules/rule-sets" ||
-    url === "/api/v1/prompt-skill-registry/prompt-templates"
+    url === "/api/v1/prompt-skill-registry/prompt-templates" ||
+    /\/api\/v1\/templates\/families\/[^/]+\/journal-templates$/.test(url)
   ) {
     return {
       status: 200,

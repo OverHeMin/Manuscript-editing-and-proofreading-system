@@ -5,3 +5,4 @@ export * from "./postgres-editorial-rule-repository.ts";
 export * from "./editorial-rule-service.ts";
 export * from "./editorial-rule-api.ts";
 export * from "./editorial-rule-projection-service.ts";
+export * from "./editorial-rule-resolution-service.ts";

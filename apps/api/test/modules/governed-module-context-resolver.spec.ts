@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryAuditService } from "../../src/audit/audit-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryAgentProfileRepository } from "../../src/modules/agent-profiles/in-memory-agent-profile-repository.ts";
 import { AgentProfileService } from "../../src/modules/agent-profiles/agent-profile-service.ts";
 import { InMemoryAgentRuntimeRepository } from "../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
@@ -44,6 +45,7 @@ async function createResolverHarness() {
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
   const agentProfileRepository = new InMemoryAgentProfileRepository();
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
@@ -54,6 +56,7 @@ async function createResolverHarness() {
     new InMemoryToolPermissionPolicyRepository();
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -243,12 +246,42 @@ async function createResolverHarness() {
     },
     template_bindings: ["template-editing-1"],
   });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  await editorialRuleRepository.saveRule({
+    id: "editorial-rule-1",
+    rule_set_id: "rule-set-1",
+    order_no: 10,
+    rule_object: "generic",
+    rule_type: "content",
+    execution_mode: "inspect",
+    scope: {},
+    selector: {},
+    trigger: {
+      kind: "structural_presence",
+      field: "abstract",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Abstract should be present.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
   await executionGovernanceRepository.saveProfile({
     id: "profile-1",
     module: "editing",
     manuscript_type: "clinical_study",
     template_family_id: "family-1",
     module_template_id: "template-editing-1",
+    rule_set_id: "rule-set-1",
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     knowledge_binding_mode: "profile_plus_dynamic",

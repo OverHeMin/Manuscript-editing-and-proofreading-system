@@ -235,6 +235,241 @@ test("http server auto-assigns the seeded template family on upload so admins ca
   }
 });
 
+test("http server keeps the seeded base editing rule set publishable after publishing a journal override", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const userCookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
+    const journalObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: userCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "HTTP Upload Editing Journal Override",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "http-upload-editing-journal-override.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/http-upload-editing-journal-override.docx",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: {
+        id: string;
+        current_template_family_id?: string;
+      };
+      asset: { id: string };
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.manuscript.current_template_family_id, "family-seeded-1");
+
+    const journalTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/journal-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          templateFamilyId: "family-seeded-1",
+          manuscriptType: "clinical_study",
+          journalKey: `http-journal-${Date.now()}`,
+          journalName: `HTTP Journal ${Date.now()}`,
+        }),
+      },
+    );
+    const journalTemplate = (await journalTemplateResponse.json()) as { id: string };
+
+    assert.equal(journalTemplateResponse.status, 201);
+
+    const activateJournalTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/journal-templates/${journalTemplate.id}/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(activateJournalTemplateResponse.status, 200);
+
+    const ruleSetResponse = await fetch(`${baseUrl}/api/v1/editorial-rules/rule-sets`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        templateFamilyId: "family-seeded-1",
+        journalTemplateId: journalTemplate.id,
+        module: "editing",
+      }),
+    });
+    const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+    assert.equal(ruleSetResponse.status, 201);
+
+    const createRuleResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          orderNo: 10,
+          ruleObject: "abstract",
+          ruleType: "format",
+          executionMode: "apply_and_inspect",
+          scope: {
+            sections: ["abstract"],
+            block_kind: "heading",
+          },
+          selector: {
+            section_selector: "abstract",
+            label_selector: {
+              text: abstractObjectiveSource,
+            },
+          },
+          trigger: {
+            kind: "exact_text",
+            text: abstractObjectiveSource,
+          },
+          action: {
+            kind: "replace_heading",
+            to: journalObjectiveNormalized,
+          },
+          authoringPayload: {
+            label_role: "objective",
+            source_label_text: abstractObjectiveSource,
+            normalized_label_text: journalObjectiveNormalized,
+          },
+          evidenceLevel: "high",
+          confidencePolicy: "always_auto",
+          severity: "error",
+          enabled: true,
+          exampleBefore: abstractObjectiveSource,
+          exampleAfter: journalObjectiveNormalized,
+        }),
+      },
+    );
+
+    assert.equal(createRuleResponse.status, 201);
+
+    const publishRuleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishRuleSetResponse.status, 200);
+
+    const listedRuleSetsResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets`,
+      {
+        headers: {
+          Cookie: adminCookie,
+        },
+      },
+    );
+    const listedRuleSets = (await listedRuleSetsResponse.json()) as Array<{
+      id: string;
+      status: string;
+      journal_template_id?: string;
+    }>;
+
+    assert.equal(listedRuleSetsResponse.status, 200);
+    assert.equal(
+      listedRuleSets.find((record) => record.id === "rule-set-editing-1")?.status,
+      "published",
+    );
+    assert.equal(
+      listedRuleSets.find((record) => record.id === ruleSet.id)?.status,
+      "published",
+    );
+    assert.equal(
+      listedRuleSets.find((record) => record.id === ruleSet.id)?.journal_template_id,
+      journalTemplate.id,
+    );
+
+    const updateTemplateSelectionResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/template-selection`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          journalTemplateId: journalTemplate.id,
+        }),
+      },
+    );
+    const updatedManuscript = (await updateTemplateSelectionResponse.json()) as {
+      current_journal_template_id?: string;
+    };
+
+    assert.equal(updateTemplateSelectionResponse.status, 200);
+    assert.equal(updatedManuscript.current_journal_template_id, journalTemplate.id);
+
+    const editingResponse = await fetch(`${baseUrl}/api/v1/modules/editing/run`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: uploaded.manuscript.id,
+        parentAssetId: uploaded.asset.id,
+        requestedBy: "forged-admin",
+        actorRole: "user",
+        storageKey: "runs/http-journal-editing/final.docx",
+        fileName: "http-journal-editing-final.docx",
+      }),
+    });
+    const editing = (await editingResponse.json()) as {
+      asset?: { asset_type: string };
+      job?: { module: string };
+      error?: string;
+      message?: string;
+    };
+
+    assert.equal(
+      editingResponse.status,
+      201,
+      `Expected editing to succeed, received ${editingResponse.status}: ${JSON.stringify(editing)}`,
+    );
+    assert.equal(editing.asset?.asset_type, "edited_docx");
+    assert.equal(editing.job?.module, "editing");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server exposes the seeded knowledge review queue with CORS for authenticated users", async () => {
   const { server, baseUrl } = await startServer();
 

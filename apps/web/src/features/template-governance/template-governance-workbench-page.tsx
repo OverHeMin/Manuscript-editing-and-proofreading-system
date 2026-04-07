@@ -31,6 +31,16 @@ import type {
   TemplateModule,
   TemplateFamilyStatus,
 } from "../templates/index.ts";
+import { RuleAuthoringForm } from "./rule-authoring-form.tsx";
+import { RuleAuthoringNavigation } from "./rule-authoring-navigation.tsx";
+import { RuleAuthoringPreviewPanel } from "./rule-authoring-preview.tsx";
+import {
+  createRuleAuthoringDraft,
+  hydrateRuleAuthoringDraft,
+  serializeRuleAuthoringDraft,
+} from "./rule-authoring-serialization.ts";
+import type { RuleAuthoringDraft, RuleAuthoringObject } from "./rule-authoring-types.ts";
+import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 import {
   createTemplateGovernanceWorkbenchController,
   type TemplateGovernanceWorkbenchController,
@@ -226,10 +236,18 @@ export function TemplateGovernanceWorkbenchPage({
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeDraftFormState>(
     createKnowledgeDraftFormState(),
   );
+  const [selectedRuleObject, setSelectedRuleObject] =
+    useState<RuleAuthoringObject>("abstract");
   const [ruleSetForm, setRuleSetForm] = useState<RuleSetFormState>({
     module: "editing",
   });
-  const [ruleForm, setRuleForm] = useState<RuleDraftFormState>(createRuleDraftFormState());
+  const [ruleAuthoringDraft, setRuleAuthoringDraft] = useState<RuleAuthoringDraft>(
+    () => createRuleAuthoringDraft("abstract"),
+  );
+  const [journalTemplateForm, setJournalTemplateForm] = useState({
+    journalKey: "",
+    journalName: "",
+  });
   const [instructionTemplateForm, setInstructionTemplateForm] =
     useState<InstructionTemplateFormState>(createInstructionTemplateFormState());
 
@@ -244,6 +262,7 @@ export function TemplateGovernanceWorkbenchPage({
 
   async function loadOverview(input: {
     selectedTemplateFamilyId?: string | null;
+    selectedJournalTemplateId?: string | null;
     selectedRuleSetId?: string | null;
     selectedInstructionTemplateId?: string | null;
     selectedKnowledgeItemId?: string | null;
@@ -288,17 +307,15 @@ export function TemplateGovernanceWorkbenchPage({
     setRuleSetForm({
       module: nextOverview.selectedRuleSet?.module ?? "editing",
     });
-    setRuleForm((current) => ({
-      ...current,
-      exampleBefore:
-        current.exampleBefore.length > 0
-          ? current.exampleBefore
-          : nextOverview.rules[0]?.example_before ?? "",
-      exampleAfter:
-        current.exampleAfter.length > 0
-          ? current.exampleAfter
-          : nextOverview.rules[0]?.example_after ?? "",
-    }));
+    const firstStructuredRule = nextOverview.rules.find(isRuleAuthoringDraft);
+    const nextRuleDraft = firstStructuredRule
+      ? hydrateRuleAuthoringDraft(firstStructuredRule)
+      : createRuleAuthoringDraft(selectedRuleObject);
+    setSelectedRuleObject(nextRuleDraft.ruleObject);
+    setRuleAuthoringDraft({
+      ...nextRuleDraft,
+      journalTemplateId: nextOverview.selectedJournalTemplateId,
+    });
 
     const defaultHardRuleSummary =
       nextOverview.rules[0]?.example_before && nextOverview.rules[0]?.example_after
@@ -345,6 +362,37 @@ export function TemplateGovernanceWorkbenchPage({
         templateBindings: nextOverview.moduleTemplates.map((template) => template.id),
       }),
     );
+  }
+
+  function currentReloadContext(overrides: {
+    selectedTemplateFamilyId?: string | null;
+    selectedJournalTemplateId?: string | null;
+    selectedRuleSetId?: string | null;
+    selectedInstructionTemplateId?: string | null;
+    selectedKnowledgeItemId?: string | null;
+    filters?: Partial<TemplateGovernanceWorkbenchFilters>;
+  } = {}) {
+    return {
+      selectedTemplateFamilyId:
+        overrides.selectedTemplateFamilyId ?? overview?.selectedTemplateFamilyId ?? null,
+      selectedJournalTemplateId:
+        overrides.selectedJournalTemplateId !== undefined
+          ? overrides.selectedJournalTemplateId
+          : overview?.selectedJournalTemplateId ?? null,
+      selectedRuleSetId:
+        overrides.selectedRuleSetId !== undefined
+          ? overrides.selectedRuleSetId
+          : overview?.selectedRuleSetId ?? null,
+      selectedInstructionTemplateId:
+        overrides.selectedInstructionTemplateId !== undefined
+          ? overrides.selectedInstructionTemplateId
+          : overview?.selectedInstructionTemplateId ?? null,
+      selectedKnowledgeItemId:
+        overrides.selectedKnowledgeItemId !== undefined
+          ? overrides.selectedKnowledgeItemId
+          : overview?.selectedKnowledgeItemId ?? null,
+      filters: overrides.filters ?? overview?.filters,
+    };
   }
 
   async function runBusyAction(
@@ -410,11 +458,9 @@ export function TemplateGovernanceWorkbenchPage({
           name: selectedFamilyForm.name.trim(),
           status: selectedFamilyForm.status,
         },
-        selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedTemplateFamilyId,
+        }),
       });
       return result.overview;
     }, "Template family updated.");
@@ -450,11 +496,9 @@ export function TemplateGovernanceWorkbenchPage({
             checklist: checklist ?? [],
             sectionRequirements: sectionRequirements ?? [],
           },
-          selectedTemplateFamilyId,
-          selectedRuleSetId: overview.selectedRuleSetId,
-          selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-          selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-          filters: overview.filters,
+          ...currentReloadContext({
+            selectedTemplateFamilyId,
+          }),
         });
         setModuleTemplateSelection(result.moduleTemplate.id);
         return result.overview;
@@ -468,11 +512,9 @@ export function TemplateGovernanceWorkbenchPage({
         prompt: moduleForm.prompt.trim(),
         checklist,
         sectionRequirements,
-        selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedTemplateFamilyId,
+        }),
       });
       setModuleTemplateSelection(null);
       setModuleForm((current) => ({
@@ -497,11 +539,7 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.publishModuleTemplateAndReload({
         moduleTemplateId,
         actorRole,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext(),
       });
       return result.overview;
     }, "Module template published.");
@@ -540,13 +578,125 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setStatusMessage(null);
-    void loadOverview({
-      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-      selectedRuleSetId: ruleSetId,
-      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-      filters: overview.filters,
+    void loadOverview(currentReloadContext({ selectedRuleSetId: ruleSetId }));
+  }
+
+  function handleRuleScopeChange(journalTemplateId: string | null) {
+    if (!overview) {
+      return;
+    }
+
+    setStatusMessage(null);
+    setRuleAuthoringDraft((current) => ({
+      ...current,
+      journalTemplateId,
+    }));
+    void loadOverview(
+      currentReloadContext({
+        selectedJournalTemplateId: journalTemplateId,
+        selectedRuleSetId: null,
+      }),
+    );
+  }
+
+  function handleRuleModuleChange(module: TemplateModule) {
+    setRuleSetForm({ module });
+    if (!overview) {
+      return;
+    }
+
+    const matchingRuleSetId =
+      overview.ruleSets.find((ruleSet) => ruleSet.module === module)?.id ?? null;
+    setStatusMessage(null);
+    void loadOverview(
+      currentReloadContext({
+        selectedRuleSetId: matchingRuleSetId,
+      }),
+    );
+  }
+
+  function handleRuleObjectChange(ruleObject: RuleAuthoringObject) {
+    setSelectedRuleObject(ruleObject);
+    const nextDraft = createRuleAuthoringDraft(ruleObject);
+    setRuleAuthoringDraft({
+      ...nextDraft,
+      journalTemplateId: overview?.selectedJournalTemplateId ?? null,
     });
+    setStatusMessage(null);
+  }
+
+  async function handleCreateJournalTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedTemplateFamily = overview?.selectedTemplateFamily;
+    if (!selectedTemplateFamily) {
+      setErrorMessage("Select a template family before creating a journal template.");
+      return;
+    }
+
+    if (
+      journalTemplateForm.journalName.trim().length === 0 ||
+      journalTemplateForm.journalKey.trim().length === 0
+    ) {
+      setErrorMessage("Journal name and journal key are required.");
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.createJournalTemplateProfileAndReload({
+        templateFamilyId: selectedTemplateFamily.id,
+        manuscriptType: selectedTemplateFamily.manuscript_type,
+        journalName: journalTemplateForm.journalName.trim(),
+        journalKey: journalTemplateForm.journalKey.trim(),
+        ...currentReloadContext({
+          selectedTemplateFamilyId: selectedTemplateFamily.id,
+          selectedRuleSetId: null,
+        }),
+      });
+      setJournalTemplateForm({
+        journalKey: "",
+        journalName: "",
+      });
+      return result.overview;
+    }, "Journal template profile created.");
+  }
+
+  async function handleActivateJournalTemplate(journalTemplateProfileId: string) {
+    if (!overview?.selectedTemplateFamilyId) {
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.activateJournalTemplateProfileAndReload({
+        journalTemplateProfileId,
+        actorRole,
+        ...currentReloadContext({
+          selectedJournalTemplateId: journalTemplateProfileId,
+          selectedRuleSetId: null,
+        }),
+      });
+      return result.overview;
+    }, "Journal template profile activated.");
+  }
+
+  async function handleArchiveJournalTemplate(journalTemplateProfileId: string) {
+    if (!overview?.selectedTemplateFamilyId) {
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.archiveJournalTemplateProfileAndReload({
+        journalTemplateProfileId,
+        actorRole,
+        ...currentReloadContext({
+          selectedJournalTemplateId:
+            overview.selectedJournalTemplateId === journalTemplateProfileId
+              ? null
+              : overview.selectedJournalTemplateId,
+          selectedRuleSetId: null,
+        }),
+      });
+      return result.overview;
+    }, "Journal template profile archived.");
   }
 
   async function handleCreateRuleSet(event: FormEvent<HTMLFormElement>) {
@@ -561,11 +711,11 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.createRuleSetAndReload({
         actorRole,
         templateFamilyId: selectedTemplateFamilyId,
+        journalTemplateId: overview?.selectedJournalTemplateId ?? undefined,
         module: ruleSetForm.module,
-        selectedTemplateFamilyId,
-        selectedInstructionTemplateId: overview?.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview?.selectedKnowledgeItemId,
-        filters: overview?.filters,
+        ...currentReloadContext({
+          selectedTemplateFamilyId,
+        }),
       });
       return result.overview;
     }, "Rule set draft created.");
@@ -578,70 +728,42 @@ export function TemplateGovernanceWorkbenchPage({
       setErrorMessage("Create or select a rule set before adding rules.");
       return;
     }
-
-    const orderNo = Number.parseInt(ruleForm.orderNo, 10);
-    if (!Number.isFinite(orderNo)) {
-      setErrorMessage("Rule order must be a valid number.");
-      return;
-    }
-
-    if (ruleForm.triggerKind.trim().length === 0 || ruleForm.actionKind.trim().length === 0) {
-      setErrorMessage("Rule trigger kind and action kind are required.");
-      return;
-    }
+    const serializedDraft = serializeRuleAuthoringDraft({
+      ...ruleAuthoringDraft,
+      journalTemplateId: overview.selectedJournalTemplateId,
+    });
 
     await runBusyAction(async () => {
       const result = await controller.createRuleAndReload({
         ruleSetId: selectedRuleSetId,
         input: {
           actorRole,
-          orderNo,
-          ruleType: ruleForm.ruleType,
-          executionMode: ruleForm.executionMode,
-          scope: {
-            ...(splitCommaSeparatedValues(ruleForm.scopeSections)
-              ? {
-                  sections: splitCommaSeparatedValues(ruleForm.scopeSections),
-                }
-              : {}),
-            ...(optionalTrimmedValue(ruleForm.scopeBlockKind)
-              ? {
-                  block_kind: optionalTrimmedValue(ruleForm.scopeBlockKind),
-                }
-              : {}),
-          },
-          trigger: {
-            kind: ruleForm.triggerKind.trim(),
-            ...(optionalTrimmedValue(ruleForm.triggerText)
-              ? {
-                  text: optionalTrimmedValue(ruleForm.triggerText),
-                }
-              : {}),
-          },
-          action: {
-            kind: ruleForm.actionKind.trim(),
-            ...(optionalTrimmedValue(ruleForm.actionTarget)
-              ? {
-                  to: optionalTrimmedValue(ruleForm.actionTarget),
-                }
-              : {}),
-          },
-          confidencePolicy: ruleForm.confidencePolicy,
-          severity: ruleForm.severity,
-          enabled: true,
-          exampleBefore: optionalTrimmedValue(ruleForm.exampleBefore),
-          exampleAfter: optionalTrimmedValue(ruleForm.exampleAfter),
-          manualReviewReasonTemplate: optionalTrimmedValue(
-            ruleForm.manualReviewReasonTemplate,
-          ),
+          orderNo: serializedDraft.orderNo,
+          ruleObject: serializedDraft.ruleObject,
+          ruleType: serializedDraft.ruleType,
+          executionMode: serializedDraft.executionMode,
+          scope: serializedDraft.scope,
+          selector: serializedDraft.selector,
+          trigger: serializedDraft.trigger,
+          action: serializedDraft.action,
+          authoringPayload: serializedDraft.authoringPayload,
+          evidenceLevel: serializedDraft.evidenceLevel,
+          confidencePolicy: serializedDraft.confidencePolicy,
+          severity: serializedDraft.severity,
+          enabled: serializedDraft.enabled,
+          exampleBefore: serializedDraft.exampleBefore,
+          exampleAfter: serializedDraft.exampleAfter,
+          manualReviewReasonTemplate: serializedDraft.manualReviewReasonTemplate,
         },
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedRuleSetId,
+        }),
       });
-      setRuleForm(createRuleDraftFormState());
+      const nextDraft = createRuleAuthoringDraft(selectedRuleObject);
+      setRuleAuthoringDraft({
+        ...nextDraft,
+        journalTemplateId: overview.selectedJournalTemplateId,
+      });
       return result.overview;
     }, "Rule draft created.");
   }
@@ -655,11 +777,9 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.publishRuleSetAndReload({
         ruleSetId,
         actorRole,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: ruleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedRuleSetId: ruleSetId,
+        }),
       });
       return result.overview;
     }, "Rule set published.");
@@ -671,13 +791,11 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setStatusMessage(null);
-    void loadOverview({
-      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-      selectedRuleSetId: overview.selectedRuleSetId,
-      selectedInstructionTemplateId: promptTemplateId,
-      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-      filters: overview.filters,
-    });
+    void loadOverview(
+      currentReloadContext({
+        selectedInstructionTemplateId: promptTemplateId,
+      }),
+    );
   }
 
   async function handleCreateInstructionTemplate(event: FormEvent<HTMLFormElement>) {
@@ -719,10 +837,7 @@ export function TemplateGovernanceWorkbenchPage({
         manualReviewPolicy: instructionTemplateForm.manualReviewPolicy.trim(),
         outputContract: instructionTemplateForm.outputContract.trim(),
         reportStyle: optionalTrimmedValue(instructionTemplateForm.reportStyle),
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext(),
       });
       setInstructionTemplateForm(createInstructionTemplateFormState());
       return result.overview;
@@ -738,11 +853,9 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.publishInstructionTemplateAndReload({
         promptTemplateId,
         actorRole,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: promptTemplateId,
-        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedInstructionTemplateId: promptTemplateId,
+        }),
       });
       return result.overview;
     }, "AI instruction template published.");
@@ -785,11 +898,7 @@ export function TemplateGovernanceWorkbenchPage({
       if (!isEditingDraft || !selectedKnowledgeItem) {
         const result = await controller.createKnowledgeDraftAndReload({
           ...payload,
-          selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-          selectedRuleSetId: overview.selectedRuleSetId,
-          selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-          selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-          filters: overview.filters,
+          ...currentReloadContext(),
         });
         return result.overview;
       }
@@ -797,11 +906,9 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.updateKnowledgeDraftAndReload({
         knowledgeItemId: selectedKnowledgeItem.id,
         input: payload,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: selectedKnowledgeItem.id,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedKnowledgeItemId: selectedKnowledgeItem.id,
+        }),
       });
       return result.overview;
     }, isEditingDraft ? "Knowledge draft updated." : "Knowledge draft created.");
@@ -816,11 +923,9 @@ export function TemplateGovernanceWorkbenchPage({
     await runBusyAction(async () => {
       const result = await controller.submitKnowledgeDraftAndReload({
         knowledgeItemId: selectedKnowledgeItem.id,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: selectedKnowledgeItem.id,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedKnowledgeItemId: selectedKnowledgeItem.id,
+        }),
       });
       return result.overview;
     }, "Knowledge draft submitted for review.");
@@ -835,11 +940,9 @@ export function TemplateGovernanceWorkbenchPage({
     await runBusyAction(async () => {
       const result = await controller.archiveKnowledgeItemAndReload({
         knowledgeItemId: selectedKnowledgeItem.id,
-        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-        selectedRuleSetId: overview.selectedRuleSetId,
-        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-        selectedKnowledgeItemId: selectedKnowledgeItem.id,
-        filters: overview.filters,
+        ...currentReloadContext({
+          selectedKnowledgeItemId: selectedKnowledgeItem.id,
+        }),
       });
       return result.overview;
     }, "Knowledge item archived.");
@@ -851,13 +954,15 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setStatusMessage(null);
-    void loadOverview({
-      selectedTemplateFamilyId: templateFamilyId,
-      selectedRuleSetId: null,
-      selectedInstructionTemplateId: null,
-      selectedKnowledgeItemId: null,
-      filters: overview.filters,
-    });
+    void loadOverview(
+      currentReloadContext({
+        selectedTemplateFamilyId: templateFamilyId,
+        selectedJournalTemplateId: null,
+        selectedRuleSetId: null,
+        selectedInstructionTemplateId: null,
+        selectedKnowledgeItemId: null,
+      }),
+    );
   }
 
   function handleKnowledgeItemSelection(knowledgeItemId: string) {
@@ -866,13 +971,11 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setStatusMessage(null);
-    void loadOverview({
-      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-      selectedRuleSetId: overview.selectedRuleSetId,
-      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-      selectedKnowledgeItemId: knowledgeItemId,
-      filters: overview.filters,
-    });
+    void loadOverview(
+      currentReloadContext({
+        selectedKnowledgeItemId: knowledgeItemId,
+      }),
+    );
   }
 
   function handleSearchTextChange(searchText: string) {
@@ -880,16 +983,14 @@ export function TemplateGovernanceWorkbenchPage({
       return;
     }
 
-    void loadOverview({
-      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-      selectedRuleSetId: overview.selectedRuleSetId,
-      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-      filters: {
-        ...overview.filters,
-        searchText,
-      },
-    });
+    void loadOverview(
+      currentReloadContext({
+        filters: {
+          ...overview.filters,
+          searchText,
+        },
+      }),
+    );
   }
 
   function handleKnowledgeStatusChange(knowledgeStatus: KnowledgeItemStatus | "all") {
@@ -897,16 +998,14 @@ export function TemplateGovernanceWorkbenchPage({
       return;
     }
 
-    void loadOverview({
-      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
-      selectedRuleSetId: overview.selectedRuleSetId,
-      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
-      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
-      filters: {
-        ...overview.filters,
-        knowledgeStatus,
-      },
-    });
+    void loadOverview(
+      currentReloadContext({
+        filters: {
+          ...overview.filters,
+          knowledgeStatus,
+        },
+      }),
+    );
   }
 
   function handleResetKnowledgeDraft() {
@@ -1121,19 +1220,51 @@ export function TemplateGovernanceWorkbenchPage({
           ) : null}
         </article>
 
-        <TemplateGovernanceRulesPanel
-          overview={overview}
-          selectedRuleSet={selectedRuleSet}
-          ruleSetForm={ruleSetForm}
-          ruleForm={ruleForm}
-          isBusy={isBusy}
-          onRuleSetFormChange={setRuleSetForm}
-          onRuleFormChange={setRuleForm}
-          onSelectRuleSet={handleRuleSetSelection}
-          onCreateRuleSet={handleCreateRuleSet}
-          onSubmitRule={handleSubmitRule}
-          onPublishRuleSet={handlePublishRuleSet}
-        />
+        <article className="template-governance-panel template-governance-panel-wide">
+          <div className="template-governance-panel-header">
+            <div>
+              <h3>Rule Workbench</h3>
+              <p>
+                Author structured medical editorial rules with family-level defaults and
+                journal-level overrides from one governed surface.
+              </p>
+            </div>
+          </div>
+          <div className="template-governance-rule-layout">
+            <RuleAuthoringNavigation
+              overview={overview}
+              selectedRuleObject={selectedRuleObject}
+              selectedModule={ruleSetForm.module}
+              journalTemplateForm={journalTemplateForm}
+              isBusy={isBusy}
+              onJournalScopeChange={handleRuleScopeChange}
+              onModuleChange={handleRuleModuleChange}
+              onRuleObjectChange={handleRuleObjectChange}
+              onSelectRuleSet={handleRuleSetSelection}
+              onCreateRuleSet={handleCreateRuleSet}
+              onCreateJournalTemplate={handleCreateJournalTemplate}
+              onJournalTemplateFormChange={setJournalTemplateForm}
+              onActivateJournalTemplate={handleActivateJournalTemplate}
+              onArchiveJournalTemplate={handleArchiveJournalTemplate}
+              onPublishRuleSet={(ruleSetId) => {
+                void handlePublishRuleSet(ruleSetId);
+              }}
+            />
+            <div className="template-governance-rule-layout-main">
+              <RuleAuthoringForm
+                selectedRuleSet={selectedRuleSet}
+                draft={ruleAuthoringDraft}
+                isBusy={isBusy}
+                onDraftChange={setRuleAuthoringDraft}
+                onSubmit={handleSubmitRule}
+              />
+              <RuleAuthoringPreviewPanel
+                overview={overview}
+                draft={ruleAuthoringDraft}
+              />
+            </div>
+          </div>
+        </article>
 
         <TemplateGovernanceInstructionPanel
           overview={overview}

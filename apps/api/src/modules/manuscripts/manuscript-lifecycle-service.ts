@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ManuscriptNotFoundError } from "../assets/document-asset-service.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
@@ -26,6 +27,11 @@ export interface UploadManuscriptResult {
   job: JobRecord;
 }
 
+export interface UpdateManuscriptTemplateSelectionInput {
+  manuscriptId: string;
+  journalTemplateId?: string | null;
+}
+
 export interface ManuscriptLifecycleServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
@@ -34,6 +40,42 @@ export interface ManuscriptLifecycleServiceOptions {
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
   now?: () => Date;
+}
+
+export class ManuscriptTemplateFamilyNotConfiguredError extends Error {
+  constructor(manuscriptId: string) {
+    super(
+      `Manuscript ${manuscriptId} does not have a base template family configured.`,
+    );
+    this.name = "ManuscriptTemplateFamilyNotConfiguredError";
+  }
+}
+
+export class ManuscriptJournalTemplateNotFoundError extends Error {
+  constructor(journalTemplateId: string) {
+    super(`Journal template ${journalTemplateId} was not found.`);
+    this.name = "ManuscriptJournalTemplateNotFoundError";
+  }
+}
+
+export class ManuscriptJournalTemplateNotActiveError extends Error {
+  constructor(journalTemplateId: string, status: string) {
+    super(`Journal template ${journalTemplateId} is ${status} and cannot be selected.`);
+    this.name = "ManuscriptJournalTemplateNotActiveError";
+  }
+}
+
+export class ManuscriptJournalTemplateFamilyMismatchError extends Error {
+  constructor(
+    journalTemplateId: string,
+    expectedTemplateFamilyId: string,
+    actualTemplateFamilyId: string,
+  ) {
+    super(
+      `Journal template ${journalTemplateId} belongs to template family ${actualTemplateFamilyId}, expected ${expectedTemplateFamilyId}.`,
+    );
+    this.name = "ManuscriptJournalTemplateFamilyMismatchError";
+  }
 }
 
 export class ManuscriptLifecycleService {
@@ -161,6 +203,66 @@ export class ManuscriptLifecycleService {
 
   getManuscript(manuscriptId: string): Promise<ManuscriptRecord | undefined> {
     return this.manuscriptRepository.findById(manuscriptId);
+  }
+
+  async updateTemplateSelection(
+    input: UpdateManuscriptTemplateSelectionInput,
+  ): Promise<ManuscriptRecord> {
+    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+    if (!manuscript) {
+      throw new ManuscriptNotFoundError(input.manuscriptId);
+    }
+
+    const timestamp = this.now().toISOString();
+    if (input.journalTemplateId === null || input.journalTemplateId === undefined) {
+      const updated: ManuscriptRecord = {
+        ...manuscript,
+        current_journal_template_id: undefined,
+        updated_at: timestamp,
+      };
+      await this.manuscriptRepository.save(updated);
+      return updated;
+    }
+
+    const templateFamilyRepository = this.templateFamilyRepository;
+    if (!templateFamilyRepository) {
+      throw new Error("Template family repository is required for journal template selection.");
+    }
+
+    if (!manuscript.current_template_family_id) {
+      throw new ManuscriptTemplateFamilyNotConfiguredError(input.manuscriptId);
+    }
+
+    const journalTemplate =
+      await templateFamilyRepository.findJournalTemplateProfileById(
+        input.journalTemplateId,
+      );
+    if (!journalTemplate) {
+      throw new ManuscriptJournalTemplateNotFoundError(input.journalTemplateId);
+    }
+
+    if (journalTemplate.status !== "active") {
+      throw new ManuscriptJournalTemplateNotActiveError(
+        input.journalTemplateId,
+        journalTemplate.status,
+      );
+    }
+
+    if (journalTemplate.template_family_id !== manuscript.current_template_family_id) {
+      throw new ManuscriptJournalTemplateFamilyMismatchError(
+        input.journalTemplateId,
+        manuscript.current_template_family_id,
+        journalTemplate.template_family_id,
+      );
+    }
+
+    const updated: ManuscriptRecord = {
+      ...manuscript,
+      current_journal_template_id: input.journalTemplateId,
+      updated_at: timestamp,
+    };
+    await this.manuscriptRepository.save(updated);
+    return updated;
   }
 
   getJob(jobId: string): Promise<JobRecord | undefined> {

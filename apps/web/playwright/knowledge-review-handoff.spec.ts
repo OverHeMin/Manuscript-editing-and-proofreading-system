@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-const apiBaseUrl = "http://127.0.0.1:3001";
+const apiBaseUrl =
+  process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 
 test("admin can submit a governed knowledge draft from learning review into knowledge review", async ({
   page,

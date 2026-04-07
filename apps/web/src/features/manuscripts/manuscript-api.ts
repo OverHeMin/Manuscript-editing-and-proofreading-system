@@ -36,6 +36,22 @@ export function getManuscript(client: ManuscriptHttpClient, manuscriptId: string
   });
 }
 
+export function updateManuscriptTemplateSelection(
+  client: ManuscriptHttpClient,
+  input: {
+    manuscriptId: string;
+    journalTemplateId?: string | null;
+  },
+) {
+  return client.request<ManuscriptViewModel>({
+    method: "POST",
+    url: `/api/v1/manuscripts/${input.manuscriptId}/template-selection`,
+    body: {
+      journalTemplateId: input.journalTemplateId ?? null,
+    },
+  });
+}
+
 export function listManuscriptAssets(
   client: ManuscriptHttpClient,
   manuscriptId: string,

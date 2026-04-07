@@ -943,3 +943,154 @@ test("manuscript workbench controller fails open when action-time job hydration 
     ],
   );
 });
+
+test("manuscript workbench controller hydrates journal template context and can update the selected journal template before reloading workspace", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  let selectedJournalTemplateId: string | undefined = "journal-template-1";
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Journal aware manuscript",
+            manuscript_type: "clinical_study",
+            status: "uploaded",
+            created_by: "editor-1",
+            current_template_family_id: "family-1",
+            current_journal_template_id: selectedJournalTemplateId,
+            created_at: "2026-04-07T09:00:00.000Z",
+            updated_at: "2026-04-07T09:15:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/journal-aware.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "journal-aware.docx",
+              created_at: "2026-04-07T09:00:00.000Z",
+              updated_at: "2026-04-07T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/templates/families/family-1/journal-templates"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "journal-template-1",
+              template_family_id: "family-1",
+              journal_key: "zxyjhzz",
+              journal_name: "《中西医结合杂志》",
+              status: "active",
+            },
+            {
+              id: "journal-template-2",
+              template_family_id: "family-1",
+              journal_key: "临床期刊",
+              journal_name: "《临床研究杂志》",
+              status: "draft",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/template-selection"
+      ) {
+        assert.deepEqual(input.body, {
+          journalTemplateId: null,
+        });
+        selectedJournalTemplateId = undefined;
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Journal aware manuscript",
+            manuscript_type: "clinical_study",
+            status: "uploaded",
+            created_by: "editor-1",
+            current_template_family_id: "family-1",
+            created_at: "2026-04-07T09:00:00.000Z",
+            updated_at: "2026-04-07T09:16:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-1");
+  assert.equal(workspace.templateFamily?.name, "Clinical Study Family");
+  assert.equal(workspace.journalTemplateProfiles.length, 2);
+  assert.equal(
+    workspace.selectedJournalTemplateProfile?.journal_name,
+    "《中西医结合杂志》",
+  );
+
+  const updated = await controller.updateTemplateSelectionAndLoad({
+    manuscriptId: "manuscript-1",
+    journalTemplateId: null,
+  });
+  assert.equal(updated.workspace.manuscript.current_journal_template_id, undefined);
+  assert.equal(updated.workspace.selectedJournalTemplateProfile, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+      "GET /api/v1/templates/families",
+      "GET /api/v1/templates/families/family-1/journal-templates",
+      "POST /api/v1/manuscripts/manuscript-1/template-selection",
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+      "GET /api/v1/templates/families",
+      "GET /api/v1/templates/families/family-1/journal-templates",
+    ],
+  );
+});

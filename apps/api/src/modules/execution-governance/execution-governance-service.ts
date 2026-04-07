@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
-import { InMemoryEditorialRuleRepository } from "../editorial-rules/index.ts";
+import {
+  EditorialRuleResolutionService,
+  InMemoryEditorialRuleRepository,
+} from "../editorial-rules/index.ts";
 import type {
   EditorialRuleRecord,
   EditorialRuleRepository,
@@ -66,6 +69,10 @@ interface ExecutionGovernanceWriteContext {
 export interface ExecutionGovernanceServiceOptions {
   repository: ExecutionGovernanceRepository;
   editorialRuleRepository?: EditorialRuleRepository;
+  editorialRuleResolutionService?: Pick<
+    EditorialRuleResolutionService,
+    "resolve"
+  >;
   moduleTemplateRepository: ModuleTemplateRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
@@ -160,6 +167,10 @@ export class ExecutionProfileCompatibilityError extends Error {
 export class ExecutionGovernanceService {
   private readonly repository: ExecutionGovernanceRepository;
   private readonly editorialRuleRepository: EditorialRuleRepository;
+  private readonly editorialRuleResolutionService: Pick<
+    EditorialRuleResolutionService,
+    "resolve"
+  >;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
@@ -171,6 +182,11 @@ export class ExecutionGovernanceService {
     this.repository = options.repository;
     this.editorialRuleRepository =
       options.editorialRuleRepository ?? new InMemoryEditorialRuleRepository();
+    this.editorialRuleResolutionService =
+      options.editorialRuleResolutionService ??
+      new EditorialRuleResolutionService({
+        repository: this.editorialRuleRepository,
+      });
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
@@ -389,12 +405,27 @@ export class ExecutionGovernanceService {
     );
   }
 
-  async resolvePublishedRuleSource(profile: ModuleExecutionProfileRecord): Promise<{
+  async resolvePublishedRuleSource(
+    profile: ModuleExecutionProfileRecord,
+    input?: {
+      journalTemplateId?: string;
+    },
+  ): Promise<{
     ruleSet: EditorialRuleSetRecord;
     rules: EditorialRuleRecord[];
   }> {
-    const ruleSet = await this.requirePublishedRuleSet(profile);
-    const rules = await this.editorialRuleRepository.listRulesByRuleSetId(ruleSet.id);
+    const fallbackRuleSet = await this.requirePublishedRuleSet(profile);
+    const resolved = await this.editorialRuleResolutionService.resolve({
+      templateFamilyId: profile.template_family_id,
+      module: profile.module,
+      journalTemplateId: input?.journalTemplateId,
+    });
+    const ruleSet =
+      resolved.journalRuleSet ?? resolved.baseRuleSet ?? fallbackRuleSet;
+    const rules =
+      resolved.rules.length > 0
+        ? resolved.rules
+        : await this.editorialRuleRepository.listRulesByRuleSetId(ruleSet.id);
 
     return {
       ruleSet,

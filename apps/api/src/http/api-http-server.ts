@@ -334,6 +334,10 @@ type HttpRouteMatch =
       manuscriptId: string;
     }
   | {
+      route: "manuscripts-update-template-selection";
+      manuscriptId: string;
+    }
+  | {
       route: "manuscripts-list-assets";
       manuscriptId: string;
     }
@@ -2248,6 +2252,17 @@ async function handleRoute(
       return runtime.manuscriptApi.getManuscript({
         manuscriptId: routeMatch.manuscriptId,
       });
+    case "manuscripts-update-template-selection": {
+      await runtime.authRuntime.requireSession(req);
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.manuscriptApi.updateTemplateSelection>[0],
+        "manuscriptId"
+      >;
+      return runtime.manuscriptApi.updateTemplateSelection({
+        manuscriptId: routeMatch.manuscriptId,
+        journalTemplateId: body.journalTemplateId,
+      });
+    }
     case "manuscripts-list-assets":
       await runtime.authRuntime.requireSession(req);
       return runtime.manuscriptApi.listAssets({
@@ -2813,6 +2828,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         templateFamilyId: string;
+        journalTemplateId?: string;
         module: string;
       };
 
@@ -2820,6 +2836,7 @@ async function handleRoute(
         actorRole: session.user.role,
         input: {
           templateFamilyId: body.templateFamilyId,
+          journalTemplateId: body.journalTemplateId,
           module: body.module as Parameters<
             typeof runtime.editorialRuleApi.createRuleSet
           >[0]["input"]["module"],
@@ -3995,6 +4012,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "manuscripts-list-assets",
       manuscriptId: manuscriptAssetListMatch[1],
+    };
+  }
+
+  const manuscriptTemplateSelectionMatch = path.match(
+    /^\/api\/v1\/manuscripts\/([^/]+)\/template-selection$/,
+  );
+  if (method === "POST" && manuscriptTemplateSelectionMatch) {
+    return {
+      route: "manuscripts-update-template-selection",
+      manuscriptId: manuscriptTemplateSelectionMatch[1],
     };
   }
 

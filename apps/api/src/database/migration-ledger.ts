@@ -34,6 +34,10 @@ const legacyMigrationChecksums = new Map<string, Set<string>>([
     "0026_model_provider_domestic.sql",
     new Set(["462c9abed36fd1e953d49216f15b173e520e521e54ca23820df5fb33a3ca0152"]),
   ],
+  [
+    "0027_medical_editorial_rule_authoring_workbench.sql",
+    new Set(["dbe493b219e1eb1891844a826ede078f2d120b63b213321e5cc4cc658bbbfeb9"]),
+  ],
 ]);
 
 export interface MigrationLedgerEntry {

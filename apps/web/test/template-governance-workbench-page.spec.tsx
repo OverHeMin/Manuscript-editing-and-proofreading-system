@@ -6,7 +6,10 @@ import {
   TemplateGovernanceWorkbenchPage,
 } from "../src/features/template-governance/template-governance-workbench-page.tsx";
 
-test("template governance workbench page renders rule and AI instruction authoring panels", () => {
+const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
+const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+
+test("template governance workbench page renders journal-aware rule authoring navigation, form, and preview panels", () => {
   const Page = TemplateGovernanceWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -33,6 +36,17 @@ test("template governance workbench page renders rule and AI instruction authori
           name: "Clinical Study Family",
           status: "active",
         },
+        journalTemplateProfiles: [
+          {
+            id: "journal-alpha",
+            template_family_id: "family-1",
+            journal_key: "zxyjhzz",
+            journal_name: "\u300a\u4e2d\u897f\u533b\u7ed3\u5408\u6742\u5fd7\u300b",
+            status: "active",
+          },
+        ],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
         moduleTemplates: [
           {
             id: "template-editing-1",
@@ -82,25 +96,37 @@ test("template governance workbench page renders rule and AI instruction authori
             id: "rule-abstract-objective",
             rule_set_id: "rule-set-editing-1",
             order_no: 10,
+            rule_object: "abstract",
             rule_type: "format",
             execution_mode: "apply_and_inspect",
             scope: {
               sections: ["abstract"],
               block_kind: "heading",
             },
+            selector: {
+              section_selector: "abstract",
+              label_selector: {
+                text: ABSTRACT_OBJECTIVE_SOURCE,
+              },
+            },
             trigger: {
               kind: "exact_text",
-              text: "摘要 目的",
+              text: ABSTRACT_OBJECTIVE_SOURCE,
             },
             action: {
               kind: "replace_heading",
-              to: "（摘要　目的）",
+              to: ABSTRACT_OBJECTIVE_NORMALIZED,
+            },
+            authoring_payload: {
+              label_role: "objective",
+              source_label_text: ABSTRACT_OBJECTIVE_SOURCE,
+              normalized_label_text: ABSTRACT_OBJECTIVE_NORMALIZED,
             },
             confidence_policy: "always_auto",
             severity: "error",
             enabled: true,
-            example_before: "摘要 目的",
-            example_after: "（摘要　目的）",
+            example_before: ABSTRACT_OBJECTIVE_SOURCE,
+            example_after: ABSTRACT_OBJECTIVE_NORMALIZED,
           },
         ],
         instructionTemplates: [
@@ -116,7 +142,7 @@ test("template governance workbench page renders rule and AI instruction authori
               "Apply approved editorial rules before any content rewrite.",
             task_frame:
               "Normalize exact clinical-study formatting and keep meaning stable.",
-            hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+            hard_rule_summary: `${ABSTRACT_OBJECTIVE_SOURCE} -> ${ABSTRACT_OBJECTIVE_NORMALIZED}`,
             allowed_content_operations: ["sentence_rewrite"],
             forbidden_operations: ["change_medical_meaning"],
             manual_review_policy:
@@ -137,7 +163,7 @@ test("template governance workbench page renders rule and AI instruction authori
             "Apply approved editorial rules before any content rewrite.",
           task_frame:
             "Normalize exact clinical-study formatting and keep meaning stable.",
-          hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+          hard_rule_summary: `${ABSTRACT_OBJECTIVE_SOURCE} -> ${ABSTRACT_OBJECTIVE_NORMALIZED}`,
           allowed_content_operations: ["sentence_rewrite"],
           forbidden_operations: ["change_medical_meaning"],
           manual_review_policy:
@@ -148,10 +174,11 @@ test("template governance workbench page renders rule and AI instruction authori
     />,
   );
 
-  assert.match(markup, /Rules/);
+  assert.match(markup, /Rule Authoring Navigator/);
+  assert.match(markup, /Rule Authoring Form/);
+  assert.match(markup, /Rule Authoring Preview/);
+  assert.match(markup, /Journal Template Profiles/);
   assert.match(markup, /AI Instruction Template/);
-  assert.match(markup, /Example Before/);
-  assert.match(markup, /Example After/);
-  assert.match(markup, /摘要 目的/);
-  assert.match(markup, /（摘要　目的）/);
+  assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
+  assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });

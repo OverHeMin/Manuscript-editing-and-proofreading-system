@@ -6,6 +6,10 @@ import { EditorialRuleService } from "../../src/modules/editorial-rules/editoria
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 
+const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
+const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+const AFTER_HEADING_WITH_COLON = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
+
 function createProjectionHarness() {
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -80,17 +84,17 @@ async function seedPublishedRuleSet() {
     selector: {},
     trigger: {
       kind: "exact_text",
-      text: "摘要 目的",
+      text: BEFORE_HEADING,
     },
     action: {
       kind: "replace_heading",
-      to: "（摘要　目的）",
+      to: AFTER_HEADING,
     },
     confidencePolicy: "always_auto",
     severity: "error",
     enabled: true,
-    exampleBefore: "摘要 目的",
-    exampleAfter: "（摘要　目的）",
+    exampleBefore: BEFORE_HEADING,
+    exampleAfter: AFTER_HEADING,
     manualReviewReasonTemplate: "medical_meaning_risk",
   });
 
@@ -124,8 +128,87 @@ test("publishing a rule set projects rule, checklist, and prompt snippet knowled
   );
   assert.equal(projectedRuleKnowledge?.projection_source?.rule_set_id, "rule-set-1");
   assert.equal(projectedRuleKnowledge?.projection_source?.rule_id, "rule-1");
-  assert.match(projectedRuleKnowledge?.canonical_text ?? "", /摘要 目的/u);
-  assert.match(projectedRuleKnowledge?.canonical_text ?? "", /（摘要　目的）/u);
+  assert.ok(projectedRuleKnowledge?.canonical_text.includes(BEFORE_HEADING));
+  assert.ok(projectedRuleKnowledge?.canonical_text.includes(AFTER_HEADING));
+});
+
+test("projected rule knowledge records journal metadata and object metadata when the rule set is journal-scoped", async () => {
+  const harness = createProjectionHarness();
+
+  await harness.templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await harness.templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+
+  const ruleSet = await harness.editorialRuleService.createRuleSet("admin", {
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-template-1",
+    module: "editing",
+  });
+  await harness.editorialRuleService.createRule("admin", {
+    ruleSetId: ruleSet.id,
+    orderNo: 10,
+    ruleObject: "abstract",
+    ruleType: "format",
+    executionMode: "apply_and_inspect",
+    scope: {
+      sections: ["abstract"],
+      block_kind: "heading",
+    },
+    selector: {
+      section_selector: "abstract",
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: AFTER_HEADING,
+    },
+    authoringPayload: {
+      normalized_example: AFTER_HEADING,
+      common_error_text: BEFORE_HEADING,
+      standard_example: AFTER_HEADING,
+    },
+    confidencePolicy: "always_auto",
+    severity: "error",
+    enabled: true,
+    exampleBefore: BEFORE_HEADING,
+    exampleAfter: AFTER_HEADING,
+  });
+
+  await harness.editorialRuleService.publishRuleSet("admin", ruleSet.id);
+
+  const projectedKnowledge = await harness.knowledgeRepository.list();
+  const projectedRuleKnowledge = projectedKnowledge.find(
+    (record) => record.projection_source?.projection_kind === "rule",
+  );
+
+  assert.deepEqual(projectedRuleKnowledge?.template_bindings, [
+    "family-1",
+    "journal:journal-alpha",
+  ]);
+  assert.match(projectedRuleKnowledge?.summary ?? "", /Journal Alpha/u);
+  assert.match(projectedRuleKnowledge?.summary ?? "", /journal-alpha/u);
+  assert.match(projectedRuleKnowledge?.summary ?? "", /abstract/u);
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /common error text/i,
+  );
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /standard example/i,
+  );
 });
 
 test("refreshing projected rule knowledge updates existing projections instead of duplicating forever", async () => {
@@ -149,18 +232,18 @@ test("refreshing projected rule knowledge updates existing projections instead o
     selector: {},
     trigger: {
       kind: "exact_text",
-      text: "摘要 目的",
+      text: BEFORE_HEADING,
     },
     action: {
       kind: "replace_heading",
-      to: "（摘要　目的）：",
+      to: AFTER_HEADING_WITH_COLON,
     },
     authoring_payload: {},
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,
-    example_before: "摘要 目的",
-    example_after: "（摘要　目的）：",
+    example_before: BEFORE_HEADING,
+    example_after: AFTER_HEADING_WITH_COLON,
     manual_review_reason_template: "medical_meaning_risk",
   });
 
@@ -172,5 +255,7 @@ test("refreshing projected rule knowledge updates existing projections instead o
   );
 
   assert.equal(projectedKnowledge.length, 3);
-  assert.match(projectedSnippetKnowledge?.canonical_text ?? "", /（摘要　目的）：/u);
+  assert.ok(
+    projectedSnippetKnowledge?.canonical_text.includes(AFTER_HEADING_WITH_COLON),
+  );
 });

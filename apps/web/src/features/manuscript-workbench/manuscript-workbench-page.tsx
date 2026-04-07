@@ -266,6 +266,7 @@ export function ManuscriptWorkbenchPage({
   });
   const [parentAssetId, setParentAssetId] = useState("");
   const [draftAssetId, setDraftAssetId] = useState("");
+  const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
   const canSubmitUpload =
     uploadForm.title.trim().length > 0 &&
     uploadForm.fileName.trim().length > 0 &&
@@ -294,6 +295,9 @@ export function ManuscriptWorkbenchPage({
         ? current
         : workspace.latestProofreadingDraftAsset?.id ?? "",
     );
+    setSelectedJournalTemplateId(
+      workspace.manuscript.current_journal_template_id ?? "",
+    );
   }, [workspace]);
 
   useEffect(() => {
@@ -312,6 +316,7 @@ export function ManuscriptWorkbenchPage({
     setError("");
     setParentAssetId("");
     setDraftAssetId("");
+    setSelectedJournalTemplateId("");
   }, [normalizedPrefilledManuscriptId]);
 
   useEffect(() => {
@@ -426,6 +431,61 @@ export function ManuscriptWorkbenchPage({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function persistTemplateSelection(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    input: {
+      emitActionResult: boolean;
+    } = {
+      emitActionResult: false,
+    },
+  ) {
+    const nextJournalTemplateId =
+      normalizeOptionalText(selectedJournalTemplateId) ?? null;
+    const currentJournalTemplateId =
+      currentWorkspace.manuscript.current_journal_template_id ?? null;
+    if (nextJournalTemplateId === currentJournalTemplateId) {
+      return currentWorkspace;
+    }
+
+    const result = await controller.updateTemplateSelectionAndLoad({
+      manuscriptId: currentWorkspace.manuscript.id,
+      journalTemplateId: nextJournalTemplateId,
+    });
+    setWorkspace(result.workspace);
+    if (input.emitActionResult) {
+      const appliedJournalLabel =
+        result.workspace.selectedJournalTemplateProfile?.journal_name ?? "Base family only";
+      setStatus(`Updated template context for ${result.workspace.manuscript.id}`);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Save Template Context",
+        message: `Updated template context for ${result.workspace.manuscript.id}`,
+        details: [
+          {
+            label: "Base Template Family",
+            value:
+              result.workspace.templateFamily?.name ??
+              result.workspace.manuscript.current_template_family_id ??
+              "Not bound",
+          },
+          {
+            label: "Journal Template",
+            value: appliedJournalLabel,
+          },
+          {
+            label: "Journal Overrides",
+            value:
+              result.workspace.selectedJournalTemplateProfile != null
+                ? "Active"
+                : "Base only",
+          },
+        ],
+      });
+    }
+
+    return result.workspace;
   }
 
   return (
@@ -560,6 +620,61 @@ export function ManuscriptWorkbenchPage({
               };
             }),
         }}
+        templateSelection={
+          workspace &&
+          (mode === "editing" || mode === "proofreading") &&
+          workspace.templateFamily
+            ? {
+                title: "Journal Template",
+                baseTemplateLabel: workspace.templateFamily.name,
+                selectedJournalTemplateId,
+                currentAppliedLabel:
+                  workspace.selectedJournalTemplateProfile?.journal_name ??
+                  "Base family only",
+                hasPendingChange:
+                  (workspace.manuscript.current_journal_template_id ?? "") !==
+                  selectedJournalTemplateId,
+                options: (workspace.journalTemplateProfiles ?? []).map((profile) => ({
+                  value: profile.id,
+                  label: profile.journal_name,
+                })),
+                onSelect: setSelectedJournalTemplateId,
+                onApply: () =>
+                  void run("Save Template Context", async () => {
+                    const updatedWorkspace = await persistTemplateSelection(workspace, {
+                      emitActionResult: true,
+                    });
+                    return {
+                      tone: "success",
+                      actionLabel: "Save Template Context",
+                      message: `Updated template context for ${updatedWorkspace.manuscript.id}`,
+                      details: [
+                        {
+                          label: "Base Template Family",
+                          value:
+                            updatedWorkspace.templateFamily?.name ??
+                            updatedWorkspace.manuscript.current_template_family_id ??
+                            "Not bound",
+                        },
+                        {
+                          label: "Journal Template",
+                          value:
+                            updatedWorkspace.selectedJournalTemplateProfile?.journal_name ??
+                            "Base family only",
+                        },
+                        {
+                          label: "Journal Overrides",
+                          value:
+                            updatedWorkspace.selectedJournalTemplateProfile != null
+                              ? "Active"
+                              : "Base only",
+                        },
+                      ],
+                    };
+                  }),
+              }
+            : undefined
+        }
         moduleAction={
           workspace && mode !== "submission"
             ? {
@@ -577,12 +692,13 @@ export function ManuscriptWorkbenchPage({
                 onSelect: setParentAssetId,
                 onRun: () =>
                   void run(resolveActionLabel(mode), async () => {
+                    const synchronizedWorkspace = await persistTemplateSelection(workspace);
                     const result = await controller.runModuleAndLoad({
                       mode,
-                      manuscriptId: workspace.manuscript.id,
+                      manuscriptId: synchronizedWorkspace.manuscript.id,
                       parentAssetId,
                       actorRole,
-                      storageKey: `runs/${workspace.manuscript.id}/${mode}/output`,
+                      storageKey: `runs/${synchronizedWorkspace.manuscript.id}/${mode}/output`,
                       fileName: `${mode}-output`,
                     });
                     setWorkspace(result.workspace);

@@ -17,7 +17,10 @@ import type {
 export interface EditorialRuleProjectionServiceOptions {
   editorialRuleRepository: EditorialRuleRepository;
   knowledgeRepository: KnowledgeRepository;
-  templateFamilyRepository: Pick<TemplateFamilyRepository, "findById">;
+  templateFamilyRepository: Pick<
+    TemplateFamilyRepository,
+    "findById" | "findJournalTemplateProfileById"
+  >;
   createId?: () => string;
 }
 
@@ -44,12 +47,19 @@ export class EditorialRuleProjectionTemplateFamilyNotFoundError extends Error {
   }
 }
 
+export class EditorialRuleProjectionJournalTemplateNotFoundError extends Error {
+  constructor(journalTemplateId: string) {
+    super(`Journal template ${journalTemplateId} was not found for editorial rule projection.`);
+    this.name = "EditorialRuleProjectionJournalTemplateNotFoundError";
+  }
+}
+
 export class EditorialRuleProjectionService {
   private readonly editorialRuleRepository: EditorialRuleRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
   private readonly templateFamilyRepository: Pick<
     TemplateFamilyRepository,
-    "findById"
+    "findById" | "findJournalTemplateProfileById"
   >;
   private readonly createId: () => string;
 
@@ -82,6 +92,16 @@ export class EditorialRuleProjectionService {
     const rules = (await this.editorialRuleRepository.listRulesByRuleSetId(ruleSetId)).filter(
       (rule) => rule.enabled,
     );
+    const journalTemplate = ruleSet.journal_template_id
+      ? await this.templateFamilyRepository.findJournalTemplateProfileById(
+          ruleSet.journal_template_id,
+        )
+      : undefined;
+    if (ruleSet.journal_template_id && !journalTemplate) {
+      throw new EditorialRuleProjectionJournalTemplateNotFoundError(
+        ruleSet.journal_template_id,
+      );
+    }
     const existingKnowledge = await this.listProjectedKnowledgeByRuleSet(ruleSetId);
     const existingByProjectionKey = new Map(
       existingKnowledge.map((record) => [createProjectionKey(record), record]),
@@ -106,6 +126,8 @@ export class EditorialRuleProjectionService {
           rule,
           projectionKind,
           manuscriptType: templateFamily.manuscript_type,
+          templateFamilyName: templateFamily.name,
+          journalTemplate,
         });
 
         await this.knowledgeRepository.save(record);
@@ -166,6 +188,11 @@ function buildProjectedKnowledgeRecord(input: {
   rule: EditorialRuleRecord;
   projectionKind: KnowledgeProjectionKind;
   manuscriptType: ManuscriptType;
+  templateFamilyName: string;
+  journalTemplate?: {
+    journal_key: string;
+    journal_name: string;
+  };
 }): KnowledgeRecord {
   return {
     id: input.id,
@@ -174,8 +201,16 @@ function buildProjectedKnowledgeRecord(input: {
       input.ruleSet,
       input.rule,
       input.projectionKind,
+      input.journalTemplate,
     ),
-    summary: buildProjectionSummary(input.ruleSet, input.projectionKind),
+    summary: buildProjectionSummary(
+      input.ruleSet,
+      input.rule,
+      input.projectionKind,
+      input.manuscriptType,
+      input.templateFamilyName,
+      input.journalTemplate,
+    ),
     knowledge_kind: input.projectionKind,
     status: "approved",
     routing: {
@@ -183,7 +218,14 @@ function buildProjectedKnowledgeRecord(input: {
       manuscript_types: [input.manuscriptType],
       sections: readStringArray(input.rule.scope.sections),
     },
+    ...(input.rule.evidence_level
+      ? { evidence_level: input.rule.evidence_level }
+      : {}),
     aliases: readAliases(input.rule),
+    template_bindings: buildTemplateBindings(
+      input.ruleSet,
+      input.journalTemplate,
+    ),
     projection_source: {
       source_kind: "editorial_rule_projection",
       rule_set_id: input.ruleSet.id,
@@ -211,27 +253,55 @@ function buildProjectionTitle(
 
 function buildProjectionSummary(
   ruleSet: EditorialRuleSetRecord,
+  rule: EditorialRuleRecord,
   projectionKind: KnowledgeProjectionKind,
+  manuscriptType: ManuscriptType,
+  templateFamilyName: string,
+  journalTemplate?: {
+    journal_key: string;
+    journal_name: string;
+  },
 ): string {
-  return `Generated ${projectionKind} projection from ${ruleSet.module} rule set v${ruleSet.version_no}.`;
+  const segments = [
+    `Generated ${projectionKind} projection from ${ruleSet.module} rule set v${ruleSet.version_no}`,
+    `for ${templateFamilyName} (${manuscriptType})`,
+    `object ${rule.rule_object}`,
+  ];
+
+  if (journalTemplate) {
+    segments.push(
+      `journal ${journalTemplate.journal_name} (${journalTemplate.journal_key})`,
+    );
+  }
+
+  return `${segments.join(", ")}.`;
 }
 
 function buildProjectionCanonicalText(
   ruleSet: EditorialRuleSetRecord,
   rule: EditorialRuleRecord,
   projectionKind: KnowledgeProjectionKind,
+  journalTemplate?: {
+    journal_key: string;
+    journal_name: string;
+  },
 ): string {
   const before = resolveBeforeText(rule);
   const after = resolveAfterText(rule);
   const sectionText = describeSectionScope(rule);
+  const journalContext = journalTemplate
+    ? ` Journal override: ${journalTemplate.journal_name} (${journalTemplate.journal_key}).`
+    : "";
+  const objectContext = ` Rule object: ${rule.rule_object}.`;
+  const authoringText = buildAuthoringPayloadText(rule);
 
   switch (projectionKind) {
     case "rule":
-      return `Published ${ruleSet.module} rule: when ${sectionText} contains "${before}", normalize it to "${after}".`;
+      return `Published ${ruleSet.module} rule for ${sectionText}: common error text "${before}". Standard example "${after}".${objectContext}${journalContext}${authoringText}`;
     case "checklist":
-      return `Checklist item: inspect ${sectionText} and confirm "${before}" has been normalized to "${after}".`;
+      return `Checklist item: inspect ${sectionText} and confirm common error text "${before}" has been normalized to standard example "${after}".${objectContext}${journalContext}${authoringText}`;
     case "prompt_snippet":
-      return `Instruction snippet: if you encounter "${before}" in ${sectionText}, change it to "${after}" and preserve the manuscript's medical meaning.`;
+      return `Instruction snippet: if you encounter common error text "${before}" in ${sectionText}, change it to standard example "${after}" and preserve the manuscript's medical meaning.${objectContext}${journalContext}${authoringText}`;
   }
 }
 
@@ -298,6 +368,45 @@ function readAliases(rule: EditorialRuleRecord): string[] | undefined {
     (value): value is string => typeof value === "string" && value.trim().length > 0,
   );
   return aliases.length > 0 ? aliases : undefined;
+}
+
+function buildTemplateBindings(
+  ruleSet: EditorialRuleSetRecord,
+  journalTemplate?: {
+    journal_key: string;
+  },
+): string[] {
+  const bindings = [ruleSet.template_family_id];
+  if (journalTemplate) {
+    bindings.push(`journal:${journalTemplate.journal_key}`);
+  }
+  return bindings;
+}
+
+function buildAuthoringPayloadText(rule: EditorialRuleRecord): string {
+  const commonErrorText = readAuthoringText(rule, "common_error_text");
+  const standardExample =
+    readAuthoringText(rule, "standard_example") ??
+    readAuthoringText(rule, "normalized_example");
+  const details: string[] = [];
+
+  if (commonErrorText && commonErrorText !== resolveBeforeText(rule)) {
+    details.push(` Common error text detail: "${commonErrorText}".`);
+  }
+
+  if (standardExample && standardExample !== resolveAfterText(rule)) {
+    details.push(` Standard example detail: "${standardExample}".`);
+  }
+
+  return details.join("");
+}
+
+function readAuthoringText(
+  rule: EditorialRuleRecord,
+  key: string,
+): string | undefined {
+  const value = rule.authoring_payload[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function createProjectionKey(record: KnowledgeRecord): string {

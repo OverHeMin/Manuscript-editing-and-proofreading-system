@@ -43,13 +43,19 @@ import {
   type EditorialRuleViewModel,
 } from "../editorial-rules/index.ts";
 import {
+  activateJournalTemplateProfile,
+  archiveJournalTemplateProfile,
+  createJournalTemplateProfile,
   createModuleTemplateDraft,
   createTemplateFamily,
+  listJournalTemplateProfilesByTemplateFamilyId,
   listModuleTemplatesByTemplateFamilyId,
   listTemplateFamilies,
   publishModuleTemplate,
   updateModuleTemplateDraft,
   updateTemplateFamily,
+  type CreateJournalTemplateProfileInput,
+  type JournalTemplateProfileViewModel,
   type CreateModuleTemplateDraftInput,
   type CreateTemplateFamilyInput,
   type ModuleTemplateViewModel,
@@ -68,6 +74,9 @@ export interface TemplateGovernanceWorkbenchOverview {
   templateFamilies: TemplateFamilyViewModel[];
   selectedTemplateFamilyId: string | null;
   selectedTemplateFamily: TemplateFamilyViewModel | null;
+  journalTemplateProfiles: JournalTemplateProfileViewModel[];
+  selectedJournalTemplateId: string | null;
+  selectedJournalTemplateProfile: JournalTemplateProfileViewModel | null;
   moduleTemplates: ModuleTemplateViewModel[];
   ruleSets: EditorialRuleSetViewModel[];
   selectedRuleSetId: string | null;
@@ -87,6 +96,7 @@ export interface TemplateGovernanceWorkbenchOverview {
 
 export interface TemplateGovernanceReloadContext {
   selectedTemplateFamilyId?: string | null;
+  selectedJournalTemplateId?: string | null;
   selectedRuleSetId?: string | null;
   selectedInstructionTemplateId?: string | null;
   selectedKnowledgeItemId?: string | null;
@@ -112,6 +122,26 @@ export interface TemplateGovernanceWorkbenchController {
     input: CreateModuleTemplateDraftInput & TemplateGovernanceReloadContext,
   ): Promise<{
     moduleTemplate: ModuleTemplateViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  createJournalTemplateProfileAndReload(
+    input: CreateJournalTemplateProfileInput & TemplateGovernanceReloadContext,
+  ): Promise<{
+    journalTemplateProfile: JournalTemplateProfileViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  activateJournalTemplateProfileAndReload(input: {
+    journalTemplateProfileId: string;
+    actorRole: AuthRole;
+  } & TemplateGovernanceReloadContext): Promise<{
+    journalTemplateProfile: JournalTemplateProfileViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  archiveJournalTemplateProfileAndReload(input: {
+    journalTemplateProfileId: string;
+    actorRole: AuthRole;
+  } & TemplateGovernanceReloadContext): Promise<{
+    journalTemplateProfile: JournalTemplateProfileViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
   updateModuleTemplateDraftAndReload(input: {
@@ -231,6 +261,7 @@ export function createTemplateGovernanceWorkbenchController(
     },
     async createModuleTemplateDraftAndReload(input) {
       const {
+        selectedJournalTemplateId,
         selectedKnowledgeItemId,
         selectedInstructionTemplateId,
         selectedRuleSetId,
@@ -245,10 +276,82 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             selectedTemplateFamilyId ?? draftInput.templateFamilyId,
+          selectedJournalTemplateId,
           selectedRuleSetId,
           selectedInstructionTemplateId,
           selectedKnowledgeItemId,
           filters,
+        }),
+      };
+    },
+    async createJournalTemplateProfileAndReload(input) {
+      const {
+        selectedRuleSetId,
+        selectedInstructionTemplateId,
+        selectedKnowledgeItemId,
+        selectedTemplateFamilyId,
+        filters,
+        ...journalTemplateInput
+      } = input;
+      const journalTemplateProfile = (
+        await createJournalTemplateProfile(client, journalTemplateInput)
+      ).body;
+
+      return {
+        journalTemplateProfile,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            selectedTemplateFamilyId ?? journalTemplateInput.templateFamilyId,
+          selectedJournalTemplateId: journalTemplateProfile.id,
+          selectedRuleSetId,
+          selectedInstructionTemplateId,
+          selectedKnowledgeItemId,
+          filters,
+        }),
+      };
+    },
+    async activateJournalTemplateProfileAndReload(input) {
+      const journalTemplateProfile = (
+        await activateJournalTemplateProfile(
+          client,
+          input.journalTemplateProfileId,
+          input.actorRole,
+        )
+      ).body;
+
+      return {
+        journalTemplateProfile,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? journalTemplateProfile.template_family_id,
+          selectedJournalTemplateId:
+            input.selectedJournalTemplateId ?? journalTemplateProfile.id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
+    async archiveJournalTemplateProfileAndReload(input) {
+      const journalTemplateProfile = (
+        await archiveJournalTemplateProfile(
+          client,
+          input.journalTemplateProfileId,
+          input.actorRole,
+        )
+      ).body;
+
+      return {
+        journalTemplateProfile,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? journalTemplateProfile.template_family_id,
+          selectedJournalTemplateId: null,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
         }),
       };
     },
@@ -262,6 +365,7 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             input.selectedTemplateFamilyId ?? moduleTemplate.template_family_id,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
@@ -279,6 +383,7 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             input.selectedTemplateFamilyId ?? moduleTemplate.template_family_id,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
@@ -288,6 +393,7 @@ export function createTemplateGovernanceWorkbenchController(
     },
     async createRuleSetAndReload(input) {
       const {
+        selectedJournalTemplateId,
         selectedKnowledgeItemId,
         selectedInstructionTemplateId,
         selectedRuleSetId: _selectedRuleSetId,
@@ -302,6 +408,8 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             selectedTemplateFamilyId ?? ruleSet.template_family_id,
+          selectedJournalTemplateId:
+            ruleSet.journal_template_id ?? selectedJournalTemplateId ?? null,
           selectedRuleSetId: ruleSet.id,
           selectedInstructionTemplateId,
           selectedKnowledgeItemId,
@@ -316,6 +424,7 @@ export function createTemplateGovernanceWorkbenchController(
         rule,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId ?? rule.rule_set_id,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
@@ -335,6 +444,8 @@ export function createTemplateGovernanceWorkbenchController(
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId:
             input.selectedTemplateFamilyId ?? ruleSet.template_family_id,
+          selectedJournalTemplateId:
+            ruleSet.journal_template_id ?? input.selectedJournalTemplateId ?? null,
           selectedRuleSetId: input.selectedRuleSetId ?? ruleSet.id,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: input.selectedKnowledgeItemId,
@@ -344,6 +455,7 @@ export function createTemplateGovernanceWorkbenchController(
     },
     async createInstructionTemplateAndReload(input) {
       const {
+        selectedJournalTemplateId,
         selectedKnowledgeItemId,
         selectedInstructionTemplateId: _selectedInstructionTemplateId,
         selectedRuleSetId,
@@ -359,6 +471,7 @@ export function createTemplateGovernanceWorkbenchController(
         instructionTemplate,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId,
+          selectedJournalTemplateId,
           selectedRuleSetId,
           selectedInstructionTemplateId: instructionTemplate.id,
           selectedKnowledgeItemId,
@@ -377,6 +490,7 @@ export function createTemplateGovernanceWorkbenchController(
         instructionTemplate,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId:
             input.selectedInstructionTemplateId ?? instructionTemplate.id,
@@ -387,6 +501,7 @@ export function createTemplateGovernanceWorkbenchController(
     },
     async createKnowledgeDraftAndReload(input) {
       const {
+        selectedJournalTemplateId,
         selectedInstructionTemplateId,
         selectedKnowledgeItemId,
         selectedRuleSetId,
@@ -400,6 +515,7 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId,
+          selectedJournalTemplateId,
           selectedRuleSetId,
           selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
@@ -416,6 +532,7 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
@@ -432,6 +549,7 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
@@ -446,6 +564,7 @@ export function createTemplateGovernanceWorkbenchController(
         knowledgeItem,
         overview: await loadTemplateGovernanceOverview(client, {
           selectedTemplateFamilyId: input.selectedTemplateFamilyId,
+          selectedJournalTemplateId: input.selectedJournalTemplateId,
           selectedRuleSetId: input.selectedRuleSetId,
           selectedInstructionTemplateId: input.selectedInstructionTemplateId,
           selectedKnowledgeItemId: knowledgeItem.id,
@@ -481,18 +600,40 @@ async function loadTemplateGovernanceOverview(
   );
   const selectedTemplateFamily =
     templateFamilies.find((family) => family.id === selectedTemplateFamilyId) ?? null;
+  const journalTemplateProfiles =
+    selectedTemplateFamilyId == null
+      ? []
+      : (
+          await listJournalTemplateProfilesByTemplateFamilyId(
+            client,
+            selectedTemplateFamilyId,
+          )
+        ).body;
   const moduleTemplates =
     selectedTemplateFamilyId == null
       ? []
       : (
           await listModuleTemplatesByTemplateFamilyId(client, selectedTemplateFamilyId)
         ).body;
-  const ruleSets =
+  const familyRuleSets =
     selectedTemplateFamilyId == null
       ? []
       : ruleSetsResponse.body.filter(
           (ruleSet) => ruleSet.template_family_id === selectedTemplateFamilyId,
         );
+  const selectedJournalTemplateId = resolveSelectedJournalTemplateId({
+    preferredJournalTemplateId: input.selectedJournalTemplateId,
+    preferredRuleSetId: input.selectedRuleSetId,
+    journalTemplateProfiles,
+    familyRuleSets,
+  });
+  const selectedJournalTemplateProfile =
+    journalTemplateProfiles.find((profile) => profile.id === selectedJournalTemplateId) ?? null;
+  const ruleSets = familyRuleSets.filter((ruleSet) =>
+    selectedJournalTemplateId == null
+      ? ruleSet.journal_template_id == null
+      : ruleSet.journal_template_id === selectedJournalTemplateId,
+  );
   const selectedRuleSetId = resolveSelectedId(
     ruleSets.map((ruleSet) => ruleSet.id),
     input.selectedRuleSetId,
@@ -521,7 +662,12 @@ async function loadTemplateGovernanceOverview(
   );
   const visibleKnowledgeItems = filterKnowledgeItems(knowledgeItems, filters);
   const boundKnowledgeItems = visibleKnowledgeItems.filter((item) =>
-    isKnowledgeItemBoundToFamily(item, selectedTemplateFamilyId, moduleTemplates),
+    isKnowledgeItemBoundToFamily(
+      item,
+      selectedTemplateFamilyId,
+      moduleTemplates,
+      selectedJournalTemplateId,
+    ),
   );
   const selectedKnowledgeItemId = resolveSelectedKnowledgeItemId({
     preferredId: input.selectedKnowledgeItemId,
@@ -535,6 +681,9 @@ async function loadTemplateGovernanceOverview(
     templateFamilies,
     selectedTemplateFamilyId,
     selectedTemplateFamily,
+    journalTemplateProfiles,
+    selectedJournalTemplateId,
+    selectedJournalTemplateProfile,
     moduleTemplates,
     ruleSets,
     selectedRuleSetId,
@@ -630,6 +779,7 @@ function isKnowledgeItemBoundToFamily(
   item: KnowledgeItemViewModel,
   selectedTemplateFamilyId: string | null,
   moduleTemplates: readonly ModuleTemplateViewModel[],
+  selectedJournalTemplateId: string | null,
 ): boolean {
   if (selectedTemplateFamilyId == null) {
     return false;
@@ -639,8 +789,47 @@ function isKnowledgeItemBoundToFamily(
   if (bindings.has(selectedTemplateFamilyId)) {
     return true;
   }
+  if (
+    selectedJournalTemplateId != null &&
+    bindings.has(`journal:${selectedJournalTemplateId}`)
+  ) {
+    return true;
+  }
 
   return moduleTemplates.some((template) => bindings.has(template.id));
+}
+
+function resolveSelectedJournalTemplateId(input: {
+  preferredJournalTemplateId: string | null | undefined;
+  preferredRuleSetId: string | null | undefined;
+  journalTemplateProfiles: readonly JournalTemplateProfileViewModel[];
+  familyRuleSets: readonly EditorialRuleSetViewModel[];
+}): string | null {
+  const journalTemplateIds = new Set(
+    input.journalTemplateProfiles.map((profile) => profile.id),
+  );
+
+  if (input.preferredRuleSetId) {
+    const preferredRuleSet = input.familyRuleSets.find(
+      (ruleSet) => ruleSet.id === input.preferredRuleSetId,
+    );
+    if (preferredRuleSet) {
+      return preferredRuleSet.journal_template_id ?? null;
+    }
+  }
+
+  if (
+    input.preferredJournalTemplateId &&
+    journalTemplateIds.has(input.preferredJournalTemplateId)
+  ) {
+    return input.preferredJournalTemplateId;
+  }
+
+  if (input.preferredJournalTemplateId === null) {
+    return null;
+  }
+
+  return null;
 }
 
 function resolveSelectedKnowledgeItemId(input: {

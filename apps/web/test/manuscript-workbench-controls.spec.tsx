@@ -173,3 +173,55 @@ test("manuscript workbench controls surface the currently selected asset context
   assert.match(markup, /Selected Draft Asset/);
   assert.match(markup, /proofreading-draft\.docx/);
 });
+
+test("manuscript workbench controls render a journal template selector beside module actions", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="editing"
+      busy={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      templateSelection={{
+        title: "Journal Template",
+        baseTemplateLabel: "Clinical Study Family",
+        selectedJournalTemplateId: "journal-template-1",
+        currentAppliedLabel: "《中西医结合杂志》",
+        hasPendingChange: false,
+        options: [
+          {
+            value: "journal-template-1",
+            label: "《中西医结合杂志》",
+          },
+          {
+            value: "journal-template-2",
+            label: "《临床研究杂志》",
+          },
+        ],
+        onSelect: () => {},
+        onApply: () => {},
+      }}
+      moduleAction={{
+        title: "Editing Run",
+        selectedAssetId: "asset-edited-1",
+        emptyLabel: "Select asset",
+        actionLabel: "Run Editing",
+        options: [
+          {
+            value: "asset-edited-1",
+            label: "editing-final.docx 路 edited_docx 路 asset-edited-1",
+          },
+        ],
+        onSelect: () => {},
+        onRun: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /Journal Template/);
+  assert.match(markup, /Clinical Study Family/);
+  assert.match(markup, /《中西医结合杂志》/);
+  assert.match(markup, /Save Template Context/);
+});

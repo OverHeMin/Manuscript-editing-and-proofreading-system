@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import {
+  InMemoryEditorialRuleRepository,
+} from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
 import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
@@ -25,6 +28,7 @@ function createExecutionResolutionHarness(input?: {
   };
 }) {
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -34,6 +38,7 @@ function createExecutionResolutionHarness(input?: {
     new InMemoryModelRoutingGovernanceRepository();
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -77,6 +82,7 @@ function createExecutionResolutionHarness(input?: {
 
   return {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -85,6 +91,20 @@ function createExecutionResolutionHarness(input?: {
     modelRoutingGovernanceRepository,
     executionResolutionService,
   };
+}
+
+async function savePublishedRuleSet(input: {
+  repository: InMemoryEditorialRuleRepository;
+  id: string;
+  module: "screening" | "editing" | "proofreading";
+}) {
+  await input.repository.saveRuleSet({
+    id: input.id,
+    template_family_id: "family-1",
+    module: input.module,
+    version_no: 1,
+    status: "published",
+  });
 }
 
 async function saveActivePolicy(input: {
@@ -122,6 +142,7 @@ async function saveActivePolicy(input: {
 test("execution resolution expands the active profile into a concrete runtime bundle", async () => {
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -189,12 +210,18 @@ test("execution resolution expands the active profile into a concrete runtime bu
     scopeValue: "family-1",
     primaryModelId: "model-editing-1",
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
 
   const createdProfile = await executionGovernanceService.createProfile("admin", {
     module: "editing",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: ["skill-editing-1"],
     knowledgeBindingMode: "profile_plus_dynamic",
@@ -245,6 +272,7 @@ test("execution resolution expands the active profile into a concrete runtime bu
 test("execution resolution reports runtime binding readiness when observation succeeds", async () => {
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -362,12 +390,18 @@ test("execution resolution reports runtime binding readiness when observation su
     scopeValue: "family-1",
     primaryModelId: "model-editing-1",
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
 
   const createdProfile = await executionGovernanceService.createProfile("admin", {
     module: "editing",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: ["skill-editing-1"],
     knowledgeBindingMode: "profile_plus_dynamic",
@@ -405,6 +439,7 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
   };
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -471,11 +506,17 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
     scopeValue: "family-1",
     primaryModelId: "model-editing-1",
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
   const createdProfile = await executionGovernanceService.createProfile("admin", {
     module: "editing",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: [],
     knowledgeBindingMode: "profile_only",
@@ -495,6 +536,7 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
 test("execution resolution fails open when runtime binding readiness observation throws unexpectedly", async () => {
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -561,11 +603,17 @@ test("execution resolution fails open when runtime binding readiness observation
     scopeValue: "family-1",
     primaryModelId: "model-editing-1",
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
   const createdProfile = await executionGovernanceService.createProfile("admin", {
     module: "editing",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: [],
     knowledgeBindingMode: "profile_only",
@@ -590,6 +638,7 @@ test("execution resolution fails open when runtime binding readiness observation
 test("execution resolution fails when no compatible routed model exists", async () => {
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     executionResolutionService,
@@ -612,11 +661,17 @@ test("execution resolution fails when no compatible routed model exists", async 
     module: "screening",
     manuscript_types: ["clinical_study"],
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-screening-1",
+    module: "screening",
+  });
   await executionGovernanceService.createProfile("admin", {
     module: "screening",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-screening-1",
+    ruleSetId: "rule-set-screening-1",
     promptTemplateId: "prompt-screening-1",
     skillPackageIds: [],
     knowledgeBindingMode: "profile_only",
@@ -637,6 +692,7 @@ test("execution resolution fails when no compatible routed model exists", async 
 test("execution resolution falls back through legacy template override, module default, then system default when no active governed policy exists", async () => {
   const {
     executionGovernanceService,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     modelRegistryRepository,
@@ -661,11 +717,17 @@ test("execution resolution falls back through legacy template override, module d
     module: "screening",
     manuscript_types: ["clinical_study"],
   });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-screening-1",
+    module: "screening",
+  });
   await executionGovernanceService.createProfile("admin", {
     module: "screening",
     manuscriptType: "clinical_study",
     templateFamilyId: "family-1",
     moduleTemplateId: "template-screening-1",
+    ruleSetId: "rule-set-screening-1",
     promptTemplateId: "prompt-screening-1",
     skillPackageIds: [],
     knowledgeBindingMode: "profile_only",
