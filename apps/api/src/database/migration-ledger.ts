@@ -3,6 +3,12 @@ import path from "node:path";
 import { createMigrationChecksum } from "./migration-checksum.ts";
 
 const migrationsDirectory = path.join(import.meta.dirname, "migrations");
+const migrationDescriptions = new Map<string, string>([
+  [
+    "0027_medical_editorial_rule_authoring_workbench.sql",
+    "Add journal template profiles and enriched editorial rule persistence fields.",
+  ],
+]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [
     "0001_initial.sql",
@@ -24,6 +30,7 @@ const legacyMigrationChecksums = new Map<string, Set<string>>([
 
 export interface MigrationLedgerEntry {
   version: string;
+  description: string;
   checksum: string;
   acceptedLegacyChecksums: string[];
 }
@@ -43,6 +50,7 @@ export function readRepositoryMigrationSql(version: string): string {
 export function getRepositoryMigrationLedger(): MigrationLedgerEntry[] {
   cachedLedger ??= getRepositoryMigrationFiles().map((version) => ({
     version,
+    description: migrationDescriptions.get(version) ?? "No description recorded.",
     checksum: createMigrationChecksum(readRepositoryMigrationSql(version)),
     acceptedLegacyChecksums: [...(legacyMigrationChecksums.get(version) ?? [])],
   }));

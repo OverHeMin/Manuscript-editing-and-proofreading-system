@@ -178,12 +178,14 @@ model Manuscript {
   currentEditingAssetId      String?          @map("current_editing_asset_id") @db.Uuid
   currentProofreadingAssetId String?          @map("current_proofreading_asset_id") @db.Uuid
   currentTemplateFamilyId    String?          @map("current_template_family_id") @db.Uuid
+  currentJournalTemplateId   String?          @map("current_journal_template_id") @db.Uuid
   createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
   currentScreeningAsset      DocumentAsset?   @relation("CurrentScreeningAsset", fields: [currentScreeningAssetId], references: [id], onDelete: SetNull)
   currentEditingAsset        DocumentAsset?   @relation("CurrentEditingAsset", fields: [currentEditingAssetId], references: [id], onDelete: SetNull)
   currentProofreadingAsset   DocumentAsset?   @relation("CurrentProofreadingAsset", fields: [currentProofreadingAssetId], references: [id], onDelete: SetNull)
   currentTemplateFamily      TemplateFamily?  @relation(fields: [currentTemplateFamilyId], references: [id], onDelete: SetNull)
+  currentJournalTemplate     JournalTemplateProfile? @relation(fields: [currentJournalTemplateId], references: [id], onDelete: SetNull)
   documentAssets             DocumentAsset[]
   jobs                       Job[]
   auditLogs                  AuditLog[]
@@ -254,10 +256,28 @@ model TemplateFamily {
   updatedAt       DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
   moduleTemplates ModuleTemplate[]
   editorialRuleSets EditorialRuleSet[]
+  journalTemplateProfiles JournalTemplateProfile[]
   manuscripts     Manuscript[]
 
   @@unique([manuscriptType, name], map: "template_families_manuscript_type_name_key")
   @@map("template_families")
+}
+
+model JournalTemplateProfile {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateFamilyId String               @map("template_family_id") @db.Uuid
+  journalKey       String               @map("journal_key") @db.Text
+  journalName      String               @map("journal_name") @db.Text
+  status           TemplateFamilyStatus @default(draft)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  templateFamily   TemplateFamily       @relation(fields: [templateFamilyId], references: [id], onDelete: Cascade)
+  manuscripts      Manuscript[]
+  editorialRuleSets EditorialRuleSet[]
+
+  @@unique([templateFamilyId, journalKey], map: "journal_template_profiles_template_family_journal_key_key")
+  @@index([templateFamilyId, status], map: "journal_template_profiles_template_family_status_idx")
+  @@map("journal_template_profiles")
 }
 
 model ModuleTemplate {
@@ -282,14 +302,16 @@ model ModuleTemplate {
 model EditorialRuleSet {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   templateFamilyId String   @map("template_family_id") @db.Uuid
+  journalTemplateId String? @map("journal_template_id") @db.Uuid
   module           ModuleType
   versionNo        Int      @map("version_no")
   status           String   @default("draft") @db.Text
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   templateFamily   TemplateFamily @relation(fields: [templateFamilyId], references: [id], onDelete: Cascade)
+  journalTemplate  JournalTemplateProfile? @relation(fields: [journalTemplateId], references: [id], onDelete: SetNull)
 
-  @@unique([templateFamilyId, module, versionNo], map: "editorial_rule_sets_template_family_module_version_key")
+  @@unique([templateFamilyId, journalTemplateId, module, versionNo], map: "editorial_rule_sets_family_journal_module_version_key")
   @@index([templateFamilyId, module, status], map: "editorial_rule_sets_template_family_module_status_idx")
   @@map("editorial_rule_sets")
 }
@@ -298,11 +320,15 @@ model EditorialRule {
   id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ruleSetId                 String   @map("rule_set_id") @db.Uuid
   orderNo                   Int      @map("order_no")
+  ruleObject                String   @map("rule_object") @db.Text
   ruleType                  String   @map("rule_type") @db.Text
   executionMode             String   @map("execution_mode") @db.Text
   scope                     Json
+  selector                  Json
   trigger                   Json
   action                    Json
+  authoringPayload          Json      @map("authoring_payload")
+  evidenceLevel             EvidenceLevel? @map("evidence_level")
   confidencePolicy          String   @map("confidence_policy") @db.Text
   severity                  String   @db.Text
   enabled                   Boolean  @default(true)
