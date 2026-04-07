@@ -13,6 +13,9 @@ create table if not exists journal_template_profiles (
 create index if not exists journal_template_profiles_template_family_status_idx
   on journal_template_profiles (template_family_id, status);
 
+create unique index if not exists journal_template_profiles_family_id_uidx
+  on journal_template_profiles (template_family_id, id);
+
 alter table manuscripts
   add column if not exists current_journal_template_id uuid;
 
@@ -49,25 +52,38 @@ begin
   if not exists (
     select 1
     from pg_constraint
-    where conname = 'manuscripts_current_journal_template_id_fkey'
+    where conname = 'manuscripts_current_journal_template_family_match_check'
   ) then
     alter table manuscripts
-      add constraint manuscripts_current_journal_template_id_fkey
-      foreign key (current_journal_template_id)
-      references journal_template_profiles(id)
-      on delete set null;
+      add constraint manuscripts_current_journal_template_family_match_check
+      check (
+        current_journal_template_id is null
+        or current_template_family_id is not null
+      );
   end if;
 
   if not exists (
     select 1
     from pg_constraint
-    where conname = 'editorial_rule_sets_journal_template_id_fkey'
+    where conname = 'manuscripts_current_family_journal_template_id_fkey'
+  ) then
+    alter table manuscripts
+      add constraint manuscripts_current_family_journal_template_id_fkey
+      foreign key (current_template_family_id, current_journal_template_id)
+      references journal_template_profiles(template_family_id, id)
+      on delete restrict;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'editorial_rule_sets_family_journal_template_id_fkey'
   ) then
     alter table editorial_rule_sets
-      add constraint editorial_rule_sets_journal_template_id_fkey
-      foreign key (journal_template_id)
-      references journal_template_profiles(id)
-      on delete set null;
+      add constraint editorial_rule_sets_family_journal_template_id_fkey
+      foreign key (template_family_id, journal_template_id)
+      references journal_template_profiles(template_family_id, id)
+      on delete restrict;
   end if;
 end
 $$;

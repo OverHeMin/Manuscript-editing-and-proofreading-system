@@ -45,6 +45,18 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       version_no: 1,
       status: "draft",
     });
+    await assert.rejects(
+      () =>
+        repository.saveRuleSet({
+          id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          template_family_id: "11111111-1111-1111-1111-111111111111",
+          journal_template_id: "44444444-4444-4444-4444-444444444444",
+          module: "editing",
+          version_no: 1,
+          status: "draft",
+        }),
+      (error: { code?: string }) => error.code === "23503",
+    );
 
     await repository.saveRule({
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -213,5 +225,30 @@ async function seedEditorialRuleDependencies(pool: Pool): Promise<void> {
       values ($1, 'clinical_study', 'Editorial family', 'active')
     `,
     ["11111111-1111-1111-1111-111111111111"],
+  );
+  await pool.query(
+    `
+      insert into template_families (id, manuscript_type, name, status)
+      values ($1, 'review', 'Review family', 'active')
+    `,
+    ["33333333-3333-3333-3333-333333333333"],
+  );
+  await pool.query(
+    `
+      insert into journal_template_profiles (
+        id,
+        template_family_id,
+        journal_key,
+        journal_name,
+        status
+      )
+      values ($1, $2, $3, $4, 'active')
+    `,
+    [
+      "44444444-4444-4444-4444-444444444444",
+      "33333333-3333-3333-3333-333333333333",
+      "journal-beta",
+      "Journal Beta",
+    ],
   );
 }
