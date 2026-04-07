@@ -17,6 +17,7 @@ interface ExecutionProfileRow {
   manuscript_type: ModuleExecutionProfileRecord["manuscript_type"];
   template_family_id: string;
   module_template_id: string;
+  rule_set_id: string;
   prompt_template_id: string;
   skill_package_ids: string[] | string;
   knowledge_binding_mode: ModuleExecutionProfileRecord["knowledge_binding_mode"];
@@ -53,6 +54,7 @@ export class PostgresExecutionGovernanceRepository
           manuscript_type,
           template_family_id,
           module_template_id,
+          rule_set_id,
           prompt_template_id,
           skill_package_ids,
           knowledge_binding_mode,
@@ -67,11 +69,12 @@ export class PostgresExecutionGovernanceRepository
           $4,
           $5,
           $6,
-          $7::text[],
-          $8,
+          $7,
+          $8::text[],
           $9,
           $10,
-          $11
+          $11,
+          $12
         )
         on conflict (id) do update
         set
@@ -79,6 +82,7 @@ export class PostgresExecutionGovernanceRepository
           manuscript_type = excluded.manuscript_type,
           template_family_id = excluded.template_family_id,
           module_template_id = excluded.module_template_id,
+          rule_set_id = excluded.rule_set_id,
           prompt_template_id = excluded.prompt_template_id,
           skill_package_ids = excluded.skill_package_ids,
           knowledge_binding_mode = excluded.knowledge_binding_mode,
@@ -93,6 +97,7 @@ export class PostgresExecutionGovernanceRepository
         record.manuscript_type,
         record.template_family_id,
         record.module_template_id,
+        record.rule_set_id,
         record.prompt_template_id,
         record.skill_package_ids,
         record.knowledge_binding_mode,
@@ -114,6 +119,7 @@ export class PostgresExecutionGovernanceRepository
           manuscript_type,
           template_family_id,
           module_template_id,
+          rule_set_id,
           prompt_template_id,
           skill_package_ids,
           knowledge_binding_mode,
@@ -138,6 +144,7 @@ export class PostgresExecutionGovernanceRepository
           manuscript_type,
           template_family_id,
           module_template_id,
+          rule_set_id,
           prompt_template_id,
           skill_package_ids,
           knowledge_binding_mode,
@@ -300,6 +307,7 @@ function mapExecutionProfileRow(
     manuscript_type: row.manuscript_type,
     template_family_id: row.template_family_id,
     module_template_id: row.module_template_id,
+    rule_set_id: row.rule_set_id,
     prompt_template_id: row.prompt_template_id,
     skill_package_ids: decodeTextArray(row.skill_package_ids),
     knowledge_binding_mode: row.knowledge_binding_mode,

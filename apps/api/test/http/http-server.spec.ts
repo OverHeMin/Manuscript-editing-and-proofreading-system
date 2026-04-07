@@ -1479,6 +1479,41 @@ test("http server resolves governed execution bundles and records execution snap
       }),
     });
 
+    const ruleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          templateFamilyId: family.id,
+          module: "editing",
+        }),
+      },
+    );
+    const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+    assert.equal(ruleSetResponse.status, 201);
+
+    const publishRuleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishRuleSetResponse.status, 200);
+
     const promptTemplateResponse = await fetch(
       `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
       {
@@ -1587,6 +1622,7 @@ test("http server resolves governed execution bundles and records execution snap
             manuscriptType: "clinical_study",
             templateFamilyId: family.id,
             moduleTemplateId: moduleTemplateDraft.id,
+            ruleSetId: ruleSet.id,
             promptTemplateId: promptTemplate.id,
             skillPackageIds: [skillPackage.id],
             knowledgeBindingMode: "profile_plus_dynamic",
@@ -2342,6 +2378,41 @@ test("http server exposes admin agent-tooling governance routes and execution lo
 
     assert.equal(publishModuleTemplateResponse.status, 200);
 
+    const ruleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          templateFamilyId: family.id,
+          module: "editing",
+        }),
+      },
+    );
+    const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+    assert.equal(ruleSetResponse.status, 201);
+
+    const publishRuleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishRuleSetResponse.status, 200);
+
     const promptDraftResponse = await fetch(
       `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
       {
@@ -2431,6 +2502,7 @@ test("http server exposes admin agent-tooling governance routes and execution lo
             manuscriptType: "clinical_study",
             templateFamilyId: family.id,
             moduleTemplateId: moduleTemplateDraft.id,
+            ruleSetId: ruleSet.id,
             promptTemplateId: promptDraft.id,
             skillPackageIds: [skillDraft.id],
             knowledgeBindingMode: "profile_only",

@@ -17,6 +17,7 @@ test("postgres execution governance repository persists profiles, rules, and ver
       manuscript_type: "clinical_study",
       template_family_id: "11111111-1111-1111-1111-111111111111",
       module_template_id: "22222222-2222-2222-2222-222222222222",
+      rule_set_id: "88888888-8888-8888-8888-888888888888",
       prompt_template_id: "33333333-3333-3333-3333-333333333333",
       skill_package_ids: [
         "44444444-4444-4444-4444-444444444444",
@@ -61,6 +62,7 @@ test("postgres execution governance repository persists profiles, rules, and ver
       manuscript_type: "clinical_study",
       template_family_id: "11111111-1111-1111-1111-111111111111",
       module_template_id: "22222222-2222-2222-2222-222222222222",
+      rule_set_id: "88888888-8888-8888-8888-888888888888",
       prompt_template_id: "33333333-3333-3333-3333-333333333333",
       skill_package_ids: [
         "44444444-4444-4444-4444-444444444444",
@@ -134,6 +136,16 @@ async function seedExecutionGovernanceDependencies(pool: Pool): Promise<void> {
     `,
     [
       "22222222-2222-2222-2222-222222222222",
+      "11111111-1111-1111-1111-111111111111",
+    ],
+  );
+  await pool.query(
+    `
+      insert into editorial_rule_sets (id, template_family_id, module, version_no, status)
+      values ($1, $2, 'editing', 1, 'published')
+    `,
+    [
+      "88888888-8888-8888-8888-888888888888",
       "11111111-1111-1111-1111-111111111111",
     ],
   );

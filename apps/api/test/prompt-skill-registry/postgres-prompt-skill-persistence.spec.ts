@@ -19,6 +19,18 @@ test("postgres prompt and skill registry repository persists drafts, arrays, and
       status: "draft",
       module: "proofreading",
       manuscript_types: ["review", "case_report"],
+      template_kind: "proofreading_instruction",
+      system_instructions:
+        "Inspect the manuscript against approved editorial rules.",
+      task_frame:
+        "Produce a bounded proofreading report without rewriting the manuscript.",
+      hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+      allowed_content_operations: ["issue_explanation"],
+      forbidden_operations: ["rewrite_manuscript"],
+      manual_review_policy:
+        "Escalate ambiguous medical meaning changes for human review.",
+      output_contract: "Return structured findings grouped by severity.",
+      report_style: "clinical_report",
       rollback_target_version: "1.0.0",
       source_learning_candidate_id: "11111111-1111-1111-1111-111111111111",
     });
@@ -54,6 +66,18 @@ test("postgres prompt and skill registry repository persists drafts, arrays, and
       status: "draft",
       module: "proofreading",
       manuscript_types: ["review", "case_report"],
+      template_kind: "proofreading_instruction",
+      system_instructions:
+        "Inspect the manuscript against approved editorial rules.",
+      task_frame:
+        "Produce a bounded proofreading report without rewriting the manuscript.",
+      hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+      allowed_content_operations: ["issue_explanation"],
+      forbidden_operations: ["rewrite_manuscript"],
+      manual_review_policy:
+        "Escalate ambiguous medical meaning changes for human review.",
+      output_contract: "Return structured findings grouped by severity.",
+      report_style: "clinical_report",
       rollback_target_version: "1.0.0",
       source_learning_candidate_id: "11111111-1111-1111-1111-111111111111",
     });
@@ -87,6 +111,14 @@ test("postgres prompt registry preserves any manuscript scope and published orde
       status: "archived",
       module: "screening",
       manuscript_types: "any",
+      template_kind: "editing_instruction",
+      system_instructions:
+        "Apply governed screening-safe content adjustments only.",
+      task_frame: "Operate only within approved screening instruction boundaries.",
+      allowed_content_operations: ["sentence_rewrite"],
+      forbidden_operations: ["fabricate_data"],
+      manual_review_policy: "Escalate uncertain wording changes.",
+      output_contract: "Return a bounded editorial payload.",
     });
     await repository.savePromptTemplate({
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
@@ -95,6 +127,17 @@ test("postgres prompt registry preserves any manuscript scope and published orde
       status: "published",
       module: "screening",
       manuscript_types: "any",
+      template_kind: "editing_instruction",
+      system_instructions:
+        "Apply governed screening-safe content adjustments only.",
+      task_frame: "Operate only within approved screening instruction boundaries.",
+      allowed_content_operations: [
+        "sentence_rewrite",
+        "paragraph_reshape",
+      ],
+      forbidden_operations: ["fabricate_data", "change_medical_meaning"],
+      manual_review_policy: "Escalate uncertain wording changes.",
+      output_contract: "Return a bounded editorial payload.",
     });
 
     const prompts = await repository.listPromptTemplatesByNameAndModule(
@@ -108,6 +151,7 @@ test("postgres prompt registry preserves any manuscript scope and published orde
         version: record.version,
         status: record.status,
         manuscript_types: record.manuscript_types,
+        template_kind: record.template_kind,
       })),
       [
         {
@@ -115,12 +159,14 @@ test("postgres prompt registry preserves any manuscript scope and published orde
           version: "1.0.0",
           status: "archived",
           manuscript_types: "any",
+          template_kind: "editing_instruction",
         },
         {
           id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
           version: "1.1.0",
           status: "published",
           manuscript_types: "any",
+          template_kind: "editing_instruction",
         },
       ],
     );

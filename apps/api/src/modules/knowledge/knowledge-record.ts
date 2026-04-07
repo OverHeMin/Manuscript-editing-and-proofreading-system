@@ -27,6 +27,15 @@ export type KnowledgeSourceType =
   | "internal_case"
   | "other";
 
+export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
+
+export interface KnowledgeProjectionSourceRecord {
+  source_kind: "editorial_rule_projection";
+  rule_set_id: string;
+  rule_id: string;
+  projection_kind: KnowledgeProjectionKind;
+}
+
 export interface KnowledgeRoutingRecord {
   module_scope: ManuscriptModule | "any";
   manuscript_types: ManuscriptType[] | "any";
@@ -49,6 +58,7 @@ export interface KnowledgeRecord {
   aliases?: string[];
   template_bindings?: string[];
   source_learning_candidate_id?: string;
+  projection_source?: KnowledgeProjectionSourceRecord;
 }
 
 export interface KnowledgeReviewActionRecord {

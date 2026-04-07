@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/index.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { createExecutionGovernanceApi } from "../../src/modules/execution-governance/execution-governance-api.ts";
@@ -16,11 +17,13 @@ import { InMemoryModuleTemplateRepository } from "../../src/modules/templates/in
 
 function createExecutionGovernanceHarness() {
   const repository = new InMemoryExecutionGovernanceRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
   const service = new ExecutionGovernanceService({
     repository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -40,6 +43,7 @@ function createExecutionGovernanceHarness() {
   return {
     api,
     repository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -47,7 +51,12 @@ function createExecutionGovernanceHarness() {
 }
 
 test("only admin can publish an execution profile and the previous active version is archived", async () => {
-  const { api, moduleTemplateRepository, promptSkillRegistryRepository } =
+  const {
+    api,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+  } =
     createExecutionGovernanceHarness();
 
   await moduleTemplateRepository.save({
@@ -75,6 +84,13 @@ test("only admin can publish an execution profile and the previous active versio
     status: "published",
     applies_to_modules: ["editing"],
   });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
 
   const firstProfile = await api.createProfile({
     actorRole: "admin",
@@ -83,6 +99,7 @@ test("only admin can publish an execution profile and the previous active versio
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "template-editing-1",
+      ruleSetId: "rule-set-editing-1",
       promptTemplateId: "prompt-editing-1",
       skillPackageIds: ["skill-editing-1"],
       knowledgeBindingMode: "profile_only",
@@ -95,6 +112,7 @@ test("only admin can publish an execution profile and the previous active versio
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "template-editing-1",
+      ruleSetId: "rule-set-editing-1",
       promptTemplateId: "prompt-editing-1",
       skillPackageIds: ["skill-editing-1"],
       knowledgeBindingMode: "profile_plus_dynamic",
@@ -103,6 +121,8 @@ test("only admin can publish an execution profile and the previous active versio
 
   assert.equal(firstProfile.body.version, 1);
   assert.equal(secondProfile.body.version, 2);
+  assert.equal(firstProfile.body.rule_set_id, "rule-set-editing-1");
+  assert.equal(secondProfile.body.rule_set_id, "rule-set-editing-1");
 
   await assert.rejects(
     () =>
@@ -135,8 +155,13 @@ test("only admin can publish an execution profile and the previous active versio
   );
 });
 
-test("publishing a profile requires published template, prompt, and skill assets", async () => {
-  const { api, moduleTemplateRepository, promptSkillRegistryRepository } =
+test("publishing a profile requires published template, prompt, skill, and rule-set assets", async () => {
+  const {
+    api,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+  } =
     createExecutionGovernanceHarness();
 
   await moduleTemplateRepository.save({
@@ -164,6 +189,13 @@ test("publishing a profile requires published template, prompt, and skill assets
     status: "draft",
     applies_to_modules: ["screening"],
   });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "draft",
+  });
 
   const created = await api.createProfile({
     actorRole: "admin",
@@ -172,6 +204,7 @@ test("publishing a profile requires published template, prompt, and skill assets
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "template-screening-1",
+      ruleSetId: "rule-set-screening-1",
       promptTemplateId: "prompt-screening-1",
       skillPackageIds: ["skill-screening-1"],
       knowledgeBindingMode: "profile_only",
@@ -223,11 +256,45 @@ test("publishing a profile requires published template, prompt, and skill assets
       }),
     ExecutionProfileSkillPackageNotPublishedError,
   );
+
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-screening-1",
+    name: "screening_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["screening"],
+  });
+
+  await assert.rejects(
+    () =>
+      api.publishProfile({
+        actorRole: "admin",
+        profileId: created.body.id,
+      }),
+    /rule set/i,
+  );
+
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+
+  const published = await api.publishProfile({
+    actorRole: "admin",
+    profileId: created.body.id,
+  });
+
+  assert.equal(published.body.status, "active");
 });
 
 test("publishing a profile rejects active binding rules that point to unapproved knowledge", async () => {
   const {
     api,
+    editorialRuleRepository,
     repository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -259,6 +326,13 @@ test("publishing a profile rejects active binding rules that point to unapproved
     status: "published",
     applies_to_modules: ["screening"],
   });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
   await knowledgeRepository.save({
     id: "knowledge-draft-1",
     title: "Draft-only knowledge",
@@ -289,6 +363,7 @@ test("publishing a profile rejects active binding rules that point to unapproved
       manuscriptType: "clinical_study",
       templateFamilyId: "family-1",
       moduleTemplateId: "template-screening-1",
+      ruleSetId: "rule-set-screening-1",
       promptTemplateId: "prompt-screening-1",
       skillPackageIds: ["skill-screening-1"],
       knowledgeBindingMode: "profile_plus_dynamic",

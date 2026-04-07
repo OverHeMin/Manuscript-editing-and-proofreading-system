@@ -17,6 +17,9 @@ import {
   PostgresAgentRuntimeRepository,
 } from "../../src/modules/agent-runtime/index.ts";
 import {
+  PostgresEditorialRuleRepository,
+} from "../../src/modules/editorial-rules/index.ts";
+import {
   PostgresExecutionGovernanceRepository,
 } from "../../src/modules/execution-governance/index.ts";
 import {
@@ -2120,6 +2123,9 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
   const promptSkillRegistryRepository = new PostgresPromptSkillRegistryRepository({
     client: pool,
   });
+  const editorialRuleRepository = new PostgresEditorialRuleRepository({
+    client: pool,
+  });
   const executionGovernanceRepository = new PostgresExecutionGovernanceRepository({
     client: pool,
   });
@@ -2270,12 +2276,27 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     },
     template_bindings: ["12121212-ffff-4fff-8fff-ffffffffffff"],
   });
+  await editorialRuleRepository.saveRuleSet({
+    id: "77777777-2222-4333-8444-555555555555",
+    template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  await editorialRuleRepository.saveRuleSet({
+    id: "23232323-2222-4333-8444-555555555555",
+    template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    module: "proofreading",
+    version_no: 1,
+    status: "published",
+  });
   await executionGovernanceRepository.saveProfile({
     id: "bbbb1111-2222-4333-8444-555555555555",
     module: "screening",
     manuscript_type: "clinical_study",
     template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
     module_template_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    rule_set_id: "77777777-2222-4333-8444-555555555555",
     prompt_template_id: "11111111-2222-4333-8444-555555555555",
     skill_package_ids: ["66666666-7777-4888-8999-aaaaaaaaaaaa"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -2288,6 +2309,7 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     manuscript_type: "clinical_study",
     template_family_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
     module_template_id: "12121212-ffff-4fff-8fff-ffffffffffff",
+    rule_set_id: "23232323-2222-4333-8444-555555555555",
     prompt_template_id: "12121212-2222-4333-8444-555555555555",
     skill_package_ids: ["12121212-7777-4888-8999-aaaaaaaaaaaa"],
     knowledge_binding_mode: "profile_plus_dynamic",

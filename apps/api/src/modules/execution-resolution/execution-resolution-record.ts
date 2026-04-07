@@ -1,4 +1,8 @@
 import type {
+  EditorialRuleRecord,
+  EditorialRuleSetRecord,
+} from "../editorial-rules/editorial-rule-record.ts";
+import type {
   KnowledgeBindingRuleRecord,
   ModuleExecutionProfileRecord,
 } from "../execution-governance/execution-governance-record.ts";
@@ -27,6 +31,8 @@ export interface RuntimeBindingReadinessObservationRecord {
 export interface ResolvedExecutionBundleRecord {
   profile: ModuleExecutionProfileRecord;
   module_template: ModuleTemplateRecord;
+  rule_set: EditorialRuleSetRecord;
+  rules: EditorialRuleRecord[];
   prompt_template: PromptTemplateRecord;
   skill_packages: SkillPackageRecord[];
   resolved_model: ModelRegistryRecord;

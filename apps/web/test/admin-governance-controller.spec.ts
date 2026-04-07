@@ -1283,6 +1283,7 @@ test("admin governance controller loads execution profiles and resolves executio
               status: "published",
               module: "editing",
               manuscript_types: ["clinical_study"],
+              template_kind: "editing_instruction",
             },
           ] as TResponse,
         };
@@ -1343,6 +1344,7 @@ test("admin governance controller loads execution profiles and resolves executio
               manuscript_type: "clinical_study",
               template_family_id: "family-1",
               module_template_id: "template-1",
+              rule_set_id: "rule-set-1",
               prompt_template_id: "prompt-1",
               skill_package_ids: ["skill-1"],
               knowledge_binding_mode: "profile_plus_dynamic",
@@ -1363,15 +1365,32 @@ test("admin governance controller loads execution profiles and resolves executio
         body: {
           profile: {
             id: "profile-1",
+            rule_set_id: "rule-set-1",
           },
-          resolved_model: {
-            id: "model-1",
+          prompt_template: {
+            id: "prompt-1",
+            name: "editing_mainline",
+            template_kind: "editing_instruction",
           },
+          rule_set: {
+            id: "rule-set-1",
+          },
+          rules: [
+            {
+              id: "rule-1",
+              action: {
+                kind: "replace_heading",
+              },
+            },
+          ],
           knowledge_items: [
             {
               id: "knowledge-1",
             },
           ],
+          resolved_model: {
+            id: "model-1",
+          },
         } as TResponse,
       };
     },
@@ -1386,7 +1405,11 @@ test("admin governance controller loads execution profiles and resolves executio
 
   assert.equal(overview.executionProfiles.length, 1);
   assert.equal(overview.executionProfiles[0]?.id, "profile-1");
+  assert.equal(overview.executionProfiles[0]?.rule_set_id, "rule-set-1");
   assert.equal(preview.profile.id, "profile-1");
+  assert.equal(preview.rule_set.id, "rule-set-1");
+  assert.equal(preview.rules[0]?.action.kind, "replace_heading");
+  assert.equal(preview.prompt_template.template_kind, "editing_instruction");
   assert.equal(preview.resolved_model.id, "model-1");
   assert.deepEqual(
     preview.knowledge_items.map((record) => record.id),

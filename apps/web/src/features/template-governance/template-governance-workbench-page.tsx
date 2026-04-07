@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -9,7 +16,19 @@ import type {
 } from "../knowledge/index.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import type {
+  PromptTemplateKind,
+  PromptTemplateViewModel,
+} from "../prompt-skill-registry/index.ts";
+import type {
+  EditorialRuleConfidencePolicy,
+  EditorialRuleExecutionMode,
+  EditorialRuleSeverity,
+  EditorialRuleSetViewModel,
+  EditorialRuleType,
+} from "../editorial-rules/index.ts";
+import type {
   ModuleTemplateViewModel,
+  TemplateModule,
   TemplateFamilyStatus,
 } from "../templates/index.ts";
 import {
@@ -18,7 +37,10 @@ import {
   type TemplateGovernanceWorkbenchFilters,
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
-import "./template-governance-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./template-governance-workbench.css");
+}
 
 const defaultController = createTemplateGovernanceWorkbenchController(
   createBrowserHttpClient(),
@@ -39,6 +61,7 @@ const manuscriptTypes: ManuscriptType[] = [
   "other",
 ];
 const templateModules = ["screening", "editing", "proofreading"] as const;
+const editorialInstructionModules = ["editing", "proofreading"] as const;
 const knowledgeKinds: KnowledgeKind[] = [
   "rule",
   "case_pattern",
@@ -76,6 +99,22 @@ const templateFamilyStatuses: TemplateFamilyStatus[] = [
   "active",
   "archived",
 ];
+const editorialRuleTypes: EditorialRuleType[] = ["format", "content"];
+const editorialRuleExecutionModes: EditorialRuleExecutionMode[] = [
+  "apply",
+  "inspect",
+  "apply_and_inspect",
+];
+const editorialRuleConfidencePolicies: EditorialRuleConfidencePolicy[] = [
+  "always_auto",
+  "high_confidence_only",
+  "manual_only",
+];
+const editorialRuleSeverities: EditorialRuleSeverity[] = ["info", "warning", "error"];
+const promptTemplateKinds: PromptTemplateKind[] = [
+  "editing_instruction",
+  "proofreading_instruction",
+];
 
 interface TemplateFamilyFormState {
   manuscriptType: ManuscriptType;
@@ -111,18 +150,60 @@ interface KnowledgeDraftFormState {
   sourceLink: string;
 }
 
+interface RuleSetFormState {
+  module: TemplateModule;
+}
+
+interface RuleDraftFormState {
+  orderNo: string;
+  ruleType: EditorialRuleType;
+  executionMode: EditorialRuleExecutionMode;
+  scopeSections: string;
+  scopeBlockKind: string;
+  triggerKind: string;
+  triggerText: string;
+  actionKind: string;
+  actionTarget: string;
+  confidencePolicy: EditorialRuleConfidencePolicy;
+  severity: EditorialRuleSeverity;
+  exampleBefore: string;
+  exampleAfter: string;
+  manualReviewReasonTemplate: string;
+}
+
+interface InstructionTemplateFormState {
+  name: string;
+  version: string;
+  module: (typeof editorialInstructionModules)[number];
+  templateKind: PromptTemplateKind;
+  systemInstructions: string;
+  taskFrame: string;
+  hardRuleSummary: string;
+  allowedContentOperations: string;
+  forbiddenOperations: string;
+  manualReviewPolicy: string;
+  outputContract: string;
+  reportStyle: string;
+}
+
 export interface TemplateGovernanceWorkbenchPageProps {
   controller?: TemplateGovernanceWorkbenchController;
   actorRole?: AuthRole;
+  initialOverview?: TemplateGovernanceWorkbenchOverview | null;
 }
 
 export function TemplateGovernanceWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
+  initialOverview = null,
 }: TemplateGovernanceWorkbenchPageProps) {
   const selectedModuleTemplateIdRef = useRef<string | null>(null);
-  const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(null);
-  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(
+    initialOverview,
+  );
+  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    initialOverview ? "ready" : "idle",
+  );
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -145,13 +226,26 @@ export function TemplateGovernanceWorkbenchPage({
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeDraftFormState>(
     createKnowledgeDraftFormState(),
   );
+  const [ruleSetForm, setRuleSetForm] = useState<RuleSetFormState>({
+    module: "editing",
+  });
+  const [ruleForm, setRuleForm] = useState<RuleDraftFormState>(createRuleDraftFormState());
+  const [instructionTemplateForm, setInstructionTemplateForm] =
+    useState<InstructionTemplateFormState>(createInstructionTemplateFormState());
 
   useEffect(() => {
+    if (initialOverview) {
+      synchronizeForms(initialOverview);
+      return;
+    }
+
     void loadOverview();
-  }, [controller]);
+  }, [controller, initialOverview]);
 
   async function loadOverview(input: {
     selectedTemplateFamilyId?: string | null;
+    selectedRuleSetId?: string | null;
+    selectedInstructionTemplateId?: string | null;
     selectedKnowledgeItemId?: string | null;
     filters?: Partial<TemplateGovernanceWorkbenchFilters>;
   } = {}) {
@@ -190,6 +284,38 @@ export function TemplateGovernanceWorkbenchPage({
         status: "draft",
       });
     }
+
+    setRuleSetForm({
+      module: nextOverview.selectedRuleSet?.module ?? "editing",
+    });
+    setRuleForm((current) => ({
+      ...current,
+      exampleBefore:
+        current.exampleBefore.length > 0
+          ? current.exampleBefore
+          : nextOverview.rules[0]?.example_before ?? "",
+      exampleAfter:
+        current.exampleAfter.length > 0
+          ? current.exampleAfter
+          : nextOverview.rules[0]?.example_after ?? "",
+    }));
+
+    const defaultHardRuleSummary =
+      nextOverview.rules[0]?.example_before && nextOverview.rules[0]?.example_after
+        ? `${nextOverview.rules[0].example_before} -> ${nextOverview.rules[0].example_after}`
+        : "";
+    setInstructionTemplateForm((current) => ({
+      ...current,
+      module:
+        nextOverview.selectedInstructionTemplate?.module === "proofreading"
+          ? "proofreading"
+          : current.module,
+      templateKind:
+        nextOverview.selectedInstructionTemplate?.template_kind ??
+        inferPromptTemplateKindFromModule(current.module),
+      hardRuleSummary:
+        current.hardRuleSummary.length > 0 ? current.hardRuleSummary : defaultHardRuleSummary,
+    }));
 
     const selectedModuleTemplate = resolveSelectedModuleTemplate(
       nextOverview.moduleTemplates,
@@ -285,6 +411,8 @@ export function TemplateGovernanceWorkbenchPage({
           status: selectedFamilyForm.status,
         },
         selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
         filters: overview.filters,
       });
@@ -323,6 +451,8 @@ export function TemplateGovernanceWorkbenchPage({
             sectionRequirements: sectionRequirements ?? [],
           },
           selectedTemplateFamilyId,
+          selectedRuleSetId: overview.selectedRuleSetId,
+          selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
           selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
           filters: overview.filters,
         });
@@ -339,6 +469,8 @@ export function TemplateGovernanceWorkbenchPage({
         checklist,
         sectionRequirements,
         selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
         filters: overview.filters,
       });
@@ -366,6 +498,8 @@ export function TemplateGovernanceWorkbenchPage({
         moduleTemplateId,
         actorRole,
         selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
         filters: overview.filters,
       });
@@ -398,6 +532,220 @@ export function TemplateGovernanceWorkbenchPage({
       sectionRequirements: "",
     }));
     setStatusMessage("Module template editor reset for a new draft.");
+  }
+
+  function handleRuleSetSelection(ruleSetId: string) {
+    if (!overview) {
+      return;
+    }
+
+    setStatusMessage(null);
+    void loadOverview({
+      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+      selectedRuleSetId: ruleSetId,
+      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
+      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+      filters: overview.filters,
+    });
+  }
+
+  async function handleCreateRuleSet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
+    if (!selectedTemplateFamilyId) {
+      setErrorMessage("Select a template family before creating a rule set.");
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.createRuleSetAndReload({
+        actorRole,
+        templateFamilyId: selectedTemplateFamilyId,
+        module: ruleSetForm.module,
+        selectedTemplateFamilyId,
+        selectedInstructionTemplateId: overview?.selectedInstructionTemplateId,
+        selectedKnowledgeItemId: overview?.selectedKnowledgeItemId,
+        filters: overview?.filters,
+      });
+      return result.overview;
+    }, "Rule set draft created.");
+  }
+
+  async function handleSubmitRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedRuleSetId = overview?.selectedRuleSetId;
+    if (!overview?.selectedTemplateFamilyId || !selectedRuleSetId) {
+      setErrorMessage("Create or select a rule set before adding rules.");
+      return;
+    }
+
+    const orderNo = Number.parseInt(ruleForm.orderNo, 10);
+    if (!Number.isFinite(orderNo)) {
+      setErrorMessage("Rule order must be a valid number.");
+      return;
+    }
+
+    if (ruleForm.triggerKind.trim().length === 0 || ruleForm.actionKind.trim().length === 0) {
+      setErrorMessage("Rule trigger kind and action kind are required.");
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.createRuleAndReload({
+        ruleSetId: selectedRuleSetId,
+        input: {
+          actorRole,
+          orderNo,
+          ruleType: ruleForm.ruleType,
+          executionMode: ruleForm.executionMode,
+          scope: {
+            ...(splitCommaSeparatedValues(ruleForm.scopeSections)
+              ? {
+                  sections: splitCommaSeparatedValues(ruleForm.scopeSections),
+                }
+              : {}),
+            ...(optionalTrimmedValue(ruleForm.scopeBlockKind)
+              ? {
+                  block_kind: optionalTrimmedValue(ruleForm.scopeBlockKind),
+                }
+              : {}),
+          },
+          trigger: {
+            kind: ruleForm.triggerKind.trim(),
+            ...(optionalTrimmedValue(ruleForm.triggerText)
+              ? {
+                  text: optionalTrimmedValue(ruleForm.triggerText),
+                }
+              : {}),
+          },
+          action: {
+            kind: ruleForm.actionKind.trim(),
+            ...(optionalTrimmedValue(ruleForm.actionTarget)
+              ? {
+                  to: optionalTrimmedValue(ruleForm.actionTarget),
+                }
+              : {}),
+          },
+          confidencePolicy: ruleForm.confidencePolicy,
+          severity: ruleForm.severity,
+          enabled: true,
+          exampleBefore: optionalTrimmedValue(ruleForm.exampleBefore),
+          exampleAfter: optionalTrimmedValue(ruleForm.exampleAfter),
+          manualReviewReasonTemplate: optionalTrimmedValue(
+            ruleForm.manualReviewReasonTemplate,
+          ),
+        },
+        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
+        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+        filters: overview.filters,
+      });
+      setRuleForm(createRuleDraftFormState());
+      return result.overview;
+    }, "Rule draft created.");
+  }
+
+  async function handlePublishRuleSet(ruleSetId: string) {
+    if (!overview?.selectedTemplateFamilyId) {
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.publishRuleSetAndReload({
+        ruleSetId,
+        actorRole,
+        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: ruleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
+        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+        filters: overview.filters,
+      });
+      return result.overview;
+    }, "Rule set published.");
+  }
+
+  function handleInstructionTemplateSelection(promptTemplateId: string) {
+    if (!overview) {
+      return;
+    }
+
+    setStatusMessage(null);
+    void loadOverview({
+      selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+      selectedRuleSetId: overview.selectedRuleSetId,
+      selectedInstructionTemplateId: promptTemplateId,
+      selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+      filters: overview.filters,
+    });
+  }
+
+  async function handleCreateInstructionTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedTemplateFamily = overview?.selectedTemplateFamily;
+    if (!selectedTemplateFamily) {
+      setErrorMessage("Select a template family before creating an AI instruction template.");
+      return;
+    }
+
+    if (
+      instructionTemplateForm.name.trim().length === 0 ||
+      instructionTemplateForm.systemInstructions.trim().length === 0 ||
+      instructionTemplateForm.taskFrame.trim().length === 0 ||
+      instructionTemplateForm.manualReviewPolicy.trim().length === 0 ||
+      instructionTemplateForm.outputContract.trim().length === 0
+    ) {
+      setErrorMessage(
+        "Instruction name, system instructions, task frame, manual review policy, and output contract are required.",
+      );
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.createInstructionTemplateAndReload({
+        actorRole,
+        name: instructionTemplateForm.name.trim(),
+        version: instructionTemplateForm.version.trim() || "1.0.0",
+        module: instructionTemplateForm.module,
+        manuscriptTypes: [selectedTemplateFamily.manuscript_type],
+        templateKind: instructionTemplateForm.templateKind,
+        systemInstructions: instructionTemplateForm.systemInstructions.trim(),
+        taskFrame: instructionTemplateForm.taskFrame.trim(),
+        hardRuleSummary: optionalTrimmedValue(instructionTemplateForm.hardRuleSummary),
+        allowedContentOperations:
+          splitCommaSeparatedValues(instructionTemplateForm.allowedContentOperations) ?? [],
+        forbiddenOperations:
+          splitCommaSeparatedValues(instructionTemplateForm.forbiddenOperations) ?? [],
+        manualReviewPolicy: instructionTemplateForm.manualReviewPolicy.trim(),
+        outputContract: instructionTemplateForm.outputContract.trim(),
+        reportStyle: optionalTrimmedValue(instructionTemplateForm.reportStyle),
+        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+        filters: overview.filters,
+      });
+      setInstructionTemplateForm(createInstructionTemplateFormState());
+      return result.overview;
+    }, "AI instruction template draft created.");
+  }
+
+  async function handlePublishInstructionTemplate(promptTemplateId: string) {
+    if (!overview?.selectedTemplateFamilyId) {
+      return;
+    }
+
+    await runBusyAction(async () => {
+      const result = await controller.publishInstructionTemplateAndReload({
+        promptTemplateId,
+        actorRole,
+        selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: promptTemplateId,
+        selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
+        filters: overview.filters,
+      });
+      return result.overview;
+    }, "AI instruction template published.");
   }
 
   async function handleSubmitKnowledgeDraft(event: FormEvent<HTMLFormElement>) {
@@ -438,6 +786,8 @@ export function TemplateGovernanceWorkbenchPage({
         const result = await controller.createKnowledgeDraftAndReload({
           ...payload,
           selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+          selectedRuleSetId: overview.selectedRuleSetId,
+          selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
           selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
           filters: overview.filters,
         });
@@ -448,6 +798,8 @@ export function TemplateGovernanceWorkbenchPage({
         knowledgeItemId: selectedKnowledgeItem.id,
         input: payload,
         selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: selectedKnowledgeItem.id,
         filters: overview.filters,
       });
@@ -465,6 +817,8 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.submitKnowledgeDraftAndReload({
         knowledgeItemId: selectedKnowledgeItem.id,
         selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: selectedKnowledgeItem.id,
         filters: overview.filters,
       });
@@ -482,6 +836,8 @@ export function TemplateGovernanceWorkbenchPage({
       const result = await controller.archiveKnowledgeItemAndReload({
         knowledgeItemId: selectedKnowledgeItem.id,
         selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+        selectedRuleSetId: overview.selectedRuleSetId,
+        selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
         selectedKnowledgeItemId: selectedKnowledgeItem.id,
         filters: overview.filters,
       });
@@ -497,6 +853,8 @@ export function TemplateGovernanceWorkbenchPage({
     setStatusMessage(null);
     void loadOverview({
       selectedTemplateFamilyId: templateFamilyId,
+      selectedRuleSetId: null,
+      selectedInstructionTemplateId: null,
       selectedKnowledgeItemId: null,
       filters: overview.filters,
     });
@@ -510,6 +868,8 @@ export function TemplateGovernanceWorkbenchPage({
     setStatusMessage(null);
     void loadOverview({
       selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+      selectedRuleSetId: overview.selectedRuleSetId,
+      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
       selectedKnowledgeItemId: knowledgeItemId,
       filters: overview.filters,
     });
@@ -522,6 +882,8 @@ export function TemplateGovernanceWorkbenchPage({
 
     void loadOverview({
       selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+      selectedRuleSetId: overview.selectedRuleSetId,
+      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
       selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
       filters: {
         ...overview.filters,
@@ -537,6 +899,8 @@ export function TemplateGovernanceWorkbenchPage({
 
     void loadOverview({
       selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+      selectedRuleSetId: overview.selectedRuleSetId,
+      selectedInstructionTemplateId: overview.selectedInstructionTemplateId,
       selectedKnowledgeItemId: overview.selectedKnowledgeItemId,
       filters: {
         ...overview.filters,
@@ -560,6 +924,8 @@ export function TemplateGovernanceWorkbenchPage({
     selectedModuleTemplateId,
   );
   const isEditingModuleTemplate = selectedModuleTemplate?.status === "draft";
+  const selectedRuleSet = overview?.selectedRuleSet ?? null;
+  const selectedInstructionTemplate = overview?.selectedInstructionTemplate ?? null;
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
   const retrievalInsights = overview?.retrievalInsights ?? null;
@@ -600,6 +966,14 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-summary-card">
           <span>Visible Knowledge</span>
           <strong>{overview?.visibleKnowledgeItems.length ?? 0}</strong>
+        </article>
+        <article className="template-governance-summary-card">
+          <span>Rule Sets</span>
+          <strong>{overview?.ruleSets.length ?? 0}</strong>
+        </article>
+        <article className="template-governance-summary-card">
+          <span>Instruction Templates</span>
+          <strong>{overview?.instructionTemplates.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
           <span>Bound Knowledge</span>
@@ -746,6 +1120,31 @@ export function TemplateGovernanceWorkbenchPage({
             </form>
           ) : null}
         </article>
+
+        <TemplateGovernanceRulesPanel
+          overview={overview}
+          selectedRuleSet={selectedRuleSet}
+          ruleSetForm={ruleSetForm}
+          ruleForm={ruleForm}
+          isBusy={isBusy}
+          onRuleSetFormChange={setRuleSetForm}
+          onRuleFormChange={setRuleForm}
+          onSelectRuleSet={handleRuleSetSelection}
+          onCreateRuleSet={handleCreateRuleSet}
+          onSubmitRule={handleSubmitRule}
+          onPublishRuleSet={handlePublishRuleSet}
+        />
+
+        <TemplateGovernanceInstructionPanel
+          overview={overview}
+          selectedInstructionTemplate={selectedInstructionTemplate}
+          instructionTemplateForm={instructionTemplateForm}
+          isBusy={isBusy}
+          onInstructionTemplateFormChange={setInstructionTemplateForm}
+          onSelectInstructionTemplate={handleInstructionTemplateSelection}
+          onCreateInstructionTemplate={handleCreateInstructionTemplate}
+          onPublishInstructionTemplate={handlePublishInstructionTemplate}
+        />
 
         <article className="template-governance-panel">
           <div className="template-governance-panel-header">
@@ -1331,6 +1730,705 @@ export function TemplateGovernanceWorkbenchPage({
   );
 }
 
+interface TemplateGovernanceRulesPanelProps {
+  overview: TemplateGovernanceWorkbenchOverview | null;
+  selectedRuleSet: EditorialRuleSetViewModel | null;
+  ruleSetForm: RuleSetFormState;
+  ruleForm: RuleDraftFormState;
+  isBusy: boolean;
+  onRuleSetFormChange: Dispatch<SetStateAction<RuleSetFormState>>;
+  onRuleFormChange: Dispatch<SetStateAction<RuleDraftFormState>>;
+  onSelectRuleSet: (ruleSetId: string) => void;
+  onCreateRuleSet: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onSubmitRule: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onPublishRuleSet: (ruleSetId: string) => Promise<void>;
+}
+
+function TemplateGovernanceRulesPanel({
+  overview,
+  selectedRuleSet,
+  ruleSetForm,
+  ruleForm,
+  isBusy,
+  onRuleSetFormChange,
+  onRuleFormChange,
+  onSelectRuleSet,
+  onCreateRuleSet,
+  onSubmitRule,
+  onPublishRuleSet,
+}: TemplateGovernanceRulesPanelProps) {
+  return (
+    <article className="template-governance-panel">
+      <div className="template-governance-panel-header">
+        <div>
+          <h3>Rules</h3>
+          <p>
+            Author the exact rule source that editing applies and proofreading inspects.
+          </p>
+        </div>
+      </div>
+
+      {overview?.selectedTemplateFamily ? (
+        <>
+          <p className="template-governance-selected-note">
+            Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
+            {overview.selectedTemplateFamily.manuscript_type})
+          </p>
+          <form className="template-governance-form-grid" onSubmit={onCreateRuleSet}>
+            <label className="template-governance-field">
+              <span>Rule Set Module</span>
+              <select
+                value={ruleSetForm.module}
+                onChange={(event) =>
+                  onRuleSetFormChange((current) => ({
+                    ...current,
+                    module: event.target.value as TemplateModule,
+                  }))
+                }
+              >
+                {templateModules.map((module) => (
+                  <option key={module} value={module}>
+                    {module}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="template-governance-actions template-governance-actions-full">
+              <button type="submit" disabled={isBusy}>
+                {isBusy ? "Saving..." : "Create Rule Set Draft"}
+              </button>
+            </div>
+          </form>
+
+          {overview.ruleSets.length ? (
+            <ul className="template-governance-list">
+              {overview.ruleSets.map((ruleSet) => {
+                const isActive = ruleSet.id === overview.selectedRuleSetId;
+                return (
+                  <li key={ruleSet.id}>
+                    <button
+                      type="button"
+                      className={`template-governance-list-button${isActive ? " is-active" : ""}`}
+                      onClick={() => onSelectRuleSet(ruleSet.id)}
+                    >
+                      <span>
+                        {ruleSet.module} rule set v{ruleSet.version_no}
+                      </span>
+                      <small>{ruleSet.status}</small>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="template-governance-empty">
+              No rule sets exist for this family yet.
+            </p>
+          )}
+
+          {selectedRuleSet ? (
+            <>
+              <article className="template-governance-card">
+                <strong>
+                  Active Rule Set: {selectedRuleSet.module} v{selectedRuleSet.version_no}
+                </strong>
+                <small>{selectedRuleSet.status}</small>
+                <p>
+                  Rules stay structured here so the knowledge projection can remain a readable copy,
+                  not the only source of truth.
+                </p>
+                {selectedRuleSet.status === "draft" ? (
+                  <div className="template-governance-actions">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void onPublishRuleSet(selectedRuleSet.id)}
+                    >
+                      Publish Rule Set
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+
+              <form className="template-governance-form-grid" onSubmit={onSubmitRule}>
+                <label className="template-governance-field">
+                  <span>Order</span>
+                  <input
+                    value={ruleForm.orderNo}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        orderNo: event.target.value,
+                      }))
+                    }
+                    placeholder="10"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Rule Type</span>
+                  <select
+                    value={ruleForm.ruleType}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        ruleType: event.target.value as EditorialRuleType,
+                      }))
+                    }
+                  >
+                    {editorialRuleTypes.map((ruleType) => (
+                      <option key={ruleType} value={ruleType}>
+                        {ruleType}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-governance-field">
+                  <span>Execution Mode</span>
+                  <select
+                    value={ruleForm.executionMode}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        executionMode: event.target.value as EditorialRuleExecutionMode,
+                      }))
+                    }
+                  >
+                    {editorialRuleExecutionModes.map((executionMode) => (
+                      <option key={executionMode} value={executionMode}>
+                        {executionMode}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-governance-field">
+                  <span>Confidence Policy</span>
+                  <select
+                    value={ruleForm.confidencePolicy}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        confidencePolicy:
+                          event.target.value as EditorialRuleConfidencePolicy,
+                      }))
+                    }
+                  >
+                    {editorialRuleConfidencePolicies.map((policy) => (
+                      <option key={policy} value={policy}>
+                        {policy}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-governance-field">
+                  <span>Severity</span>
+                  <select
+                    value={ruleForm.severity}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        severity: event.target.value as EditorialRuleSeverity,
+                      }))
+                    }
+                  >
+                    {editorialRuleSeverities.map((severity) => (
+                      <option key={severity} value={severity}>
+                        {severity}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-governance-field">
+                  <span>Scope Sections</span>
+                  <input
+                    value={ruleForm.scopeSections}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        scopeSections: event.target.value,
+                      }))
+                    }
+                    placeholder="abstract"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Scope Block Kind</span>
+                  <input
+                    value={ruleForm.scopeBlockKind}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        scopeBlockKind: event.target.value,
+                      }))
+                    }
+                    placeholder="heading"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Trigger Kind</span>
+                  <input
+                    value={ruleForm.triggerKind}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        triggerKind: event.target.value,
+                      }))
+                    }
+                    placeholder="exact_text"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Trigger Text</span>
+                  <input
+                    value={ruleForm.triggerText}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        triggerText: event.target.value,
+                      }))
+                    }
+                    placeholder="摘要 目的"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Action Kind</span>
+                  <input
+                    value={ruleForm.actionKind}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        actionKind: event.target.value,
+                      }))
+                    }
+                    placeholder="replace_heading"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Action Target</span>
+                  <input
+                    value={ruleForm.actionTarget}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        actionTarget: event.target.value,
+                      }))
+                    }
+                    placeholder="（摘要　目的）"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Example Before</span>
+                  <input
+                    value={ruleForm.exampleBefore}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        exampleBefore: event.target.value,
+                      }))
+                    }
+                    placeholder="摘要 目的"
+                  />
+                </label>
+                <label className="template-governance-field">
+                  <span>Example After</span>
+                  <input
+                    value={ruleForm.exampleAfter}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        exampleAfter: event.target.value,
+                      }))
+                    }
+                    placeholder="（摘要　目的）"
+                  />
+                </label>
+                <label className="template-governance-field template-governance-field-full">
+                  <span>Manual Review Reason</span>
+                  <input
+                    value={ruleForm.manualReviewReasonTemplate}
+                    onChange={(event) =>
+                      onRuleFormChange((current) => ({
+                        ...current,
+                        manualReviewReasonTemplate: event.target.value,
+                      }))
+                    }
+                    placeholder="medical_meaning_risk"
+                  />
+                </label>
+                <div className="template-governance-actions template-governance-actions-full">
+                  <button type="submit" disabled={isBusy || selectedRuleSet.status !== "draft"}>
+                    {isBusy ? "Saving..." : "Create Rule Draft"}
+                  </button>
+                </div>
+              </form>
+
+              {overview.rules.length ? (
+                <div className="template-governance-stack">
+                  {overview.rules.map((rule) => (
+                    <article key={rule.id} className="template-governance-card">
+                      <strong>
+                        {rule.action.kind} · {rule.execution_mode}
+                      </strong>
+                      <small>
+                        {rule.rule_type} · {rule.severity} · {rule.confidence_policy}
+                      </small>
+                      <div className="template-governance-detail-grid">
+                        <div>
+                          <span>Trigger</span>
+                          <code className="template-governance-code">
+                            {JSON.stringify(rule.trigger)}
+                          </code>
+                        </div>
+                        <div>
+                          <span>Action</span>
+                          <code className="template-governance-code">
+                            {JSON.stringify(rule.action)}
+                          </code>
+                        </div>
+                        <div>
+                          <span>Example Before</span>
+                          <p>{rule.example_before ?? "n/a"}</p>
+                        </div>
+                        <div>
+                          <span>Example After</span>
+                          <p>{rule.example_after ?? "n/a"}</p>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="template-governance-empty">
+                  No rules exist inside the selected rule set yet.
+                </p>
+              )}
+            </>
+          ) : null}
+        </>
+      ) : (
+        <p className="template-governance-empty">
+          Select a template family before authoring rule sets and rules.
+        </p>
+      )}
+    </article>
+  );
+}
+
+interface TemplateGovernanceInstructionPanelProps {
+  overview: TemplateGovernanceWorkbenchOverview | null;
+  selectedInstructionTemplate: PromptTemplateViewModel | null;
+  instructionTemplateForm: InstructionTemplateFormState;
+  isBusy: boolean;
+  onInstructionTemplateFormChange: Dispatch<SetStateAction<InstructionTemplateFormState>>;
+  onSelectInstructionTemplate: (promptTemplateId: string) => void;
+  onCreateInstructionTemplate: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onPublishInstructionTemplate: (promptTemplateId: string) => Promise<void>;
+}
+
+function TemplateGovernanceInstructionPanel({
+  overview,
+  selectedInstructionTemplate,
+  instructionTemplateForm,
+  isBusy,
+  onInstructionTemplateFormChange,
+  onSelectInstructionTemplate,
+  onCreateInstructionTemplate,
+  onPublishInstructionTemplate,
+}: TemplateGovernanceInstructionPanelProps) {
+  return (
+    <article className="template-governance-panel">
+      <div className="template-governance-panel-header">
+        <div>
+          <h3>AI Instruction Template</h3>
+          <p>
+            Store bounded AI-readable instructions as fixed sections instead of one uncontrolled
+            paragraph.
+          </p>
+        </div>
+      </div>
+
+      {overview?.selectedTemplateFamily ? (
+        <>
+          <p className="template-governance-selected-note">
+            Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
+            {overview.selectedTemplateFamily.manuscript_type})
+          </p>
+          <form
+            className="template-governance-form-grid"
+            onSubmit={onCreateInstructionTemplate}
+          >
+            <label className="template-governance-field">
+              <span>Name</span>
+              <input
+                value={instructionTemplateForm.name}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="editing_instruction_mainline"
+              />
+            </label>
+            <label className="template-governance-field">
+              <span>Version</span>
+              <input
+                value={instructionTemplateForm.version}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    version: event.target.value,
+                  }))
+                }
+                placeholder="1.0.0"
+              />
+            </label>
+            <label className="template-governance-field">
+              <span>Module</span>
+              <select
+                value={instructionTemplateForm.module}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => {
+                    const module = event.target.value as InstructionTemplateFormState["module"];
+                    return {
+                      ...current,
+                      module,
+                      templateKind: inferPromptTemplateKindFromModule(module),
+                    };
+                  })
+                }
+              >
+                {editorialInstructionModules.map((module) => (
+                  <option key={module} value={module}>
+                    {module}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="template-governance-field">
+              <span>Template Kind</span>
+              <select
+                value={instructionTemplateForm.templateKind}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    templateKind: event.target.value as PromptTemplateKind,
+                  }))
+                }
+              >
+                {promptTemplateKinds.map((templateKind) => (
+                  <option key={templateKind} value={templateKind}>
+                    {templateKind}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>System Instructions</span>
+              <textarea
+                rows={4}
+                value={instructionTemplateForm.systemInstructions}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    systemInstructions: event.target.value,
+                  }))
+                }
+                placeholder="Apply hard editorial rules before any content rewrite."
+              />
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>Task Frame</span>
+              <textarea
+                rows={3}
+                value={instructionTemplateForm.taskFrame}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    taskFrame: event.target.value,
+                  }))
+                }
+                placeholder="Normalize the manuscript while preserving medical meaning."
+              />
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>Hard Rule Summary</span>
+              <textarea
+                rows={3}
+                value={instructionTemplateForm.hardRuleSummary}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    hardRuleSummary: event.target.value,
+                  }))
+                }
+                placeholder="摘要 目的 -> （摘要　目的）"
+              />
+            </label>
+            <label className="template-governance-field">
+              <span>Allowed Content Operations</span>
+              <input
+                value={instructionTemplateForm.allowedContentOperations}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    allowedContentOperations: event.target.value,
+                  }))
+                }
+                placeholder="sentence_rewrite"
+              />
+            </label>
+            <label className="template-governance-field">
+              <span>Forbidden Operations</span>
+              <input
+                value={instructionTemplateForm.forbiddenOperations}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    forbiddenOperations: event.target.value,
+                  }))
+                }
+                placeholder="change_medical_meaning"
+              />
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>Manual Review Policy</span>
+              <textarea
+                rows={3}
+                value={instructionTemplateForm.manualReviewPolicy}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    manualReviewPolicy: event.target.value,
+                  }))
+                }
+                placeholder="Escalate uncertain content changes to manual review."
+              />
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>Output Contract</span>
+              <textarea
+                rows={3}
+                value={instructionTemplateForm.outputContract}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    outputContract: event.target.value,
+                  }))
+                }
+                placeholder="Return a bounded editing or proofreading payload."
+              />
+            </label>
+            <label className="template-governance-field template-governance-field-full">
+              <span>Report Style</span>
+              <input
+                value={instructionTemplateForm.reportStyle}
+                onChange={(event) =>
+                  onInstructionTemplateFormChange((current) => ({
+                    ...current,
+                    reportStyle: event.target.value,
+                  }))
+                }
+                placeholder="clinical_report"
+              />
+            </label>
+            <div className="template-governance-actions template-governance-actions-full">
+              <button type="submit" disabled={isBusy}>
+                {isBusy ? "Saving..." : "Create AI Instruction Draft"}
+              </button>
+            </div>
+          </form>
+
+          {overview.instructionTemplates.length ? (
+            <ul className="template-governance-list">
+              {overview.instructionTemplates.map((template) => {
+                const isActive = template.id === overview.selectedInstructionTemplateId;
+                return (
+                  <li key={template.id}>
+                    <button
+                      type="button"
+                      className={`template-governance-list-button${isActive ? " is-active" : ""}`}
+                      onClick={() => onSelectInstructionTemplate(template.id)}
+                    >
+                      <span>{template.name}</span>
+                      <small>
+                        {template.status} · {template.template_kind ?? "legacy_prompt"}
+                      </small>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="template-governance-empty">
+              No AI instruction templates match this family yet.
+            </p>
+          )}
+
+          {selectedInstructionTemplate ? (
+            <article className="template-governance-card">
+              <strong>{selectedInstructionTemplate.name}</strong>
+              <small>
+                {selectedInstructionTemplate.status} ·{" "}
+                {selectedInstructionTemplate.template_kind ?? "legacy_prompt"}
+              </small>
+              <div className="template-governance-detail-grid">
+                <div>
+                  <span>System Instructions</span>
+                  <p>{selectedInstructionTemplate.system_instructions ?? "n/a"}</p>
+                </div>
+                <div>
+                  <span>Task Frame</span>
+                  <p>{selectedInstructionTemplate.task_frame ?? "n/a"}</p>
+                </div>
+                <div>
+                  <span>Hard Rule Summary</span>
+                  <p>{selectedInstructionTemplate.hard_rule_summary ?? "n/a"}</p>
+                </div>
+                <div>
+                  <span>Allowed Content Operations</span>
+                  <p>
+                    {selectedInstructionTemplate.allowed_content_operations?.join(", ") ??
+                      "n/a"}
+                  </p>
+                </div>
+                <div>
+                  <span>Forbidden Operations</span>
+                  <p>
+                    {selectedInstructionTemplate.forbidden_operations?.join(", ") ?? "n/a"}
+                  </p>
+                </div>
+                <div>
+                  <span>Manual Review Policy</span>
+                  <p>{selectedInstructionTemplate.manual_review_policy ?? "n/a"}</p>
+                </div>
+                <div className="template-governance-field-full">
+                  <span>Output Contract</span>
+                  <p>{selectedInstructionTemplate.output_contract ?? "n/a"}</p>
+                </div>
+              </div>
+              {selectedInstructionTemplate.status === "draft" ? (
+                <div className="template-governance-actions">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => void onPublishInstructionTemplate(selectedInstructionTemplate.id)}
+                  >
+                    Publish AI Instruction Template
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+        </>
+      ) : (
+        <p className="template-governance-empty">
+          Select a template family before authoring AI instruction templates.
+        </p>
+      )}
+    </article>
+  );
+}
+
 function createKnowledgeDraftFormState(input: {
   manuscriptType?: ManuscriptType;
   templateBindings?: string[];
@@ -1351,6 +2449,50 @@ function createKnowledgeDraftFormState(input: {
     sourceType: "other",
     sourceLink: "",
   };
+}
+
+function createRuleDraftFormState(): RuleDraftFormState {
+  return {
+    orderNo: "10",
+    ruleType: "format",
+    executionMode: "apply_and_inspect",
+    scopeSections: "abstract",
+    scopeBlockKind: "heading",
+    triggerKind: "exact_text",
+    triggerText: "",
+    actionKind: "replace_heading",
+    actionTarget: "",
+    confidencePolicy: "always_auto",
+    severity: "error",
+    exampleBefore: "",
+    exampleAfter: "",
+    manualReviewReasonTemplate: "",
+  };
+}
+
+function createInstructionTemplateFormState(): InstructionTemplateFormState {
+  return {
+    name: "",
+    version: "1.0.0",
+    module: "editing",
+    templateKind: "editing_instruction",
+    systemInstructions: "",
+    taskFrame: "",
+    hardRuleSummary: "",
+    allowedContentOperations: "sentence_rewrite",
+    forbiddenOperations: "change_medical_meaning",
+    manualReviewPolicy: "",
+    outputContract: "",
+    reportStyle: "",
+  };
+}
+
+function inferPromptTemplateKindFromModule(
+  module: InstructionTemplateFormState["module"],
+): PromptTemplateKind {
+  return module === "proofreading"
+    ? "proofreading_instruction"
+    : "editing_instruction";
 }
 
 function toModuleTemplateFormState(

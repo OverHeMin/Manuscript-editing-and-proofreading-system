@@ -4,6 +4,7 @@ import type { RoleKey } from "../../users/roles.ts";
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import type {
+  PromptTemplateKind,
   PromptTemplateRecord,
   SkillPackageRecord,
 } from "./prompt-skill-record.ts";
@@ -27,6 +28,15 @@ export interface CreatePromptTemplateInput {
   version: string;
   module: PromptTemplateRecord["module"];
   manuscriptTypes: PromptTemplateRecord["manuscript_types"];
+  templateKind?: PromptTemplateKind;
+  systemInstructions?: string;
+  taskFrame?: string;
+  hardRuleSummary?: string;
+  allowedContentOperations?: string[];
+  forbiddenOperations?: string[];
+  manualReviewPolicy?: string;
+  outputContract?: string;
+  reportStyle?: string;
   rollbackTargetVersion?: string;
   sourceLearningCandidateId?: string;
 }
@@ -172,6 +182,51 @@ export class PromptSkillRegistryService {
         input.manuscriptTypes === "any"
           ? "any"
           : [...input.manuscriptTypes],
+      ...(input.templateKind
+        ? {
+            template_kind: input.templateKind,
+          }
+        : {}),
+      ...(input.systemInstructions
+        ? {
+            system_instructions: input.systemInstructions,
+          }
+        : {}),
+      ...(input.taskFrame
+        ? {
+            task_frame: input.taskFrame,
+          }
+        : {}),
+      ...(input.hardRuleSummary
+        ? {
+            hard_rule_summary: input.hardRuleSummary,
+          }
+        : {}),
+      ...(input.allowedContentOperations
+        ? {
+            allowed_content_operations: [...input.allowedContentOperations],
+          }
+        : {}),
+      ...(input.forbiddenOperations
+        ? {
+            forbidden_operations: [...input.forbiddenOperations],
+          }
+        : {}),
+      ...(input.manualReviewPolicy
+        ? {
+            manual_review_policy: input.manualReviewPolicy,
+          }
+        : {}),
+      ...(input.outputContract
+        ? {
+            output_contract: input.outputContract,
+          }
+        : {}),
+      ...(input.reportStyle
+        ? {
+            report_style: input.reportStyle,
+          }
+        : {}),
       rollback_target_version: input.rollbackTargetVersion,
       ...(input.sourceLearningCandidateId
         ? {

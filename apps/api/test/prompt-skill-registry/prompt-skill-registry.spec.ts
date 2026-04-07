@@ -73,6 +73,15 @@ test("prompt templates and skill packages can create provenance-aware drafts fro
     version: "1.1.0",
     module: "proofreading",
     manuscriptTypes: ["review"],
+    templateKind: "proofreading_instruction",
+    systemInstructions: "Inspect the manuscript against approved editorial rules.",
+    taskFrame: "Produce a bounded proofreading report without rewriting the manuscript.",
+    hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+    allowedContentOperations: ["issue_explanation"],
+    forbiddenOperations: ["rewrite_manuscript"],
+    manualReviewPolicy: "Escalate ambiguous medical meaning changes for human review.",
+    outputContract: "Return structured findings grouped by severity.",
+    reportStyle: "clinical_report",
   });
   const skill = await service.createSkillPackageFromLearningCandidate("admin", {
     sourceLearningCandidateId: "candidate-approved-2",
@@ -82,6 +91,10 @@ test("prompt templates and skill packages can create provenance-aware drafts fro
   });
 
   assert.equal(prompt.source_learning_candidate_id, "candidate-approved-1");
+  assert.equal(prompt.template_kind, "proofreading_instruction");
+  assert.equal(prompt.hard_rule_summary, "摘要 目的 -> （摘要　目的）");
+  assert.deepEqual(prompt.allowed_content_operations, ["issue_explanation"]);
+  assert.deepEqual(prompt.forbidden_operations, ["rewrite_manuscript"]);
   assert.equal(skill.source_learning_candidate_id, "candidate-approved-2");
   assert.equal(prompt.status, "draft");
   assert.equal(skill.status, "draft");
@@ -123,6 +136,15 @@ test("prompt and skill packages are versioned and remain admin-only", async () =
       version: "1.0.0",
       module: "proofreading",
       manuscriptTypes: ["review"],
+      templateKind: "proofreading_instruction",
+      systemInstructions: "Inspect the manuscript against approved editorial rules.",
+      taskFrame: "Create a bounded proofreading report.",
+      hardRuleSummary: "摘要 目的 -> （摘要　目的）",
+      allowedContentOperations: ["issue_explanation"],
+      forbiddenOperations: ["rewrite_manuscript"],
+      manualReviewPolicy: "Escalate uncertain findings to manual review.",
+      outputContract: "Return structured proofreading findings.",
+      reportStyle: "clinical_report",
       rollbackTargetVersion: "0.9.0",
     },
   });
@@ -130,7 +152,18 @@ test("prompt and skill packages are versioned and remain admin-only", async () =
   assert.equal(createdPrompt.status, 201);
   assert.equal(createdPrompt.body.status, "draft");
   assert.equal(createdPrompt.body.module, "proofreading");
+  assert.equal(createdPrompt.body.template_kind, "proofreading_instruction");
+  assert.equal(
+    createdPrompt.body.system_instructions,
+    "Inspect the manuscript against approved editorial rules.",
+  );
   assert.deepEqual(createdPrompt.body.manuscript_types, ["review"]);
+  assert.deepEqual(createdPrompt.body.allowed_content_operations, [
+    "issue_explanation",
+  ]);
+  assert.deepEqual(createdPrompt.body.forbidden_operations, [
+    "rewrite_manuscript",
+  ]);
   assert.equal(createdPrompt.body.rollback_target_version, "0.9.0");
 });
 
@@ -182,6 +215,13 @@ test("prompt templates and skill packages can be published and archive earlier a
       version: "1.0.0",
       module: "screening",
       manuscriptTypes: ["clinical_study"],
+      templateKind: "proofreading_instruction",
+      systemInstructions: "Inspect screening structure against governed rules.",
+      taskFrame: "Explain missing structural issues only.",
+      allowedContentOperations: ["issue_explanation"],
+      forbiddenOperations: ["rewrite_manuscript"],
+      manualReviewPolicy: "Escalate ambiguous structure failures.",
+      outputContract: "Return a screening findings summary.",
     },
   });
   const promptV2 = await api.createPromptTemplate({
@@ -191,8 +231,18 @@ test("prompt templates and skill packages can be published and archive earlier a
       version: "1.1.0",
       module: "screening",
       manuscriptTypes: ["clinical_study"],
+      templateKind: "proofreading_instruction",
+      systemInstructions: "Inspect screening structure against governed rules.",
+      taskFrame: "Explain missing structural issues only.",
+      allowedContentOperations: ["issue_explanation"],
+      forbiddenOperations: ["rewrite_manuscript"],
+      manualReviewPolicy: "Escalate ambiguous structure failures.",
+      outputContract: "Return a screening findings summary.",
     },
   });
+
+  assert.equal(promptV1.body.template_kind, "proofreading_instruction");
+  assert.equal(promptV2.body.template_kind, "proofreading_instruction");
 
   const publishedPromptV1 = await api.publishPromptTemplate({
     actorRole: "admin",

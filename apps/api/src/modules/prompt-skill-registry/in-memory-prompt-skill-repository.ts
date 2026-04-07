@@ -21,6 +21,12 @@ function clonePromptTemplate(record: PromptTemplateRecord): PromptTemplateRecord
       record.manuscript_types === "any"
         ? "any"
         : [...record.manuscript_types],
+    allowed_content_operations: record.allowed_content_operations
+      ? [...record.allowed_content_operations]
+      : undefined,
+    forbidden_operations: record.forbidden_operations
+      ? [...record.forbidden_operations]
+      : undefined,
   };
 }
 

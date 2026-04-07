@@ -25,6 +25,7 @@ import { AiGatewayService } from "../../../src/modules/ai-gateway/ai-gateway-ser
 import { DocumentExportService } from "../../../src/modules/document-pipeline/document-export-service.ts";
 import { createEditingApi } from "../../../src/modules/editing/editing-api.ts";
 import { EditingService } from "../../../src/modules/editing/editing-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../../src/modules/execution-governance/execution-governance-service.ts";
 import { ExecutionTrackingService } from "../../../src/modules/execution-tracking/execution-tracking-service.ts";
@@ -176,6 +177,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
@@ -254,6 +256,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   });
   const executionGovernanceService = new ExecutionGovernanceService({
     repository: executionGovernanceRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -291,6 +294,7 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     manuscriptRepository,
     assetRepository,
     knowledgeRepository,
+    editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     executionGovernanceRepository,
@@ -431,6 +435,7 @@ function seedWorkbenchGovernance(input: {
   manuscriptRepository: InMemoryManuscriptRepository;
   assetRepository: InMemoryDocumentAssetRepository;
   knowledgeRepository: InMemoryKnowledgeRepository;
+  editorialRuleRepository: InMemoryEditorialRuleRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
   executionGovernanceRepository: InMemoryExecutionGovernanceRepository;
@@ -589,12 +594,35 @@ function seedWorkbenchGovernance(input: {
     template_bindings: ["template-proofreading-1"],
   });
 
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-seeded-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-proofreading-1",
+    template_family_id: "family-seeded-1",
+    module: "proofreading",
+    version_no: 1,
+    status: "published",
+  });
+
   void input.executionGovernanceRepository.saveProfile({
     id: "profile-screening-1",
     module: "screening",
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-screening-1",
+    rule_set_id: "rule-set-screening-1",
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -607,6 +635,7 @@ function seedWorkbenchGovernance(input: {
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-editing-1",
+    rule_set_id: "rule-set-editing-1",
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     knowledge_binding_mode: "profile_plus_dynamic",
@@ -619,6 +648,7 @@ function seedWorkbenchGovernance(input: {
     manuscript_type: "clinical_study",
     template_family_id: "family-seeded-1",
     module_template_id: "template-proofreading-1",
+    rule_set_id: "rule-set-proofreading-1",
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     knowledge_binding_mode: "profile_plus_dynamic",

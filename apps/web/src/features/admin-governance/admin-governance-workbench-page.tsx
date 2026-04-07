@@ -773,6 +773,9 @@ export function AdminGovernanceWorkbenchPage({
                     <p>
                       Family {profile.template_family_id} 路 Template {profile.module_template_id}
                     </p>
+                    <p>
+                      Rule Set {profile.rule_set_id} 路 Prompt {profile.prompt_template_id}
+                    </p>
                   </div>
                   <div className="admin-governance-template-actions">
                     <span className="admin-governance-badge">{profile.status}</span>
@@ -876,8 +879,19 @@ export function AdminGovernanceWorkbenchPage({
                 <small>{executionPreview.knowledge_items.length}</small>
               </article>
               <article className="admin-governance-asset-row">
+                <span>Rule Set</span>
+                <small>{executionPreview.rule_set.id}</small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Rule Count</span>
+                <small>{executionPreview.rules.length}</small>
+              </article>
+              <article className="admin-governance-asset-row">
                 <span>Prompt Template</span>
-                <small>{executionPreview.prompt_template.name}</small>
+                <small>
+                  {executionPreview.prompt_template.name} /{" "}
+                  {executionPreview.prompt_template.template_kind ?? "unspecified"}
+                </small>
               </article>
               <article className="admin-governance-asset-row">
                 <span>Skill Packages</span>

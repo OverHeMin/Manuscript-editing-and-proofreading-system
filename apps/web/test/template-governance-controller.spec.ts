@@ -125,6 +125,12 @@ test("template governance controller loads template families, retrieval insights
         };
       }
 
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -153,6 +159,8 @@ test("template governance controller loads template families, retrieval insights
     [
       "GET /api/v1/templates/families",
       "GET /api/v1/knowledge",
+      "GET /api/v1/editorial-rules/rule-sets",
+      "GET /api/v1/prompt-skill-registry/prompt-templates",
       "GET /api/v1/templates/families/family-1/module-templates",
       "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
       "GET /api/v1/knowledge/retrieval-snapshots/retrieval-snapshot-2",
@@ -226,6 +234,16 @@ test("template governance controller clears knowledge selection when a family sw
         };
       }
 
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -277,14 +295,13 @@ test("template governance controller keeps the workbench fail-open when retrieva
       }
 
       if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
-        throw new BrowserHttpClientError({
-          method: "GET",
-          requestUrl: input.url,
-          status: 404,
-          responseBody: {
-            error: "not_found",
-          },
-        });
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
       }
 
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
@@ -300,6 +317,226 @@ test("template governance controller keeps the workbench fail-open when retrieva
   assert.equal(overview.retrievalInsights.latestRun, null);
   assert.equal(overview.retrievalInsights.latestSnapshot, null);
   assert.equal(overview.retrievalInsights.signals.length, 0);
+});
+
+test("template governance controller loads rule authoring and instruction authoring assets for the selected family", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "template-editing-1",
+              template_family_id: "family-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              version_no: 1,
+              status: "published",
+              prompt: "Edit clinical study manuscripts.",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "rule-set-editing-1",
+              template_family_id: "family-1",
+              module: "editing",
+              version_no: 1,
+              status: "draft",
+            },
+            {
+              id: "rule-set-proofreading-1",
+              template_family_id: "family-2",
+              module: "proofreading",
+              version_no: 1,
+              status: "draft",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets/rule-set-editing-1/rules") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "rule-abstract-objective",
+              rule_set_id: "rule-set-editing-1",
+              order_no: 10,
+              rule_type: "format",
+              execution_mode: "apply_and_inspect",
+              scope: {
+                sections: ["abstract"],
+                block_kind: "heading",
+              },
+              trigger: {
+                kind: "exact_text",
+                text: "摘要 目的",
+              },
+              action: {
+                kind: "replace_heading",
+                to: "（摘要　目的）",
+              },
+              confidence_policy: "always_auto",
+              severity: "error",
+              enabled: true,
+              example_before: "摘要 目的",
+              example_after: "（摘要　目的）",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "instruction-editing-1",
+              name: "editing_instruction_mainline",
+              version: "1.0.0",
+              status: "published",
+              module: "editing",
+              manuscript_types: ["clinical_study"],
+              template_kind: "editing_instruction",
+              system_instructions:
+                "Apply approved editorial rules before any content rewrite.",
+              task_frame:
+                "Normalize exact clinical-study formatting and keep meaning stable.",
+              hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+              allowed_content_operations: ["sentence_rewrite"],
+              forbidden_operations: ["change_medical_meaning"],
+              manual_review_policy:
+                "Escalate when medical meaning could change.",
+              output_contract: "Return a governed editing payload.",
+            },
+            {
+              id: "instruction-proofreading-1",
+              name: "proofreading_instruction_mainline",
+              version: "1.0.0",
+              status: "published",
+              module: "proofreading",
+              manuscript_types: ["clinical_study"],
+              template_kind: "proofreading_instruction",
+              system_instructions:
+                "Inspect the manuscript against the same published rule source.",
+              task_frame: "Report findings without rewriting the manuscript.",
+              hard_rule_summary: "摘要 目的 -> （摘要　目的）",
+              allowed_content_operations: ["issue_explanation"],
+              forbidden_operations: ["rewrite_manuscript"],
+              manual_review_policy: "Escalate ambiguous checks to manual review.",
+              output_contract: "Return structured proofreading findings.",
+              report_style: "clinical_report",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-2/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedTemplateFamilyId: "family-1",
+  });
+
+  assert.equal((overview as { ruleSets: Array<unknown> }).ruleSets.length, 1);
+  assert.equal(
+    (
+      overview as {
+        selectedRuleSet: {
+          module: string;
+        } | null;
+      }
+    ).selectedRuleSet?.module,
+    "editing",
+  );
+  assert.equal(
+    (overview as { instructionTemplates: Array<unknown> }).instructionTemplates.length,
+    2,
+  );
+  assert.equal(
+    (
+      overview as {
+        rules: Array<{
+          example_before?: string;
+          example_after?: string;
+        }>;
+      }
+    ).rules[0]?.example_before,
+    "摘要 目的",
+  );
+  assert.equal(
+    (
+      overview as {
+        rules: Array<{
+          example_before?: string;
+          example_after?: string;
+        }>;
+      }
+    ).rules[0]?.example_after,
+    "（摘要　目的）",
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/templates/families",
+      "GET /api/v1/knowledge",
+      "GET /api/v1/editorial-rules/rule-sets",
+      "GET /api/v1/prompt-skill-registry/prompt-templates",
+      "GET /api/v1/templates/families/family-1/module-templates",
+      "GET /api/v1/editorial-rules/rule-sets/rule-set-editing-1/rules",
+      "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
+    ],
+  );
 });
 
 test("template governance controller can create, update, submit, and publish governed assets", async () => {
@@ -476,6 +713,16 @@ test("template governance controller can create, update, submit, and publish gov
         };
       }
 
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -604,6 +851,16 @@ test("template governance controller updates a template family and keeps it sele
         };
       }
 
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      const emptyRuleAuthoringResponse =
+        createEmptyRuleAuthoringResponse<TResponse>(input.url);
+      if (emptyRuleAuthoringResponse) {
+        return emptyRuleAuthoringResponse;
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -628,3 +885,28 @@ test("template governance controller updates a template family and keeps it sele
     true,
   );
 });
+
+function createEmptyRuleAuthoringResponse<TResponse>(url: string) {
+  if (
+    url === "/api/v1/editorial-rules/rule-sets" ||
+    url === "/api/v1/prompt-skill-registry/prompt-templates"
+  ) {
+    return {
+      status: 200,
+      body: [] as TResponse,
+    };
+  }
+
+  return null;
+}
+
+function createNotFoundRetrievalError(url: string) {
+  return new BrowserHttpClientError({
+    method: "GET",
+    requestUrl: url,
+    status: 404,
+    responseBody: {
+      error: "not_found",
+    },
+  });
+}

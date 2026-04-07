@@ -5,6 +5,7 @@ import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
+import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -12,6 +13,13 @@ import {
 } from "../agent-execution/agent-execution-service.ts";
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import {
+  inspectProofreadingRules,
+} from "../editorial-execution/proofreading-rule-checker.ts";
+import type {
+  ProofreadingInspectionResult,
+  ProofreadingSourceBlockResolver,
+} from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type {
   ExecutionTrackingService,
@@ -89,6 +97,10 @@ export interface ProofreadingServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  proofreadingSourceBlockResolver?: Pick<
+    ProofreadingSourceBlockResolver,
+    "resolveBlocks"
+  >;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -151,6 +163,10 @@ export class ProofreadingService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly proofreadingSourceBlockResolver: Pick<
+    ProofreadingSourceBlockResolver,
+    "resolveBlocks"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -176,6 +192,12 @@ export class ProofreadingService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.proofreadingSourceBlockResolver =
+      options.proofreadingSourceBlockResolver ?? {
+        async resolveBlocks() {
+          return [];
+        },
+      };
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -357,6 +379,18 @@ export class ProofreadingService {
             actorRole: input.actorRole,
             jobId,
           });
+      const proofreadingFindings =
+        input.jobType === "proofreading_draft_run"
+          ? await this.buildProofreadingFindings({
+              manuscriptId: input.manuscriptId,
+              parentAssetId: input.parentAssetId,
+              resolvedContext,
+            })
+          : undefined;
+      const reportMarkdown =
+        input.jobType === "proofreading_draft_run" && proofreadingFindings
+          ? renderProofreadingReport(proofreadingFindings)
+          : undefined;
 
       const executionLog =
         input.pinnedContext?.agentExecutionLogId
@@ -411,6 +445,26 @@ export class ProofreadingService {
             ? { draftSnapshotId: resolvedContext.draftSnapshotId }
             : {}),
           parentAssetId: input.parentAssetId,
+          ...(resolvedContext.ruleSetId
+            ? {
+                ruleSetId: resolvedContext.ruleSetId,
+              }
+            : {}),
+          ...(proofreadingFindings
+            ? {
+                proofreadingFindings,
+                manualReviewItems: proofreadingFindings.manualReviewItems.map(
+                  (item) => ({
+                    ...item,
+                  }),
+                ),
+              }
+            : {}),
+          ...(reportMarkdown
+            ? {
+                reportMarkdown,
+              }
+            : {}),
         },
         attempt_count: 0,
         started_at: undefined,
@@ -543,6 +597,13 @@ export class ProofreadingService {
       skillPackageVersions: moduleContext.skillPackages.map(
         (record) => record.version,
       ),
+      ruleSetId: moduleContext.ruleSet.id,
+      rules: moduleContext.rules.map((rule) => ({
+        ...rule,
+        scope: { ...rule.scope },
+        trigger: { ...rule.trigger },
+        action: { ...rule.action },
+      })),
       knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
         knowledgeItemId: selection.knowledgeItem.id,
         matchSourceId: selection.matchSourceId,
@@ -644,6 +705,22 @@ export class ProofreadingService {
       throw error;
     }
   }
+
+  private async buildProofreadingFindings(input: {
+    manuscriptId: string;
+    parentAssetId: string;
+    resolvedContext: ResolvedProofreadingGovernedContext;
+  }): Promise<ProofreadingInspectionResult> {
+    const blocks = await this.proofreadingSourceBlockResolver.resolveBlocks({
+      manuscriptId: input.manuscriptId,
+      assetId: input.parentAssetId,
+    });
+
+    return inspectProofreadingRules({
+      blocks,
+      rules: input.resolvedContext.rules ?? [],
+    });
+  }
 }
 
 interface ResolvedProofreadingGovernedContext {
@@ -652,6 +729,8 @@ interface ResolvedProofreadingGovernedContext {
   moduleTemplateVersionNo: number;
   promptTemplateId: string;
   promptTemplateVersion: string;
+  ruleSetId?: string;
+  rules?: EditorialRuleRecord[];
   skillPackageIds: string[];
   skillPackageVersions: string[];
   knowledgeHits: RecordKnowledgeHitInput[];
@@ -682,4 +761,43 @@ function extractStringPayloadValue(
 ): string | undefined {
   const value = job?.payload?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function renderProofreadingReport(
+  findings: ProofreadingInspectionResult,
+): string {
+  const lines = [
+    "# Proofreading Rule Report",
+    "",
+    `Failed checks: ${findings.failedChecks.length}`,
+    `Manual review items: ${findings.manualReviewItems.length}`,
+    "",
+  ];
+
+  if (findings.failedChecks.length > 0) {
+    lines.push("## Failed Checks", "");
+    for (const check of findings.failedChecks) {
+      lines.push(
+        `- ${check.ruleId}: expected ${check.expected}; found ${check.actual}.`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (findings.manualReviewItems.length > 0) {
+    lines.push("## Manual Review", "");
+    for (const item of findings.manualReviewItems) {
+      lines.push(`- ${item.ruleId}: ${item.reason}`);
+    }
+    lines.push("");
+  }
+
+  if (findings.riskItems.length > 0) {
+    lines.push("## Risk Items", "");
+    for (const item of findings.riskItems) {
+      lines.push(`- ${item.ruleId ?? "system"}: ${item.reason}`);
+    }
+  }
+
+  return lines.join("\n").trim();
 }

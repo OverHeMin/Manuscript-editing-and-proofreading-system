@@ -16,6 +16,7 @@ export interface ModuleExecutionProfileRecord {
   manuscript_type: ManuscriptType;
   template_family_id: string;
   module_template_id: string;
+  rule_set_id?: string;
   prompt_template_id: string;
   skill_package_ids: string[];
   knowledge_binding_mode: KnowledgeBindingMode;

@@ -1,5 +1,9 @@
 import type { RoleKey } from "../../users/roles.ts";
 import type {
+  EditorialRuleRecord,
+  EditorialRuleSetRecord,
+} from "../editorial-rules/editorial-rule-record.ts";
+import type {
   AiGatewayService,
   ResolvedModelSelection,
 } from "../ai-gateway/ai-gateway-service.ts";
@@ -40,6 +44,8 @@ export interface GovernedModuleContext {
     ReturnType<ExecutionGovernanceService["resolveActiveProfile"]>
   >;
   moduleTemplate: ModuleTemplateRecord;
+  ruleSet: EditorialRuleSetRecord;
+  rules: EditorialRuleRecord[];
   promptTemplate: PromptTemplateRecord;
   skillPackages: SkillPackageRecord[];
   knowledgeSelections: GovernedKnowledgeSelection[];
@@ -136,6 +142,11 @@ export async function resolveGovernedModuleContext(
     skillPackages.push(skillPackage);
   }
 
+  const { ruleSet, rules } =
+    await input.executionGovernanceService.resolvePublishedRuleSource(
+      executionProfile,
+    );
+
   const knowledgeSelectionsById = new Map<string, GovernedKnowledgeSelection>();
   const bindingRules =
     await input.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
@@ -200,6 +211,8 @@ export async function resolveGovernedModuleContext(
     manuscript,
     executionProfile,
     moduleTemplate,
+    ruleSet,
+    rules,
     promptTemplate,
     skillPackages,
     knowledgeSelections: [...knowledgeSelectionsById.values()],

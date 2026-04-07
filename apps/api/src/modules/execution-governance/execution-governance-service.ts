@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import { InMemoryEditorialRuleRepository } from "../editorial-rules/index.ts";
+import type {
+  EditorialRuleRecord,
+  EditorialRuleRepository,
+  EditorialRuleSetRecord,
+} from "../editorial-rules/index.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
@@ -28,6 +34,7 @@ export interface CreateExecutionProfileInput {
   manuscriptType: ManuscriptType;
   templateFamilyId: string;
   moduleTemplateId: string;
+  ruleSetId?: string;
   promptTemplateId: string;
   skillPackageIds: string[];
   knowledgeBindingMode: KnowledgeBindingMode;
@@ -58,6 +65,7 @@ interface ExecutionGovernanceWriteContext {
 
 export interface ExecutionGovernanceServiceOptions {
   repository: ExecutionGovernanceRepository;
+  editorialRuleRepository?: EditorialRuleRepository;
   moduleTemplateRepository: ModuleTemplateRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
@@ -128,6 +136,13 @@ export class ExecutionProfileSkillPackageNotPublishedError extends Error {
   }
 }
 
+export class ExecutionProfileRuleSetNotPublishedError extends Error {
+  constructor(ruleSetId: string) {
+    super(`Rule set ${ruleSetId} is not published and cannot be bound.`);
+    this.name = "ExecutionProfileRuleSetNotPublishedError";
+  }
+}
+
 export class ExecutionProfileKnowledgeItemNotApprovedError extends Error {
   constructor(knowledgeItemId: string) {
     super(`Knowledge item ${knowledgeItemId} is not approved and cannot be bound.`);
@@ -144,6 +159,7 @@ export class ExecutionProfileCompatibilityError extends Error {
 
 export class ExecutionGovernanceService {
   private readonly repository: ExecutionGovernanceRepository;
+  private readonly editorialRuleRepository: EditorialRuleRepository;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
@@ -153,6 +169,8 @@ export class ExecutionGovernanceService {
 
   constructor(options: ExecutionGovernanceServiceOptions) {
     this.repository = options.repository;
+    this.editorialRuleRepository =
+      options.editorialRuleRepository ?? new InMemoryEditorialRuleRepository();
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
@@ -183,6 +201,7 @@ export class ExecutionGovernanceService {
       manuscript_type: input.manuscriptType,
       template_family_id: input.templateFamilyId,
       module_template_id: input.moduleTemplateId,
+      rule_set_id: input.ruleSetId,
       prompt_template_id: input.promptTemplateId,
       skill_package_ids: [...new Set(input.skillPackageIds)],
       knowledge_binding_mode: input.knowledgeBindingMode,
@@ -370,6 +389,19 @@ export class ExecutionGovernanceService {
     );
   }
 
+  async resolvePublishedRuleSource(profile: ModuleExecutionProfileRecord): Promise<{
+    ruleSet: EditorialRuleSetRecord;
+    rules: EditorialRuleRecord[];
+  }> {
+    const ruleSet = await this.requirePublishedRuleSet(profile);
+    const rules = await this.editorialRuleRepository.listRulesByRuleSetId(ruleSet.id);
+
+    return {
+      ruleSet,
+      rules,
+    };
+  }
+
   private async assertProfileReferencesArePublishable(
     profile: ModuleExecutionProfileRecord,
   ): Promise<void> {
@@ -430,6 +462,8 @@ export class ExecutionGovernanceService {
       }
     }
 
+    await this.requirePublishedRuleSet(profile);
+
     const activeBindingRules = await this.listApplicableActiveKnowledgeBindingRules({
       module: profile.module,
       manuscriptType: profile.manuscript_type,
@@ -439,6 +473,31 @@ export class ExecutionGovernanceService {
     for (const rule of activeBindingRules) {
       await this.assertKnowledgeItemApproved(rule.knowledge_item_id);
     }
+  }
+
+  private async requirePublishedRuleSet(
+    profile: ModuleExecutionProfileRecord,
+  ): Promise<EditorialRuleSetRecord> {
+    const ruleSetId = profile.rule_set_id;
+    if (!ruleSetId) {
+      throw new ExecutionProfileRuleSetNotPublishedError("missing");
+    }
+
+    const ruleSet = await this.editorialRuleRepository.findRuleSetById(ruleSetId);
+    if (!ruleSet || ruleSet.status !== "published") {
+      throw new ExecutionProfileRuleSetNotPublishedError(ruleSetId);
+    }
+
+    if (
+      ruleSet.module !== profile.module ||
+      ruleSet.template_family_id !== profile.template_family_id
+    ) {
+      throw new ExecutionProfileCompatibilityError(
+        `Rule set ${ruleSet.id} is incompatible with execution profile ${profile.id}.`,
+      );
+    }
+
+    return ruleSet;
   }
 
   private async assertKnowledgeItemApproved(

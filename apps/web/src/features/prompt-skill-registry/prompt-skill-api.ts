@@ -51,3 +51,17 @@ export function listPromptTemplates(client: PromptSkillRegistryHttpClient) {
     url: "/api/v1/prompt-skill-registry/prompt-templates",
   });
 }
+
+export function publishPromptTemplate(
+  client: PromptSkillRegistryHttpClient,
+  promptTemplateId: string,
+  input: {
+    actorRole: CreatePromptTemplateInput["actorRole"];
+  },
+) {
+  return client.request<PromptTemplateViewModel>({
+    method: "POST",
+    url: `/api/v1/prompt-skill-registry/prompt-templates/${promptTemplateId}/publish`,
+    body: input,
+  });
+}

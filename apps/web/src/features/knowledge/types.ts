@@ -17,6 +17,8 @@ export type KnowledgeKind =
   | "reference"
   | "other";
 
+export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
+
 export type EvidenceLevel = "low" | "medium" | "high" | "expert_opinion" | "unknown";
 
 export type KnowledgeSourceType =
@@ -26,6 +28,13 @@ export type KnowledgeSourceType =
   | "website"
   | "internal_case"
   | "other";
+
+export interface KnowledgeProjectionSourceViewModel {
+  source_kind: "editorial_rule_projection";
+  rule_set_id: string;
+  rule_id: string;
+  projection_kind: KnowledgeProjectionKind;
+}
 
 export interface KnowledgeItemViewModel {
   id: string;
@@ -46,6 +55,7 @@ export interface KnowledgeItemViewModel {
   source_link?: string;
   aliases?: string[];
   template_bindings?: string[];
+  projection_source?: KnowledgeProjectionSourceViewModel;
 }
 
 export type KnowledgeReviewQueueItemViewModel = KnowledgeItemViewModel;

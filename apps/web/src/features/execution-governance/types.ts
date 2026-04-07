@@ -1,4 +1,8 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type {
+  EditorialRuleSetViewModel,
+  EditorialRuleViewModel,
+} from "../editorial-rules/types.ts";
 import type { KnowledgeItemViewModel } from "../knowledge/types.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import type { ModelRegistryEntryViewModel } from "../model-registry/types.ts";
@@ -30,6 +34,7 @@ export interface ModuleExecutionProfileViewModel {
   manuscript_type: ManuscriptType;
   template_family_id: string;
   module_template_id: string;
+  rule_set_id?: string;
   prompt_template_id: string;
   skill_package_ids: string[];
   knowledge_binding_mode: KnowledgeBindingMode;
@@ -58,6 +63,7 @@ export interface CreateExecutionProfileInput {
   manuscriptType: ManuscriptType;
   templateFamilyId: string;
   moduleTemplateId: string;
+  ruleSetId?: string;
   promptTemplateId: string;
   skillPackageIds: string[];
   knowledgeBindingMode: KnowledgeBindingMode;
@@ -101,6 +107,8 @@ export interface ResolveExecutionBundlePreviewInput {
 export interface ResolvedExecutionBundleViewModel {
   profile: ModuleExecutionProfileViewModel;
   module_template: ModuleTemplateViewModel;
+  rule_set: EditorialRuleSetViewModel;
+  rules: EditorialRuleViewModel[];
   prompt_template: PromptTemplateViewModel;
   skill_packages: SkillPackageViewModel[];
   resolved_model: ModelRegistryEntryViewModel;

@@ -253,6 +253,7 @@ model TemplateFamily {
   createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
   moduleTemplates ModuleTemplate[]
+  editorialRuleSets EditorialRuleSet[]
   manuscripts     Manuscript[]
 
   @@unique([manuscriptType, name], map: "template_families_manuscript_type_name_key")
@@ -278,6 +279,44 @@ model ModuleTemplate {
   @@map("module_templates")
 }
 
+model EditorialRuleSet {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateFamilyId String   @map("template_family_id") @db.Uuid
+  module           ModuleType
+  versionNo        Int      @map("version_no")
+  status           String   @default("draft") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  templateFamily   TemplateFamily @relation(fields: [templateFamilyId], references: [id], onDelete: Cascade)
+
+  @@unique([templateFamilyId, module, versionNo], map: "editorial_rule_sets_template_family_module_version_key")
+  @@index([templateFamilyId, module, status], map: "editorial_rule_sets_template_family_module_status_idx")
+  @@map("editorial_rule_sets")
+}
+
+model EditorialRule {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ruleSetId                 String   @map("rule_set_id") @db.Uuid
+  orderNo                   Int      @map("order_no")
+  ruleType                  String   @map("rule_type") @db.Text
+  executionMode             String   @map("execution_mode") @db.Text
+  scope                     Json
+  trigger                   Json
+  action                    Json
+  confidencePolicy          String   @map("confidence_policy") @db.Text
+  severity                  String   @db.Text
+  enabled                   Boolean  @default(true)
+  exampleBefore             String?  @map("example_before") @db.Text
+  exampleAfter              String?  @map("example_after") @db.Text
+  manualReviewReasonTemplate String? @map("manual_review_reason_template") @db.Text
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([ruleSetId, orderNo], map: "editorial_rules_rule_set_order_no_key")
+  @@index([ruleSetId, orderNo], map: "editorial_rules_rule_set_order_idx")
+  @@map("editorial_rules")
+}
+
 model KnowledgeItem {
   id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title            String                @db.Text
@@ -297,6 +336,7 @@ model KnowledgeItem {
   expiresAt        DateTime?             @map("expires_at") @db.Timestamptz(6)
   aliases          String[]              @default([])
   templateBindings String[]              @default([]) @map("template_bindings")
+  projectionSource Json?                 @map("projection_source")
   createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
 
