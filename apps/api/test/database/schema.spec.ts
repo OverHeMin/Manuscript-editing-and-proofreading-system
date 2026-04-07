@@ -45,6 +45,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "status",
     "created_by",
     "current_template_family_id",
+    "current_journal_template_id",
   ],
   document_assets: [
     "id",
