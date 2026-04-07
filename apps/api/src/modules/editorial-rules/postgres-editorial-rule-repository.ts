@@ -32,7 +32,7 @@ interface EditorialRuleRow {
   trigger: Record<string, unknown> | string | null;
   action: Record<string, unknown> | string | null;
   authoring_payload: Record<string, unknown> | string | null;
-  evidence_level: string | null;
+  evidence_level: EditorialRuleRecord["evidence_level"] | null;
   confidence_policy: EditorialRuleRecord["confidence_policy"];
   severity: EditorialRuleRecord["severity"];
   enabled: boolean;
@@ -68,7 +68,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
       [
         record.id,
         record.template_family_id,
-        readOptionalString(record, "journal_template_id"),
+        record.journal_template_id ?? null,
         record.module,
         record.version_no,
         record.status,
@@ -231,15 +231,15 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
         record.id,
         record.rule_set_id,
         record.order_no,
-        readOptionalString(record, "rule_object") ?? "generic",
+        record.rule_object,
         record.rule_type,
         record.execution_mode,
         JSON.stringify(record.scope),
-        JSON.stringify(readOptionalJsonObject(record, "selector") ?? {}),
+        JSON.stringify(record.selector),
         JSON.stringify(record.trigger),
         JSON.stringify(record.action),
-        JSON.stringify(readOptionalJsonObject(record, "authoring_payload") ?? {}),
-        readOptionalString(record, "evidence_level") ?? null,
+        JSON.stringify(record.authoring_payload),
+        record.evidence_level ?? null,
         record.confidence_policy,
         record.severity,
         record.enabled,
@@ -332,7 +332,7 @@ function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
     id: row.id,
     rule_set_id: row.rule_set_id,
     order_no: Number(row.order_no),
-    ...(row.rule_object ? { rule_object: row.rule_object } : {}),
+    rule_object: row.rule_object,
     rule_type: row.rule_type,
     execution_mode: row.execution_mode,
     scope: parseJsonObject<EditorialRuleRecord["scope"]>(row.scope),
@@ -368,21 +368,4 @@ function parseJsonObject<T extends Record<string, unknown>>(
   }
 
   return value as T;
-}
-
-function readOptionalString(record: object, key: string): string | undefined {
-  const value = (record as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function readOptionalJsonObject(
-  record: object,
-  key: string,
-): Record<string, unknown> | undefined {
-  const value = (record as Record<string, unknown>)[key];
-  if (typeof value !== "object" || value == null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value as Record<string, unknown>;
 }

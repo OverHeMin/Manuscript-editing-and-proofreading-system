@@ -44,7 +44,7 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       module: "editing",
       version_no: 1,
       status: "draft",
-    } as any);
+    });
 
     await repository.saveRule({
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -80,7 +80,7 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       example_before: "Abstract Purpose",
       example_after: "(Abstract Purpose)",
       manual_review_reason_template: "medical_meaning_risk",
-    } as any);
+    });
 
     const persistedJournalTemplateResult = await pool.query<{
       id: string;
@@ -149,30 +149,21 @@ test("postgres editorial rule repository persists journal templates, scoped rule
 
     assert.equal(loadedRule?.action.kind, "replace_heading");
     assert.equal(loadedRule?.action.to, "(Abstract Purpose)");
-    assert.deepEqual(
-      (loadedRule as { selector?: unknown } | undefined)?.selector,
-      {
-        section_selector: "abstract",
-        label_selector: { text: "Abstract Purpose" },
-      },
-    );
-    assert.deepEqual(
-      (loadedRule as { authoring_payload?: unknown } | undefined)
-        ?.authoring_payload,
-      {
-        source: "manual_authoring",
-        form_version: 1,
-      },
-    );
+    assert.deepEqual(loadedRule?.selector, {
+      section_selector: "abstract",
+      label_selector: { text: "Abstract Purpose" },
+    });
+    assert.deepEqual(loadedRule?.authoring_payload, {
+      source: "manual_authoring",
+      form_version: 1,
+    });
     assert.equal(loadedRule?.example_before, "Abstract Purpose");
     assert.equal(loadedRule?.example_after, "(Abstract Purpose)");
 
     assert.equal(listedRuleSets.length, 2);
     assert.deepEqual(
       listedRuleSets.map(
-        (ruleSet) =>
-          (ruleSet as { journal_template_id?: string }).journal_template_id ??
-          null,
+        (ruleSet) => ruleSet.journal_template_id ?? null,
       ),
       [null, "22222222-2222-2222-2222-222222222222"],
     );
