@@ -26,8 +26,9 @@ test("persistent auth shell renders bootstrapping status while restoring session
     kind: "bootstrapping",
   });
 
-  assert.match(html, /Restoring Session/);
-  assert.match(html, /current backend session/i);
+  assert.match(html, /正在恢复工作会话/);
+  assert.match(html, /恢复当前后台工作会话/);
+  assert.match(html, /auth-shell-brand/);
 });
 
 test("persistent auth shell renders a sign-in form for unauthenticated users", () => {
@@ -39,11 +40,14 @@ test("persistent auth shell renders a sign-in form for unauthenticated users", (
     loginErrorMessage: "Bad credentials",
   });
 
-  assert.match(html, /Persistent Workbench Sign-In/);
+  assert.match(html, /医学稿件处理系统/);
+  assert.match(html, /编辑部工作台登录/);
+  assert.match(html, /登录后进入初筛、编辑、校对与知识库工作区/);
   assert.match(html, /name="username"/);
   assert.match(html, /name="password"/);
   assert.match(html, /Bad credentials/);
-  assert.match(html, /Sign in/);
+  assert.match(html, /登录/);
+  assert.match(html, /auth-shell-brand/);
 });
 
 test("persistent auth shell renders a retry state when session bootstrap fails", () => {
@@ -52,7 +56,8 @@ test("persistent auth shell renders a retry state when session bootstrap fails",
     message: "Unable to reach backend auth runtime.",
   });
 
-  assert.match(html, /Session Bootstrap Failed/);
+  assert.match(html, /工作会话恢复失败/);
   assert.match(html, /Unable to reach backend auth runtime/);
-  assert.match(html, /Retry Session Check/);
+  assert.match(html, /重新检查会话/);
+  assert.match(html, /auth-shell-brand/);
 });

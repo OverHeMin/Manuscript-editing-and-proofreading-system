@@ -2,9 +2,29 @@
 @import "../features/evaluation-workbench/evaluation-workbench.css";
 
 :root {
-  font-family: "Segoe UI", Tahoma, sans-serif;
-  color: #1f2937;
-  background: #f3f4f6;
+  --font-body: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Georgia", "Times New Roman", "Songti SC", serif;
+  --color-shell-bg: #141311;
+  --color-shell-bg-strong: #1b1815;
+  --color-shell-bg-soft: #24201b;
+  --color-shell-text: #f1e0b8;
+  --color-shell-text-muted: #c9b486;
+  --color-accent-gold: #d8be84;
+  --color-accent-gold-strong: #eed39b;
+  --color-accent-gold-soft: rgba(216, 190, 132, 0.16);
+  --color-paper: #f6f1e8;
+  --color-paper-strong: #fffaf2;
+  --color-paper-muted: #efe7d8;
+  --color-border-warm: rgba(126, 101, 51, 0.22);
+  --color-border-shell: rgba(216, 190, 132, 0.2);
+  --color-text-primary: #1f2832;
+  --color-text-secondary: #5c6570;
+  --color-danger-soft: #fbe7e4;
+  --color-danger-border: #deada4;
+  --color-danger-text: #7f3428;
+  font-family: var(--font-body);
+  color: var(--color-text-primary);
+  background: var(--color-shell-bg);
 }
 
 * {
@@ -13,29 +33,64 @@
 
 body {
   margin: 0;
+  min-width: 320px;
   color: inherit;
   background: inherit;
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell,
+.workbench-nav-button,
+.workbench-secondary-action,
+.auth-primary-action,
+.auth-card,
+.workbench-header,
+.workbench-placeholder {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
 .app-shell {
   min-height: 100vh;
-  padding: 24px 28px;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  padding: 28px 32px;
+  background:
+    radial-gradient(circle at top left, rgba(216, 190, 132, 0.22), transparent 30%),
+    radial-gradient(circle at top right, rgba(238, 211, 155, 0.14), transparent 26%),
+    linear-gradient(180deg, #11100e 0%, #171512 100%);
 }
 
 .workbench-host {
-  width: min(1440px, 100%);
+  width: min(1480px, 100%);
   margin: 0 auto;
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .workbench-header {
-  padding: 16px 18px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  padding: 20px 22px;
+  border: 1px solid var(--color-border-shell);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 245, 220, 0.04), transparent 48%),
+    linear-gradient(180deg, rgba(41, 35, 27, 0.95), rgba(20, 19, 17, 0.96));
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .workbench-header-topline {
@@ -47,69 +102,102 @@ body {
 
 .workbench-header h1 {
   margin: 0;
-  font-size: 1.15rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
   font-weight: 650;
-  color: #111827;
+  letter-spacing: 0.04em;
+  color: var(--color-shell-text);
 }
 
 .workbench-header p {
   margin: 8px 0 0;
-  color: #4b5563;
-  font-size: 0.95rem;
+  max-width: 720px;
+  color: var(--color-shell-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.65;
 }
 
 .workbench-header code {
   font-size: 0.85rem;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
-  color: #374151;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(216, 190, 132, 0.24);
+  background: rgba(216, 190, 132, 0.1);
+  color: var(--color-accent-gold-strong);
 }
 
 .workbench-secondary-action {
-  padding: 10px 14px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
-  font: inherit;
+  padding: 10px 15px;
+  border: 1px solid rgba(216, 190, 132, 0.28);
+  border-radius: 999px;
+  background: rgba(216, 190, 132, 0.08);
+  color: var(--color-shell-text);
   font-weight: 600;
   cursor: pointer;
 }
 
 .workbench-secondary-action:hover {
-  border-color: #94a3b8;
-  background: #f8fafc;
+  border-color: rgba(238, 211, 155, 0.45);
+  background: rgba(216, 190, 132, 0.14);
+  transform: translateY(-1px);
 }
 
 .workbench-secondary-action:disabled {
   cursor: not-allowed;
-  color: #94a3b8;
-  border-color: #d1d5db;
-  background: #f8fafc;
+  color: rgba(241, 224, 184, 0.48);
+  border-color: rgba(216, 190, 132, 0.14);
+  background: rgba(216, 190, 132, 0.05);
 }
 
 .workbench-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
 .workbench-nav {
-  padding: 14px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  position: sticky;
+  top: 24px;
+  padding: 16px;
+  border: 1px solid var(--color-border-shell);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(27, 24, 21, 0.96), rgba(17, 16, 14, 0.98));
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .workbench-nav h2 {
   margin: 0 0 12px;
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   font-weight: 650;
-  color: #374151;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent-gold);
+}
+
+.workbench-nav-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.workbench-nav-group {
+  display: grid;
+  gap: 8px;
+}
+
+.workbench-nav-group + .workbench-nav-group {
+  padding-top: 14px;
+  border-top: 1px solid rgba(216, 190, 132, 0.12);
+}
+
+.workbench-nav-group h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-shell-text-muted);
 }
 
 .workbench-nav-list {
@@ -117,44 +205,54 @@ body {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 9px;
 }
 
 .workbench-nav-button {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid rgba(216, 190, 132, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 250, 242, 0.03);
+  color: var(--color-paper);
+  display: grid;
+  gap: 4px;
   text-align: left;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.workbench-nav-button span {
+  font-weight: 650;
 }
 
 .workbench-nav-button small {
-  color: #6b7280;
-  text-transform: capitalize;
+  color: rgba(241, 224, 184, 0.56);
 }
 
 .workbench-nav-button:hover {
-  border-color: #9ca3af;
+  border-color: rgba(216, 190, 132, 0.28);
+  background: rgba(216, 190, 132, 0.08);
+  transform: translateY(-1px);
 }
 
-.workbench-nav-button.is-active {
-  border-color: #64748b;
-  background: #f8fafc;
+.workbench-nav-button.is-active,
+.workbench-nav-button[aria-current="page"] {
+  border-color: rgba(238, 211, 155, 0.54);
+  background:
+    linear-gradient(135deg, rgba(216, 190, 132, 0.22), rgba(216, 190, 132, 0.08)),
+    rgba(255, 250, 242, 0.04);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(238, 211, 155, 0.12);
 }
 
 .workbench-nav-button.is-disabled,
 .workbench-nav-button:disabled {
   cursor: not-allowed;
-  color: #6b7280;
-  background: #f9fafb;
-  border-color: #d1d5db;
+  color: rgba(241, 224, 184, 0.46);
+  background: rgba(255, 250, 242, 0.02);
+  border-color: rgba(216, 190, 132, 0.1);
 }
 
 .workbench-content {
@@ -162,37 +260,40 @@ body {
 }
 
 .workbench-placeholder {
-  padding: 20px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  padding: 22px;
+  border: 1px solid var(--color-border-warm);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 250, 242, 0.96)),
+    var(--color-paper);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .workbench-placeholder h2 {
   margin: 0 0 10px;
-  font-size: 1rem;
-  color: #1f2937;
+  font-size: 1.08rem;
+  color: var(--color-text-primary);
 }
 
 .workbench-placeholder p {
   margin: 0;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
 .workbench-notice {
   grid-column: 1 / -1;
-  border-color: #fecaca;
-  background: #fef2f2;
+  border-color: var(--color-danger-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(251, 231, 228, 0.92)),
+    var(--color-danger-soft);
 }
 
-.workbench-notice h2 {
-  color: #991b1b;
-}
-
+.workbench-notice h2,
 .workbench-notice p {
-  color: #7f1d1d;
+  color: var(--color-danger-text);
 }
 
 .app-phase-placeholder p + p {
@@ -202,25 +303,44 @@ body {
 .auth-card {
   width: min(520px, 100%);
   margin: 72px auto 0;
-  padding: 24px;
-  border: 1px solid #d1d5db;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  padding: 28px;
+  border: 1px solid rgba(216, 190, 132, 0.2);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 250, 242, 0.96)),
+    var(--color-paper-strong);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .auth-card-header h1,
 .auth-card h1 {
   margin: 0;
-  font-size: 1.4rem;
-  color: #111827;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  color: var(--color-text-primary);
 }
 
 .auth-card-header p,
 .auth-card p {
   margin: 10px 0 0;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   line-height: 1.6;
+}
+
+.auth-shell-brand {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-shell-brand-eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a7240;
 }
 
 .auth-form {
@@ -233,7 +353,7 @@ body {
   display: grid;
   gap: 6px;
   font-size: 0.95rem;
-  color: #374151;
+  color: var(--color-text-primary);
 }
 
 .auth-field span {
@@ -242,32 +362,32 @@ body {
 
 .auth-input {
   width: 100%;
-  padding: 11px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  font: inherit;
-  color: #111827;
-  background: #ffffff;
+  padding: 12px 13px;
+  border: 1px solid rgba(125, 105, 60, 0.2);
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .auth-input:focus {
-  outline: 2px solid #bfdbfe;
+  outline: 2px solid rgba(216, 190, 132, 0.24);
   outline-offset: 1px;
-  border-color: #60a5fa;
+  border-color: rgba(138, 114, 64, 0.48);
+  box-shadow: 0 0 0 4px rgba(216, 190, 132, 0.08);
 }
 
 .auth-input:disabled {
-  color: #6b7280;
-  background: #f8fafc;
+  color: rgba(31, 40, 50, 0.5);
+  background: rgba(239, 231, 216, 0.76);
 }
 
 .auth-error-message {
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid #fecaca;
-  border-radius: 10px;
-  background: #fef2f2;
-  color: #991b1b;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  background: rgba(251, 231, 228, 0.82);
+  color: var(--color-danger-text);
 }
 
 .auth-actions {
@@ -277,24 +397,26 @@ body {
 }
 
 .auth-primary-action {
-  padding: 11px 16px;
+  padding: 11px 18px;
   border: 0;
-  border-radius: 10px;
-  background: #0f766e;
-  color: #ffffff;
-  font: inherit;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2f261b 0%, #493a26 100%);
+  color: var(--color-shell-text);
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 12px 28px rgba(25, 21, 17, 0.24);
 }
 
 .auth-primary-action:hover {
-  background: #115e59;
+  background: linear-gradient(135deg, #3a2f22 0%, #5b492f 100%);
+  transform: translateY(-1px);
 }
 
 .auth-primary-action:disabled {
   cursor: not-allowed;
-  background: #99f6e4;
-  color: #134e4a;
+  background: linear-gradient(135deg, #8c7b58 0%, #a08d64 100%);
+  color: rgba(20, 19, 17, 0.78);
+  box-shadow: none;
 }
 
 @media (max-width: 1024px) {
@@ -307,6 +429,7 @@ body {
   }
 
   .workbench-nav {
+    position: static;
     order: 1;
   }
 
@@ -322,5 +445,23 @@ body {
   .auth-card {
     margin-top: 28px;
     padding: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .workbench-nav-button,
+  .workbench-secondary-action,
+  .auth-primary-action,
+  .auth-card,
+  .workbench-header,
+  .workbench-placeholder {
+    transition: none;
+  }
+
+  .workbench-nav-button:hover,
+  .workbench-secondary-action:hover,
+  .auth-primary-action:hover {
+    transform: none;
   }
 }

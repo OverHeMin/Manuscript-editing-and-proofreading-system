@@ -241,10 +241,10 @@ export function PersistentAuthShellView({
       return (
         <main className="app-shell">
           <section className="auth-card" role="status" aria-live="polite">
-            <h1>Restoring Session</h1>
-            <p>
-              Checking the current backend session before the workbench loads.
-            </p>
+            <AuthShellBrand
+              title="正在恢复工作会话"
+              description="正在恢复当前后台工作会话，完成后将进入编辑部工作台。"
+            />
           </section>
         </main>
       );
@@ -252,7 +252,7 @@ export function PersistentAuthShellView({
       return (
         <main className="app-shell">
           <section className="auth-card" role="alert">
-            <h1>Session Bootstrap Failed</h1>
+            <AuthShellBrand title="工作会话恢复失败" />
             <p>{state.message}</p>
             <div className="auth-actions">
               <button
@@ -260,7 +260,7 @@ export function PersistentAuthShellView({
                 className="workbench-secondary-action"
                 onClick={onRetry}
               >
-                Retry Session Check
+                重新检查会话
               </button>
             </div>
           </section>
@@ -280,15 +280,15 @@ export function PersistentAuthShellView({
         <main className="app-shell">
           <section className="auth-card">
             <header className="auth-card-header">
-              <h1>Persistent Workbench Sign-In</h1>
-              <p>
-                Sign in with a backend account to load the persistent review workbenches.
-              </p>
+              <AuthShellBrand
+                title="编辑部工作台登录"
+                description="登录后进入初筛、编辑、校对与知识库工作区。"
+              />
             </header>
 
             <form className="auth-form" onSubmit={onSubmit}>
               <label className="auth-field">
-                <span>Username</span>
+                <span>账号</span>
                 <input
                   className="auth-input"
                   type="text"
@@ -302,7 +302,7 @@ export function PersistentAuthShellView({
               </label>
 
               <label className="auth-field">
-                <span>Password</span>
+                <span>密码</span>
                 <input
                   className="auth-input"
                   type="password"
@@ -327,7 +327,7 @@ export function PersistentAuthShellView({
                   className="auth-primary-action"
                   disabled={state.isLoginPending}
                 >
-                  {state.isLoginPending ? "Signing in..." : "Sign in"}
+                  {state.isLoginPending ? "登录中..." : "登录"}
                 </button>
               </div>
             </form>
@@ -335,6 +335,21 @@ export function PersistentAuthShellView({
         </main>
       );
   }
+}
+
+interface AuthShellBrandProps {
+  title: string;
+  description?: string;
+}
+
+function AuthShellBrand({ title, description }: AuthShellBrandProps) {
+  return (
+    <div className="auth-shell-brand">
+      <p className="auth-shell-brand-eyebrow">医学稿件处理系统</p>
+      <h1>{title}</h1>
+      {description ? <p>{description}</p> : null}
+    </div>
+  );
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
