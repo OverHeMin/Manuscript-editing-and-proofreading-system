@@ -106,7 +106,21 @@ export function ManuscriptWorkbenchControls({
   );
 
   return (
-    <section className="manuscript-workbench-controls">
+    <section className="manuscript-workbench-controls" aria-label="Operator Console">
+      <header className="manuscript-workbench-controls-intro">
+        <div className="manuscript-workbench-controls-copy">
+          <span className="manuscript-workbench-section-eyebrow">Operator Console</span>
+          <h3>Run intake, lookup, and governed actions from one desk.</h3>
+          <p>
+            Keep manuscript intake, active module execution, and supporting utilities in
+            one lighter work surface.
+          </p>
+        </div>
+        <div className="manuscript-workbench-desk-stat">
+          <span>Current Lane</span>
+          <strong>{describeMode(mode)}</strong>
+        </div>
+      </header>
       <div className="manuscript-workbench-controls-grid">
         {intake ? (
           <article className="manuscript-workbench-panel">

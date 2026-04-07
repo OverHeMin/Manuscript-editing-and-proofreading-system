@@ -46,6 +46,8 @@ test("submission workbench renders a real file picker for inline uploads", () =>
     />,
   );
 
+  assert.match(markup, /manuscript-workbench-hero/);
+  assert.match(markup, /Workflow Lane/);
   assert.match(markup, /type="file"/);
   assert.match(markup, /Storage Key/);
   assert.match(markup, /Upload Manuscript/);

@@ -489,9 +489,26 @@ export function ManuscriptWorkbenchPage({
   }
 
   return (
-    <article className="workbench-placeholder">
-      <h2>{resolveTitle(mode)}</h2>
-      <p>{resolveDescription(mode)}</p>
+    <article className="workbench-placeholder manuscript-workbench-shell">
+      <header className="manuscript-workbench-hero">
+        <div className="manuscript-workbench-hero-copy">
+          <span className="manuscript-workbench-hero-eyebrow">
+            {resolveHeroEyebrow(mode)}
+          </span>
+          <h2>{resolveTitle(mode)}</h2>
+          <p>{resolveDescription(mode)}</p>
+        </div>
+        <dl className="manuscript-workbench-hero-metrics">
+          <div className="manuscript-workbench-hero-metric">
+            <dt>Workflow Lane</dt>
+            <dd>{resolveHeroLane(mode)}</dd>
+          </div>
+          <div className="manuscript-workbench-hero-metric">
+            <dt>Desk Focus</dt>
+            <dd>{resolveHeroFocus(mode)}</dd>
+          </div>
+        </dl>
+      </header>
       {normalizedPrefilledManuscriptId.length > 0 ? (
         <p className="manuscript-workbench-prefill-note">
           This workbench was prefilled from the previous manuscript handoff.
@@ -908,6 +925,46 @@ function resolveDescription(mode: ManuscriptWorkbenchMode): string {
   if (mode === "screening") return "Trigger governed screening runs over the persistent API.";
   if (mode === "editing") return "Trigger governed editing runs over the persistent API.";
   return "Create proofreading drafts and finalize them over the persistent API.";
+}
+
+function resolveHeroEyebrow(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "submission") {
+    return "Editorial Intake Desk";
+  }
+
+  return "Mainline Manuscript Desk";
+}
+
+function resolveHeroLane(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "submission") {
+    return "Submission Intake";
+  }
+
+  if (mode === "screening") {
+    return "Initial Screening";
+  }
+
+  if (mode === "editing") {
+    return "Editing";
+  }
+
+  return "Proofreading";
+}
+
+function resolveHeroFocus(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "submission") {
+    return "Capture manuscript metadata and seed the governed flow.";
+  }
+
+  if (mode === "screening") {
+    return "Confirm readiness, run screening, and prepare the editing handoff.";
+  }
+
+  if (mode === "editing") {
+    return "Refine the governed draft and preserve handoff context for proofreading.";
+  }
+
+  return "Produce draft reviews, finalize the annotated file, and prepare release.";
 }
 
 function resolveActionLabel(mode: ManuscriptWorkbenchMode): string {

@@ -415,6 +415,26 @@ export function ManuscriptWorkbenchSummary({
 
   return (
     <section className="manuscript-workbench-summary">
+      <header className="manuscript-workbench-summary-hero">
+        <div className="manuscript-workbench-summary-hero-copy">
+          <span className="manuscript-workbench-section-eyebrow">Live Editorial Ledger</span>
+          <h3>Manuscript Command Surface</h3>
+          <p>
+            Track the latest action, the next governed handoff, and the active
+            manuscript record without leaving the current lane.
+          </p>
+        </div>
+        <div className="manuscript-workbench-summary-hero-stats">
+          <div className="manuscript-workbench-desk-stat">
+            <span>Current Lane</span>
+            <strong>{formatWorkbenchModeLabel(mode)}</strong>
+          </div>
+          <div className="manuscript-workbench-desk-stat">
+            <span>Tracked Assets</span>
+            <strong>{workspace.assets.length}</strong>
+          </div>
+        </div>
+      </header>
       <div className="manuscript-workbench-summary-grid">
         <SummaryCard title="Latest Action Result">
           {latestActionResult ? (

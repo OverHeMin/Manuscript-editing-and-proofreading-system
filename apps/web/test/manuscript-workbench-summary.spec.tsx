@@ -144,6 +144,8 @@ test("manuscript workbench summary renders operator-facing overview cards and th
     />,
   );
 
+  assert.match(markup, /Live Editorial Ledger/);
+  assert.match(markup, /Manuscript Command Surface/);
   assert.match(markup, /Manuscript Overview/);
   assert.match(markup, /Latest Action Result/);
   assert.match(markup, /Run Editing/);

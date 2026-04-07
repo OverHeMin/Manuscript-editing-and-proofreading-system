@@ -66,6 +66,8 @@ test("manuscript workbench controls render structured operator panels for upload
     />,
   );
 
+  assert.match(markup, /Operator Console/);
+  assert.match(markup, /Run intake, lookup, and governed actions from one desk\./);
   assert.match(markup, /Submission Intake/);
   assert.match(markup, /Workspace Lookup/);
   assert.match(markup, /Proofreading Draft/);
@@ -118,6 +120,7 @@ test("manuscript workbench controls show inline guidance when required operator 
     />,
   );
 
+  assert.match(markup, /Operator Console/);
   assert.match(markup, /Add a manuscript title before upload\./);
   assert.match(markup, /Choose a local file or enter a storage key before upload\./);
   assert.match(markup, /Enter a manuscript ID before loading the workspace\./);
