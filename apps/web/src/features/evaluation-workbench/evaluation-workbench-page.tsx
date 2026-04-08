@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
@@ -238,6 +239,7 @@ function EvaluationWorkbenchOperationsView(props: {
             Delta-first operations view for finalized suite movement, bounded history, and
             read-only inspection.
           </p>
+          <WorkbenchCoreStrip variant="secondary" />
           {props.errorMessage ? <p className="evaluation-workbench-error">{props.errorMessage}</p> : null}
         </div>
         {props.statusMessage ? <p className="evaluation-workbench-status">{props.statusMessage}</p> : null}

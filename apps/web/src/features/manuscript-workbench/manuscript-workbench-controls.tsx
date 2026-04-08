@@ -106,18 +106,17 @@ export function ManuscriptWorkbenchControls({
   );
 
   return (
-    <section className="manuscript-workbench-controls" aria-label="Operator Console">
+    <section className="manuscript-workbench-controls" aria-label="工作台操作区">
       <header className="manuscript-workbench-controls-intro">
         <div className="manuscript-workbench-controls-copy">
-          <span className="manuscript-workbench-section-eyebrow">Operator Console</span>
-          <h3>Run intake, lookup, and governed actions from one desk.</h3>
+          <span className="manuscript-workbench-section-eyebrow">操作台</span>
+          <h3>在同一桌面完成接入、检索与治理动作。</h3>
           <p>
-            Keep manuscript intake, active module execution, and supporting utilities in
-            one lighter work surface.
+            让稿件接入、当前工作线执行与辅助工具保持在同一轻量工作面。
           </p>
         </div>
         <div className="manuscript-workbench-desk-stat">
-          <span>Current Lane</span>
+          <span>当前工作线</span>
           <strong>{describeMode(mode)}</strong>
         </div>
       </header>
@@ -126,9 +125,9 @@ export function ManuscriptWorkbenchControls({
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
               <div>
-                <h3>Submission Intake</h3>
+                <h3>稿件接入</h3>
                 <p>
-                  Upload a local manuscript file or keep using a precomputed storage key.
+                  上传本地稿件，或继续使用已有存储键完成接入。
                 </p>
               </div>
             </div>
@@ -136,14 +135,14 @@ export function ManuscriptWorkbenchControls({
               <label
                 className={resolveFieldClassName(intake.uploadForm.title.trim().length === 0)}
               >
-                <span>Title</span>
+                <span>标题</span>
                 <input
                   value={intake.uploadForm.title}
                   onChange={(event) => intake.onTitleChange(event.target.value)}
                 />
               </label>
               <label className="manuscript-workbench-field">
-                <span>Manuscript Type</span>
+                <span>稿件类型</span>
                 <select
                   value={intake.uploadForm.manuscriptType}
                   onChange={(event) =>
@@ -158,15 +157,15 @@ export function ManuscriptWorkbenchControls({
                 </select>
               </label>
               <label className={resolveFieldClassName(requiresUploadPayload)}>
-                <span>Storage Key</span>
+                <span>存储键</span>
                 <input
                   value={intake.uploadForm.storageKey ?? ""}
-                  placeholder="Optional when a local file is selected"
+                  placeholder="选择本地文件后可不填写"
                   onChange={(event) => intake.onStorageKeyChange(event.target.value)}
                 />
               </label>
               <label className={resolveFieldClassName(requiresUploadPayload)}>
-                <span>Manuscript File</span>
+                <span>稿件文件</span>
                 <input
                   type="file"
                   onChange={(event) => {
@@ -179,8 +178,8 @@ export function ManuscriptWorkbenchControls({
               </label>
               <p className="manuscript-workbench-help">
                 {intake.uploadForm.fileContentBase64
-                  ? `Selected local file: ${intake.uploadForm.fileName}`
-                  : "No local file selected. Enter a storage key to keep using metadata-only uploads."}
+                  ? `已选择本地文件：${intake.uploadForm.fileName}`
+                  : "尚未选择本地文件，可填写存储键继续使用元数据上传。"}
               </p>
               {intakeMessages.length > 0 ? (
                 <ul className="manuscript-workbench-validation-list">
@@ -195,7 +194,7 @@ export function ManuscriptWorkbenchControls({
                   disabled={busy || !intake.canSubmit}
                   onClick={() => intake.onSubmit()}
                 >
-                  {busy ? "Working..." : "Upload Manuscript"}
+                  {busy ? "处理中..." : "上传稿件"}
                 </button>
               </div>
             </div>
@@ -205,15 +204,15 @@ export function ManuscriptWorkbenchControls({
         <article className="manuscript-workbench-panel">
           <div className="manuscript-workbench-panel-heading">
             <div>
-              <h3>Workspace Lookup</h3>
+              <h3>工作区检索</h3>
               <p>
-                Load a manuscript workspace by ID before running {describeMode(mode)} operations.
+                按稿件 ID 加载工作区，再继续 {describeMode(mode)} 的相关操作。
               </p>
             </div>
           </div>
           <div className="manuscript-workbench-panel-body">
             <label className={resolveFieldClassName(!canLoadWorkspace)}>
-              <span>Manuscript ID</span>
+              <span>稿件 ID</span>
               <input
                 value={lookup.manuscriptId}
                 onChange={(event) => lookup.onChange(event.target.value)}
@@ -221,7 +220,7 @@ export function ManuscriptWorkbenchControls({
             </label>
             {!canLoadWorkspace ? (
               <p className="manuscript-workbench-help is-warning">
-                Enter a manuscript ID before loading the workspace.
+                请先输入稿件 ID 再加载工作区。
               </p>
             ) : null}
             <div className="manuscript-workbench-button-row">
@@ -230,7 +229,7 @@ export function ManuscriptWorkbenchControls({
                 disabled={busy || !canLoadWorkspace}
                 onClick={() => lookup.onLoad()}
               >
-                Load Workspace
+                加载工作区
               </button>
             </div>
           </div>
@@ -240,25 +239,24 @@ export function ManuscriptWorkbenchControls({
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
               <div>
-                <h3>{templateSelection.title}</h3>
+                <h3>{formatTemplateSelectionTitle(templateSelection.title)}</h3>
                 <p>
-                  Choose the journal-level small template that should refine the base
-                  manuscript family before governed runs continue.
+                  在基础模板家族上选择期刊级小模板，再继续后续治理执行。
                 </p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
               <div className="manuscript-workbench-selection-context">
-                <span>Base Template Family</span>
+                <span>基础模板家族</span>
                 <strong>{templateSelection.baseTemplateLabel}</strong>
               </div>
               <label className="manuscript-workbench-field">
-                <span>Journal Template</span>
+                <span>期刊模板</span>
                 <select
                   value={templateSelection.selectedJournalTemplateId}
                   onChange={(event) => templateSelection.onSelect(event.target.value)}
                 >
-                  <option value="">Use Base Family Only</option>
+                  <option value="">仅使用基础家族</option>
                   {templateSelection.options.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -267,7 +265,7 @@ export function ManuscriptWorkbenchControls({
                 </select>
               </label>
               <div className="manuscript-workbench-selection-context">
-                <span>Current Applied Context</span>
+                <span>当前生效上下文</span>
                 <strong>
                   {selectedJournalTemplateOption?.label ??
                     templateSelection.currentAppliedLabel}
@@ -275,13 +273,12 @@ export function ManuscriptWorkbenchControls({
               </div>
               {templateSelection.hasPendingChange ? (
                 <p className="manuscript-workbench-help is-warning">
-                  Save the template context so the next governed run uses the selected
-                  journal override.
+                  请先保存模板上下文，再让下一次治理执行使用所选期刊覆盖。
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row">
                 <button type="button" disabled={busy} onClick={() => templateSelection.onApply()}>
-                  {busy ? "Working..." : "Save Template Context"}
+                  {busy ? "处理中..." : "保存模板上下文"}
                 </button>
               </div>
             </div>
@@ -292,13 +289,13 @@ export function ManuscriptWorkbenchControls({
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
               <div>
-                <h3>{moduleAction.title}</h3>
-                <p>Select the current upstream asset that should feed this module run.</p>
+                <h3>{formatWorkbenchPanelTitle(moduleAction.title)}</h3>
+                <p>选择当前可用的上游资产，作为本次模块执行的输入来源。</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
               <label className={resolveFieldClassName(!canRunModule)}>
-                <span>Parent Asset</span>
+                <span>父资产</span>
                 <select
                   value={moduleAction.selectedAssetId}
                   onChange={(event) => moduleAction.onSelect(event.target.value)}
@@ -313,13 +310,13 @@ export function ManuscriptWorkbenchControls({
               </label>
               {selectedModuleOption ? (
                 <div className="manuscript-workbench-selection-context">
-                  <span>{moduleAction.selectedContextLabel ?? "Selected Asset"}</span>
+                  <span>{formatSelectionContextLabel(moduleAction.selectedContextLabel, "已选资产")}</span>
                   <strong>{selectedModuleOption.label}</strong>
                 </div>
               ) : null}
               {!canRunModule ? (
                 <p className="manuscript-workbench-help is-warning">
-                  Select a parent asset before starting this module run.
+                  请先选择父资产再启动当前模块。
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row">
@@ -328,7 +325,7 @@ export function ManuscriptWorkbenchControls({
                   disabled={busy || !canRunModule}
                   onClick={() => moduleAction.onRun()}
                 >
-                  {busy ? "Working..." : moduleAction.actionLabel}
+                  {busy ? "处理中..." : formatWorkbenchActionLabel(moduleAction.actionLabel)}
                 </button>
               </div>
             </div>
@@ -339,13 +336,13 @@ export function ManuscriptWorkbenchControls({
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
               <div>
-                <h3>{finalizeAction.actionLabel}</h3>
-                <p>Pin the proofreading draft that should become the human-confirmed final file.</p>
+                <h3>{formatWorkbenchActionLabel(finalizeAction.actionLabel)}</h3>
+                <p>锁定将要成为人工确认终稿的校对草稿，再完成最终定稿。</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
               <label className={resolveFieldClassName(!canFinalizeProofreading)}>
-                <span>Draft Asset</span>
+                <span>草稿资产</span>
                 <select
                   value={finalizeAction.selectedAssetId}
                   onChange={(event) => finalizeAction.onSelect(event.target.value)}
@@ -360,13 +357,13 @@ export function ManuscriptWorkbenchControls({
               </label>
               {selectedFinalizeOption ? (
                 <div className="manuscript-workbench-selection-context">
-                  <span>{finalizeAction.selectedContextLabel ?? "Selected Asset"}</span>
+                  <span>{formatSelectionContextLabel(finalizeAction.selectedContextLabel, "已选资产")}</span>
                   <strong>{selectedFinalizeOption.label}</strong>
                 </div>
               ) : null}
               {!canFinalizeProofreading ? (
                 <p className="manuscript-workbench-help is-warning">
-                  Select a proofreading draft before finalizing.
+                  请先选择校对草稿再执行定稿。
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row">
@@ -375,7 +372,7 @@ export function ManuscriptWorkbenchControls({
                   disabled={busy || !canFinalizeProofreading}
                   onClick={() => finalizeAction.onRun()}
                 >
-                  {busy ? "Working..." : finalizeAction.actionLabel}
+                  {busy ? "处理中..." : formatWorkbenchActionLabel(finalizeAction.actionLabel)}
                 </button>
               </div>
             </div>
@@ -386,14 +383,14 @@ export function ManuscriptWorkbenchControls({
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
               <div>
-                <h3>Workspace Utilities</h3>
-                <p>Refresh execution evidence or prepare the current manuscript asset for export.</p>
+                <h3>工作区工具</h3>
+                <p>刷新执行证据，或为当前稿件资产准备导出与后续交付。</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
               {!utilities.canRefreshLatestJob ? (
                 <p className="manuscript-workbench-help is-warning">
-                  Refresh becomes available after the workspace creates at least one job.
+                  工作区至少生成一条任务后，才可刷新最新任务。
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row">
@@ -403,7 +400,7 @@ export function ManuscriptWorkbenchControls({
                     disabled={busy}
                     onClick={() => utilities.onPublishHumanFinal?.()}
                   >
-                    Publish Human Final
+                    发布人工终稿
                   </button>
                 ) : null}
                 <button
@@ -411,14 +408,14 @@ export function ManuscriptWorkbenchControls({
                   disabled={busy || !utilities.canExport}
                   onClick={() => utilities.onExport()}
                 >
-                  Export Current Asset
+                  导出当前资产
                 </button>
                 <button
                   type="button"
                   disabled={busy || !utilities.canRefreshLatestJob}
                   onClick={() => utilities.onRefreshLatestJob()}
                 >
-                  Refresh Latest Job
+                  刷新最新任务
                 </button>
               </div>
             </div>
@@ -431,30 +428,30 @@ export function ManuscriptWorkbenchControls({
 
 function describeMode(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "submission";
+    return "投稿";
   }
   if (mode === "screening") {
-    return "screening";
+    return "初筛";
   }
   if (mode === "editing") {
-    return "editing";
+    return "编辑";
   }
 
-  return "proofreading";
+  return "校对";
 }
 
 function buildIntakeValidationMessages(input: UploadManuscriptInput): string[] {
   const messages: string[] = [];
 
   if (input.title.trim().length === 0) {
-    messages.push("Add a manuscript title before upload.");
+    messages.push("请先填写稿件标题。");
   }
 
   if (
     (input.fileContentBase64?.trim().length ?? 0) === 0 &&
     (input.storageKey?.trim().length ?? 0) === 0
   ) {
-    messages.push("Choose a local file or enter a storage key before upload.");
+    messages.push("请先选择本地文件或填写存储键。");
   }
 
   return messages;
@@ -474,4 +471,56 @@ function resolveSelectedOption(
   }
 
   return action.options.find((option) => option.value === action.selectedAssetId);
+}
+
+function formatWorkbenchPanelTitle(title: string): string {
+  switch (title) {
+    case "Screening Run":
+      return "初筛执行";
+    case "Editing Run":
+      return "编辑执行";
+    case "Proofreading Draft":
+      return "校对草稿生成";
+    default:
+      return title;
+  }
+}
+
+function formatWorkbenchActionLabel(label: string): string {
+  switch (label) {
+    case "Run Screening":
+      return "执行初筛";
+    case "Run Editing":
+      return "执行编辑";
+    case "Create Draft":
+      return "生成草稿";
+    case "Finalize Proofreading":
+      return "校对定稿";
+    default:
+      return label;
+  }
+}
+
+function formatTemplateSelectionTitle(title: string): string {
+  if (title === "Journal Template") {
+    return "期刊模板";
+  }
+
+  return title;
+}
+
+function formatSelectionContextLabel(label: string | undefined, fallback: string): string {
+  if (label === "Selected Parent Asset") {
+    return "已选父资产";
+  }
+
+  if (label === "Selected Draft Asset") {
+    return "已选草稿资产";
+  }
+
+  if (label === "Selected Asset") {
+    return "已选资产";
+  }
+
+  return label ?? fallback;
 }

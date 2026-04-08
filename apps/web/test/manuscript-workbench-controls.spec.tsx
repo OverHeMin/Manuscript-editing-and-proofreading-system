@@ -66,15 +66,15 @@ test("manuscript workbench controls render structured operator panels for upload
     />,
   );
 
-  assert.match(markup, /Operator Console/);
-  assert.match(markup, /Run intake, lookup, and governed actions from one desk\./);
-  assert.match(markup, /Submission Intake/);
-  assert.match(markup, /Workspace Lookup/);
-  assert.match(markup, /Proofreading Draft/);
-  assert.match(markup, /Finalize Proofreading/);
-  assert.match(markup, /Workspace Utilities/);
-  assert.match(markup, /Export Current Asset/);
-  assert.match(markup, /Refresh Latest Job/);
+  assert.match(markup, /工作台操作区/);
+  assert.match(markup, /在同一桌面完成接入、检索与治理动作。/);
+  assert.match(markup, /稿件接入/);
+  assert.match(markup, /工作区检索/);
+  assert.match(markup, /校对草稿生成/);
+  assert.match(markup, /校对定稿/);
+  assert.match(markup, /工作区工具/);
+  assert.match(markup, /导出当前资产/);
+  assert.match(markup, /刷新最新任务/);
 });
 
 test("manuscript workbench controls show inline guidance when required operator inputs are still missing", () => {
@@ -120,12 +120,12 @@ test("manuscript workbench controls show inline guidance when required operator 
     />,
   );
 
-  assert.match(markup, /Operator Console/);
-  assert.match(markup, /Add a manuscript title before upload\./);
-  assert.match(markup, /Choose a local file or enter a storage key before upload\./);
-  assert.match(markup, /Enter a manuscript ID before loading the workspace\./);
-  assert.match(markup, /Select a parent asset before starting this module run\./);
-  assert.match(markup, /Refresh becomes available after the workspace creates at least one job\./);
+  assert.match(markup, /工作台操作区/);
+  assert.match(markup, /请先填写稿件标题。/);
+  assert.match(markup, /请先选择本地文件或填写存储键。/);
+  assert.match(markup, /请先输入稿件 ID 再加载工作区。/);
+  assert.match(markup, /请先选择父资产再启动当前模块。/);
+  assert.match(markup, /工作区至少生成一条任务后，才可刷新最新任务。/);
   assert.match(markup, /class="manuscript-workbench-field is-invalid"/);
 });
 
@@ -171,9 +171,9 @@ test("manuscript workbench controls surface the currently selected asset context
     />,
   );
 
-  assert.match(markup, /Selected Parent Asset/);
+  assert.match(markup, /已选父资产/);
   assert.match(markup, /editing-final\.docx/);
-  assert.match(markup, /Selected Draft Asset/);
+  assert.match(markup, /已选草稿资产/);
   assert.match(markup, /proofreading-draft\.docx/);
 });
 
@@ -223,8 +223,8 @@ test("manuscript workbench controls render a journal template selector beside mo
     />,
   );
 
-  assert.match(markup, /Journal Template/);
+  assert.match(markup, /期刊模板/);
   assert.match(markup, /Clinical Study Family/);
   assert.match(markup, /《中西医结合杂志》/);
-  assert.match(markup, /Save Template Context/);
+  assert.match(markup, /保存模板上下文/);
 });

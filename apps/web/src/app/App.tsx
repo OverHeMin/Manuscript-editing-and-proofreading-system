@@ -40,28 +40,28 @@ function DemoApp() {
           </header>
 
           <div className="workbench-layout">
-            <aside className="workbench-nav" aria-label="Workbench navigation">
-              <h2>Workbench</h2>
+            <aside className="workbench-nav" aria-label="工作区导航">
+              <h2>工作区导航</h2>
               <ul className="workbench-nav-list">
                 <li>
                   <button type="button" className="workbench-nav-button is-disabled" disabled>
                     <span>待进入工作区</span>
-                    <small>Awaiting session bootstrap</small>
+                    <small>等待会话初始化</small>
                   </button>
                 </li>
               </ul>
             </aside>
 
             <section className="workbench-content">
-            <article className="workbench-placeholder app-phase-placeholder" role="status">
-              <h2>Demo Runtime Unavailable</h2>
-              <p>
+              <article className="workbench-placeholder app-phase-placeholder" role="status">
+                <h2>演示运行时不可用</h2>
+                <p>
                   `VITE_APP_ENV=local` 会保留演示引导路径，但仍依赖当前 Vite 开发服务。
-              </p>
-              <p>
+                </p>
+                <p>
                   如果要进入真实后端登录壳层，请切换到 `VITE_APP_ENV=dev` 或其他持久环境。
-              </p>
-            </article>
+                </p>
+              </article>
             </section>
           </div>
         </section>
@@ -96,7 +96,7 @@ function DemoApp() {
         setBootstrapError(
           error instanceof Error && error.message.trim().length > 0
             ? error.message
-            : "Unable to establish the demo backend session.",
+            : "无法建立演示后端会话。",
         );
       });
 
@@ -118,7 +118,7 @@ function DemoApp() {
 
           <section className="workbench-content">
             <article className="workbench-placeholder app-phase-placeholder" role="status">
-              <h2>Establishing Session</h2>
+              <h2>正在建立会话</h2>
               <p>
                 本地开发工作台会先建立可信后端会话，再加载各条工作线。
               </p>
@@ -142,11 +142,10 @@ function DemoApp() {
 
           <section className="workbench-content">
             <article className="workbench-placeholder app-phase-placeholder" role="alert">
-              <h2>Backend Session Error</h2>
-              <p>{bootstrapError ?? "Unable to establish the demo backend session."}</p>
+              <h2>后端会话异常</h2>
+              <p>{bootstrapError ?? "无法建立演示后端会话。"}</p>
               <p>
-                Check that the API dev server is running and that `VITE_DEMO_PASSWORD` matches the
-                local demo account password.
+                请确认 API 开发服务正在运行，并且 `VITE_DEMO_PASSWORD` 与本地演示账号密码一致。
               </p>
             </article>
           </section>

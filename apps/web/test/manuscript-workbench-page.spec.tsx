@@ -46,11 +46,53 @@ test("submission workbench renders a real file picker for inline uploads", () =>
     />,
   );
 
-  assert.match(markup, /manuscript-workbench-hero/);
-  assert.match(markup, /Workflow Lane/);
+  assert.match(markup, /manuscript-workbench-shell--submission/);
+  assert.match(markup, /投稿工作台/);
+  assert.match(markup, /工作线定位/);
   assert.match(markup, /type="file"/);
-  assert.match(markup, /Storage Key/);
-  assert.match(markup, /Upload Manuscript/);
+  assert.match(markup, /存储键/);
+  assert.match(markup, /上传稿件/);
+});
+
+test("editing workbench renders a distinct localized hero for the current mainline lane", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="editing"
+      controller={{
+        loadWorkspace: async () => {
+          throw new Error("not used");
+        },
+        uploadManuscriptAndLoad: async () => {
+          throw new Error("not used");
+        },
+        runModuleAndLoad: async () => {
+          throw new Error("not used");
+        },
+        finalizeProofreadingAndLoad: async () => {
+          throw new Error("not used");
+        },
+        publishHumanFinalAndLoad: async () => {
+          throw new Error("not used");
+        },
+        loadJob: async () => {
+          throw new Error("not used");
+        },
+        exportCurrentAsset: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /manuscript-workbench-shell--editing/);
+  assert.match(markup, /核心四大工作台/u);
+  assert.match(markup, /初筛/u);
+  assert.match(markup, /校对/u);
+  assert.match(markup, /知识库/u);
+  assert.match(markup, /workbench-core-strip-card is-active/);
+  assert.match(markup, /编辑工作台/);
+  assert.match(markup, /核心工作台/);
+  assert.match(markup, /当前焦点/);
 });
 
 test("manuscript workbench page prefills lookup state from a workbench handoff", () => {
@@ -85,8 +127,8 @@ test("manuscript workbench page prefills lookup state from a workbench handoff",
   );
 
   assert.match(markup, /manuscript-9/);
-  assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
-  assert.doesNotMatch(markup, /Evaluation Handoff Context/);
+  assert.match(markup, /该工作台已根据上一环节稿件自动带入。/);
+  assert.doesNotMatch(markup, /评测移交上下文/);
 });
 
 test("manuscript workbench page renders evaluation handoff context when reviewed snapshot and sample ids are provided", () => {
@@ -122,9 +164,9 @@ test("manuscript workbench page renders evaluation handoff context when reviewed
     />,
   );
 
-  assert.match(markup, /This workbench was prefilled from the previous manuscript handoff\./);
-  assert.match(markup, /Evaluation Handoff Context/);
-  assert.match(markup, /Workspace auto-load remains manuscript-scoped\. These IDs identify the evaluation sample context you navigated from\./);
+  assert.match(markup, /该工作台已根据上一环节稿件自动带入。/);
+  assert.match(markup, /评测移交上下文/);
+  assert.match(markup, /工作区仍按稿件维度自动加载，以下标识用于保留你进入时的评测样本上下文。/);
   assert.match(markup, /reviewed-case-77/);
   assert.match(markup, /sample-set-item-22/);
 });
@@ -160,10 +202,10 @@ test("manuscript workbench page shows an explicit loading state while a handed-o
     />,
   );
 
-  assert.match(markup, /Loading manuscript manuscript-9\.\.\./);
+  assert.match(markup, /正在加载稿件 manuscript-9\.\.\./);
   assert.match(
     markup,
-    /Fetching workspace assets and latest governed state before enabling actions\./,
+    /正在拉取工作区资产与最新治理状态，完成后即可继续操作。/,
   );
   assert.match(markup, /manuscript-workbench-loading-card/);
 });
@@ -290,7 +332,7 @@ test("resolveWorkbenchActionOutcomePill keeps the generic success pill when no p
     }),
     {
       tone: "success",
-      label: "success",
+      label: "成功",
     },
   );
 });
@@ -314,7 +356,7 @@ test("resolveWorkbenchActionOutcomePill downgrades retryable action posture to a
     }),
     {
       tone: "error",
-      label: "follow-up retryable",
+      label: "后续可重试",
     },
   );
 });
@@ -433,7 +475,7 @@ test("resolveWorkbenchLatestJobExecutionPosturePill prefers hydrated execution t
     ),
     {
       tone: "error",
-      label: "follow-up retryable",
+      label: "后续可重试",
     },
   );
 });
@@ -556,7 +598,7 @@ test("resolveWorkbenchLatestJobExecutionPosturePill falls back to overview-backe
     ),
     {
       tone: "neutral",
-      label: "follow-up pending",
+      label: "后续待处理",
     },
   );
 });
@@ -644,7 +686,7 @@ test("resolveWorkbenchLatestJobStatusPill keeps raw completed status as neutral 
     ),
     {
       tone: "neutral",
-      label: "completed",
+      label: "已完成",
     },
   );
 });
@@ -823,36 +865,36 @@ test("loadPrefilledWorkbenchWorkspace appends mainline readiness details when ma
       value: "Not available",
     },
     {
-      label: "Mainline Readiness",
-      value: "Ready for next step",
+      label: "主线就绪度",
+      value: "可进入下一步",
     },
     {
-      label: "Next Module",
-      value: "screening",
+      label: "下一模块",
+      value: "初筛",
     },
     {
-      label: "Readiness Reason",
+      label: "就绪原因",
       value: "The manuscript is ready for governed screening.",
     },
     {
-      label: "Attention Status",
-      value: "Clear",
+      label: "关注状态",
+      value: "清晰",
     },
     {
-      label: "Next Mainline Handoff",
-      value: "screening ready now",
+      label: "下一主线交接",
+      value: "初筛 可立即交接",
     },
     {
-      label: "Primary Attention Reason",
+      label: "主要关注原因",
       value: "The manuscript is ready for governed screening.",
     },
     {
-      label: "Mainline Attempts",
-      value: "2 total (showing 2)",
+      label: "主线尝试",
+      value: "共 2 次（显示 2 次）",
     },
     {
-      label: "Latest Mainline Activity",
-      value: "editing attempt 2 - Business complete, follow-up retryable",
+      label: "最近主线活动",
+      value: "编辑第 2 次尝试 · 业务已完成，后续可重试",
     },
   ]);
 });
@@ -1023,16 +1065,16 @@ test("loadPrefilledWorkbenchWorkspace restores the newest tracked mainline job f
       value: "job-edit-2",
     },
     {
-      label: "Latest Job Settlement",
-      value: "Business complete, follow-up pending",
+      label: "最近任务结算",
+      value: "业务已完成，后续待处理",
     },
     {
-      label: "Latest Job Recovery",
-      value: "Recoverable now",
+      label: "最近任务恢复",
+      value: "当前可恢复",
     },
     {
-      label: "Latest Job Runtime Readiness",
-      value: "Degraded (2 issues)",
+      label: "最近任务运行时就绪度",
+      value: "已降级（2 项问题）",
     },
   ]);
 });
@@ -1168,16 +1210,16 @@ test("loadPrefilledWorkbenchWorkspace fails open when latest tracked job hydrati
       value: "job-proof-3",
     },
     {
-      label: "Latest Job Settlement",
-      value: "Business complete, follow-up retryable",
+      label: "最近任务结算",
+      value: "业务已完成，后续可重试",
     },
     {
-      label: "Latest Job Recovery",
-      value: "Recoverable now",
+      label: "最近任务恢复",
+      value: "当前可恢复",
     },
     {
-      label: "Latest Job Runtime Readiness",
-      value: "Ready",
+      label: "最近任务运行时就绪度",
+      value: "就绪",
     },
   ]);
 });
@@ -1288,20 +1330,20 @@ test("buildWorkbenchJobActionResultDetails appends hydrated execution posture fo
       value: "job-editing-1",
     },
     {
-      label: "Job Settlement",
-      value: "Business complete, follow-up retryable",
+      label: "Job结算",
+      value: "业务已完成，后续可重试",
     },
     {
-      label: "Job Recovery",
-      value: "Waiting for retry window",
+      label: "Job恢复",
+      value: "等待重试窗口",
     },
     {
-      label: "Job Recovery Ready At",
+      label: "Job恢复可用时间",
       value: "2026-04-06 11:30:00Z",
     },
     {
-      label: "Job Runtime Readiness",
-      value: "Degraded (1 issue)",
+      label: "Job运行时就绪度",
+      value: "已降级（1 项问题）",
     },
   ]);
 });
@@ -1438,16 +1480,16 @@ test("buildWorkbenchJobActionResultDetails reuses matching overview posture for 
       value: "completed",
     },
     {
-      label: "Job Settlement",
-      value: "Business complete, follow-up retryable",
+      label: "Job结算",
+      value: "业务已完成，后续可重试",
     },
     {
-      label: "Job Recovery",
-      value: "Recoverable now",
+      label: "Job恢复",
+      value: "当前可恢复",
     },
     {
-      label: "Job Runtime Readiness",
-      value: "Degraded (1 issue)",
+      label: "Job运行时就绪度",
+      value: "已降级（1 项问题）",
     },
   ]);
 });
@@ -1582,20 +1624,20 @@ test("buildWorkbenchJobActionResultDetails keeps hydrated execution posture ahea
       value: "job-editing-hydrated-wins-1",
     },
     {
-      label: "Job Settlement",
-      value: "Business complete, follow-up retryable",
+      label: "Job结算",
+      value: "业务已完成，后续可重试",
     },
     {
-      label: "Job Recovery",
-      value: "Waiting for retry window",
+      label: "Job恢复",
+      value: "等待重试窗口",
     },
     {
-      label: "Job Recovery Ready At",
+      label: "Job恢复可用时间",
       value: "2026-04-06 11:30:00Z",
     },
     {
-      label: "Job Runtime Readiness",
-      value: "Ready",
+      label: "Job运行时就绪度",
+      value: "就绪",
     },
   ]);
 });
@@ -1888,48 +1930,48 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
       value: "completed",
     },
     {
-      label: "Job Settlement",
-      value: "Settled",
+      label: "Job结算",
+      value: "已结算",
     },
     {
-      label: "Job Recovery",
-      value: "No recovery needed",
+      label: "Job恢复",
+      value: "无需恢复",
     },
     {
-      label: "Job Runtime Readiness",
-      value: "Ready",
+      label: "Job运行时就绪度",
+      value: "就绪",
     },
     {
-      label: "Mainline Readiness",
-      value: "Ready for next step",
+      label: "主线就绪度",
+      value: "可进入下一步",
     },
     {
-      label: "Next Module",
-      value: "proofreading",
+      label: "下一模块",
+      value: "校对",
     },
     {
-      label: "Readiness Reason",
+      label: "就绪原因",
       value: "Editing is settled and proofreading can begin.",
     },
     {
-      label: "Attention Status",
-      value: "Clear",
+      label: "关注状态",
+      value: "清晰",
     },
     {
-      label: "Next Mainline Handoff",
-      value: "editing -> proofreading ready now",
+      label: "下一主线交接",
+      value: "编辑 -> 校对 可立即交接",
     },
     {
-      label: "Primary Attention Reason",
+      label: "主要关注原因",
       value: "Editing is settled and proofreading can begin.",
     },
     {
-      label: "Mainline Attempts",
-      value: "2 total (showing 2)",
+      label: "主线尝试",
+      value: "共 2 次（显示 2 次）",
     },
     {
-      label: "Latest Mainline Activity",
-      value: "editing attempt 2 - Settled",
+      label: "最近主线活动",
+      value: "编辑第 2 次尝试 · 已结算",
     },
   ]);
 });
@@ -2043,16 +2085,16 @@ test("refreshLatestWorkbenchJobContext fails open when workspace resynchronizati
       value: "completed",
     },
     {
-      label: "Job Settlement",
-      value: "Business complete, follow-up retryable",
+      label: "Job结算",
+      value: "业务已完成，后续可重试",
     },
     {
-      label: "Job Recovery",
-      value: "Recoverable now",
+      label: "Job恢复",
+      value: "当前可恢复",
     },
     {
-      label: "Job Runtime Readiness",
-      value: "Degraded (1 issue)",
+      label: "Job运行时就绪度",
+      value: "已降级（1 项问题）",
     },
   ]);
 });
@@ -2137,13 +2179,13 @@ test("manuscript workbench summary renders mainline readiness and uses it for ma
     />,
   );
 
-  assert.match(markup, /Mainline Readiness/);
-  assert.match(markup, /Ready for next step/);
-  assert.match(markup, /Next Module/);
+  assert.match(markup, /主线就绪度/);
+  assert.match(markup, /可进入下一步/);
+  assert.match(markup, /下一模块/);
   assert.match(markup, /editing/);
-  assert.match(markup, /Advance this manuscript into editing/);
+  assert.match(markup, /推进稿件进入编辑/);
   assert.match(markup, /Screening is settled and editing can begin\./);
-  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /前往编辑工作台/);
 });
 
 test("manuscript workbench summary renders recent mainline activity inside the manuscript overview card", () => {
@@ -2243,26 +2285,26 @@ test("manuscript workbench summary renders recent mainline activity inside the m
     />,
   );
 
-  assert.match(markup, /Attention Status/);
-  assert.match(markup, /Action required/i);
-  assert.match(markup, /Next Mainline Handoff/);
-  assert.match(markup, /editing -&gt; proofreading/i);
-  assert.match(markup, /Primary Attention Reason/);
+  assert.match(markup, /关注状态/);
+  assert.match(markup, /需要处理/);
+  assert.match(markup, /下一主线交接/);
+  assert.match(markup, /编辑 -&gt; 校对/);
+  assert.match(markup, /主要关注原因/);
   assert.match(
     markup,
     /Editing follow-up is retryable before proofreading can begin\./i,
   );
-  assert.match(markup, /Attention Items/);
+  assert.match(markup, /关注事项/);
   assert.match(
     markup,
     /Governed follow-up can be retried before proofreading handoff\./i,
   );
-  assert.match(markup, /Mainline Attempts/);
-  assert.match(markup, /3 total/);
-  assert.match(markup, /Recent Mainline Activity/);
-  assert.match(markup, /editing attempt 2/i);
+  assert.match(markup, /主线尝试/);
+  assert.match(markup, /共 3 次（显示 3 次）/);
+  assert.match(markup, /最近主线活动/);
+  assert.match(markup, /编辑第 2 次尝试/);
   assert.match(markup, /editing follow-up is retryable\./i);
-  assert.match(markup, /screening attempt 1/i);
+  assert.match(markup, /初筛第 1 次尝试/);
 });
 
 test("manuscript workbench summary shows prepared export metadata for finalized proofreading output", () => {
@@ -2370,16 +2412,13 @@ test("manuscript workbench summary shows prepared export metadata for finalized 
     />,
   );
 
-  assert.match(markup, /Latest Export/);
-  assert.match(markup, /Prepared for downstream delivery/);
-  assert.match(markup, /Export File Name/);
+  assert.match(markup, /最近导出/);
+  assert.match(markup, /已准备好下游交付/);
+  assert.match(markup, /导出文件名/);
   assert.match(markup, /proofreading-final\.docx/);
-  assert.match(markup, /Download MIME Type/);
-  assert.match(
-    markup,
-    /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/,
-  );
-  assert.match(markup, /Download Latest Export/);
+  assert.match(markup, /下载 MIME 类型/);
+  assert.match(markup, /Word 文档（DOCX）/);
+  assert.match(markup, /下载最近导出/);
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-proof-final-1\/download"/,

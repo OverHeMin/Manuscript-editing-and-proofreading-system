@@ -1,4 +1,8 @@
 import React, { useEffect, useState } from "react";
+import {
+  WorkbenchCoreStrip,
+  type WorkbenchCoreStripPillarId,
+} from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -273,6 +277,7 @@ export function ManuscriptWorkbenchPage({
     uploadForm.mimeType.trim().length > 0 &&
     hasUploadPayload(uploadForm);
   const workbenchBusy = busy || isPrefillLoading;
+  const activeCoreStripPillar = resolveCoreStripActivePillar(mode);
   const notice = resolveWorkbenchNotice({
     error,
     status,
@@ -489,7 +494,9 @@ export function ManuscriptWorkbenchPage({
   }
 
   return (
-    <article className="workbench-placeholder manuscript-workbench-shell">
+    <article
+      className={`workbench-placeholder manuscript-workbench-shell manuscript-workbench-shell--${mode}`}
+    >
       <header className="manuscript-workbench-hero">
         <div className="manuscript-workbench-hero-copy">
           <span className="manuscript-workbench-hero-eyebrow">
@@ -497,44 +504,46 @@ export function ManuscriptWorkbenchPage({
           </span>
           <h2>{resolveTitle(mode)}</h2>
           <p>{resolveDescription(mode)}</p>
+          {activeCoreStripPillar ? (
+            <WorkbenchCoreStrip activePillarId={activeCoreStripPillar} />
+          ) : null}
         </div>
         <dl className="manuscript-workbench-hero-metrics">
           <div className="manuscript-workbench-hero-metric">
-            <dt>Workflow Lane</dt>
+            <dt>工作线定位</dt>
             <dd>{resolveHeroLane(mode)}</dd>
           </div>
           <div className="manuscript-workbench-hero-metric">
-            <dt>Desk Focus</dt>
+            <dt>当前焦点</dt>
             <dd>{resolveHeroFocus(mode)}</dd>
           </div>
         </dl>
       </header>
       {normalizedPrefilledManuscriptId.length > 0 ? (
         <p className="manuscript-workbench-prefill-note">
-          This workbench was prefilled from the previous manuscript handoff.
+          该工作台已根据上一环节稿件自动带入。
         </p>
       ) : null}
       {shouldShowEvaluationHandoffContext ? (
         <section className="manuscript-workbench-evaluation-context-card" aria-live="polite">
           <div className="manuscript-workbench-evaluation-context-copy">
             <span className="manuscript-workbench-evaluation-context-eyebrow">
-              Evaluation Handoff Context
+              评测移交上下文
             </span>
             <p>
-              Workspace auto-load remains manuscript-scoped. These IDs identify the
-              evaluation sample context you navigated from.
+              工作区仍按稿件维度自动加载，以下标识用于保留你进入时的评测样本上下文。
             </p>
           </div>
           <dl className="manuscript-workbench-evaluation-context-metrics">
             {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
               <>
-                <dt>Reviewed Case Snapshot ID</dt>
+                <dt>已审核案例快照 ID</dt>
                 <dd>{normalizedPrefilledReviewedCaseSnapshotId}</dd>
               </>
             ) : null}
             {normalizedPrefilledSampleSetItemId.length > 0 ? (
               <>
-                <dt>Sample Set Item ID</dt>
+                <dt>样本集条目 ID</dt>
                 <dd>{normalizedPrefilledSampleSetItemId}</dd>
               </>
             ) : null}
@@ -550,11 +559,11 @@ export function ManuscriptWorkbenchPage({
         >
           <div className="manuscript-workbench-loading-copy">
             <span className="manuscript-workbench-loading-eyebrow">
-              Manuscript Handoff
+              稿件移交
             </span>
-            <h3>{`Loading manuscript ${normalizedPrefilledManuscriptId}...`}</h3>
+            <h3>{`正在加载稿件 ${normalizedPrefilledManuscriptId}...`}</h3>
             <p>
-              Fetching workspace assets and latest governed state before enabling actions.
+              正在拉取工作区资产与最新治理状态，完成后即可继续操作。
             </p>
           </div>
           <div
@@ -914,57 +923,84 @@ export function ManuscriptWorkbenchPage({
 }
 
 function resolveTitle(mode: ManuscriptWorkbenchMode): string {
-  if (mode === "submission") return "Submission Workbench";
-  if (mode === "screening") return "Screening Workbench";
-  if (mode === "editing") return "Editing Workbench";
-  return "Proofreading Workbench";
+  if (mode === "submission") return "投稿工作台";
+  if (mode === "screening") return "初筛工作台";
+  if (mode === "editing") return "编辑工作台";
+  return "校对工作台";
 }
 
 function resolveDescription(mode: ManuscriptWorkbenchMode): string {
-  if (mode === "submission") return "Use the real HTTP intake contract from the web layer.";
-  if (mode === "screening") return "Trigger governed screening runs over the persistent API.";
-  if (mode === "editing") return "Trigger governed editing runs over the persistent API.";
-  return "Create proofreading drafts and finalize them over the persistent API.";
+  if (mode === "submission") {
+    return "通过当前 Web 壳层接入稿件，并为后续治理流程建立统一入口。";
+  }
+
+  if (mode === "screening") {
+    return "集中完成来稿判断、风险确认与向编辑移交，让首道工作线更清楚。";
+  }
+
+  if (mode === "editing") {
+    return "围绕正文修订、模板上下文与校对前准备组织编辑动作，保持工作台轻而稳。";
+  }
+
+  return "收束问题清单、终稿确认与发布前检查，完成最后一跳的校对定稿。";
 }
 
 function resolveHeroEyebrow(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "Editorial Intake Desk";
+    return "稿件接入";
   }
 
-  return "Mainline Manuscript Desk";
+  return "核心工作台";
 }
 
 function resolveHeroLane(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "Submission Intake";
+    return "投稿接入";
   }
 
   if (mode === "screening") {
-    return "Initial Screening";
+    return "初筛";
   }
 
   if (mode === "editing") {
-    return "Editing";
+    return "编辑";
   }
 
-  return "Proofreading";
+  return "校对";
 }
 
 function resolveHeroFocus(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "Capture manuscript metadata and seed the governed flow.";
+    return "采集稿件元数据并为后续治理流程建立统一起点。";
   }
 
   if (mode === "screening") {
-    return "Confirm readiness, run screening, and prepare the editing handoff.";
+    return "确认稿件就绪度、完成初筛判断，并准备向编辑台移交。";
   }
 
   if (mode === "editing") {
-    return "Refine the governed draft and preserve handoff context for proofreading.";
+    return "围绕治理稿继续修订，并保留向校对台移交所需的上下文。";
   }
 
-  return "Produce draft reviews, finalize the annotated file, and prepare release.";
+  return "生成校对草稿、确认带批注终稿，并为最终发布做好准备。";
+}
+
+function resolveCoreStripActivePillar(
+  mode: ManuscriptWorkbenchMode,
+): WorkbenchCoreStripPillarId | null {
+  if (mode === "screening") {
+    return "screening";
+  }
+
+  if (mode === "editing") {
+    return "editing";
+  }
+
+  if (mode === "proofreading") {
+    return "proofreading";
+  }
+
+  return null;
 }
 
 function resolveActionLabel(mode: ManuscriptWorkbenchMode): string {

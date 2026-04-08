@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { KnowledgeReviewQueueItemViewModel } from "../knowledge/index.ts";
@@ -153,7 +154,7 @@ export function KnowledgeReviewWorkbenchPage({
       }
 
       setQueueLoadStatus("error");
-      setQueueErrorMessage(toErrorMessage(error, "Queue load failed"));
+      setQueueErrorMessage(toErrorMessage(error, "队列加载失败"));
     }
   }
 
@@ -187,7 +188,7 @@ export function KnowledgeReviewWorkbenchPage({
         knowledgeItemId,
         status: "error",
         actions: current.knowledgeItemId === knowledgeItemId ? current.actions : [],
-        errorMessage: toErrorMessage(error, "History load failed"),
+        errorMessage: toErrorMessage(error, "历史记录加载失败"),
       }));
     }
   }
@@ -261,7 +262,7 @@ export function KnowledgeReviewWorkbenchPage({
 
     setActionFeedback({
       status: "loading",
-      message: actionType === "approve" ? "Submitting approval..." : "Submitting rejection...",
+      message: actionType === "approve" ? "正在提交通过结果..." : "正在提交驳回结果...",
     });
 
     const result =
@@ -283,7 +284,7 @@ export function KnowledgeReviewWorkbenchPage({
       setReviewNote(result.reviewNote);
       setActionFeedback({
         status: "error",
-        message: toErrorMessage(result.error, "Review action failed"),
+        message: toErrorMessage(result.error, "审核动作失败"),
       });
       return;
     }
@@ -320,14 +321,14 @@ export function KnowledgeReviewWorkbenchPage({
       setActionFeedback({
         status: "manual_recovery",
         message:
-          "Review saved, but the next visible item could not be resolved. Select one manually or reload queue.",
+          "审核结果已保存，但下一条可见项目未能自动定位。请手动选择，或重新加载队列。",
       });
       return;
     }
 
     setActionFeedback({
       status: "success",
-      message: actionType === "approve" ? "Knowledge item approved." : "Knowledge item rejected.",
+      message: actionType === "approve" ? "知识条目已通过审核。" : "知识条目已驳回。",
     });
   }
 
@@ -369,24 +370,24 @@ export function KnowledgeReviewWorkbenchPage({
     <main className="knowledge-review-workbench">
       <header className="knowledge-review-hero">
         <div className="knowledge-review-hero-copy">
-          <span className="knowledge-review-eyebrow">Knowledge Review</span>
-          <h1>Review-First Knowledge Desk</h1>
+          <span className="knowledge-review-eyebrow">知识库</span>
+          <h1>知识库工作台</h1>
           <p>
-            Keep the pending queue, the governed evidence view, and the decision action
-            together in one focused reviewer surface.
+            把待审核队列、证据上下文与审核动作收在同一桌面，让知识回写前的判断更集中。
           </p>
+          <WorkbenchCoreStrip activePillarId="knowledge" />
         </div>
         <dl className="knowledge-review-hero-stats">
           <div className="knowledge-review-hero-stat">
-            <dt>Reviewer lane</dt>
-            <dd>{actorRole}</dd>
+            <dt>审核角色</dt>
+            <dd>{formatActorRole(actorRole)}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>Selected item</dt>
-            <dd>{effectiveSelectedItem?.id ?? "Waiting for queue selection"}</dd>
+            <dt>当前条目</dt>
+            <dd>{effectiveSelectedItem?.id ?? "等待队列选择"}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>Queue state</dt>
+            <dt>队列状态</dt>
             <dd>{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}</dd>
           </div>
         </dl>
@@ -441,14 +442,14 @@ function resolveQueueStatusLabel(
   queueErrorMessage: string | null,
 ): string {
   if (queueLoadStatus === "error") {
-    return queueErrorMessage ? "Queue needs recovery" : "Queue load failed";
+    return queueErrorMessage ? "队列需要恢复" : "队列加载失败";
   }
 
   if (queueLoadStatus === "loading" || queueLoadStatus === "initial") {
-    return "Loading queue";
+    return "正在加载队列";
   }
 
-  return "Queue ready";
+  return "队列已就绪";
 }
 
 function resolveDetailSelection(
@@ -506,6 +507,24 @@ function resolveDisplayedHistory(
       errorMessage: null,
     },
     scopeNote:
-      "History currently tracks a different item. Use Retry history to load events for the item shown above.",
+      "当前历史记录对应的是其他条目，请重新加载历史以查看上方条目的事件轨迹。",
   };
+}
+
+function formatActorRole(role: AuthRole): string {
+  switch (role) {
+    case "admin":
+      return "管理员";
+    case "knowledge_reviewer":
+      return "知识审核员";
+    case "editor":
+      return "编辑";
+    case "proofreader":
+      return "校对";
+    case "screener":
+      return "初筛员";
+    case "user":
+    default:
+      return "投稿用户";
+  }
 }

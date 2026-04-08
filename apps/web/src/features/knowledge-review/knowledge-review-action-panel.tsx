@@ -30,16 +30,16 @@ export function KnowledgeReviewActionPanel({
   return (
     <section className="knowledge-review-panel knowledge-review-action-panel">
       <header className="knowledge-review-pane-header">
-        <h2>Review Action</h2>
-        <p>Record rationale and complete queue decision.</p>
+        <h2>审核动作</h2>
+        <p>记录审核依据，并完成当前队列决策。</p>
       </header>
 
       <label className="knowledge-review-action-note">
-        Review note
+        审核备注
         <textarea
           value={reviewNote}
           disabled={!hasSelection || isSubmitting}
-          placeholder="Optional for approve and reject. Add concise rationale for traceability."
+          placeholder="通过或驳回都可填写，用于补充简短审核依据。"
           onChange={(event) => onReviewNoteChange(event.target.value)}
         />
       </label>
@@ -47,13 +47,13 @@ export function KnowledgeReviewActionPanel({
       {isRejectNoteMissing ? (
         // Rejection without note remains valid, but we nudge for safer audit quality.
         <p className="knowledge-review-note-hint">
-          Rejection without a note is allowed, but a brief rationale is strongly recommended.
+          驳回时允许不填写备注，但仍建议补充一句简短原因，便于后续追溯。
         </p>
       ) : null}
 
       <div className="knowledge-review-action-buttons">
         <button type="button" disabled={isDisabled} onClick={onApprove}>
-          {isSubmitting ? "Approving..." : "Approve"}
+          {isSubmitting ? "正在提交..." : "通过"}
         </button>
         <button
           type="button"
@@ -61,7 +61,7 @@ export function KnowledgeReviewActionPanel({
           className="knowledge-review-reject-button"
           onClick={onReject}
         >
-          {isSubmitting ? "Rejecting..." : "Reject"}
+          {isSubmitting ? "正在提交..." : "驳回"}
         </button>
       </div>
 
@@ -73,7 +73,7 @@ export function KnowledgeReviewActionPanel({
           <p>{feedback.message}</p>
           {feedback.status === "manual_recovery" ? (
             <button type="button" onClick={onManualRecovery}>
-              Reload queue
+              重新加载队列
             </button>
           ) : null}
         </div>

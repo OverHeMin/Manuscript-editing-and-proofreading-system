@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useState, type ReactNode } from "react";
+import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
@@ -536,6 +537,12 @@ export function LearningReviewWorkbenchPage({
             approve it, and then bridge the approved result into a governed knowledge
             writeback draft.
           </p>
+          <WorkbenchCoreStrip
+            variant="supporting"
+            activePillarId="knowledge"
+            heading="协同与回写"
+            description="让复核、批准与知识回写保持在同一条辅助链路中，但不遮住四个核心工作台。"
+          />
           {prefillState === "loading" ? (
             <p>This review desk is loading manuscript handoff context.</p>
           ) : null}

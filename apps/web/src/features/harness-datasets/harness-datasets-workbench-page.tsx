@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import {
   createHarnessDatasetsWorkbenchController,
@@ -73,6 +74,7 @@ export function HarnessDatasetsWorkbenchPage({
             Bounded admin-only workbench for governed gold-set curation and local
             export.
           </p>
+          <WorkbenchCoreStrip variant="secondary" />
         </div>
         {statusMessage ? (
           <p className="harness-datasets-status" role="status">

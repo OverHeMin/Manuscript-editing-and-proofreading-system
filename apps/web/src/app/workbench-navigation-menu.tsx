@@ -18,8 +18,13 @@ export function WorkbenchNavigationMenu({
         <section
           key={group.id}
           className={`workbench-nav-group workbench-nav-group--${group.id}`}
+          data-prominence={group.prominence}
         >
-          <h3>{group.label}</h3>
+          <div className="workbench-nav-group-header">
+            <h3>{group.label}</h3>
+            <span className="workbench-nav-group-count">{`${group.items.length} 项`}</span>
+          </div>
+          <p className="workbench-nav-group-description">{group.description}</p>
           <ul className="workbench-nav-list">
             {group.items.map((item) => {
               const isActive = item.id === activeWorkbenchId;
@@ -29,11 +34,12 @@ export function WorkbenchNavigationMenu({
                   <button
                     type="button"
                     className={`workbench-nav-button${isActive ? " is-active" : ""}`}
+                    data-emphasis={item.emphasis}
                     aria-current={isActive ? "page" : undefined}
                     onClick={() => onNavigate(item.id)}
                   >
-                    <span>{item.label}</span>
-                    <small>{item.entry.label}</small>
+                    <span className="workbench-nav-button-label">{item.label}</span>
+                    <small>{item.description}</small>
                   </button>
                 </li>
               );

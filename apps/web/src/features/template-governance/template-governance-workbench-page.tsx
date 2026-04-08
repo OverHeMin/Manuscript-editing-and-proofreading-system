@@ -6,6 +6,7 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
+import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -1040,6 +1041,7 @@ export function TemplateGovernanceWorkbenchPage({
             controlled admin surface. This closes the last placeholder lane between knowledge review
             and governed template release.
           </p>
+          <WorkbenchCoreStrip variant="secondary" />
         </div>
         {statusMessage ? (
           <p className="template-governance-status" role="status">

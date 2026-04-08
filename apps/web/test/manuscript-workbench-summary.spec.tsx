@@ -144,30 +144,36 @@ test("manuscript workbench summary renders operator-facing overview cards and th
     />,
   );
 
-  assert.match(markup, /Live Editorial Ledger/);
-  assert.match(markup, /Manuscript Command Surface/);
-  assert.match(markup, /Manuscript Overview/);
-  assert.match(markup, /Latest Action Result/);
-  assert.match(markup, /Run Editing/);
-  assert.match(markup, /Created asset asset-edited-1/);
-  assert.match(markup, /job-edit-1/);
-  assert.match(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /实时稿件台账/);
+  assert.match(markup, /稿件总控台/);
+  assert.match(markup, /稿件概览/);
+  assert.match(markup, /最近操作结果/);
+  assert.match(markup, /发起编辑执行/);
+  assert.match(markup, /已生成资产 asset-edited-1/);
+  assert.match(markup, /<span>资产<\/span><strong>asset-edited-1<\/strong>/);
+  assert.match(markup, /<span>任务<\/span><strong>job-edit-1<\/strong>/);
+  assert.match(markup, /前往校对工作台/);
   assert.match(markup, /href="#proofreading\?manuscriptId=manuscript-1"/);
   assert.match(markup, /Cardiology review/);
-  assert.match(markup, /Current Asset/);
+  assert.match(markup, /当前资产/);
+  assert.match(markup, /editing-final\.docx \/ 编辑稿 \/ asset-edited-1/);
   assert.match(markup, /editing-final\.docx/);
-  assert.match(markup, /Latest Job/);
-  assert.match(markup, /completed/);
-  assert.match(markup, /Latest Export/);
+  assert.match(markup, /最近任务/);
+  assert.match(markup, /已完成/);
+  assert.match(markup, /最近导出/);
   assert.match(markup, /exports\/manuscript-1\/current\.docx/);
-  assert.match(markup, /Download Latest Export/);
+  assert.match(markup, /下载最近导出/);
+  assert.match(markup, /Word 文档（DOCX）/);
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
   );
-  assert.match(markup, /Asset Chain/);
+  assert.match(markup, /资产链路/);
+  assert.match(markup, /原稿/);
+  assert.match(markup, /上传/);
+  assert.match(markup, /已替代/);
   assert.match(markup, /asset-original-1/);
-  assert.match(markup, /Debug Snapshot/);
+  assert.match(markup, /调试快照/);
 });
 
 test("manuscript workbench summary shows the resolved base family and journal template context", () => {
@@ -219,12 +225,12 @@ test("manuscript workbench summary shows the resolved base family and journal te
     />,
   );
 
-  assert.match(markup, /Base Template Family/);
+  assert.match(markup, /基础模板族/);
   assert.match(markup, /Clinical Study Family/);
-  assert.match(markup, /Journal Template/);
+  assert.match(markup, /期刊模板/);
   assert.match(markup, /《中西医结合杂志》/);
-  assert.match(markup, /Journal Overrides/);
-  assert.match(markup, /Active/);
+  assert.match(markup, /期刊覆写/);
+  assert.match(markup, /已启用/);
 });
 
 test("manuscript workbench summary preserves evaluation sample context in the evaluation shortcut", () => {
@@ -259,7 +265,7 @@ test("manuscript workbench summary preserves evaluation sample context in the ev
     />,
   );
 
-  assert.match(markup, /Open Evaluation Workbench/);
+  assert.match(markup, /前往评估工作台/);
   assert.match(
     markup,
     /href="#evaluation-workbench\?manuscriptId=manuscript-eval-1&amp;reviewedCaseSnapshotId=reviewed-case-77&amp;sampleSetItemId=sample-set-item-22"/,
@@ -306,7 +312,7 @@ test("manuscript workbench summary preserves evaluation sample context in manusc
     />,
   );
 
-  assert.match(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /前往校对工作台/);
   assert.match(
     markup,
     /href="#proofreading\?manuscriptId=manuscript-eval-1&amp;reviewedCaseSnapshotId=reviewed-case-77&amp;sampleSetItemId=sample-set-item-22"/,
@@ -353,7 +359,7 @@ test("manuscript workbench summary falls back to manuscript-only next-step short
     />,
   );
 
-  assert.match(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /前往校对工作台/);
   assert.match(
     markup,
     /href="#proofreading\?manuscriptId=manuscript-target-B"/,
@@ -394,7 +400,7 @@ test("manuscript workbench summary falls back to manuscript-only evaluation link
     />,
   );
 
-  assert.match(markup, /Open Evaluation Workbench/);
+  assert.match(markup, /前往评估工作台/);
   assert.match(
     markup,
     /href="#evaluation-workbench\?manuscriptId=manuscript-target-B"/,
@@ -432,7 +438,7 @@ test("manuscript workbench summary falls back to manuscript-only evaluation link
     />,
   );
 
-  assert.match(markup, /Open Evaluation Workbench/);
+  assert.match(markup, /前往评估工作台/);
   assert.match(markup, /href="#evaluation-workbench\?manuscriptId=manuscript-eval-2"/);
   assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
   assert.doesNotMatch(markup, /sampleSetItemId=/);
@@ -508,9 +514,9 @@ test("manuscript workbench summary guides screening operators toward the next go
     />,
   );
 
-  assert.match(markup, /Recommended Next Step/);
-  assert.match(markup, /Run screening on the recommended parent asset/);
-  assert.match(markup, /Launch Screening Workbench execution before any editing handoff\./);
+  assert.match(markup, /建议下一步/);
+  assert.match(markup, /在推荐父资产上发起初筛/);
+  assert.match(markup, /在进入编辑前，请先完成初筛工作台执行。/);
   assert.match(markup, /oncology-review\.docx/);
 });
 
@@ -627,8 +633,8 @@ test("manuscript workbench summary guides proofreading operators to finalize an 
     />,
   );
 
-  assert.match(markup, /Finalize the reviewed proofreading draft/);
-  assert.match(markup, /Human confirmation is still required before producing the proofreading final\./);
+  assert.match(markup, /完成已审校对草稿定稿/);
+  assert.match(markup, /生成校对终稿前仍需人工确认。/);
   assert.match(markup, /proofreading-draft\.docx/);
 });
 
@@ -724,12 +730,12 @@ test("manuscript workbench summary guides human-final proofreading output into l
     />,
   );
 
-  assert.match(markup, /Hand off this manuscript into learning review/);
+  assert.match(markup, /将该稿件移交学习审核/);
   assert.match(
     markup,
-    /The human-final manuscript is ready for governed learning snapshot creation\./,
+    /人工终稿已就绪，可进入学习快照治理流程。/,
   );
-  assert.match(markup, /Open Learning Review/);
+  assert.match(markup, /前往学习审核/);
   assert.match(markup, /href="#learning-review\?manuscriptId=manuscript-learning-1"/);
 });
 
@@ -826,10 +832,10 @@ test("manuscript workbench summary prefers settled screening overview over a fai
     />,
   );
 
-  assert.match(markup, /Advance this manuscript into editing/);
-  assert.match(markup, /Open Editing Workbench/);
-  assert.match(markup, /Screening Settlement/);
-  assert.match(markup, /Settled · latest job failed · snapshot snapshot-screen-1/);
+  assert.match(markup, /推进稿件进入编辑/);
+  assert.match(markup, /前往编辑工作台/);
+  assert.match(markup, /初筛结算/);
+  assert.match(markup, /已结算 · 最近任务失败 · 快照 snapshot-screen-1/);
 });
 
 test("manuscript workbench summary does not present retryable editing follow-up as ready for proofreading", () => {
@@ -983,9 +989,9 @@ test("manuscript workbench summary does not present retryable editing follow-up 
     />,
   );
 
-  assert.match(markup, /Inspect editing follow-up before proofreading handoff/);
-  assert.match(markup, /Business complete, follow-up retryable · latest job completed · snapshot snapshot-edit-1/);
-  assert.doesNotMatch(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /校对交接前请检查编辑后续处理/);
+  assert.match(markup, /业务已完成，后续可重试 · 最近任务已完成 · 快照 snapshot-edit-1/);
+  assert.doesNotMatch(markup, /前往校对工作台/);
 });
 
 test("manuscript workbench summary fails open to heuristic guidance when settlement observation is unavailable", () => {
@@ -1098,9 +1104,9 @@ test("manuscript workbench summary fails open to heuristic guidance when settlem
     />,
   );
 
-  assert.match(markup, /Advance this manuscript into proofreading/);
-  assert.match(markup, /Editing Settlement/);
-  assert.match(markup, /Observation unavailable \(failed open\)/);
+  assert.match(markup, /推进稿件进入校对/);
+  assert.match(markup, /编辑结算/);
+  assert.match(markup, /观测不可用（failed open）/);
 });
 
 test("manuscript workbench summary uses latest job execution tracking as fallback guidance when overview is unavailable", () => {
@@ -1284,14 +1290,14 @@ test("manuscript workbench summary uses latest job execution tracking as fallbac
     />,
   );
 
-  assert.match(markup, /Inspect editing follow-up before proofreading handoff/);
-  assert.match(markup, /Settlement/);
-  assert.match(markup, /Business complete, follow-up retryable/);
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /Recoverable now/);
-  assert.match(markup, /Runtime Readiness/);
-  assert.match(markup, /Degraded \(1 issue\)/);
-  assert.doesNotMatch(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /校对交接前请检查编辑后续处理/);
+  assert.match(markup, /结算状态/);
+  assert.match(markup, /业务已完成，后续可重试/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /当前可恢复/);
+  assert.match(markup, /运行时就绪度/);
+  assert.match(markup, /已降级（1 项问题）/);
+  assert.doesNotMatch(markup, /前往校对工作台/);
 });
 
 test("manuscript workbench summary uses settled latest job execution tracking to advance when overview is missing", () => {
@@ -1445,14 +1451,14 @@ test("manuscript workbench summary uses settled latest job execution tracking to
     />,
   );
 
-  assert.match(markup, /Advance this manuscript into editing/);
-  assert.match(markup, /Open Editing Workbench/);
-  assert.match(markup, /Settlement/);
-  assert.match(markup, /Settled/);
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /No recovery needed/);
-  assert.match(markup, /Runtime Readiness/);
-  assert.match(markup, /Ready/);
+  assert.match(markup, /推进稿件进入编辑/);
+  assert.match(markup, /前往编辑工作台/);
+  assert.match(markup, /结算状态/);
+  assert.match(markup, /已结算/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /无需恢复/);
+  assert.match(markup, /运行时就绪度/);
+  assert.match(markup, /就绪/);
 });
 
 test("manuscript workbench summary falls back to latest job posture inside module overview when overview is failed open", () => {
@@ -1586,12 +1592,12 @@ test("manuscript workbench summary falls back to latest job posture inside modul
     />,
   );
 
-  assert.match(markup, /Editing Settlement/);
-  assert.match(markup, /Business complete, follow-up retryable/);
-  assert.match(markup, /Recoverable now/);
-  assert.match(markup, /binding degraded/);
-  assert.match(markup, /latest tracked job/);
-  assert.doesNotMatch(markup, /Observation unavailable \(failed open\)/);
+  assert.match(markup, /编辑结算/);
+  assert.match(markup, /业务已完成，后续可重试/);
+  assert.match(markup, /当前可恢复/);
+  assert.match(markup, /绑定已降级/);
+  assert.match(markup, /最近追踪任务/);
+  assert.doesNotMatch(markup, /观测不可用（failed open）/);
 });
 
 test("manuscript workbench summary keeps overview module metrics visible and uses latest job fallback when manuscript overview is missing", () => {
@@ -1698,14 +1704,14 @@ test("manuscript workbench summary keeps overview module metrics visible and use
     />,
   );
 
-  assert.match(markup, /Screening Settlement/);
-  assert.match(markup, /Settled/);
-  assert.match(markup, /No recovery needed/);
-  assert.match(markup, /snapshot snapshot-screening-overview-fallback-1/);
-  assert.match(markup, /latest tracked job/);
-  assert.match(markup, /Editing Settlement/);
-  assert.match(markup, /Proofreading Settlement/);
-  assert.match(markup, /Not reported/);
+  assert.match(markup, /初筛结算/);
+  assert.match(markup, /已结算/);
+  assert.match(markup, /无需恢复/);
+  assert.match(markup, /快照 snapshot-screening-overview-fallback-1/);
+  assert.match(markup, /最近追踪任务/);
+  assert.match(markup, /编辑结算/);
+  assert.match(markup, /校对结算/);
+  assert.match(markup, /未上报/);
 });
 
 test("manuscript workbench summary reuses matching overview posture in the Latest Job card when the latest job is a raw fallback candidate", () => {
@@ -1846,14 +1852,14 @@ test("manuscript workbench summary reuses matching overview posture in the Lates
     />,
   );
 
-  assert.match(markup, /Latest Job/);
-  assert.match(markup, /Execution Settlement/);
-  assert.match(markup, /Business complete, follow-up retryable/);
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /Recoverable now/);
-  assert.match(markup, /Runtime Binding Readiness/);
-  assert.match(markup, /Degraded \(1 issue\)/);
-  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /最近任务/);
+  assert.match(markup, /执行结算/);
+  assert.match(markup, /业务已完成，后续可重试/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /当前可恢复/);
+  assert.match(markup, /运行时绑定就绪度/);
+  assert.match(markup, /已降级（1 项问题）/);
+  assert.match(markup, /执行快照/);
   assert.match(markup, /snapshot-editing-overview-card-1/);
 });
 
@@ -1983,14 +1989,14 @@ test("manuscript workbench summary reuses settled overview posture in the Latest
     />,
   );
 
-  assert.match(markup, /Latest Job/);
-  assert.match(markup, /Execution Settlement/);
-  assert.match(markup, /Settled/);
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /No recovery needed/);
-  assert.match(markup, /Runtime Binding Readiness/);
-  assert.match(markup, /Ready/);
-  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /最近任务/);
+  assert.match(markup, /执行结算/);
+  assert.match(markup, /已结算/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /无需恢复/);
+  assert.match(markup, /运行时绑定就绪度/);
+  assert.match(markup, /就绪/);
+  assert.match(markup, /执行快照/);
   assert.match(markup, /snapshot-screening-overview-card-1/);
 });
 
@@ -2066,11 +2072,11 @@ test("manuscript workbench summary shows latest job execution tracking alongside
     />,
   );
 
-  assert.match(markup, /Latest Job/);
-  assert.match(markup, /Status/);
-  assert.match(markup, /Execution Settlement/);
-  assert.match(markup, /Business complete, follow-up pending/);
-  assert.match(markup, /Execution Snapshot/);
+  assert.match(markup, /最近任务/);
+  assert.match(markup, /状态/);
+  assert.match(markup, /执行结算/);
+  assert.match(markup, /业务已完成，后续待处理/);
+  assert.match(markup, /执行快照/);
   assert.match(markup, /tracked-snapshot-1/);
 });
 
@@ -2187,12 +2193,12 @@ test("manuscript workbench summary shows latest job recovery and runtime readine
     />,
   );
 
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /Waiting for retry window/);
-  assert.match(markup, /Recovery Ready At/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /等待重试窗口/);
+  assert.match(markup, /恢复可用时间/);
   assert.match(markup, /2026-04-06 11:30:00Z/);
-  assert.match(markup, /Runtime Binding Readiness/);
-  assert.match(markup, /Degraded \(2 issues\)/);
+  assert.match(markup, /运行时绑定就绪度/);
+  assert.match(markup, /已降级（2 项问题）/);
 });
 
 test("manuscript workbench summary incorporates recovery and readiness posture into module overview and read-only guidance details", () => {
@@ -2332,12 +2338,12 @@ test("manuscript workbench summary incorporates recovery and readiness posture i
     />,
   );
 
-  assert.match(markup, /Editing Settlement/);
-  assert.match(markup, /Waiting for retry window/);
-  assert.match(markup, /ready at 2026-04-06 11:30:00Z/);
-  assert.match(markup, /binding missing/);
-  assert.match(markup, /Recovery Posture/);
-  assert.match(markup, /Runtime Readiness/);
-  assert.match(markup, /Missing \(1 issue\)/);
-  assert.doesNotMatch(markup, /Open Proofreading Workbench/);
+  assert.match(markup, /编辑结算/);
+  assert.match(markup, /等待重试窗口/);
+  assert.match(markup, /恢复时间 2026-04-06 11:30:00Z/);
+  assert.match(markup, /绑定缺失/);
+  assert.match(markup, /恢复态势/);
+  assert.match(markup, /运行时就绪度/);
+  assert.match(markup, /缺失（1 项问题）/);
+  assert.doesNotMatch(markup, /前往校对工作台/);
 });

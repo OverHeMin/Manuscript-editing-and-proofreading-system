@@ -22,6 +22,10 @@ test("learning review workbench page keeps the review queue primary and admin ut
   const utilityIndex = markup.indexOf("Admin utilities and candidate generation");
 
   assert.match(markup, /Knowledge Handoff Bridge/);
+  assert.match(markup, /协同与回写/u);
+  assert.match(markup, /让复核、批准与知识回写保持在同一条辅助链路中/u);
+  assert.match(markup, /workbench-core-strip is-supporting/);
+  assert.match(markup, /workbench-core-strip-card is-active/);
   assert.ok(queueIndex >= 0);
   assert.ok(selectedCandidateIndex > queueIndex);
   assert.ok(decisionIndex > selectedCandidateIndex);

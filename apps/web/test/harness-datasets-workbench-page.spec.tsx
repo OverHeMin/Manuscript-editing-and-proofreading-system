@@ -142,6 +142,8 @@ test("harness datasets workbench page renders curation queue, published exports,
   const markup = renderLoadedPage();
 
   assert.match(markup, /Operations Management Zone/);
+  assert.match(markup, /管理区/);
+  assert.match(markup, /workbench-core-strip is-secondary/);
   assert.match(markup, /Harness Dataset Workbench/);
   assert.match(markup, /Bounded admin-only workbench for governed gold-set curation and local export\./);
   assert.match(markup, /Draft Queue/);

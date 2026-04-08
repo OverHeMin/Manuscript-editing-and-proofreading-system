@@ -142,7 +142,7 @@ export function WorkbenchHost({
       <section className="workbench-host">
         <WorkbenchShellHeader
           session={session}
-          activeWorkbenchLabel={activeEntry?.label ?? "Workbench"}
+          activeWorkbenchLabel={activeEntry?.navLabel ?? activeEntry?.label ?? "工作台"}
           activeWorkbenchDescription={activeWorkbenchDescription}
           activeWorkbenchGroupLabel={activeWorkbenchGroupLabel}
           isCompactNavigation={isCompactNavigation}
@@ -155,7 +155,7 @@ export function WorkbenchHost({
         <div className="workbench-layout">
           {noticeMessage ? (
             <article className="workbench-placeholder workbench-notice" role="alert">
-              <h2>Session Action Error</h2>
+              <h2>会话操作失败</h2>
               <p>{noticeMessage}</p>
             </article>
           ) : null}
@@ -163,9 +163,9 @@ export function WorkbenchHost({
           <aside
             id="workbench-navigation-panel"
             className={`workbench-nav${isCompactNavigation ? " is-compact" : ""}${isCompactNavigation && !isNavigationOpen ? " is-collapsed" : ""}`}
-            aria-label="Workbench navigation"
+            aria-label="工作区导航"
           >
-            <h2>Workbench</h2>
+            <h2>工作区导航</h2>
             <WorkbenchNavigationMenu
               groups={navigationGroups}
               activeWorkbenchId={activeWorkbenchId}
@@ -185,8 +185,8 @@ export function WorkbenchHost({
     if (visibleEntries.length === 0) {
       return (
         <article className="workbench-placeholder" role="status">
-          <h2>No Workbenches Available</h2>
-          <p>This role currently has no web workbenches assigned.</p>
+          <h2>暂无可用工作区</h2>
+          <p>当前账号尚未分配可访问的 Web 工作区。</p>
         </article>
       );
     }
@@ -236,10 +236,9 @@ export function WorkbenchHost({
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">
-            <h2>{activeEntry?.label ?? "Workbench"}</h2>
+            <h2>{activeEntry?.navLabel ?? activeEntry?.label ?? "工作台"}</h2>
             <p>
-              This workbench is visible for navigation, but its web implementation is not part of
-              the current phase yet.
+              该工作区已在导航中开放，但当前阶段尚未接入对应的 Web 实现。
             </p>
           </article>
         );

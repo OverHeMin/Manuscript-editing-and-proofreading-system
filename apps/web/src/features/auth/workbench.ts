@@ -67,7 +67,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   {
     id: "knowledge-review",
     label: "Knowledge Review",
-    navLabel: "知识审核",
+    navLabel: "知识库",
     navGroup: "knowledge",
     placement: "primary",
     surfaces: ["web", "mini_program"],

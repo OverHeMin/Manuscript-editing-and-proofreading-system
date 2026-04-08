@@ -12,7 +12,48 @@ export interface WorkbenchShellHeaderProps {
   isLogoutPending?: boolean;
 }
 
-const shellPillars = ["Screening", "Editing", "Proofreading", "Knowledge"] as const;
+const shellPillars = ["初筛", "编辑", "校对", "知识库"] as const;
+
+function resolveActiveShellPillar(input: {
+  activeWorkbenchLabel: string;
+  activeWorkbenchGroupLabel: string;
+}): (typeof shellPillars)[number] | null {
+  if (input.activeWorkbenchGroupLabel !== "核心工作台") {
+    return null;
+  }
+
+  switch (input.activeWorkbenchLabel) {
+    case "初筛":
+      return "初筛";
+    case "编辑":
+      return "编辑";
+    case "校对":
+      return "校对";
+    case "知识库":
+    case "知识审核":
+      return "知识库";
+    default:
+      return null;
+  }
+}
+
+function getRoleLabel(role: AuthSessionViewModel["role"]): string {
+  switch (role) {
+    case "admin":
+      return "管理员";
+    case "screener":
+      return "初筛员";
+    case "editor":
+      return "编辑";
+    case "proofreader":
+      return "校对";
+    case "knowledge_reviewer":
+      return "知识审核员";
+    case "user":
+    default:
+      return "投稿用户";
+  }
+}
 
 export function WorkbenchShellHeader({
   session,
@@ -25,6 +66,11 @@ export function WorkbenchShellHeader({
   onLogout,
   isLogoutPending = false,
 }: WorkbenchShellHeaderProps) {
+  const activeShellPillar = resolveActiveShellPillar({
+    activeWorkbenchLabel,
+    activeWorkbenchGroupLabel,
+  });
+
   return (
     <header className="workbench-header">
       <div className="workbench-header-topline">
@@ -37,17 +83,22 @@ export function WorkbenchShellHeader({
                 初筛、编辑、校对与知识库在同一工作壳层内协同推进，重点工作区始终保持清晰。
               </p>
             </div>
-            <ul className="workbench-shell-pillar-list" aria-label="Primary work pillars">
+            <ul className="workbench-shell-pillar-list" aria-label="核心栏目">
               {shellPillars.map((pillar) => (
-                <li key={pillar} className="workbench-shell-pillar">
+                <li
+                  key={pillar}
+                  className={`workbench-shell-pillar${pillar === activeShellPillar ? " is-active" : ""}`}
+                >
                   {pillar}
                 </li>
               ))}
             </ul>
           </div>
           <p className="workbench-shell-session">
-            Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
-            <code>{session.role}</code>.
+            当前账号 <strong>{session.displayName}</strong>
+            <span>（{session.username}）</span>
+            <span>角色</span>
+            <code>{getRoleLabel(session.role)}</code>
           </p>
         </div>
 
@@ -60,7 +111,7 @@ export function WorkbenchShellHeader({
               aria-expanded={isNavigationOpen}
               onClick={() => void onToggleNavigation()}
             >
-              {isNavigationOpen ? "Hide workbench navigation" : "Open workbench navigation"}
+              {isNavigationOpen ? "收起导航" : "展开导航"}
             </button>
           ) : null}
 
@@ -71,7 +122,7 @@ export function WorkbenchShellHeader({
               onClick={() => void onLogout()}
               disabled={isLogoutPending}
             >
-              {isLogoutPending ? "Signing out..." : "Sign out"}
+              {isLogoutPending ? "正在退出..." : "退出登录"}
             </button>
           ) : null}
         </div>
@@ -79,7 +130,7 @@ export function WorkbenchShellHeader({
 
       <div className="workbench-header-focus">
         <article className="workbench-header-focus-card">
-          <span>Current Desk</span>
+          <span>当前工作台</span>
           <strong>{activeWorkbenchLabel}</strong>
           <small>{activeWorkbenchGroupLabel}</small>
         </article>

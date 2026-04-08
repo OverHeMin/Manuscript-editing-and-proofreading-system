@@ -331,6 +331,8 @@ test("evaluation workbench loaded page renders a delta-first summary with bounde
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
   assert.match(markup, /Read-Only Operations Desk/);
+  assert.match(markup, /管理区/);
+  assert.match(markup, /workbench-core-strip is-secondary/);
   assert.match(markup, /Delta Summary/);
   assert.match(markup, /Classification: better/i);
   assert.match(

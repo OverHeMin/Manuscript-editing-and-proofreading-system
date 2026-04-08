@@ -29,11 +29,11 @@ export function KnowledgeReviewDetailPane({
     return (
       <section className="knowledge-review-panel knowledge-review-detail-pane">
         <header className="knowledge-review-pane-header">
-          <h2>Knowledge Detail</h2>
-          <p>Select a queue item to review.</p>
+          <h2>知识详情</h2>
+          <p>请先从队列中选择一条待审核知识。</p>
         </header>
         <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-          Select a pending knowledge item from the queue to load full context and actions.
+          从待审核队列中选择一条知识，即可加载完整上下文与审核动作。
         </div>
       </section>
     );
@@ -45,54 +45,54 @@ export function KnowledgeReviewDetailPane({
         <h2>{item.title}</h2>
         <p>
           {isUsingStableSnapshot
-            ? "Showing last stable selection while queue reload recovers."
-            : "Review context"}
+            ? "正在沿用上一次稳定选择，等待队列恢复。"
+            : "审核上下文"}
         </p>
       </header>
 
       <dl className="knowledge-review-detail-grid">
         <div>
-          <dt>Canonical text</dt>
+          <dt>规范文本</dt>
           <dd className="knowledge-review-canonical-text">{item.canonical_text}</dd>
         </div>
         <div>
-          <dt>Summary</dt>
-          <dd>{item.summary?.trim().length ? item.summary : "Not provided"}</dd>
+          <dt>摘要</dt>
+          <dd>{item.summary?.trim().length ? item.summary : "未提供"}</dd>
         </div>
         <div>
-          <dt>Evidence level</dt>
+          <dt>证据等级</dt>
           <dd>{renderEvidenceLevel(item.evidence_level)}</dd>
         </div>
         <div>
-          <dt>Source type</dt>
-          <dd>{item.source_type ? startCase(item.source_type) : "Not provided"}</dd>
+          <dt>来源类型</dt>
+          <dd>{item.source_type ? startCase(item.source_type) : "未提供"}</dd>
         </div>
         <div>
-          <dt>Source link</dt>
+          <dt>来源链接</dt>
           <dd>
             {item.source_link ? (
               <a href={item.source_link} target="_blank" rel="noreferrer">
                 {item.source_link}
               </a>
             ) : (
-              "Not provided"
+              "未提供"
             )}
           </dd>
         </div>
         <div>
-          <dt>Routing scope</dt>
+          <dt>适用范围</dt>
           <dd>{renderRoutingScope(item)}</dd>
         </div>
         <div>
-          <dt>Template bindings</dt>
-          <dd>{item.template_bindings?.length ? item.template_bindings.join(", ") : "None"}</dd>
+          <dt>模板绑定</dt>
+          <dd>{item.template_bindings?.length ? item.template_bindings.join(", ") : "无"}</dd>
         </div>
       </dl>
 
       <section className="knowledge-review-history">
         <header>
-          <h3>Review History</h3>
-          <p>Decision trace and reviewer notes.</p>
+          <h3>审核历史</h3>
+          <p>查看决策轨迹与审核备注。</p>
         </header>
 
         {historyScopeNote ? (
@@ -101,21 +101,21 @@ export function KnowledgeReviewDetailPane({
 
         {history.status === "loading" ? (
           <p className="knowledge-review-history-state" role="status">
-            Loading review history...
+            正在加载审核历史...
           </p>
         ) : null}
 
         {history.status === "error" ? (
           <div className="knowledge-review-banner knowledge-review-banner-error">
-            <p>{history.errorMessage ?? "History failed to load."}</p>
+            <p>{history.errorMessage ?? "审核历史加载失败。"}</p>
             <button type="button" onClick={onRetryHistory}>
-              Retry history
+              重试加载历史
             </button>
           </div>
         ) : null}
 
         {history.actions.length === 0 && history.status !== "loading" ? (
-          <p className="knowledge-review-history-state">No review events recorded yet.</p>
+          <p className="knowledge-review-history-state">暂未记录审核事件。</p>
         ) : null}
 
         {history.actions.length > 0 ? (
@@ -127,7 +127,7 @@ export function KnowledgeReviewDetailPane({
                 </p>
                 <p className="knowledge-review-history-time">{formatTimestamp(action.created_at)}</p>
                 <p className="knowledge-review-history-note">
-                  {action.review_note?.trim().length ? action.review_note : "No review note"}
+                  {action.review_note?.trim().length ? action.review_note : "未填写审核备注"}
                 </p>
               </li>
             ))}
@@ -142,11 +142,11 @@ function renderEvidenceLevel(
   evidenceLevel: KnowledgeReviewQueueItemViewModel["evidence_level"],
 ): string {
   if (!evidenceLevel) {
-    return "Not provided";
+    return "未提供";
   }
 
   if (evidenceLevel === "expert_opinion") {
-    return "Expert opinion";
+    return "专家意见";
   }
 
   return startCase(evidenceLevel);
@@ -154,10 +154,10 @@ function renderEvidenceLevel(
 
 function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
   const moduleScope =
-    item.routing.module_scope === "any" ? "Any module" : startCase(item.routing.module_scope);
+    item.routing.module_scope === "any" ? "任意模块" : startCase(item.routing.module_scope);
   const manuscriptScope =
     item.routing.manuscript_types === "any"
-      ? "Any manuscript type"
+      ? "不限稿件类型"
       : item.routing.manuscript_types.map(startCase).join(", ");
 
   return `${moduleScope} | ${manuscriptScope}`;
@@ -166,11 +166,11 @@ function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
 function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
   switch (action) {
     case "submitted_for_review":
-      return "Submitted for review";
+      return "提交审核";
     case "approved":
-      return "Approved";
+      return "已通过";
     case "rejected":
-      return "Rejected";
+      return "已驳回";
     default:
       return action;
   }
@@ -179,7 +179,7 @@ function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
 function actorLabel(actorRole: KnowledgeReviewActionViewModel["actor_role"]): string {
   switch (actorRole) {
     case "knowledge_reviewer":
-      return "Knowledge reviewer";
+      return "知识审核员";
     default:
       return startCase(actorRole);
   }

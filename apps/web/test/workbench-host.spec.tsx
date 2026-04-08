@@ -22,7 +22,7 @@ test("admin defaults to screening workbench", () => {
   assert.equal(session.defaultWorkbench, "screening");
 });
 
-test("admin navigation model groups the four primary pillars and the management zone", async () => {
+test("admin navigation model highlights the four core desks and separates support surfaces", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -35,15 +35,27 @@ test("admin navigation model groups the four primary pillars and the management 
 
   assert.deepEqual(
     groups.map((group: { label: string }) => group.label),
-    ["主工作线", "知识库", "管理区"],
+    ["核心工作台", "协同与回写", "管理区"],
+  );
+  assert.deepEqual(
+    groups.map((group: { description: string }) => group.description),
+    [
+      "突出初筛、编辑、校对与知识库四个核心栏目",
+      "保留学习复核等辅助协同入口",
+      "管理员可见的治理与配置面板",
+    ],
+  );
+  assert.deepEqual(
+    groups.map((group: { prominence: string }) => group.prominence),
+    ["primary", "supporting", "secondary"],
   );
   assert.deepEqual(
     groups[0]?.items.map((item: { label: string }) => item.label),
-    ["初筛", "编辑", "校对"],
+    ["初筛", "编辑", "校对", "知识库"],
   );
   assert.deepEqual(
     groups[1]?.items.map((item: { label: string }) => item.label),
-    ["知识审核", "学习复核"],
+    ["学习复核"],
   );
 });
 
@@ -86,10 +98,18 @@ test("navigation menu renders grouped admin navigation with an active pillar", a
     />,
   );
 
-  assert.match(html, /主工作线/);
-  assert.match(html, /知识库/);
+  assert.match(html, /核心工作台/);
+  assert.match(html, /突出初筛、编辑、校对与知识库四个核心栏目/);
+  assert.match(html, /4 项/);
+  assert.match(html, /协同与回写/);
+  assert.match(html, /保留学习复核等辅助协同入口/);
+  assert.match(html, /1 项/);
   assert.match(html, /管理区/);
+  assert.match(html, /管理员可见的治理与配置面板/);
+  assert.match(html, /5 项/);
   assert.match(html, /编辑/);
+  assert.match(html, /正文修订与模板落位/);
+  assert.match(html, /知识审核与证据沉淀/);
   assert.match(html, /is-active/);
 });
 
@@ -126,20 +146,25 @@ test("workbench shell header renders the product brand and active desk summary",
   const html = renderToStaticMarkup(
     <headerModule.WorkbenchShellHeader
       session={buildSession("admin")}
-      activeWorkbenchLabel="Editing"
-      activeWorkbenchDescription="Refine the governed draft and preserve handoff context."
-      activeWorkbenchGroupLabel="涓诲伐浣滅嚎"
+      activeWorkbenchLabel="编辑"
+      activeWorkbenchDescription="聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。"
+      activeWorkbenchGroupLabel="核心工作台"
       isCompactNavigation={false}
       isNavigationOpen
       onToggleNavigation={() => undefined}
+      onLogout={() => undefined}
     />,
   );
 
   assert.match(html, /Medical Editorial Control Deck/);
   assert.match(html, /医学稿件处理系统/);
-  assert.match(html, /Editing/);
-  assert.match(html, /Screening/);
-  assert.match(html, /Knowledge/);
+  assert.match(html, /初筛/);
+  assert.match(html, /知识库/);
+  assert.match(html, /当前工作台/);
+  assert.match(html, /当前账号/);
+  assert.match(html, /管理员/);
+  assert.match(html, /退出登录/);
+  assert.match(html, /workbench-shell-pillar is-active/);
 });
 
 test("workbench shell header exposes a compact navigation toggle state", async () => {
@@ -152,16 +177,16 @@ test("workbench shell header exposes a compact navigation toggle state", async (
   const html = renderToStaticMarkup(
     <headerModule.WorkbenchShellHeader
       session={buildSession("editor")}
-      activeWorkbenchLabel="Editing"
-      activeWorkbenchDescription="Refine the governed draft and preserve handoff context."
-      activeWorkbenchGroupLabel="涓诲伐浣滅嚎"
+      activeWorkbenchLabel="编辑"
+      activeWorkbenchDescription="聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。"
+      activeWorkbenchGroupLabel="核心工作台"
       isCompactNavigation
       isNavigationOpen={false}
       onToggleNavigation={() => undefined}
     />,
   );
 
-  assert.match(html, /Open workbench navigation/);
+  assert.match(html, /展开导航/);
   assert.match(html, /aria-expanded="false"/);
 });
 
