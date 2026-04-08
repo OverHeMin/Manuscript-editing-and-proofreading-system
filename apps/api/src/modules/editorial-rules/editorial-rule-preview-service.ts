@@ -14,16 +14,26 @@ import {
   type ResolvedEditorialRule,
   type ResolveEditorialRulesInput,
 } from "./editorial-rule-resolution-service.ts";
+import type {
+  DocumentStructureTableSemanticCoordinate,
+  DocumentStructureTableSnapshot,
+} from "../document-pipeline/document-structure-service.ts";
+import {
+  EditorialRuleTableHitService,
+  type EditorialRuleTableHit,
+} from "./editorial-rule-table-hit-service.ts";
 
 export interface PreviewEditorialRuleInput {
   ruleId: string;
   sampleText: string;
+  tableSnapshots?: DocumentStructureTableSnapshot[];
 }
 
 export interface PreviewResolvedEditorialRulesInput
   extends ResolveEditorialRulesInput {
   sampleText: string;
   ruleObject?: string;
+  tableSnapshots?: DocumentStructureTableSnapshot[];
 }
 
 export interface EditorialRulePreviewMatchedRule {
@@ -33,6 +43,8 @@ export interface EditorialRulePreviewMatchedRule {
   execution_posture: EditorialRuleExecutionPosture;
   overridden_rule_ids: string[];
   reason: string;
+  semantic_target?: DocumentStructureTableSemanticCoordinate["target"];
+  semantic_coordinate?: DocumentStructureTableSemanticCoordinate;
 }
 
 export interface EditorialRulePreviewResult {
@@ -48,6 +60,7 @@ export interface EditorialRulePreviewResult {
 export interface EditorialRulePreviewServiceOptions {
   repository: Pick<EditorialRuleRepository, "findRuleById">;
   resolutionService: Pick<EditorialRuleResolutionService, "resolve">;
+  tableHitService?: Pick<EditorialRuleTableHitService, "findMatches">;
 }
 
 export class EditorialRulePreviewRuleNotFoundError extends Error {
@@ -63,10 +76,15 @@ export class EditorialRulePreviewService {
     EditorialRuleResolutionService,
     "resolve"
   >;
+  private readonly tableHitService: Pick<
+    EditorialRuleTableHitService,
+    "findMatches"
+  >;
 
   constructor(options: EditorialRulePreviewServiceOptions) {
     this.repository = options.repository;
     this.resolutionService = options.resolutionService;
+    this.tableHitService = options.tableHitService ?? new EditorialRuleTableHitService();
   }
 
   async previewRule(
@@ -82,8 +100,10 @@ export class EditorialRulePreviewService {
         evaluateRulePreview({
           rule,
           sampleText: input.sampleText,
+          tableSnapshots: input.tableSnapshots,
           reason: "Preview matched the requested rule.",
           overriddenRuleIds: [],
+          tableHitService: this.tableHitService,
         }),
       ].filter(isDefined),
       input.sampleText,
@@ -105,7 +125,9 @@ export class EditorialRulePreviewService {
         evaluateResolvedRulePreview({
           entry,
           sampleText: input.sampleText,
+          tableSnapshots: input.tableSnapshots,
           resolution,
+          tableHitService: this.tableHitService,
         }),
       )
       .filter(isDefined);
@@ -123,27 +145,38 @@ interface MatchedRulePreview {
 function evaluateResolvedRulePreview(input: {
   entry: ResolvedEditorialRule;
   sampleText: string;
+  tableSnapshots?: DocumentStructureTableSnapshot[];
   resolution: EditorialRuleResolutionResult;
+  tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
 }): MatchedRulePreview | undefined {
   return evaluateRulePreview({
     rule: input.entry.rule,
     sampleText: input.sampleText,
+    tableSnapshots: input.tableSnapshots,
     reason: input.entry.resolution_reason,
     overriddenRuleIds: input.entry.overridden_rule_ids,
     coverageKey: input.entry.coverage_key,
     executionPosture: input.entry.execution_posture,
+    tableHitService: input.tableHitService,
   });
 }
 
 function evaluateRulePreview(input: {
   rule: EditorialRuleRecord;
   sampleText: string;
+  tableSnapshots?: DocumentStructureTableSnapshot[];
   reason: string;
   overriddenRuleIds: string[];
   coverageKey?: string;
   executionPosture?: EditorialRuleExecutionPosture;
+  tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
 }): MatchedRulePreview | undefined {
-  if (!matchesRule(input.rule, input.sampleText)) {
+  const matchedTableHit = findMatchedTableHit(input);
+  if (input.rule.rule_object === "table") {
+    if (!matchedTableHit) {
+      return undefined;
+    }
+  } else if (!matchesRule(input.rule, input.sampleText)) {
     return undefined;
   }
 
@@ -169,8 +202,16 @@ function evaluateRulePreview(input: {
       execution_posture: executionPosture,
       overridden_rule_ids: [...input.overriddenRuleIds],
       reason: input.reason,
+      ...(matchedTableHit
+        ? {
+            semantic_target: matchedTableHit.semantic_target,
+            semantic_coordinate: cloneCoordinate(
+              matchedTableHit.semantic_coordinate,
+            ),
+          }
+        : {}),
     },
-    reasons: buildPreviewReasons(input.rule, input.reason),
+    reasons: buildPreviewReasons(input.rule, input.reason, matchedTableHit),
     ...(transformedOutput !== undefined ? { output: transformedOutput } : {}),
   };
 }
@@ -279,6 +320,7 @@ function applyRuleTransformation(
 function buildPreviewReasons(
   rule: EditorialRuleRecord,
   primaryReason: string,
+  matchedTableHit?: EditorialRuleTableHit,
 ): string[] {
   const reasons = [primaryReason];
 
@@ -290,7 +332,35 @@ function buildPreviewReasons(
     reasons.push(`Matched exact_text trigger "${rule.trigger.text}".`);
   }
 
+  if (matchedTableHit) {
+    reasons.push(matchedTableHit.reason);
+  }
+
   return reasons;
+}
+
+function findMatchedTableHit(input: {
+  rule: EditorialRuleRecord;
+  tableSnapshots?: DocumentStructureTableSnapshot[];
+  tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
+}): EditorialRuleTableHit | undefined {
+  if (input.rule.rule_object !== "table" || !input.tableSnapshots?.length) {
+    return undefined;
+  }
+
+  return input.tableHitService.findMatches({
+    rule: input.rule,
+    tableSnapshots: input.tableSnapshots,
+  })[0];
+}
+
+function cloneCoordinate(
+  coordinate: DocumentStructureTableSemanticCoordinate,
+): DocumentStructureTableSemanticCoordinate {
+  return {
+    ...coordinate,
+    header_path: coordinate.header_path ? [...coordinate.header_path] : undefined,
+  };
 }
 
 function isDefined<T>(value: T | undefined): value is T {

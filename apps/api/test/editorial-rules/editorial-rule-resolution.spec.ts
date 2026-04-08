@@ -166,6 +166,90 @@ test("resolution keeps the earliest same-layer rule when duplicate coverage keys
   );
 });
 
+test("resolution uses table semantic selectors as coverage keys for journal overrides", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-table-header",
+    rule_set_id: "base-rule-set",
+    order_no: 25,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Base table header semantics should stay normalized.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+  await repository.saveRule({
+    id: "journal-rule-table-header",
+    rule_set_id: "journal-rule-set",
+    order_no: 35,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Journal table header semantics override the generic rule.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+    journalTemplateId: "journal-template-1",
+  });
+  const semanticTableRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "journal-rule-table-header",
+  );
+
+  assert.equal(
+    semanticTableRule?.coverage_key,
+    'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+  );
+  assert.deepEqual(semanticTableRule?.overridden_rule_ids, [
+    "base-rule-table-header",
+  ]);
+  assert.match(
+    semanticTableRule?.resolution_reason ?? "",
+    /journal template override/i,
+  );
+});
+
 async function seedPublishedRuleScopes(
   repository: InMemoryEditorialRuleRepository,
 ): Promise<void> {
