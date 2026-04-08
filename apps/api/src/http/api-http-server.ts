@@ -134,16 +134,20 @@ import {
 } from "../modules/feedback-governance/index.ts";
 import {
   createKnowledgeApi,
+  KnowledgeAssetNotFoundError,
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
   KnowledgeItemNotFoundError,
+  KnowledgeRevisionNotFoundError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
   KnowledgeRetrievalSnapshotNotFoundError,
+  type CreateKnowledgeLibraryDraftInput,
   type CreateKnowledgeDraftInput,
   type ResolveGovernedRetrievalContextInput,
   type KnowledgeRecord,
   type KnowledgeReviewActionRecord,
+  type UpdateKnowledgeRevisionDraftInput,
   type UpdateKnowledgeDraftInput,
 } from "../modules/knowledge/index.ts";
 import {
@@ -532,6 +536,40 @@ type HttpRouteMatch =
     }
   | {
       route: "knowledge-create-draft";
+    }
+  | {
+      route: "knowledge-library-list";
+    }
+  | {
+      route: "knowledge-get-asset";
+      assetId: string;
+    }
+  | {
+      route: "knowledge-create-library-draft";
+    }
+  | {
+      route: "knowledge-create-draft-revision";
+      assetId: string;
+    }
+  | {
+      route: "knowledge-submit-revision";
+      revisionId: string;
+    }
+  | {
+      route: "knowledge-approve-revision";
+      revisionId: string;
+    }
+  | {
+      route: "knowledge-reject-revision";
+      revisionId: string;
+    }
+  | {
+      route: "knowledge-update-revision-draft";
+      revisionId: string;
+    }
+  | {
+      route: "knowledge-revision-review-actions";
+      revisionId: string;
     }
   | {
       route: "templates-create-family";
@@ -3225,6 +3263,67 @@ async function handleRoute(
       return runtime.knowledgeApi.createDraft(
         (await readJsonBody(req)) as CreateKnowledgeDraftInput,
       );
+    case "knowledge-library-list":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.listKnowledgeItems();
+    case "knowledge-get-asset":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.getKnowledgeAsset({
+        assetId: routeMatch.assetId,
+        revisionId: coalesceOptionalString(
+          readRequestUrl(req).searchParams.get("revisionId") ?? undefined,
+        ),
+      });
+    case "knowledge-create-library-draft":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.createLibraryDraft(
+        (await readJsonBody(req)) as CreateKnowledgeLibraryDraftInput,
+      );
+    case "knowledge-create-draft-revision":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.createDraftRevision({
+        assetId: routeMatch.assetId,
+      });
+    case "knowledge-submit-revision":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.submitRevisionForReview({
+        revisionId: routeMatch.revisionId,
+      });
+    case "knowledge-approve-revision": {
+      const session = await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as {
+        reviewNote?: string;
+      };
+
+      return runtime.knowledgeApi.approveRevision({
+        revisionId: routeMatch.revisionId,
+        actorRole: session.user.role,
+        reviewNote: coalesceOptionalString(body.reviewNote),
+      });
+    }
+    case "knowledge-reject-revision": {
+      const session = await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as {
+        reviewNote?: string;
+      };
+
+      return runtime.knowledgeApi.rejectRevision({
+        revisionId: routeMatch.revisionId,
+        actorRole: session.user.role,
+        reviewNote: coalesceOptionalString(body.reviewNote),
+      });
+    }
+    case "knowledge-update-revision-draft":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.updateRevisionDraft({
+        revisionId: routeMatch.revisionId,
+        input: (await readJsonBody(req)) as UpdateKnowledgeRevisionDraftInput,
+      });
+    case "knowledge-revision-review-actions":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.listReviewActionsByRevision({
+        revisionId: routeMatch.revisionId,
+      });
     case "knowledge-list":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listKnowledgeItems();
@@ -4701,6 +4800,32 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-list" };
   }
 
+  if (method === "GET" && path === "/api/v1/knowledge/library") {
+    return { route: "knowledge-library-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
+    return { route: "knowledge-create-library-draft" };
+  }
+
+  const knowledgeAssetMatch = path.match(/^\/api\/v1\/knowledge\/assets\/([^/]+)$/);
+  if (method === "GET" && knowledgeAssetMatch) {
+    return {
+      route: "knowledge-get-asset",
+      assetId: knowledgeAssetMatch[1],
+    };
+  }
+
+  const createKnowledgeRevisionMatch = path.match(
+    /^\/api\/v1\/knowledge\/assets\/([^/]+)\/revisions$/,
+  );
+  if (method === "POST" && createKnowledgeRevisionMatch) {
+    return {
+      route: "knowledge-create-draft-revision",
+      assetId: createKnowledgeRevisionMatch[1],
+    };
+  }
+
   if (method === "GET" && path === "/api/v1/knowledge/review-queue") {
     return { route: "knowledge-review-queue" };
   }
@@ -4843,6 +4968,56 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const knowledgeRevisionReviewActionsMatch = path.match(
+    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/review-actions$/,
+  );
+  if (method === "GET" && knowledgeRevisionReviewActionsMatch) {
+    return {
+      route: "knowledge-revision-review-actions",
+      revisionId: knowledgeRevisionReviewActionsMatch[1],
+    };
+  }
+
+  const knowledgeRevisionSubmitMatch = path.match(
+    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/submit$/,
+  );
+  if (method === "POST" && knowledgeRevisionSubmitMatch) {
+    return {
+      route: "knowledge-submit-revision",
+      revisionId: knowledgeRevisionSubmitMatch[1],
+    };
+  }
+
+  const knowledgeRevisionApproveMatch = path.match(
+    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/approve$/,
+  );
+  if (method === "POST" && knowledgeRevisionApproveMatch) {
+    return {
+      route: "knowledge-approve-revision",
+      revisionId: knowledgeRevisionApproveMatch[1],
+    };
+  }
+
+  const knowledgeRevisionRejectMatch = path.match(
+    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/reject$/,
+  );
+  if (method === "POST" && knowledgeRevisionRejectMatch) {
+    return {
+      route: "knowledge-reject-revision",
+      revisionId: knowledgeRevisionRejectMatch[1],
+    };
+  }
+
+  const knowledgeRevisionDraftMatch = path.match(
+    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && knowledgeRevisionDraftMatch) {
+    return {
+      route: "knowledge-update-revision-draft",
+      revisionId: knowledgeRevisionDraftMatch[1],
+    };
+  }
+
   return null;
 }
 
@@ -4938,7 +5113,9 @@ function mapErrorToHttpResponse(
     error instanceof AgentProfileNotFoundError ||
     error instanceof AgentRuntimeNotFoundError ||
     error instanceof JobNotFoundError ||
+    error instanceof KnowledgeAssetNotFoundError ||
     error instanceof KnowledgeItemNotFoundError ||
+    error instanceof KnowledgeRevisionNotFoundError ||
     error instanceof LearningCandidateNotFoundError ||
     error instanceof ReviewedCaseSnapshotNotFoundError ||
     error instanceof LearningWritebackNotFoundError ||

@@ -1,11 +1,21 @@
 import type {
+  KnowledgeAssetRecord,
+  KnowledgeRecord,
+  KnowledgeRevisionBindingRecord,
+  KnowledgeRevisionRecord,
+  KnowledgeReviewActionRecord,
+} from "./knowledge-record.ts";
+import type {
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
-import type {
-  KnowledgeRecord,
-  KnowledgeReviewActionRecord,
-} from "./knowledge-record.ts";
+
+interface KnowledgeRepositorySnapshot {
+  legacyRecords: Map<string, KnowledgeRecord>;
+  assets: Map<string, KnowledgeAssetRecord>;
+  revisions: Map<string, KnowledgeRevisionRecord>;
+  bindingsByRevisionId: Map<string, KnowledgeRevisionBindingRecord[]>;
+}
 
 function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
   return {
@@ -32,48 +42,312 @@ function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
   };
 }
 
+function cloneAssetRecord(record: KnowledgeAssetRecord): KnowledgeAssetRecord {
+  return { ...record };
+}
+
+function cloneRevisionRecord(record: KnowledgeRevisionRecord): KnowledgeRevisionRecord {
+  return {
+    ...record,
+    routing: {
+      ...record.routing,
+      manuscript_types:
+        record.routing.manuscript_types === "any"
+          ? "any"
+          : [...record.routing.manuscript_types],
+      sections: record.routing.sections ? [...record.routing.sections] : undefined,
+      risk_tags: record.routing.risk_tags ? [...record.routing.risk_tags] : undefined,
+      discipline_tags: record.routing.discipline_tags
+        ? [...record.routing.discipline_tags]
+        : undefined,
+    },
+    aliases: record.aliases ? [...record.aliases] : undefined,
+    projection_source: record.projection_source
+      ? JSON.parse(JSON.stringify(record.projection_source))
+      : undefined,
+  };
+}
+
+function cloneBindingRecord(
+  record: KnowledgeRevisionBindingRecord,
+): KnowledgeRevisionBindingRecord {
+  return { ...record };
+}
+
 function cloneReviewActionRecord(
   record: KnowledgeReviewActionRecord,
 ): KnowledgeReviewActionRecord {
   return { ...record };
 }
 
+function cloneLegacyReviewActionRecord(
+  record: KnowledgeReviewActionRecord,
+): KnowledgeReviewActionRecord {
+  return {
+    id: record.id,
+    knowledge_item_id: record.knowledge_item_id,
+    action: record.action,
+    actor_role: record.actor_role,
+    ...(record.review_note != null ? { review_note: record.review_note } : {}),
+    created_at: record.created_at,
+  };
+}
+
 export class InMemoryKnowledgeRepository implements KnowledgeRepository {
-  private readonly records = new Map<string, KnowledgeRecord>();
+  private readonly legacyRecords = new Map<string, KnowledgeRecord>();
+  private readonly assets = new Map<string, KnowledgeAssetRecord>();
+  private readonly revisions = new Map<string, KnowledgeRevisionRecord>();
+  private readonly bindingsByRevisionId = new Map<string, KnowledgeRevisionBindingRecord[]>();
 
   async save(record: KnowledgeRecord): Promise<void> {
-    this.records.set(record.id, cloneKnowledgeRecord(record));
+    this.legacyRecords.set(record.id, cloneKnowledgeRecord(record));
   }
 
   async findById(id: string): Promise<KnowledgeRecord | undefined> {
-    const record = this.records.get(id);
+    if (this.assets.has(id)) {
+      return this.projectAuthoringKnowledgeRecord(id);
+    }
+
+    const record = this.legacyRecords.get(id);
     return record ? cloneKnowledgeRecord(record) : undefined;
   }
 
+  async findApprovedById(id: string): Promise<KnowledgeRecord | undefined> {
+    if (this.assets.has(id)) {
+      return this.projectApprovedKnowledgeRecord(id);
+    }
+
+    const record = this.legacyRecords.get(id);
+    if (!record || record.status !== "approved") {
+      return undefined;
+    }
+
+    return cloneKnowledgeRecord(record);
+  }
+
   async list(): Promise<KnowledgeRecord[]> {
-    return [...this.records.values()].map(cloneKnowledgeRecord);
+    const projected = [...this.assets.keys()]
+      .map((assetId) => this.projectAuthoringKnowledgeRecord(assetId))
+      .filter((record): record is KnowledgeRecord => record != null);
+    const shadowedIds = new Set(this.assets.keys());
+    const legacy = [...this.legacyRecords.entries()]
+      .filter(([id]) => !shadowedIds.has(id))
+      .map(([, record]) => cloneKnowledgeRecord(record));
+
+    return [...projected, ...legacy];
+  }
+
+  async listApproved(): Promise<KnowledgeRecord[]> {
+    const projected = [...this.assets.keys()]
+      .map((assetId) => this.projectApprovedKnowledgeRecord(assetId))
+      .filter((record): record is KnowledgeRecord => record != null);
+    const shadowedIds = new Set(this.assets.keys());
+    const legacy = [...this.legacyRecords.entries()]
+      .filter(
+        ([id, record]) => !shadowedIds.has(id) && record.status === "approved",
+      )
+      .map(([, record]) => cloneKnowledgeRecord(record));
+
+    return [...projected, ...legacy];
   }
 
   async listByStatus(status: KnowledgeRecord["status"]): Promise<KnowledgeRecord[]> {
-    return [...this.records.values()]
-      .filter((record) => record.status === status)
-      .map(cloneKnowledgeRecord);
+    return (await this.list()).filter((record) => record.status === status);
   }
 
-  snapshotState(): Map<string, KnowledgeRecord> {
-    return new Map(
-      [...this.records.entries()].map(([id, record]) => [
-        id,
-        cloneKnowledgeRecord(record),
-      ]),
+  async saveAsset(record: KnowledgeAssetRecord): Promise<void> {
+    this.assets.set(record.id, cloneAssetRecord(record));
+  }
+
+  async findAssetById(id: string): Promise<KnowledgeAssetRecord | undefined> {
+    const record = this.assets.get(id);
+    return record ? cloneAssetRecord(record) : undefined;
+  }
+
+  async listAssets(): Promise<KnowledgeAssetRecord[]> {
+    return [...this.assets.values()].map(cloneAssetRecord);
+  }
+
+  async saveRevision(record: KnowledgeRevisionRecord): Promise<void> {
+    this.revisions.set(record.id, cloneRevisionRecord(record));
+  }
+
+  async findRevisionById(id: string): Promise<KnowledgeRevisionRecord | undefined> {
+    const record = this.revisions.get(id);
+    return record ? cloneRevisionRecord(record) : undefined;
+  }
+
+  async listRevisionsByAssetId(assetId: string): Promise<KnowledgeRevisionRecord[]> {
+    return [...this.revisions.values()]
+      .filter((record) => record.asset_id === assetId)
+      .sort(compareRevisionRecordsDesc)
+      .map(cloneRevisionRecord);
+  }
+
+  async listRevisionsByStatus(
+    status: KnowledgeRevisionRecord["status"],
+  ): Promise<KnowledgeRevisionRecord[]> {
+    return [...this.revisions.values()]
+      .filter((record) => record.status === status)
+      .sort(compareRevisionRecordsDesc)
+      .map(cloneRevisionRecord);
+  }
+
+  async replaceRevisionBindings(
+    revisionId: string,
+    records: readonly KnowledgeRevisionBindingRecord[],
+  ): Promise<void> {
+    this.bindingsByRevisionId.set(
+      revisionId,
+      records.map(cloneBindingRecord),
     );
   }
 
-  restoreState(snapshot: Map<string, KnowledgeRecord>): void {
-    this.records.clear();
-    for (const [id, record] of snapshot.entries()) {
-      this.records.set(id, cloneKnowledgeRecord(record));
+  async listBindingsByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeRevisionBindingRecord[]> {
+    return (this.bindingsByRevisionId.get(revisionId) ?? []).map(cloneBindingRecord);
+  }
+
+  snapshotState(): KnowledgeRepositorySnapshot {
+    return {
+      legacyRecords: new Map(
+        [...this.legacyRecords.entries()].map(([id, record]) => [
+          id,
+          cloneKnowledgeRecord(record),
+        ]),
+      ),
+      assets: new Map(
+        [...this.assets.entries()].map(([id, record]) => [id, cloneAssetRecord(record)]),
+      ),
+      revisions: new Map(
+        [...this.revisions.entries()].map(([id, record]) => [
+          id,
+          cloneRevisionRecord(record),
+        ]),
+      ),
+      bindingsByRevisionId: new Map(
+        [...this.bindingsByRevisionId.entries()].map(([revisionId, records]) => [
+          revisionId,
+          records.map(cloneBindingRecord),
+        ]),
+      ),
+    };
+  }
+
+  restoreState(snapshot: KnowledgeRepositorySnapshot): void {
+    this.legacyRecords.clear();
+    this.assets.clear();
+    this.revisions.clear();
+    this.bindingsByRevisionId.clear();
+
+    for (const [id, record] of snapshot.legacyRecords.entries()) {
+      this.legacyRecords.set(id, cloneKnowledgeRecord(record));
     }
+    for (const [id, record] of snapshot.assets.entries()) {
+      this.assets.set(id, cloneAssetRecord(record));
+    }
+    for (const [id, record] of snapshot.revisions.entries()) {
+      this.revisions.set(id, cloneRevisionRecord(record));
+    }
+    for (const [revisionId, records] of snapshot.bindingsByRevisionId.entries()) {
+      this.bindingsByRevisionId.set(
+        revisionId,
+        records.map(cloneBindingRecord),
+      );
+    }
+  }
+
+  private projectAuthoringKnowledgeRecord(
+    assetId: string,
+  ): KnowledgeRecord | undefined {
+    const asset = this.assets.get(assetId);
+    if (!asset) {
+      return undefined;
+    }
+
+    const revisions = this.resolveRevisionList(asset.id);
+    const selectedRevision =
+      revisions.find(
+        (revision) =>
+          revision.status === "draft" || revision.status === "pending_review",
+      ) ??
+      (asset.current_revision_id
+        ? this.revisions.get(asset.current_revision_id)
+        : undefined) ??
+      revisions[0];
+
+    return selectedRevision
+      ? this.projectKnowledgeRecordFromRevision(selectedRevision)
+      : undefined;
+  }
+
+  private projectApprovedKnowledgeRecord(
+    assetId: string,
+  ): KnowledgeRecord | undefined {
+    const asset = this.assets.get(assetId);
+    if (!asset?.current_approved_revision_id) {
+      return undefined;
+    }
+
+    const revision = this.revisions.get(asset.current_approved_revision_id);
+    return revision ? this.projectKnowledgeRecordFromRevision(revision) : undefined;
+  }
+
+  private projectKnowledgeRecordFromRevision(
+    revision: KnowledgeRevisionRecord,
+  ): KnowledgeRecord {
+    const bindings = this.bindingsByRevisionId.get(revision.id) ?? [];
+
+    return {
+      id: revision.asset_id,
+      title: revision.title,
+      canonical_text: revision.canonical_text,
+      knowledge_kind: revision.knowledge_kind,
+      status: revision.status,
+      routing: {
+        ...revision.routing,
+        manuscript_types:
+          revision.routing.manuscript_types === "any"
+            ? "any"
+            : [...revision.routing.manuscript_types],
+        sections: revision.routing.sections ? [...revision.routing.sections] : undefined,
+        risk_tags: revision.routing.risk_tags
+          ? [...revision.routing.risk_tags]
+          : undefined,
+        discipline_tags: revision.routing.discipline_tags
+          ? [...revision.routing.discipline_tags]
+          : undefined,
+      },
+      ...(revision.summary != null ? { summary: revision.summary } : {}),
+      ...(revision.evidence_level != null
+        ? { evidence_level: revision.evidence_level }
+        : {}),
+      ...(revision.source_type != null ? { source_type: revision.source_type } : {}),
+      ...(revision.source_link != null ? { source_link: revision.source_link } : {}),
+      ...(revision.aliases ? { aliases: [...revision.aliases] } : {}),
+      ...(bindings.length > 0
+        ? {
+            template_bindings: bindings.map((binding) => binding.binding_target_id),
+          }
+        : {}),
+      ...(revision.source_learning_candidate_id != null
+        ? { source_learning_candidate_id: revision.source_learning_candidate_id }
+        : {}),
+      ...(revision.projection_source != null
+        ? {
+            projection_source: JSON.parse(
+              JSON.stringify(revision.projection_source),
+            ) as NonNullable<KnowledgeRecord["projection_source"]>,
+          }
+        : {}),
+    };
+  }
+
+  private resolveRevisionList(assetId: string): KnowledgeRevisionRecord[] {
+    return [...this.revisions.values()]
+      .filter((record) => record.asset_id === assetId)
+      .sort(compareRevisionRecordsDesc);
   }
 }
 
@@ -91,6 +365,16 @@ export class InMemoryKnowledgeReviewActionRepository
   ): Promise<KnowledgeReviewActionRecord[]> {
     return [...this.records.values()]
       .filter((record) => record.knowledge_item_id === knowledgeItemId)
+      .sort(compareReviewActionRecordsAsc)
+      .map(cloneLegacyReviewActionRecord);
+  }
+
+  async listByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeReviewActionRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.revision_id === revisionId)
+      .sort(compareReviewActionRecordsAsc)
       .map(cloneReviewActionRecord);
   }
 
@@ -109,4 +393,25 @@ export class InMemoryKnowledgeReviewActionRepository
       this.records.set(id, cloneReviewActionRecord(record));
     }
   }
+}
+
+function compareRevisionRecordsDesc(
+  left: KnowledgeRevisionRecord,
+  right: KnowledgeRevisionRecord,
+): number {
+  return (
+    right.revision_no - left.revision_no ||
+    right.updated_at.localeCompare(left.updated_at) ||
+    right.id.localeCompare(left.id)
+  );
+}
+
+function compareReviewActionRecordsAsc(
+  left: KnowledgeReviewActionRecord,
+  right: KnowledgeReviewActionRecord,
+): number {
+  return (
+    left.created_at.localeCompare(right.created_at) ||
+    left.id.localeCompare(right.id)
+  );
 }

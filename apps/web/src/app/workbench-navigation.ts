@@ -48,8 +48,8 @@ const GROUP_META: Record<
     prominence: "primary",
   },
   knowledge: {
-    label: "知识库",
-    description: "沉淀审核知识与学习回写",
+    label: "知识治理",
+    description: "连接知识库、知识审核与学习回收",
     prominence: "primary",
   },
   "core-workbench": {
@@ -58,8 +58,8 @@ const GROUP_META: Record<
     prominence: "primary",
   },
   "supporting-workbench": {
-    label: "协同与回写",
-    description: "保留学习复核等辅助协同入口",
+    label: "协同与回收",
+    description: "保留知识审核、学习复核等辅助协同入口",
     prominence: "supporting",
   },
   governance: {
@@ -73,10 +73,11 @@ const CORE_WORKBENCH_ORDER: readonly WorkbenchId[] = [
   "screening",
   "editing",
   "proofreading",
-  "knowledge-review",
+  "knowledge-library",
 ];
 
 const SUPPORTING_WORKBENCH_ORDER: readonly WorkbenchId[] = [
+  "knowledge-review",
   "learning-review",
   "submission",
 ];
@@ -240,8 +241,12 @@ function buildNavigationItem(
 }
 
 function resolveNavigationItemLabel(entry: WorkbenchEntry): string {
-  if (entry.id === "knowledge-review") {
+  if (entry.id === "knowledge-library") {
     return "知识库";
+  }
+
+  if (entry.id === "knowledge-review") {
+    return "知识审核";
   }
 
   if (entry.id === "template-governance") {
@@ -261,10 +266,12 @@ function describeWorkbenchEntry(workbenchId: WorkbenchId): string {
       return "正文修订与模板落位";
     case "proofreading":
       return "终稿核验与发布前收口";
+    case "knowledge-library":
+      return "知识录入、修订治理与结构化绑定";
     case "knowledge-review":
-      return "知识审核与证据沉淀";
+      return "面向 revision 的审核队列与审批动作";
     case "learning-review":
-      return "候选回写与经验复核";
+      return "候选回收与经验复核";
     case "admin-console":
       return "运营概览与全局治理";
     case "evaluation-workbench":
@@ -272,14 +279,10 @@ function describeWorkbenchEntry(workbenchId: WorkbenchId): string {
     case "harness-datasets":
       return "金标准数据与版本导出";
     case "template-governance":
-      return "规则录入与规则学习的统一入口";
+      return "模板、规则与提示词治理";
     case "system-settings":
       return "系统级参数与访问控制";
     default:
-      return entryLabelFallback(workbenchId);
+      return workbenchId;
   }
-}
-
-function entryLabelFallback(workbenchId: WorkbenchId): string {
-  return workbenchId;
 }

@@ -71,6 +71,38 @@ export function rejectKnowledgeItem(
   });
 }
 
+export function approveKnowledgeRevision(
+  client: KnowledgeHttpClient,
+  revisionId: string,
+  actorRole: AuthRole,
+  reviewNote?: string,
+) {
+  return client.request<KnowledgeItemViewModel>({
+    method: "POST",
+    url: `/api/v1/knowledge/revisions/${revisionId}/approve`,
+    body: {
+      actorRole,
+      reviewNote,
+    },
+  });
+}
+
+export function rejectKnowledgeRevision(
+  client: KnowledgeHttpClient,
+  revisionId: string,
+  actorRole: AuthRole,
+  reviewNote?: string,
+) {
+  return client.request<KnowledgeItemViewModel>({
+    method: "POST",
+    url: `/api/v1/knowledge/revisions/${revisionId}/reject`,
+    body: {
+      actorRole,
+      reviewNote,
+    },
+  });
+}
+
 export function updateKnowledgeDraft(
   client: KnowledgeHttpClient,
   knowledgeItemId: string,
@@ -105,6 +137,16 @@ export function listKnowledgeReviewActions(
   return client.request<KnowledgeReviewActionViewModel[]>({
     method: "GET",
     url: `/api/v1/knowledge/${knowledgeItemId}/review-actions`,
+  });
+}
+
+export function listKnowledgeReviewActionsByRevision(
+  client: KnowledgeHttpClient,
+  revisionId: string,
+) {
+  return client.request<KnowledgeReviewActionViewModel[]>({
+    method: "GET",
+    url: `/api/v1/knowledge/revisions/${revisionId}/review-actions`,
   });
 }
 

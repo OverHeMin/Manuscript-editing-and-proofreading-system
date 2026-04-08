@@ -190,6 +190,11 @@ test("template governance workbench page renders the rule-center authoring shell
   assert.match(markup, /Rule Explainability/);
   assert.match(markup, /Journal Template Profiles/);
   assert.match(markup, /AI Instruction Template/);
+  assert.match(markup, /Knowledge authoring has moved to the standalone Knowledge Library workbench\./);
+  assert.match(markup, /Open Knowledge Library/);
+  assert.match(markup, /Continue In Knowledge Library/);
+  assert.doesNotMatch(markup, /Create Knowledge Draft/);
+  assert.doesNotMatch(markup, /Submit Draft for Review/);
   assert.match(markup, /Statement/);
   assert.match(markup, /Title/);
   assert.match(markup, /Keyword/);

@@ -22,7 +22,13 @@ test("admin defaults to screening workbench", () => {
   assert.equal(session.defaultWorkbench, "screening");
 });
 
-test("admin navigation model highlights the four core desks and exposes rule center as one governance entry", async () => {
+test("knowledge reviewer defaults to knowledge library", () => {
+  const session = buildSession("knowledge_reviewer");
+
+  assert.equal(session.defaultWorkbench, "knowledge-library");
+});
+
+test("admin navigation model highlights the four core desks, keeps knowledge review supporting, and exposes rule center as one governance entry", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -35,18 +41,22 @@ test("admin navigation model highlights the four core desks and exposes rule cen
 
   assert.deepEqual(
     groups.map((group: { id: string }) => group.id),
-    ["core-workbench", "governance"],
+    ["core-workbench", "supporting-workbench", "governance"],
   );
   assert.deepEqual(
     groups.map((group: { prominence: string }) => group.prominence),
-    ["primary", "secondary"],
+    ["primary", "supporting", "secondary"],
   );
   assert.deepEqual(
     groups[0]?.items.map((item: { id: string }) => item.id),
-    ["screening", "editing", "proofreading", "knowledge-review"],
+    ["screening", "editing", "proofreading", "knowledge-library"],
   );
   assert.deepEqual(
     groups[1]?.items.map((item: { id: string }) => item.id),
+    ["knowledge-review"],
+  );
+  assert.deepEqual(
+    groups[2]?.items.map((item: { id: string }) => item.id),
     [
       "admin-console",
       "template-governance",
@@ -56,7 +66,7 @@ test("admin navigation model highlights the four core desks and exposes rule cen
     ],
   );
   assert.equal(
-    groups[1]?.items.find((item: { id: string; label: string }) => item.id === "template-governance")
+    groups[2]?.items.find((item: { id: string; label: string }) => item.id === "template-governance")
       ?.label,
     "\u89c4\u5219\u4e2d\u5fc3",
   );
@@ -104,8 +114,40 @@ test("navigation menu renders grouped admin navigation with rule center as the a
   assert.match(html, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(html, /5 \u9879/u);
   assert.match(html, /4 \u9879/u);
-  assert.doesNotMatch(html, /\u5b66\u4e60\u590d\u6838/u);
+  assert.match(html, /1 \u9879/u);
+  assert.match(html, /\u77e5\u8bc6\u5e93/u);
+  assert.match(html, /\u77e5\u8bc6\u5ba1\u6838/u);
   assert.match(html, /is-active/);
+});
+
+test("workbench routing formats and resolves knowledge library and revision review hashes", async () => {
+  const routingModule = await import("../src/app/workbench-routing.ts");
+
+  const knowledgeLibraryHash = routingModule.formatWorkbenchHash("knowledge-library", {
+    assetId: "knowledge-42",
+    revisionId: "knowledge-42-revision-3",
+  });
+  const knowledgeReviewHash = routingModule.formatWorkbenchHash("knowledge-review", {
+    revisionId: "knowledge-42-revision-3",
+  });
+
+  assert.equal(
+    knowledgeLibraryHash,
+    "#knowledge-library?assetId=knowledge-42&revisionId=knowledge-42-revision-3",
+  );
+  assert.deepEqual(routingModule.resolveWorkbenchLocation(knowledgeLibraryHash), {
+    workbenchId: "knowledge-library",
+    assetId: "knowledge-42",
+    revisionId: "knowledge-42-revision-3",
+  });
+  assert.equal(
+    knowledgeReviewHash,
+    "#knowledge-review?revisionId=knowledge-42-revision-3",
+  );
+  assert.deepEqual(routingModule.resolveWorkbenchLocation(knowledgeReviewHash), {
+    workbenchId: "knowledge-review",
+    revisionId: "knowledge-42-revision-3",
+  });
 });
 
 test("navigation menu renders a simplified user work area", async () => {

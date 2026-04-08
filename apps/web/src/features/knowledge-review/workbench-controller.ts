@@ -1,13 +1,14 @@
 import type { AuthRole } from "../auth/index.ts";
 import {
-  approveKnowledgeItem,
-  listKnowledgeReviewActions,
+  approveKnowledgeRevision,
+  listKnowledgeReviewActionsByRevision,
   listPendingKnowledgeReviewItems,
-  rejectKnowledgeItem,
+  rejectKnowledgeRevision,
   type KnowledgeHttpClient,
   type KnowledgeReviewActionViewModel,
   type KnowledgeReviewQueueItemViewModel,
 } from "../knowledge/index.ts";
+import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import {
   applyKnowledgeReviewSuccess,
   createKnowledgeReviewFilterState,
@@ -32,16 +33,16 @@ export interface KnowledgeReviewDeskLoadResult {
 }
 
 export interface LoadKnowledgeReviewHistoryInput {
-  knowledgeItemId: string;
+  revisionId: string;
 }
 
 export interface KnowledgeReviewHistoryLoadResult {
-  knowledgeItemId: string;
+  revisionId: string;
   actions: KnowledgeReviewActionViewModel[];
 }
 
 export interface KnowledgeReviewItemActionInput {
-  knowledgeItemId: string;
+  revisionId: string;
   actorRole: AuthRole;
   reviewNote: string;
   state?: KnowledgeReviewWorkbenchState;
@@ -53,7 +54,7 @@ export type KnowledgeReviewItemActionResult =
       reviewNote: "";
       desk: KnowledgeReviewDeskLoadResult;
       history: KnowledgeReviewHistoryLoadResult | null;
-      historyKnowledgeItemId: string | null;
+      historyRevisionId: string | null;
     }
   | {
       status: "error";
@@ -92,6 +93,9 @@ export async function loadKnowledgeReviewDesk(
   input: LoadKnowledgeReviewDeskInput = {},
 ): Promise<KnowledgeReviewDeskLoadResult> {
   const request = await listPendingKnowledgeReviewItems(client);
+  const queue = await Promise.all(
+    request.body.map((item) => enrichKnowledgeReviewQueueItem(client, item.id)),
+  );
   const baselineState =
     input.state ??
     createKnowledgeReviewWorkbenchState({
@@ -106,7 +110,7 @@ export async function loadKnowledgeReviewDesk(
     activeItemId: input.activeItemId ?? baselineState.activeItemId,
   };
   const refreshedState = receiveKnowledgeReviewQueueRefresh(nextState, {
-    queue: request.body,
+    queue,
   });
   const resolvedState = resolveKnowledgeReviewQueueView(refreshedState);
 
@@ -122,10 +126,10 @@ export async function loadKnowledgeReviewHistory(
   client: KnowledgeHttpClient,
   input: LoadKnowledgeReviewHistoryInput,
 ): Promise<KnowledgeReviewHistoryLoadResult> {
-  const request = await listKnowledgeReviewActions(client, input.knowledgeItemId);
+  const request = await listKnowledgeReviewActionsByRevision(client, input.revisionId);
 
   return {
-    knowledgeItemId: input.knowledgeItemId,
+    revisionId: input.revisionId,
     actions: request.body,
   };
 }
@@ -138,9 +142,9 @@ export async function approveKnowledgeReviewItem(
     client,
     input,
     (httpClient, actionInput) =>
-      approveKnowledgeItem(
+      approveKnowledgeRevision(
         httpClient,
-        actionInput.knowledgeItemId,
+        actionInput.revisionId,
         actionInput.actorRole,
         actionInput.reviewNote,
       ),
@@ -155,9 +159,9 @@ export async function rejectKnowledgeReviewItem(
     client,
     input,
     (httpClient, actionInput) =>
-      rejectKnowledgeItem(
+      rejectKnowledgeRevision(
         httpClient,
-        actionInput.knowledgeItemId,
+        actionInput.revisionId,
         actionInput.actorRole,
         actionInput.reviewNote,
       ),
@@ -177,16 +181,16 @@ async function runKnowledgeReviewAction(
     const postSuccessState =
       input.state == null
         ? undefined
-        : applyKnowledgeReviewSuccess(input.state, input.knowledgeItemId);
+        : applyKnowledgeReviewSuccess(input.state, input.revisionId);
     const desk = await loadKnowledgeReviewDesk(client, {
       state: postSuccessState,
     });
-    const historyKnowledgeItemId = desk.selectedItem?.id ?? null;
+    const historyRevisionId = desk.selectedItem?.revision_id ?? null;
     const history =
-      historyKnowledgeItemId == null
+      historyRevisionId == null
         ? null
         : await loadKnowledgeReviewHistory(client, {
-            knowledgeItemId: historyKnowledgeItemId,
+            revisionId: historyRevisionId,
           });
 
     return {
@@ -194,7 +198,7 @@ async function runKnowledgeReviewAction(
       reviewNote: "",
       desk,
       history,
-      historyKnowledgeItemId,
+      historyRevisionId,
     };
   } catch (error) {
     return {
@@ -203,4 +207,31 @@ async function runKnowledgeReviewAction(
       error,
     };
   }
+}
+
+async function enrichKnowledgeReviewQueueItem(
+  client: KnowledgeHttpClient,
+  assetId: string,
+): Promise<KnowledgeReviewQueueItemViewModel> {
+  const detail = (await getKnowledgeAssetDetail(client, assetId)).body;
+  const revision = detail.selected_revision;
+
+  return {
+    id: revision.id,
+    asset_id: detail.asset.id,
+    revision_id: revision.id,
+    title: revision.title,
+    canonical_text: revision.canonical_text,
+    summary: revision.summary,
+    knowledge_kind: revision.knowledge_kind,
+    status: revision.status,
+    routing: revision.routing,
+    evidence_level: revision.evidence_level,
+    source_type: revision.source_type,
+    source_link: revision.source_link,
+    effective_at: revision.effective_at,
+    expires_at: revision.expires_at,
+    aliases: revision.aliases,
+    template_bindings: revision.bindings.map((binding) => binding.binding_target_id),
+  };
 }

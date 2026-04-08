@@ -7,6 +7,7 @@ import type {
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { EvaluationWorkbenchPage } from "../features/evaluation-workbench/index.ts";
 import { HarnessDatasetsWorkbenchPage } from "../features/harness-datasets/index.ts";
+import { KnowledgeLibraryWorkbenchPage } from "../features/knowledge-library/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
 import {
@@ -31,6 +32,17 @@ export interface WorkbenchHostProps {
   onLogout?: () => void | Promise<void>;
   isLogoutPending?: boolean;
   noticeMessage?: string | null;
+}
+
+interface HostRouteState {
+  activeWorkbenchId: WorkbenchId;
+  manuscriptId?: string;
+  knowledgeItemId?: string;
+  assetId?: string;
+  revisionId?: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+  ruleCenterMode?: RuleCenterMode;
 }
 
 export function WorkbenchHost({
@@ -216,11 +228,19 @@ export function WorkbenchHost({
             canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
           />
         );
+      case "knowledge-library":
+        return (
+          <KnowledgeLibraryWorkbenchPage
+            actorRole={session.role}
+            prefilledAssetId={routeState.assetId}
+            prefilledRevisionId={routeState.revisionId}
+          />
+        );
       case "knowledge-review":
         return (
           <KnowledgeReviewWorkbenchPage
             actorRole={session.role}
-            prefilledKnowledgeItemId={routeState.knowledgeItemId}
+            prefilledRevisionId={routeState.revisionId ?? routeState.knowledgeItemId}
           />
         );
       case "learning-review":
@@ -272,6 +292,8 @@ export function WorkbenchHost({
     handoff?: {
       manuscriptId?: string;
       knowledgeItemId?: string;
+      assetId?: string;
+      revisionId?: string;
       reviewedCaseSnapshotId?: string;
       sampleSetItemId?: string;
       ruleCenterMode?: RuleCenterMode;
@@ -285,6 +307,8 @@ export function WorkbenchHost({
       activeWorkbenchId: workbenchId,
       manuscriptId: handoff?.manuscriptId,
       knowledgeItemId: handoff?.knowledgeItemId,
+      assetId: handoff?.assetId,
+      revisionId: handoff?.revisionId,
       reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
       sampleSetItemId: handoff?.sampleSetItemId,
       ruleCenterMode: handoff?.ruleCenterMode,
@@ -304,6 +328,8 @@ function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
       return "聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。";
     case "proofreading":
       return "将问题清单、终稿确认与发布前检查收束在同一终审工作面。";
+    case "knowledge-library":
+      return "把知识资产的录入、修订、结构化绑定与提审收进独立知识库工作台。";
     case "knowledge-review":
       return "把待审知识、证据视图与决策动作收进一个稳定的审核桌面。";
     case "learning-review":
@@ -311,11 +337,11 @@ function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
     case "admin-console":
       return "管理模板、模型与运行时治理资产，同时保持治理区视觉安静。";
     case "template-governance":
-      return "把规则录入、规则学习与模板上下文统一收进规则中心。";
+      return "把模板、规则与提示词治理集中在规则中心，不再承担知识录入。";
     case "evaluation-workbench":
       return "用只读评测视图观察差异、历史窗口与证据结论，不打断主工作线。";
     case "harness-datasets":
-      return "在受控管理区内处理金标数据集、发布版本与本地导出路径。";
+      return "在受控管理区内处理金标准数据集、发布版本与本地导出路径。";
     case "system-settings":
       return "系统级设置保持在独立管理位，避免干扰四条核心工作线。";
     case "submission":
@@ -339,14 +365,7 @@ function resolveInitialWorkbenchRoute(
   defaultWorkbench: WorkbenchId,
   visibleEntries: readonly WorkbenchEntry[],
   hash?: string,
-): {
-  activeWorkbenchId: WorkbenchId;
-  manuscriptId?: string;
-  knowledgeItemId?: string;
-  reviewedCaseSnapshotId?: string;
-  sampleSetItemId?: string;
-  ruleCenterMode?: RuleCenterMode;
-} {
+): HostRouteState {
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
   );
@@ -359,6 +378,8 @@ function resolveInitialWorkbenchRoute(
       activeWorkbenchId: location.workbenchId,
       manuscriptId: location.manuscriptId,
       knowledgeItemId: location.knowledgeItemId,
+      assetId: location.assetId,
+      revisionId: location.revisionId,
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
       sampleSetItemId: location.sampleSetItemId,
       ruleCenterMode: location.ruleCenterMode,

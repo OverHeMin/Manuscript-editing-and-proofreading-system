@@ -5,6 +5,7 @@ export type WorkbenchId =
   | "screening"
   | "editing"
   | "proofreading"
+  | "knowledge-library"
   | "knowledge-review"
   | "learning-review"
   | "admin-console"
@@ -65,11 +66,20 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     roles: ["admin", "proofreader"],
   },
   {
-    id: "knowledge-review",
-    label: "Knowledge Review",
+    id: "knowledge-library",
+    label: "Knowledge Library",
     navLabel: "知识库",
     navGroup: "knowledge",
     placement: "primary",
+    surfaces: ["web"],
+    roles: ["admin", "knowledge_reviewer"],
+  },
+  {
+    id: "knowledge-review",
+    label: "Knowledge Review",
+    navLabel: "知识审核",
+    navGroup: "knowledge",
+    placement: "secondary",
     surfaces: ["web", "mini_program"],
     roles: ["admin", "knowledge_reviewer"],
   },
@@ -134,6 +144,7 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "screening",
     "editing",
     "proofreading",
+    "knowledge-library",
     "knowledge-review",
     "learning-review",
     "admin-console",
@@ -145,7 +156,7 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
   screener: ["screening"],
   editor: ["editing"],
   proofreader: ["proofreading"],
-  knowledge_reviewer: ["knowledge-review", "learning-review"],
+  knowledge_reviewer: ["knowledge-library", "knowledge-review", "learning-review"],
   user: ["submission"],
 };
 
@@ -154,7 +165,7 @@ export const DEFAULT_WORKBENCH_BY_ROLE: Record<AuthRole, WorkbenchId> = {
   screener: "screening",
   editor: "editing",
   proofreader: "proofreading",
-  knowledge_reviewer: "knowledge-review",
+  knowledge_reviewer: "knowledge-library",
   user: "submission",
 };
 

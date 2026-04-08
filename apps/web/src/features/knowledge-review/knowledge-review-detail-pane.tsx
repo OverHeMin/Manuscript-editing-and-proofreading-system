@@ -4,7 +4,7 @@ import type {
 } from "../knowledge/index.ts";
 
 export interface KnowledgeReviewHistoryViewState {
-  knowledgeItemId: string | null;
+  revisionId: string | null;
   status: "idle" | "loading" | "ready" | "error";
   actions: readonly KnowledgeReviewActionViewModel[];
   errorMessage: string | null;
@@ -29,11 +29,11 @@ export function KnowledgeReviewDetailPane({
     return (
       <section className="knowledge-review-panel knowledge-review-detail-pane">
         <header className="knowledge-review-pane-header">
-          <h2>知识详情</h2>
-          <p>请先从队列中选择一条待审核知识。</p>
+          <h2>Knowledge Detail</h2>
+          <p>Select a pending revision from the queue to inspect its review context.</p>
         </header>
         <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-          从待审核队列中选择一条知识，即可加载完整上下文与审核动作。
+          Choose a queue item to load the selected asset, revision context, and review history.
         </div>
       </section>
     );
@@ -45,54 +45,70 @@ export function KnowledgeReviewDetailPane({
         <h2>{item.title}</h2>
         <p>
           {isUsingStableSnapshot
-            ? "正在沿用上一次稳定选择，等待队列恢复。"
-            : "审核上下文"}
+            ? "The live queue is temporarily unavailable, so the last stable selection is being preserved."
+            : "Review the selected knowledge revision with stable asset and revision context."}
         </p>
       </header>
 
       <dl className="knowledge-review-detail-grid">
         <div>
-          <dt>规范文本</dt>
+          <dt>Asset ID</dt>
+          <dd>{item.asset_id}</dd>
+        </div>
+        <div>
+          <dt>Revision ID</dt>
+          <dd>{item.revision_id}</dd>
+        </div>
+        <div>
+          <dt>Revision Status</dt>
+          <dd>{renderStatus(item.status)}</dd>
+        </div>
+        <div>
+          <dt>Canonical Text</dt>
           <dd className="knowledge-review-canonical-text">{item.canonical_text}</dd>
         </div>
         <div>
-          <dt>摘要</dt>
-          <dd>{item.summary?.trim().length ? item.summary : "未提供"}</dd>
+          <dt>Summary</dt>
+          <dd>{item.summary?.trim().length ? item.summary : "Not provided"}</dd>
         </div>
         <div>
-          <dt>证据等级</dt>
+          <dt>Evidence Level</dt>
           <dd>{renderEvidenceLevel(item.evidence_level)}</dd>
         </div>
         <div>
-          <dt>来源类型</dt>
-          <dd>{item.source_type ? startCase(item.source_type) : "未提供"}</dd>
+          <dt>Source Type</dt>
+          <dd>{item.source_type ? startCase(item.source_type) : "Not provided"}</dd>
         </div>
         <div>
-          <dt>来源链接</dt>
+          <dt>Source Link</dt>
           <dd>
             {item.source_link ? (
               <a href={item.source_link} target="_blank" rel="noreferrer">
                 {item.source_link}
               </a>
             ) : (
-              "未提供"
+              "Not provided"
             )}
           </dd>
         </div>
         <div>
-          <dt>适用范围</dt>
+          <dt>Effective Window</dt>
+          <dd>{renderEffectiveWindow(item.effective_at, item.expires_at)}</dd>
+        </div>
+        <div>
+          <dt>Routing Scope</dt>
           <dd>{renderRoutingScope(item)}</dd>
         </div>
         <div>
-          <dt>模板绑定</dt>
-          <dd>{item.template_bindings?.length ? item.template_bindings.join(", ") : "无"}</dd>
+          <dt>Template Bindings</dt>
+          <dd>{item.template_bindings?.length ? item.template_bindings.join(", ") : "None"}</dd>
         </div>
       </dl>
 
       <section className="knowledge-review-history">
         <header>
-          <h3>审核历史</h3>
-          <p>查看决策轨迹与审核备注。</p>
+          <h3>Review History</h3>
+          <p>Trace revision-level review events and reviewer notes.</p>
         </header>
 
         {historyScopeNote ? (
@@ -101,21 +117,21 @@ export function KnowledgeReviewDetailPane({
 
         {history.status === "loading" ? (
           <p className="knowledge-review-history-state" role="status">
-            正在加载审核历史...
+            Loading review history...
           </p>
         ) : null}
 
         {history.status === "error" ? (
           <div className="knowledge-review-banner knowledge-review-banner-error">
-            <p>{history.errorMessage ?? "审核历史加载失败。"}</p>
+            <p>{history.errorMessage ?? "Review history failed to load."}</p>
             <button type="button" onClick={onRetryHistory}>
-              重试加载历史
+              Reload History
             </button>
           </div>
         ) : null}
 
         {history.actions.length === 0 && history.status !== "loading" ? (
-          <p className="knowledge-review-history-state">暂未记录审核事件。</p>
+          <p className="knowledge-review-history-state">No review actions recorded yet.</p>
         ) : null}
 
         {history.actions.length > 0 ? (
@@ -125,9 +141,14 @@ export function KnowledgeReviewDetailPane({
                 <p className="knowledge-review-history-event">
                   {eventLabel(action.action)} | {actorLabel(action.actor_role)}
                 </p>
+                <p className="knowledge-review-history-event">
+                  Revision {action.revision_id ?? action.knowledge_item_id}
+                </p>
                 <p className="knowledge-review-history-time">{formatTimestamp(action.created_at)}</p>
                 <p className="knowledge-review-history-note">
-                  {action.review_note?.trim().length ? action.review_note : "未填写审核备注"}
+                  {action.review_note?.trim().length
+                    ? action.review_note
+                    : "No reviewer note recorded."}
                 </p>
               </li>
             ))}
@@ -142,11 +163,11 @@ function renderEvidenceLevel(
   evidenceLevel: KnowledgeReviewQueueItemViewModel["evidence_level"],
 ): string {
   if (!evidenceLevel) {
-    return "未提供";
+    return "Not provided";
   }
 
   if (evidenceLevel === "expert_opinion") {
-    return "专家意见";
+    return "Expert Opinion";
   }
 
   return startCase(evidenceLevel);
@@ -154,23 +175,55 @@ function renderEvidenceLevel(
 
 function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
   const moduleScope =
-    item.routing.module_scope === "any" ? "任意模块" : startCase(item.routing.module_scope);
+    item.routing.module_scope === "any" ? "Any Module" : startCase(item.routing.module_scope);
   const manuscriptScope =
     item.routing.manuscript_types === "any"
-      ? "不限稿件类型"
+      ? "Any Manuscript Type"
       : item.routing.manuscript_types.map(startCase).join(", ");
 
   return `${moduleScope} | ${manuscriptScope}`;
 }
 
+function renderEffectiveWindow(
+  effectiveAt: string | undefined,
+  expiresAt: string | undefined,
+): string {
+  if (!effectiveAt && !expiresAt) {
+    return "Always active";
+  }
+
+  const start = effectiveAt ? formatTimestamp(effectiveAt) : "Immediately";
+  const end = expiresAt ? formatTimestamp(expiresAt) : "No expiry";
+  return `${start} -> ${end}`;
+}
+
+function renderStatus(status: KnowledgeReviewQueueItemViewModel["status"]): string {
+  switch (status) {
+    case "pending_review":
+      return "Pending Review";
+    case "approved":
+      return "Approved";
+    case "draft":
+      return "Draft";
+    case "deprecated":
+      return "Deprecated";
+    case "superseded":
+      return "Superseded";
+    case "archived":
+      return "Archived";
+    default:
+      return startCase(status);
+  }
+}
+
 function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
   switch (action) {
     case "submitted_for_review":
-      return "提交审核";
+      return "Submitted For Review";
     case "approved":
-      return "已通过";
+      return "Approved";
     case "rejected":
-      return "已驳回";
+      return "Rejected";
     default:
       return action;
   }
@@ -179,7 +232,7 @@ function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
 function actorLabel(actorRole: KnowledgeReviewActionViewModel["actor_role"]): string {
   switch (actorRole) {
     case "knowledge_reviewer":
-      return "知识审核员";
+      return "Knowledge Reviewer";
     default:
       return startCase(actorRole);
   }
@@ -191,7 +244,7 @@ function formatTimestamp(isoTimestamp: string): string {
     return isoTimestamp;
   }
 
-  return parsed.toLocaleString("zh-CN", {
+  return parsed.toLocaleString("en-GB", {
     hour12: false,
     year: "numeric",
     month: "2-digit",

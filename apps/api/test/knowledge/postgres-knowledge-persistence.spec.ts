@@ -222,6 +222,243 @@ test("postgres knowledge service rolls back status changes when review action pe
   });
 });
 
+test("postgres knowledge repository persists revision-governed assets and approved projections", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+
+    await repository.save({
+      id: "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb",
+      title: "Legacy approved knowledge",
+      canonical_text: "Legacy approved flat record remains readable.",
+      knowledge_kind: "reference",
+      status: "approved",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["review"],
+      },
+    });
+
+    await repository.saveAsset({
+      id: "asset-knowledge-1",
+      status: "active",
+      current_revision_id: "asset-knowledge-1-revision-2",
+      current_approved_revision_id: "asset-knowledge-1-revision-1",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:30:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-knowledge-1-revision-1",
+      asset_id: "asset-knowledge-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Approved knowledge revision",
+      canonical_text: "Approved revision is still the runtime source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+        sections: ["methods"],
+      },
+      evidence_level: "high",
+      source_type: "guideline",
+      source_link: "https://example.org/revision-approved",
+      aliases: ["approved revision"],
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.replaceRevisionBindings("asset-knowledge-1-revision-1", [
+      {
+        id: "asset-knowledge-1-revision-1-binding-1",
+        revision_id: "asset-knowledge-1-revision-1",
+        binding_kind: "module_template",
+        binding_target_id: "template-screening-core",
+        binding_target_label: "Screening Core Template",
+        created_at: "2026-04-08T10:00:00.000Z",
+      },
+    ]);
+    await repository.saveRevision({
+      id: "asset-knowledge-1-revision-2",
+      asset_id: "asset-knowledge-1",
+      revision_no: 2,
+      status: "draft",
+      title: "Draft knowledge revision",
+      canonical_text: "Draft revision is the authoring source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+        sections: ["methods"],
+      },
+      evidence_level: "high",
+      source_type: "guideline",
+      source_link: "https://example.org/revision-draft",
+      aliases: ["draft revision"],
+      based_on_revision_id: "asset-knowledge-1-revision-1",
+      created_at: "2026-04-08T10:30:00.000Z",
+      updated_at: "2026-04-08T10:30:00.000Z",
+    });
+    await repository.replaceRevisionBindings("asset-knowledge-1-revision-2", [
+      {
+        id: "asset-knowledge-1-revision-2-binding-1",
+        revision_id: "asset-knowledge-1-revision-2",
+        binding_kind: "module_template",
+        binding_target_id: "template-screening-core-v2",
+        binding_target_label: "Screening Core Template V2",
+        created_at: "2026-04-08T10:30:00.000Z",
+      },
+    ]);
+
+    const projectedAuthoring = await repository.findById("asset-knowledge-1");
+    const projectedApproved = await repository.findApprovedById("asset-knowledge-1");
+    const approvedList = await repository.listApproved();
+    const revisions = await repository.listRevisionsByAssetId("asset-knowledge-1");
+    const bindings = await repository.listBindingsByRevisionId(
+      "asset-knowledge-1-revision-2",
+    );
+
+    assert.deepEqual(projectedAuthoring, {
+      id: "asset-knowledge-1",
+      title: "Draft knowledge revision",
+      canonical_text: "Draft revision is the authoring source.",
+      knowledge_kind: "rule",
+      status: "draft",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+        sections: ["methods"],
+      },
+      evidence_level: "high",
+      source_type: "guideline",
+      source_link: "https://example.org/revision-draft",
+      aliases: ["draft revision"],
+      template_bindings: ["template-screening-core-v2"],
+    });
+    assert.deepEqual(projectedApproved, {
+      id: "asset-knowledge-1",
+      title: "Approved knowledge revision",
+      canonical_text: "Approved revision is still the runtime source.",
+      knowledge_kind: "rule",
+      status: "approved",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+        sections: ["methods"],
+      },
+      evidence_level: "high",
+      source_type: "guideline",
+      source_link: "https://example.org/revision-approved",
+      aliases: ["approved revision"],
+      template_bindings: ["template-screening-core"],
+    });
+    assert.deepEqual(
+      approvedList.map((record) => record.id).sort(),
+      ["aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb", "asset-knowledge-1"].sort(),
+    );
+    assert.deepEqual(
+      revisions.map((record) => ({
+        id: record.id,
+        revision_no: record.revision_no,
+        status: record.status,
+        based_on_revision_id: record.based_on_revision_id,
+      })),
+      [
+        {
+          id: "asset-knowledge-1-revision-2",
+          revision_no: 2,
+          status: "draft",
+          based_on_revision_id: "asset-knowledge-1-revision-1",
+        },
+        {
+          id: "asset-knowledge-1-revision-1",
+          revision_no: 1,
+          status: "approved",
+          based_on_revision_id: undefined,
+        },
+      ],
+    );
+    assert.deepEqual(bindings, [
+      {
+        id: "asset-knowledge-1-revision-2-binding-1",
+        revision_id: "asset-knowledge-1-revision-2",
+        binding_kind: "module_template",
+        binding_target_id: "template-screening-core-v2",
+        binding_target_label: "Screening Core Template V2",
+        created_at: "2026-04-08T10:30:00.000Z",
+      },
+    ]);
+  });
+});
+
+test("postgres knowledge review action repository can filter history by revision id", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const knowledgeRepository = new PostgresKnowledgeRepository({ client });
+    const repository = new PostgresKnowledgeReviewActionRepository({ client });
+
+    await knowledgeRepository.saveAsset({
+      id: "asset-knowledge-2",
+      status: "active",
+      current_revision_id: "asset-knowledge-2-revision-1",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await knowledgeRepository.saveRevision({
+      id: "asset-knowledge-2-revision-1",
+      asset_id: "asset-knowledge-2",
+      revision_no: 1,
+      status: "pending_review",
+      title: "Revision history target",
+      canonical_text: "Revision history target text.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+
+    await repository.save({
+      id: "11111111-2222-3333-4444-555555555551",
+      knowledge_item_id: "asset-knowledge-2",
+      revision_id: "asset-knowledge-2-revision-1",
+      action: "submitted_for_review",
+      actor_role: "user",
+      created_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.save({
+      id: "11111111-2222-3333-4444-555555555552",
+      knowledge_item_id: "asset-knowledge-2",
+      revision_id: "asset-knowledge-2-revision-1",
+      action: "rejected",
+      actor_role: "knowledge_reviewer",
+      review_note: "Please strengthen the citation.",
+      created_at: "2026-04-08T10:05:00.000Z",
+    });
+
+    const history = await repository.listByRevisionId("asset-knowledge-2-revision-1");
+
+    assert.deepEqual(history, [
+      {
+        id: "11111111-2222-3333-4444-555555555551",
+        knowledge_item_id: "asset-knowledge-2",
+        revision_id: "asset-knowledge-2-revision-1",
+        action: "submitted_for_review",
+        actor_role: "user",
+        created_at: "2026-04-08T10:00:00.000Z",
+      },
+      {
+        id: "11111111-2222-3333-4444-555555555552",
+        knowledge_item_id: "asset-knowledge-2",
+        revision_id: "asset-knowledge-2-revision-1",
+        action: "rejected",
+        actor_role: "knowledge_reviewer",
+        review_note: "Please strengthen the citation.",
+        created_at: "2026-04-08T10:05:00.000Z",
+      },
+    ]);
+  });
+});
+
 async function withMigratedKnowledgeClient(
   run: (client: Client) => Promise<void>,
 ): Promise<void> {

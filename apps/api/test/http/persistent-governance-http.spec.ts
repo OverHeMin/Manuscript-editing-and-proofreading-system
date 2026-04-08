@@ -146,6 +146,170 @@ test("persistent governance runtime serves review state from PostgreSQL across s
   });
 });
 
+test("persistent governance runtime persists knowledge library asset revisions across restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const createResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/assets/drafts`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Persistent knowledge library draft",
+              canonicalText: "Operators should check endpoint reporting.",
+              knowledgeKind: "rule",
+              moduleScope: "screening",
+              manuscriptTypes: ["clinical_study"],
+              bindings: [
+                {
+                  bindingKind: "module_template",
+                  bindingTargetId: "module-template-screening-1",
+                  bindingTargetLabel: "Persistent Screening Template",
+                },
+              ],
+            }),
+          },
+        );
+        const created = (await createResponse.json()) as {
+          asset: { id: string };
+          selected_revision: { id: string };
+        };
+
+        assert.equal(createResponse.status, 201);
+
+        const submitResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/submit`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const approveResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/approve`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              reviewNote: "Approved before restart.",
+            }),
+          },
+        );
+
+        assert.equal(submitResponse.status, 200);
+        assert.equal(approveResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const createRevisionResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/assets/${created.asset.id}/revisions`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const derived = (await createRevisionResponse.json()) as {
+            selected_revision: { id: string };
+          };
+          const detailResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/assets/${created.asset.id}?revisionId=${derived.selected_revision.id}`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const detail = (await detailResponse.json()) as {
+            asset: {
+              current_revision_id?: string;
+              current_approved_revision_id?: string;
+            };
+            selected_revision: {
+              id: string;
+              status: string;
+            };
+            current_approved_revision?: {
+              id: string;
+              status: string;
+            };
+          };
+          const historyResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/review-actions`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const history = (await historyResponse.json()) as Array<{
+            revision_id?: string;
+            action: string;
+          }>;
+
+          assert.equal(createRevisionResponse.status, 201);
+          assert.equal(detailResponse.status, 200);
+          assert.equal(detail.asset.current_revision_id, derived.selected_revision.id);
+          assert.equal(
+            detail.asset.current_approved_revision_id,
+            created.selected_revision.id,
+          );
+          assert.equal(detail.selected_revision.id, derived.selected_revision.id);
+          assert.equal(detail.selected_revision.status, "draft");
+          assert.equal(detail.current_approved_revision?.id, created.selected_revision.id);
+          assert.equal(detail.current_approved_revision?.status, "approved");
+          assert.equal(historyResponse.status, 200);
+          assert.deepEqual(
+            history.map((record) => ({
+              revision_id: record.revision_id,
+              action: record.action,
+            })),
+            [
+              {
+                revision_id: created.selected_revision.id,
+                action: "submitted_for_review",
+              },
+              {
+                revision_id: created.selected_revision.id,
+                action: "approved",
+              },
+            ],
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime keeps prompt and skill registry assets across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

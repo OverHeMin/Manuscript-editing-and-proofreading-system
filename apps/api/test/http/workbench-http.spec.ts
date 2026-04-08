@@ -233,6 +233,183 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http routes expose the knowledge library revision lifecycle", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createResponse = await fetch(`${baseUrl}/api/v1/knowledge/assets/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "HTTP knowledge library draft",
+        canonicalText: "Screening should confirm endpoint reporting.",
+        knowledgeKind: "rule",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+        sections: ["methods"],
+        bindings: [
+          {
+            bindingKind: "module_template",
+            bindingTargetId: "template-screening-1",
+            bindingTargetLabel: "Screening Template",
+          },
+        ],
+      }),
+    });
+    const created = (await createResponse.json()) as {
+      asset: { id: string; current_revision_id?: string };
+      selected_revision: { id: string };
+    };
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(created.asset.id, "knowledge-1");
+    assert.equal(created.selected_revision.id, "knowledge-1-revision-1");
+
+    const submitResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const approveResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewNote: "Approved from workbench lifecycle test.",
+        }),
+      },
+    );
+
+    assert.equal(submitResponse.status, 200);
+    assert.equal(approveResponse.status, 200);
+
+    const createRevisionResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/${created.asset.id}/revisions`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const derived = (await createRevisionResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string; status: string };
+    };
+
+    assert.equal(createRevisionResponse.status, 201);
+    assert.equal(derived.selected_revision.id, "knowledge-1-revision-2");
+    assert.equal(derived.selected_revision.status, "draft");
+
+    const updateResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${derived.selected_revision.id}/draft`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "HTTP knowledge library draft updated",
+          canonicalText: "Screening should confirm endpoint reporting before review.",
+          bindings: [
+            {
+              bindingKind: "module_template",
+              bindingTargetId: "template-screening-1",
+              bindingTargetLabel: "Screening Template",
+            },
+          ],
+        }),
+      },
+    );
+    const detailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/${created.asset.id}?revisionId=${derived.selected_revision.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const detail = (await detailResponse.json()) as {
+      asset: {
+        current_revision_id?: string;
+        current_approved_revision_id?: string;
+      };
+      selected_revision: {
+        id: string;
+        title: string;
+        status: string;
+      };
+      current_approved_revision?: {
+        id: string;
+      };
+    };
+    const historyResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/review-actions`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const history = (await historyResponse.json()) as Array<{
+      revision_id?: string;
+      action: string;
+    }>;
+    const libraryResponse = await fetch(`${baseUrl}/api/v1/knowledge/library`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const library = (await libraryResponse.json()) as Array<{ id: string; status: string }>;
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detail.asset.current_revision_id, "knowledge-1-revision-2");
+    assert.equal(detail.asset.current_approved_revision_id, "knowledge-1-revision-1");
+    assert.equal(detail.selected_revision.id, "knowledge-1-revision-2");
+    assert.equal(detail.selected_revision.title, "HTTP knowledge library draft updated");
+    assert.equal(detail.selected_revision.status, "draft");
+    assert.equal(detail.current_approved_revision?.id, "knowledge-1-revision-1");
+    assert.equal(historyResponse.status, 200);
+    assert.deepEqual(
+      history.map((record) => ({
+        revision_id: record.revision_id,
+        action: record.action,
+      })),
+      [
+        {
+          revision_id: "knowledge-1-revision-1",
+          action: "submitted_for_review",
+        },
+        {
+          revision_id: "knowledge-1-revision-1",
+          action: "approved",
+        },
+      ],
+    );
+    assert.equal(libraryResponse.status, 200);
+    assert.ok(
+      library.some((record) => record.id === "knowledge-1" && record.status === "draft"),
+      "Expected knowledge library list to expose the derived draft revision as the authoring projection.",
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http screening route runs with the authenticated screener context", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 

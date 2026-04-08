@@ -130,6 +130,8 @@ export function LearningReviewWorkbenchPage({
     useState<LearningCandidateViewModel | null>(null);
   const [writebacks, setWritebacks] = useState<LearningWritebackViewModel[]>([]);
   const [submittedKnowledgeItemId, setSubmittedKnowledgeItemId] = useState("");
+  const [submittedKnowledgeAssetId, setSubmittedKnowledgeAssetId] = useState("");
+  const [submittedKnowledgeRevisionId, setSubmittedKnowledgeRevisionId] = useState("");
   const [knowledgeWritebackForm, setKnowledgeWritebackForm] =
     useState<KnowledgeWritebackFormState>({
       targetType: "knowledge_item",
@@ -160,11 +162,17 @@ export function LearningReviewWorkbenchPage({
   );
   const latestKnowledgeDraftId = resolveLatestKnowledgeDraftId(writebacks);
   const knowledgeReviewHandoffHash =
-    submittedKnowledgeItemId.length > 0
+    submittedKnowledgeRevisionId.length > 0
       ? formatWorkbenchHash("knowledge-review", {
-          knowledgeItemId: submittedKnowledgeItemId,
+          revisionId: submittedKnowledgeRevisionId,
         })
-      : null;
+      : submittedKnowledgeAssetId.length > 0
+        ? formatWorkbenchHash("knowledge-library", {
+            assetId: submittedKnowledgeAssetId,
+          })
+        : submittedKnowledgeItemId.length > 0
+          ? formatWorkbenchHash("knowledge-library")
+          : null;
 
   useEffect(() => {
     void loadCandidateQueue();
@@ -221,6 +229,8 @@ export function LearningReviewWorkbenchPage({
     startTransition(() => {
       setCreatedWritebackId("");
       setSubmittedKnowledgeItemId("");
+      setSubmittedKnowledgeAssetId("");
+      setSubmittedKnowledgeRevisionId("");
       setWritebacks([]);
     });
     if (candidateId.length === 0) {
@@ -319,6 +329,8 @@ export function LearningReviewWorkbenchPage({
         setApprovedCandidate(null);
         setCreatedWritebackId("");
         setSubmittedKnowledgeItemId("");
+        setSubmittedKnowledgeAssetId("");
+        setSubmittedKnowledgeRevisionId("");
         setWritebacks([]);
         setStatusMessage(`Governed learning candidate created: ${response.body.id}`);
       });
@@ -342,6 +354,8 @@ export function LearningReviewWorkbenchPage({
         setApprovedCandidate(response.body);
         setCreatedWritebackId("");
         setSubmittedKnowledgeItemId("");
+        setSubmittedKnowledgeAssetId("");
+        setSubmittedKnowledgeRevisionId("");
         setStatusMessage(`Learning candidate approved: ${response.body.id}`);
       });
       const nextWorkbenchState = applyLearningReviewApprovalSuccess(
@@ -406,6 +420,8 @@ export function LearningReviewWorkbenchPage({
       startTransition(() => {
         setCreatedWritebackId(response.body.id);
         setSubmittedKnowledgeItemId("");
+        setSubmittedKnowledgeAssetId("");
+        setSubmittedKnowledgeRevisionId("");
         syncWritebackSummaries(writebackCandidate.id, [...writebacks, response.body]);
         setStatusMessage(`Draft writeback created: ${response.body.id}`);
       });
@@ -444,6 +460,8 @@ export function LearningReviewWorkbenchPage({
         );
         setCreatedWritebackId("");
         setSubmittedKnowledgeItemId("");
+        setSubmittedKnowledgeAssetId("");
+        setSubmittedKnowledgeRevisionId("");
         setStatusMessage(`Writeback applied into governed draft: ${response.body.id}`);
       });
     });
@@ -465,6 +483,8 @@ export function LearningReviewWorkbenchPage({
 
       startTransition(() => {
         setSubmittedKnowledgeItemId(response.body.id);
+        setSubmittedKnowledgeAssetId(response.body.asset_id ?? "");
+        setSubmittedKnowledgeRevisionId(response.body.revision_id ?? "");
         setStatusMessage(`Knowledge draft submitted for review: ${response.body.id}`);
       });
     });
@@ -738,9 +758,11 @@ export function LearningReviewWorkbenchPage({
             <ResultBlock title="Knowledge draft handoff">
               <code>{latestKnowledgeDraftId}</code>
               <span>
-                {submittedKnowledgeItemId.length > 0
+                {submittedKnowledgeRevisionId.length > 0
                   ? "Pending review in governed queue"
-                  : "Draft ready for review submission"}
+                  : submittedKnowledgeItemId.length > 0
+                    ? "Submitted; continue in Knowledge Library"
+                    : "Draft ready for review submission"}
               </span>
             </ResultBlock>
           ) : null}
@@ -789,7 +811,11 @@ export function LearningReviewWorkbenchPage({
               Submit Knowledge Draft For Review
             </button>
             {knowledgeReviewHandoffHash ? (
-              <a href={knowledgeReviewHandoffHash}>Open Knowledge Review</a>
+              <a href={knowledgeReviewHandoffHash}>
+                {submittedKnowledgeRevisionId.length > 0
+                  ? "Open Knowledge Review"
+                  : "Open Knowledge Library"}
+              </a>
             ) : null}
           </div>
         </article>

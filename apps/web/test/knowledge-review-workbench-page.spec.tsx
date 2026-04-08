@@ -33,15 +33,10 @@ test("knowledge review workbench page renders a review-first desk shell around q
     <KnowledgeReviewWorkbenchPage controller={controllerStub} />,
   );
 
-  assert.match(markup, /知识库工作台/u);
-  assert.match(markup, /核心四大工作台/u);
-  assert.match(markup, /初筛/u);
-  assert.match(markup, /编辑/u);
-  assert.match(markup, /校对/u);
-  assert.match(markup, /知识库/u);
-  assert.match(markup, /待审核队列/u);
-  assert.match(markup, /知识详情/u);
-  assert.match(markup, /审核动作/u);
-  assert.match(markup, /审核角色/u);
+  assert.match(markup, /Knowledge Review Desk/u);
+  assert.match(markup, /Pending Review Queue/u);
+  assert.match(markup, /Knowledge Detail/u);
+  assert.match(markup, /Review Actions/u);
+  assert.match(markup, /Reviewer Role/u);
   assert.match(markup, /workbench-core-strip-card is-active/);
 });

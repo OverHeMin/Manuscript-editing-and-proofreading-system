@@ -19,6 +19,8 @@ const workbenchSurfaceCheck: WorkbenchSurface = "mini_program";
 
 const knowledgeQueueItemCheck: KnowledgeReviewQueueItemViewModel = {
   id: "knowledge-1",
+  asset_id: "knowledge-1",
+  revision_id: "knowledge-1-revision-1",
   title: "Case report privacy checklist",
   canonical_text: "Remove patient identifiers before publishing the report.",
   knowledge_kind: "checklist",
