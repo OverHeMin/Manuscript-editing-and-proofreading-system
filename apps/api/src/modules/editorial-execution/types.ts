@@ -3,6 +3,8 @@ import type {
   EditorialRuleSetRecord,
   EditorialRuleSeverity,
 } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
+import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type {
   PromptTemplateKind,
@@ -20,6 +22,7 @@ export interface AppliedDeterministicRuleChange {
   before: string;
   after: string;
   blockIndex?: number;
+  semantic_hit?: TableSemanticHitEvidence;
 }
 
 export interface DeterministicFormatExecutionResult {
@@ -34,11 +37,14 @@ export interface ApplyDeterministicDocxRulesInput {
   outputStorageKey: string;
   outputFileName?: string;
   rules: EditorialRuleRecord[];
+  resolvedRules?: ResolvedEditorialRule[];
+  tableSnapshots?: DocumentStructureTableSnapshot[];
 }
 
 export interface DeterministicDocxTransformResult {
   appliedRuleIds: string[];
   appliedChanges: AppliedDeterministicRuleChange[];
+  tableInspectionFindings: TableRuleInspectionFinding[];
 }
 
 export interface GovernedKnowledgeSelectionInput {
@@ -90,12 +96,14 @@ export interface ProofreadingCheckResult {
   actual: string;
   severity: EditorialRuleSeverity;
   blockIndex?: number;
+  semantic_hit?: TableSemanticHitEvidence;
 }
 
 export interface ProofreadingRiskItem {
   ruleId?: string;
   reason: string;
   severity?: EditorialRuleSeverity;
+  semantic_hit?: TableSemanticHitEvidence;
 }
 
 export interface ProofreadingInspectionResult {
@@ -104,6 +112,22 @@ export interface ProofreadingInspectionResult {
   riskItems: ProofreadingRiskItem[];
   manualReviewItems: ManualReviewItem[];
   appliedChanges: AppliedDeterministicRuleChange[];
+}
+
+export interface TableSemanticHitEvidence {
+  table_id: string;
+  semantic_target: string;
+  header_path?: string[];
+  row_key?: string;
+  column_key?: string;
+  footnote_anchor?: string;
+  override_source?: "base" | "journal";
+}
+
+export interface TableRuleInspectionFinding {
+  ruleId: string;
+  reason: string;
+  semantic_hit: TableSemanticHitEvidence;
 }
 
 export interface ProofreadingSourceBlockResolver {

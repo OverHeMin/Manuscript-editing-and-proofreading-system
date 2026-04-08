@@ -3,12 +3,18 @@ import { copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
+import {
+  EditorialRuleTableHitService,
+  type EditorialRuleTableHit,
+} from "../editorial-rules/editorial-rule-table-hit-service.ts";
 import {
   selectDeterministicFormatRules,
 } from "../editorial-execution/deterministic-format-rule-executor.ts";
 import type {
   ApplyDeterministicDocxRulesInput,
   DeterministicDocxTransformResult,
+  TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
 
 const APPLY_EDITORIAL_RULES_SCRIPT = path.resolve(
@@ -23,6 +29,7 @@ const MATERIALIZE_DOCX_SCRIPT = path.resolve(
 export interface EditorialDocxTransformServiceOptions {
   assetRepository: DocumentAssetRepository;
   rootDir?: string;
+  tableHitService?: Pick<EditorialRuleTableHitService, "findMatches">;
 }
 
 export class EditorialDocxTransformSourceAssetNotFoundError extends Error {
@@ -42,6 +49,7 @@ export class EditorialDocxTransformWorkerError extends Error {
 export class EditorialDocxTransformService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly rootDir: string;
+  private readonly tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
 
   constructor(options: EditorialDocxTransformServiceOptions) {
     this.assetRepository = options.assetRepository;
@@ -53,6 +61,7 @@ export class EditorialDocxTransformService {
         "uploads",
         process.env.APP_ENV ?? "dev",
       );
+    this.tableHitService = options.tableHitService ?? new EditorialRuleTableHitService();
   }
 
   async applyDeterministicRules(
@@ -64,6 +73,12 @@ export class EditorialDocxTransformService {
     }
 
     const deterministicRules = selectDeterministicFormatRules(input.rules);
+    const tableInspectionFindings = buildTableInspectionFindings({
+      rules: input.rules,
+      resolvedRules: input.resolvedRules,
+      tableSnapshots: input.tableSnapshots ?? [],
+      tableHitService: this.tableHitService,
+    });
     const sourcePath = resolveStoragePath(this.rootDir, sourceAsset.storage_key);
     const outputPath = resolveStoragePath(this.rootDir, input.outputStorageKey);
 
@@ -75,14 +90,19 @@ export class EditorialDocxTransformService {
       return {
         appliedRuleIds: [],
         appliedChanges: [],
+        tableInspectionFindings,
       };
     }
 
-    return runApplyRulesWorker({
+    const workerResult = await runApplyRulesWorker({
       sourcePath,
       outputPath,
       rules: deterministicRules,
     });
+    return {
+      ...workerResult,
+      tableInspectionFindings,
+    };
   }
 
   private async ensureSourceDocxMaterialized(
@@ -226,6 +246,7 @@ function runPythonScript(
         resolve({
           appliedRuleIds: [...(parsed.appliedRuleIds ?? [])],
           appliedChanges: [...(parsed.appliedChanges ?? [])],
+          tableInspectionFindings: [...(parsed.tableInspectionFindings ?? [])],
         });
       } catch (error) {
         reject(
@@ -236,6 +257,75 @@ function runPythonScript(
       }
     });
   });
+}
+
+function buildTableInspectionFindings(input: {
+  rules: ApplyDeterministicDocxRulesInput["rules"];
+  resolvedRules?: ResolvedEditorialRule[];
+  tableSnapshots: NonNullable<ApplyDeterministicDocxRulesInput["tableSnapshots"]>;
+  tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
+}): TableRuleInspectionFinding[] {
+  if (input.tableSnapshots.length === 0) {
+    return [];
+  }
+
+  const resolvedRules =
+    input.resolvedRules && input.resolvedRules.length > 0
+      ? input.resolvedRules
+      : input.rules
+          .filter((rule) => rule.enabled)
+          .map((rule) => ({
+            rule,
+            source_layer: "base" as const,
+          }));
+
+  return resolvedRules.flatMap((entry) => {
+    if (!entry.rule.enabled || entry.rule.rule_object !== "table") {
+      return [];
+    }
+
+    return input.tableHitService
+      .findMatches({
+        rule: entry.rule,
+        tableSnapshots: input.tableSnapshots,
+      })
+      .map((hit) => ({
+        ruleId: entry.rule.id,
+        reason: hit.reason,
+        semantic_hit: toSemanticHitEvidence(hit, entry.source_layer),
+      }));
+  });
+}
+
+function toSemanticHitEvidence(
+  hit: EditorialRuleTableHit,
+  sourceLayer: "base" | "journal",
+): TableRuleInspectionFinding["semantic_hit"] {
+  return {
+    table_id: hit.table_id,
+    semantic_target: hit.semantic_target,
+    ...(hit.semantic_coordinate.header_path
+      ? {
+          header_path: [...hit.semantic_coordinate.header_path],
+        }
+      : {}),
+    ...(hit.semantic_coordinate.row_key
+      ? {
+          row_key: hit.semantic_coordinate.row_key,
+        }
+      : {}),
+    ...(hit.semantic_coordinate.column_key
+      ? {
+          column_key: hit.semantic_coordinate.column_key,
+        }
+      : {}),
+    ...(hit.semantic_coordinate.footnote_anchor
+      ? {
+          footnote_anchor: hit.semantic_coordinate.footnote_anchor,
+        }
+      : {}),
+    override_source: sourceLayer,
+  };
 }
 
 async function runDocxMaterializer(input: {

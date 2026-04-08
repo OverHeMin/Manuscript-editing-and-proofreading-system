@@ -1,4 +1,10 @@
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
+import {
+  EditorialRuleTableHitService,
+  type EditorialRuleTableHit,
+} from "../editorial-rules/editorial-rule-table-hit-service.ts";
+import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
 import { deriveManualReviewReason } from "./instruction-template-assembler.ts";
 import type {
   EditorialTextBlock,
@@ -10,19 +16,32 @@ import type {
 export function inspectProofreadingRules(input: {
   blocks: readonly EditorialTextBlock[];
   rules: readonly EditorialRuleRecord[];
+  resolvedRules?: readonly ResolvedEditorialRule[];
+  tableSnapshots?: readonly DocumentStructureTableSnapshot[];
 }): ProofreadingInspectionResult {
   const passedChecks: ProofreadingCheckResult[] = [];
   const failedChecks: ProofreadingCheckResult[] = [];
   const riskItems: ProofreadingRiskItem[] = [];
   const manualReviewItems: ProofreadingInspectionResult["manualReviewItems"] = [];
+  const tableHitService = new EditorialRuleTableHitService();
+  const resolvedRules =
+    input.resolvedRules && input.resolvedRules.length > 0
+      ? input.resolvedRules
+      : input.rules
+          .filter((record) => record.enabled)
+          .map((rule) => ({
+            rule,
+            source_layer: "base" as const,
+          }));
 
-  if (input.blocks.length === 0) {
+  if (input.blocks.length === 0 && !(input.tableSnapshots?.length)) {
     riskItems.push({
       reason: "source_document_not_available",
     });
   }
 
-  for (const rule of input.rules.filter((record) => record.enabled)) {
+  for (const entry of resolvedRules) {
+    const rule = entry.rule;
     if (rule.rule_type === "content") {
       if (rule.confidence_policy !== "always_auto") {
         const reason = deriveManualReviewReason(rule);
@@ -34,6 +53,27 @@ export function inspectProofreadingRules(input: {
           ruleId: rule.id,
           reason,
           severity: rule.severity,
+        });
+      }
+      continue;
+    }
+
+    if (rule.rule_object === "table") {
+      if (!input.tableSnapshots?.length) {
+        continue;
+      }
+
+      const tableHits = tableHitService.findMatches({
+        rule,
+        tableSnapshots: [...input.tableSnapshots],
+      });
+      for (const hit of tableHits) {
+        failedChecks.push({
+          ruleId: rule.id,
+          expected: readTableExpectation(rule),
+          actual: describeTableHit(hit),
+          severity: rule.severity,
+          semantic_hit: toSemanticHitEvidence(hit, entry.source_layer),
         });
       }
       continue;
@@ -136,4 +176,63 @@ function uniqueManualReviewItems(
   }
 
   return [...deduped.values()];
+}
+
+function readTableExpectation(rule: EditorialRuleRecord): string {
+  if (typeof rule.action.message === "string" && rule.action.message.length > 0) {
+    return rule.action.message;
+  }
+
+  return typeof rule.explanation_payload?.rationale === "string"
+    ? rule.explanation_payload.rationale
+    : "Matched table semantic rule.";
+}
+
+function describeTableHit(hit: EditorialRuleTableHit): string {
+  const segments = [hit.table_id, ...(hit.semantic_coordinate.header_path ?? [])];
+
+  if (segments.length > 1) {
+    return segments.join(" > ");
+  }
+
+  if (hit.semantic_coordinate.column_key) {
+    return `${hit.table_id} > ${hit.semantic_coordinate.column_key}`;
+  }
+
+  if (hit.semantic_coordinate.footnote_anchor) {
+    return `${hit.table_id} > ${hit.semantic_coordinate.footnote_anchor}`;
+  }
+
+  return hit.table_id;
+}
+
+function toSemanticHitEvidence(
+  hit: EditorialRuleTableHit,
+  sourceLayer: "base" | "journal",
+): NonNullable<ProofreadingCheckResult["semantic_hit"]> {
+  return {
+    table_id: hit.table_id,
+    semantic_target: hit.semantic_target,
+    ...(hit.semantic_coordinate.header_path
+      ? {
+          header_path: [...hit.semantic_coordinate.header_path],
+        }
+      : {}),
+    ...(hit.semantic_coordinate.row_key
+      ? {
+          row_key: hit.semantic_coordinate.row_key,
+        }
+      : {}),
+    ...(hit.semantic_coordinate.column_key
+      ? {
+          column_key: hit.semantic_coordinate.column_key,
+        }
+      : {}),
+    ...(hit.semantic_coordinate.footnote_anchor
+      ? {
+          footnote_anchor: hit.semantic_coordinate.footnote_anchor,
+        }
+      : {}),
+    override_source: sourceLayer,
+  };
 }
