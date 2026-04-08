@@ -115,3 +115,69 @@ test("navigation menu renders a simplified user work area", async () => {
   assert.match(html, /我的稿件/);
   assert.doesNotMatch(html, /管理区/);
 });
+
+test("workbench shell header renders the product brand and active desk summary", async () => {
+  const headerModule = await import("../src/app/workbench-shell-header.tsx").catch(
+    () => null,
+  );
+
+  assert.ok(headerModule, "expected workbench-shell-header module to exist");
+
+  const html = renderToStaticMarkup(
+    <headerModule.WorkbenchShellHeader
+      session={buildSession("admin")}
+      activeWorkbenchLabel="Editing"
+      activeWorkbenchDescription="Refine the governed draft and preserve handoff context."
+      activeWorkbenchGroupLabel="涓诲伐浣滅嚎"
+      isCompactNavigation={false}
+      isNavigationOpen
+      onToggleNavigation={() => undefined}
+    />,
+  );
+
+  assert.match(html, /Medical Editorial Control Deck/);
+  assert.match(html, /医学稿件处理系统/);
+  assert.match(html, /Editing/);
+  assert.match(html, /Screening/);
+  assert.match(html, /Knowledge/);
+});
+
+test("workbench shell header exposes a compact navigation toggle state", async () => {
+  const headerModule = await import("../src/app/workbench-shell-header.tsx").catch(
+    () => null,
+  );
+
+  assert.ok(headerModule, "expected workbench-shell-header module to exist");
+
+  const html = renderToStaticMarkup(
+    <headerModule.WorkbenchShellHeader
+      session={buildSession("editor")}
+      activeWorkbenchLabel="Editing"
+      activeWorkbenchDescription="Refine the governed draft and preserve handoff context."
+      activeWorkbenchGroupLabel="涓诲伐浣滅嚎"
+      isCompactNavigation
+      isNavigationOpen={false}
+      onToggleNavigation={() => undefined}
+    />,
+  );
+
+  assert.match(html, /Open workbench navigation/);
+  assert.match(html, /aria-expanded="false"/);
+});
+
+test("responsive navigation defaults to collapsed when entering compact mode", async () => {
+  const layoutModule = await import("../src/app/workbench-shell-layout.ts").catch(
+    () => null,
+  );
+
+  assert.ok(layoutModule, "expected workbench-shell-layout module to exist");
+
+  assert.equal(
+    layoutModule.resolveResponsiveNavigationOpenState({
+      isCompactNavigation: true,
+      previousCompactNavigation: false,
+      previousNavigationOpen: true,
+    }),
+    false,
+  );
+});

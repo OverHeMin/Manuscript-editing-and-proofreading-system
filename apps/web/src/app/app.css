@@ -82,11 +82,12 @@ a {
 }
 
 .workbench-header {
-  padding: 20px 22px;
+  padding: 22px 24px;
   border: 1px solid var(--color-border-shell);
-  border-radius: 18px;
+  border-radius: 22px;
   background:
-    linear-gradient(135deg, rgba(255, 245, 220, 0.04), transparent 48%),
+    radial-gradient(circle at top left, rgba(216, 190, 132, 0.14), transparent 32%),
+    linear-gradient(135deg, rgba(255, 245, 220, 0.05), transparent 48%),
     linear-gradient(180deg, rgba(41, 35, 27, 0.95), rgba(20, 19, 17, 0.96));
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.28),
@@ -100,21 +101,58 @@ a {
   gap: 16px;
 }
 
+.workbench-shell-brand {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.workbench-shell-brand-eyebrow {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-accent-gold);
+}
+
+.workbench-shell-brand-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.workbench-shell-brand-copy {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
 .workbench-header h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.45rem;
+  font-size: 1.7rem;
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--color-shell-text);
 }
 
-.workbench-header p {
-  margin: 8px 0 0;
-  max-width: 720px;
+.workbench-shell-brand-summary,
+.workbench-shell-session,
+.workbench-header-focus p {
+  margin: 0;
   color: var(--color-shell-text-muted);
   font-size: 0.96rem;
   line-height: 1.65;
+}
+
+.workbench-shell-brand-summary {
+  max-width: 720px;
+}
+
+.workbench-shell-session strong {
+  color: var(--color-shell-text);
 }
 
 .workbench-header code {
@@ -124,6 +162,80 @@ a {
   border: 1px solid rgba(216, 190, 132, 0.24);
   background: rgba(216, 190, 132, 0.1);
   color: var(--color-accent-gold-strong);
+}
+
+.workbench-shell-pillar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  max-width: 360px;
+}
+
+.workbench-shell-pillar {
+  padding: 6px 10px;
+  border: 1px solid rgba(216, 190, 132, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.05);
+  color: var(--color-shell-text);
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.workbench-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.workbench-header-focus {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.workbench-header-focus-card {
+  padding: 14px 15px;
+  border: 1px solid rgba(216, 190, 132, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 250, 242, 0.04);
+  display: grid;
+  gap: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.workbench-header-focus-card span,
+.workbench-header-focus-card small {
+  color: var(--color-shell-text-muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workbench-header-focus-card strong {
+  color: var(--color-shell-text);
+  font-size: 1.05rem;
+}
+
+.workbench-nav-toggle {
+  padding: 10px 15px;
+  border: 1px solid rgba(216, 190, 132, 0.28);
+  border-radius: 999px;
+  background: rgba(216, 190, 132, 0.08);
+  color: var(--color-shell-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workbench-nav-toggle:hover {
+  border-color: rgba(238, 211, 155, 0.45);
+  background: rgba(216, 190, 132, 0.14);
+  transform: translateY(-1px);
 }
 
 .workbench-secondary-action {
@@ -167,6 +279,13 @@ a {
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.26),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    max-height 180ms ease,
+    padding 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .workbench-nav h2 {
@@ -257,6 +376,13 @@ a {
 
 .workbench-content {
   min-width: 0;
+}
+
+.workbench-content--admin-governance,
+.workbench-content--evaluation-workbench,
+.workbench-content--harness-datasets,
+.workbench-content--template-governance {
+  width: min(1240px, 100%);
 }
 
 .workbench-placeholder {
@@ -431,6 +557,8 @@ a {
   .workbench-nav {
     position: static;
     order: 1;
+    max-height: 1200px;
+    overflow: hidden;
   }
 
   .workbench-content {
@@ -442,15 +570,51 @@ a {
     align-items: stretch;
   }
 
+  .workbench-shell-brand-main,
+  .workbench-header-focus {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .workbench-shell-pillar-list,
+  .workbench-header-actions {
+    justify-content: flex-start;
+  }
+
+  .workbench-nav-toggle {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .workbench-nav.is-collapsed {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    transform: translateY(-8px);
+    border-color: transparent;
+    box-shadow: none;
+    pointer-events: none;
+  }
+
   .auth-card {
     margin-top: 28px;
     padding: 20px;
   }
 }
 
+@media (min-width: 1025px) {
+  .workbench-nav-toggle {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-shell,
   .workbench-nav-button,
+  .workbench-nav,
+  .workbench-nav-toggle,
   .workbench-secondary-action,
   .auth-primary-action,
   .auth-card,
@@ -460,6 +624,7 @@ a {
   }
 
   .workbench-nav-button:hover,
+  .workbench-nav-toggle:hover,
   .workbench-secondary-action:hover,
   .auth-primary-action:hover {
     transform: none;

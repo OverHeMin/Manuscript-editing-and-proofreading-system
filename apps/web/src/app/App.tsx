@@ -33,37 +33,35 @@ function DemoApp() {
       <main className="app-shell">
         <section className="workbench-host">
           <header className="workbench-header">
-            <h1>Reviewer Workbench Host</h1>
+            <h1>医学稿件处理系统</h1>
             <p>
-              Demo bootstrap is limited to local development mode.
+              当前页面保留本地开发引导，用于连接演示会话或真实后端登录流程。
             </p>
           </header>
 
           <div className="workbench-layout">
             <aside className="workbench-nav" aria-label="Workbench navigation">
-              <h2>Workbenches</h2>
+              <h2>Workbench</h2>
               <ul className="workbench-nav-list">
                 <li>
                   <button type="button" className="workbench-nav-button is-disabled" disabled>
-                    <span>Role-aware Workbench Access</span>
-                    <small>pending auth</small>
+                    <span>待进入工作区</span>
+                    <small>Awaiting session bootstrap</small>
                   </button>
                 </li>
               </ul>
             </aside>
 
             <section className="workbench-content">
-              <article className="workbench-placeholder app-phase-placeholder" role="status">
-                <h2>Demo Runtime Unavailable</h2>
-                <p>
-                  `VITE_APP_ENV=local` keeps the demo bootstrap path, but it still depends on the
-                  Vite development server.
-                </p>
-                <p>
-                  Use `VITE_APP_ENV=dev` or another persistent app environment to load the real
-                  backend login shell.
-                </p>
-              </article>
+            <article className="workbench-placeholder app-phase-placeholder" role="status">
+              <h2>Demo Runtime Unavailable</h2>
+              <p>
+                  `VITE_APP_ENV=local` 会保留演示引导路径，但仍依赖当前 Vite 开发服务。
+              </p>
+              <p>
+                  如果要进入真实后端登录壳层，请切换到 `VITE_APP_ENV=dev` 或其他持久环境。
+              </p>
+            </article>
             </section>
           </div>
         </section>
@@ -112,9 +110,9 @@ function DemoApp() {
       <main className="app-shell">
         <section className="workbench-host">
           <header className="workbench-header">
-            <h1>Reviewer Workbench Host</h1>
+            <h1>医学稿件处理系统</h1>
             <p>
-              Connecting <strong>{session.displayName}</strong> to the local demo backend.
+              正在为 <strong>{session.displayName}</strong> 连接本地演示后端。
             </p>
           </header>
 
@@ -122,8 +120,7 @@ function DemoApp() {
             <article className="workbench-placeholder app-phase-placeholder" role="status">
               <h2>Establishing Session</h2>
               <p>
-                The development workbench waits for a trusted backend cookie before loading review
-                routes.
+                本地开发工作台会先建立可信后端会话，再加载各条工作线。
               </p>
             </article>
           </section>
@@ -137,9 +134,9 @@ function DemoApp() {
       <main className="app-shell">
         <section className="workbench-host">
           <header className="workbench-header">
-            <h1>Reviewer Workbench Host</h1>
+            <h1>医学稿件处理系统</h1>
             <p>
-              Local demo backend login failed for <strong>{session.username}</strong>.
+              本地演示后端登录未成功，当前账号为 <strong>{session.username}</strong>。
             </p>
           </header>
 

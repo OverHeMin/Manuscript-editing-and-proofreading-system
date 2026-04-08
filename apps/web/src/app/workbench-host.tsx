@@ -20,6 +20,8 @@ import {
   resolveWorkbenchLocation,
   resolveWorkbenchRenderKind,
 } from "./workbench-routing.ts";
+import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
+import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
 import { buildWorkbenchNavigationGroups } from "./workbench-navigation.ts";
 import { WorkbenchNavigationMenu } from "./workbench-navigation-menu.tsx";
 
@@ -50,6 +52,8 @@ export function WorkbenchHost({
   const canOpenEvaluationWorkbench = visibleEntries.some(
     (entry) => entry.id === "evaluation-workbench",
   );
+  const [isCompactNavigation, setIsCompactNavigation] = useState(false);
+  const [isNavigationOpen, setIsNavigationOpen] = useState(true);
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -89,34 +93,64 @@ export function WorkbenchHost({
     };
   }, [session.defaultWorkbench, visibleEntries]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 1024px)");
+
+    function synchronizeNavigationLayout(nextCompactNavigation: boolean) {
+      setIsCompactNavigation((previousCompactNavigation) => {
+        setIsNavigationOpen((previousNavigationOpen) =>
+          resolveResponsiveNavigationOpenState({
+            isCompactNavigation: nextCompactNavigation,
+            previousCompactNavigation,
+            previousNavigationOpen,
+          }),
+        );
+
+        return nextCompactNavigation;
+      });
+    }
+
+    synchronizeNavigationLayout(mediaQuery.matches);
+
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      synchronizeNavigationLayout(event.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleMediaChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleMediaChange);
+    };
+  }, []);
+
   const activeEntry =
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
   const navigationGroups = buildWorkbenchNavigationGroups(visibleEntries);
+  const activeNavigationGroup =
+    navigationGroups.find((group) =>
+      group.items.some((item) => item.id === activeWorkbenchId),
+    ) ?? null;
+  const activeWorkbenchDescription = describeWorkbenchFocus(activeWorkbenchId);
+  const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
+  const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
 
   return (
     <main className="app-shell">
       <section className="workbench-host">
-        <header className="workbench-header">
-          <div className="workbench-header-topline">
-            <div>
-              <h1>Reviewer Workbench Host</h1>
-              <p>
-                Signed in as <strong>{session.displayName}</strong> ({session.username}) with role{" "}
-                <code>{session.role}</code>.
-              </p>
-            </div>
-            {onLogout ? (
-              <button
-                type="button"
-                className="workbench-secondary-action"
-                onClick={() => void onLogout()}
-                disabled={isLogoutPending}
-              >
-                {isLogoutPending ? "Signing out..." : "Sign out"}
-              </button>
-            ) : null}
-          </div>
-        </header>
+        <WorkbenchShellHeader
+          session={session}
+          activeWorkbenchLabel={activeEntry?.label ?? "Workbench"}
+          activeWorkbenchDescription={activeWorkbenchDescription}
+          activeWorkbenchGroupLabel={activeWorkbenchGroupLabel}
+          isCompactNavigation={isCompactNavigation}
+          isNavigationOpen={isNavigationOpen}
+          onToggleNavigation={() => setIsNavigationOpen((current) => !current)}
+          onLogout={onLogout}
+          isLogoutPending={isLogoutPending}
+        />
 
         <div className="workbench-layout">
           {noticeMessage ? (
@@ -126,7 +160,11 @@ export function WorkbenchHost({
             </article>
           ) : null}
 
-          <aside className="workbench-nav" aria-label="Workbench navigation">
+          <aside
+            id="workbench-navigation-panel"
+            className={`workbench-nav${isCompactNavigation ? " is-compact" : ""}${isCompactNavigation && !isNavigationOpen ? " is-collapsed" : ""}`}
+            aria-label="Workbench navigation"
+          >
             <h2>Workbench</h2>
             <WorkbenchNavigationMenu
               groups={navigationGroups}
@@ -135,7 +173,9 @@ export function WorkbenchHost({
             />
           </aside>
 
-          <section className="workbench-content">{renderContent()}</section>
+          <section className={`workbench-content workbench-content--${activeRenderKind}`}>
+            {renderContent()}
+          </section>
         </div>
       </section>
     </main>
@@ -215,6 +255,10 @@ export function WorkbenchHost({
       sampleSetItemId?: string;
     },
   ) {
+    if (isCompactNavigation) {
+      setIsNavigationOpen(false);
+    }
+
     setRouteState({
       activeWorkbenchId: workbenchId,
       manuscriptId: handoff?.manuscriptId,
@@ -226,6 +270,34 @@ export function WorkbenchHost({
     if (typeof window !== "undefined") {
       window.location.hash = formatWorkbenchHash(workbenchId, handoff);
     }
+  }
+}
+
+function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
+  switch (workbenchId) {
+    case "screening":
+      return "围绕来稿接收、初筛判断与编辑移交，保持首个工作节点清晰可控。";
+    case "editing":
+      return "聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。";
+    case "proofreading":
+      return "将问题清单、终稿确认与发布前检查收束在同一终审工作面。";
+    case "knowledge-review":
+      return "把待审知识、证据视图与决策动作收进一个稳定的审核桌面。";
+    case "learning-review":
+      return "让学习候选、审核通过与知识回写之间的桥接路线更加顺手。";
+    case "admin-console":
+      return "管理模板、模型与运行时治理资产，同时保持治理区视觉安静。";
+    case "template-governance":
+      return "把家族、期刊模板、规则作者台与知识绑定控制在同一个治理界面。";
+    case "evaluation-workbench":
+      return "用只读评测视图观察差异、历史窗口与证据结论，不打断主工作线。";
+    case "harness-datasets":
+      return "在受控管理区内处理金标数据集、发布版本与本地导出路径。";
+    case "system-settings":
+      return "系统级设置保持在独立管理位，避免干扰四条核心工作线。";
+    case "submission":
+    default:
+      return "从统一壳层进入个人稿件与后续工作流，保持入口与后续线路一致。";
   }
 }
 
