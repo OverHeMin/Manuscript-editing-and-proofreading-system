@@ -29,11 +29,25 @@ export type KnowledgeSourceType =
 
 export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
 
+export interface KnowledgeProjectionContextRecord {
+  module: ManuscriptModule;
+  manuscript_type: ManuscriptType;
+  template_family_id: string;
+  journal_template_id?: string;
+  journal_key?: string;
+  rule_object: string;
+  standard_example?: string;
+  incorrect_example?: string;
+  not_applicable_boundary?: string;
+  evidence_summary?: string;
+}
+
 export interface KnowledgeProjectionSourceRecord {
   source_kind: "editorial_rule_projection";
   rule_set_id: string;
   rule_id: string;
   projection_kind: KnowledgeProjectionKind;
+  projection_context?: KnowledgeProjectionContextRecord;
 }
 
 export interface KnowledgeRoutingRecord {

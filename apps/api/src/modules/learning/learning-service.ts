@@ -6,6 +6,9 @@ import {
   DocumentAssetService,
   ManuscriptNotFoundError,
 } from "../assets/document-asset-service.ts";
+import {
+  EditorialRuleCandidateExtractionService,
+} from "../editorial-rules/editorial-rule-candidate-extraction-service.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import {
   createDirectWriteTransactionManager,
@@ -70,13 +73,57 @@ export interface AttachEvaluationGovernedSourceInput {
   sourceAssetId: string;
 }
 
+export interface AttachReviewedSnapshotGovernedSourceInput {
+  candidateId: string;
+  sourceKind: "reviewed_case_snapshot";
+  reviewedCaseSnapshotId: string;
+  sourceAssetId?: string;
+}
+
 export type AttachLearningGovernedSourceInput =
   | AttachGovernedSourceInput
-  | AttachEvaluationGovernedSourceInput;
+  | AttachEvaluationGovernedSourceInput
+  | AttachReviewedSnapshotGovernedSourceInput;
 
 export type CreateGovernedLearningCandidateSourceInput =
   | Omit<AttachGovernedSourceInput, "candidateId">
-  | Omit<AttachEvaluationGovernedSourceInput, "candidateId">;
+  | Omit<AttachEvaluationGovernedSourceInput, "candidateId">
+  | Omit<AttachReviewedSnapshotGovernedSourceInput, "candidateId">;
+
+export interface ExtractReviewedSnapshotRuleCandidateInput {
+  source: {
+    kind: "reviewed_case_snapshot";
+    reviewedCaseSnapshotId: string;
+    beforeFragment: string;
+    afterFragment: string;
+    evidenceSummary: string;
+  };
+  requestedBy: string;
+  deidentificationPassed: boolean;
+  suggestedTemplateFamilyId?: string;
+  suggestedJournalTemplateId?: string;
+}
+
+export interface ExtractFeedbackRuleCandidateInput {
+  source: {
+    kind: "human_feedback";
+    reviewedCaseSnapshotId: string;
+    executionSnapshotId: string;
+    feedbackRecordId: string;
+    sourceAssetId: string;
+    beforeFragment: string;
+    afterFragment: string;
+    evidenceSummary: string;
+  };
+  requestedBy: string;
+  deidentificationPassed: boolean;
+  suggestedTemplateFamilyId?: string;
+  suggestedJournalTemplateId?: string;
+}
+
+export type ExtractRuleCandidateInput =
+  | ExtractReviewedSnapshotRuleCandidateInput
+  | ExtractFeedbackRuleCandidateInput;
 
 export interface CreateGovernedLearningCandidateInput
   extends CreateLearningCandidateInput {
@@ -99,6 +146,7 @@ export interface LearningServiceOptions {
   candidateRepository: LearningCandidateRepository;
   documentAssetService: DocumentAssetService;
   feedbackGovernanceService: LearningFeedbackGovernanceService;
+  candidateExtractionService?: EditorialRuleCandidateExtractionService;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<LearningWriteContext>;
   createId?: () => string;
@@ -132,6 +180,13 @@ export class LearningSnapshotDeidentificationRequiredError extends Error {
       "Reviewed case snapshot creation requires a de-identification pass.",
     );
     this.name = "LearningSnapshotDeidentificationRequiredError";
+  }
+}
+
+export class LearningCandidateEvidenceRequiredError extends Error {
+  constructor() {
+    super("Rule candidate extraction requires a non-empty evidence summary.");
+    this.name = "LearningCandidateEvidenceRequiredError";
   }
 }
 
@@ -179,6 +234,7 @@ export class LearningService {
   private readonly candidateRepository: LearningCandidateRepository;
   private readonly documentAssetService: DocumentAssetService;
   private readonly feedbackGovernanceService: LearningFeedbackGovernanceService;
+  private readonly candidateExtractionService: EditorialRuleCandidateExtractionService;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<LearningWriteContext>;
   private readonly createId: () => string;
@@ -191,6 +247,9 @@ export class LearningService {
     this.candidateRepository = options.candidateRepository;
     this.documentAssetService = options.documentAssetService;
     this.feedbackGovernanceService = options.feedbackGovernanceService;
+    this.candidateExtractionService =
+      options.candidateExtractionService ??
+      new EditorialRuleCandidateExtractionService();
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -314,6 +373,77 @@ export class LearningService {
     return candidate;
   }
 
+  async extractRuleCandidate(
+    input: ExtractRuleCandidateInput,
+  ): Promise<LearningCandidateRecord> {
+    if (!input.deidentificationPassed) {
+      throw new LearningDeidentificationRequiredError();
+    }
+
+    const reviewedSnapshot = await this.snapshotRepository.findById(
+      input.source.reviewedCaseSnapshotId,
+    );
+    if (!reviewedSnapshot) {
+      throw new ReviewedCaseSnapshotNotFoundError(
+        input.source.reviewedCaseSnapshotId,
+      );
+    }
+
+    if (!reviewedSnapshot.deidentification_passed) {
+      throw new LearningDeidentificationRequiredError();
+    }
+
+    const evidenceSummary = input.source.evidenceSummary.trim();
+    if (!evidenceSummary) {
+      throw new LearningCandidateEvidenceRequiredError();
+    }
+
+    const extractedCandidate = this.candidateExtractionService.extract({
+      sourceKind: input.source.kind,
+      module: reviewedSnapshot.module,
+      manuscriptType: reviewedSnapshot.manuscript_type,
+      beforeFragment: input.source.beforeFragment,
+      afterFragment: input.source.afterFragment,
+      evidenceSummary,
+    });
+
+    const candidate = await this.createLearningCandidate({
+      snapshotId: reviewedSnapshot.id,
+      type: "rule_candidate",
+      title: extractedCandidate.title,
+      proposalText: extractedCandidate.proposalText,
+      requestedBy: input.requestedBy,
+      deidentificationPassed: true,
+      candidatePayload: extractedCandidate.candidatePayload,
+      suggestedRuleObject: extractedCandidate.suggestedRuleObject,
+      suggestedTemplateFamilyId: input.suggestedTemplateFamilyId,
+      suggestedJournalTemplateId: input.suggestedJournalTemplateId,
+    });
+
+    await this.attachGovernedSource(
+      input.source.kind === "human_feedback"
+        ? {
+            candidateId: candidate.id,
+            snapshotId: input.source.executionSnapshotId,
+            feedbackRecordId: input.source.feedbackRecordId,
+            sourceAssetId: input.source.sourceAssetId,
+          }
+        : {
+            candidateId: candidate.id,
+            sourceKind: "reviewed_case_snapshot",
+            reviewedCaseSnapshotId: reviewedSnapshot.id,
+            sourceAssetId: reviewedSnapshot.snapshot_asset_id,
+          },
+    );
+
+    const updatedCandidate = await this.candidateRepository.findById(candidate.id);
+    if (!updatedCandidate) {
+      throw new LearningCandidateNotFoundError(candidate.id);
+    }
+
+    return updatedCandidate;
+  }
+
   async attachGovernedSource(
     input: AttachLearningGovernedSourceInput,
   ): Promise<LearningCandidateSourceLinkRecord> {
@@ -333,12 +463,19 @@ export class LearningService {
               evidencePackId: input.evidencePackId,
               sourceAssetId: input.sourceAssetId,
             }
-          : {
-              learningCandidateId: input.candidateId,
-              snapshotId: input.snapshotId,
-              feedbackRecordId: input.feedbackRecordId,
-              sourceAssetId: input.sourceAssetId,
-            },
+          : "sourceKind" in input && input.sourceKind === "reviewed_case_snapshot"
+            ? {
+                sourceKind: "reviewed_case_snapshot",
+                learningCandidateId: input.candidateId,
+                reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+                sourceAssetId: input.sourceAssetId,
+              }
+            : {
+                learningCandidateId: input.candidateId,
+                snapshotId: input.snapshotId,
+                feedbackRecordId: input.feedbackRecordId,
+                sourceAssetId: input.sourceAssetId,
+              },
       );
     const nextStatus =
       candidate.status === "draft" ? "pending_review" : candidate.status;

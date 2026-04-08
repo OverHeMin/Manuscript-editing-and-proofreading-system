@@ -27,7 +27,7 @@ function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
       ? [...record.template_bindings]
       : undefined,
     projection_source: record.projection_source
-      ? { ...record.projection_source }
+      ? JSON.parse(JSON.stringify(record.projection_source))
       : undefined,
   };
 }

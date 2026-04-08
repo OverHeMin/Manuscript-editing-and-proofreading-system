@@ -18,7 +18,8 @@ export type LearningCandidateStatus =
   | "archived";
 export type LearningCandidateProvenanceKind =
   | "human_feedback"
-  | "evaluation_experiment";
+  | "evaluation_experiment"
+  | "reviewed_case_snapshot";
 
 export interface ReviewedCaseSnapshotRecord {
   id: string;

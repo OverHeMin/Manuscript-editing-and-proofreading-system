@@ -213,7 +213,7 @@ function buildProjectedKnowledgeRecord(input: {
     knowledge_kind: input.projectionKind,
     status: "approved",
     routing: {
-      module_scope: "any",
+      module_scope: input.ruleSet.module,
       manuscript_types: [input.manuscriptType],
       sections: readStringArray(input.rule.scope.sections),
     },
@@ -230,7 +230,43 @@ function buildProjectedKnowledgeRecord(input: {
       rule_set_id: input.ruleSet.id,
       rule_id: input.rule.id,
       projection_kind: input.projectionKind,
+      projection_context: buildProjectionContext(
+        input.ruleSet,
+        input.rule,
+        input.manuscriptType,
+        input.journalTemplate,
+      ),
     },
+  };
+}
+
+function buildProjectionContext(
+  ruleSet: EditorialRuleSetRecord,
+  rule: EditorialRuleRecord,
+  manuscriptType: ManuscriptType,
+  journalTemplate?: {
+    journal_key: string;
+    journal_name: string;
+  },
+): NonNullable<KnowledgeRecord["projection_source"]>["projection_context"] {
+  return {
+    module: ruleSet.module,
+    manuscript_type: manuscriptType,
+    template_family_id: ruleSet.template_family_id,
+    ...(ruleSet.journal_template_id
+      ? { journal_template_id: ruleSet.journal_template_id }
+      : {}),
+    ...(journalTemplate ? { journal_key: journalTemplate.journal_key } : {}),
+    rule_object: rule.rule_object,
+    standard_example:
+      rule.projection_payload?.standard_example ?? resolveAfterText(rule),
+    incorrect_example:
+      rule.projection_payload?.incorrect_example ?? resolveBeforeText(rule),
+    not_applicable_boundary:
+      rule.explanation_payload?.not_applies_when?.join("; ") ?? "",
+    ...(rule.explanation_payload?.rationale
+      ? { evidence_summary: rule.explanation_payload.rationale }
+      : {}),
   };
 }
 

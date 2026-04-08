@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
+
+register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
+
+const {
   TemplateGovernanceWorkbenchPage,
-} from "../src/features/template-governance/template-governance-workbench-page.tsx";
+} = await import("../src/features/template-governance/template-governance-workbench-page.tsx");
 
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
 const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 
-test("template governance workbench page renders journal-aware rule authoring navigation, form, and preview panels", () => {
+test("template governance workbench page renders the rule-center authoring shell and journal-aware rule authoring panels", () => {
   const Page = TemplateGovernanceWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -174,14 +178,22 @@ test("template governance workbench page renders journal-aware rule authoring na
     />,
   );
 
-  assert.match(markup, /Governance Management Zone/);
-  assert.match(markup, /管理区/);
+  assert.match(markup, /Rule Center/);
+  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(markup, /workbench-core-strip is-secondary/);
+  assert.match(markup, /\u89c4\u5219\u5f55\u5165\u5de5\u4f5c\u53f0/u);
+  assert.match(markup, /\u89c4\u5219\u5b66\u4e60\u5de5\u4f5c\u53f0/u);
   assert.match(markup, /Rule Authoring Navigator/);
   assert.match(markup, /Rule Authoring Form/);
   assert.match(markup, /Rule Authoring Preview/);
+  assert.match(markup, /Rule Ledger/);
+  assert.match(markup, /Rule Explainability/);
   assert.match(markup, /Journal Template Profiles/);
   assert.match(markup, /AI Instruction Template/);
+  assert.match(markup, /Statement/);
+  assert.match(markup, /Title/);
+  assert.match(markup, /Keyword/);
+  assert.match(markup, /Journal Column/);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });

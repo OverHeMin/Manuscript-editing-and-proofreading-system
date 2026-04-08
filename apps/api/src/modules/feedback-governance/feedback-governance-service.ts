@@ -62,9 +62,17 @@ export interface LinkLearningCandidateEvaluationSourceInput {
   sourceAssetId: string;
 }
 
+export interface LinkLearningCandidateReviewedSnapshotSourceInput {
+  sourceKind: "reviewed_case_snapshot";
+  learningCandidateId: string;
+  reviewedCaseSnapshotId: string;
+  sourceAssetId?: string;
+}
+
 export type LinkLearningCandidateSourceInput =
   | LinkLearningCandidateHumanSourceInput
-  | LinkLearningCandidateEvaluationSourceInput;
+  | LinkLearningCandidateEvaluationSourceInput
+  | LinkLearningCandidateReviewedSnapshotSourceInput;
 
 export class ModuleExecutionSnapshotNotFoundError extends Error {
   constructor(snapshotId: string) {
@@ -204,6 +212,29 @@ export class FeedbackGovernanceService {
           feedback_record_id: undefined,
           evaluation_run_id: input.evaluationRunId,
           evidence_pack_id: input.evidencePackId,
+          source_asset_id: sourceAsset.id,
+          created_at: this.now().toISOString(),
+        };
+
+        await repository.saveLearningCandidateSourceLink(link);
+        return link;
+      }
+
+      if ("sourceKind" in input && input.sourceKind === "reviewed_case_snapshot") {
+        const reviewedSnapshot = await this.requireReviewedCaseSnapshot(
+          input.reviewedCaseSnapshotId,
+        );
+        const sourceAsset = await this.requireSourceAsset(
+          input.sourceAssetId ?? reviewedSnapshot.snapshot_asset_id,
+          reviewedSnapshot.manuscript_id,
+        );
+
+        const link: LearningCandidateSourceLinkRecord = {
+          id: this.createId(),
+          learning_candidate_id: input.learningCandidateId,
+          source_kind: "reviewed_case_snapshot",
+          snapshot_kind: "reviewed_case_snapshot",
+          snapshot_id: input.reviewedCaseSnapshotId,
           source_asset_id: sourceAsset.id,
           created_at: this.now().toISOString(),
         };

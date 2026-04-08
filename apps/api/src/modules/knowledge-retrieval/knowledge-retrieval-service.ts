@@ -91,6 +91,14 @@ export interface RecordKnowledgeRetrievalQualityRunInput {
   createdBy: string;
 }
 
+export interface RankKnowledgeRetrievalIndexEntriesInput {
+  module: KnowledgeRetrievalIndexEntryRecord["module"];
+  manuscriptType?: KnowledgeRetrievalIndexEntryRecord["manuscript_types"][number];
+  templateFamilyId?: string;
+  journalKey?: string;
+  ruleObject?: string;
+}
+
 interface KnowledgeRetrievalWriteContext {
   repository: KnowledgeRetrievalRepository;
 }
@@ -222,6 +230,58 @@ export class KnowledgeRetrievalService {
     await this.repository.saveRetrievalQualityRun(record);
     return cloneQualityRun(record);
   }
+
+  async rankIndexEntriesForContext(
+    input: RankKnowledgeRetrievalIndexEntriesInput,
+  ): Promise<KnowledgeRetrievalIndexEntryRecord[]> {
+    const entries = await this.repository.listIndexEntriesByModule(input.module);
+
+    return entries
+      .map((entry) => ({
+        entry,
+        score: scoreIndexEntryForContext(entry, input),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.entry.updated_at.localeCompare(right.entry.updated_at) ||
+          left.entry.id.localeCompare(right.entry.id),
+      )
+      .map(({ entry }) => cloneIndexEntry(entry));
+  }
+}
+
+function scoreIndexEntryForContext(
+  entry: KnowledgeRetrievalIndexEntryRecord,
+  input: RankKnowledgeRetrievalIndexEntriesInput,
+): number {
+  const metadata = entry.metadata ?? {};
+  let score = 0;
+
+  if (
+    input.manuscriptType &&
+    entry.manuscript_types.includes(input.manuscriptType)
+  ) {
+    score += 4;
+  }
+
+  if (input.templateFamilyId && entry.template_family_id === input.templateFamilyId) {
+    score += 4;
+  }
+
+  if (metadata.source_kind === "editorial_rule_projection") {
+    score += 3;
+  }
+
+  if (input.journalKey && metadata.journal_key === input.journalKey) {
+    score += 4;
+  }
+
+  if (input.ruleObject && metadata.rule_object === input.ruleObject) {
+    score += 5;
+  }
+
+  return score;
 }
 
 function createKnowledgeRetrievalTransactionManager(

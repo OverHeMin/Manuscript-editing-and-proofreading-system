@@ -295,3 +295,56 @@ test("knowledge retrieval service keeps snapshots and quality runs additive", as
     ],
   );
 });
+
+test("knowledge retrieval ranking prefers projected rule entries that match template, journal, and rule object context", async () => {
+  const { service } = createKnowledgeRetrievalHarness();
+
+  await service.upsertIndexEntry({
+    knowledgeItemId: "knowledge-manual-1",
+    module: "editing",
+    manuscriptTypes: ["clinical_study"],
+    templateFamilyId: "family-1",
+    title: "Generic editing guidance",
+    sourceText: "General editing guidance for manuscripts.",
+    sourceHash: "sha256-generic-guidance",
+    embeddingProvider: "local-e5",
+    embeddingModel: "e5-small-v2",
+    embeddingVector: [0.1, 0.2, 0.3],
+    metadata: {
+      source_kind: "manual_knowledge",
+    },
+  });
+
+  await service.upsertIndexEntry({
+    knowledgeItemId: "knowledge-rule-1",
+    module: "editing",
+    manuscriptTypes: ["clinical_study"],
+    templateFamilyId: "family-1",
+    title: "Abstract heading rule projection",
+    sourceText: "摘要 目的 should normalize to （摘要　目的） for Journal Alpha.",
+    sourceHash: "sha256-abstract-rule-projection",
+    embeddingProvider: "local-e5",
+    embeddingModel: "e5-small-v2",
+    embeddingVector: [0.4, 0.5, 0.6],
+    metadata: {
+      source_kind: "editorial_rule_projection",
+      journal_key: "journal-alpha",
+      rule_object: "abstract",
+      standard_example: "（摘要　目的）",
+      incorrect_example: "摘要 目的",
+    },
+  });
+
+  const rankedEntries = await service.rankIndexEntriesForContext({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    journalKey: "journal-alpha",
+    ruleObject: "abstract",
+  });
+
+  assert.deepEqual(
+    rankedEntries.map((entry) => entry.knowledge_item_id),
+    ["knowledge-rule-1", "knowledge-manual-1"],
+  );
+});

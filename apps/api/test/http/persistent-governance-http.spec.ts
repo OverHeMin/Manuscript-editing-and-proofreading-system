@@ -2139,6 +2139,166 @@ test("persistent governance runtime keeps agent-tooling governance records acros
   });
 });
 
+test("persistent governance runtime extracts reviewed snapshot diffs into pending rule candidates", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessDatasetHandoffData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentReviewer(firstServer.baseUrl);
+        const extractResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/candidates/extract`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              deidentificationPassed: true,
+              source: {
+                kind: "reviewed_case_snapshot",
+                reviewedCaseSnapshotId:
+                  persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+                beforeFragment: "摘要 目的",
+                afterFragment: "（摘要　目的）",
+                evidenceSummary:
+                  "Persistent reviewed snapshot shows abstract heading normalization.",
+              },
+            }),
+          },
+        );
+        const extractedCandidate = (await extractResponse.json()) as {
+          id: string;
+          status: string;
+          type: string;
+          governed_provenance_kind?: string;
+          suggested_rule_object?: string;
+          candidate_payload?: {
+            action?: {
+              kind?: string;
+              to?: string;
+            };
+          };
+        };
+
+        assert.equal(
+          extractResponse.status,
+          201,
+          JSON.stringify(extractedCandidate, null, 2),
+        );
+        assert.equal(extractedCandidate.type, "rule_candidate");
+        assert.equal(extractedCandidate.status, "pending_review");
+        assert.equal(
+          extractedCandidate.governed_provenance_kind,
+          "reviewed_case_snapshot",
+        );
+        assert.equal(extractedCandidate.suggested_rule_object, "abstract");
+        assert.equal(
+          extractedCandidate.candidate_payload?.action?.kind,
+          "replace_heading",
+        );
+        assert.equal(
+          extractedCandidate.candidate_payload?.action?.to,
+          "（摘要　目的）",
+        );
+
+        const reviewQueueResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/candidates/review-queue`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const reviewQueue = (await reviewQueueResponse.json()) as Array<{
+          id: string;
+          status: string;
+          suggested_rule_object?: string;
+        }>;
+
+        assert.equal(reviewQueueResponse.status, 200);
+        assert.ok(
+          reviewQueue.some((candidate) =>
+            candidate.id === extractedCandidate.id &&
+            candidate.status === "pending_review" &&
+            candidate.suggested_rule_object === "abstract"),
+          "Expected extracted reviewed-snapshot candidate to appear in the pending review queue.",
+        );
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime rejects rule candidate extraction without evidence summary", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessDatasetHandoffData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentReviewer(firstServer.baseUrl);
+        const extractResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/learning/candidates/extract`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              deidentificationPassed: true,
+              source: {
+                kind: "reviewed_case_snapshot",
+                reviewedCaseSnapshotId:
+                  persistentHarnessHandoffFixtureIds.reviewedCaseSnapshotId,
+                beforeFragment: "摘要 目的",
+                afterFragment: "（摘要　目的）",
+                evidenceSummary: "   ",
+              },
+            }),
+          },
+        );
+        const body = (await extractResponse.json()) as {
+          error?: string;
+          message?: string;
+        };
+
+        assert.equal(extractResponse.status, 400);
+        assert.equal(body.error, "invalid_request");
+        assert.match(body.message ?? "", /evidence/i);
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 const persistentHarnessHandoffFixtureIds = {
   manuscriptId: "33333333-3333-4333-8333-333333333333",
   originalAssetId: "44444444-4444-4444-8444-444444444444",

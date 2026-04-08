@@ -96,11 +96,12 @@ export function buildWorkbenchNavigationGroups(
     return [];
   }
 
-  const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
+  const navigationEntries = filterNavigationEntries(entries);
+  const entryMap = new Map(navigationEntries.map((entry) => [entry.id, entry]));
   const usedEntryIds = new Set<WorkbenchId>();
   const groups: WorkbenchNavigationGroup[] = [];
 
-  if (entries.every((entry) => entry.id === "submission")) {
+  if (navigationEntries.every((entry) => entry.id === "submission")) {
     const generalItems = buildNavigationItems(
       entryMap,
       ["submission"],
@@ -169,7 +170,7 @@ export function buildWorkbenchNavigationGroups(
     });
   }
 
-  const remainingSupportingItems = entries
+  const remainingSupportingItems = navigationEntries
     .filter((entry) => !usedEntryIds.has(entry.id) && entry.placement !== "admin")
     .map((entry) => buildNavigationItem(entry, "supporting"));
   if (remainingSupportingItems.length > 0) {
@@ -182,7 +183,7 @@ export function buildWorkbenchNavigationGroups(
     });
   }
 
-  const remainingGovernanceItems = entries
+  const remainingGovernanceItems = navigationEntries
     .filter((entry) => !usedEntryIds.has(entry.id) && entry.placement === "admin")
     .map((entry) => buildNavigationItem(entry, "secondary"));
   if (remainingGovernanceItems.length > 0) {
@@ -196,6 +197,16 @@ export function buildWorkbenchNavigationGroups(
   }
 
   return groups;
+}
+
+function filterNavigationEntries(entries: readonly WorkbenchEntry[]): WorkbenchEntry[] {
+  const shouldHideLearningReview = entries.some(
+    (entry) => entry.id === "template-governance",
+  );
+
+  return shouldHideLearningReview
+    ? entries.filter((entry) => entry.id !== "learning-review")
+    : [...entries];
 }
 
 function buildNavigationItems(
@@ -233,6 +244,10 @@ function resolveNavigationItemLabel(entry: WorkbenchEntry): string {
     return "知识库";
   }
 
+  if (entry.id === "template-governance") {
+    return "规则中心";
+  }
+
   return entry.navLabel;
 }
 
@@ -257,7 +272,7 @@ function describeWorkbenchEntry(workbenchId: WorkbenchId): string {
     case "harness-datasets":
       return "金标准数据与版本导出";
     case "template-governance":
-      return "模板族与期刊模板配置";
+      return "规则录入与规则学习的统一入口";
     case "system-settings":
       return "系统级参数与访问控制";
     default:

@@ -172,3 +172,66 @@ export function resolveLearningReviewActiveDraftWritebackId(
 
   return writebacks.find((writeback) => writeback.status === "draft")?.id ?? null;
 }
+
+export function resolveLearningCandidatePayload(
+  candidate: LearningCandidateViewModel | null,
+): Record<string, unknown> | null {
+  if (!candidate?.candidate_payload) {
+    return null;
+  }
+
+  return asRecord(candidate.candidate_payload) ?? null;
+}
+
+export function resolveLearningCandidateBeforeFragment(
+  candidate: LearningCandidateViewModel | null,
+): string | null {
+  return resolveLearningCandidatePayloadText(candidate, "before_fragment");
+}
+
+export function resolveLearningCandidateAfterFragment(
+  candidate: LearningCandidateViewModel | null,
+): string | null {
+  return resolveLearningCandidatePayloadText(candidate, "after_fragment");
+}
+
+export function resolveLearningCandidateEvidenceSummary(
+  candidate: LearningCandidateViewModel | null,
+): string | null {
+  return resolveLearningCandidatePayloadText(candidate, "evidence_summary");
+}
+
+export function resolveLearningCandidateExtractionRationale(
+  candidate: LearningCandidateViewModel | null,
+): string | null {
+  return (
+    resolveLearningCandidatePayloadText(candidate, "extraction_rationale") ??
+    candidate?.proposal_text?.trim() ??
+    null
+  );
+}
+
+export function resolveLearningCandidateSelectorSummary(
+  candidate: LearningCandidateViewModel | null,
+): string {
+  const payload = resolveLearningCandidatePayload(candidate);
+  const selector = asRecord(payload?.selector);
+
+  return selector ? JSON.stringify(selector, null, 2) : "No selector proposed yet.";
+}
+
+function resolveLearningCandidatePayloadText(
+  candidate: LearningCandidateViewModel | null,
+  key: string,
+): string | null {
+  const payload = resolveLearningCandidatePayload(candidate);
+  const value = payload?.[key];
+
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}

@@ -99,7 +99,7 @@ test("template governance supports journal-scoped abstract and table rule author
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Template Governance" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "规则中心" })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Manuscript Type", exact: true }).selectOption(
     "case_report",

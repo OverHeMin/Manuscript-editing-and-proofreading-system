@@ -451,4 +451,17 @@ test("generated editorial-rule projections remain traceable and refresh in place
   );
   assert.equal(projectedRuleKnowledge?.projection_source?.rule_set_id, "rule-set-1");
   assert.equal(projectedRuleKnowledge?.projection_source?.rule_id, "rule-1");
+  assert.equal(projectedRuleKnowledge?.routing.module_scope, "editing");
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      rule_object: "generic",
+      standard_example: "（摘要　目的）",
+      incorrect_example: "摘要 目的",
+      not_applicable_boundary: "",
+    },
+  );
 });

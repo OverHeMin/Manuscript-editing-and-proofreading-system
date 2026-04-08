@@ -154,6 +154,7 @@ import {
   createLearningApi,
   InMemoryLearningCandidateRepository,
   InMemoryReviewedCaseSnapshotRepository,
+  LearningCandidateEvidenceRequiredError,
   LearningCandidateGovernedProvenanceRequiredError,
   LearningCandidateNotFoundError,
   LearningDeidentificationRequiredError,
@@ -164,6 +165,7 @@ import {
   type CreateGovernedLearningCandidateInput,
   type CreateLearningCandidateInput,
   type CreateReviewedCaseSnapshotInput,
+  type ExtractRuleCandidateInput,
   type LearningCandidateRecord,
   type ReviewedCaseSnapshotRecord,
 } from "../modules/learning/index.ts";
@@ -757,6 +759,9 @@ type HttpRouteMatch =
     }
   | {
       route: "learning-create-candidate";
+    }
+  | {
+      route: "learning-extract-candidate";
     }
   | {
       route: "learning-create-governed-candidate";
@@ -3356,6 +3361,17 @@ async function handleRoute(
         },
       );
     }
+    case "learning-extract-candidate": {
+      const session = await requirePermission(req, runtime, "learning.review");
+      const input = {
+        ...((await readJsonBody(req)) as Omit<
+          ExtractRuleCandidateInput,
+          "requestedBy"
+        >),
+        requestedBy: session.user.id,
+      } as ExtractRuleCandidateInput;
+      return runtime.learningApi.extractRuleCandidate(input);
+    }
     case "learning-create-governed-candidate": {
       const session = await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.createGovernedLearningCandidate(
@@ -4705,6 +4721,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "learning-create-candidate" };
   }
 
+  if (method === "POST" && path === "/api/v1/learning/candidates/extract") {
+    return { route: "learning-extract-candidate" };
+  }
+
   if (method === "POST" && path === "/api/v1/learning/candidates/governed") {
     return { route: "learning-create-governed-candidate" };
   }
@@ -5011,6 +5031,7 @@ function mapErrorToHttpResponse(
   if (
     error instanceof LearningHumanFinalAssetRequiredError ||
     error instanceof LearningDeidentificationRequiredError ||
+    error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||

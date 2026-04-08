@@ -751,6 +751,7 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0026_model_provider_domestic.sql",
       "0027_medical_editorial_rule_authoring_workbench.sql",
       "0028_medical_rule_library_v2_foundations.sql",
+      "0029_learning_reviewed_snapshot_source_kind.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );

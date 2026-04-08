@@ -227,6 +227,21 @@ test("projected rule knowledge records journal metadata and object metadata when
     projectedRuleKnowledge?.canonical_text ?? "",
     /standard example/i,
   );
+  assert.equal(projectedRuleKnowledge?.routing.module_scope, "editing");
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      journal_template_id: "journal-template-1",
+      journal_key: "journal-alpha",
+      rule_object: "abstract",
+      standard_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
+      not_applicable_boundary: "",
+    },
+  );
 });
 
 test("projection uses explainability and projection payload text when available", async () => {
@@ -246,6 +261,20 @@ test("projection uses explainability and projection payload text when available"
   assert.match(
     projectedRuleKnowledge?.canonical_text ?? "",
     /Incorrect example/i,
+  );
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      rule_object: "abstract",
+      standard_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
+      not_applicable_boundary: "",
+      evidence_summary:
+        "Abstract headings should use full-width punctuation and spacing in the normalized journal style.",
+    },
   );
 });
 

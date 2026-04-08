@@ -19,6 +19,7 @@ import {
   isManuscriptWorkbenchId,
   resolveWorkbenchLocation,
   resolveWorkbenchRenderKind,
+  type RuleCenterMode,
 } from "./workbench-routing.ts";
 import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
 import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
@@ -43,6 +44,10 @@ export function WorkbenchHost({
     resolveInitialWorkbenchRoute(session.defaultWorkbench, visibleEntries),
   );
   const activeWorkbenchId = routeState.activeWorkbenchId;
+  const activeNavigationWorkbenchId = resolveNavigationWorkbenchId(
+    activeWorkbenchId,
+    visibleEntries,
+  );
   const accessibleManuscriptWorkbenchModes = visibleEntries
     .map((entry) => entry.id)
     .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
@@ -127,15 +132,20 @@ export function WorkbenchHost({
   }, []);
 
   const activeEntry =
-    visibleEntries.find((entry) => entry.id === activeWorkbenchId) ?? null;
+    visibleEntries.find((entry) => entry.id === activeNavigationWorkbenchId) ??
+    visibleEntries.find((entry) => entry.id === activeWorkbenchId) ??
+    null;
   const navigationGroups = buildWorkbenchNavigationGroups(visibleEntries);
   const activeNavigationGroup =
     navigationGroups.find((group) =>
-      group.items.some((item) => item.id === activeWorkbenchId),
+      group.items.some((item) => item.id === activeNavigationWorkbenchId),
     ) ?? null;
-  const activeWorkbenchDescription = describeWorkbenchFocus(activeWorkbenchId);
+  const activeWorkbenchDescription = describeWorkbenchFocus(activeNavigationWorkbenchId);
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
   const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
+  const hasRuleCenter = visibleEntries.some(
+    (entry) => entry.id === "template-governance",
+  );
 
   return (
     <main className="app-shell">
@@ -168,7 +178,7 @@ export function WorkbenchHost({
             <h2>工作区导航</h2>
             <WorkbenchNavigationMenu
               groups={navigationGroups}
-              activeWorkbenchId={activeWorkbenchId}
+              activeWorkbenchId={activeNavigationWorkbenchId}
               onNavigate={(workbenchId) => navigateToWorkbench(workbenchId)}
             />
           </aside>
@@ -214,7 +224,14 @@ export function WorkbenchHost({
           />
         );
       case "learning-review":
-        return (
+        return hasRuleCenter && session.role === "admin" ? (
+          <TemplateGovernanceWorkbenchPage
+            actorRole={session.role}
+            initialMode="learning"
+            prefilledManuscriptId={routeState.manuscriptId}
+            prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+          />
+        ) : (
           <LearningReviewWorkbenchPage
             actorRole={session.role}
             prefilledManuscriptId={routeState.manuscriptId}
@@ -232,14 +249,19 @@ export function WorkbenchHost({
       case "harness-datasets":
         return <HarnessDatasetsWorkbenchPage />;
       case "template-governance":
-        return <TemplateGovernanceWorkbenchPage actorRole={session.role} />;
+        return (
+          <TemplateGovernanceWorkbenchPage
+            actorRole={session.role}
+            initialMode={routeState.ruleCenterMode ?? "authoring"}
+            prefilledManuscriptId={routeState.manuscriptId}
+            prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+          />
+        );
       case "placeholder":
         return (
           <article className="workbench-placeholder" role="status">
             <h2>{activeEntry?.navLabel ?? activeEntry?.label ?? "工作台"}</h2>
-            <p>
-              该工作区已在导航中开放，但当前阶段尚未接入对应的 Web 实现。
-            </p>
+            <p>该工作区已在导航中开放，但当前阶段尚未接入对应的 Web 实现。</p>
           </article>
         );
     }
@@ -252,6 +274,7 @@ export function WorkbenchHost({
       knowledgeItemId?: string;
       reviewedCaseSnapshotId?: string;
       sampleSetItemId?: string;
+      ruleCenterMode?: RuleCenterMode;
     },
   ) {
     if (isCompactNavigation) {
@@ -264,6 +287,7 @@ export function WorkbenchHost({
       knowledgeItemId: handoff?.knowledgeItemId,
       reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
       sampleSetItemId: handoff?.sampleSetItemId,
+      ruleCenterMode: handoff?.ruleCenterMode,
     });
 
     if (typeof window !== "undefined") {
@@ -287,7 +311,7 @@ function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
     case "admin-console":
       return "管理模板、模型与运行时治理资产，同时保持治理区视觉安静。";
     case "template-governance":
-      return "把家族、期刊模板、规则作者台与知识绑定控制在同一个治理界面。";
+      return "把规则录入、规则学习与模板上下文统一收进规则中心。";
     case "evaluation-workbench":
       return "用只读评测视图观察差异、历史窗口与证据结论，不打断主工作线。";
     case "harness-datasets":
@@ -321,6 +345,7 @@ function resolveInitialWorkbenchRoute(
   knowledgeItemId?: string;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
+  ruleCenterMode?: RuleCenterMode;
 } {
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
@@ -336,10 +361,25 @@ function resolveInitialWorkbenchRoute(
       knowledgeItemId: location.knowledgeItemId,
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
       sampleSetItemId: location.sampleSetItemId,
+      ruleCenterMode: location.ruleCenterMode,
     };
   }
 
   return {
     activeWorkbenchId: resolveInitialWorkbenchId(defaultWorkbench, visibleEntries),
   };
+}
+
+function resolveNavigationWorkbenchId(
+  activeWorkbenchId: WorkbenchId,
+  visibleEntries: readonly WorkbenchEntry[],
+): WorkbenchId {
+  if (
+    activeWorkbenchId === "learning-review" &&
+    visibleEntries.some((entry) => entry.id === "template-governance")
+  ) {
+    return "template-governance";
+  }
+
+  return activeWorkbenchId;
 }

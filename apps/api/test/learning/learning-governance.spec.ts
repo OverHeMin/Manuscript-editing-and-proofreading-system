@@ -80,6 +80,7 @@ function createLearningHarness(options?: {
     repository: feedbackGovernanceRepository,
     executionTrackingRepository,
     assetRepository,
+    reviewedCaseSnapshotRepository: snapshotRepository,
     createId: (() => {
       const ids = ["feedback-1", "link-1", "feedback-2", "link-2"];
       return () => {
@@ -498,6 +499,255 @@ test("learning candidates persist structured rule payloads and suggested editori
   assert.equal(candidate.body.suggested_rule_object, "abstract");
   assert.equal(candidate.body.suggested_template_family_id, "family-1");
   assert.equal(candidate.body.suggested_journal_template_id, "journal-template-1");
+});
+
+test("reviewed case snapshots can extract abstract normalization into a pending rule candidate", async () => {
+  const {
+    learningApi,
+    feedbackGovernanceService,
+    documentAssetService,
+    originalAsset,
+  } = await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const snapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+
+  const candidate = await learningApi.extractRuleCandidate({
+    source: {
+      kind: "reviewed_case_snapshot",
+      reviewedCaseSnapshotId: snapshot.body.id,
+      beforeFragment: BEFORE_HEADING,
+      afterFragment: AFTER_HEADING,
+      evidenceSummary: "Human-reviewed abstract heading normalization.",
+    },
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+    suggestedTemplateFamilyId: "family-1",
+    suggestedJournalTemplateId: "journal-template-1",
+  });
+
+  assert.equal(candidate.status, 201);
+  assert.equal(candidate.body.type, "rule_candidate");
+  assert.equal(candidate.body.status, "pending_review");
+  assert.equal(candidate.body.governed_provenance_kind, "reviewed_case_snapshot");
+  assert.equal(candidate.body.suggested_rule_object, "abstract");
+  assert.equal(candidate.body.suggested_template_family_id, "family-1");
+  assert.equal(candidate.body.suggested_journal_template_id, "journal-template-1");
+  assert.deepEqual(candidate.body.candidate_payload, {
+    extraction_kind: "reviewed_fragment_diff",
+    before_fragment: BEFORE_HEADING,
+    after_fragment: AFTER_HEADING,
+    evidence_summary: "Human-reviewed abstract heading normalization.",
+    scope: {
+      sections: ["abstract"],
+    },
+    selector: {
+      section_selector: "abstract",
+      label_selector: {
+        text: BEFORE_HEADING,
+      },
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: AFTER_HEADING,
+    },
+  });
+
+  const sourceLinks =
+    await feedbackGovernanceService.listLearningCandidateSourceLinksByCandidateId(
+      candidate.body.id,
+    );
+
+  assert.equal(sourceLinks.length, 1);
+  assert.equal(sourceLinks[0]?.learning_candidate_id, candidate.body.id);
+  assert.equal(sourceLinks[0]?.source_kind, "reviewed_case_snapshot");
+  assert.equal(sourceLinks[0]?.snapshot_kind, "reviewed_case_snapshot");
+  assert.equal(sourceLinks[0]?.snapshot_id, snapshot.body.id);
+  assert.equal(sourceLinks[0]?.source_asset_id, snapshot.body.snapshot_asset_id);
+});
+
+test("governed feedback extraction can create an inspect-first table rule candidate", async () => {
+  const {
+    learningApi,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    originalAsset,
+  } = await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const reviewedSnapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+
+  await seedGovernedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/editing/annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "annotated.docx",
+    parentAssetId: humanFinalAsset.id,
+    sourceModule: "editing",
+    sourceJobId: "job-1",
+  });
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    snapshotId: "execution-snapshot-1",
+    feedbackType: "manual_correction",
+    feedbackText: "Adjust the table to a three-line format and remove vertical rules.",
+    createdBy: "editor-1",
+  });
+
+  const candidate = await learningApi.extractRuleCandidate({
+    source: {
+      kind: "human_feedback",
+      reviewedCaseSnapshotId: reviewedSnapshot.body.id,
+      executionSnapshotId: "execution-snapshot-1",
+      feedbackRecordId: feedback.id,
+      sourceAssetId: sourceAsset.id,
+      beforeFragment: "表1 保留竖线并使用满网格边框。",
+      afterFragment: "表1 改为三线表，去除竖线，表注置于表下。",
+      evidenceSummary: "Human feedback confirmed the table must be normalized conservatively.",
+    },
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+    suggestedTemplateFamilyId: "family-1",
+  });
+
+  assert.equal(candidate.status, 201);
+  assert.equal(candidate.body.type, "rule_candidate");
+  assert.equal(candidate.body.status, "pending_review");
+  assert.equal(candidate.body.governed_provenance_kind, "human_feedback");
+  assert.equal(candidate.body.suggested_rule_object, "table");
+  assert.equal(candidate.body.suggested_template_family_id, "family-1");
+  assert.deepEqual(candidate.body.candidate_payload, {
+    extraction_kind: "feedback_fragment_diff",
+    before_fragment: "表1 保留竖线并使用满网格边框。",
+    after_fragment: "表1 改为三线表，去除竖线，表注置于表下。",
+    evidence_summary:
+      "Human feedback confirmed the table must be normalized conservatively.",
+    scope: {
+      sections: ["table"],
+    },
+    selector: {
+      object_kind: "table",
+    },
+    trigger: {
+      kind: "table_layout_mismatch",
+      signals: ["three_line_table", "remove_vertical_rules"],
+    },
+    action: {
+      kind: "inspect_table_format",
+      require_three_line_table: true,
+      forbid_vertical_rules: true,
+      place_table_notes_below: true,
+    },
+    execution_posture: "inspect_only",
+  });
+});
+
+test("rule candidate extraction rejects when evidence prerequisites are missing", async () => {
+  const { learningApi, documentAssetService, originalAsset } =
+    await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const snapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+
+  await assert.rejects(
+    () =>
+      learningApi.extractRuleCandidate({
+        source: {
+          kind: "reviewed_case_snapshot",
+          reviewedCaseSnapshotId: snapshot.body.id,
+          beforeFragment: BEFORE_HEADING,
+          afterFragment: AFTER_HEADING,
+          evidenceSummary: "   ",
+        },
+        requestedBy: "editor-1",
+        deidentificationPassed: true,
+      }),
+    /evidence/i,
+  );
+
+  await assert.rejects(
+    () =>
+      learningApi.extractRuleCandidate({
+        source: {
+          kind: "reviewed_case_snapshot",
+          reviewedCaseSnapshotId: snapshot.body.id,
+          beforeFragment: BEFORE_HEADING,
+          afterFragment: AFTER_HEADING,
+          evidenceSummary: "Human-reviewed abstract heading normalization.",
+        },
+        requestedBy: "editor-1",
+        deidentificationPassed: false,
+      }),
+    LearningDeidentificationRequiredError,
+  );
 });
 
 test("reviewed case snapshot creation rolls back the snapshot asset on persistence failure", async () => {

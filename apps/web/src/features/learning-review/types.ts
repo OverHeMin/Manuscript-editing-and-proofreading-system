@@ -40,11 +40,18 @@ export interface LearningCandidateViewModel {
   module: string;
   manuscript_type: string;
   governed_provenance_kind?: LearningCandidateGovernedProvenanceKind;
+  governed_feedback_record_id?: string;
+  governed_evaluation_run_id?: string;
+  governed_evidence_pack_id?: string;
   human_final_asset_id?: string;
   annotated_asset_id?: string;
   snapshot_asset_id?: string;
   title?: string;
   proposal_text?: string;
+  candidate_payload?: Record<string, unknown>;
+  suggested_rule_object?: string;
+  suggested_template_family_id?: string;
+  suggested_journal_template_id?: string;
   created_by: string;
   created_at: string;
   updated_at: string;

@@ -111,8 +111,8 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "template-governance",
-    label: "Template Governance",
-    navLabel: "模板治理",
+    label: "Rule Center",
+    navLabel: "规则中心",
     navGroup: "governance",
     placement: "admin",
     surfaces: ["web"],

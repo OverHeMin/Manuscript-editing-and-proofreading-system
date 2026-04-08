@@ -507,6 +507,392 @@ function ObjectSpecificRuleFields({
           />
         </>
       );
+    case "statement":
+      return (
+        <>
+          <label className="template-governance-field">
+            <span>Statement Kind</span>
+            <select
+              value={draft.payload.statementKind}
+              onChange={(event) =>
+                onDraftChange({
+                  ...draft,
+                  payload: {
+                    ...draft.payload,
+                    statementKind:
+                      event.target.value as typeof draft.payload.statementKind,
+                  },
+                })
+              }
+            >
+              <option value="ethics">ethics</option>
+              <option value="trial_registration">trial_registration</option>
+              <option value="funding">funding</option>
+              <option value="conflict_of_interest">conflict_of_interest</option>
+              <option value="author_contribution">author_contribution</option>
+            </select>
+          </label>
+          <TextField
+            label="Required Statement"
+            value={draft.payload.requiredStatement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  requiredStatement: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="Placement"
+            value={draft.payload.placement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  placement: value,
+                },
+              })
+            }
+          />
+        </>
+      );
+    case "title":
+      return (
+        <>
+          <TextField
+            label="Title Pattern"
+            value={draft.payload.titlePattern}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  titlePattern: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="Casing Rule"
+            value={draft.payload.casingRule}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  casingRule: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Subtitle Handling"
+            value={draft.payload.subtitleHandling}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  subtitleHandling: value,
+                },
+              })
+            }
+          />
+        </>
+      );
+    case "author_line":
+      return (
+        <>
+          <TextField
+            label="Separator"
+            value={draft.payload.separator}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  separator: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Affiliation Format"
+            value={draft.payload.affiliationFormat}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  affiliationFormat: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="Corresponding Author Rule"
+            value={draft.payload.correspondingAuthorRule}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  correspondingAuthorRule: value,
+                },
+              })
+            }
+            fullWidth
+          />
+        </>
+      );
+    case "keyword":
+      return (
+        <>
+          <TextField
+            label="Keyword Count"
+            value={draft.payload.keywordCount}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  keywordCount: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Separator"
+            value={draft.payload.separator}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  separator: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Vocabulary Requirement"
+            value={draft.payload.vocabularyRequirement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  vocabularyRequirement: value,
+                },
+              })
+            }
+            fullWidth
+          />
+        </>
+      );
+    case "terminology":
+      return (
+        <>
+          <label className="template-governance-field">
+            <span>Target Section</span>
+            <select
+              value={draft.payload.targetSection}
+              onChange={(event) =>
+                onDraftChange({
+                  ...draft,
+                  payload: {
+                    ...draft.payload,
+                    targetSection:
+                      event.target.value as typeof draft.payload.targetSection,
+                  },
+                })
+              }
+            >
+              <option value="title">title</option>
+              <option value="abstract">abstract</option>
+              <option value="body">body</option>
+              <option value="global">global</option>
+            </select>
+          </label>
+          <TextField
+            label="Preferred Term"
+            value={draft.payload.preferredTerm}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  preferredTerm: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Disallowed Variant"
+            value={draft.payload.disallowedVariant}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  disallowedVariant: value,
+                },
+              })
+            }
+          />
+        </>
+      );
+    case "figure":
+      return (
+        <>
+          <label className="template-governance-field">
+            <span>Figure Kind</span>
+            <select
+              value={draft.payload.figureKind}
+              onChange={(event) =>
+                onDraftChange({
+                  ...draft,
+                  payload: {
+                    ...draft.payload,
+                    figureKind: event.target.value as typeof draft.payload.figureKind,
+                  },
+                })
+              }
+            >
+              <option value="flowchart">flowchart</option>
+              <option value="clinical_image">clinical_image</option>
+              <option value="trend_chart">trend_chart</option>
+              <option value="pathology_image">pathology_image</option>
+            </select>
+          </label>
+          <TextField
+            label="Caption Requirement"
+            value={draft.payload.captionRequirement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  captionRequirement: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="File Requirement"
+            value={draft.payload.fileRequirement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  fileRequirement: value,
+                },
+              })
+            }
+            fullWidth
+          />
+        </>
+      );
+    case "manuscript_structure":
+      return (
+        <>
+          <TextField
+            label="Manuscript Type"
+            value={draft.payload.manuscriptType}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  manuscriptType: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Required Sections"
+            value={draft.payload.requiredSections}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  requiredSections: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="Section Order"
+            value={draft.payload.sectionOrder}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  sectionOrder: value,
+                },
+              })
+            }
+            fullWidth
+          />
+        </>
+      );
+    case "journal_column":
+      return (
+        <>
+          <TextField
+            label="Column Name"
+            value={draft.payload.columnName}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  columnName: value,
+                },
+              })
+            }
+          />
+          <TextField
+            label="Requirement"
+            value={draft.payload.requirement}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  requirement: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="Source Section"
+            value={draft.payload.sourceSection}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  sourceSection: value,
+                },
+              })
+            }
+          />
+        </>
+      );
   }
 }
 
