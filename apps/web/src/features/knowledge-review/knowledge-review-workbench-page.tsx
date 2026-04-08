@@ -29,7 +29,7 @@ import "./knowledge-review-workbench.css";
 export interface KnowledgeReviewWorkbenchPageProps {
   controller?: KnowledgeReviewWorkbenchController;
   actorRole?: AuthRole;
-  prefilledKnowledgeItemId?: string;
+  prefilledRevisionId?: string;
 }
 
 const defaultWorkbenchController = createKnowledgeReviewWorkbenchController(
@@ -39,10 +39,10 @@ const defaultWorkbenchController = createKnowledgeReviewWorkbenchController(
 export function KnowledgeReviewWorkbenchPage({
   controller,
   actorRole = "knowledge_reviewer",
-  prefilledKnowledgeItemId,
+  prefilledRevisionId,
 }: KnowledgeReviewWorkbenchPageProps) {
   const workbenchController = controller ?? defaultWorkbenchController;
-  const normalizedPrefilledKnowledgeItemId = prefilledKnowledgeItemId?.trim() ?? "";
+  const normalizedPrefilledRevisionId = prefilledRevisionId?.trim() ?? "";
   const [filters, setFilters] = useState(() => createKnowledgeReviewFilterState());
   const [desk, setDesk] = useState<KnowledgeReviewDeskLoadResult | null>(null);
   const [queueLoadStatus, setQueueLoadStatus] = useState<"initial" | "loading" | "ready" | "error">(
@@ -52,7 +52,7 @@ export function KnowledgeReviewWorkbenchPage({
   const [stableSelectionSnapshot, setStableSelectionSnapshot] =
     useState<KnowledgeReviewQueueItemViewModel | null>(null);
   const [history, setHistory] = useState<KnowledgeReviewHistoryViewState>({
-    knowledgeItemId: null,
+    revisionId: null,
     status: "idle",
     actions: [],
     errorMessage: null,
@@ -70,11 +70,9 @@ export function KnowledgeReviewWorkbenchPage({
     void loadDesk({
       showLoading: true,
       activeItemId:
-        normalizedPrefilledKnowledgeItemId.length > 0
-          ? normalizedPrefilledKnowledgeItemId
-          : undefined,
+        normalizedPrefilledRevisionId.length > 0 ? normalizedPrefilledRevisionId : undefined,
     });
-  }, [normalizedPrefilledKnowledgeItemId, workbenchController]);
+  }, [normalizedPrefilledRevisionId, workbenchController]);
 
   const effectiveSelectedItem = resolveDetailSelection(
     queueLoadStatus,
@@ -90,7 +88,7 @@ export function KnowledgeReviewWorkbenchPage({
     if (effectiveSelectedItem == null) {
       selectedItemIdRef.current = null;
       setHistory({
-        knowledgeItemId: null,
+        revisionId: null,
         status: "idle",
         actions: [],
         errorMessage: null,
@@ -100,10 +98,10 @@ export function KnowledgeReviewWorkbenchPage({
 
     if (queueLoadStatus === "error" && isUsingStableSnapshot) {
       setHistory((current) =>
-        current.knowledgeItemId === effectiveSelectedItem.id
+        current.revisionId === effectiveSelectedItem.revision_id
           ? current
           : {
-              knowledgeItemId: effectiveSelectedItem.id,
+              revisionId: effectiveSelectedItem.revision_id,
               status: "idle",
               actions: [],
               errorMessage: null,
@@ -112,8 +110,8 @@ export function KnowledgeReviewWorkbenchPage({
       return;
     }
 
-    void loadHistory(effectiveSelectedItem.id);
-  }, [effectiveSelectedItem?.id, isUsingStableSnapshot, queueLoadStatus]);
+    void loadHistory(effectiveSelectedItem.revision_id);
+  }, [effectiveSelectedItem?.revision_id, isUsingStableSnapshot, queueLoadStatus]);
 
   async function loadDesk(input: {
     filters?: Partial<KnowledgeReviewFilterState>;
@@ -154,27 +152,27 @@ export function KnowledgeReviewWorkbenchPage({
       }
 
       setQueueLoadStatus("error");
-      setQueueErrorMessage(toErrorMessage(error, "队列加载失败"));
+      setQueueErrorMessage(toErrorMessage(error, "Review queue failed to load"));
     }
   }
 
-  async function loadHistory(knowledgeItemId: string): Promise<void> {
+  async function loadHistory(revisionId: string): Promise<void> {
     const requestId = ++historyRequestIdRef.current;
     setHistory((current) => ({
-      knowledgeItemId,
+      revisionId,
       status: "loading",
-      actions: current.knowledgeItemId === knowledgeItemId ? current.actions : [],
+      actions: current.revisionId === revisionId ? current.actions : [],
       errorMessage: null,
     }));
 
     try {
-      const nextHistory = await workbenchController.loadHistory({ knowledgeItemId });
+      const nextHistory = await workbenchController.loadHistory({ revisionId });
       if (requestId !== historyRequestIdRef.current) {
         return;
       }
 
       setHistory({
-        knowledgeItemId: nextHistory.knowledgeItemId,
+        revisionId: nextHistory.revisionId,
         status: "ready",
         actions: nextHistory.actions,
         errorMessage: null,
@@ -185,10 +183,10 @@ export function KnowledgeReviewWorkbenchPage({
       }
 
       setHistory((current) => ({
-        knowledgeItemId,
+        revisionId,
         status: "error",
-        actions: current.knowledgeItemId === knowledgeItemId ? current.actions : [],
-        errorMessage: toErrorMessage(error, "历史记录加载失败"),
+        actions: current.revisionId === revisionId ? current.actions : [],
+        errorMessage: toErrorMessage(error, "Review history failed to load"),
       }));
     }
   }
@@ -262,19 +260,22 @@ export function KnowledgeReviewWorkbenchPage({
 
     setActionFeedback({
       status: "loading",
-      message: actionType === "approve" ? "正在提交通过结果..." : "正在提交驳回结果...",
+      message:
+        actionType === "approve"
+          ? "Submitting approval decision..."
+          : "Sending revision back to draft...",
     });
 
     const result =
       actionType === "approve"
         ? await workbenchController.approveItem({
-            knowledgeItemId: selected.id,
+            revisionId: selected.revision_id,
             actorRole,
             reviewNote,
             state: desk.state,
           })
         : await workbenchController.rejectItem({
-            knowledgeItemId: selected.id,
+            revisionId: selected.revision_id,
             actorRole,
             reviewNote,
             state: desk.state,
@@ -284,7 +285,7 @@ export function KnowledgeReviewWorkbenchPage({
       setReviewNote(result.reviewNote);
       setActionFeedback({
         status: "error",
-        message: toErrorMessage(result.error, "审核动作失败"),
+        message: toErrorMessage(result.error, "Review action failed"),
       });
       return;
     }
@@ -301,14 +302,14 @@ export function KnowledgeReviewWorkbenchPage({
 
     if (result.history) {
       setHistory({
-        knowledgeItemId: result.history.knowledgeItemId,
+        revisionId: result.history.revisionId,
         status: "ready",
         actions: result.history.actions,
         errorMessage: null,
       });
     } else {
       setHistory({
-        knowledgeItemId: null,
+        revisionId: null,
         status: "idle",
         actions: [],
         errorMessage: null,
@@ -321,14 +322,17 @@ export function KnowledgeReviewWorkbenchPage({
       setActionFeedback({
         status: "manual_recovery",
         message:
-          "审核结果已保存，但下一条可见项目未能自动定位。请手动选择，或重新加载队列。",
+          "The review action was saved, but the next pending revision could not be selected automatically. Reload the queue to recover continuity.",
       });
       return;
     }
 
     setActionFeedback({
       status: "success",
-      message: actionType === "approve" ? "知识条目已通过审核。" : "知识条目已驳回。",
+      message:
+        actionType === "approve"
+          ? "Revision approved and the queue advanced."
+          : "Revision sent back to draft and removed from the review queue.",
     });
   }
 
@@ -349,7 +353,7 @@ export function KnowledgeReviewWorkbenchPage({
       return;
     }
 
-    void loadHistory(retryTarget.id);
+    void loadHistory(retryTarget.revision_id);
   }
 
   function handleManualRecovery() {
@@ -364,30 +368,38 @@ export function KnowledgeReviewWorkbenchPage({
   const totalQueueCount = desk?.queue.length ?? 0;
   const isQueueEmpty = desk ? isKnowledgeReviewQueueTrulyEmpty(desk.state) : false;
   const isNoResults = desk ? isKnowledgeReviewFilterResultEmpty(desk.state) : false;
-  const displayedHistory = resolveDisplayedHistory(history, effectiveSelectedItem?.id ?? null);
+  const displayedHistory = resolveDisplayedHistory(
+    history,
+    effectiveSelectedItem?.revision_id ?? null,
+  );
 
   return (
     <main className="knowledge-review-workbench">
       <header className="knowledge-review-hero">
         <div className="knowledge-review-hero-copy">
-          <span className="knowledge-review-eyebrow">知识库</span>
-          <h1>知识库工作台</h1>
+          <span className="knowledge-review-eyebrow">Knowledge Review</span>
+          <h1>Knowledge Review Desk</h1>
           <p>
-            把待审核队列、证据上下文与审核动作收在同一桌面，让知识回写前的判断更集中。
+            Review pending knowledge revisions with the queue, revision context, and
+            decision actions on one stable desk.
           </p>
           <WorkbenchCoreStrip activePillarId="knowledge" />
         </div>
         <dl className="knowledge-review-hero-stats">
           <div className="knowledge-review-hero-stat">
-            <dt>审核角色</dt>
+            <dt>Reviewer Role</dt>
             <dd>{formatActorRole(actorRole)}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>当前条目</dt>
-            <dd>{effectiveSelectedItem?.id ?? "等待队列选择"}</dd>
+            <dt>Selected Asset</dt>
+            <dd>{effectiveSelectedItem?.asset_id ?? "Waiting for queue selection"}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>队列状态</dt>
+            <dt>Selected Revision</dt>
+            <dd>{effectiveSelectedItem?.revision_id ?? "Waiting for queue selection"}</dd>
+          </div>
+          <div className="knowledge-review-hero-stat">
+            <dt>Queue Status</dt>
             <dd>{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}</dd>
           </div>
         </dl>
@@ -442,14 +454,14 @@ function resolveQueueStatusLabel(
   queueErrorMessage: string | null,
 ): string {
   if (queueLoadStatus === "error") {
-    return queueErrorMessage ? "队列需要恢复" : "队列加载失败";
+    return queueErrorMessage ? "Queue requires recovery" : "Queue load failed";
   }
 
   if (queueLoadStatus === "loading" || queueLoadStatus === "initial") {
-    return "正在加载队列";
+    return "Loading queue";
   }
 
-  return "队列已就绪";
+  return "Queue ready";
 }
 
 function resolveDetailSelection(
@@ -458,7 +470,6 @@ function resolveDetailSelection(
   stableSelectionSnapshot: KnowledgeReviewQueueItemViewModel | null,
 ): KnowledgeReviewQueueItemViewModel | null {
   if (queueLoadStatus === "error") {
-    // Keep desk continuity during queue outage to avoid forcing context loss.
     return liveSelection ?? stableSelectionSnapshot;
   }
 
@@ -475,15 +486,15 @@ function toErrorMessage(error: unknown, fallback: string): string {
 
 function resolveDisplayedHistory(
   history: KnowledgeReviewHistoryViewState,
-  displayedItemId: string | null,
+  displayedRevisionId: string | null,
 ): {
   history: KnowledgeReviewHistoryViewState;
   scopeNote: string | null;
 } {
-  if (displayedItemId == null) {
+  if (displayedRevisionId == null) {
     return {
       history: {
-        knowledgeItemId: null,
+        revisionId: null,
         status: "idle",
         actions: [],
         errorMessage: null,
@@ -492,7 +503,7 @@ function resolveDisplayedHistory(
     };
   }
 
-  if (history.knowledgeItemId === displayedItemId) {
+  if (history.revisionId === displayedRevisionId) {
     return {
       history,
       scopeNote: null,
@@ -501,30 +512,30 @@ function resolveDisplayedHistory(
 
   return {
     history: {
-      knowledgeItemId: displayedItemId,
+      revisionId: displayedRevisionId,
       status: "idle",
       actions: [],
       errorMessage: null,
     },
     scopeNote:
-      "当前历史记录对应的是其他条目，请重新加载历史以查看上方条目的事件轨迹。",
+      "History currently belongs to a different revision. Reload history to inspect the selected revision.",
   };
 }
 
 function formatActorRole(role: AuthRole): string {
   switch (role) {
     case "admin":
-      return "管理员";
+      return "Admin";
     case "knowledge_reviewer":
-      return "知识审核员";
+      return "Knowledge Reviewer";
     case "editor":
-      return "编辑";
+      return "Editor";
     case "proofreader":
-      return "校对";
+      return "Proofreader";
     case "screener":
-      return "初筛员";
+      return "Screener";
     case "user":
     default:
-      return "投稿用户";
+      return "User";
   }
 }

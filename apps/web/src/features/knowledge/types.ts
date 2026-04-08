@@ -38,6 +38,8 @@ export interface KnowledgeProjectionSourceViewModel {
 
 export interface KnowledgeItemViewModel {
   id: string;
+  asset_id?: string;
+  revision_id?: string;
   title: string;
   canonical_text: string;
   summary?: string;
@@ -53,16 +55,22 @@ export interface KnowledgeItemViewModel {
   evidence_level?: EvidenceLevel;
   source_type?: KnowledgeSourceType;
   source_link?: string;
+  effective_at?: string;
+  expires_at?: string;
   aliases?: string[];
   template_bindings?: string[];
   projection_source?: KnowledgeProjectionSourceViewModel;
 }
 
-export type KnowledgeReviewQueueItemViewModel = KnowledgeItemViewModel;
+export interface KnowledgeReviewQueueItemViewModel extends KnowledgeItemViewModel {
+  asset_id: string;
+  revision_id: string;
+}
 
 export interface KnowledgeReviewActionViewModel {
   id: string;
   knowledge_item_id: string;
+  revision_id?: string;
   action: "submitted_for_review" | "approved" | "rejected";
   actor_role:
     | "admin"

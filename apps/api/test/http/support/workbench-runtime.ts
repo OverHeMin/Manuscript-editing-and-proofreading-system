@@ -31,7 +31,12 @@ import { ExecutionGovernanceService } from "../../../src/modules/execution-gover
 import { ExecutionTrackingService } from "../../../src/modules/execution-tracking/execution-tracking-service.ts";
 import { InMemoryExecutionTrackingRepository } from "../../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
 import { InMemoryJobRepository } from "../../../src/modules/jobs/in-memory-job-repository.ts";
-import { InMemoryKnowledgeRepository } from "../../../src/modules/knowledge/in-memory-knowledge-repository.ts";
+import {
+  InMemoryKnowledgeRepository,
+  InMemoryKnowledgeReviewActionRepository,
+} from "../../../src/modules/knowledge/in-memory-knowledge-repository.ts";
+import { createKnowledgeApi } from "../../../src/modules/knowledge/knowledge-api.ts";
+import { KnowledgeService } from "../../../src/modules/knowledge/knowledge-service.ts";
 import { createManuscriptApi } from "../../../src/modules/manuscripts/manuscript-api.ts";
 import { ManuscriptLifecycleService } from "../../../src/modules/manuscripts/manuscript-lifecycle-service.ts";
 import { InMemoryManuscriptRepository } from "../../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
@@ -108,6 +113,7 @@ export interface WorkbenchRuntimeBundle {
   screeningApi: ReturnType<typeof createScreeningApi>;
   editingApi: ReturnType<typeof createEditingApi>;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
+  knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   seededIds: WorkbenchSeededIds;
 }
@@ -177,6 +183,8 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const knowledgeReviewActionRepository =
+    new InMemoryKnowledgeReviewActionRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
@@ -289,6 +297,12 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
       verificationOpsService,
       now: () => new Date("2026-03-31T08:05:00.000Z"),
     });
+  const knowledgeService = new KnowledgeService({
+    repository: knowledgeRepository,
+    reviewActionRepository: knowledgeReviewActionRepository,
+    createId: () => nextId("knowledge"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
 
   seedWorkbenchGovernance({
     manuscriptRepository,
@@ -411,6 +425,9 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
+    }),
+    knowledgeApi: createKnowledgeApi({
+      knowledgeService,
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,

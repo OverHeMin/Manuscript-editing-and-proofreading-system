@@ -1,7 +1,7 @@
 import type { KnowledgeReviewQueueItemViewModel } from "../knowledge/index.ts";
 import {
-  applyKnowledgeReviewSuccess,
   applyKnowledgeReviewFilters,
+  applyKnowledgeReviewSuccess,
   createKnowledgeReviewWorkbenchState,
   isKnowledgeReviewFilterResultEmpty,
   isKnowledgeReviewQueueTrulyEmpty,
@@ -14,7 +14,9 @@ import {
 } from "./index.ts";
 
 const firstQueueItem: KnowledgeReviewQueueItemViewModel = {
-  id: "knowledge-1",
+  id: "knowledge-asset-1-revision-1",
+  asset_id: "knowledge-asset-1",
+  revision_id: "knowledge-asset-1-revision-1",
   title: "Protect patient privacy in case reports",
   canonical_text: "Remove all personally identifying details.",
   knowledge_kind: "checklist",
@@ -29,7 +31,9 @@ const firstQueueItem: KnowledgeReviewQueueItemViewModel = {
 };
 
 const secondQueueItem: KnowledgeReviewQueueItemViewModel = {
-  id: "knowledge-2",
+  id: "knowledge-asset-2-revision-1",
+  asset_id: "knowledge-asset-2",
+  revision_id: "knowledge-asset-2-revision-1",
   title: "Use consistent terminology in trial summaries",
   canonical_text: "Standardize names for interventions and outcomes.",
   knowledge_kind: "rule",
@@ -43,7 +47,9 @@ const secondQueueItem: KnowledgeReviewQueueItemViewModel = {
 };
 
 const thirdQueueItem: KnowledgeReviewQueueItemViewModel = {
-  id: "knowledge-3",
+  id: "knowledge-asset-3-revision-1",
+  asset_id: "knowledge-asset-3",
+  revision_id: "knowledge-asset-3-revision-1",
   title: "Section ordering for methodology papers",
   canonical_text: "Present methods before results and discussion.",
   knowledge_kind: "rule",
@@ -127,13 +133,13 @@ export {
   activeItemBeforeReview,
   afterReviewSuccess,
   expectedNextByPreRemovalOrder,
-  filteredEmptyState,
   filterEmptyDerivedFromRefreshPayload,
+  filteredEmptyState,
   filteredQueueWithSearch,
   refreshPayloadVisibleQueue,
   resolvedView,
-  state,
   staleVisibleAfterRefreshState,
+  state,
   trulyEmptyState,
   withRefreshPayload,
 };

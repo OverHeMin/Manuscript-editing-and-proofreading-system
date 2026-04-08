@@ -20,12 +20,12 @@ import {
   resolveGovernedAgentContext,
   type GovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
+import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
-import { requireApprovedLearningCandidate } from "../shared/learning-candidate-guard.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
@@ -38,7 +38,11 @@ import type {
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
 import type {
+  KnowledgeAssetRecord,
   KnowledgeRecord,
+  KnowledgeRevisionBindingKind,
+  KnowledgeRevisionBindingRecord,
+  KnowledgeRevisionRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 
@@ -74,6 +78,42 @@ export interface UpdateKnowledgeDraftInput {
   disciplineTags?: string[];
   aliases?: string[];
   templateBindings?: string[];
+}
+
+export interface KnowledgeRevisionBindingInput {
+  bindingKind: KnowledgeRevisionBindingKind;
+  bindingTargetId: string;
+  bindingTargetLabel: string;
+}
+
+export interface CreateKnowledgeLibraryDraftInput extends CreateKnowledgeDraftInput {
+  effectiveAt?: string;
+  expiresAt?: string;
+  bindings?: KnowledgeRevisionBindingInput[];
+}
+
+export interface UpdateKnowledgeRevisionDraftInput extends UpdateKnowledgeDraftInput {
+  knowledgeKind?: KnowledgeRecord["knowledge_kind"];
+  moduleScope?: KnowledgeRecord["routing"]["module_scope"];
+  manuscriptTypes?: KnowledgeRecord["routing"]["manuscript_types"];
+  evidenceLevel?: KnowledgeRecord["evidence_level"];
+  sourceType?: KnowledgeRecord["source_type"];
+  sourceLink?: string;
+  effectiveAt?: string;
+  expiresAt?: string;
+  sourceLearningCandidateId?: string;
+  bindings?: KnowledgeRevisionBindingInput[];
+}
+
+export interface KnowledgeRevisionDetailRecord extends KnowledgeRevisionRecord {
+  bindings: KnowledgeRevisionBindingRecord[];
+}
+
+export interface KnowledgeAssetDetailRecord {
+  asset: KnowledgeAssetRecord;
+  selected_revision: KnowledgeRevisionDetailRecord;
+  current_approved_revision?: KnowledgeRevisionDetailRecord;
+  revisions: KnowledgeRevisionDetailRecord[];
 }
 
 export interface ResolveGovernedRetrievalContextInput {
@@ -132,10 +172,26 @@ interface KnowledgeWriteContext {
   reviewActionRepository: KnowledgeReviewActionRepository;
 }
 
+type KnowledgeRevisionLifecycleStatus = KnowledgeRevisionRecord["status"];
+
 export class KnowledgeItemNotFoundError extends Error {
   constructor(knowledgeItemId: string) {
     super(`Knowledge item ${knowledgeItemId} was not found.`);
     this.name = "KnowledgeItemNotFoundError";
+  }
+}
+
+export class KnowledgeAssetNotFoundError extends Error {
+  constructor(assetId: string) {
+    super(`Knowledge asset ${assetId} was not found.`);
+    this.name = "KnowledgeAssetNotFoundError";
+  }
+}
+
+export class KnowledgeRevisionNotFoundError extends Error {
+  constructor(revisionId: string) {
+    super(`Knowledge revision ${revisionId} was not found.`);
+    this.name = "KnowledgeRevisionNotFoundError";
   }
 }
 
@@ -197,34 +253,95 @@ export class KnowledgeService {
   }
 
   async createDraft(input: CreateKnowledgeDraftInput): Promise<KnowledgeRecord> {
-    const record: KnowledgeRecord = {
-      id: this.createId(),
-      title: input.title,
-      canonical_text: input.canonicalText,
-      summary: input.summary,
-      knowledge_kind: input.knowledgeKind,
-      status: "draft",
-      routing: {
-        module_scope: input.moduleScope,
-        manuscript_types: input.manuscriptTypes,
-        sections: input.sections,
-        risk_tags: input.riskTags,
-        discipline_tags: input.disciplineTags,
-      },
-      evidence_level: input.evidenceLevel,
-      source_type: input.sourceType,
-      source_link: input.sourceLink,
-      aliases: input.aliases,
-      template_bindings: input.templateBindings,
-      ...(input.sourceLearningCandidateId
-        ? {
-            source_learning_candidate_id: input.sourceLearningCandidateId,
-          }
-        : {}),
-    };
+    if (!this.supportsRevisionGovernance(this.repository)) {
+      const record: KnowledgeRecord = {
+        id: this.createId(),
+        title: input.title,
+        canonical_text: input.canonicalText,
+        summary: input.summary,
+        knowledge_kind: input.knowledgeKind,
+        status: "draft",
+        routing: {
+          module_scope: input.moduleScope,
+          manuscript_types: input.manuscriptTypes,
+          sections: input.sections,
+          risk_tags: input.riskTags,
+          discipline_tags: input.disciplineTags,
+        },
+        evidence_level: input.evidenceLevel,
+        source_type: input.sourceType,
+        source_link: input.sourceLink,
+        aliases: input.aliases,
+        template_bindings: input.templateBindings,
+        ...(input.sourceLearningCandidateId
+          ? {
+              source_learning_candidate_id: input.sourceLearningCandidateId,
+            }
+          : {}),
+      };
 
-    await this.repository.save(record);
-    return record;
+      await this.repository.save(record);
+      return record;
+    }
+
+    const detail = await this.createLibraryDraft({
+      ...input,
+      bindings: mapTemplateBindingsToBindingInputs(input.templateBindings),
+    });
+
+    return this.projectCompatibilityRecord(detail.asset.id);
+  }
+
+  async createLibraryDraft(
+    input: CreateKnowledgeLibraryDraftInput,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ repository }) => {
+        const timestamp = this.now().toISOString();
+        const assetId = this.createId();
+        const revisionId = createRevisionId(assetId, 1);
+
+        await repository.saveAsset({
+          id: assetId,
+          status: "active",
+          current_revision_id: revisionId,
+          created_at: timestamp,
+          updated_at: timestamp,
+        });
+        await repository.saveRevision({
+          id: revisionId,
+          asset_id: assetId,
+          revision_no: 1,
+          status: "draft",
+          title: input.title,
+          canonical_text: input.canonicalText,
+          summary: input.summary,
+          knowledge_kind: input.knowledgeKind,
+          routing: {
+            module_scope: input.moduleScope,
+            manuscript_types: input.manuscriptTypes,
+            sections: input.sections,
+            risk_tags: input.riskTags,
+            discipline_tags: input.disciplineTags,
+          },
+          evidence_level: input.evidenceLevel,
+          source_type: input.sourceType,
+          source_link: input.sourceLink,
+          effective_at: input.effectiveAt,
+          expires_at: input.expiresAt,
+          aliases: input.aliases,
+          source_learning_candidate_id: input.sourceLearningCandidateId,
+          created_at: timestamp,
+          updated_at: timestamp,
+        });
+        await repository.replaceRevisionBindings(
+          revisionId,
+          buildBindingRecords(revisionId, input.bindings, timestamp),
+        );
+
+        return this.buildKnowledgeAssetDetail(assetId, revisionId, repository);
+      },
+    );
   }
 
   async createDraftFromLearningCandidate(
@@ -239,7 +356,144 @@ export class KnowledgeService {
     return this.createDraft(input);
   }
 
+  async createDraftRevisionFromApprovedAsset(
+    assetId: string,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ repository }) => {
+        const asset = await this.requireKnowledgeAsset(assetId, repository);
+        const existingWorkingRevision = await this.findRevisionForAssetByStatuses(
+          asset,
+          ["draft", "pending_review"],
+          repository,
+        );
+        if (existingWorkingRevision) {
+          return this.buildKnowledgeAssetDetail(
+            asset.id,
+            existingWorkingRevision.id,
+            repository,
+          );
+        }
+
+        const approvedRevision = await this.requireApprovedRevision(asset, repository);
+        const timestamp = this.now().toISOString();
+        const revisionNo = Math.max(
+          ...(
+            await repository.listRevisionsByAssetId(asset.id)
+          ).map((record) => record.revision_no),
+        ) + 1;
+        const nextRevisionId = createRevisionId(asset.id, revisionNo);
+        const approvedBindings = await repository.listBindingsByRevisionId(
+          approvedRevision.id,
+        );
+
+        await repository.saveRevision({
+          ...approvedRevision,
+          id: nextRevisionId,
+          revision_no: revisionNo,
+          status: "draft",
+          based_on_revision_id: approvedRevision.id,
+          created_at: timestamp,
+          updated_at: timestamp,
+        });
+        await repository.replaceRevisionBindings(
+          nextRevisionId,
+          approvedBindings.map((binding, index) => ({
+            id: createBindingId(nextRevisionId, index + 1),
+            revision_id: nextRevisionId,
+            binding_kind: binding.binding_kind,
+            binding_target_id: binding.binding_target_id,
+            binding_target_label: binding.binding_target_label,
+            created_at: timestamp,
+          })),
+        );
+        await repository.saveAsset({
+          ...asset,
+          current_revision_id: nextRevisionId,
+          updated_at: timestamp,
+        });
+
+        return this.buildKnowledgeAssetDetail(asset.id, nextRevisionId, repository);
+      },
+    );
+  }
+
+  async updateRevisionDraft(
+    revisionId: string,
+    input: UpdateKnowledgeRevisionDraftInput,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ repository }) => {
+        const revision = await this.requireKnowledgeRevision(revisionId, repository);
+        if (revision.status !== "draft") {
+          throw new KnowledgeStatusTransitionError(
+            revisionId,
+            revision.status,
+            "draft",
+          );
+        }
+
+        const timestamp = this.now().toISOString();
+        await repository.saveRevision({
+          ...revision,
+          title: input.title ?? revision.title,
+          canonical_text: input.canonicalText ?? revision.canonical_text,
+          summary: input.summary ?? revision.summary,
+          knowledge_kind: input.knowledgeKind ?? revision.knowledge_kind,
+          routing: {
+            module_scope: input.moduleScope ?? revision.routing.module_scope,
+            manuscript_types:
+              input.manuscriptTypes ?? revision.routing.manuscript_types,
+            sections: input.sections ?? revision.routing.sections,
+            risk_tags: input.riskTags ?? revision.routing.risk_tags,
+            discipline_tags:
+              input.disciplineTags ?? revision.routing.discipline_tags,
+          },
+          evidence_level: input.evidenceLevel ?? revision.evidence_level,
+          source_type: input.sourceType ?? revision.source_type,
+          source_link: input.sourceLink ?? revision.source_link,
+          effective_at: input.effectiveAt ?? revision.effective_at,
+          expires_at: input.expiresAt ?? revision.expires_at,
+          aliases: input.aliases ?? revision.aliases,
+          source_learning_candidate_id:
+            input.sourceLearningCandidateId ?? revision.source_learning_candidate_id,
+          updated_at: timestamp,
+        });
+
+        if (input.bindings !== undefined) {
+          await repository.replaceRevisionBindings(
+            revision.id,
+            buildBindingRecords(revision.id, input.bindings, timestamp),
+          );
+        }
+
+        const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+        await repository.saveAsset({
+          ...asset,
+          current_revision_id: revision.id,
+          updated_at: timestamp,
+        });
+
+        return this.buildKnowledgeAssetDetail(
+          revision.asset_id,
+          revision.id,
+          repository,
+        );
+      },
+    );
+  }
+
   async submitForReview(knowledgeItemId: string): Promise<KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      const revision = await this.requireRevisionForAssetByStatuses(
+        asset,
+        ["draft"],
+      );
+      const detail = await this.submitRevisionForReview(revision.id);
+      return this.projectCompatibilityRecord(detail.asset.id);
+    }
+
     return this.transactionManager.withTransaction(
       async ({ repository, reviewActionRepository }) => {
         const knowledgeItem = await this.requireKnowledgeItem(
@@ -274,11 +528,62 @@ export class KnowledgeService {
     );
   }
 
+  async submitRevisionForReview(
+    revisionId: string,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ repository, reviewActionRepository }) => {
+        const revision = await this.requireKnowledgeRevision(revisionId, repository);
+        if (revision.status !== "draft") {
+          throw new KnowledgeStatusTransitionError(
+            revisionId,
+            revision.status,
+            "pending_review",
+          );
+        }
+
+        const timestamp = this.now().toISOString();
+        const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+
+        await repository.saveRevision({
+          ...revision,
+          status: "pending_review",
+          updated_at: timestamp,
+        });
+        await repository.saveAsset({
+          ...asset,
+          current_revision_id: revision.id,
+          updated_at: timestamp,
+        });
+        await reviewActionRepository.save({
+          id: this.createId(),
+          knowledge_item_id: asset.id,
+          revision_id: revision.id,
+          action: "submitted_for_review",
+          actor_role: "user",
+          created_at: timestamp,
+        });
+
+        return this.buildKnowledgeAssetDetail(asset.id, revision.id, repository);
+      },
+    );
+  }
+
   async approve(
     knowledgeItemId: string,
     actorRole: RoleKey,
     reviewNote?: string,
   ): Promise<KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      const revision = await this.requireRevisionForAssetByStatuses(
+        asset,
+        ["pending_review"],
+      );
+      const detail = await this.approveRevision(revision.id, actorRole, reviewNote);
+      return this.projectCompatibilityRecord(detail.asset.id);
+    }
+
     this.permissionGuard.assert(actorRole, "knowledge.review");
 
     return this.transactionManager.withTransaction(
@@ -316,11 +621,83 @@ export class KnowledgeService {
     );
   }
 
+  async approveRevision(
+    revisionId: string,
+    actorRole: RoleKey,
+    reviewNote?: string,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    this.permissionGuard.assert(actorRole, "knowledge.review");
+
+    return this.transactionManager.withTransaction(
+      async ({ repository, reviewActionRepository }) => {
+        const revision = await this.requireKnowledgeRevision(revisionId, repository);
+        if (revision.status !== "pending_review") {
+          throw new KnowledgeStatusTransitionError(
+            revisionId,
+            revision.status,
+            "approved",
+          );
+        }
+
+        const timestamp = this.now().toISOString();
+        const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+        const priorApprovedRevision = asset.current_approved_revision_id
+          ? await repository.findRevisionById(asset.current_approved_revision_id)
+          : undefined;
+
+        if (
+          priorApprovedRevision &&
+          priorApprovedRevision.id !== revision.id &&
+          priorApprovedRevision.status === "approved"
+        ) {
+          await repository.saveRevision({
+            ...priorApprovedRevision,
+            status: "superseded",
+            updated_at: timestamp,
+          });
+        }
+
+        await repository.saveRevision({
+          ...revision,
+          status: "approved",
+          updated_at: timestamp,
+        });
+        await repository.saveAsset({
+          ...asset,
+          current_revision_id: revision.id,
+          current_approved_revision_id: revision.id,
+          updated_at: timestamp,
+        });
+        await reviewActionRepository.save({
+          id: this.createId(),
+          knowledge_item_id: asset.id,
+          revision_id: revision.id,
+          action: "approved",
+          actor_role: actorRole,
+          review_note: reviewNote,
+          created_at: timestamp,
+        });
+
+        return this.buildKnowledgeAssetDetail(asset.id, revision.id, repository);
+      },
+    );
+  }
+
   async reject(
     knowledgeItemId: string,
     actorRole: RoleKey,
     reviewNote?: string,
   ): Promise<KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      const revision = await this.requireRevisionForAssetByStatuses(
+        asset,
+        ["pending_review"],
+      );
+      const detail = await this.rejectRevision(revision.id, actorRole, reviewNote);
+      return this.projectCompatibilityRecord(detail.asset.id);
+    }
+
     this.permissionGuard.assert(actorRole, "knowledge.review");
 
     return this.transactionManager.withTransaction(
@@ -338,8 +715,6 @@ export class KnowledgeService {
           );
         }
 
-        // Rejection sends the item back to the editable lane without erasing
-        // prior review history, so the next submission stays auditable.
         const updatedRecord: KnowledgeRecord = {
           ...knowledgeItem,
           status: "draft",
@@ -360,10 +735,72 @@ export class KnowledgeService {
     );
   }
 
+  async rejectRevision(
+    revisionId: string,
+    actorRole: RoleKey,
+    reviewNote?: string,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    this.permissionGuard.assert(actorRole, "knowledge.review");
+
+    return this.transactionManager.withTransaction(
+      async ({ repository, reviewActionRepository }) => {
+        const revision = await this.requireKnowledgeRevision(revisionId, repository);
+        if (revision.status !== "pending_review") {
+          throw new KnowledgeStatusTransitionError(
+            revisionId,
+            revision.status,
+            "draft",
+          );
+        }
+
+        const timestamp = this.now().toISOString();
+        const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+
+        await repository.saveRevision({
+          ...revision,
+          status: "draft",
+          updated_at: timestamp,
+        });
+        await repository.saveAsset({
+          ...asset,
+          current_revision_id: revision.id,
+          updated_at: timestamp,
+        });
+        await reviewActionRepository.save({
+          id: this.createId(),
+          knowledge_item_id: asset.id,
+          revision_id: revision.id,
+          action: "rejected",
+          actor_role: actorRole,
+          review_note: reviewNote,
+          created_at: timestamp,
+        });
+
+        return this.buildKnowledgeAssetDetail(asset.id, revision.id, repository);
+      },
+    );
+  }
+
   async updateDraft(
     knowledgeItemId: string,
     input: UpdateKnowledgeDraftInput,
   ): Promise<KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      const revision = await this.requireRevisionForAssetByStatuses(
+        asset,
+        ["draft"],
+      );
+      const detail = await this.updateRevisionDraft(revision.id, {
+        ...input,
+        bindings:
+          input.templateBindings === undefined
+            ? undefined
+            : mapTemplateBindingsToBindingInputs(input.templateBindings),
+      });
+      return this.projectCompatibilityRecord(detail.asset.id);
+    }
+
     const knowledgeItem = await this.requireKnowledgeItem(knowledgeItemId);
 
     if (knowledgeItem.status !== "draft") {
@@ -395,6 +832,37 @@ export class KnowledgeService {
   }
 
   async archive(knowledgeItemId: string): Promise<KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      return this.transactionManager.withTransaction(async ({ repository }) => {
+        const revisions = await repository.listRevisionsByAssetId(asset.id);
+        const timestamp = this.now().toISOString();
+
+        for (const revision of revisions) {
+          if (
+            revision.status === "draft" ||
+            revision.status === "pending_review" ||
+            revision.status === "approved"
+          ) {
+            await repository.saveRevision({
+              ...revision,
+              status: "archived",
+              updated_at: timestamp,
+            });
+          }
+        }
+
+        await repository.saveAsset({
+          ...asset,
+          status: "archived",
+          current_approved_revision_id: undefined,
+          updated_at: timestamp,
+        });
+
+        return this.projectCompatibilityRecord(asset.id, repository);
+      });
+    }
+
     const knowledgeItem = await this.requireKnowledgeItem(knowledgeItemId);
 
     if (knowledgeItem.status === "archived") {
@@ -418,11 +886,30 @@ export class KnowledgeService {
     return this.repository.listByStatus("pending_review");
   }
 
+  async getKnowledgeAsset(
+    assetId: string,
+    revisionId?: string,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    return this.buildKnowledgeAssetDetail(assetId, revisionId);
+  }
+
   async listReviewActions(
     knowledgeItemId: string,
   ): Promise<KnowledgeReviewActionRecord[]> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      return this.reviewActionRepository.listByKnowledgeItemId(asset.id);
+    }
+
     await this.requireKnowledgeItem(knowledgeItemId);
     return this.reviewActionRepository.listByKnowledgeItemId(knowledgeItemId);
+  }
+
+  async listReviewActionsByRevision(
+    revisionId: string,
+  ): Promise<KnowledgeReviewActionRecord[]> {
+    await this.requireKnowledgeRevision(revisionId);
+    return this.reviewActionRepository.listByRevisionId(revisionId);
   }
 
   async resolveGovernedRetrievalContext(
@@ -507,6 +994,103 @@ export class KnowledgeService {
     return snapshot;
   }
 
+  private async buildKnowledgeAssetDetail(
+    assetId: string,
+    revisionId?: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    const asset = await this.requireKnowledgeAsset(assetId, repository);
+    const revisions = await repository.listRevisionsByAssetId(asset.id);
+    const detailedRevisions = await Promise.all(
+      revisions.map(async (revision) => ({
+        ...revision,
+        bindings: await repository.listBindingsByRevisionId(revision.id),
+      })),
+    );
+    const selectedRevision = revisionId
+      ? detailedRevisions.find((record) => record.id === revisionId)
+      : undefined;
+
+    if (revisionId && !selectedRevision) {
+      throw new KnowledgeRevisionNotFoundError(revisionId);
+    }
+
+    const fallbackSelectedRevision =
+      selectedRevision ??
+      detailedRevisions.find((record) => record.id === asset.current_revision_id) ??
+      detailedRevisions.find(
+        (record) =>
+          record.status === "draft" || record.status === "pending_review",
+      ) ??
+      detailedRevisions.find(
+        (record) => record.id === asset.current_approved_revision_id,
+      ) ??
+      detailedRevisions[0];
+
+    if (!fallbackSelectedRevision) {
+      throw new KnowledgeAssetNotFoundError(asset.id);
+    }
+
+    const approvedRevision = asset.current_approved_revision_id
+      ? detailedRevisions.find(
+          (record) => record.id === asset.current_approved_revision_id,
+        )
+      : undefined;
+
+    return {
+      asset,
+      selected_revision: fallbackSelectedRevision,
+      revisions: detailedRevisions,
+      ...(approvedRevision
+        ? { current_approved_revision: approvedRevision }
+        : {}),
+    };
+  }
+
+  private async findRevisionForAssetByStatuses(
+    asset: KnowledgeAssetRecord,
+    statuses: readonly KnowledgeRevisionLifecycleStatus[],
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionRecord | undefined> {
+    const revisions = await repository.listRevisionsByAssetId(asset.id);
+    const preferredIds = uniqueDefinedStrings([
+      asset.current_revision_id,
+      ...revisions.map((record) => record.id),
+    ]);
+
+    for (const candidateId of preferredIds) {
+      const candidate = revisions.find((record) => record.id === candidateId);
+      if (candidate && statuses.includes(candidate.status)) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async projectCompatibilityRecord(
+    knowledgeItemId: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRecord> {
+    const record = await repository.findById(knowledgeItemId);
+    if (!record) {
+      throw new KnowledgeItemNotFoundError(knowledgeItemId);
+    }
+
+    return record;
+  }
+
+  private async findKnowledgeAssetIfSupported(
+    assetId: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeAssetRecord | undefined> {
+    if (!this.supportsRevisionGovernance(repository)) {
+      return undefined;
+    }
+
+    return repository.findAssetById(assetId);
+  }
+
   private async requireKnowledgeItem(
     knowledgeItemId: string,
     repository: KnowledgeRepository = this.repository,
@@ -518,6 +1102,97 @@ export class KnowledgeService {
     }
 
     return knowledgeItem;
+  }
+
+  private async requireKnowledgeAsset(
+    assetId: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeAssetRecord> {
+    const asset = await repository.findAssetById(assetId);
+    if (!asset) {
+      throw new KnowledgeAssetNotFoundError(assetId);
+    }
+
+    return asset;
+  }
+
+  private async requireKnowledgeRevision(
+    revisionId: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionRecord> {
+    const revision = await repository.findRevisionById(revisionId);
+    if (!revision) {
+      throw new KnowledgeRevisionNotFoundError(revisionId);
+    }
+
+    return revision;
+  }
+
+  private async requireApprovedRevision(
+    asset: KnowledgeAssetRecord,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionRecord> {
+    if (!asset.current_approved_revision_id) {
+      throw new KnowledgeStatusTransitionError(asset.id, "draft", "approved");
+    }
+
+    const revision = await this.requireKnowledgeRevision(
+      asset.current_approved_revision_id,
+      repository,
+    );
+    if (revision.status !== "approved") {
+      throw new KnowledgeStatusTransitionError(
+        revision.id,
+        revision.status,
+        "approved",
+      );
+    }
+
+    return revision;
+  }
+
+  private async requireRevisionForAssetByStatuses(
+    asset: KnowledgeAssetRecord,
+    statuses: readonly KnowledgeRevisionLifecycleStatus[],
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionRecord> {
+    const revision = await this.findRevisionForAssetByStatuses(
+      asset,
+      statuses,
+      repository,
+    );
+    if (!revision) {
+      const currentRevision = asset.current_revision_id
+        ? await repository.findRevisionById(asset.current_revision_id)
+        : undefined;
+      throw new KnowledgeStatusTransitionError(
+        asset.id,
+        currentRevision?.status ?? "missing",
+        statuses.join(" or "),
+      );
+    }
+
+    return revision;
+  }
+
+  private supportsRevisionGovernance(
+    repository: KnowledgeRepository = this.repository,
+  ): boolean {
+    const candidate = repository as Partial<KnowledgeRepository>;
+
+    return (
+      typeof candidate.findApprovedById === "function" &&
+      typeof candidate.listApproved === "function" &&
+      typeof candidate.saveAsset === "function" &&
+      typeof candidate.findAssetById === "function" &&
+      typeof candidate.listAssets === "function" &&
+      typeof candidate.saveRevision === "function" &&
+      typeof candidate.findRevisionById === "function" &&
+      typeof candidate.listRevisionsByAssetId === "function" &&
+      typeof candidate.listRevisionsByStatus === "function" &&
+      typeof candidate.replaceRevisionBindings === "function" &&
+      typeof candidate.listBindingsByRevisionId === "function"
+    );
   }
 }
 
@@ -537,4 +1212,41 @@ function createKnowledgeWriteTransactionManager(
   }
 
   return createDirectWriteTransactionManager(context);
+}
+
+function buildBindingRecords(
+  revisionId: string,
+  bindings: readonly KnowledgeRevisionBindingInput[] | undefined,
+  createdAt: string,
+): KnowledgeRevisionBindingRecord[] {
+  return (bindings ?? []).map((binding, index) => ({
+    id: createBindingId(revisionId, index + 1),
+    revision_id: revisionId,
+    binding_kind: binding.bindingKind,
+    binding_target_id: binding.bindingTargetId,
+    binding_target_label: binding.bindingTargetLabel,
+    created_at: createdAt,
+  }));
+}
+
+function createRevisionId(assetId: string, revisionNo: number): string {
+  return `${assetId}-revision-${revisionNo}`;
+}
+
+function createBindingId(revisionId: string, bindingNo: number): string {
+  return `${revisionId}-binding-${bindingNo}`;
+}
+
+function mapTemplateBindingsToBindingInputs(
+  templateBindings: readonly string[] | undefined,
+): KnowledgeRevisionBindingInput[] | undefined {
+  return templateBindings?.map((binding) => ({
+    bindingKind: "module_template",
+    bindingTargetId: binding,
+    bindingTargetLabel: binding,
+  }));
+}
+
+function uniqueDefinedStrings(values: readonly (string | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => value != null))];
 }

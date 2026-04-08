@@ -3,6 +3,7 @@ import type { ManuscriptWorkbenchMode } from "../features/manuscript-workbench/m
 
 export type WorkbenchRenderKind =
   | "manuscript-workbench"
+  | "knowledge-library"
   | "knowledge-review"
   | "learning-review"
   | "admin-governance"
@@ -17,6 +18,8 @@ export interface WorkbenchLocation {
   workbenchId: WorkbenchId | null;
   manuscriptId?: string;
   knowledgeItemId?: string;
+  assetId?: string;
+  revisionId?: string;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
@@ -32,6 +35,10 @@ export function resolveWorkbenchRenderKind(
     workbenchId === "proofreading"
   ) {
     return "manuscript-workbench";
+  }
+
+  if (workbenchId === "knowledge-library") {
+    return "knowledge-library";
   }
 
   if (workbenchId === "knowledge-review") {
@@ -74,6 +81,8 @@ export function formatWorkbenchHash(
     | {
         manuscriptId?: string;
         knowledgeItemId?: string;
+        assetId?: string;
+        revisionId?: string;
         reviewedCaseSnapshotId?: string;
         sampleSetItemId?: string;
         ruleCenterMode?: RuleCenterMode;
@@ -84,6 +93,9 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? handoff : handoff?.manuscriptId;
   const knowledgeItemId =
     typeof handoff === "string" ? undefined : handoff?.knowledgeItemId;
+  const assetId = typeof handoff === "string" ? undefined : handoff?.assetId;
+  const revisionId =
+    typeof handoff === "string" ? undefined : handoff?.revisionId;
   const reviewedCaseSnapshotId =
     typeof handoff === "string" ? undefined : handoff?.reviewedCaseSnapshotId;
   const sampleSetItemId =
@@ -97,6 +109,14 @@ export function formatWorkbenchHash(
 
   if (knowledgeItemId && knowledgeItemId.trim().length > 0) {
     params.set("knowledgeItemId", knowledgeItemId.trim());
+  }
+
+  if (assetId && assetId.trim().length > 0) {
+    params.set("assetId", assetId.trim());
+  }
+
+  if (revisionId && revisionId.trim().length > 0) {
+    params.set("revisionId", revisionId.trim());
   }
 
   if (reviewedCaseSnapshotId && reviewedCaseSnapshotId.trim().length > 0) {
@@ -133,6 +153,8 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const params = new URLSearchParams(rawQuery);
   const manuscriptId = params.get("manuscriptId")?.trim();
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
+  const assetId = params.get("assetId")?.trim();
+  const revisionId = params.get("revisionId")?.trim();
   const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
   const sampleSetItemId = params.get("sampleSetItemId")?.trim();
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
@@ -141,6 +163,8 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     workbenchId: rawWorkbenchId,
     ...(manuscriptId && manuscriptId.length > 0 ? { manuscriptId } : {}),
     ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
+    ...(assetId && assetId.length > 0 ? { assetId } : {}),
+    ...(revisionId && revisionId.length > 0 ? { revisionId } : {}),
     ...(reviewedCaseSnapshotId && reviewedCaseSnapshotId.length > 0
       ? { reviewedCaseSnapshotId }
       : {}),
@@ -174,6 +198,7 @@ function isWorkbenchId(value: string): value is WorkbenchId {
     value === "screening" ||
     value === "editing" ||
     value === "proofreading" ||
+    value === "knowledge-library" ||
     value === "knowledge-review" ||
     value === "learning-review" ||
     value === "admin-console" ||

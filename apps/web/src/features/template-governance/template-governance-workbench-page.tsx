@@ -1117,6 +1117,13 @@ export function TemplateGovernanceWorkbenchPage({
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
   const retrievalInsights = overview?.retrievalInsights ?? null;
+  const knowledgeLibraryHash =
+    selectedKnowledgeItem?.asset_id
+      ? formatWorkbenchHash("knowledge-library", {
+          assetId: selectedKnowledgeItem.asset_id,
+          revisionId: selectedKnowledgeItem.revision_id,
+        })
+      : formatWorkbenchHash("knowledge-library");
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
   const normalizedPrefilledReviewedCaseSnapshotId =
     prefilledReviewedCaseSnapshotId?.trim() ?? "";
@@ -1714,76 +1721,63 @@ export function TemplateGovernanceWorkbenchPage({
             <div>
               <h3>Knowledge Library</h3>
               <p>
-                Search knowledge items, inspect what is already bound to the selected family, and
-                create or update governed drafts.
+                Knowledge authoring has moved to the standalone Knowledge Library workbench. Rule
+                Center now keeps a summary and handoff instead of hosting draft CRUD.
               </p>
             </div>
           </div>
 
           <div className="template-governance-toolbar">
-            <label className="template-governance-field">
-              <span>Search</span>
-              <input
-                value={overview?.filters.searchText ?? ""}
-                onChange={(event) => handleSearchTextChange(event.target.value)}
-                placeholder="title, summary, risk tag, template binding"
-              />
-            </label>
-            <label className="template-governance-field">
-              <span>Status</span>
-              <select
-                value={overview?.filters.knowledgeStatus ?? "all"}
-                onChange={(event) =>
-                  handleKnowledgeStatusChange(
-                    event.target.value as TemplateGovernanceWorkbenchFilters["knowledgeStatus"],
-                  )
-                }
-              >
-                {knowledgeStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <article className="template-governance-card">
+              <strong>Open Knowledge Library for authoring</strong>
+              <p>
+                Create new assets, derive revision drafts, manage bindings, and submit revisions
+                into review from the dedicated workbench.
+              </p>
+              <div className="template-governance-actions">
+                <a className="template-governance-link-button" href={knowledgeLibraryHash}>
+                  Open Knowledge Library
+                </a>
+              </div>
+            </article>
           </div>
 
           <div className="template-governance-knowledge-grid">
             <div className="template-governance-knowledge-list">
-              <h4>Visible Knowledge</h4>
-              {overview?.visibleKnowledgeItems.length ? (
-                <ul className="template-governance-list">
-                  {overview.visibleKnowledgeItems.map((item) => {
-                    const isActive = item.id === overview.selectedKnowledgeItemId;
-                    const isBound = overview.boundKnowledgeItems.some(
-                      (boundItem) => boundItem.id === item.id,
-                    );
-                    return (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          className={`template-governance-list-button${isActive ? " is-active" : ""}`}
-                          onClick={() => handleKnowledgeItemSelection(item.id)}
-                        >
-                          <span>{item.title}</span>
-                          <small>
-                            {item.status} · {item.knowledge_kind}
-                            {isBound ? " · bound" : ""}
-                          </small>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="template-governance-empty">
-                  No knowledge items matched the current filters.
+              <h4>Coverage Summary</h4>
+              <article className="template-governance-card">
+                <strong>Knowledge authoring has moved out of Rule Center.</strong>
+                <p>
+                  Use Knowledge Library to create or revise governed knowledge, then return here to
+                  verify family bindings and downstream rule coverage.
                 </p>
-              )}
+                <div className="template-governance-detail-grid">
+                  <div>
+                    <span>Selected Family</span>
+                    <p>{overview?.selectedTemplateFamily?.name ?? "No family selected"}</p>
+                  </div>
+                  <div>
+                    <span>Visible Knowledge Items</span>
+                    <p>{overview?.visibleKnowledgeItems.length ?? 0}</p>
+                  </div>
+                  <div>
+                    <span>Bound To Current Family</span>
+                    <p>{overview?.boundKnowledgeItems.length ?? 0}</p>
+                  </div>
+                  <div>
+                    <span>Draft Selected In Rule Center</span>
+                    <p>
+                      {isEditingDraft
+                        ? "Yes, continue editing it in Knowledge Library."
+                        : "No active draft selected."}
+                    </p>
+                  </div>
+                </div>
+              </article>
             </div>
 
             <div className="template-governance-knowledge-detail">
-              <h4>Selected Knowledge</h4>
+              <h4>Current Selection</h4>
               {selectedKnowledgeItem ? (
                 <article className="template-governance-card">
                   <strong>{selectedKnowledgeItem.title}</strong>
@@ -1791,6 +1785,16 @@ export function TemplateGovernanceWorkbenchPage({
                     {selectedKnowledgeItem.status} · {selectedKnowledgeItem.knowledge_kind}
                   </small>
                   <p>{selectedKnowledgeItem.summary ?? selectedKnowledgeItem.canonical_text}</p>
+                  <div className="template-governance-detail-grid">
+                    <div>
+                      <span>Asset</span>
+                      <p>{selectedKnowledgeItem.asset_id ?? "legacy-only item"}</p>
+                    </div>
+                    <div>
+                      <span>Revision</span>
+                      <p>{selectedKnowledgeItem.revision_id ?? "n/a"}</p>
+                    </div>
+                  </div>
                   <div className="template-governance-chip-row">
                     {(selectedKnowledgeItem.template_bindings ?? []).map((binding) => (
                       <span key={binding} className="template-governance-chip">
@@ -1801,228 +1805,16 @@ export function TemplateGovernanceWorkbenchPage({
                 </article>
               ) : (
                 <p className="template-governance-empty">
-                  Select a knowledge item to inspect its current governed state.
+                  Rule Center no longer edits knowledge drafts here. Open Knowledge Library to
+                  inspect or revise a governed knowledge asset.
                 </p>
               )}
 
-              <form className="template-governance-form-grid" onSubmit={handleSubmitKnowledgeDraft}>
-                <label className="template-governance-field">
-                  <span>Title</span>
-                  <input
-                    value={knowledgeForm.title}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({ ...current, title: event.target.value }))
-                    }
-                    placeholder="Knowledge draft title"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Knowledge Kind</span>
-                  <select
-                    value={knowledgeForm.knowledgeKind}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        knowledgeKind: event.target.value as KnowledgeKind,
-                      }))
-                    }
-                  >
-                    {knowledgeKinds.map((knowledgeKind) => (
-                      <option key={knowledgeKind} value={knowledgeKind}>
-                        {knowledgeKind}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="template-governance-field template-governance-field-full">
-                  <span>Canonical Text</span>
-                  <textarea
-                    rows={6}
-                    value={knowledgeForm.canonicalText}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        canonicalText: event.target.value,
-                      }))
-                    }
-                    placeholder="Normalized governed knowledge text"
-                  />
-                </label>
-                <label className="template-governance-field template-governance-field-full">
-                  <span>Summary</span>
-                  <textarea
-                    rows={3}
-                    value={knowledgeForm.summary}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({ ...current, summary: event.target.value }))
-                    }
-                    placeholder="Operator-facing short summary"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Module Scope</span>
-                  <select
-                    value={knowledgeForm.moduleScope}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        moduleScope: event.target.value as KnowledgeDraftFormState["moduleScope"],
-                      }))
-                    }
-                  >
-                    <option value="any">any</option>
-                    {templateModules.map((module) => (
-                      <option key={module} value={module}>
-                        {module}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="template-governance-field">
-                  <span>Manuscript Types</span>
-                  <input
-                    value={knowledgeForm.manuscriptTypes}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        manuscriptTypes: event.target.value,
-                      }))
-                    }
-                    placeholder="review, clinical_study or any"
-                  />
-                </label>
-                <label className="template-governance-field template-governance-field-full">
-                  <span>Template Bindings</span>
-                  <input
-                    value={knowledgeForm.templateBindings}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        templateBindings: event.target.value,
-                      }))
-                    }
-                    placeholder="template ids, comma-separated"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Aliases</span>
-                  <input
-                    value={knowledgeForm.aliases}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({ ...current, aliases: event.target.value }))
-                    }
-                    placeholder="comma-separated"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Sections</span>
-                  <input
-                    value={knowledgeForm.sections}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({ ...current, sections: event.target.value }))
-                    }
-                    placeholder="methods, results"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Risk Tags</span>
-                  <input
-                    value={knowledgeForm.riskTags}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({ ...current, riskTags: event.target.value }))
-                    }
-                    placeholder="statistics, ethics"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Discipline Tags</span>
-                  <input
-                    value={knowledgeForm.disciplineTags}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        disciplineTags: event.target.value,
-                      }))
-                    }
-                    placeholder="cardiology"
-                  />
-                </label>
-                <label className="template-governance-field">
-                  <span>Evidence Level</span>
-                  <select
-                    value={knowledgeForm.evidenceLevel}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        evidenceLevel: event.target.value as EvidenceLevel,
-                      }))
-                    }
-                  >
-                    {evidenceLevels.map((evidenceLevel) => (
-                      <option key={evidenceLevel} value={evidenceLevel}>
-                        {evidenceLevel}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="template-governance-field">
-                  <span>Source Type</span>
-                  <select
-                    value={knowledgeForm.sourceType}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        sourceType: event.target.value as KnowledgeSourceType,
-                      }))
-                    }
-                  >
-                    {knowledgeSourceTypes.map((sourceType) => (
-                      <option key={sourceType} value={sourceType}>
-                        {sourceType}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="template-governance-field template-governance-field-full">
-                  <span>Source Link</span>
-                  <input
-                    value={knowledgeForm.sourceLink}
-                    onChange={(event) =>
-                      setKnowledgeForm((current) => ({
-                        ...current,
-                        sourceLink: event.target.value,
-                      }))
-                    }
-                    placeholder="https://example.org/source"
-                  />
-                </label>
-                <div className="template-governance-actions template-governance-actions-full">
-                  <button type="submit" disabled={isBusy}>
-                    {isBusy
-                      ? "Saving..."
-                      : isEditingDraft
-                        ? "Save Draft"
-                        : "Create Knowledge Draft"}
-                  </button>
-                  <button type="button" disabled={isBusy} onClick={handleResetKnowledgeDraft}>
-                    Reset Draft Form
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isBusy || !isEditingDraft}
-                    onClick={() => void handleSubmitForReview()}
-                  >
-                    Submit Draft for Review
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isBusy || !selectedKnowledgeItem}
-                    onClick={() => void handleArchiveKnowledgeItem()}
-                  >
-                    Archive Selected
-                  </button>
-                </div>
-              </form>
+              <div className="template-governance-actions">
+                <a className="template-governance-link-button" href={knowledgeLibraryHash}>
+                  Continue In Knowledge Library
+                </a>
+              </div>
             </div>
           </div>
         </article>
