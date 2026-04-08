@@ -53,11 +53,12 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   });
 
   await expect(page).toHaveTitle(/Medical Manuscript System - Web/i);
-  await expect(page.locator("body")).toContainText("Signed in as Admin");
-  await expect(page.getByRole("heading", { name: "Screening Workbench" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`Loading manuscript ${manuscriptId}...`);
+  await expect(page.locator("body")).toContainText("当前账号");
+  await expect(page.locator("body")).toContainText("管理员");
+  await expect(page.getByRole("heading", { name: "初筛工作台" })).toBeVisible();
+  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
   await expect(page.locator("body")).toContainText(
-    "Fetching workspace assets and latest governed state before enabling actions.",
+    "正在拉取工作区资产与最新治理状态，完成后即可继续操作。",
   );
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
@@ -65,77 +66,82 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   });
   await expect(page.locator("body")).toContainText(`Auto-loaded manuscript ${manuscriptId}`);
 
-  const runScreeningButton = page.getByRole("button", { name: "Run Screening" });
+  const runScreeningButton = page.getByRole("button", { name: "执行初筛" });
   await expect(runScreeningButton).toBeEnabled();
   await runScreeningButton.click();
   await expect(page.locator("body")).toContainText("Action Complete");
   await expect(page.locator("body")).toContainText("Created asset");
-  await expect(page.getByRole("link", { name: "Open Editing Workbench" })).toBeVisible();
+  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await expect(editingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Editing Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`Loading manuscript ${manuscriptId}...`);
+  await editingLink.click();
+  await expect(page.getByRole("heading", { name: "编辑工作台" })).toBeVisible();
+  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText(`Auto-loaded manuscript ${manuscriptId}`);
 
-  const runEditingButton = page.getByRole("button", { name: "Run Editing" });
+  const runEditingButton = page.getByRole("button", { name: "执行编辑" });
   await expect(runEditingButton).toBeEnabled();
   await runEditingButton.click();
   await expect(page.locator("body")).toContainText("Created asset");
-  await expect(page.getByRole("link", { name: "Open Proofreading Workbench" })).toBeVisible();
+  const proofreadingLink = page
+    .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(proofreadingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Proofreading Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Proofreading Workbench" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`Loading manuscript ${manuscriptId}...`);
+  await proofreadingLink.click();
+  await expect(page.getByRole("heading", { name: "校对工作台" })).toBeVisible();
+  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText(`Auto-loaded manuscript ${manuscriptId}`);
 
-  const createDraftButton = page.getByRole("button", { name: "Create Draft" });
+  const createDraftButton = page.getByRole("button", { name: "生成草稿" });
   await expect(createDraftButton).toBeEnabled();
   await createDraftButton.click();
   await expect(page.locator("body")).toContainText("proofreading_draft_report");
   await expect(page.locator("body")).toContainText(
-    "Human confirmation is still required before producing the proofreading final.",
+    "生成校对终稿前仍需人工确认。",
   );
-  await expect(page.getByRole("button", { name: "Finalize Proofreading" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "校对定稿" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Finalize Proofreading" }).click();
+  await page.getByRole("button", { name: "校对定稿" }).click();
   await expect(page.locator("body")).toContainText("Finalized asset");
-  await expect(page.locator("body")).toContainText(
-    "The proofreading final is active and ready for downstream delivery.",
-  );
+  await expect(page.locator("body")).toContainText("当前校对终稿已激活，可继续下游交付。");
 
-  await page.getByRole("button", { name: "Publish Human Final" }).click();
+  await page.getByRole("button", { name: "发布人工终稿" }).click();
   await expect(page.locator("body")).toContainText("Published human-final asset");
   await expect(page.locator("body")).toContainText(
-    "The human-final manuscript is ready for governed learning snapshot creation.",
+    "人工终稿已就绪，可进入学习快照治理流程。",
   );
-  await expect(page.getByRole("link", { name: "Open Learning Review" })).toBeVisible();
+  const learningReviewLink = page
+    .locator(`a[href*="#learning-review?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(learningReviewLink).toBeVisible();
 
-  await page.getByRole("button", { name: "Export Current Asset" }).click();
+  await page.getByRole("button", { name: "导出当前资产" }).click();
   await expect(page.locator("body")).toContainText("Prepared export");
-  await expect(page.locator("body")).toContainText("Export File Name");
+  await expect(page.locator("body")).toContainText("导出文件名");
   await expect(page.locator("body")).toContainText("human-final.docx");
-  await expect(page.locator("body")).toContainText("Download MIME Type");
+  await expect(page.locator("body")).toContainText("下载 MIME 类型");
   await expect(page.locator("body")).toContainText(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
   await expect(page.locator("body")).toContainText(
     `runs/${manuscriptId}/proofreading/human-final`,
   );
-  const downloadLink = page.getByRole("link", { name: "Download Latest Export" });
+  const downloadLink = page.locator('a[href*="/api/v1/document-assets/"]').last();
   await expect(downloadLink).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await downloadLink.click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("human-final.docx");
 
-  await page.getByRole("link", { name: "Open Learning Review" }).click();
-  await expect(page.locator("body")).toContainText("Governed learning review desk");
+  await learningReviewLink.click();
+  await expect(page.getByRole("heading", { name: "Knowledge Handoff Bridge" })).toBeVisible();
   await expect(page.locator("body")).toContainText(
     "This review desk was prefilled from the manuscript workbench handoff.",
   );

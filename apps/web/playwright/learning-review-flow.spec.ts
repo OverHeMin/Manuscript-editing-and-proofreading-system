@@ -45,43 +45,50 @@ test("admin can complete the governed learning review flow from manuscript hando
   });
 
   await expect(page).toHaveTitle(/Medical Manuscript System - Web/i);
-  await expect(page.getByRole("heading", { name: "Screening Workbench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "初筛工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText(`Auto-loaded manuscript ${manuscriptId}`);
 
-  await page.getByRole("button", { name: "Run Screening" }).click();
+  await page.getByRole("button", { name: "执行初筛" }).click();
   await expect(page.locator("body")).toContainText("Action Complete");
-  await expect(page.getByRole("link", { name: "Open Editing Workbench" })).toBeVisible();
+  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await expect(editingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Editing Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await editingLink.click();
+  await expect(page.getByRole("heading", { name: "编辑工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: "Run Editing" }).click();
-  await expect(page.getByRole("link", { name: "Open Proofreading Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: "执行编辑" }).click();
+  const proofreadingLink = page
+    .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(proofreadingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Proofreading Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Proofreading Workbench" })).toBeVisible();
+  await proofreadingLink.click();
+  await expect(page.getByRole("heading", { name: "校对工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: "Create Draft" }).click();
+  await page.getByRole("button", { name: "生成草稿" }).click();
   await expect(page.locator("body")).toContainText("proofreading_draft_report");
 
-  await page.getByRole("button", { name: "Finalize Proofreading" }).click();
+  await page.getByRole("button", { name: "校对定稿" }).click();
   await expect(page.locator("body")).toContainText("Finalized asset");
 
-  await page.getByRole("button", { name: "Publish Human Final" }).click();
+  await page.getByRole("button", { name: "发布人工终稿" }).click();
   await expect(page.locator("body")).toContainText("Published human-final asset");
-  await expect(page.getByRole("link", { name: "Open Learning Review" })).toBeVisible();
+  const learningReviewLink = page
+    .locator(`a[href*="#learning-review?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(learningReviewLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Learning Review" }).click();
-  await expect(page.getByRole("heading", { name: "Governed learning review desk" })).toBeVisible();
+  await learningReviewLink.click();
+  await expect(page.getByRole("heading", { name: "Knowledge Handoff Bridge" })).toBeVisible();
   await expect(page.locator("body")).toContainText(
     "This review desk was prefilled from the manuscript workbench handoff.",
   );

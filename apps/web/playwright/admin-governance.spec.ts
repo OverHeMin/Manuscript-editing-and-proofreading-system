@@ -189,28 +189,28 @@ test("editing workbench saves a journal template context before running editing"
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "编辑工作台" })).toBeVisible();
   await expect(page.locator("body")).toContainText(prepared.manuscriptId);
-  await expect(page.locator("body")).toContainText("Base Template Family");
+  await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
   const journalPanel = page
     .locator(".manuscript-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "Journal Template" }) });
-  const journalSelect = journalPanel.getByLabel("Journal Template");
+    .filter({ has: page.getByRole("heading", { name: "期刊模板" }) });
+  const journalSelect = journalPanel.getByLabel("期刊模板");
 
   await expect(journalSelect).toBeVisible();
   await journalSelect.selectOption({ label: prepared.journalName });
-  await journalPanel.getByRole("button", { name: "Save Template Context" }).click();
+  await journalPanel.getByRole("button", { name: "保存模板上下文" }).click();
 
   await expect(page.locator("body")).toContainText(
     `Updated template context for ${prepared.manuscriptId}`,
   );
   await expect(page.locator("body")).toContainText(prepared.journalName);
-  await expect(page.locator("body")).toContainText("Journal Overrides");
+  await expect(page.locator("body")).toContainText("期刊覆写");
   await expect(page.locator("body")).toContainText("Active");
 
-  const parentAssetSelect = page.getByLabel("Parent Asset");
+  const parentAssetSelect = page.getByLabel("父资产");
   await expect(parentAssetSelect).toBeVisible();
   await expect(parentAssetSelect).not.toHaveValue("");
 
@@ -223,7 +223,7 @@ test("editing workbench saves a journal template context before running editing"
   };
   expect(manuscript.current_journal_template_id).toBe(prepared.journalTemplateId);
 
-  await page.getByRole("button", { name: "Run Editing" }).click();
+  await page.getByRole("button", { name: "执行编辑" }).click();
 
   await expect(page.locator("body")).toContainText("Created asset");
   await expect(page.locator("body")).toContainText(prepared.journalName);

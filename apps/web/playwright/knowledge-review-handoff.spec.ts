@@ -11,11 +11,11 @@ test("admin can submit a governed knowledge draft from learning review into know
     label: "Phase 8AB",
   });
 
-  await expect(page.getByRole("heading", { name: "Pending Review Queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "待审核队列" })).toBeVisible();
   await expect(page.locator(".knowledge-review-queue-pane")).toContainText(
     handoff.knowledgeTitle,
   );
-  await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "通过" })).toBeEnabled();
 });
 
 test("admin can approve a handed-off knowledge review item and remove it from the queue", async ({
@@ -27,11 +27,11 @@ test("admin can approve a handed-off knowledge review item and remove it from th
   });
   const reviewNote = "Approved in browser smoke.";
 
-  await page.getByRole("textbox", { name: "Review note" }).fill(reviewNote);
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("textbox", { name: "审核备注" }).fill(reviewNote);
+  await page.getByRole("button", { name: "通过", exact: true }).click();
 
   await expect(page.locator(".knowledge-review-action-panel")).toContainText(
-    "Knowledge item approved.",
+    "知识条目已通过审核。",
   );
   await expect(page.locator(".knowledge-review-queue-pane")).not.toContainText(
     handoff.knowledgeTitle,
@@ -71,11 +71,11 @@ test("admin can reject a handed-off knowledge review item and return it to draft
   });
   const reviewNote = "Rejected in browser smoke.";
 
-  await page.getByRole("textbox", { name: "Review note" }).fill(reviewNote);
-  await page.getByRole("button", { name: "Reject", exact: true }).click();
+  await page.getByRole("textbox", { name: "审核备注" }).fill(reviewNote);
+  await page.getByRole("button", { name: "驳回", exact: true }).click();
 
   await expect(page.locator(".knowledge-review-action-panel")).toContainText(
-    "Knowledge item rejected.",
+    "知识条目已驳回。",
   );
   await expect(page.locator(".knowledge-review-queue-pane")).not.toContainText(
     handoff.knowledgeTitle,
@@ -168,33 +168,40 @@ async function prepareKnowledgeReviewHandoff(
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Screening Workbench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "初筛工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Run Screening" }).click();
-  await expect(page.getByRole("link", { name: "Open Editing Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: "执行初筛" }).click();
+  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await expect(editingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Editing Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Editing Workbench" })).toBeVisible();
+  await editingLink.click();
+  await expect(page.getByRole("heading", { name: "编辑工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Run Editing" }).click();
-  await expect(page.getByRole("link", { name: "Open Proofreading Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: "执行编辑" }).click();
+  const proofreadingLink = page
+    .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(proofreadingLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Proofreading Workbench" }).click();
-  await expect(page.getByRole("heading", { name: "Proofreading Workbench" })).toBeVisible();
+  await proofreadingLink.click();
+  await expect(page.getByRole("heading", { name: "校对工作台" })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Create Draft" }).click();
-  await page.getByRole("button", { name: "Finalize Proofreading" }).click();
-  await page.getByRole("button", { name: "Publish Human Final" }).click();
-  await expect(page.getByRole("link", { name: "Open Learning Review" })).toBeVisible();
+  await page.getByRole("button", { name: "生成草稿" }).click();
+  await page.getByRole("button", { name: "校对定稿" }).click();
+  await page.getByRole("button", { name: "发布人工终稿" }).click();
+  const learningReviewLink = page
+    .locator(`a[href*="#learning-review?manuscriptId=${manuscriptId}"]`)
+    .first();
+  await expect(learningReviewLink).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Learning Review" }).click();
-  await expect(page.getByRole("heading", { name: "Governed learning review desk" })).toBeVisible();
+  await learningReviewLink.click();
+  await expect(page.getByRole("heading", { name: "Knowledge Handoff Bridge" })).toBeVisible();
   await page.getByRole("button", { name: "Create snapshot" }).click();
   await page.getByRole("textbox", { name: "Title", exact: true }).fill(
     `${input.label} candidate ${manuscriptId}`,
@@ -219,7 +226,7 @@ async function prepareKnowledgeReviewHandoff(
   const knowledgeItemId = extractKnowledgeItemId(handoffHref);
 
   await knowledgeReviewLink.click();
-  await expect(page.getByRole("heading", { name: "Pending Review Queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "待审核队列" })).toBeVisible();
   await expect(page.locator(".knowledge-review-queue-pane")).toContainText(knowledgeTitle);
 
   return {
