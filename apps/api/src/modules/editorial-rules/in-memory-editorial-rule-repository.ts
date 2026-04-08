@@ -20,6 +20,15 @@ function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {
     trigger: cloneJsonObject(record.trigger),
     action: cloneJsonObject(record.action),
     authoring_payload: cloneJsonObject(record.authoring_payload),
+    ...(record.explanation_payload
+      ? { explanation_payload: cloneJsonObject(record.explanation_payload) }
+      : {}),
+    ...(record.linkage_payload
+      ? { linkage_payload: cloneJsonObject(record.linkage_payload) }
+      : {}),
+    ...(record.projection_payload
+      ? { projection_payload: cloneJsonObject(record.projection_payload) }
+      : {}),
   };
 }
 

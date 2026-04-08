@@ -16,7 +16,16 @@ function cloneSnapshotRecord(
 function cloneCandidateRecord(
   record: LearningCandidateRecord,
 ): LearningCandidateRecord {
-  return { ...record };
+  return {
+    ...record,
+    ...(record.candidate_payload
+      ? {
+          candidate_payload: JSON.parse(
+            JSON.stringify(record.candidate_payload),
+          ) as Record<string, unknown>,
+        }
+      : {}),
+  };
 }
 
 function compareCandidateRecords(

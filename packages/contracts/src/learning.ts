@@ -1,4 +1,9 @@
-import type { DocumentAssetId, ManuscriptType } from "./manuscript.js";
+import type {
+  DocumentAssetId,
+  JournalTemplateId,
+  ManuscriptType,
+  TemplateFamilyId,
+} from "./manuscript.js";
 import type { ManuscriptModule } from "./assets.js";
 
 export type LearningRunId = string;
@@ -41,6 +46,10 @@ export interface LearningCandidate {
   // Candidate content is intentionally flexible in V1.
   title?: string;
   proposal_text?: string;
+  candidate_payload?: Record<string, unknown>;
+  suggested_rule_object?: string;
+  suggested_template_family_id?: TemplateFamilyId;
+  suggested_journal_template_id?: JournalTemplateId;
 
   created_at?: string;
 }

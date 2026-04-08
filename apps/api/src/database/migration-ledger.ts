@@ -12,6 +12,10 @@ const migrationDescriptions = new Map<string, string>([
     "0027_medical_editorial_rule_authoring_workbench.sql",
     "Add journal template profiles and enriched editorial rule persistence fields.",
   ],
+  [
+    "0028_medical_rule_library_v2_foundations.sql",
+    "Add V2 rule explainability fields plus learning candidate payload and suggestion persistence.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

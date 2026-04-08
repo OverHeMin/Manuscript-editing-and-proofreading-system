@@ -6,6 +6,7 @@ export * from "./templates.js";
 export * from "./knowledge.js";
 export * from "./learning.js";
 export * from "./learning-governance.js";
+export * from "./editorial-rules.js";
 export * from "./evaluation-ops.js";
 export * from "./model-routing.js";
 export * from "./governed-execution.js";

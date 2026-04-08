@@ -1,4 +1,28 @@
-import type { TemplateModule } from "../templates/template-record.ts";
+import type {
+  JournalTemplateId,
+  ManuscriptType,
+  TemplateFamilyId,
+} from "./manuscript.js";
+import type { ModuleType } from "./templates.js";
+
+export type EditorialRuleSetId = string;
+export type EditorialRuleId = string;
+
+export type RuleObjectKey =
+  | "title"
+  | "author_line"
+  | "abstract"
+  | "keyword"
+  | "heading_hierarchy"
+  | "terminology"
+  | "numeric_unit"
+  | "statistical_expression"
+  | "table"
+  | "figure"
+  | "reference"
+  | "statement"
+  | "manuscript_structure"
+  | "journal_column";
 
 export type EditorialRuleSetStatus = "draft" | "published" | "archived";
 export type EditorialRuleType = "format" | "content";
@@ -18,20 +42,6 @@ export type EditorialRuleEvidenceLevel =
   | "expert_opinion"
   | "unknown";
 export type EditorialRuleProjectionKind = "rule" | "checklist" | "prompt_snippet";
-
-export interface EditorialRuleScope {
-  [key: string]: unknown;
-}
-
-export interface EditorialRuleTrigger {
-  kind: string;
-  [key: string]: unknown;
-}
-
-export interface EditorialRuleAction {
-  kind: string;
-  [key: string]: unknown;
-}
 
 export interface EditorialRuleExplanationPayload {
   rationale: string;
@@ -56,26 +66,26 @@ export interface EditorialRuleProjectionPayload {
   incorrect_example?: string;
 }
 
-export interface EditorialRuleSetRecord {
-  id: string;
-  template_family_id: string;
-  journal_template_id?: string;
-  module: TemplateModule;
+export interface EditorialRuleSet {
+  id: EditorialRuleSetId;
+  template_family_id: TemplateFamilyId;
+  journal_template_id?: JournalTemplateId;
+  module: ModuleType;
   version_no: number;
   status: EditorialRuleSetStatus;
 }
 
-export interface EditorialRuleRecord {
-  id: string;
-  rule_set_id: string;
+export interface EditorialRule {
+  id: EditorialRuleId;
+  rule_set_id: EditorialRuleSetId;
   order_no: number;
-  rule_object: string;
+  rule_object: RuleObjectKey;
   rule_type: EditorialRuleType;
   execution_mode: EditorialRuleExecutionMode;
-  scope: EditorialRuleScope;
+  scope: Record<string, unknown>;
   selector: Record<string, unknown>;
-  trigger: EditorialRuleTrigger;
-  action: EditorialRuleAction;
+  trigger: Record<string, unknown>;
+  action: Record<string, unknown>;
   authoring_payload: Record<string, unknown>;
   explanation_payload?: EditorialRuleExplanationPayload;
   linkage_payload?: EditorialRuleLinkagePayload;
@@ -87,4 +97,20 @@ export interface EditorialRuleRecord {
   example_before?: string;
   example_after?: string;
   manual_review_reason_template?: string;
+}
+
+export interface EditorialRulePreviewContext {
+  manuscript_type: ManuscriptType;
+  module: ModuleType;
+  template_family_id: TemplateFamilyId;
+  journal_template_id?: JournalTemplateId;
+  rule_object?: RuleObjectKey;
+}
+
+export interface EditorialRulePreviewResult {
+  matched_rule_ids: EditorialRuleId[];
+  overridden_rule_ids: EditorialRuleId[];
+  reasons: string[];
+  output?: string;
+  inspect_only: boolean;
 }
