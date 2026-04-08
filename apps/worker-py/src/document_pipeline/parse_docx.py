@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
+from document_pipeline.table_semantics import build_table_semantic_snapshot
+
 
 HEADING_STYLE_LEVELS = {
     "title": 0,
@@ -80,12 +82,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
 
             style = extract_paragraph_style(child)
             paragraph_index = len(paragraphs)
-            paragraphs.append(
-                {
-                    "text": text,
-                    "style": style,
-                }
-            )
+            paragraphs.append({"text": text, "style": style})
 
             if normalize_style_name(style) in HEADING_STYLE_LEVELS:
                 section = {
@@ -95,12 +92,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
                     "paragraph_index": paragraph_index,
                 }
                 sections.append(section)
-                blocks.append(
-                    {
-                        "kind": "heading",
-                        **section,
-                    }
-                )
+                blocks.append({"kind": "heading", **section})
                 pending_table_caption = None
                 continue
 
@@ -124,7 +116,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
         if child.tag != qualify("tbl"):
             continue
 
-        row_count, column_count, cells = extract_table_dimensions(child)
+        row_count, column_count, cells, raw_rows = extract_table_dimensions(child)
         table_entry = {
             "order": len(tables) + 1,
             "row_count": row_count,
@@ -132,6 +124,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
             "caption": pending_table_caption,
             "notes": [],
             "cells": cells,
+            "raw_rows": raw_rows,
         }
         tables.append(table_entry)
         blocks.append(
@@ -159,6 +152,14 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
             "warnings": ["No readable paragraphs or tables were detected in the document."],
         }
 
+    for table in tables:
+        table["semantic"] = build_table_semantic_snapshot(
+            table_index=table["order"],
+            caption=table.get("caption"),
+            notes=table.get("notes") or [],
+            rows=table.get("raw_rows") or [],
+        )
+
     return {
         "status": "ready",
         "parser": "python_docx_ooxml",
@@ -185,29 +186,68 @@ def extract_paragraph_style(node: ET.Element) -> str | None:
     return style.attrib.get(qualify("val"))
 
 
-def extract_table_dimensions(node: ET.Element) -> tuple[int, int, list[list[str]]]:
+def extract_table_dimensions(
+    node: ET.Element,
+) -> tuple[int, int, list[list[str]], list[list[dict]]]:
     rows = node.findall("./w:tr", NS)
     cell_rows: list[list[str]] = []
+    raw_rows: list[list[dict]] = []
 
     for row in rows:
         cells = row.findall("./w:tc", NS)
-        cell_rows.append([extract_node_text(cell).strip() for cell in cells])
+        text_row: list[str] = []
+        raw_row: list[dict] = []
+        for cell in cells:
+            text = extract_node_text(cell).strip()
+            text_row.append(text)
+            raw_row.append(
+                {
+                    "text": text,
+                    "column_span": extract_grid_span(cell),
+                    "row_span": extract_row_span(cell),
+                }
+            )
+        cell_rows.append(text_row)
+        raw_rows.append(raw_row)
 
-    row_count = len(cell_rows)
-    column_count = max((len(row) for row in cell_rows), default=0)
-    return row_count, column_count, cell_rows
+    row_count = len(raw_rows)
+    column_count = max(
+        (sum(int(cell.get("column_span") or 1) for cell in row) for row in raw_rows),
+        default=0,
+    )
+    return row_count, column_count, cell_rows, raw_rows
+
+
+def extract_grid_span(node: ET.Element) -> int:
+    grid_span = node.find("./w:tcPr/w:gridSpan", NS)
+    if grid_span is None:
+        return 1
+
+    try:
+        return int(grid_span.attrib.get(qualify("val"), "1"))
+    except ValueError:
+        return 1
+
+
+def extract_row_span(node: ET.Element) -> int:
+    vertical_merge = node.find("./w:tcPr/w:vMerge", NS)
+    if vertical_merge is None:
+        return 1
+    return 2
 
 
 def is_table_caption(text: str) -> bool:
     stripped = text.strip()
-    return stripped.startswith("表") or stripped.lower().startswith("table")
+    return stripped.startswith("\u8868") or stripped.lower().startswith("table")
 
 
 def is_table_note(text: str) -> bool:
     stripped = text.strip()
     return (
-        stripped.startswith("注：")
-        or stripped.startswith("注:")
+        stripped.startswith("\u6ce8\uff1a")
+        or stripped.startswith("\u6ce8")
+        or stripped.startswith("*P")
+        or stripped.startswith("*p")
         or stripped.lower().startswith("note:")
         or stripped.lower().startswith("notes:")
     )
