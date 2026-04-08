@@ -4,7 +4,7 @@ import type {
 } from "./editorial-rule-record.ts";
 import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
 
-function cloneJsonObject<T extends Record<string, unknown>>(value: T): T {
+function cloneJsonObject<T extends object>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 

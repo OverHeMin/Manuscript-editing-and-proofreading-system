@@ -1234,6 +1234,7 @@ export function createInMemoryApiRuntime(input: {
     learningCandidateRepository,
     knowledgeService,
     templateService,
+    editorialRuleService,
     promptSkillRegistryService,
   });
 

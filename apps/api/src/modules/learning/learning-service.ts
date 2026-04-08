@@ -47,6 +47,10 @@ export interface CreateLearningCandidateInput {
   proposalText?: string;
   requestedBy: string;
   deidentificationPassed: boolean;
+  candidatePayload?: Record<string, unknown>;
+  suggestedRuleObject?: string;
+  suggestedTemplateFamilyId?: string;
+  suggestedJournalTemplateId?: string;
 }
 
 export interface AttachGovernedSourceInput {
@@ -297,6 +301,10 @@ export class LearningService {
       snapshot_asset_id: snapshot.snapshot_asset_id,
       title: input.title,
       proposal_text: input.proposalText,
+      candidate_payload: input.candidatePayload,
+      suggested_rule_object: input.suggestedRuleObject,
+      suggested_template_family_id: input.suggestedTemplateFamilyId,
+      suggested_journal_template_id: input.suggestedJournalTemplateId,
       created_by: input.requestedBy,
       created_at: timestamp,
       updated_at: timestamp,

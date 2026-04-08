@@ -71,6 +71,101 @@ test("resolution prefers the journal rule when object selector and trigger key c
   assert.equal(abstractRule?.action.to, JOURNAL_AFTER_HEADING);
 });
 
+test("resolution reports override metadata, coverage keys, and execution posture for resolved rules", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+    journalTemplateId: "journal-template-1",
+  });
+  const abstractRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "journal-rule-abstract",
+  );
+  const tableRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "journal-rule-table",
+  );
+
+  assert.deepEqual(resolved.overrides, [
+    {
+      active_rule_id: "journal-rule-abstract",
+      overridden_rule_id: "base-rule-abstract",
+      reason: 'Journal template override matched coverage key "abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}".',
+    },
+  ]);
+  assert.equal(abstractRule?.source_layer, "journal");
+  assert.deepEqual(abstractRule?.overridden_rule_ids, ["base-rule-abstract"]);
+  assert.equal(
+    abstractRule?.coverage_key,
+    'abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}',
+  );
+  assert.match(abstractRule?.resolution_reason ?? "", /journal template override/i);
+  assert.equal(abstractRule?.execution_posture, "guarded");
+  assert.equal(tableRule?.execution_posture, "inspect_only");
+});
+
+test("resolution keeps the earliest same-layer rule when duplicate coverage keys appear in one published scope", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-abstract-duplicate",
+    rule_set_id: "base-rule-set",
+    order_no: 40,
+    rule_object: "abstract",
+    rule_type: "format",
+    execution_mode: "apply",
+    scope: {
+      sections: ["abstract"],
+      block_kind: "heading",
+    },
+    selector: {
+      section_selector: "abstract",
+      label_selector: { text: BEFORE_HEADING },
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: BASE_AFTER_HEADING,
+    },
+    authoring_payload: {},
+    confidence_policy: "always_auto",
+    severity: "error",
+    enabled: true,
+  });
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+
+  assert.deepEqual(
+    resolved.rules.map((rule) => rule.id),
+    ["base-rule-abstract", "base-rule-discussion"],
+  );
+  assert.deepEqual(
+    resolved.overrides.find(
+      (entry) => entry.overridden_rule_id === "base-rule-abstract-duplicate",
+    ),
+    {
+      active_rule_id: "base-rule-abstract",
+      overridden_rule_id: "base-rule-abstract-duplicate",
+      reason: 'Same-layer conflict retained the earliest rule for coverage key "abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}".',
+    },
+  );
+});
+
 async function seedPublishedRuleScopes(
   repository: InMemoryEditorialRuleRepository,
 ): Promise<void> {
@@ -114,6 +209,10 @@ async function seedPublishedRuleScopes(
       to: BASE_AFTER_HEADING,
     },
     authoring_payload: {},
+    explanation_payload: {
+      rationale:
+        "Normalize base abstract objective headings to full-width punctuation.",
+    },
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,
@@ -166,6 +265,10 @@ async function seedPublishedRuleScopes(
       to: JOURNAL_AFTER_HEADING,
     },
     authoring_payload: {},
+    explanation_payload: {
+      rationale:
+        "Journal Alpha requires a trailing full-width colon after the normalized abstract heading.",
+    },
     confidence_policy: "always_auto",
     severity: "error",
     enabled: true,

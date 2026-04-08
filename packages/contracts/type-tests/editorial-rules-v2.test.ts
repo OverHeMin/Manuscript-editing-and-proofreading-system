@@ -1,7 +1,11 @@
 import type {
   EditorialRule,
+  EditorialRuleExecutionPosture,
   EditorialRuleExplanationPayload,
   EditorialRuleLinkagePayload,
+  EditorialRuleObjectCatalogEntry,
+  EditorialRulePreviewMatchedRule,
+  EditorialRulePreviewResult,
   EditorialRuleProjectionPayload,
   EditorialRuleSet,
   JournalTemplateId,
@@ -150,4 +154,59 @@ type _LearningWritebackTargetShape = Assert<
 
 type _KnowledgeItemHasProjectionSource = Assert<
   HasKey<KnowledgeItem, "projection_source">
+>;
+
+type _EditorialRuleExecutionPosture = Assert<
+  IsEqual<
+    EditorialRuleExecutionPosture,
+    "auto" | "guarded" | "inspect_only"
+  >
+>;
+
+type ExpectedPreviewMatchedRule = {
+  rule_id: string;
+  rule_object: RuleObjectKey;
+  coverage_key: string;
+  execution_posture: EditorialRuleExecutionPosture;
+  overridden_rule_ids: string[];
+  reason: string;
+};
+
+type _PreviewMatchedRuleShapeForward = Assert<
+  IsAssignable<EditorialRulePreviewMatchedRule, ExpectedPreviewMatchedRule>
+>;
+type _PreviewMatchedRuleShapeBackward = Assert<
+  IsAssignable<ExpectedPreviewMatchedRule, EditorialRulePreviewMatchedRule>
+>;
+
+type ExpectedPreviewResult = {
+  matched_rule_ids: string[];
+  overridden_rule_ids: string[];
+  reasons: string[];
+  output?: string;
+  execution_posture: EditorialRuleExecutionPosture;
+  inspect_only: boolean;
+  matched_rules: EditorialRulePreviewMatchedRule[];
+};
+
+type _PreviewResultShapeForward = Assert<
+  IsAssignable<EditorialRulePreviewResult, ExpectedPreviewResult>
+>;
+type _PreviewResultShapeBackward = Assert<
+  IsAssignable<ExpectedPreviewResult, EditorialRulePreviewResult>
+>;
+
+type ExpectedRuleObjectCatalogEntry = {
+  key: RuleObjectKey;
+  label: string;
+  default_execution_posture: EditorialRuleExecutionPosture;
+  preview_strategy: "text_transform" | "finding_only";
+  projection_kinds: Array<"rule" | "checklist" | "prompt_snippet">;
+};
+
+type _RuleObjectCatalogEntryShapeForward = Assert<
+  IsAssignable<EditorialRuleObjectCatalogEntry, ExpectedRuleObjectCatalogEntry>
+>;
+type _RuleObjectCatalogEntryShapeBackward = Assert<
+  IsAssignable<ExpectedRuleObjectCatalogEntry, EditorialRuleObjectCatalogEntry>
 >;

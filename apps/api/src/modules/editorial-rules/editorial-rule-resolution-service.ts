@@ -3,6 +3,10 @@ import type {
   EditorialRuleSetRecord,
 } from "./editorial-rule-record.ts";
 import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
+import {
+  deriveEditorialRuleExecutionPosture,
+  type EditorialRuleExecutionPosture,
+} from "./editorial-rule-object-catalog.ts";
 
 export interface ResolveEditorialRulesInput {
   templateFamilyId: string;
@@ -14,6 +18,23 @@ export interface EditorialRuleResolutionResult {
   baseRuleSet?: EditorialRuleSetRecord;
   journalRuleSet?: EditorialRuleSetRecord;
   rules: EditorialRuleRecord[];
+  resolved_rules: ResolvedEditorialRule[];
+  overrides: EditorialRuleOverrideRecord[];
+}
+
+export interface ResolvedEditorialRule {
+  rule: EditorialRuleRecord;
+  coverage_key: string;
+  source_layer: "base" | "journal";
+  overridden_rule_ids: string[];
+  resolution_reason: string;
+  execution_posture: EditorialRuleExecutionPosture;
+}
+
+export interface EditorialRuleOverrideRecord {
+  active_rule_id: string;
+  overridden_rule_id: string;
+  reason: string;
 }
 
 export interface EditorialRuleResolutionServiceOptions {
@@ -56,11 +77,23 @@ export class EditorialRuleResolutionService {
           (rule) => rule.enabled,
         )
       : [];
+    const normalizedBase = normalizeLayerRules(baseRules, "base");
+    const normalizedJournal = normalizeLayerRules(journalRules, "journal");
+    const overlaid = overlayRules(
+      normalizedBase.resolved_rules,
+      normalizedJournal.resolved_rules,
+    );
 
     return {
       baseRuleSet,
       journalRuleSet,
-      rules: overlayRules(baseRules, journalRules),
+      rules: overlaid.resolved_rules.map((entry) => entry.rule),
+      resolved_rules: overlaid.resolved_rules,
+      overrides: [
+        ...normalizedBase.overrides,
+        ...normalizedJournal.overrides,
+        ...overlaid.overrides,
+      ],
     };
   }
 }
@@ -90,44 +123,125 @@ function compareRuleSetsDescending(
 }
 
 function overlayRules(
-  baseRules: EditorialRuleRecord[],
-  journalRules: EditorialRuleRecord[],
-): EditorialRuleRecord[] {
+  baseRules: ResolvedEditorialRule[],
+  journalRules: ResolvedEditorialRule[],
+): {
+  resolved_rules: ResolvedEditorialRule[];
+  overrides: EditorialRuleOverrideRecord[];
+} {
   if (journalRules.length === 0) {
-    return [...baseRules];
+    return {
+      resolved_rules: [...baseRules],
+      overrides: [],
+    };
   }
 
-  const journalByConflictKey = new Map(
-    journalRules.map((rule) => [createConflictKey(rule), rule]),
+  const journalByCoverageKey = new Map(
+    journalRules.map((entry) => [entry.coverage_key, entry]),
   );
-  const resolvedRules: EditorialRuleRecord[] = [];
+  const resolvedRules: ResolvedEditorialRule[] = [];
+  const overrides: EditorialRuleOverrideRecord[] = [];
   const consumedJournalKeys = new Set<string>();
 
-  for (const rule of baseRules) {
-    const conflictKey = createConflictKey(rule);
-    const journalOverride = journalByConflictKey.get(conflictKey);
+  for (const entry of baseRules) {
+    const journalOverride = journalByCoverageKey.get(entry.coverage_key);
     if (journalOverride) {
-      resolvedRules.push(journalOverride);
-      consumedJournalKeys.add(conflictKey);
+      const reason = `Journal template override matched coverage key "${entry.coverage_key}".`;
+      resolvedRules.push({
+        ...journalOverride,
+        overridden_rule_ids: [
+          ...journalOverride.overridden_rule_ids,
+          entry.rule.id,
+        ],
+        resolution_reason: reason,
+      });
+      overrides.push({
+        active_rule_id: journalOverride.rule.id,
+        overridden_rule_id: entry.rule.id,
+        reason,
+      });
+      consumedJournalKeys.add(entry.coverage_key);
       continue;
     }
 
-    resolvedRules.push(rule);
+    resolvedRules.push(entry);
   }
 
-  for (const rule of journalRules) {
-    const conflictKey = createConflictKey(rule);
-    if (consumedJournalKeys.has(conflictKey)) {
+  for (const entry of journalRules) {
+    if (consumedJournalKeys.has(entry.coverage_key)) {
       continue;
     }
 
-    resolvedRules.push(rule);
+    resolvedRules.push({
+      ...entry,
+      resolution_reason: `Journal template added coverage key "${entry.coverage_key}".`,
+    });
   }
 
-  return resolvedRules;
+  return {
+    resolved_rules: resolvedRules,
+    overrides,
+  };
 }
 
-function createConflictKey(rule: EditorialRuleRecord): string {
+function normalizeLayerRules(
+  rules: EditorialRuleRecord[],
+  sourceLayer: "base" | "journal",
+): {
+  resolved_rules: ResolvedEditorialRule[];
+  overrides: EditorialRuleOverrideRecord[];
+} {
+  const activeByCoverageKey = new Map<string, ResolvedEditorialRule>();
+  const resolvedRules: ResolvedEditorialRule[] = [];
+  const overrides: EditorialRuleOverrideRecord[] = [];
+
+  for (const rule of rules) {
+    const coverageKey = createEditorialRuleCoverageKey(rule);
+    const existing = activeByCoverageKey.get(coverageKey);
+
+    if (existing) {
+      const reason = `Same-layer conflict retained the earliest rule for coverage key "${coverageKey}".`;
+      existing.overridden_rule_ids = [
+        ...existing.overridden_rule_ids,
+        rule.id,
+      ];
+      overrides.push({
+        active_rule_id: existing.rule.id,
+        overridden_rule_id: rule.id,
+        reason,
+      });
+      continue;
+    }
+
+    const resolvedRule: ResolvedEditorialRule = {
+      rule,
+      coverage_key: coverageKey,
+      source_layer: sourceLayer,
+      overridden_rule_ids: [],
+      resolution_reason:
+        sourceLayer === "base"
+          ? `Selected base published rule for coverage key "${coverageKey}".`
+          : `Selected journal published rule for coverage key "${coverageKey}".`,
+      execution_posture: deriveEditorialRuleExecutionPosture({
+        rule_object: rule.rule_object,
+        execution_mode: rule.execution_mode,
+        confidence_policy: rule.confidence_policy,
+      }),
+    };
+
+    activeByCoverageKey.set(coverageKey, resolvedRule);
+    resolvedRules.push(resolvedRule);
+  }
+
+  return {
+    resolved_rules: resolvedRules,
+    overrides,
+  };
+}
+
+export function createEditorialRuleCoverageKey(
+  rule: Pick<EditorialRuleRecord, "rule_object" | "selector" | "trigger">,
+): string {
   return [
     rule.rule_object,
     stableSerialize(rule.selector),

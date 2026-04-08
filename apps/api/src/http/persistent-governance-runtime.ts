@@ -508,6 +508,7 @@ export function createPersistentGovernanceRuntime(
     learningCandidateRepository,
     knowledgeService,
     templateService,
+    editorialRuleService,
     promptSkillRegistryService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => options.client.connect(),

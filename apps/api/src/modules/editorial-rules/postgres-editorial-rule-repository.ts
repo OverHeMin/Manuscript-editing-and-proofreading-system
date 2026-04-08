@@ -397,7 +397,7 @@ function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
   };
 }
 
-function parseJsonObject<T extends Record<string, unknown>>(
+function parseJsonObject<T extends object>(
   value: Record<string, unknown> | string | null,
 ): T {
   if (value == null) {
@@ -411,7 +411,7 @@ function parseJsonObject<T extends Record<string, unknown>>(
   return value as T;
 }
 
-function parseOptionalJsonObject<T extends Record<string, unknown>>(
+function parseOptionalJsonObject<T extends object>(
   value: Record<string, unknown> | string | null,
 ): T | undefined {
   const parsed = parseJsonObject<T>(value);

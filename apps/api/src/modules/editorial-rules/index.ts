@@ -6,3 +6,5 @@ export * from "./editorial-rule-service.ts";
 export * from "./editorial-rule-api.ts";
 export * from "./editorial-rule-projection-service.ts";
 export * from "./editorial-rule-resolution-service.ts";
+export * from "./editorial-rule-object-catalog.ts";
+export * from "./editorial-rule-preview-service.ts";

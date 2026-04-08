@@ -28,6 +28,10 @@ function createEditorialRuleHarness() {
         "rule-3",
         "rule-set-4",
         "rule-4",
+        "rule-set-5",
+        "rule-5",
+        "rule-set-6",
+        "rule-6",
       ];
       return () => {
         const value = ids.shift();
@@ -275,6 +279,118 @@ test("journal-scoped rule sets preserve rule objects, selectors, and authoring p
     normalized_example: AFTER_HEADING,
     source: "manual_authoring",
   });
+});
+
+test("creating a rule preserves explainability, linkage, and projection payloads for the exact abstract normalization example", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-1",
+      module: "editing",
+    },
+  });
+
+  const createdRule = await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: ruleSet.body.id,
+      orderNo: 10,
+      ruleObject: "abstract",
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      scope: {
+        sections: ["abstract"],
+        block_kind: "heading",
+      },
+      selector: {
+        section_selector: "abstract",
+        label_selector: {
+          text: BEFORE_HEADING,
+        },
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING,
+      },
+      authoringPayload: {
+        normalized_example: AFTER_HEADING,
+        common_error_text: BEFORE_HEADING,
+      },
+      explanationPayload: {
+        rationale:
+          "Abstract headings should normalize to full-width parentheses and full-width spacing.",
+        applies_when: ["Chinese medical abstract heading labels require journal normalization."],
+        correct_example: AFTER_HEADING,
+        incorrect_example: BEFORE_HEADING,
+        review_prompt: "Check whether the abstract heading uses journal punctuation and spacing.",
+      },
+      linkagePayload: {
+        source_learning_candidate_id: "candidate-1",
+        source_snapshot_asset_id: "snapshot-1",
+        overrides_rule_ids: ["base-rule-abstract"],
+      },
+      projectionPayload: {
+        projection_kind: "rule",
+        summary: "Normalize abstract objective headings to the journal house style.",
+        standard_example: AFTER_HEADING,
+        incorrect_example: BEFORE_HEADING,
+      },
+      confidencePolicy: "always_auto",
+      severity: "error",
+      enabled: true,
+      exampleBefore: BEFORE_HEADING,
+      exampleAfter: AFTER_HEADING,
+    },
+  });
+  const listedRules = await api.listRules({
+    ruleSetId: ruleSet.body.id,
+  });
+
+  assert.equal(createdRule.body.example_before, BEFORE_HEADING);
+  assert.equal(createdRule.body.example_after, AFTER_HEADING);
+  assert.deepEqual(createdRule.body.explanation_payload, {
+    rationale:
+      "Abstract headings should normalize to full-width parentheses and full-width spacing.",
+    applies_when: ["Chinese medical abstract heading labels require journal normalization."],
+    correct_example: AFTER_HEADING,
+    incorrect_example: BEFORE_HEADING,
+    review_prompt: "Check whether the abstract heading uses journal punctuation and spacing.",
+  });
+  assert.deepEqual(createdRule.body.linkage_payload, {
+    source_learning_candidate_id: "candidate-1",
+    source_snapshot_asset_id: "snapshot-1",
+    overrides_rule_ids: ["base-rule-abstract"],
+  });
+  assert.deepEqual(createdRule.body.projection_payload, {
+    projection_kind: "rule",
+    summary: "Normalize abstract objective headings to the journal house style.",
+    standard_example: AFTER_HEADING,
+    incorrect_example: BEFORE_HEADING,
+  });
+  assert.deepEqual(listedRules.body[0]?.explanation_payload, createdRule.body.explanation_payload);
+  assert.deepEqual(listedRules.body[0]?.linkage_payload, createdRule.body.linkage_payload);
+  assert.deepEqual(listedRules.body[0]?.projection_payload, createdRule.body.projection_payload);
 });
 
 test("publishing a journal-scoped rule set only archives published rule sets in the same scope", async () => {

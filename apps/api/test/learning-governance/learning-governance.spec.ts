@@ -4,6 +4,8 @@ import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import { InMemoryKnowledgeRepository, InMemoryKnowledgeReviewActionRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import { createLearningGovernanceApi } from "../../src/modules/learning-governance/learning-governance-api.ts";
 import { InMemoryLearningGovernanceRepository } from "../../src/modules/learning-governance/in-memory-learning-governance-repository.ts";
 import {
@@ -18,9 +20,15 @@ import {
 } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import { TemplateGovernanceService } from "../../src/modules/templates/template-governance-service.ts";
 
+const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
+const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+
 function createLearningGovernanceHarness() {
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const repository = new InMemoryLearningGovernanceRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
+  const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const knowledgeService = new KnowledgeService({
     repository: new InMemoryKnowledgeRepository(),
     reviewActionRepository: new InMemoryKnowledgeReviewActionRepository(),
@@ -36,8 +44,8 @@ function createLearningGovernanceHarness() {
     now: () => new Date("2026-03-28T08:00:00.000Z"),
   });
   const templateService = new TemplateGovernanceService({
-    templateFamilyRepository: new InMemoryTemplateFamilyRepository(),
-    moduleTemplateRepository: new InMemoryModuleTemplateRepository(),
+    templateFamilyRepository,
+    moduleTemplateRepository,
     learningCandidateRepository,
     createId: (() => {
       const ids = ["family-1", "template-1", "template-2"];
@@ -48,6 +56,18 @@ function createLearningGovernanceHarness() {
       };
     })(),
     now: () => new Date("2026-03-28T08:00:00.000Z"),
+  });
+  const editorialRuleService = new EditorialRuleService({
+    repository: editorialRuleRepository,
+    templateFamilyRepository,
+    createId: (() => {
+      const ids = ["rule-set-1", "rule-1", "rule-set-2", "rule-2"];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected an editorial rule governance id to be available.");
+        return value;
+      };
+    })(),
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: new InMemoryPromptSkillRegistryRepository(),
@@ -66,6 +86,7 @@ function createLearningGovernanceHarness() {
     learningCandidateRepository,
     knowledgeService,
     templateService,
+    editorialRuleService,
     promptSkillRegistryService,
     createId: (() => {
       const ids = ["writeback-1", "writeback-2", "writeback-3", "writeback-4"];
@@ -83,7 +104,9 @@ function createLearningGovernanceHarness() {
 
   return {
     api,
+    editorialRuleRepository,
     learningCandidateRepository,
+    templateFamilyRepository,
     templateService,
   };
 }
@@ -249,4 +272,115 @@ test("admin can apply writebacks into governed draft assets and list them by can
   assert.equal(appliedTemplate.body.created_draft_asset_id, "template-1");
   assert.equal(listedCandidateOne.body.length, 1);
   assert.equal(listedCandidateTwo.body.length, 1);
+});
+
+test("approved rule candidates can write back into editorial rule drafts with candidate provenance", async () => {
+  const {
+    api,
+    editorialRuleRepository,
+    learningCandidateRepository,
+    templateFamilyRepository,
+  } = createLearningGovernanceHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+  await learningCandidateRepository.save({
+    id: "candidate-approved-rule",
+    type: "rule_candidate",
+    status: "approved",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    suggested_rule_object: "abstract",
+    suggested_template_family_id: "family-1",
+    suggested_journal_template_id: "journal-template-1",
+    candidate_payload: {
+      scope: {
+        sections: ["abstract"],
+      },
+      selector: {
+        section_selector: "abstract",
+        label_selector: {
+          text: BEFORE_HEADING,
+        },
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING,
+      },
+      authoring_payload: {
+        normalized_example: AFTER_HEADING,
+      },
+      explanation_payload: {
+        rationale:
+          "Abstract headings should normalize to full-width parentheses and full-width spacing.",
+      },
+      projection_payload: {
+        projection_kind: "rule",
+        summary: "Normalize abstract headings to the journal style.",
+        standard_example: AFTER_HEADING,
+        incorrect_example: BEFORE_HEADING,
+      },
+      example_before: BEFORE_HEADING,
+      example_after: AFTER_HEADING,
+      confidence_policy: "always_auto",
+      severity: "error",
+      execution_mode: "apply_and_inspect",
+      rule_type: "format",
+    },
+    created_by: "editor-1",
+    created_at: "2026-03-28T07:54:00.000Z",
+    updated_at: "2026-03-28T07:55:00.000Z",
+  });
+
+  const writeback = await api.createWriteback({
+    actorRole: "admin",
+    input: {
+      learningCandidateId: "candidate-approved-rule",
+      targetType: "editorial_rule_draft",
+      createdBy: "admin-1",
+    },
+  });
+  const applied = await api.applyWriteback({
+    actorRole: "admin",
+    input: {
+      writebackId: writeback.body.id,
+      targetType: "editorial_rule_draft",
+      appliedBy: "admin-1",
+    },
+  });
+  const createdRuleSet = await editorialRuleRepository.findRuleSetById("rule-set-1");
+  const createdRules = await editorialRuleRepository.listRulesByRuleSetId("rule-set-1");
+
+  assert.equal(applied.body.status, "applied");
+  assert.equal(applied.body.created_draft_asset_id, "rule-1");
+  assert.deepEqual(createdRuleSet, {
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    journal_template_id: "journal-template-1",
+    module: "editing",
+    version_no: 1,
+    status: "draft",
+  });
+  assert.equal(createdRules[0]?.rule_object, "abstract");
+  assert.equal(
+    createdRules[0]?.linkage_payload?.source_learning_candidate_id,
+    "candidate-approved-rule",
+  );
+  assert.equal(createdRules[0]?.example_before, BEFORE_HEADING);
+  assert.equal(createdRules[0]?.example_after, AFTER_HEADING);
 });

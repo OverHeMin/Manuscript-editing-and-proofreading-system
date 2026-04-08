@@ -23,6 +23,9 @@ import { DocumentAssetService } from "../../src/modules/assets/document-asset-se
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
 
+const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
+const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+
 class FailingReviewedCaseSnapshotRepository extends InMemoryReviewedCaseSnapshotRepository {
   constructor(
     private readonly shouldFail: (record: ReviewedCaseSnapshotRecord) => boolean,
@@ -415,6 +418,86 @@ test("learning candidates stay draft until governed provenance is attached", asy
   });
 
   assert.equal(approved.body.status, "approved");
+});
+
+test("learning candidates persist structured rule payloads and suggested editorial scope", async () => {
+  const { learningApi, documentAssetService, originalAsset } =
+    await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const snapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+  const candidate = await learningApi.createLearningCandidate({
+    snapshotId: snapshot.body.id,
+    type: "rule_candidate",
+    title: "Abstract heading normalization",
+    proposalText: "Normalize abstract objective headings to the journal style.",
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+    candidatePayload: {
+      scope: {
+        sections: ["abstract"],
+      },
+      selector: {
+        section_selector: "abstract",
+        label_selector: {
+          text: BEFORE_HEADING,
+        },
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING,
+      },
+    },
+    suggestedRuleObject: "abstract",
+    suggestedTemplateFamilyId: "family-1",
+    suggestedJournalTemplateId: "journal-template-1",
+  });
+
+  assert.deepEqual(candidate.body.candidate_payload, {
+    scope: {
+      sections: ["abstract"],
+    },
+    selector: {
+      section_selector: "abstract",
+      label_selector: {
+        text: BEFORE_HEADING,
+      },
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: AFTER_HEADING,
+    },
+  });
+  assert.equal(candidate.body.suggested_rule_object, "abstract");
+  assert.equal(candidate.body.suggested_template_family_id, "family-1");
+  assert.equal(candidate.body.suggested_journal_template_id, "journal-template-1");
 });
 
 test("reviewed case snapshot creation rolls back the snapshot asset on persistence failure", async () => {

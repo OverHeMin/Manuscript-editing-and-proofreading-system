@@ -30,6 +30,10 @@ export type EditorialRuleExecutionMode =
   | "apply"
   | "inspect"
   | "apply_and_inspect";
+export type EditorialRuleExecutionPosture =
+  | "auto"
+  | "guarded"
+  | "inspect_only";
 export type EditorialRuleConfidencePolicy =
   | "always_auto"
   | "high_confidence_only"
@@ -107,10 +111,29 @@ export interface EditorialRulePreviewContext {
   rule_object?: RuleObjectKey;
 }
 
+export interface EditorialRulePreviewMatchedRule {
+  rule_id: EditorialRuleId;
+  rule_object: RuleObjectKey;
+  coverage_key: string;
+  execution_posture: EditorialRuleExecutionPosture;
+  overridden_rule_ids: EditorialRuleId[];
+  reason: string;
+}
+
 export interface EditorialRulePreviewResult {
   matched_rule_ids: EditorialRuleId[];
   overridden_rule_ids: EditorialRuleId[];
   reasons: string[];
   output?: string;
+  execution_posture: EditorialRuleExecutionPosture;
   inspect_only: boolean;
+  matched_rules: EditorialRulePreviewMatchedRule[];
+}
+
+export interface EditorialRuleObjectCatalogEntry {
+  key: RuleObjectKey;
+  label: string;
+  default_execution_posture: EditorialRuleExecutionPosture;
+  preview_strategy: "text_transform" | "finding_only";
+  projection_kinds: EditorialRuleProjectionKind[];
 }

@@ -4,6 +4,8 @@ import { Pool } from "pg";
 import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import { InMemoryKnowledgeRepository, InMemoryKnowledgeReviewActionRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import {
   LearningGovernanceConflictError,
   LearningGovernanceService,
@@ -215,6 +217,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
 } {
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const repository = new PostgresLearningGovernanceRepository({ client: pool });
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const knowledgeService = new KnowledgeService({
     repository: new InMemoryKnowledgeRepository(),
     reviewActionRepository: new InMemoryKnowledgeReviewActionRepository(),
@@ -230,7 +233,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
     now: () => new Date("2026-03-30T08:10:00.000Z"),
   });
   const templateService = new TemplateGovernanceService({
-    templateFamilyRepository: new InMemoryTemplateFamilyRepository(),
+    templateFamilyRepository,
     moduleTemplateRepository: new InMemoryModuleTemplateRepository(),
     learningCandidateRepository,
     createId: (() => {
@@ -238,6 +241,18 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
       return () => {
         const value = ids.shift();
         assert.ok(value, "Expected a PostgreSQL template governance id.");
+        return value;
+      };
+    })(),
+  });
+  const editorialRuleService = new EditorialRuleService({
+    repository: new InMemoryEditorialRuleRepository(),
+    templateFamilyRepository,
+    createId: (() => {
+      const ids = ["rule-set-1", "rule-1"];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a PostgreSQL editorial rule governance id.");
         return value;
       };
     })(),
@@ -259,6 +274,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
     learningCandidateRepository,
     knowledgeService,
     templateService,
+    editorialRuleService,
     promptSkillRegistryService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => pool.connect(),
