@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { Pool } from "pg";
 import {
   createApiHttpServer,
@@ -26,6 +28,11 @@ import {
   startHttpTestServer,
   stopHttpTestServer,
 } from "./support/http-test-server.ts";
+import {
+  semanticTableColumnKey,
+  semanticTableDocxBase64,
+  semanticTableTableId,
+} from "../../../../test-support/semantic-table-docx.ts";
 
 test("persistent governance runtime serves review state from PostgreSQL across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
@@ -3387,6 +3394,118 @@ test("persistent governance runtime keeps module execution succeeded when harnes
   });
 });
 
+test("persistent governance runtime preserves semantic table evidence for editing jobs across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(
+      path.join(os.tmpdir(), "medsys-persistent-governance-table-"),
+    );
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const governedFixture = await createPersistentRetrievalQualityFixture({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          pool: seedPool,
+        });
+        await seedPersistentEditingParentAsset(seedPool, governedFixture.familyId);
+        await writeSemanticTableFixtureDocx(
+          uploadRootDir,
+          "persistent/harness/editing-parent.docx",
+        );
+
+        const editingResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/editing/run`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: persistentRetrievalQualityFixtureIds.manuscriptId,
+              parentAssetId: persistentHarnessIntegrationFixtureIds.parentAssetId,
+              storageKey: "persistent/harness/table-semantic-editing-output.docx",
+              fileName: "table-semantic-editing-output.docx",
+            }),
+          },
+        );
+        const editingRun = (await editingResponse.json()) as {
+          job: { id: string; status: string };
+        };
+
+        assert.equal(
+          editingResponse.status,
+          201,
+          `Expected editing run to succeed, received ${editingResponse.status}: ${JSON.stringify(editingRun)}`,
+        );
+        assert.equal(editingRun.job.status, "completed");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl, {
+          uploadRootDir,
+        });
+        try {
+          const restartedJobResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/jobs/${editingRun.job.id}`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const restartedJob = (await restartedJobResponse.json()) as {
+            payload?: {
+              tableInspectionFindings?: Array<{
+                semantic_hit?: {
+                  table_id?: string;
+                  column_key?: string;
+                  override_source?: string;
+                };
+              }>;
+            };
+          };
+
+          assert.equal(restartedJobResponse.status, 200);
+          assert.equal(
+            restartedJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.table_id,
+            semanticTableTableId,
+          );
+          assert.equal(
+            restartedJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
+            semanticTableColumnKey,
+          );
+          assert.equal(
+            restartedJob.payload?.tableInspectionFindings?.[0]?.semantic_hit
+              ?.override_source,
+            "base",
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });
   const knowledgeRepository = new PostgresKnowledgeRepository({ client: pool });
@@ -3957,6 +4076,43 @@ async function createPersistentRetrievalQualityFixture(input: {
 
   assert.equal(ruleResponse.status, 201);
 
+  const tableRuleResponse = await fetch(
+    `${input.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/rules`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: input.cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        orderNo: 20,
+        ruleObject: "table",
+        ruleType: "format",
+        executionMode: "inspect",
+        scope: {
+          sections: ["results"],
+        },
+        selector: {
+          semantic_target: "header_cell",
+          header_path_includes: ["Treatment group", "n (%)"],
+        },
+        trigger: {
+          kind: "table_shape",
+          layout: "three_line_table",
+        },
+        action: {
+          kind: "emit_finding",
+          message: "Persistent governance table-semantic integration check.",
+        },
+        confidencePolicy: "manual_only",
+        severity: "warning",
+      }),
+    },
+  );
+
+  assert.equal(tableRuleResponse.status, 201);
+
   const publishRuleSetResponse = await fetch(
     `${input.baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
     {
@@ -4463,7 +4619,12 @@ async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {
   return setCookie.split(";")[0] ?? "";
 }
 
-async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
+async function startPersistentGovernanceServer(
+  databaseUrl: string,
+  input: {
+    uploadRootDir?: string;
+  } = {},
+): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
 }> {
@@ -4478,7 +4639,9 @@ async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
     runtime: createPersistentGovernanceRuntime({
       client: pool,
       authRuntime,
+      uploadRootDir: input.uploadRootDir,
     }),
+    uploadRootDir: input.uploadRootDir,
   });
 
   server.on("close", () => {
@@ -4489,6 +4652,15 @@ async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
 }
 
 const stopServer = stopHttpTestServer;
+
+async function writeSemanticTableFixtureDocx(
+  rootDir: string,
+  storageKey: string,
+): Promise<void> {
+  const absolutePath = path.join(rootDir, ...storageKey.split("/"));
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, Buffer.from(semanticTableDocxBase64, "base64"));
+}
 
 async function loginAsPersistentReviewer(baseUrl: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {

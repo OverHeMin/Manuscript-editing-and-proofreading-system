@@ -1,4 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
+import {
+  semanticTableColumnKey,
+  semanticTableDocxBase64,
+  semanticTableReportTarget,
+} from "../../../test-support/semantic-table-docx.ts";
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
@@ -22,7 +27,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
       fileName: "phase8t-source.docx",
       mimeType:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      storageKey: "uploads/phase8t/phase8t-source.docx",
+      fileContentBase64: semanticTableDocxBase64,
     },
   });
   expect(uploadResponse.ok()).toBeTruthy();
@@ -86,6 +91,15 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(runEditingButton).toBeEnabled();
   await runEditingButton.click();
   await expect(page.locator("body")).toContainText("Created asset");
+  const editedAsset = await waitForCurrentAsset(request, manuscriptId, "edited_docx");
+  const editingJob = await waitForJob(
+    request,
+    editedAsset.source_job_id ?? "",
+    (job) => (job.payload?.tableInspectionFindings?.length ?? 0) > 0,
+  );
+  expect(
+    editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
+  ).toBe(semanticTableColumnKey);
   const proofreadingLink = page
     .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
     .first();
@@ -103,6 +117,23 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(createDraftButton).toBeEnabled();
   await createDraftButton.click();
   await expect(page.locator("body")).toContainText("proofreading_draft_report");
+  const proofreadingDraftAsset = await waitForCurrentAsset(
+    request,
+    manuscriptId,
+    "proofreading_draft_report",
+  );
+  const proofreadingJob = await waitForJob(
+    request,
+    proofreadingDraftAsset.source_job_id ?? "",
+    (job) => (job.payload?.proofreadingFindings?.failedChecks?.length ?? 0) > 0,
+  );
+  expect(
+    proofreadingJob.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit
+      ?.column_key,
+  ).toBe(semanticTableColumnKey);
+  expect(String(proofreadingJob.payload?.reportMarkdown)).toContain(
+    semanticTableReportTarget,
+  );
   await expect(page.locator("body")).toContainText(
     "生成校对终稿前仍需人工确认。",
   );
@@ -148,3 +179,118 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText(manuscriptId);
   await expect(page.locator("body")).toContainText("Rule Candidate Review");
 });
+
+async function waitForCurrentAsset(
+  request: APIRequestContext,
+  manuscriptId: string,
+  assetType: string,
+) {
+  await expect
+    .poll(async () => {
+      const assetsResponse = await request.get(
+        `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}/assets`,
+      );
+      const assets = (await assetsResponse.json()) as Array<{
+        id: string;
+        asset_type: string;
+        is_current?: boolean;
+        source_job_id?: string;
+      }>;
+      return (
+        assets.find(
+          (asset) =>
+            asset.asset_type === assetType && asset.is_current !== false,
+        )?.source_job_id ?? ""
+      );
+    })
+    .not.toBe("");
+
+  const assetsResponse = await request.get(
+    `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}/assets`,
+  );
+  const assets = (await assetsResponse.json()) as Array<{
+    id: string;
+    asset_type: string;
+    is_current?: boolean;
+    source_job_id?: string;
+  }>;
+  const asset = assets.find(
+    (record) => record.asset_type === assetType && record.is_current !== false,
+  );
+  expect(asset).toBeTruthy();
+  return asset!;
+}
+
+async function waitForJob(
+  request: APIRequestContext,
+  jobId: string,
+  predicate: (job: {
+    status?: string;
+    payload?: {
+      tableInspectionFindings?: Array<{
+        semantic_hit?: {
+          column_key?: string;
+        };
+      }>;
+      proofreadingFindings?: {
+        failedChecks?: Array<{
+          semantic_hit?: {
+            column_key?: string;
+          };
+        }>;
+      };
+      reportMarkdown?: string;
+    };
+  }) => boolean,
+) {
+  await expect
+    .poll(async () => {
+      const jobResponse = await request.get(`${apiBaseUrl}/api/v1/jobs/${jobId}`);
+      if (!jobResponse.ok()) {
+        return false;
+      }
+
+      const job = (await jobResponse.json()) as {
+        status?: string;
+        payload?: {
+          tableInspectionFindings?: Array<{
+            semantic_hit?: {
+              column_key?: string;
+            };
+          }>;
+          proofreadingFindings?: {
+            failedChecks?: Array<{
+              semantic_hit?: {
+                column_key?: string;
+              };
+            }>;
+          };
+          reportMarkdown?: string;
+        };
+      };
+
+      return job.status === "completed" && predicate(job);
+    })
+    .toBe(true);
+
+  const jobResponse = await request.get(`${apiBaseUrl}/api/v1/jobs/${jobId}`);
+  expect(jobResponse.ok()).toBeTruthy();
+  return (await jobResponse.json()) as {
+    status?: string;
+    payload?: {
+      tableInspectionFindings?: Array<{
+        semantic_hit?: {
+          column_key?: string;
+        };
+      }>;
+      proofreadingFindings?: {
+        failedChecks?: Array<{
+          semantic_hit?: {
+            column_key?: string;
+          };
+        }>;
+      };
+      reportMarkdown?: string;
+    };
+  };
+}

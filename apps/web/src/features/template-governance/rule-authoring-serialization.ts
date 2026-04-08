@@ -21,6 +21,7 @@ import type {
   TerminologyRuleAuthoringDraft,
   TitleRuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
+import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 
 export function createRuleAuthoringDraft<TObject extends RuleAuthoringObject>(
   object: TObject,
@@ -326,6 +327,28 @@ export function hydrateRuleAuthoringDraft(
       });
     }
   }
+}
+
+export function resolveRuleAuthoringDraftForOverview(input: {
+  overview: {
+    rules: EditorialRuleViewModel[];
+    selectedJournalTemplateId: string | null;
+    selectedRuleSetId: string | null;
+  };
+  preferredRuleObject: RuleAuthoringObject;
+  previousSelectedRuleSetId?: string | null;
+}): RuleAuthoringDraft {
+  const firstStructuredRule = input.overview.rules.find(isRuleAuthoringDraft);
+  const nextRuleDraft = firstStructuredRule
+    ? hydrateRuleAuthoringDraft(firstStructuredRule)
+    : createRuleAuthoringDraft(
+        shouldResetToAbstractDraft(input) ? "abstract" : input.preferredRuleObject,
+      );
+
+  return {
+    ...nextRuleDraft,
+    journalTemplateId: input.overview.selectedJournalTemplateId,
+  };
 }
 
 export function buildRuleAuthoringPreview(
@@ -1208,6 +1231,18 @@ function describeOverrideSummary(draft: RuleAuthoringDraft): string {
   }
 
   return "Base family rule stays active until a journal template publishes the same semantic coordinates as an override.";
+}
+
+function shouldResetToAbstractDraft(input: {
+  overview: {
+    selectedRuleSetId: string | null;
+  };
+  previousSelectedRuleSetId?: string | null;
+}): boolean {
+  const nextRuleSetId = input.overview.selectedRuleSetId ?? null;
+  const previousRuleSetId = input.previousSelectedRuleSetId ?? null;
+
+  return nextRuleSetId !== null && nextRuleSetId !== previousRuleSetId;
 }
 
 function asString(value: unknown): string | undefined {

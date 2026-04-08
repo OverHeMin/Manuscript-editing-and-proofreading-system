@@ -46,11 +46,10 @@ import { RuleAuthoringPreviewPanel } from "./rule-authoring-preview.tsx";
 import { RuleLearningPane } from "./rule-learning-pane.tsx";
 import {
   createRuleAuthoringDraft,
-  hydrateRuleAuthoringDraft,
+  resolveRuleAuthoringDraftForOverview,
   serializeRuleAuthoringDraft,
 } from "./rule-authoring-serialization.ts";
 import type { RuleAuthoringDraft, RuleAuthoringObject } from "./rule-authoring-types.ts";
-import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 import {
   createTemplateGovernanceWorkbenchController,
   type TemplateGovernanceWorkbenchController,
@@ -339,15 +338,13 @@ export function TemplateGovernanceWorkbenchPage({
     setRuleSetForm({
       module: nextOverview.selectedRuleSet?.module ?? "editing",
     });
-    const firstStructuredRule = nextOverview.rules.find(isRuleAuthoringDraft);
-    const nextRuleDraft = firstStructuredRule
-      ? hydrateRuleAuthoringDraft(firstStructuredRule)
-      : createRuleAuthoringDraft(selectedRuleObject);
-    setSelectedRuleObject(nextRuleDraft.ruleObject);
-    setRuleAuthoringDraft({
-      ...nextRuleDraft,
-      journalTemplateId: nextOverview.selectedJournalTemplateId,
+    const nextRuleDraft = resolveRuleAuthoringDraftForOverview({
+      overview: nextOverview,
+      preferredRuleObject: selectedRuleObject,
+      previousSelectedRuleSetId: overview?.selectedRuleSetId ?? null,
     });
+    setSelectedRuleObject(nextRuleDraft.ruleObject);
+    setRuleAuthoringDraft(nextRuleDraft);
 
     const defaultHardRuleSummary =
       nextOverview.rules[0]?.example_before && nextOverview.rules[0]?.example_after
@@ -2870,15 +2867,15 @@ function toKnowledgeDraftFormState(item: {
 function resolveInitialRuleAuthoringDraft(
   overview: TemplateGovernanceWorkbenchOverview | null,
 ): RuleAuthoringDraft {
-  const firstStructuredRule = overview?.rules.find(isRuleAuthoringDraft);
-  const nextDraft = firstStructuredRule
-    ? hydrateRuleAuthoringDraft(firstStructuredRule)
-    : createRuleAuthoringDraft("abstract");
+  if (!overview) {
+    return createRuleAuthoringDraft("abstract");
+  }
 
-  return {
-    ...nextDraft,
-    journalTemplateId: overview?.selectedJournalTemplateId ?? null,
-  };
+  return resolveRuleAuthoringDraftForOverview({
+    overview,
+    preferredRuleObject: "abstract",
+    previousSelectedRuleSetId: overview.selectedRuleSetId,
+  });
 }
 
 function splitCommaSeparatedValues(value: string): string[] | undefined {

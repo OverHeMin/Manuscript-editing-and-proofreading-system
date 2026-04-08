@@ -12,6 +12,7 @@ import {
 import {
   buildRuleAuthoringPreview,
   createRuleAuthoringDraft,
+  resolveRuleAuthoringDraftForOverview,
   serializeRuleAuthoringDraft,
 } from "../src/features/template-governance/rule-authoring-serialization.ts";
 import {
@@ -166,6 +167,27 @@ test("table preview explains semantic target and journal override scope", () => 
   assert.match(preview.expectedEvidenceSummary, /table_id=runtime-resolved/);
   assert.match(preview.overrideSummary, /journal-alpha/);
   assert.match(preview.overrideSummary, /override/i);
+});
+
+test("empty rule-set synchronization falls back to the abstract onboarding draft", () => {
+  const draft = resolveRuleAuthoringDraftForOverview({
+    overview: {
+      rules: [],
+      selectedJournalTemplateId: "journal-alpha",
+      selectedRuleSetId: "rule-set-journal-1",
+    },
+    preferredRuleObject: "table",
+    previousSelectedRuleSetId: "seeded-table-rule-set",
+  });
+
+  const preview = buildRuleAuthoringPreview(draft);
+
+  assert.equal(draft.ruleObject, "abstract");
+  assert.equal(draft.journalTemplateId, "journal-alpha");
+  assert.equal(
+    preview.normalizedExample,
+    `${ABSTRACT_OBJECTIVE_SOURCE} -> ${ABSTRACT_OBJECTIVE_NORMALIZED}`,
+  );
 });
 
 test("table authoring form renders semantic selector fields", () => {

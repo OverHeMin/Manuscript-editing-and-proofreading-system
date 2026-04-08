@@ -62,6 +62,7 @@ export interface StartPersistentServerOptions<
     pool: TPool;
   }) => unknown;
   createRuntime?: (input: {
+    config: ReturnType<typeof resolvePersistentServerConfig>;
     pool: TPool;
     authRuntime: unknown;
   }) => unknown;
@@ -139,6 +140,7 @@ export async function startPersistentServer<
 
     const runtime =
       options.createRuntime?.({
+        config,
         pool,
         authRuntime,
       }) ??
@@ -147,6 +149,7 @@ export async function startPersistentServer<
         authRuntime: authRuntime as Parameters<
           typeof createPersistentGovernanceRuntime
         >[0]["authRuntime"],
+        uploadRootDir: config.uploadRootDir,
       });
 
     const serviceHealth = createPersistentServiceHealthProvider({
