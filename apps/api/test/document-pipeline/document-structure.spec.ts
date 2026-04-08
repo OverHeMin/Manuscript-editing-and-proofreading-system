@@ -37,6 +37,21 @@ test("docx structure extraction returns ordered headings and section spans", asy
             paragraph_index: 4,
           },
         ],
+        tables: [
+          {
+            table_id: "table-1",
+            profile: {
+              is_three_line_table: true,
+              header_depth: 2,
+              has_stub_column: true,
+              has_statistical_footnotes: true,
+              has_unit_markers: true,
+            },
+            header_cells: [],
+            data_cells: [],
+            footnote_items: [],
+          },
+        ],
         warnings: [],
       };
     },
@@ -54,6 +69,8 @@ test("docx structure extraction returns ordered headings and section spans", asy
     structure.sections.map((section) => section.heading),
     ["Title", "Abstract", "Methods"],
   );
+  assert.equal(structure.tables?.[0]?.table_id, "table-1");
+  assert.equal(structure.tables?.[0]?.profile.header_depth, 2);
 });
 
 test("docx structure extraction marks malformed files for manual review", async () => {
@@ -63,6 +80,7 @@ test("docx structure extraction marks malformed files for manual review", async 
         status: "needs_manual_review",
         parser: "python_docx",
         sections: [],
+        tables: [],
         warnings: ["No title or heading styles were detected in the document."],
       };
     },
@@ -76,6 +94,7 @@ test("docx structure extraction marks malformed files for manual review", async 
 
   assert.equal(structure.status, "needs_manual_review");
   assert.deepEqual(structure.sections, []);
+  assert.deepEqual(structure.tables, []);
   assert.deepEqual(structure.warnings, [
     "No title or heading styles were detected in the document.",
   ]);
