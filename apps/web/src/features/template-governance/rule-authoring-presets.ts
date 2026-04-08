@@ -125,7 +125,7 @@ const TABLE_PRESET: RuleAuthoringPreset<"table"> = {
   object: "table",
   objectLabel: "Table",
   description:
-    "Capture table structure expectations like three-line tables without overpromising auto layout rewrites.",
+    "Author stable semantic table selectors so rules can hit headers, data cells, stub columns, and footnotes without depending on fragile raw coordinates.",
   automationRisk: "inspect_only",
   createDraft(): TableRuleAuthoringDraft {
     return {
@@ -141,6 +141,12 @@ const TABLE_PRESET: RuleAuthoringPreset<"table"> = {
         "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
       payload: {
         tableKind: "three_line_table",
+        semanticTarget: "header_cell",
+        headerPathIncludes: ["Treatment group", "n (%)"],
+        rowKey: "",
+        columnKey: "Treatment group > n (%)",
+        noteKind: "statistical_significance",
+        unitContext: "header",
         captionRequirement: "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a",
         layoutRequirement: "\u7981\u7528\u7ad6\u7ebf",
         manualReviewReasonTemplate:

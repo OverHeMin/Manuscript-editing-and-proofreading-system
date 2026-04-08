@@ -49,8 +49,14 @@ test("template governance workbench page renders the rule-center authoring shell
             status: "active",
           },
         ],
-        selectedJournalTemplateId: null,
-        selectedJournalTemplateProfile: null,
+        selectedJournalTemplateId: "journal-alpha",
+        selectedJournalTemplateProfile: {
+          id: "journal-alpha",
+          template_family_id: "family-1",
+          journal_key: "zxyjhzz",
+          journal_name: "\u300a\u4e2d\u897f\u533b\u7ed3\u5408\u6742\u5fd7\u300b",
+          status: "active",
+        },
         moduleTemplates: [
           {
             id: "template-editing-1",
@@ -82,6 +88,7 @@ test("template governance workbench page renders the rule-center authoring shell
           {
             id: "rule-set-editing-1",
             template_family_id: "family-1",
+            journal_template_id: "journal-alpha",
             module: "editing",
             version_no: 1,
             status: "draft",
@@ -91,11 +98,51 @@ test("template governance workbench page renders the rule-center authoring shell
         selectedRuleSet: {
           id: "rule-set-editing-1",
           template_family_id: "family-1",
+          journal_template_id: "journal-alpha",
           module: "editing",
           version_no: 1,
           status: "draft",
         },
         rules: [
+          {
+            id: "rule-table-header",
+            rule_set_id: "rule-set-editing-1",
+            order_no: 5,
+            rule_object: "table",
+            rule_type: "format",
+            execution_mode: "inspect",
+            scope: {
+              sections: ["results"],
+              block_kind: "table",
+            },
+            selector: {
+              semantic_target: "header_cell",
+              header_path_includes: ["Treatment group", "n (%)"],
+              column_key: "Treatment group > n (%)",
+            },
+            trigger: {
+              kind: "table_shape",
+              layout: "three_line_table",
+            },
+            action: {
+              kind: "inspect_table_rule",
+              caption_requirement: "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a",
+              layout_requirement: "\u7981\u7528\u7ad6\u7ebf",
+            },
+            authoring_payload: {
+              table_kind: "three_line_table",
+              semantic_target: "header_cell",
+              header_path_includes: ["Treatment group", "n (%)"],
+              column_key: "Treatment group > n (%)",
+              caption_requirement: "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a",
+              layout_requirement: "\u7981\u7528\u7ad6\u7ebf",
+            },
+            confidence_policy: "manual_only",
+            severity: "warning",
+            enabled: true,
+            manual_review_reason_template:
+              "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
+          },
           {
             id: "rule-abstract-objective",
             rule_set_id: "rule-set-editing-1",
@@ -194,6 +241,12 @@ test("template governance workbench page renders the rule-center authoring shell
   assert.match(markup, /Title/);
   assert.match(markup, /Keyword/);
   assert.match(markup, /Journal Column/);
+  assert.match(markup, /Semantic Target/);
+  assert.match(markup, /Header Path Includes/);
+  assert.match(markup, /Expected Runtime Evidence/);
+  assert.match(markup, /Treatment group/);
+  assert.match(markup, /header_cell/);
+  assert.match(markup, /journal-alpha/);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });

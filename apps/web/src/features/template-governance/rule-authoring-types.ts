@@ -4,6 +4,9 @@ import type {
   EditorialRuleEvidenceLevel,
   EditorialRuleExecutionMode,
   EditorialRuleSeverity,
+  EditorialRuleTableFootnoteKind,
+  EditorialRuleTableSemanticTarget,
+  EditorialRuleTableUnitContext,
   EditorialRuleType,
   EditorialRuleViewModel,
 } from "../editorial-rules/index.ts";
@@ -76,6 +79,12 @@ export interface TableRuleAuthoringPayload {
     | "general_data_table"
     | "baseline_characteristics_table"
     | "outcome_indicator_table";
+  semanticTarget: EditorialRuleTableSemanticTarget;
+  headerPathIncludes: string[];
+  rowKey: string;
+  columnKey: string;
+  noteKind: EditorialRuleTableFootnoteKind;
+  unitContext: EditorialRuleTableUnitContext;
   captionRequirement: string;
   layoutRequirement: string;
   manualReviewReasonTemplate: string;
@@ -270,6 +279,9 @@ export interface RuleAuthoringPreview {
   automationRiskPosture: string;
   templateScopeSummary: string;
   normalizedExample: string;
+  semanticHitSummary: string;
+  expectedEvidenceSummary: string;
+  overrideSummary: string;
 }
 
 export interface RuleAuthoringPreset<

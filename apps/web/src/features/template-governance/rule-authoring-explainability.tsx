@@ -42,8 +42,20 @@ export function RuleAuthoringExplainability({
           <p>{preview.selectorSummary}</p>
         </div>
         <div className="template-governance-field-full">
+          <span>Semantic Match</span>
+          <p>{preview.semanticHitSummary}</p>
+        </div>
+        <div className="template-governance-field-full">
+          <span>Expected Evidence</span>
+          <p>{preview.expectedEvidenceSummary}</p>
+        </div>
+        <div className="template-governance-field-full">
           <span>Operator Note</span>
           <p>{preset.description}</p>
+        </div>
+        <div className="template-governance-field-full">
+          <span>Override Resolution</span>
+          <p>{preview.overrideSummary}</p>
         </div>
         <div className="template-governance-field-full">
           <span>Exact Preview</span>

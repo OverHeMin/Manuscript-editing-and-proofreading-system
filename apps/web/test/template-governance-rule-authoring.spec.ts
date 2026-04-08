@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildAuthSessionViewModel,
 } from "../src/features/auth/index.ts";
@@ -8,9 +10,13 @@ import {
   createTemplateGovernanceWorkbenchController,
 } from "../src/features/template-governance/template-governance-controller.ts";
 import {
+  buildRuleAuthoringPreview,
   createRuleAuthoringDraft,
   serializeRuleAuthoringDraft,
 } from "../src/features/template-governance/rule-authoring-serialization.ts";
+import {
+  RuleAuthoringForm,
+} from "../src/features/template-governance/rule-authoring-form.tsx";
 import {
   getRuleAuthoringPreset,
   listRuleAuthoringPresets,
@@ -95,12 +101,15 @@ test("rule authoring catalog covers the medical rule objects needed by rule cent
   }
 });
 
-test("table preset serializes three-line-table selectors as inspect-first rules", () => {
+test("table preset serializes semantic table selectors as inspect-first rules", () => {
   const preset = getRuleAuthoringPreset("table");
   const draft = createRuleAuthoringDraft("table");
 
   draft.orderNo = 30;
   draft.payload.tableKind = "three_line_table";
+  draft.payload.semanticTarget = "header_cell";
+  draft.payload.headerPathIncludes = ["Treatment group", "n (%)"];
+  draft.payload.columnKey = "Treatment group > n (%)";
   draft.payload.captionRequirement = "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a";
   draft.payload.layoutRequirement = "\u7981\u7528\u7ad6\u7ebf";
   draft.payload.manualReviewReasonTemplate =
@@ -112,12 +121,24 @@ test("table preset serializes three-line-table selectors as inspect-first rules"
   assert.equal(serialized.ruleObject, "table");
   assert.equal(serialized.executionMode, "inspect");
   assert.deepEqual(serialized.selector, {
-    block_selector: "table",
-    table_selector: {
-      table_kind: "three_line_table",
-    },
+    semantic_target: "header_cell",
+    header_path_includes: ["Treatment group", "n (%)"],
+    column_key: "Treatment group > n (%)",
+  });
+  assert.deepEqual(serialized.trigger, {
+    kind: "table_shape",
+    layout: "three_line_table",
   });
   assert.equal(serialized.authoringPayload.table_kind, "three_line_table");
+  assert.equal(serialized.authoringPayload.semantic_target, "header_cell");
+  assert.deepEqual(serialized.authoringPayload.header_path_includes, [
+    "Treatment group",
+    "n (%)",
+  ]);
+  assert.equal(
+    serialized.authoringPayload.column_key,
+    "Treatment group > n (%)",
+  );
   assert.equal(
     serialized.authoringPayload.layout_requirement,
     "\u7981\u7528\u7ad6\u7ebf",
@@ -126,6 +147,51 @@ test("table preset serializes three-line-table selectors as inspect-first rules"
     serialized.manualReviewReasonTemplate,
     "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
   );
+});
+
+test("table preview explains semantic target and journal override scope", () => {
+  const draft = createRuleAuthoringDraft("table");
+
+  draft.journalTemplateId = "journal-alpha";
+  draft.payload.semanticTarget = "header_cell";
+  draft.payload.headerPathIncludes = ["Treatment group", "n (%)"];
+  draft.payload.columnKey = "Treatment group > n (%)";
+
+  const preview = buildRuleAuthoringPreview(draft);
+
+  assert.match(preview.selectorSummary, /semantic_target=header_cell/);
+  assert.match(preview.selectorSummary, /header_path=Treatment group > n \(%\)/);
+  assert.match(preview.semanticHitSummary, /header_cell/i);
+  assert.match(preview.semanticHitSummary, /Treatment group > n \(%\)/);
+  assert.match(preview.expectedEvidenceSummary, /table_id=runtime-resolved/);
+  assert.match(preview.overrideSummary, /journal-alpha/);
+  assert.match(preview.overrideSummary, /override/i);
+});
+
+test("table authoring form renders semantic selector fields", () => {
+  const draft = createRuleAuthoringDraft("table");
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "editing",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(markup, /Semantic Target/);
+  assert.match(markup, /Header Path Includes/);
+  assert.match(markup, /Column Key/);
+  assert.match(markup, /Expected Table Shape/);
 });
 
 test("statement preset serializes required statement placement as an inspect-first rule", () => {

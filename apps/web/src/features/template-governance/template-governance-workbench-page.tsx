@@ -229,6 +229,7 @@ export function TemplateGovernanceWorkbenchPage({
   initialLearningCandidates = [],
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
+  const initialRuleDraft = resolveInitialRuleAuthoringDraft(initialOverview);
   const selectedModuleTemplateIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(
     initialOverview,
@@ -260,13 +261,14 @@ export function TemplateGovernanceWorkbenchPage({
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeDraftFormState>(
     createKnowledgeDraftFormState(),
   );
-  const [selectedRuleObject, setSelectedRuleObject] =
-    useState<RuleAuthoringObject>("abstract");
+  const [selectedRuleObject, setSelectedRuleObject] = useState<RuleAuthoringObject>(
+    initialRuleDraft.ruleObject,
+  );
   const [ruleSetForm, setRuleSetForm] = useState<RuleSetFormState>({
-    module: "editing",
+    module: initialOverview?.selectedRuleSet?.module ?? "editing",
   });
   const [ruleAuthoringDraft, setRuleAuthoringDraft] = useState<RuleAuthoringDraft>(
-    () => createRuleAuthoringDraft("abstract"),
+    () => initialRuleDraft,
   );
   const [pendingRuleLearningHandoff, setPendingRuleLearningHandoff] =
     useState<RuleAuthoringPrefillFromLearningCandidate | null>(null);
@@ -2862,6 +2864,20 @@ function toKnowledgeDraftFormState(item: {
     evidenceLevel: item.evidence_level ?? "unknown",
     sourceType: item.source_type ?? "other",
     sourceLink: item.source_link ?? "",
+  };
+}
+
+function resolveInitialRuleAuthoringDraft(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+): RuleAuthoringDraft {
+  const firstStructuredRule = overview?.rules.find(isRuleAuthoringDraft);
+  const nextDraft = firstStructuredRule
+    ? hydrateRuleAuthoringDraft(firstStructuredRule)
+    : createRuleAuthoringDraft("abstract");
+
+  return {
+    ...nextDraft,
+    journalTemplateId: overview?.selectedJournalTemplateId ?? null,
   };
 }
 
