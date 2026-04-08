@@ -18,7 +18,8 @@ export type LearningCandidateStatus =
   | "archived";
 export type LearningCandidateProvenanceKind =
   | "human_feedback"
-  | "evaluation_experiment";
+  | "evaluation_experiment"
+  | "reviewed_case_snapshot";
 
 export interface ReviewedCaseSnapshotRecord {
   id: string;
@@ -48,6 +49,10 @@ export interface LearningCandidateRecord {
   snapshot_asset_id?: DocumentAssetRecord["id"];
   title?: string;
   proposal_text?: string;
+  candidate_payload?: Record<string, unknown>;
+  suggested_rule_object?: string;
+  suggested_template_family_id?: string;
+  suggested_journal_template_id?: string;
   created_by: string;
   created_at: string;
   updated_at: string;

@@ -4,7 +4,7 @@ import type {
 } from "./editorial-rule-record.ts";
 import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
 
-function cloneJsonObject<T extends Record<string, unknown>>(value: T): T {
+function cloneJsonObject<T extends object>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
@@ -20,6 +20,15 @@ function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {
     trigger: cloneJsonObject(record.trigger),
     action: cloneJsonObject(record.action),
     authoring_payload: cloneJsonObject(record.authoring_payload),
+    ...(record.explanation_payload
+      ? { explanation_payload: cloneJsonObject(record.explanation_payload) }
+      : {}),
+    ...(record.linkage_payload
+      ? { linkage_payload: cloneJsonObject(record.linkage_payload) }
+      : {}),
+    ...(record.projection_payload
+      ? { projection_payload: cloneJsonObject(record.projection_payload) }
+      : {}),
   };
 }
 

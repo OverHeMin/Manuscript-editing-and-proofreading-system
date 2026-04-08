@@ -6,7 +6,8 @@ export type HumanFeedbackType =
   | "manual_rejection";
 export type LearningCandidateSourceKind =
   | "human_feedback"
-  | "evaluation_experiment";
+  | "evaluation_experiment"
+  | "reviewed_case_snapshot";
 export type LearningCandidateSnapshotKind =
   | "execution_snapshot"
   | "reviewed_case_snapshot";

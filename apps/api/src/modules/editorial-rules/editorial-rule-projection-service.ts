@@ -13,6 +13,7 @@ import type {
   EditorialRuleSetRecord,
   EditorialRuleTrigger,
 } from "./editorial-rule-record.ts";
+import { getEditorialRuleObjectCatalogEntry } from "./editorial-rule-object-catalog.ts";
 
 export interface EditorialRuleProjectionServiceOptions {
   editorialRuleRepository: EditorialRuleRepository;
@@ -109,11 +110,9 @@ export class EditorialRuleProjectionService {
     const projectedRecords: KnowledgeRecord[] = [];
 
     for (const rule of rules) {
-      for (const projectionKind of [
-        "rule",
-        "checklist",
-        "prompt_snippet",
-      ] as const satisfies readonly KnowledgeProjectionKind[]) {
+      for (const projectionKind of getEditorialRuleObjectCatalogEntry(
+        rule.rule_object,
+      ).projection_kinds as readonly KnowledgeProjectionKind[]) {
         const projectionKey = createProjectionKeyFromParts({
           ruleSetId: ruleSet.id,
           ruleId: rule.id,
@@ -214,7 +213,7 @@ function buildProjectedKnowledgeRecord(input: {
     knowledge_kind: input.projectionKind,
     status: "approved",
     routing: {
-      module_scope: "any",
+      module_scope: input.ruleSet.module,
       manuscript_types: [input.manuscriptType],
       sections: readStringArray(input.rule.scope.sections),
     },
@@ -231,7 +230,43 @@ function buildProjectedKnowledgeRecord(input: {
       rule_set_id: input.ruleSet.id,
       rule_id: input.rule.id,
       projection_kind: input.projectionKind,
+      projection_context: buildProjectionContext(
+        input.ruleSet,
+        input.rule,
+        input.manuscriptType,
+        input.journalTemplate,
+      ),
     },
+  };
+}
+
+function buildProjectionContext(
+  ruleSet: EditorialRuleSetRecord,
+  rule: EditorialRuleRecord,
+  manuscriptType: ManuscriptType,
+  journalTemplate?: {
+    journal_key: string;
+    journal_name: string;
+  },
+): NonNullable<KnowledgeRecord["projection_source"]>["projection_context"] {
+  return {
+    module: ruleSet.module,
+    manuscript_type: manuscriptType,
+    template_family_id: ruleSet.template_family_id,
+    ...(ruleSet.journal_template_id
+      ? { journal_template_id: ruleSet.journal_template_id }
+      : {}),
+    ...(journalTemplate ? { journal_key: journalTemplate.journal_key } : {}),
+    rule_object: rule.rule_object,
+    standard_example:
+      rule.projection_payload?.standard_example ?? resolveAfterText(rule),
+    incorrect_example:
+      rule.projection_payload?.incorrect_example ?? resolveBeforeText(rule),
+    not_applicable_boundary:
+      rule.explanation_payload?.not_applies_when?.join("; ") ?? "",
+    ...(rule.explanation_payload?.rationale
+      ? { evidence_summary: rule.explanation_payload.rationale }
+      : {}),
   };
 }
 
@@ -240,14 +275,15 @@ function buildProjectionTitle(
   projectionKind: KnowledgeProjectionKind,
 ): string {
   const before = resolveBeforeText(rule);
+  const objectLabel = getEditorialRuleObjectCatalogEntry(rule.rule_object).label;
 
   switch (projectionKind) {
     case "rule":
-      return `Rule summary: ${before}`;
+      return `Rule summary: ${objectLabel} ${before}`;
     case "checklist":
-      return `Checklist: ${before}`;
+      return `Checklist: ${objectLabel} ${before}`;
     case "prompt_snippet":
-      return `Prompt snippet: ${before}`;
+      return `Prompt snippet: ${objectLabel} ${before}`;
   }
 }
 
@@ -262,6 +298,13 @@ function buildProjectionSummary(
     journal_name: string;
   },
 ): string {
+  if (
+    typeof rule.projection_payload?.summary === "string" &&
+    rule.projection_payload.summary.trim().length > 0
+  ) {
+    return `${rule.projection_payload.summary} Generated ${projectionKind} projection from ${ruleSet.module} rule set v${ruleSet.version_no}.`;
+  }
+
   const segments = [
     `Generated ${projectionKind} projection from ${ruleSet.module} rule set v${ruleSet.version_no}`,
     `for ${templateFamilyName} (${manuscriptType})`,
@@ -294,14 +337,16 @@ function buildProjectionCanonicalText(
     : "";
   const objectContext = ` Rule object: ${rule.rule_object}.`;
   const authoringText = buildAuthoringPayloadText(rule);
+  const explainabilityText = buildExplainabilityText(rule);
+  const projectionText = buildProjectionPayloadText(rule);
 
   switch (projectionKind) {
     case "rule":
-      return `Published ${ruleSet.module} rule for ${sectionText}: common error text "${before}". Standard example "${after}".${objectContext}${journalContext}${authoringText}`;
+      return `Published ${ruleSet.module} rule for ${sectionText}: common error text "${before}". Standard example "${after}".${objectContext}${journalContext}${explainabilityText}${authoringText}${projectionText}`;
     case "checklist":
-      return `Checklist item: inspect ${sectionText} and confirm common error text "${before}" has been normalized to standard example "${after}".${objectContext}${journalContext}${authoringText}`;
+      return `Checklist item: inspect ${sectionText} and confirm common error text "${before}" has been normalized to standard example "${after}".${objectContext}${journalContext}${explainabilityText}${authoringText}${projectionText}`;
     case "prompt_snippet":
-      return `Instruction snippet: if you encounter common error text "${before}" in ${sectionText}, change it to standard example "${after}" and preserve the manuscript's medical meaning.${objectContext}${journalContext}${authoringText}`;
+      return `Instruction snippet: if you encounter common error text "${before}" in ${sectionText}, change it to standard example "${after}" and preserve the manuscript's medical meaning.${objectContext}${journalContext}${explainabilityText}${authoringText}${projectionText}`;
   }
 }
 
@@ -396,6 +441,33 @@ function buildAuthoringPayloadText(rule: EditorialRuleRecord): string {
 
   if (standardExample && standardExample !== resolveAfterText(rule)) {
     details.push(` Standard example detail: "${standardExample}".`);
+  }
+
+  return details.join("");
+}
+
+function buildExplainabilityText(rule: EditorialRuleRecord): string {
+  const rationale = rule.explanation_payload?.rationale;
+  if (!rationale || rationale.trim().length === 0) {
+    return "";
+  }
+
+  return ` Rationale: ${rationale}.`;
+}
+
+function buildProjectionPayloadText(rule: EditorialRuleRecord): string {
+  const details: string[] = [];
+
+  if (rule.projection_payload?.standard_example) {
+    details.push(
+      ` Standard example detail: "${rule.projection_payload.standard_example}".`,
+    );
+  }
+
+  if (rule.projection_payload?.incorrect_example) {
+    details.push(
+      ` Incorrect example detail: "${rule.projection_payload.incorrect_example}".`,
+    );
   }
 
   return details.join("");

@@ -1,14 +1,22 @@
 import type {
   AbstractRuleAuthoringDraft,
   AnyRuleAuthoringPreset,
+  AuthorLineRuleAuthoringDraft,
   DeclarationRuleAuthoringDraft,
+  FigureRuleAuthoringDraft,
   HeadingHierarchyRuleAuthoringDraft,
+  JournalColumnRuleAuthoringDraft,
+  KeywordRuleAuthoringDraft,
+  ManuscriptStructureRuleAuthoringDraft,
   NumericUnitRuleAuthoringDraft,
   ReferenceRuleAuthoringDraft,
   RuleAuthoringObject,
   RuleAuthoringPreset,
+  StatementRuleAuthoringDraft,
   StatisticalExpressionRuleAuthoringDraft,
   TableRuleAuthoringDraft,
+  TerminologyRuleAuthoringDraft,
+  TitleRuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
 
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
@@ -170,12 +178,12 @@ const DECLARATION_PRESET: RuleAuthoringPreset<"declaration"> = {
   object: "declaration",
   objectLabel: "Declaration",
   description:
-    "Require ethics, registration, funding, and conflict-of-interest statements in the right place.",
+    "Legacy declaration rule for older drafts that still store ethics or funding checks under declaration.",
   automationRisk: "inspect_only",
   createDraft(): DeclarationRuleAuthoringDraft {
     return {
       ruleObject: "declaration",
-      orderNo: 70,
+      orderNo: 65,
       ruleType: "content",
       executionMode: "inspect",
       confidencePolicy: "manual_only",
@@ -191,6 +199,199 @@ const DECLARATION_PRESET: RuleAuthoringPreset<"declaration"> = {
   },
 };
 
+const STATEMENT_PRESET: RuleAuthoringPreset<"statement"> = {
+  object: "statement",
+  objectLabel: "Statement",
+  description: "Manage ethics, funding, registration, and author-contribution statements.",
+  automationRisk: "inspect_only",
+  createDraft(): StatementRuleAuthoringDraft {
+    return {
+      ruleObject: "statement",
+      orderNo: 70,
+      ruleType: "content",
+      executionMode: "inspect",
+      confidencePolicy: "manual_only",
+      severity: "error",
+      enabled: true,
+      evidenceLevel: "high",
+      payload: {
+        statementKind: "ethics",
+        requiredStatement: "\u9700\u8bf4\u660e\u4f26\u7406\u5ba1\u6279\u53ca\u6279\u51c6\u7f16\u53f7",
+        placement: "\u6b63\u6587\u672b\u5c3e\u58f0\u660e\u90e8\u5206",
+      },
+    };
+  },
+};
+
+const TITLE_PRESET: RuleAuthoringPreset<"title"> = {
+  object: "title",
+  objectLabel: "Title",
+  description: "Normalize manuscript title punctuation, casing, and subtitle handling.",
+  automationRisk: "guarded_auto",
+  createDraft(): TitleRuleAuthoringDraft {
+    return {
+      ruleObject: "title",
+      orderNo: 80,
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      confidencePolicy: "high_confidence_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "medium",
+      payload: {
+        titlePattern: "\u4e2d\u6587\u9898\u540d\u4e0d\u52a0\u4e66\u540d\u53f7",
+        casingRule: "\u82f1\u6587\u526f\u9898\u540d\u9996\u5b57\u6bcd\u5927\u5199",
+        subtitleHandling: "\u526f\u6807\u9898\u4e0e\u4e3b\u6807\u9898\u7528\u5192\u53f7\u8fde\u63a5",
+      },
+    };
+  },
+};
+
+const AUTHOR_LINE_PRESET: RuleAuthoringPreset<"author_line"> = {
+  object: "author_line",
+  objectLabel: "Author Line",
+  description: "Keep author order, affiliation markers, and corresponding-author notes consistent.",
+  automationRisk: "inspect_only",
+  createDraft(): AuthorLineRuleAuthoringDraft {
+    return {
+      ruleObject: "author_line",
+      orderNo: 90,
+      ruleType: "format",
+      executionMode: "inspect",
+      confidencePolicy: "manual_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "expert_opinion",
+      payload: {
+        separator: "\u987f\u53f7",
+        affiliationFormat: "\u59d3\u540d\u540e\u4f7f\u7528\u4e0a\u6807\u5bf9\u5e94\u5355\u4f4d",
+        correspondingAuthorRule:
+          "\u901a\u8baf\u4f5c\u8005\u4f7f\u7528\u661f\u53f7\u5e76\u5355\u5217\u90ae\u7bb1",
+      },
+    };
+  },
+};
+
+const KEYWORD_PRESET: RuleAuthoringPreset<"keyword"> = {
+  object: "keyword",
+  objectLabel: "Keyword",
+  description: "Control keyword count, separators, and controlled-vocabulary expectations.",
+  automationRisk: "guarded_auto",
+  createDraft(): KeywordRuleAuthoringDraft {
+    return {
+      ruleObject: "keyword",
+      orderNo: 100,
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      confidencePolicy: "high_confidence_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "medium",
+      payload: {
+        keywordCount: "3-8",
+        separator: "\u5206\u53f7",
+        vocabularyRequirement: "\u4f18\u5148\u4f7f\u7528 MeSH \u6216\u671f\u520a\u89c4\u5b9a\u8bcd",
+      },
+    };
+  },
+};
+
+const TERMINOLOGY_PRESET: RuleAuthoringPreset<"terminology"> = {
+  object: "terminology",
+  objectLabel: "Terminology",
+  description: "Normalize core medical terms and block disallowed variant usage.",
+  automationRisk: "guarded_auto",
+  createDraft(): TerminologyRuleAuthoringDraft {
+    return {
+      ruleObject: "terminology",
+      orderNo: 110,
+      ruleType: "content",
+      executionMode: "apply_and_inspect",
+      confidencePolicy: "high_confidence_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "high",
+      payload: {
+        targetSection: "global",
+        preferredTerm: "\u968f\u8bbf",
+        disallowedVariant: "\u8ffd\u8e2a\u968f\u8bbf",
+      },
+    };
+  },
+};
+
+const FIGURE_PRESET: RuleAuthoringPreset<"figure"> = {
+  object: "figure",
+  objectLabel: "Figure",
+  description: "Inspect figure captions, numbering, and source-file requirements.",
+  automationRisk: "inspect_only",
+  createDraft(): FigureRuleAuthoringDraft {
+    return {
+      ruleObject: "figure",
+      orderNo: 120,
+      ruleType: "format",
+      executionMode: "inspect",
+      confidencePolicy: "manual_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "expert_opinion",
+      payload: {
+        figureKind: "flowchart",
+        captionRequirement: "\u56fe\u9898\u7f6e\u4e8e\u56fe\u4e0b",
+        fileRequirement: "\u9700\u63d0\u4f9b\u53ef\u7f16\u8f91\u6216\u9ad8\u6e05\u539f\u56fe",
+      },
+    };
+  },
+};
+
+const MANUSCRIPT_STRUCTURE_PRESET: RuleAuthoringPreset<"manuscript_structure"> = {
+  object: "manuscript_structure",
+  objectLabel: "Manuscript Structure",
+  description: "Check whether the manuscript section set and order match the article type.",
+  automationRisk: "inspect_only",
+  createDraft(): ManuscriptStructureRuleAuthoringDraft {
+    return {
+      ruleObject: "manuscript_structure",
+      orderNo: 130,
+      ruleType: "content",
+      executionMode: "inspect",
+      confidencePolicy: "manual_only",
+      severity: "error",
+      enabled: true,
+      evidenceLevel: "high",
+      payload: {
+        manuscriptType: "clinical_study",
+        requiredSections: "\u9898\u540d, \u6458\u8981, \u5f15\u8a00, \u8d44\u6599\u4e0e\u65b9\u6cd5, \u7ed3\u679c, \u8ba8\u8bba",
+        sectionOrder: "\u524d\u540e\u987a\u5e8f\u4e0d\u53ef\u989b\u5012",
+      },
+    };
+  },
+};
+
+const JOURNAL_COLUMN_PRESET: RuleAuthoringPreset<"journal_column"> = {
+  object: "journal_column",
+  objectLabel: "Journal Column",
+  description: "Capture journal-specific small-template requirements and column metadata.",
+  automationRisk: "inspect_only",
+  createDraft(): JournalColumnRuleAuthoringDraft {
+    return {
+      ruleObject: "journal_column",
+      orderNo: 140,
+      ruleType: "content",
+      executionMode: "inspect",
+      confidencePolicy: "manual_only",
+      severity: "warning",
+      enabled: true,
+      evidenceLevel: "expert_opinion",
+      payload: {
+        columnName: "\u4e34\u5e8a\u62a5\u9053",
+        requirement: "\u9700\u5957\u7528\u671f\u520a\u5c0f\u6a21\u677f",
+        sourceSection: "\u671f\u520a\u6295\u7a3f\u680f\u76ee",
+      },
+    };
+  },
+};
+
 export const RULE_AUTHORING_PRESETS = [
   ABSTRACT_PRESET,
   HEADING_HIERARCHY_PRESET,
@@ -199,6 +400,14 @@ export const RULE_AUTHORING_PRESETS = [
   TABLE_PRESET,
   REFERENCE_PRESET,
   DECLARATION_PRESET,
+  STATEMENT_PRESET,
+  TITLE_PRESET,
+  AUTHOR_LINE_PRESET,
+  KEYWORD_PRESET,
+  TERMINOLOGY_PRESET,
+  FIGURE_PRESET,
+  MANUSCRIPT_STRUCTURE_PRESET,
+  JOURNAL_COLUMN_PRESET,
 ] as const satisfies readonly AnyRuleAuthoringPreset[];
 
 export function listRuleAuthoringPresets(): AnyRuleAuthoringPreset[] {

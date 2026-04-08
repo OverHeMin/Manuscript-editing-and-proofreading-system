@@ -1,6 +1,7 @@
 export type ManuscriptId = string;
 export type UserId = string;
 export type TemplateFamilyId = string;
+export type JournalTemplateId = string;
 export type DocumentAssetId = string;
 
 // Lifecycle per docs/superpowers/specs/01-domain-model-and-lifecycle.md
@@ -40,5 +41,6 @@ export interface Manuscript {
   current_editing_asset_id?: DocumentAssetId;
   current_proofreading_asset_id?: DocumentAssetId;
   current_template_family_id?: TemplateFamilyId;
+  current_journal_template_id?: JournalTemplateId;
 }
 

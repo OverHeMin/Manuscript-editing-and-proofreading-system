@@ -75,6 +75,7 @@ async function seedPublishedRuleSet() {
   await harness.editorialRuleService.createRule("admin", {
     ruleSetId: ruleSet.id,
     orderNo: 10,
+    ruleObject: "abstract",
     ruleType: "format",
     executionMode: "apply_and_inspect",
     scope: {
@@ -89,6 +90,18 @@ async function seedPublishedRuleSet() {
     action: {
       kind: "replace_heading",
       to: AFTER_HEADING,
+    },
+    explanationPayload: {
+      rationale:
+        "Abstract headings should use full-width punctuation and spacing in the normalized journal style.",
+      correct_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
+    },
+    projectionPayload: {
+      projection_kind: "rule",
+      summary: "Normalize abstract headings to the configured journal style.",
+      standard_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
     },
     confidencePolicy: "always_auto",
     severity: "error",
@@ -130,6 +143,11 @@ test("publishing a rule set projects rule, checklist, and prompt snippet knowled
   assert.equal(projectedRuleKnowledge?.projection_source?.rule_id, "rule-1");
   assert.ok(projectedRuleKnowledge?.canonical_text.includes(BEFORE_HEADING));
   assert.ok(projectedRuleKnowledge?.canonical_text.includes(AFTER_HEADING));
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /full-width punctuation and spacing/i,
+  );
+  assert.match(projectedRuleKnowledge?.summary ?? "", /abstract/i);
 });
 
 test("projected rule knowledge records journal metadata and object metadata when the rule set is journal-scoped", async () => {
@@ -208,6 +226,55 @@ test("projected rule knowledge records journal metadata and object metadata when
   assert.match(
     projectedRuleKnowledge?.canonical_text ?? "",
     /standard example/i,
+  );
+  assert.equal(projectedRuleKnowledge?.routing.module_scope, "editing");
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      journal_template_id: "journal-template-1",
+      journal_key: "journal-alpha",
+      rule_object: "abstract",
+      standard_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
+      not_applicable_boundary: "",
+    },
+  );
+});
+
+test("projection uses explainability and projection payload text when available", async () => {
+  const { knowledgeRepository } = await seedPublishedRuleSet();
+  const projectedRuleKnowledge = (await knowledgeRepository.list()).find(
+    (record) => record.projection_source?.projection_kind === "rule",
+  );
+
+  assert.match(
+    projectedRuleKnowledge?.summary ?? "",
+    /Normalize abstract headings to the configured journal style./i,
+  );
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /Standard example detail/i,
+  );
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /Incorrect example/i,
+  );
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      rule_object: "abstract",
+      standard_example: AFTER_HEADING,
+      incorrect_example: BEFORE_HEADING,
+      not_applicable_boundary: "",
+      evidence_summary:
+        "Abstract headings should use full-width punctuation and spacing in the normalized journal style.",
+    },
   );
 });
 

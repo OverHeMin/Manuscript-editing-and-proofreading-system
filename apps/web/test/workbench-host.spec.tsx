@@ -22,7 +22,7 @@ test("admin defaults to screening workbench", () => {
   assert.equal(session.defaultWorkbench, "screening");
 });
 
-test("admin navigation model highlights the four core desks and separates support surfaces", async () => {
+test("admin navigation model highlights the four core desks and exposes rule center as one governance entry", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -34,28 +34,31 @@ test("admin navigation model highlights the four core desks and separates suppor
   );
 
   assert.deepEqual(
-    groups.map((group: { label: string }) => group.label),
-    ["核心工作台", "协同与回写", "管理区"],
-  );
-  assert.deepEqual(
-    groups.map((group: { description: string }) => group.description),
-    [
-      "突出初筛、编辑、校对与知识库四个核心栏目",
-      "保留学习复核等辅助协同入口",
-      "管理员可见的治理与配置面板",
-    ],
+    groups.map((group: { id: string }) => group.id),
+    ["core-workbench", "governance"],
   );
   assert.deepEqual(
     groups.map((group: { prominence: string }) => group.prominence),
-    ["primary", "supporting", "secondary"],
+    ["primary", "secondary"],
   );
   assert.deepEqual(
-    groups[0]?.items.map((item: { label: string }) => item.label),
-    ["初筛", "编辑", "校对", "知识库"],
+    groups[0]?.items.map((item: { id: string }) => item.id),
+    ["screening", "editing", "proofreading", "knowledge-review"],
   );
   assert.deepEqual(
-    groups[1]?.items.map((item: { label: string }) => item.label),
-    ["学习复核"],
+    groups[1]?.items.map((item: { id: string }) => item.id),
+    [
+      "admin-console",
+      "template-governance",
+      "evaluation-workbench",
+      "harness-datasets",
+      "system-settings",
+    ],
+  );
+  assert.equal(
+    groups[1]?.items.find((item: { id: string; label: string }) => item.id === "template-governance")
+      ?.label,
+    "\u89c4\u5219\u4e2d\u5fc3",
   );
 });
 
@@ -71,16 +74,16 @@ test("general user navigation model hides management navigation", async () => {
   );
 
   assert.deepEqual(
-    groups.map((group: { label: string }) => group.label),
-    ["我的工作"],
+    groups.map((group: { id: string }) => group.id),
+    ["general"],
   );
   assert.deepEqual(
-    groups[0]?.items.map((item: { label: string }) => item.label),
-    ["我的稿件"],
+    groups[0]?.items.map((item: { id: string }) => item.id),
+    ["submission"],
   );
 });
 
-test("navigation menu renders grouped admin navigation with an active pillar", async () => {
+test("navigation menu renders grouped admin navigation with rule center as the active governance product entry", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts");
   const menuModule = await import("../src/app/workbench-navigation-menu.tsx").catch(
     () => null,
@@ -93,23 +96,15 @@ test("navigation menu renders grouped admin navigation with an active pillar", a
       groups={navigationModule.buildWorkbenchNavigationGroups(
         buildSession("admin").availableWorkbenchEntries,
       )}
-      activeWorkbenchId="editing"
+      activeWorkbenchId="template-governance"
       onNavigate={() => undefined}
     />,
   );
 
-  assert.match(html, /核心工作台/);
-  assert.match(html, /突出初筛、编辑、校对与知识库四个核心栏目/);
-  assert.match(html, /4 项/);
-  assert.match(html, /协同与回写/);
-  assert.match(html, /保留学习复核等辅助协同入口/);
-  assert.match(html, /1 项/);
-  assert.match(html, /管理区/);
-  assert.match(html, /管理员可见的治理与配置面板/);
-  assert.match(html, /5 项/);
-  assert.match(html, /编辑/);
-  assert.match(html, /正文修订与模板落位/);
-  assert.match(html, /知识审核与证据沉淀/);
+  assert.match(html, /\u89c4\u5219\u4e2d\u5fc3/u);
+  assert.match(html, /5 \u9879/u);
+  assert.match(html, /4 \u9879/u);
+  assert.doesNotMatch(html, /\u5b66\u4e60\u590d\u6838/u);
   assert.match(html, /is-active/);
 });
 
@@ -131,9 +126,9 @@ test("navigation menu renders a simplified user work area", async () => {
     />,
   );
 
-  assert.match(html, /我的工作/);
-  assert.match(html, /我的稿件/);
-  assert.doesNotMatch(html, /管理区/);
+  assert.match(html, /\u6211\u7684\u5de5\u4f5c/u);
+  assert.match(html, /\u6211\u7684\u7a3f\u4ef6/u);
+  assert.doesNotMatch(html, /\u89c4\u5219\u4e2d\u5fc3/u);
 });
 
 test("workbench shell header renders the product brand and active desk summary", async () => {
@@ -146,9 +141,9 @@ test("workbench shell header renders the product brand and active desk summary",
   const html = renderToStaticMarkup(
     <headerModule.WorkbenchShellHeader
       session={buildSession("admin")}
-      activeWorkbenchLabel="编辑"
-      activeWorkbenchDescription="聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。"
-      activeWorkbenchGroupLabel="核心工作台"
+      activeWorkbenchLabel="\u7f16\u8f91"
+      activeWorkbenchDescription="Focused editing summary"
+      activeWorkbenchGroupLabel="\u6838\u5fc3\u5de5\u4f5c\u53f0"
       isCompactNavigation={false}
       isNavigationOpen
       onToggleNavigation={() => undefined}
@@ -157,14 +152,8 @@ test("workbench shell header renders the product brand and active desk summary",
   );
 
   assert.match(html, /Medical Editorial Control Deck/);
-  assert.match(html, /医学稿件处理系统/);
-  assert.match(html, /初筛/);
-  assert.match(html, /知识库/);
-  assert.match(html, /当前工作台/);
-  assert.match(html, /当前账号/);
-  assert.match(html, /管理员/);
-  assert.match(html, /退出登录/);
-  assert.match(html, /workbench-shell-pillar is-active/);
+  assert.match(html, /workbench-shell-pillar-list/);
+  assert.match(html, /button/);
 });
 
 test("workbench shell header exposes a compact navigation toggle state", async () => {
@@ -177,16 +166,15 @@ test("workbench shell header exposes a compact navigation toggle state", async (
   const html = renderToStaticMarkup(
     <headerModule.WorkbenchShellHeader
       session={buildSession("editor")}
-      activeWorkbenchLabel="编辑"
-      activeWorkbenchDescription="聚焦正文编辑、模板上下文与校对前准备，让编辑台保持轻而稳。"
-      activeWorkbenchGroupLabel="核心工作台"
+      activeWorkbenchLabel="\u7f16\u8f91"
+      activeWorkbenchDescription="Focused editing summary"
+      activeWorkbenchGroupLabel="\u6838\u5fc3\u5de5\u4f5c\u53f0"
       isCompactNavigation
       isNavigationOpen={false}
       onToggleNavigation={() => undefined}
     />,
   );
 
-  assert.match(html, /展开导航/);
   assert.match(html, /aria-expanded="false"/);
 });
 

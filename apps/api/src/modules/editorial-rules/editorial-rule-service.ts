@@ -34,6 +34,9 @@ export interface CreateEditorialRuleInput {
   trigger: EditorialRuleTrigger;
   action: EditorialRuleAction;
   authoringPayload?: Record<string, unknown>;
+  explanationPayload?: EditorialRuleRecord["explanation_payload"];
+  linkagePayload?: EditorialRuleRecord["linkage_payload"];
+  projectionPayload?: EditorialRuleRecord["projection_payload"];
   evidenceLevel?: EditorialRuleEvidenceLevel;
   confidencePolicy: EditorialRuleConfidencePolicy;
   severity: EditorialRuleSeverity;
@@ -258,6 +261,15 @@ export class EditorialRuleService {
       trigger: input.trigger,
       action: input.action,
       authoring_payload: input.authoringPayload ?? {},
+      ...(input.explanationPayload
+        ? { explanation_payload: input.explanationPayload }
+        : {}),
+      ...(input.linkagePayload
+        ? { linkage_payload: input.linkagePayload }
+        : {}),
+      ...(input.projectionPayload
+        ? { projection_payload: input.projectionPayload }
+        : {}),
       ...(input.evidenceLevel ? { evidence_level: input.evidenceLevel } : {}),
       confidence_policy: input.confidencePolicy,
       severity: input.severity,

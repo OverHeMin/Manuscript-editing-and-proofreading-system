@@ -85,6 +85,23 @@ test("postgres editorial rule repository persists journal templates, scoped rule
         source: "manual_authoring",
         form_version: 1,
       },
+      explanation_payload: {
+        rationale: "Structured abstract labels must follow the journal house style.",
+        correct_example: "（摘要　目的）",
+        incorrect_example: "摘要 目的",
+        review_prompt: "Confirm the abstract objective heading keeps full-width punctuation.",
+      },
+      linkage_payload: {
+        source_learning_candidate_id: "candidate-abstract-1",
+        source_snapshot_asset_id: "snapshot-abstract-1",
+        overrides_rule_ids: ["legacy-abstract-rule-1"],
+      },
+      projection_payload: {
+        projection_kind: "rule",
+        summary: "Normalize the abstract objective label for this journal profile.",
+        standard_example: "（摘要　目的）",
+        incorrect_example: "摘要 目的",
+      },
       evidence_level: "high",
       confidence_policy: "always_auto",
       severity: "error",
@@ -178,6 +195,23 @@ test("postgres editorial rule repository persists journal templates, scoped rule
     assert.deepEqual(loadedRule?.authoring_payload, {
       source: "manual_authoring",
       form_version: 1,
+    });
+    assert.deepEqual(loadedRule?.explanation_payload, {
+      rationale: "Structured abstract labels must follow the journal house style.",
+      correct_example: "（摘要　目的）",
+      incorrect_example: "摘要 目的",
+      review_prompt: "Confirm the abstract objective heading keeps full-width punctuation.",
+    });
+    assert.deepEqual(loadedRule?.linkage_payload, {
+      source_learning_candidate_id: "candidate-abstract-1",
+      source_snapshot_asset_id: "snapshot-abstract-1",
+      overrides_rule_ids: ["legacy-abstract-rule-1"],
+    });
+    assert.deepEqual(loadedRule?.projection_payload, {
+      projection_kind: "rule",
+      summary: "Normalize the abstract objective label for this journal profile.",
+      standard_example: "（摘要　目的）",
+      incorrect_example: "摘要 目的",
     });
     assert.equal(loadedRule?.example_before, "Abstract Purpose");
     assert.equal(loadedRule?.example_after, "(Abstract Purpose)");

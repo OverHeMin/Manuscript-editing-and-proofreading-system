@@ -31,6 +31,10 @@ interface LearningCandidateRow {
   snapshot_asset_id: string | null;
   title: string | null;
   proposal_text: string | null;
+  candidate_payload: Record<string, unknown> | string | null;
+  suggested_rule_object: string | null;
+  suggested_template_family_id: string | null;
+  suggested_journal_template_id: string | null;
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -155,6 +159,10 @@ export class PostgresLearningCandidateRepository
           snapshot_asset_id,
           title,
           proposal_text,
+          candidate_payload,
+          suggested_rule_object,
+          suggested_template_family_id,
+          suggested_journal_template_id,
           created_by,
           created_at,
           updated_at
@@ -174,9 +182,13 @@ export class PostgresLearningCandidateRepository
           $12,
           $13,
           $14,
-          $15,
+          $15::jsonb,
           $16,
-          $17
+          $17,
+          $18,
+          $19,
+          $20,
+          $21
         )
         on conflict (id) do update
         set
@@ -193,6 +205,10 @@ export class PostgresLearningCandidateRepository
           snapshot_asset_id = excluded.snapshot_asset_id,
           title = excluded.title,
           proposal_text = excluded.proposal_text,
+          candidate_payload = excluded.candidate_payload,
+          suggested_rule_object = excluded.suggested_rule_object,
+          suggested_template_family_id = excluded.suggested_template_family_id,
+          suggested_journal_template_id = excluded.suggested_journal_template_id,
           created_by = excluded.created_by,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
@@ -212,6 +228,10 @@ export class PostgresLearningCandidateRepository
         record.snapshot_asset_id ?? null,
         record.title ?? null,
         record.proposal_text ?? null,
+        JSON.stringify(record.candidate_payload ?? {}),
+        record.suggested_rule_object ?? null,
+        record.suggested_template_family_id ?? null,
+        record.suggested_journal_template_id ?? null,
         record.created_by,
         record.created_at,
         record.updated_at,
@@ -237,6 +257,10 @@ export class PostgresLearningCandidateRepository
           snapshot_asset_id,
           title,
           proposal_text,
+          candidate_payload,
+          suggested_rule_object,
+          suggested_template_family_id,
+          suggested_journal_template_id,
           created_by,
           created_at,
           updated_at
@@ -267,6 +291,10 @@ export class PostgresLearningCandidateRepository
           snapshot_asset_id,
           title,
           proposal_text,
+          candidate_payload,
+          suggested_rule_object,
+          suggested_template_family_id,
+          suggested_journal_template_id,
           created_by,
           created_at,
           updated_at
@@ -298,6 +326,10 @@ export class PostgresLearningCandidateRepository
           snapshot_asset_id,
           title,
           proposal_text,
+          candidate_payload,
+          suggested_rule_object,
+          suggested_template_family_id,
+          suggested_journal_template_id,
           created_by,
           created_at,
           updated_at
@@ -315,6 +347,10 @@ export class PostgresLearningCandidateRepository
 function mapLearningCandidateRow(
   row: LearningCandidateRow,
 ): LearningCandidateRecord {
+  const candidatePayload = parseOptionalJsonObject<Record<string, unknown>>(
+    row.candidate_payload,
+  );
+
   return {
     id: row.id,
     type: row.type,
@@ -349,7 +385,38 @@ function mapLearningCandidateRow(
     ...(row.proposal_text != null
       ? { proposal_text: row.proposal_text }
       : {}),
+    ...(candidatePayload ? { candidate_payload: candidatePayload } : {}),
+    ...(row.suggested_rule_object != null
+      ? { suggested_rule_object: row.suggested_rule_object }
+      : {}),
+    ...(row.suggested_template_family_id != null
+      ? { suggested_template_family_id: row.suggested_template_family_id }
+      : {}),
+    ...(row.suggested_journal_template_id != null
+      ? { suggested_journal_template_id: row.suggested_journal_template_id }
+      : {}),
   };
+}
+
+function parseJsonObject<T extends Record<string, unknown>>(
+  value: Record<string, unknown> | string | null,
+): T {
+  if (value == null) {
+    return {} as T;
+  }
+
+  if (typeof value === "string") {
+    return JSON.parse(value) as T;
+  }
+
+  return value as T;
+}
+
+function parseOptionalJsonObject<T extends Record<string, unknown>>(
+  value: Record<string, unknown> | string | null,
+): T | undefined {
+  const parsed = parseJsonObject<T>(value);
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
 function mapReviewedCaseSnapshotRow(

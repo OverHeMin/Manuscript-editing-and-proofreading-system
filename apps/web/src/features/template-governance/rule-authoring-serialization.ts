@@ -2,16 +2,24 @@ import type { EditorialRuleViewModel } from "../editorial-rules/index.ts";
 import { getRuleAuthoringPreset } from "./rule-authoring-presets.ts";
 import type {
   AbstractRuleAuthoringDraft,
+  AuthorLineRuleAuthoringDraft,
   DeclarationRuleAuthoringDraft,
+  FigureRuleAuthoringDraft,
   HeadingHierarchyRuleAuthoringDraft,
+  JournalColumnRuleAuthoringDraft,
+  KeywordRuleAuthoringDraft,
+  ManuscriptStructureRuleAuthoringDraft,
   NumericUnitRuleAuthoringDraft,
   ReferenceRuleAuthoringDraft,
   RuleAuthoringDraft,
   RuleAuthoringObject,
   RuleAuthoringPreview,
   SerializedRuleAuthoringDraft,
+  StatementRuleAuthoringDraft,
   StatisticalExpressionRuleAuthoringDraft,
   TableRuleAuthoringDraft,
+  TerminologyRuleAuthoringDraft,
+  TitleRuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
 
 export function createRuleAuthoringDraft<TObject extends RuleAuthoringObject>(
@@ -40,6 +48,22 @@ export function serializeRuleAuthoringDraft(
       return serializeReferenceRule(draft);
     case "declaration":
       return serializeDeclarationRule(draft);
+    case "statement":
+      return serializeStatementRule(draft);
+    case "title":
+      return serializeTitleRule(draft);
+    case "author_line":
+      return serializeAuthorLineRule(draft);
+    case "keyword":
+      return serializeKeywordRule(draft);
+    case "terminology":
+      return serializeTerminologyRule(draft);
+    case "figure":
+      return serializeFigureRule(draft);
+    case "manuscript_structure":
+      return serializeManuscriptStructureRule(draft);
+    case "journal_column":
+      return serializeJournalColumnRule(draft);
   }
 }
 
@@ -143,6 +167,118 @@ export function hydrateRuleAuthoringDraft(
         doiRequirement:
           asString(rule.authoring_payload["doi_requirement"]) ??
           draft.payload.doiRequirement,
+      });
+    }
+    case "statement": {
+      const draft = createRuleAuthoringDraft("statement");
+      const statementKind =
+        asStatementKind(rule.authoring_payload["statement_kind"]) ??
+        asStatementKind(rule.authoring_payload["declaration_kind"]) ??
+        draft.payload.statementKind;
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        statementKind,
+        requiredStatement:
+          asString(rule.authoring_payload["required_statement"]) ??
+          draft.payload.requiredStatement,
+        placement:
+          asString(rule.authoring_payload["placement"]) ?? draft.payload.placement,
+      });
+    }
+    case "title": {
+      const draft = createRuleAuthoringDraft("title");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        titlePattern:
+          asString(rule.authoring_payload["title_pattern"]) ?? draft.payload.titlePattern,
+        casingRule:
+          asString(rule.authoring_payload["casing_rule"]) ?? draft.payload.casingRule,
+        subtitleHandling:
+          asString(rule.authoring_payload["subtitle_handling"]) ??
+          draft.payload.subtitleHandling,
+      });
+    }
+    case "author_line": {
+      const draft = createRuleAuthoringDraft("author_line");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        separator:
+          asString(rule.authoring_payload["separator"]) ?? draft.payload.separator,
+        affiliationFormat:
+          asString(rule.authoring_payload["affiliation_format"]) ??
+          draft.payload.affiliationFormat,
+        correspondingAuthorRule:
+          asString(rule.authoring_payload["corresponding_author_rule"]) ??
+          draft.payload.correspondingAuthorRule,
+      });
+    }
+    case "keyword": {
+      const draft = createRuleAuthoringDraft("keyword");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        keywordCount:
+          asString(rule.authoring_payload["keyword_count"]) ?? draft.payload.keywordCount,
+        separator:
+          asString(rule.authoring_payload["separator"]) ?? draft.payload.separator,
+        vocabularyRequirement:
+          asString(rule.authoring_payload["vocabulary_requirement"]) ??
+          draft.payload.vocabularyRequirement,
+      });
+    }
+    case "terminology": {
+      const draft = createRuleAuthoringDraft("terminology");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        targetSection:
+          asTerminologyTarget(rule.authoring_payload["target_section"]) ??
+          draft.payload.targetSection,
+        preferredTerm:
+          asString(rule.authoring_payload["preferred_term"]) ??
+          draft.payload.preferredTerm,
+        disallowedVariant:
+          asString(rule.authoring_payload["disallowed_variant"]) ??
+          draft.payload.disallowedVariant,
+      });
+    }
+    case "figure": {
+      const draft = createRuleAuthoringDraft("figure");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        figureKind:
+          asFigureKind(rule.authoring_payload["figure_kind"]) ?? draft.payload.figureKind,
+        captionRequirement:
+          asString(rule.authoring_payload["caption_requirement"]) ??
+          draft.payload.captionRequirement,
+        fileRequirement:
+          asString(rule.authoring_payload["file_requirement"]) ??
+          draft.payload.fileRequirement,
+      });
+    }
+    case "manuscript_structure": {
+      const draft = createRuleAuthoringDraft("manuscript_structure");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        manuscriptType:
+          asString(rule.authoring_payload["manuscript_type"]) ??
+          draft.payload.manuscriptType,
+        requiredSections:
+          asString(rule.authoring_payload["required_sections"]) ??
+          draft.payload.requiredSections,
+        sectionOrder:
+          asString(rule.authoring_payload["section_order"]) ?? draft.payload.sectionOrder,
+      });
+    }
+    case "journal_column": {
+      const draft = createRuleAuthoringDraft("journal_column");
+      return applyCommonHydration(draft, rule, {
+        ...draft.payload,
+        columnName:
+          asString(rule.authoring_payload["column_name"]) ?? draft.payload.columnName,
+        requirement:
+          asString(rule.authoring_payload["requirement"]) ?? draft.payload.requirement,
+        sourceSection:
+          asString(rule.authoring_payload["source_section"]) ??
+          draft.payload.sourceSection,
       });
     }
     case "declaration":
@@ -464,6 +600,323 @@ function serializeDeclarationRule(
   };
 }
 
+function serializeStatementRule(
+  draft: StatementRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: "inspect",
+    scope: {
+      sections: ["back_matter"],
+      block_kind: "statement",
+    },
+    selector: {
+      statement_selector: {
+        statement_kind: draft.payload.statementKind,
+      },
+    },
+    trigger: {
+      kind: "required_statement",
+      statement_kind: draft.payload.statementKind,
+    },
+    action: {
+      kind: "inspect_required_statement",
+      placement: draft.payload.placement,
+    },
+    authoringPayload: {
+      statement_kind: draft.payload.statementKind,
+      required_statement: draft.payload.requiredStatement,
+      placement: draft.payload.placement,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    manualReviewReasonTemplate:
+      draft.manualReviewReasonTemplate ??
+      `Inspect ${draft.payload.statementKind} statement placement and wording.`,
+  };
+}
+
+function serializeTitleRule(
+  draft: TitleRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: draft.executionMode,
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "title",
+    },
+    selector: {
+      section_selector: "front_matter",
+      block_selector: "title",
+    },
+    trigger: {
+      kind: "title_pattern",
+      pattern: draft.payload.titlePattern,
+    },
+    action: {
+      kind: "normalize_title",
+      casing_rule: draft.payload.casingRule,
+      subtitle_handling: draft.payload.subtitleHandling,
+    },
+    authoringPayload: {
+      title_pattern: draft.payload.titlePattern,
+      casing_rule: draft.payload.casingRule,
+      subtitle_handling: draft.payload.subtitleHandling,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    exampleBefore: draft.payload.titlePattern,
+    exampleAfter: `${draft.payload.casingRule} | ${draft.payload.subtitleHandling}`,
+  };
+}
+
+function serializeAuthorLineRule(
+  draft: AuthorLineRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: "inspect",
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "author_line",
+    },
+    selector: {
+      section_selector: "front_matter",
+      block_selector: "author_line",
+    },
+    trigger: {
+      kind: "author_line_pattern",
+      separator: draft.payload.separator,
+    },
+    action: {
+      kind: "inspect_author_line",
+      affiliation_format: draft.payload.affiliationFormat,
+      corresponding_author_rule: draft.payload.correspondingAuthorRule,
+    },
+    authoringPayload: {
+      separator: draft.payload.separator,
+      affiliation_format: draft.payload.affiliationFormat,
+      corresponding_author_rule: draft.payload.correspondingAuthorRule,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    manualReviewReasonTemplate:
+      draft.manualReviewReasonTemplate ??
+      "Inspect author order, affiliation markers, and corresponding-author notes.",
+  };
+}
+
+function serializeKeywordRule(
+  draft: KeywordRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: draft.executionMode,
+    scope: {
+      sections: ["keywords"],
+      block_kind: "keyword_block",
+    },
+    selector: {
+      section_selector: "keywords",
+      block_selector: "keyword_block",
+    },
+    trigger: {
+      kind: "keyword_block",
+      keyword_count: draft.payload.keywordCount,
+    },
+    action: {
+      kind: "normalize_keywords",
+      separator: draft.payload.separator,
+      vocabulary_requirement: draft.payload.vocabularyRequirement,
+    },
+    authoringPayload: {
+      keyword_count: draft.payload.keywordCount,
+      separator: draft.payload.separator,
+      vocabulary_requirement: draft.payload.vocabularyRequirement,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+  };
+}
+
+function serializeTerminologyRule(
+  draft: TerminologyRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: draft.executionMode,
+    scope: {
+      sections: [draft.payload.targetSection],
+      block_kind: "paragraph",
+    },
+    selector: {
+      section_selector: draft.payload.targetSection,
+      pattern_selector: {
+        content_class: "terminology",
+      },
+    },
+    trigger: {
+      kind: "terminology_variant",
+      disallowed_variant: draft.payload.disallowedVariant,
+    },
+    action: {
+      kind: "replace_terminology",
+      preferred_term: draft.payload.preferredTerm,
+    },
+    authoringPayload: {
+      target_section: draft.payload.targetSection,
+      preferred_term: draft.payload.preferredTerm,
+      disallowed_variant: draft.payload.disallowedVariant,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    exampleBefore: draft.payload.disallowedVariant,
+    exampleAfter: draft.payload.preferredTerm,
+  };
+}
+
+function serializeFigureRule(
+  draft: FigureRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: "inspect",
+    scope: {
+      block_kind: "figure",
+    },
+    selector: {
+      block_selector: "figure",
+      figure_selector: {
+        figure_kind: draft.payload.figureKind,
+      },
+    },
+    trigger: {
+      kind: "figure_rule",
+      figure_kind: draft.payload.figureKind,
+    },
+    action: {
+      kind: "inspect_figure_rule",
+      caption_requirement: draft.payload.captionRequirement,
+      file_requirement: draft.payload.fileRequirement,
+    },
+    authoringPayload: {
+      figure_kind: draft.payload.figureKind,
+      caption_requirement: draft.payload.captionRequirement,
+      file_requirement: draft.payload.fileRequirement,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    manualReviewReasonTemplate:
+      draft.manualReviewReasonTemplate ??
+      "Inspect figure numbering, caption placement, and source-file readiness.",
+  };
+}
+
+function serializeManuscriptStructureRule(
+  draft: ManuscriptStructureRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: "inspect",
+    scope: {
+      block_kind: "manuscript_structure",
+    },
+    selector: {
+      manuscript_structure_selector: {
+        manuscript_type: draft.payload.manuscriptType,
+      },
+    },
+    trigger: {
+      kind: "section_order",
+      manuscript_type: draft.payload.manuscriptType,
+    },
+    action: {
+      kind: "inspect_manuscript_structure",
+      required_sections: draft.payload.requiredSections,
+      section_order: draft.payload.sectionOrder,
+    },
+    authoringPayload: {
+      manuscript_type: draft.payload.manuscriptType,
+      required_sections: draft.payload.requiredSections,
+      section_order: draft.payload.sectionOrder,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    manualReviewReasonTemplate:
+      draft.manualReviewReasonTemplate ??
+      "Inspect section completeness and ordering against the manuscript type.",
+  };
+}
+
+function serializeJournalColumnRule(
+  draft: JournalColumnRuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  return {
+    orderNo: draft.orderNo,
+    ruleObject: draft.ruleObject,
+    ruleType: draft.ruleType,
+    executionMode: "inspect",
+    scope: {
+      block_kind: "journal_column",
+    },
+    selector: {
+      journal_column_selector: {
+        column_name: draft.payload.columnName,
+      },
+    },
+    trigger: {
+      kind: "journal_column_rule",
+      column_name: draft.payload.columnName,
+    },
+    action: {
+      kind: "inspect_journal_column",
+      requirement: draft.payload.requirement,
+      source_section: draft.payload.sourceSection,
+    },
+    authoringPayload: {
+      column_name: draft.payload.columnName,
+      requirement: draft.payload.requirement,
+      source_section: draft.payload.sourceSection,
+    },
+    evidenceLevel: draft.evidenceLevel,
+    confidencePolicy: draft.confidencePolicy,
+    severity: draft.severity,
+    enabled: draft.enabled,
+    manualReviewReasonTemplate:
+      draft.manualReviewReasonTemplate ??
+      "Inspect journal-column mapping before final template release.",
+  };
+}
+
 function applyCommonHydration<TDraft extends RuleAuthoringDraft>(
   draft: TDraft,
   rule: EditorialRuleViewModel,
@@ -521,6 +974,37 @@ function describeSelector(selector: Record<string, unknown>): string {
     : undefined;
   if (declarationKind) {
     parts.push(`statement=${declarationKind}`);
+  }
+
+  const statementKind = statementSelector
+    ? asString(statementSelector["statement_kind"])
+    : undefined;
+  if (statementKind) {
+    parts.push(`statement=${statementKind}`);
+  }
+
+  const figureSelector = asRecord(selector["figure_selector"]);
+  const figureKind = figureSelector ? asString(figureSelector["figure_kind"]) : undefined;
+  if (figureKind) {
+    parts.push(`figure=${figureKind}`);
+  }
+
+  const manuscriptStructureSelector = asRecord(
+    selector["manuscript_structure_selector"],
+  );
+  const manuscriptType = manuscriptStructureSelector
+    ? asString(manuscriptStructureSelector["manuscript_type"])
+    : undefined;
+  if (manuscriptType) {
+    parts.push(`manuscript=${manuscriptType}`);
+  }
+
+  const journalColumnSelector = asRecord(selector["journal_column_selector"]);
+  const columnName = journalColumnSelector
+    ? asString(journalColumnSelector["column_name"])
+    : undefined;
+  if (columnName) {
+    parts.push(`column=${columnName}`);
   }
 
   return parts.length > 0 ? parts.join(" | ") : "Generic selector";
@@ -597,6 +1081,40 @@ function asDeclarationKind(
     value === "trial_registration" ||
     value === "funding" ||
     value === "conflict_of_interest"
+    ? value
+    : undefined;
+}
+
+function asStatementKind(
+  value: unknown,
+): StatementRuleAuthoringDraft["payload"]["statementKind"] | undefined {
+  return value === "ethics" ||
+    value === "trial_registration" ||
+    value === "funding" ||
+    value === "conflict_of_interest" ||
+    value === "author_contribution"
+    ? value
+    : undefined;
+}
+
+function asTerminologyTarget(
+  value: unknown,
+): TerminologyRuleAuthoringDraft["payload"]["targetSection"] | undefined {
+  return value === "title" ||
+    value === "abstract" ||
+    value === "body" ||
+    value === "global"
+    ? value
+    : undefined;
+}
+
+function asFigureKind(
+  value: unknown,
+): FigureRuleAuthoringDraft["payload"]["figureKind"] | undefined {
+  return value === "flowchart" ||
+    value === "clinical_image" ||
+    value === "trend_chart" ||
+    value === "pathology_image"
     ? value
     : undefined;
 }

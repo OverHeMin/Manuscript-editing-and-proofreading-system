@@ -4,6 +4,8 @@ import { Pool } from "pg";
 import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/in-memory-learning-repository.ts";
 import { InMemoryKnowledgeRepository, InMemoryKnowledgeReviewActionRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import {
   LearningGovernanceConflictError,
   LearningGovernanceService,
@@ -41,11 +43,11 @@ test("postgres learning governance repository persists drafts, applied metadata,
     await repository.save({
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       learning_candidate_id: "11111111-1111-1111-1111-111111111111",
-      target_type: "module_template",
+      target_type: "editorial_rule_draft",
       status: "applied",
       created_by: "admin-1",
       created_at: "2026-03-30T09:05:00.000Z",
-      created_draft_asset_id: "template-draft-1",
+      created_draft_asset_id: "rule-draft-1",
       applied_by: "admin-2",
       applied_at: "2026-03-30T09:10:00.000Z",
     });
@@ -60,11 +62,11 @@ test("postgres learning governance repository persists drafts, applied metadata,
     assert.deepEqual(loaded, {
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       learning_candidate_id: "11111111-1111-1111-1111-111111111111",
-      target_type: "module_template",
+      target_type: "editorial_rule_draft",
       status: "applied",
       created_by: "admin-1",
       created_at: "2026-03-30T09:05:00.000Z",
-      created_draft_asset_id: "template-draft-1",
+      created_draft_asset_id: "rule-draft-1",
       applied_by: "admin-2",
       applied_at: "2026-03-30T09:10:00.000Z",
     });
@@ -85,8 +87,8 @@ test("postgres learning governance repository persists drafts, applied metadata,
         {
           id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
           status: "applied",
-          target_type: "module_template",
-          created_draft_asset_id: "template-draft-1",
+          target_type: "editorial_rule_draft",
+          created_draft_asset_id: "rule-draft-1",
         },
       ],
     );
@@ -215,6 +217,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
 } {
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const repository = new PostgresLearningGovernanceRepository({ client: pool });
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const knowledgeService = new KnowledgeService({
     repository: new InMemoryKnowledgeRepository(),
     reviewActionRepository: new InMemoryKnowledgeReviewActionRepository(),
@@ -230,7 +233,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
     now: () => new Date("2026-03-30T08:10:00.000Z"),
   });
   const templateService = new TemplateGovernanceService({
-    templateFamilyRepository: new InMemoryTemplateFamilyRepository(),
+    templateFamilyRepository,
     moduleTemplateRepository: new InMemoryModuleTemplateRepository(),
     learningCandidateRepository,
     createId: (() => {
@@ -238,6 +241,18 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
       return () => {
         const value = ids.shift();
         assert.ok(value, "Expected a PostgreSQL template governance id.");
+        return value;
+      };
+    })(),
+  });
+  const editorialRuleService = new EditorialRuleService({
+    repository: new InMemoryEditorialRuleRepository(),
+    templateFamilyRepository,
+    createId: (() => {
+      const ids = ["rule-set-1", "rule-1"];
+      return () => {
+        const value = ids.shift();
+        assert.ok(value, "Expected a PostgreSQL editorial rule governance id.");
         return value;
       };
     })(),
@@ -259,6 +274,7 @@ function createPostgresLearningGovernanceHarness(pool: Pool): {
     learningCandidateRepository,
     knowledgeService,
     templateService,
+    editorialRuleService,
     promptSkillRegistryService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => pool.connect(),

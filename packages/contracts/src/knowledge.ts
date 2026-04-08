@@ -31,6 +31,16 @@ export type KnowledgeSourceType =
   | "internal_case"
   | "other";
 
+export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
+
+export interface KnowledgeProjectionSource {
+  source_kind: "editorial_rule_projection";
+  rule_set_id: string;
+  rule_id: string;
+  projection_kind: KnowledgeProjectionKind;
+  metadata?: Record<string, unknown>;
+}
+
 export interface KnowledgeItemRouting {
   // "Precise retrieval" routing fields per docs/superpowers/specs/04-knowledge-learning-and-retrieval.md
   module_scope: ManuscriptModule | "any";
@@ -65,4 +75,5 @@ export interface KnowledgeItem {
   // Links to templates are modeled separately; keep an escape hatch for projection views.
   template_bindings?: string[];
   source_learning_candidate_id?: LearningCandidateId;
+  projection_source?: KnowledgeProjectionSource;
 }

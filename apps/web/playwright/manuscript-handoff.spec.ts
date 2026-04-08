@@ -141,9 +141,10 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   expect(download.suggestedFilename()).toBe("human-final.docx");
 
   await learningReviewLink.click();
-  await expect(page.getByRole("heading", { name: "Knowledge Handoff Bridge" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "规则中心" })).toBeVisible();
   await expect(page.locator("body")).toContainText(
-    "This review desk was prefilled from the manuscript workbench handoff.",
+    "This rule-learning desk was opened from manuscript handoff",
   );
-  await expect(page.locator(`input[value="${manuscriptId}"]`)).toBeVisible();
+  await expect(page.locator("body")).toContainText(manuscriptId);
+  await expect(page.locator("body")).toContainText("Rule Candidate Review");
 });

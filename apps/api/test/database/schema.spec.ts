@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { getRepositoryMigrationFiles } from "../../src/database/migration-ledger.ts";
-import { withTemporaryDatabase, withTestClient } from "./support/postgres.ts";
+import { withTemporaryDatabase } from "./support/postgres.ts";
 import { getMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
 
 const expectedTableColumns: Record<string, string[]> = {
@@ -59,6 +59,13 @@ const expectedTableColumns: Record<string, string[]> = {
   ],
   jobs: ["id", "manuscript_id", "module", "job_type", "status", "requested_by"],
   template_families: ["id", "manuscript_type", "name", "status"],
+  journal_template_profiles: [
+    "id",
+    "template_family_id",
+    "journal_key",
+    "journal_name",
+    "status",
+  ],
   module_templates: [
     "id",
     "template_family_id",
@@ -95,6 +102,10 @@ const expectedTableColumns: Record<string, string[]> = {
     "module",
     "manuscript_type",
     "snapshot_asset_id",
+    "candidate_payload",
+    "suggested_rule_object",
+    "suggested_template_family_id",
+    "suggested_journal_template_id",
   ],
   learning_writebacks: [
     "id",
@@ -266,6 +277,7 @@ const expectedTableColumns: Record<string, string[]> = {
   editorial_rule_sets: [
     "id",
     "template_family_id",
+    "journal_template_id",
     "module",
     "version_no",
     "status",
@@ -274,11 +286,18 @@ const expectedTableColumns: Record<string, string[]> = {
     "id",
     "rule_set_id",
     "order_no",
+    "rule_object",
     "rule_type",
     "execution_mode",
     "scope",
+    "selector",
     "trigger",
     "action",
+    "authoring_payload",
+    "evidence_level",
+    "explanation_payload",
+    "linkage_payload",
+    "projection_payload",
     "confidence_policy",
     "severity",
     "enabled",
@@ -501,10 +520,13 @@ const expectedIndexes = [
   "manuscripts_status_idx",
   "document_assets_manuscript_id_idx",
   "template_families_active_manuscript_type_uidx",
+  "journal_template_profiles_template_family_status_idx",
+  "journal_template_profiles_family_id_uidx",
   "knowledge_items_status_module_scope_idx",
   "knowledge_items_manuscript_types_gin_idx",
   "knowledge_items_risk_tags_gin_idx",
   "knowledge_review_actions_knowledge_item_id_created_at_idx",
+  "learning_candidates_status_type_updated_at_idx",
   "learning_writebacks_candidate_target_status_idx",
   "harness_gold_set_families_module_created_at_idx",
   "harness_rubric_definitions_name_status_version_idx",
@@ -518,6 +540,7 @@ const expectedIndexes = [
   "knowledge_retrieval_quality_runs_module_template_created_at_idx",
   "prompt_templates_module_name_status_idx",
   "editorial_rule_sets_template_family_module_status_idx",
+  "editorial_rule_sets_journal_template_module_status_idx",
   "editorial_rules_rule_set_order_idx",
   "skill_packages_name_status_idx",
   "execution_profiles_module_manuscript_family_status_idx",
@@ -570,7 +593,7 @@ const legacyEditorialRuleEngineChecksum =
   "bff19d8b5bcdebe649b314a987a7dac6c02254404f205ea863fee666000c3882";
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
-  await withTestClient(async (client) => {
+  await withMigratedSchemaClient(async (client) => {
     const tablesResult = await client.query<{
       table_name: string;
       column_name: string;
@@ -617,8 +640,33 @@ test("database schema exposes the required core tables and columns", { concurren
   });
 });
 
+test("database schema exposes the editorial rule learning writeback target", { concurrency: false }, async () => {
+  await withMigratedSchemaClient(async (client) => {
+    const enumLabelsResult = await client.query<{ enumlabel: string }>(
+      `
+        select enumlabel
+        from pg_enum
+        where enumtypid = 'learning_writeback_target'::regtype
+        order by enumsortorder
+      `,
+    );
+
+    assert.deepEqual(
+      enumLabelsResult.rows.map((row) => row.enumlabel),
+      [
+        "knowledge_item",
+        "module_template",
+        "prompt_template",
+        "skill_package",
+        "editorial_rule_draft",
+      ],
+      "Expected learning writeback targets to include editorial_rule_draft for governed rule writeback.",
+    );
+  });
+});
+
 test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
-  await withTestClient(async (client) => {
+  await withMigratedSchemaClient(async (client) => {
     const indexesResult = await client.query<{ indexname: string }>(
       `
         select indexname
@@ -639,7 +687,7 @@ test("database schema creates the required lookup indexes", { concurrency: false
 });
 
 test("migration seeds system roles and records migration bookkeeping", { concurrency: false }, async () => {
-  await withTestClient(async (client) => {
+  await withMigratedSchemaClient(async (client) => {
     const rolesResult = await client.query<{ key: string }>(
       `
         select key
@@ -702,13 +750,15 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0025_editorial_rule_engine_persistence.sql",
       "0026_model_provider_domestic.sql",
       "0027_medical_editorial_rule_authoring_workbench.sql",
+      "0028_medical_rule_library_v2_foundations.sql",
+      "0029_learning_reviewed_snapshot_source_kind.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
 });
 
 test("model_registry rejects duplicate unversioned models", { concurrency: false }, async () => {
-  await withTestClient(async (client) => {
+  await withMigratedSchemaClient(async (client) => {
     const modelName = `gpt-unversioned-regression-${process.pid}`;
 
     await client.query(
@@ -1366,4 +1416,26 @@ function getLineEndingNormalizedMigrationChecksum(fileName: string): string {
   );
   const migrationSql = readFileSync(migrationFilePath, "utf8").replaceAll("\r\n", "\n");
   return createHash("sha256").update(migrationSql).digest("hex");
+}
+
+async function withMigratedSchemaClient<T>(
+  run: (client: Client) => Promise<T>,
+): Promise<T> {
+  return withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary schema database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      return await run(client);
+    } finally {
+      await client.end();
+    }
+  });
 }

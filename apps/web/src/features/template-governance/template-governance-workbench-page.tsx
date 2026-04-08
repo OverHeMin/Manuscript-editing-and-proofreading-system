@@ -6,9 +6,15 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
+import {
+  formatWorkbenchHash,
+  type RuleCenterMode,
+} from "../../app/workbench-routing.ts";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
+import type { LearningCandidateViewModel } from "../learning-review/index.ts";
+import type { RuleAuthoringPrefillFromLearningCandidate } from "../learning-review/index.ts";
 import type {
   EvidenceLevel,
   KnowledgeItemStatus,
@@ -33,8 +39,11 @@ import type {
   TemplateFamilyStatus,
 } from "../templates/index.ts";
 import { RuleAuthoringForm } from "./rule-authoring-form.tsx";
+import { RuleAuthoringGrid } from "./rule-authoring-grid.tsx";
 import { RuleAuthoringNavigation } from "./rule-authoring-navigation.tsx";
+import { RuleAuthoringExplainability } from "./rule-authoring-explainability.tsx";
 import { RuleAuthoringPreviewPanel } from "./rule-authoring-preview.tsx";
+import { RuleLearningPane } from "./rule-learning-pane.tsx";
 import {
   createRuleAuthoringDraft,
   hydrateRuleAuthoringDraft,
@@ -197,16 +206,28 @@ interface InstructionTemplateFormState {
   reportStyle: string;
 }
 
+export type TemplateGovernanceWorkbenchMode = RuleCenterMode;
+
 export interface TemplateGovernanceWorkbenchPageProps {
   controller?: TemplateGovernanceWorkbenchController;
   actorRole?: AuthRole;
   initialOverview?: TemplateGovernanceWorkbenchOverview | null;
+  initialMode?: TemplateGovernanceWorkbenchMode;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  initialLearningCandidates?: readonly LearningCandidateViewModel[];
+  initialSelectedLearningCandidateId?: string;
 }
 
 export function TemplateGovernanceWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
   initialOverview = null,
+  initialMode = "authoring",
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
+  initialLearningCandidates = [],
+  initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
   const selectedModuleTemplateIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(
@@ -219,6 +240,8 @@ export function TemplateGovernanceWorkbenchPage({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedModuleTemplateId, setSelectedModuleTemplateId] = useState<string | null>(null);
+  const [workbenchMode, setWorkbenchMode] =
+    useState<TemplateGovernanceWorkbenchMode>(initialMode);
   const [familyForm, setFamilyForm] = useState<TemplateFamilyFormState>({
     manuscriptType: "clinical_study",
     name: "",
@@ -245,6 +268,8 @@ export function TemplateGovernanceWorkbenchPage({
   const [ruleAuthoringDraft, setRuleAuthoringDraft] = useState<RuleAuthoringDraft>(
     () => createRuleAuthoringDraft("abstract"),
   );
+  const [pendingRuleLearningHandoff, setPendingRuleLearningHandoff] =
+    useState<RuleAuthoringPrefillFromLearningCandidate | null>(null);
   const [journalTemplateForm, setJournalTemplateForm] = useState({
     journalKey: "",
     journalName: "",
@@ -260,6 +285,10 @@ export function TemplateGovernanceWorkbenchPage({
 
     void loadOverview();
   }, [controller, initialOverview]);
+
+  useEffect(() => {
+    setWorkbenchMode(initialMode);
+  }, [initialMode]);
 
   async function loadOverview(input: {
     selectedTemplateFamilyId?: string | null;
@@ -582,12 +611,17 @@ export function TemplateGovernanceWorkbenchPage({
     void loadOverview(currentReloadContext({ selectedRuleSetId: ruleSetId }));
   }
 
+  function clearRuleLearningHandoff() {
+    setPendingRuleLearningHandoff(null);
+  }
+
   function handleRuleScopeChange(journalTemplateId: string | null) {
     if (!overview) {
       return;
     }
 
     setStatusMessage(null);
+    clearRuleLearningHandoff();
     setRuleAuthoringDraft((current) => ({
       ...current,
       journalTemplateId,
@@ -602,6 +636,7 @@ export function TemplateGovernanceWorkbenchPage({
 
   function handleRuleModuleChange(module: TemplateModule) {
     setRuleSetForm({ module });
+    clearRuleLearningHandoff();
     if (!overview) {
       return;
     }
@@ -618,12 +653,59 @@ export function TemplateGovernanceWorkbenchPage({
 
   function handleRuleObjectChange(ruleObject: RuleAuthoringObject) {
     setSelectedRuleObject(ruleObject);
+    clearRuleLearningHandoff();
     const nextDraft = createRuleAuthoringDraft(ruleObject);
     setRuleAuthoringDraft({
       ...nextDraft,
       journalTemplateId: overview?.selectedJournalTemplateId ?? null,
     });
     setStatusMessage(null);
+  }
+
+  async function handleConvertLearningCandidateToRuleDraft(
+    prefill: RuleAuthoringPrefillFromLearningCandidate,
+  ) {
+    const targetTemplateFamilyId =
+      prefill.selectedTemplateFamilyId ?? overview?.selectedTemplateFamilyId ?? null;
+    const targetJournalTemplateId = prefill.selectedJournalTemplateId ?? null;
+    const shouldReloadOverview =
+      targetTemplateFamilyId !== (overview?.selectedTemplateFamilyId ?? null) ||
+      targetJournalTemplateId !== (overview?.selectedJournalTemplateId ?? null);
+
+    setErrorMessage(null);
+    if (shouldReloadOverview) {
+      setLoadStatus("loading");
+
+      try {
+        const nextOverview = await controller.loadOverview({
+          selectedTemplateFamilyId: targetTemplateFamilyId,
+          selectedJournalTemplateId: targetJournalTemplateId,
+          selectedRuleSetId: null,
+          selectedInstructionTemplateId: overview?.selectedInstructionTemplateId ?? null,
+          selectedKnowledgeItemId: overview?.selectedKnowledgeItemId ?? null,
+          filters: overview?.filters,
+        });
+        setOverview(nextOverview);
+        setLoadStatus("ready");
+        synchronizeForms(nextOverview);
+      } catch (error) {
+        setLoadStatus("error");
+        setErrorMessage(toErrorMessage(error, "Template governance load failed"));
+        return;
+      }
+    }
+
+    setPendingRuleLearningHandoff(prefill);
+    setWorkbenchMode("authoring");
+    setRuleSetForm({ module: prefill.module });
+    setSelectedRuleObject(prefill.ruleDraft.ruleObject);
+    setRuleAuthoringDraft({
+      ...prefill.ruleDraft,
+      journalTemplateId: targetJournalTemplateId,
+    });
+    setStatusMessage(
+      `Rule draft prefilled from learning candidate ${prefill.sourceLearningCandidateId}.`,
+    );
   }
 
   async function handleCreateJournalTemplate(event: FormEvent<HTMLFormElement>) {
@@ -733,6 +815,9 @@ export function TemplateGovernanceWorkbenchPage({
       ...ruleAuthoringDraft,
       journalTemplateId: overview.selectedJournalTemplateId,
     });
+    const explanationPayload = pendingRuleLearningHandoff?.explanationPayload;
+    const linkagePayload = pendingRuleLearningHandoff?.linkagePayload;
+    const projectionPayload = pendingRuleLearningHandoff?.projectionPayload;
 
     await runBusyAction(async () => {
       const result = await controller.createRuleAndReload({
@@ -748,6 +833,9 @@ export function TemplateGovernanceWorkbenchPage({
           trigger: serializedDraft.trigger,
           action: serializedDraft.action,
           authoringPayload: serializedDraft.authoringPayload,
+          ...(explanationPayload ? { explanationPayload } : {}),
+          ...(linkagePayload ? { linkagePayload } : {}),
+          ...(projectionPayload ? { projectionPayload } : {}),
           evidenceLevel: serializedDraft.evidenceLevel,
           confidencePolicy: serializedDraft.confidencePolicy,
           severity: serializedDraft.severity,
@@ -765,6 +853,7 @@ export function TemplateGovernanceWorkbenchPage({
         ...nextDraft,
         journalTemplateId: overview.selectedJournalTemplateId,
       });
+      setPendingRuleLearningHandoff(null);
       return result.overview;
     }, "Rule draft created.");
   }
@@ -1029,17 +1118,41 @@ export function TemplateGovernanceWorkbenchPage({
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
   const retrievalInsights = overview?.retrievalInsights ?? null;
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+  const authoringModeHash = formatWorkbenchHash("template-governance", {
+    manuscriptId:
+      normalizedPrefilledManuscriptId.length > 0
+        ? normalizedPrefilledManuscriptId
+        : undefined,
+    reviewedCaseSnapshotId:
+      normalizedPrefilledReviewedCaseSnapshotId.length > 0
+        ? normalizedPrefilledReviewedCaseSnapshotId
+        : undefined,
+    ruleCenterMode: "authoring",
+  });
+  const learningModeHash = formatWorkbenchHash("template-governance", {
+    manuscriptId:
+      normalizedPrefilledManuscriptId.length > 0
+        ? normalizedPrefilledManuscriptId
+        : undefined,
+    reviewedCaseSnapshotId:
+      normalizedPrefilledReviewedCaseSnapshotId.length > 0
+        ? normalizedPrefilledReviewedCaseSnapshotId
+        : undefined,
+    ruleCenterMode: "learning",
+  });
 
   return (
     <section className="template-governance-workbench">
       <header className="template-governance-hero">
         <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">Governance Management Zone</p>
-          <h2>Template Governance</h2>
+          <p className="template-governance-eyebrow">Rule Center</p>
+          <h2>规则中心</h2>
           <p>
-            Govern template families, module template drafts, and knowledge bindings from one
-            controlled admin surface. This closes the last placeholder lane between knowledge review
-            and governed template release.
+            Keep rule authoring and rule learning inside one explainable admin surface while still
+            preserving the template family, journal, and knowledge context that execution depends on.
           </p>
           <WorkbenchCoreStrip variant="secondary" />
         </div>
@@ -1056,6 +1169,55 @@ export function TemplateGovernanceWorkbenchPage({
         </p>
       ) : null}
 
+      <nav className="template-governance-mode-switch" aria-label="Rule center modes">
+        <a
+          href={authoringModeHash}
+          className={`template-governance-mode-tab${workbenchMode === "authoring" ? " is-active" : ""}`}
+        >
+          规则录入工作台
+        </a>
+        <a
+          href={learningModeHash}
+          className={`template-governance-mode-tab${workbenchMode === "learning" ? " is-active" : ""}`}
+        >
+          规则学习工作台
+        </a>
+      </nav>
+
+      {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
+        <p className="template-governance-context-note">
+          已保留学习上下文：reviewed snapshot {normalizedPrefilledReviewedCaseSnapshotId}
+        </p>
+      ) : null}
+
+      {pendingRuleLearningHandoff ? (
+        <p className="template-governance-context-note">
+          已从学习候选预填规则草稿：{pendingRuleLearningHandoff.sourceLearningCandidateId}
+          {pendingRuleLearningHandoff.reviewedCaseSnapshotId
+            ? ` · reviewed snapshot ${pendingRuleLearningHandoff.reviewedCaseSnapshotId}`
+            : ""}
+        </p>
+      ) : null}
+
+      {workbenchMode === "learning" ? (
+        <RuleLearningPane
+          actorRole={actorRole}
+          prefilledManuscriptId={
+            normalizedPrefilledManuscriptId.length > 0
+              ? normalizedPrefilledManuscriptId
+              : undefined
+          }
+          prefilledReviewedCaseSnapshotId={
+            normalizedPrefilledReviewedCaseSnapshotId.length > 0
+              ? normalizedPrefilledReviewedCaseSnapshotId
+              : undefined
+          }
+          initialCandidates={initialLearningCandidates}
+          initialSelectedCandidateId={initialSelectedLearningCandidateId}
+          onConvertToRuleDraft={handleConvertLearningCandidateToRuleDraft}
+        />
+      ) : (
+        <>
       <section className="template-governance-summary">
         <article className="template-governance-summary-card">
           <span>Template Families</span>
@@ -1261,8 +1423,14 @@ export function TemplateGovernanceWorkbenchPage({
                 onDraftChange={setRuleAuthoringDraft}
                 onSubmit={handleSubmitRule}
               />
+              <RuleAuthoringExplainability draft={ruleAuthoringDraft} />
               <RuleAuthoringPreviewPanel
                 overview={overview}
+                draft={ruleAuthoringDraft}
+              />
+              <RuleAuthoringGrid
+                overview={overview}
+                selectedRuleSet={selectedRuleSet}
                 draft={ruleAuthoringDraft}
               />
             </div>
@@ -1860,6 +2028,8 @@ export function TemplateGovernanceWorkbenchPage({
           </div>
         </article>
       </div>
+        </>
+      )}
     </section>
   );
 }

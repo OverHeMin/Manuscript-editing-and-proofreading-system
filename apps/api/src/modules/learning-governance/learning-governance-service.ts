@@ -35,6 +35,14 @@ import type {
   CreateSkillPackageFromLearningCandidateInput,
   PromptSkillRegistryService,
 } from "../prompt-skill-registry/prompt-skill-service.ts";
+import type { EditorialRuleService } from "../editorial-rules/editorial-rule-service.ts";
+import type {
+  EditorialRuleConfidencePolicy,
+  EditorialRuleExecutionMode,
+  EditorialRuleRecord,
+  EditorialRuleSeverity,
+  EditorialRuleType,
+} from "../editorial-rules/editorial-rule-record.ts";
 
 export interface CreateLearningWritebackInput {
   learningCandidateId: string;
@@ -84,11 +92,17 @@ export interface ApplySkillPackageWritebackInput
   targetType: "skill_package";
 }
 
+export interface ApplyEditorialRuleDraftWritebackInput
+  extends ApplyLearningWritebackBaseInput {
+  targetType: "editorial_rule_draft";
+}
+
 export type ApplyLearningWritebackInput =
   | ApplyKnowledgeWritebackInput
   | ApplyModuleTemplateWritebackInput
   | ApplyPromptTemplateWritebackInput
-  | ApplySkillPackageWritebackInput;
+  | ApplySkillPackageWritebackInput
+  | ApplyEditorialRuleDraftWritebackInput;
 
 interface LearningGovernanceWriteContext {
   repository: LearningGovernanceRepository;
@@ -99,6 +113,7 @@ export interface LearningGovernanceServiceOptions {
   learningCandidateRepository: LearningCandidateRepository;
   knowledgeService: KnowledgeService;
   templateService: TemplateGovernanceService;
+  editorialRuleService: Pick<EditorialRuleService, "createRuleSet" | "createRule">;
   promptSkillRegistryService: PromptSkillRegistryService;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<LearningGovernanceWriteContext>;
@@ -140,11 +155,33 @@ export class LearningWritebackStatusTransitionError extends Error {
   }
 }
 
+export class LearningRuleDraftTemplateFamilyRequiredError extends Error {
+  constructor(candidateId: string) {
+    super(
+      `Learning candidate ${candidateId} requires a suggested template family before creating an editorial rule draft.`,
+    );
+    this.name = "LearningRuleDraftTemplateFamilyRequiredError";
+  }
+}
+
+export class LearningRuleDraftModuleUnsupportedError extends Error {
+  constructor(candidateId: string, module: string) {
+    super(
+      `Learning candidate ${candidateId} cannot create an editorial rule draft for unsupported module ${module}.`,
+    );
+    this.name = "LearningRuleDraftModuleUnsupportedError";
+  }
+}
+
 export class LearningGovernanceService {
   private readonly repository: LearningGovernanceRepository;
   private readonly learningCandidateRepository: LearningCandidateRepository;
   private readonly knowledgeService: KnowledgeService;
   private readonly templateService: TemplateGovernanceService;
+  private readonly editorialRuleService: Pick<
+    EditorialRuleService,
+    "createRuleSet" | "createRule"
+  >;
   private readonly promptSkillRegistryService: PromptSkillRegistryService;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<LearningGovernanceWriteContext>;
@@ -156,6 +193,7 @@ export class LearningGovernanceService {
     this.learningCandidateRepository = options.learningCandidateRepository;
     this.knowledgeService = options.knowledgeService;
     this.templateService = options.templateService;
+    this.editorialRuleService = options.editorialRuleService;
     this.promptSkillRegistryService = options.promptSkillRegistryService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -331,8 +369,110 @@ export class LearningGovernanceService {
           );
         return created.id;
       }
+      case "editorial_rule_draft": {
+        const candidate = await requireApprovedLearningCandidate(
+          this.learningCandidateRepository,
+          writeback.learning_candidate_id,
+        );
+        const templateFamilyId = candidate.suggested_template_family_id;
+        if (!templateFamilyId) {
+          throw new LearningRuleDraftTemplateFamilyRequiredError(candidate.id);
+        }
+
+        const payload = readEditorialRuleDraftPayload(candidate.candidate_payload);
+        const ruleSet = await this.editorialRuleService.createRuleSet(actorRole, {
+          templateFamilyId,
+          journalTemplateId: candidate.suggested_journal_template_id,
+          module: toEditorialRuleModule(candidate.id, candidate.module),
+        });
+        const created = await this.editorialRuleService.createRule(actorRole, {
+          ruleSetId: ruleSet.id,
+          orderNo: payload.order_no ?? 10,
+          ruleObject: candidate.suggested_rule_object ?? "statement",
+          ruleType: payload.rule_type ?? "format",
+          executionMode: payload.execution_mode ?? "apply_and_inspect",
+          scope: payload.scope ?? {},
+          selector: payload.selector ?? {},
+          trigger: payload.trigger ?? {
+            kind: "manual_review_required",
+          },
+          action:
+            payload.action ?? {
+              kind: "emit_finding",
+              message:
+                candidate.proposal_text ??
+                candidate.title ??
+                "Review the candidate and complete the editorial rule draft.",
+            },
+          authoringPayload: payload.authoring_payload ?? {},
+          explanationPayload: payload.explanation_payload,
+          linkagePayload: {
+            ...(payload.linkage_payload ?? {}),
+            source_learning_candidate_id: candidate.id,
+            ...(candidate.snapshot_asset_id
+              ? { source_snapshot_asset_id: candidate.snapshot_asset_id }
+              : {}),
+          },
+          projectionPayload: payload.projection_payload,
+          confidencePolicy: payload.confidence_policy ?? "manual_only",
+          severity: payload.severity ?? "warning",
+          ...(payload.example_before
+            ? { exampleBefore: payload.example_before }
+            : {}),
+          ...(payload.example_after
+            ? { exampleAfter: payload.example_after }
+            : {}),
+          ...(payload.manual_review_reason_template
+            ? {
+                manualReviewReasonTemplate:
+                  payload.manual_review_reason_template,
+              }
+            : {}),
+        });
+        return created.id;
+      }
     }
   }
+}
+
+type EditorialRuleDraftPayload = Partial<{
+  order_no: number;
+  rule_type: EditorialRuleType;
+  execution_mode: EditorialRuleExecutionMode;
+  scope: EditorialRuleRecord["scope"];
+  selector: EditorialRuleRecord["selector"];
+  trigger: EditorialRuleRecord["trigger"];
+  action: EditorialRuleRecord["action"];
+  authoring_payload: EditorialRuleRecord["authoring_payload"];
+  explanation_payload: EditorialRuleRecord["explanation_payload"];
+  linkage_payload: EditorialRuleRecord["linkage_payload"];
+  projection_payload: EditorialRuleRecord["projection_payload"];
+  example_before: string;
+  example_after: string;
+  manual_review_reason_template: string;
+  confidence_policy: EditorialRuleConfidencePolicy;
+  severity: EditorialRuleSeverity;
+}>;
+
+function readEditorialRuleDraftPayload(
+  payload: Record<string, unknown> | undefined,
+): EditorialRuleDraftPayload {
+  return (payload ?? {}) as EditorialRuleDraftPayload;
+}
+
+function toEditorialRuleModule(
+  candidateId: string,
+  module: string,
+): "screening" | "editing" | "proofreading" {
+  if (
+    module === "screening" ||
+    module === "editing" ||
+    module === "proofreading"
+  ) {
+    return module;
+  }
+
+  throw new LearningRuleDraftModuleUnsupportedError(candidateId, module);
 }
 
 function createLearningGovernanceTransactionManager(

@@ -280,12 +280,80 @@
   margin: 0;
 }
 
+.template-governance-mode-switch {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.template-governance-mode-tab {
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: rgba(246, 239, 227, 0.82);
+  color: #5e4722;
+  text-decoration: none;
+  border: 1px solid rgba(185, 153, 94, 0.22);
+  font-weight: 600;
+}
+
+.template-governance-mode-tab.is-active {
+  background: linear-gradient(135deg, #b88232, #d6a35f);
+  color: #fff8eb;
+}
+
+.template-governance-context-note {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(252, 246, 234, 0.92);
+  border: 1px solid rgba(190, 160, 104, 0.22);
+  color: #5d4320;
+}
+
+.template-governance-context-note--compact {
+  margin: 12px 0 0;
+}
+
+.template-governance-learning-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.template-governance-learning-diff-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.template-governance-learning-fragment {
+  display: grid;
+  gap: 8px;
+}
+
+.template-governance-learning-fragment pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(21, 45, 78, 0.12);
+  background: rgba(250, 252, 255, 0.96);
+  color: #0f2742;
+  font: 0.92rem/1.5 "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.template-governance-actions-column {
+  display: grid;
+  gap: 10px;
+}
+
 @media (max-width: 960px) {
   .template-governance-grid,
   .template-governance-form-grid,
   .template-governance-toolbar,
   .template-governance-rule-layout,
-  .template-governance-knowledge-grid {
+  .template-governance-knowledge-grid,
+  .template-governance-learning-diff-grid {
     grid-template-columns: 1fr;
   }
 }

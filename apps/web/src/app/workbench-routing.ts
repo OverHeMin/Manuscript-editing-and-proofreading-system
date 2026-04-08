@@ -11,12 +11,15 @@ export type WorkbenchRenderKind =
   | "template-governance"
   | "placeholder";
 
+export type RuleCenterMode = "authoring" | "learning";
+
 export interface WorkbenchLocation {
   workbenchId: WorkbenchId | null;
   manuscriptId?: string;
   knowledgeItemId?: string;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
+  ruleCenterMode?: RuleCenterMode;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -73,6 +76,7 @@ export function formatWorkbenchHash(
         knowledgeItemId?: string;
         reviewedCaseSnapshotId?: string;
         sampleSetItemId?: string;
+        ruleCenterMode?: RuleCenterMode;
       },
 ): string {
   const params = new URLSearchParams();
@@ -84,6 +88,8 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.reviewedCaseSnapshotId;
   const sampleSetItemId =
     typeof handoff === "string" ? undefined : handoff?.sampleSetItemId;
+  const ruleCenterMode =
+    typeof handoff === "string" ? undefined : handoff?.ruleCenterMode;
 
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
@@ -99,6 +105,10 @@ export function formatWorkbenchHash(
 
   if (sampleSetItemId && sampleSetItemId.trim().length > 0) {
     params.set("sampleSetItemId", sampleSetItemId.trim());
+  }
+
+  if (ruleCenterMode) {
+    params.set("ruleCenterMode", ruleCenterMode);
   }
 
   const query = params.toString();
@@ -125,6 +135,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
   const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
   const sampleSetItemId = params.get("sampleSetItemId")?.trim();
+  const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
 
   return {
     workbenchId: rawWorkbenchId,
@@ -134,6 +145,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
       ? { reviewedCaseSnapshotId }
       : {}),
     ...(sampleSetItemId && sampleSetItemId.length > 0 ? { sampleSetItemId } : {}),
+    ...(ruleCenterMode ? { ruleCenterMode } : {}),
   };
 }
 
@@ -146,6 +158,14 @@ export function isManuscriptWorkbenchId(
     workbenchId === "editing" ||
     workbenchId === "proofreading"
   );
+}
+
+function normalizeRuleCenterMode(value: string | null): RuleCenterMode | undefined {
+  if (value === "authoring" || value === "learning") {
+    return value;
+  }
+
+  return undefined;
 }
 
 function isWorkbenchId(value: string): value is WorkbenchId {

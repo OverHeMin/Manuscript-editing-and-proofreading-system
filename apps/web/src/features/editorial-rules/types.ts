@@ -37,6 +37,29 @@ export interface EditorialRuleAction {
   [key: string]: unknown;
 }
 
+export interface EditorialRuleExplanationPayload {
+  rationale?: string;
+  applies_when?: string[];
+  not_applies_when?: string[];
+  correct_example?: string;
+  incorrect_example?: string;
+  review_prompt?: string;
+}
+
+export interface EditorialRuleLinkagePayload {
+  source_learning_candidate_id?: string;
+  source_snapshot_asset_id?: string;
+  projected_knowledge_item_ids?: string[];
+  overrides_rule_ids?: string[];
+}
+
+export interface EditorialRuleProjectionPayload {
+  projection_kind?: string;
+  summary?: string;
+  standard_example?: string;
+  incorrect_example?: string;
+}
+
 export interface EditorialRuleSetViewModel {
   id: string;
   template_family_id: string;
@@ -58,6 +81,9 @@ export interface EditorialRuleViewModel {
   trigger: EditorialRuleTrigger;
   action: EditorialRuleAction;
   authoring_payload: Record<string, unknown>;
+  explanation_payload?: EditorialRuleExplanationPayload;
+  linkage_payload?: EditorialRuleLinkagePayload;
+  projection_payload?: EditorialRuleProjectionPayload;
   evidence_level?: EditorialRuleEvidenceLevel;
   confidence_policy: EditorialRuleConfidencePolicy;
   severity: EditorialRuleSeverity;
@@ -85,6 +111,9 @@ export interface CreateEditorialRuleInput {
   trigger: EditorialRuleTrigger;
   action: EditorialRuleAction;
   authoringPayload?: Record<string, unknown>;
+  explanationPayload?: EditorialRuleExplanationPayload;
+  linkagePayload?: EditorialRuleLinkagePayload;
+  projectionPayload?: EditorialRuleProjectionPayload;
   evidenceLevel?: EditorialRuleEvidenceLevel;
   confidencePolicy: EditorialRuleConfidencePolicy;
   severity: EditorialRuleSeverity;

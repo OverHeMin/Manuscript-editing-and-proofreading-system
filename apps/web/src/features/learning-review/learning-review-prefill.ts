@@ -3,11 +3,30 @@ import {
   listManuscriptAssets,
   type ManuscriptHttpClient,
 } from "../manuscripts/manuscript-api.ts";
+import type {
+  EditorialRuleExplanationPayload,
+  EditorialRuleLinkagePayload,
+  EditorialRuleProjectionPayload,
+} from "../editorial-rules/types.ts";
 import type { DocumentAssetViewModel, ManuscriptViewModel } from "../manuscripts/types.ts";
 import type { AuthRole } from "../auth/roles.ts";
+import type { TemplateModule } from "../templates/types.ts";
+import {
+  createRuleAuthoringDraft,
+} from "../template-governance/rule-authoring-serialization.ts";
+import type {
+  AbstractRuleAuthoringDraft,
+  RuleAuthoringDraft,
+  RuleAuthoringObject,
+  TableRuleAuthoringDraft,
+} from "../template-governance/rule-authoring-types.ts";
+import {
+  isRuleAuthoringObject,
+} from "../template-governance/rule-authoring-types.ts";
 import type {
   CreateGovernedLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
+  LearningCandidateViewModel,
 } from "./types.ts";
 
 export interface LoadLearningReviewPrefillInput {
@@ -19,6 +38,22 @@ export interface LearningReviewPrefillResult {
   status: string;
   snapshotForm: CreateReviewedCaseSnapshotInput;
   candidateForm: CreateGovernedLearningCandidateInput;
+}
+
+export interface BuildRuleAuthoringPrefillFromLearningCandidateInput {
+  reviewedCaseSnapshotId?: string | null;
+}
+
+export interface RuleAuthoringPrefillFromLearningCandidate {
+  module: TemplateModule;
+  selectedTemplateFamilyId: string | null;
+  selectedJournalTemplateId: string | null;
+  reviewedCaseSnapshotId: string | null;
+  sourceLearningCandidateId: string;
+  ruleDraft: RuleAuthoringDraft;
+  explanationPayload?: EditorialRuleExplanationPayload;
+  linkagePayload: EditorialRuleLinkagePayload;
+  projectionPayload?: EditorialRuleProjectionPayload;
 }
 
 export async function loadLearningReviewPrefill(
@@ -62,6 +97,63 @@ export async function loadLearningReviewPrefill(
         sourceAssetId: humanFinalAsset.id,
       },
     },
+  };
+}
+
+export function buildRuleAuthoringPrefillFromLearningCandidate(
+  candidate: LearningCandidateViewModel,
+  input: BuildRuleAuthoringPrefillFromLearningCandidateInput = {},
+): RuleAuthoringPrefillFromLearningCandidate {
+  const candidatePayload = asRecord(candidate.candidate_payload);
+  const beforeFragment = extractString(candidatePayload, "before_fragment");
+  const afterFragment = extractString(candidatePayload, "after_fragment");
+  const evidenceSummary = extractString(candidatePayload, "evidence_summary");
+  const rationale = candidate.proposal_text?.trim() || undefined;
+  const ruleObject = resolveRuleAuthoringObject(candidate.suggested_rule_object);
+  const ruleDraft = hydrateRuleAuthoringDraftFromCandidatePayload(
+    createRuleAuthoringDraft(ruleObject),
+    candidate,
+    candidatePayload,
+  );
+
+  return {
+    module: resolveTemplateModule(candidate.module),
+    selectedTemplateFamilyId: candidate.suggested_template_family_id ?? null,
+    selectedJournalTemplateId: candidate.suggested_journal_template_id ?? null,
+    reviewedCaseSnapshotId: input.reviewedCaseSnapshotId?.trim() || null,
+    sourceLearningCandidateId: candidate.id,
+    ruleDraft,
+    ...(rationale || beforeFragment || afterFragment || evidenceSummary
+      ? {
+          explanationPayload: {
+            ...(rationale ? { rationale } : {}),
+            ...(beforeFragment ? { incorrect_example: beforeFragment } : {}),
+            ...(afterFragment ? { correct_example: afterFragment } : {}),
+            ...(evidenceSummary
+              ? {
+                  review_prompt:
+                    `Validate the governed learning evidence before publishing: ${evidenceSummary}`,
+                }
+              : {}),
+          },
+        }
+      : {}),
+    linkagePayload: {
+      source_learning_candidate_id: candidate.id,
+      ...(candidate.snapshot_asset_id
+        ? { source_snapshot_asset_id: candidate.snapshot_asset_id }
+        : {}),
+    },
+    ...(rationale || beforeFragment || afterFragment
+      ? {
+          projectionPayload: {
+            projection_kind: "rule",
+            ...(rationale ? { summary: rationale } : {}),
+            ...(afterFragment ? { standard_example: afterFragment } : {}),
+            ...(beforeFragment ? { incorrect_example: beforeFragment } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -119,4 +211,139 @@ function sortAssetsForResolution(
 
     return right.id.localeCompare(left.id);
   });
+}
+
+function resolveRuleAuthoringObject(value: string | undefined): RuleAuthoringObject {
+  const candidate = value ?? "";
+  return isRuleAuthoringObject(candidate) ? candidate : "manuscript_structure";
+}
+
+function resolveTemplateModule(value: string): TemplateModule {
+  return value === "screening" || value === "proofreading" || value === "editing"
+    ? value
+    : "editing";
+}
+
+function hydrateRuleAuthoringDraftFromCandidatePayload(
+  draft: RuleAuthoringDraft,
+  candidate: LearningCandidateViewModel,
+  candidatePayload: Record<string, unknown> | undefined,
+): RuleAuthoringDraft {
+  switch (draft.ruleObject) {
+    case "abstract":
+      return hydrateAbstractCandidateDraft(draft, candidatePayload);
+    case "table":
+      return hydrateTableCandidateDraft(draft, candidate, candidatePayload);
+    case "manuscript_structure":
+      return {
+        ...draft,
+        payload: {
+          ...draft.payload,
+          manuscriptType: candidate.manuscript_type,
+        },
+      };
+    default:
+      return draft;
+  }
+}
+
+function hydrateAbstractCandidateDraft(
+  draft: AbstractRuleAuthoringDraft,
+  candidatePayload: Record<string, unknown> | undefined,
+): AbstractRuleAuthoringDraft {
+  const selector = asRecord(candidatePayload?.selector);
+  const labelSelector = asRecord(selector?.label_selector);
+  const action = asRecord(candidatePayload?.action);
+  const sourceLabelText =
+    extractString(candidatePayload, "before_fragment") ??
+    extractString(labelSelector, "text") ??
+    draft.payload.sourceLabelText;
+  const normalizedLabelText =
+    extractString(candidatePayload, "after_fragment") ??
+    extractString(action, "to") ??
+    draft.payload.normalizedLabelText;
+
+  return {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      labelRole: inferAbstractLabelRole(sourceLabelText),
+      sourceLabelText,
+      normalizedLabelText,
+    },
+  };
+}
+
+function hydrateTableCandidateDraft(
+  draft: TableRuleAuthoringDraft,
+  candidate: LearningCandidateViewModel,
+  candidatePayload: Record<string, unknown> | undefined,
+): TableRuleAuthoringDraft {
+  const action = asRecord(candidatePayload?.action);
+  const afterFragment = extractString(candidatePayload, "after_fragment") ?? "";
+  const manualReviewReason =
+    extractString(candidatePayload, "evidence_summary") ??
+    candidate.proposal_text ??
+    draft.payload.manualReviewReasonTemplate;
+  const layoutSignals = [
+    action?.forbid_vertical_rules === true || includesSignal(afterFragment, "竖线")
+      ? "禁用竖线"
+      : null,
+    action?.place_table_notes_below === true || includesSignal(afterFragment, "表注")
+      ? "表注置于表下"
+      : null,
+  ].filter((value): value is string => value != null);
+
+  return {
+    ...draft,
+    manualReviewReasonTemplate: manualReviewReason,
+    payload: {
+      ...draft.payload,
+      tableKind:
+        action?.require_three_line_table === true || includesSignal(afterFragment, "三线表")
+          ? "three_line_table"
+          : draft.payload.tableKind,
+      layoutRequirement:
+        layoutSignals.length > 0
+          ? layoutSignals.join("；")
+          : draft.payload.layoutRequirement,
+      manualReviewReasonTemplate: manualReviewReason,
+    },
+  };
+}
+
+function inferAbstractLabelRole(
+  value: string,
+): AbstractRuleAuthoringDraft["payload"]["labelRole"] {
+  if (value.includes("方法")) {
+    return "methods";
+  }
+  if (value.includes("结果")) {
+    return "results";
+  }
+  if (value.includes("结论")) {
+    return "conclusion";
+  }
+
+  return "objective";
+}
+
+function includesSignal(value: string, signal: string): boolean {
+  return value.includes(signal);
+}
+
+function extractString(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const candidate = value?.[key];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value != null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }

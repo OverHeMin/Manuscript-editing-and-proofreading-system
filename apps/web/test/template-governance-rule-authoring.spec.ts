@@ -1,16 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAuthSessionViewModel,
+} from "../src/features/auth/index.ts";
+import { buildWorkbenchNavigationGroups } from "../src/app/workbench-navigation.ts";
+import {
   createTemplateGovernanceWorkbenchController,
 } from "../src/features/template-governance/template-governance-controller.ts";
 import {
   createRuleAuthoringDraft,
   serializeRuleAuthoringDraft,
 } from "../src/features/template-governance/rule-authoring-serialization.ts";
-import { getRuleAuthoringPreset } from "../src/features/template-governance/rule-authoring-presets.ts";
+import {
+  getRuleAuthoringPreset,
+  listRuleAuthoringPresets,
+} from "../src/features/template-governance/rule-authoring-presets.ts";
 
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
 const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
+
+test("admin navigation exposes rule center as the single rule-governance entry", () => {
+  const session = buildAuthSessionViewModel({
+    userId: "admin-1",
+    username: "admin.user",
+    displayName: "admin display",
+    role: "admin",
+  });
+  const groups = buildWorkbenchNavigationGroups(session.availableWorkbenchEntries);
+  const allItems = groups.flatMap((group) => group.items);
+  const ruleCenterItem =
+    allItems.find((item) => item.id === "template-governance") ?? null;
+
+  assert.ok(ruleCenterItem);
+  assert.equal(ruleCenterItem?.label, "\u89c4\u5219\u4e2d\u5fc3");
+  assert.equal(allItems.some((item) => item.id === "learning-review"), false);
+});
 
 test("abstract preset serializes the exact normalized abstract objective example", () => {
   const preset = getRuleAuthoringPreset("abstract");
@@ -48,6 +72,29 @@ test("abstract preset serializes the exact normalized abstract objective example
   });
 });
 
+test("rule authoring catalog covers the medical rule objects needed by rule center v2", () => {
+  const presetObjects = new Set(
+    listRuleAuthoringPresets().map((preset) => preset.object),
+  );
+
+  for (const object of [
+    "abstract",
+    "table",
+    "statistical_expression",
+    "reference",
+    "statement",
+    "title",
+    "author_line",
+    "keyword",
+    "terminology",
+    "figure",
+    "manuscript_structure",
+    "journal_column",
+  ]) {
+    assert.equal(presetObjects.has(object), true, `missing preset for ${object}`);
+  }
+});
+
 test("table preset serializes three-line-table selectors as inspect-first rules", () => {
   const preset = getRuleAuthoringPreset("table");
   const draft = createRuleAuthoringDraft("table");
@@ -78,6 +125,33 @@ test("table preset serializes three-line-table selectors as inspect-first rules"
   assert.equal(
     serialized.manualReviewReasonTemplate,
     "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
+  );
+});
+
+test("statement preset serializes required statement placement as an inspect-first rule", () => {
+  const preset = getRuleAuthoringPreset("statement");
+  const draft = createRuleAuthoringDraft("statement");
+
+  draft.orderNo = 70;
+  draft.payload.statementKind = "ethics";
+  draft.payload.requiredStatement = "\u9700\u8bf4\u660e\u4f26\u7406\u5ba1\u6279\u53ca\u6279\u51c6\u7f16\u53f7";
+  draft.payload.placement = "\u6b63\u6587\u672b\u5c3e\u58f0\u660e\u90e8\u5206";
+
+  const serialized = serializeRuleAuthoringDraft(draft);
+
+  assert.equal(preset.objectLabel, "Statement");
+  assert.equal(serialized.ruleObject, "statement");
+  assert.equal(serialized.executionMode, "inspect");
+  assert.deepEqual(serialized.selector, {
+    statement_selector: {
+      statement_kind: "ethics",
+    },
+  });
+  assert.equal(serialized.trigger.kind, "required_statement");
+  assert.equal(serialized.action.kind, "inspect_required_statement");
+  assert.equal(
+    serialized.authoringPayload.statement_kind,
+    "ethics",
   );
 });
 

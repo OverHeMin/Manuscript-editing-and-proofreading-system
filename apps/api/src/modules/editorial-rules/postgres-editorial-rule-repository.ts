@@ -32,6 +32,9 @@ interface EditorialRuleRow {
   trigger: Record<string, unknown> | string | null;
   action: Record<string, unknown> | string | null;
   authoring_payload: Record<string, unknown> | string | null;
+  explanation_payload: Record<string, unknown> | string | null;
+  linkage_payload: Record<string, unknown> | string | null;
+  projection_payload: Record<string, unknown> | string | null;
   evidence_level: EditorialRuleRecord["evidence_level"] | null;
   confidence_policy: EditorialRuleRecord["confidence_policy"];
   severity: EditorialRuleRecord["severity"];
@@ -185,6 +188,9 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           trigger,
           action,
           authoring_payload,
+          explanation_payload,
+          linkage_payload,
+          projection_payload,
           evidence_level,
           confidence_policy,
           severity,
@@ -205,13 +211,16 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           $9::jsonb,
           $10::jsonb,
           $11::jsonb,
-          $12,
-          $13,
-          $14,
+          $12::jsonb,
+          $13::jsonb,
+          $14::jsonb,
           $15,
           $16,
           $17,
-          $18
+          $18,
+          $19,
+          $20,
+          $21
         )
         on conflict (id) do update
         set
@@ -225,6 +234,9 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           trigger = excluded.trigger,
           action = excluded.action,
           authoring_payload = excluded.authoring_payload,
+          explanation_payload = excluded.explanation_payload,
+          linkage_payload = excluded.linkage_payload,
+          projection_payload = excluded.projection_payload,
           evidence_level = excluded.evidence_level,
           confidence_policy = excluded.confidence_policy,
           severity = excluded.severity,
@@ -246,6 +258,9 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
         JSON.stringify(record.trigger),
         JSON.stringify(record.action),
         JSON.stringify(record.authoring_payload),
+        JSON.stringify(record.explanation_payload ?? {}),
+        JSON.stringify(record.linkage_payload ?? {}),
+        JSON.stringify(record.projection_payload ?? {}),
         record.evidence_level ?? null,
         record.confidence_policy,
         record.severity,
@@ -272,6 +287,9 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           trigger,
           action,
           authoring_payload,
+          explanation_payload,
+          linkage_payload,
+          projection_payload,
           evidence_level,
           confidence_policy,
           severity,
@@ -303,6 +321,9 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           trigger,
           action,
           authoring_payload,
+          explanation_payload,
+          linkage_payload,
+          projection_payload,
           evidence_level,
           confidence_policy,
           severity,
@@ -335,6 +356,16 @@ function mapRuleSetRow(row: EditorialRuleSetRow): EditorialRuleSetRecord {
 }
 
 function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
+  const explanationPayload = parseOptionalJsonObject<
+    NonNullable<EditorialRuleRecord["explanation_payload"]>
+  >(row.explanation_payload);
+  const linkagePayload = parseOptionalJsonObject<
+    NonNullable<EditorialRuleRecord["linkage_payload"]>
+  >(row.linkage_payload);
+  const projectionPayload = parseOptionalJsonObject<
+    NonNullable<EditorialRuleRecord["projection_payload"]>
+  >(row.projection_payload);
+
   return {
     id: row.id,
     rule_set_id: row.rule_set_id,
@@ -349,6 +380,9 @@ function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
     authoring_payload: parseJsonObject<Record<string, unknown>>(
       row.authoring_payload,
     ),
+    ...(explanationPayload ? { explanation_payload: explanationPayload } : {}),
+    ...(linkagePayload ? { linkage_payload: linkagePayload } : {}),
+    ...(projectionPayload ? { projection_payload: projectionPayload } : {}),
     ...(row.evidence_level ? { evidence_level: row.evidence_level } : {}),
     confidence_policy: row.confidence_policy,
     severity: row.severity,
@@ -363,7 +397,7 @@ function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
   };
 }
 
-function parseJsonObject<T extends Record<string, unknown>>(
+function parseJsonObject<T extends object>(
   value: Record<string, unknown> | string | null,
 ): T {
   if (value == null) {
@@ -375,4 +409,11 @@ function parseJsonObject<T extends Record<string, unknown>>(
   }
 
   return value as T;
+}
+
+function parseOptionalJsonObject<T extends object>(
+  value: Record<string, unknown> | string | null,
+): T | undefined {
+  const parsed = parseJsonObject<T>(value);
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
 }

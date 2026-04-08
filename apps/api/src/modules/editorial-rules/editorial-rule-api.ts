@@ -5,6 +5,12 @@ import type {
   CreateEditorialRuleSetInput,
 } from "./editorial-rule-service.ts";
 import type {
+  EditorialRulePreviewService,
+  PreviewEditorialRuleInput,
+  PreviewResolvedEditorialRulesInput,
+  EditorialRulePreviewResult,
+} from "./editorial-rule-preview-service.ts";
+import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
 } from "./editorial-rule-record.ts";
@@ -16,10 +22,11 @@ interface RouteResponse<T> {
 
 export interface CreateEditorialRuleApiOptions {
   editorialRuleService: EditorialRuleService;
+  editorialRulePreviewService?: EditorialRulePreviewService;
 }
 
 export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
-  const { editorialRuleService } = options;
+  const { editorialRuleService, editorialRulePreviewService } = options;
 
   return {
     async createRuleSet({
@@ -76,6 +83,24 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
       return {
         status: 200,
         body: await editorialRuleService.listRules(ruleSetId),
+      };
+    },
+
+    async previewRule(
+      input: PreviewEditorialRuleInput,
+    ): Promise<RouteResponse<EditorialRulePreviewResult>> {
+      return {
+        status: 200,
+        body: await editorialRulePreviewService!.previewRule(input),
+      };
+    },
+
+    async previewResolvedRules(
+      input: PreviewResolvedEditorialRulesInput,
+    ): Promise<RouteResponse<EditorialRulePreviewResult>> {
+      return {
+        status: 200,
+        body: await editorialRulePreviewService!.previewResolvedRules(input),
       };
     },
   };

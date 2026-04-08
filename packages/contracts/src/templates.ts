@@ -1,4 +1,8 @@
-import type { ManuscriptType, TemplateFamilyId } from "./manuscript.js";
+import type {
+  JournalTemplateId,
+  ManuscriptType,
+  TemplateFamilyId,
+} from "./manuscript.js";
 import type { ManuscriptModule } from "./assets.js";
 import type { LearningCandidateId } from "./learning.js";
 
@@ -25,6 +29,14 @@ export interface TemplateFamily {
   id: TemplateFamilyId;
   manuscript_type: ManuscriptType;
   name: string;
+  status: TemplateFamilyStatus;
+}
+
+export interface JournalTemplateProfile {
+  id: JournalTemplateId;
+  template_family_id: TemplateFamilyId;
+  journal_key: string;
+  journal_name: string;
   status: TemplateFamilyStatus;
 }
 

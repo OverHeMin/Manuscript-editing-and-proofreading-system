@@ -4,6 +4,7 @@ import type {
   CreateGovernedLearningCandidateInput,
   CreateLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
+  ExtractRuleCandidateInput,
 } from "./learning-service.ts";
 import type {
   LearningCandidateRecord,
@@ -47,6 +48,15 @@ export function createLearningApi(options: CreateLearningApiOptions) {
       return {
         status: 201,
         body: await learningService.createGovernedLearningCandidate(input),
+      };
+    },
+
+    async extractRuleCandidate(
+      input: ExtractRuleCandidateInput,
+    ): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await learningService.extractRuleCandidate(input),
       };
     },
 

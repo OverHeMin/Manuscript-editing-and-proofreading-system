@@ -15,7 +15,15 @@ export type RuleAuthoringObject =
   | "statistical_expression"
   | "table"
   | "reference"
-  | "declaration";
+  | "declaration"
+  | "statement"
+  | "title"
+  | "author_line"
+  | "keyword"
+  | "terminology"
+  | "figure"
+  | "manuscript_structure"
+  | "journal_column";
 
 export type RuleAutomationRisk = "safe_auto" | "guarded_auto" | "inspect_only";
 
@@ -89,6 +97,63 @@ export interface DeclarationRuleAuthoringPayload {
   placement: string;
 }
 
+export interface StatementRuleAuthoringPayload {
+  statementKind:
+    | "ethics"
+    | "trial_registration"
+    | "funding"
+    | "conflict_of_interest"
+    | "author_contribution";
+  requiredStatement: string;
+  placement: string;
+}
+
+export interface TitleRuleAuthoringPayload {
+  titlePattern: string;
+  casingRule: string;
+  subtitleHandling: string;
+}
+
+export interface AuthorLineRuleAuthoringPayload {
+  separator: string;
+  affiliationFormat: string;
+  correspondingAuthorRule: string;
+}
+
+export interface KeywordRuleAuthoringPayload {
+  keywordCount: string;
+  separator: string;
+  vocabularyRequirement: string;
+}
+
+export interface TerminologyRuleAuthoringPayload {
+  targetSection: "title" | "abstract" | "body" | "global";
+  preferredTerm: string;
+  disallowedVariant: string;
+}
+
+export interface FigureRuleAuthoringPayload {
+  figureKind:
+    | "flowchart"
+    | "clinical_image"
+    | "trend_chart"
+    | "pathology_image";
+  captionRequirement: string;
+  fileRequirement: string;
+}
+
+export interface ManuscriptStructureRuleAuthoringPayload {
+  manuscriptType: string;
+  requiredSections: string;
+  sectionOrder: string;
+}
+
+export interface JournalColumnRuleAuthoringPayload {
+  columnName: string;
+  requirement: string;
+  sourceSection: string;
+}
+
 export type AbstractRuleAuthoringDraft = RuleAuthoringDraftBase<
   "abstract",
   AbstractRuleAuthoringPayload
@@ -124,6 +189,46 @@ export type DeclarationRuleAuthoringDraft = RuleAuthoringDraftBase<
   DeclarationRuleAuthoringPayload
 >;
 
+export type StatementRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "statement",
+  StatementRuleAuthoringPayload
+>;
+
+export type TitleRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "title",
+  TitleRuleAuthoringPayload
+>;
+
+export type AuthorLineRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "author_line",
+  AuthorLineRuleAuthoringPayload
+>;
+
+export type KeywordRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "keyword",
+  KeywordRuleAuthoringPayload
+>;
+
+export type TerminologyRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "terminology",
+  TerminologyRuleAuthoringPayload
+>;
+
+export type FigureRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "figure",
+  FigureRuleAuthoringPayload
+>;
+
+export type ManuscriptStructureRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "manuscript_structure",
+  ManuscriptStructureRuleAuthoringPayload
+>;
+
+export type JournalColumnRuleAuthoringDraft = RuleAuthoringDraftBase<
+  "journal_column",
+  JournalColumnRuleAuthoringPayload
+>;
+
 export type RuleAuthoringDraft =
   | AbstractRuleAuthoringDraft
   | HeadingHierarchyRuleAuthoringDraft
@@ -131,7 +236,15 @@ export type RuleAuthoringDraft =
   | StatisticalExpressionRuleAuthoringDraft
   | TableRuleAuthoringDraft
   | ReferenceRuleAuthoringDraft
-  | DeclarationRuleAuthoringDraft;
+  | DeclarationRuleAuthoringDraft
+  | StatementRuleAuthoringDraft
+  | TitleRuleAuthoringDraft
+  | AuthorLineRuleAuthoringDraft
+  | KeywordRuleAuthoringDraft
+  | TerminologyRuleAuthoringDraft
+  | FigureRuleAuthoringDraft
+  | ManuscriptStructureRuleAuthoringDraft
+  | JournalColumnRuleAuthoringDraft;
 
 export type AnyRuleAuthoringPreset =
   | RuleAuthoringPreset<"abstract">
@@ -140,7 +253,15 @@ export type AnyRuleAuthoringPreset =
   | RuleAuthoringPreset<"statistical_expression">
   | RuleAuthoringPreset<"table">
   | RuleAuthoringPreset<"reference">
-  | RuleAuthoringPreset<"declaration">;
+  | RuleAuthoringPreset<"declaration">
+  | RuleAuthoringPreset<"statement">
+  | RuleAuthoringPreset<"title">
+  | RuleAuthoringPreset<"author_line">
+  | RuleAuthoringPreset<"keyword">
+  | RuleAuthoringPreset<"terminology">
+  | RuleAuthoringPreset<"figure">
+  | RuleAuthoringPreset<"manuscript_structure">
+  | RuleAuthoringPreset<"journal_column">;
 
 export type SerializedRuleAuthoringDraft = Omit<CreateEditorialRuleInput, "actorRole">;
 
@@ -169,7 +290,15 @@ export function isRuleAuthoringObject(value: string): value is RuleAuthoringObje
     value === "statistical_expression" ||
     value === "table" ||
     value === "reference" ||
-    value === "declaration"
+    value === "declaration" ||
+    value === "statement" ||
+    value === "title" ||
+    value === "author_line" ||
+    value === "keyword" ||
+    value === "terminology" ||
+    value === "figure" ||
+    value === "manuscript_structure" ||
+    value === "journal_column"
   );
 }
 
