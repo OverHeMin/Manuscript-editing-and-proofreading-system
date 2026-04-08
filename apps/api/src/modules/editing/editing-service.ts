@@ -11,6 +11,7 @@ import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service
 import {
   EditorialDocxTransformService,
 } from "../document-pipeline/editorial-docx-transform-service.ts";
+import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
 import {
   assembleInstructionTemplate,
 } from "../editorial-execution/instruction-template-assembler.ts";
@@ -77,6 +78,7 @@ export interface EditingServiceOptions {
     EditorialDocxTransformService,
     "applyDeterministicRules"
   >;
+  documentStructureService?: Pick<DocumentStructureService, "extract">;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -113,6 +115,7 @@ export class EditingService {
     EditorialDocxTransformService,
     "applyDeterministicRules"
   >;
+  private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -142,6 +145,7 @@ export class EditingService {
       new EditorialDocxTransformService({
         assetRepository: options.assetRepository,
       });
+    this.documentStructureService = options.documentStructureService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -266,6 +270,15 @@ export class EditingService {
         updated_at: timestamp,
       };
       await jobRepository.save(queuedJob);
+      const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
+      const documentStructureSnapshot = this.documentStructureService
+        ? await this.documentStructureService.extract({
+            manuscriptId: input.manuscriptId,
+            assetId: input.parentAssetId,
+            fileName:
+              sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+          })
+        : undefined;
 
       const deterministicTransform =
         await this.editorialDocxTransformService.applyDeterministicRules({
@@ -274,6 +287,8 @@ export class EditingService {
           outputStorageKey: input.storageKey,
           outputFileName: input.fileName,
           rules: moduleContext.rules,
+          resolvedRules: moduleContext.resolvedRules,
+          tableSnapshots: documentStructureSnapshot?.tables ?? [],
         });
 
       const asset = await documentAssetService.createAsset({
@@ -328,7 +343,27 @@ export class EditingService {
           appliedRuleIds: [...deterministicTransform.appliedRuleIds],
           appliedChanges: deterministicTransform.appliedChanges.map((change) => ({
             ...change,
+            ...(change.semantic_hit
+              ? {
+                  semantic_hit: {
+                    ...change.semantic_hit,
+                    ...(change.semantic_hit.header_path
+                      ? { header_path: [...change.semantic_hit.header_path] }
+                      : {}),
+                  },
+                }
+              : {}),
           })),
+          tableInspectionFindings:
+            (deterministicTransform.tableInspectionFindings ?? []).map((finding) => ({
+              ...finding,
+              semantic_hit: {
+                ...finding.semantic_hit,
+                ...(finding.semantic_hit.header_path
+                  ? { header_path: [...finding.semantic_hit.header_path] }
+                  : {}),
+              },
+            })),
         },
         attempt_count: 1,
         started_at: timestamp,

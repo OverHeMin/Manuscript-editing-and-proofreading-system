@@ -111,6 +111,167 @@ test("previewing a single rule returns transformed output, reasons, and guarded 
   assert.match(preview.body.reasons.join(" "), /exact_text/i);
 });
 
+test("previewing resolved table rules reports the matched semantic target and journal override reason", async () => {
+  const { api, templateFamilyRepository } = createPreviewHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-beta",
+    journal_name: "Journal Beta",
+    status: "active",
+  });
+
+  const baseRuleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "proofreading",
+    },
+  });
+  await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: baseRuleSet.body.id,
+      orderNo: 10,
+      ruleObject: "table",
+      ruleType: "format",
+      executionMode: "inspect",
+      scope: {
+        sections: ["results"],
+      },
+      selector: {
+        semantic_target: "header_cell",
+        header_path_includes: ["Treatment group", "n (%)"],
+      },
+      trigger: {
+        kind: "table_shape",
+        layout: "three_line_table",
+      },
+      action: {
+        kind: "emit_finding",
+        message: "Base rule checks the treatment group header semantics.",
+      },
+      confidencePolicy: "manual_only",
+      severity: "warning",
+    },
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: baseRuleSet.body.id,
+  });
+
+  const journalRuleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      journalTemplateId: "journal-template-1",
+      module: "proofreading",
+    },
+  });
+  await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: journalRuleSet.body.id,
+      orderNo: 10,
+      ruleObject: "table",
+      ruleType: "format",
+      executionMode: "inspect",
+      scope: {
+        sections: ["results"],
+      },
+      selector: {
+        semantic_target: "header_cell",
+        header_path_includes: ["Treatment group", "n (%)"],
+      },
+      trigger: {
+        kind: "table_shape",
+        layout: "three_line_table",
+      },
+      action: {
+        kind: "emit_finding",
+        message: "Journal Beta checks the same semantic table header.",
+      },
+      explanationPayload: {
+        rationale: "Journal Beta overrides the generic table header rule.",
+      },
+      confidencePolicy: "manual_only",
+      severity: "warning",
+    },
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: journalRuleSet.body.id,
+  });
+
+  const preview = await api.previewResolvedRules({
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-template-1",
+    module: "proofreading",
+    ruleObject: "table",
+    sampleText: "",
+    tableSnapshots: [
+      {
+        table_id: "table-1",
+        profile: {
+          is_three_line_table: true,
+          header_depth: 2,
+          has_stub_column: true,
+          has_statistical_footnotes: true,
+          has_unit_markers: true,
+        },
+        header_cells: [
+          {
+            id: "header-1",
+            text: "n (%)",
+            row_index: 1,
+            column_index: 1,
+            header_path: ["Treatment group", "n (%)"],
+            coordinate: {
+              table_id: "table-1",
+              target: "header_cell",
+              header_path: ["Treatment group", "n (%)"],
+              column_key: "Treatment group > n (%)",
+            },
+          },
+        ],
+        data_cells: [],
+        footnote_items: [],
+      },
+    ],
+  });
+
+  assert.deepEqual(preview.body.matched_rule_ids, ["rule-2"]);
+  assert.deepEqual(preview.body.overridden_rule_ids, ["rule-1"]);
+  assert.equal(preview.body.execution_posture, "inspect_only");
+  assert.equal(preview.body.inspect_only, true);
+  assert.match(preview.body.reasons.join(" "), /journal template override/i);
+  assert.match(preview.body.reasons.join(" "), /semantic target "header_cell"/i);
+  assert.deepEqual(preview.body.matched_rules, [
+    {
+      rule_id: "rule-2",
+      rule_object: "table",
+      coverage_key: 'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+      execution_posture: "inspect_only",
+      overridden_rule_ids: ["rule-1"],
+      reason: 'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}".',
+      semantic_target: "header_cell",
+      semantic_coordinate: {
+        table_id: "table-1",
+        target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+      },
+    },
+  ]);
+});
+
 test("previewing resolved rules reports journal overrides and uses the journal-specific output", async () => {
   const { api, templateFamilyRepository } = createPreviewHarness();
 

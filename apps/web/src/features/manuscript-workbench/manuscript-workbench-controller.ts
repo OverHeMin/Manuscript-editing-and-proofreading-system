@@ -396,6 +396,7 @@ function resolveLatestProofreadingDraftAsset(
 
 export function isSelectableParentAsset(asset: DocumentAssetViewModel): boolean {
   return (
+    asset.asset_type !== "screening_report" &&
     asset.asset_type !== "proofreading_draft_report" &&
     asset.asset_type !== "final_proof_issue_report"
   );

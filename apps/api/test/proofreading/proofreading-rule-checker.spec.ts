@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assembleInstructionTemplate } from "../../src/modules/editorial-execution/instruction-template-assembler.ts";
 import { inspectProofreadingRules } from "../../src/modules/editorial-execution/proofreading-rule-checker.ts";
+import type { ResolvedEditorialRule } from "../../src/modules/editorial-rules/editorial-rule-resolution-service.ts";
 
 const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
 const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
@@ -154,6 +155,97 @@ test("proofreading checker reports failed rule checks without applying manuscrip
     {
       ruleId: "rule-discussion-reshape",
       reason: "medical_meaning_risk",
+    },
+  ]);
+});
+
+test("proofreading checker reports shared table semantic hits with override metadata", () => {
+  const tableRule = {
+    id: "rule-table-treatment-group",
+    rule_set_id: "rule-set-1",
+    order_no: 30,
+    rule_object: "table",
+    rule_type: "format" as const,
+    execution_mode: "inspect" as const,
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Journal Beta checks the same semantic table header.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only" as const,
+    severity: "warning" as const,
+    enabled: true,
+  };
+  const resolvedRule: ResolvedEditorialRule = {
+    rule: tableRule,
+    coverage_key:
+      'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+    source_layer: "journal",
+    overridden_rule_ids: ["rule-table-treatment-group-base"],
+    resolution_reason:
+      'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}".',
+    execution_posture: "inspect_only",
+  };
+
+  const findings = inspectProofreadingRules({
+    blocks: [],
+    rules: [tableRule],
+    resolvedRules: [resolvedRule],
+    tableSnapshots: [
+      {
+        table_id: "table-1",
+        profile: {
+          is_three_line_table: true,
+          header_depth: 2,
+          has_stub_column: true,
+          has_statistical_footnotes: true,
+          has_unit_markers: true,
+        },
+        header_cells: [
+          {
+            id: "header-1",
+            text: "n (%)",
+            row_index: 1,
+            column_index: 1,
+            header_path: ["Treatment group", "n (%)"],
+            coordinate: {
+              table_id: "table-1",
+              target: "header_cell",
+              header_path: ["Treatment group", "n (%)"],
+              column_key: "Treatment group > n (%)",
+            },
+          },
+        ],
+        data_cells: [],
+        footnote_items: [],
+      },
+    ],
+  });
+
+  assert.deepEqual(findings.failedChecks, [
+    {
+      ruleId: "rule-table-treatment-group",
+      expected: "Journal Beta checks the same semantic table header.",
+      actual: "table-1 > Treatment group > n (%)",
+      severity: "warning",
+      semantic_hit: {
+        table_id: "table-1",
+        semantic_target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+        override_source: "journal",
+      },
     },
   ]);
 });

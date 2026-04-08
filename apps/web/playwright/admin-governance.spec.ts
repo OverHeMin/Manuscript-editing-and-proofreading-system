@@ -164,13 +164,25 @@ test("template governance supports journal-scoped abstract and table rule author
   );
 
   await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Semantic Target").selectOption("header_cell");
+  await page.getByLabel("Header Path Includes").fill("Treatment group > n (%)");
+  await page.getByLabel("Column Key").fill("Treatment group > n (%)");
   await expect(previewPanel).toContainText("Inspect only");
-  await expect(previewPanel).toContainText("table=three_line_table");
+  await expect(previewPanel).toContainText("semantic_target=header_cell");
+  await expect(previewPanel).toContainText("header_path=Treatment group > n (%)");
+  await expect(previewPanel).toContainText("table_id=runtime-resolved");
+  await expect(previewPanel).toContainText("Journal override");
   await page.getByRole("button", { name: "Create Rule Draft" }).click();
 
   await expect(page.locator(".template-governance-status")).toContainText("Rule draft created.");
   await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    "three_line_table",
+    "header_cell",
+  );
+  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
+    "Treatment group",
+  );
+  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
+    "n (%)",
   );
   await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
     "\u7981\u7528\u7ad6\u7ebf",

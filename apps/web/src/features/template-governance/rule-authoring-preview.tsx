@@ -44,6 +44,18 @@ export function RuleAuthoringPreviewPanel({
           <span>Normalized Example</span>
           <p>{preview.normalizedExample}</p>
         </div>
+        <div>
+          <span>Semantic Match</span>
+          <p>{preview.semanticHitSummary}</p>
+        </div>
+        <div>
+          <span>Expected Runtime Evidence</span>
+          <p>{preview.expectedEvidenceSummary}</p>
+        </div>
+        <div className="template-governance-field-full">
+          <span>Override Resolution</span>
+          <p>{preview.overrideSummary}</p>
+        </div>
       </div>
 
       {overview?.rules.length ? (

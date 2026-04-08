@@ -108,7 +108,10 @@ import {
 } from "../modules/assets/index.ts";
 import {
   DocumentExportAssetNotFoundError,
+  DocumentStructureService,
   DocumentExportService,
+  EditorialDocxTransformService,
+  PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
@@ -952,19 +955,20 @@ export function createApiHttpServer(
   options: CreateApiHttpServerOptions = {},
 ): ApiHttpServer {
   const appEnv = options.appEnv ?? "production";
+  const uploadRootDir = options.uploadRootDir ?? resolveDefaultUploadRootDir(appEnv);
+  const harnessExportRootDir = resolveDefaultHarnessExportRootDir(appEnv);
   const runtime =
     options.runtime ??
     createInMemoryApiRuntime({
       appEnv,
       authRuntime: options.authRuntime,
       seedDemoData: options.seedDemoKnowledgeReviewData ?? appEnv === "local",
+      uploadRootDir,
     });
   const allowedOrigins =
     options.allowedOrigins?.filter((origin) => origin.trim().length > 0) ?? [];
   const serviceHealth =
     options.serviceHealth ?? createAlwaysReadyServiceHealthProvider();
-  const uploadRootDir = options.uploadRootDir ?? resolveDefaultUploadRootDir(appEnv);
-  const harnessExportRootDir = resolveDefaultHarnessExportRootDir(appEnv);
 
   return createServer(async (req, res) => {
     const corsHeaders = createCorsHeaders(req, allowedOrigins);
@@ -1016,6 +1020,7 @@ export function createInMemoryApiRuntime(input: {
   appEnv: AppEnv;
   authRuntime?: HttpAuthRuntime;
   seedDemoData: boolean;
+  uploadRootDir: string;
 }): ApiServerRuntime {
   const authRuntime =
     input.authRuntime ??
@@ -1065,6 +1070,16 @@ export function createInMemoryApiRuntime(input: {
   const documentAssetService = new DocumentAssetService({
     assetRepository,
     manuscriptRepository,
+  });
+  const documentStructureService = new DocumentStructureService({
+    adapter: new PythonDocxStructureWorkerAdapter({
+      assetRepository,
+      rootDir: input.uploadRootDir,
+    }),
+  });
+  const editorialDocxTransformService = new EditorialDocxTransformService({
+    assetRepository,
+    rootDir: input.uploadRootDir,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -1313,6 +1328,8 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
+    editorialDocxTransformService,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -1333,6 +1350,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
   });
 
   return {
@@ -1904,6 +1922,60 @@ function seedDemoWorkbenchData(input: {
     module: "proofreading",
     version_no: 1,
     status: "published",
+  });
+  void input.editorialRuleRepository.saveRule({
+    id: "rule-table-editing-1",
+    rule_set_id: "rule-set-editing-1",
+    order_no: 10,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Seeded editing table review target.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+  void input.editorialRuleRepository.saveRule({
+    id: "rule-table-proofreading-1",
+    rule_set_id: "rule-set-proofreading-1",
+    order_no: 10,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Seeded proofreading table review target.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
   });
 
   void input.executionGovernanceRepository.saveProfile({
@@ -2864,11 +2936,18 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         orderNo: number;
+        ruleObject?: string;
         ruleType: string;
         executionMode: string;
         scope: Record<string, unknown>;
+        selector?: Record<string, unknown>;
         trigger: Record<string, unknown>;
         action: Record<string, unknown>;
+        authoringPayload?: Record<string, unknown>;
+        explanationPayload?: Record<string, unknown>;
+        linkagePayload?: Record<string, unknown>;
+        projectionPayload?: Record<string, unknown>;
+        evidenceLevel?: string;
         confidencePolicy: string;
         severity: string;
         enabled?: boolean;
@@ -2882,6 +2961,7 @@ async function handleRoute(
         input: {
           ruleSetId: routeMatch.ruleSetId,
           orderNo: body.orderNo,
+          ruleObject: coalesceOptionalString(body.ruleObject),
           ruleType: body.ruleType as Parameters<
             typeof runtime.editorialRuleApi.createRule
           >[0]["input"]["ruleType"],
@@ -2889,12 +2969,26 @@ async function handleRoute(
             typeof runtime.editorialRuleApi.createRule
           >[0]["input"]["executionMode"],
           scope: body.scope,
+          selector: body.selector,
           trigger: body.trigger as Parameters<
             typeof runtime.editorialRuleApi.createRule
           >[0]["input"]["trigger"],
           action: body.action as Parameters<
             typeof runtime.editorialRuleApi.createRule
           >[0]["input"]["action"],
+          authoringPayload: body.authoringPayload,
+          explanationPayload: body.explanationPayload as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["explanationPayload"],
+          linkagePayload: body.linkagePayload as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["linkagePayload"],
+          projectionPayload: body.projectionPayload as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["projectionPayload"],
+          evidenceLevel: body.evidenceLevel as Parameters<
+            typeof runtime.editorialRuleApi.createRule
+          >[0]["input"]["evidenceLevel"],
           confidencePolicy: body.confidencePolicy as Parameters<
             typeof runtime.editorialRuleApi.createRule
           >[0]["input"]["confidencePolicy"],

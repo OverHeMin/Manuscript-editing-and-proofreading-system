@@ -18,6 +18,16 @@ export type EditorialRuleEvidenceLevel =
   | "high"
   | "expert_opinion"
   | "unknown";
+export type EditorialRuleTableSemanticTarget =
+  | "header_cell"
+  | "stub_column"
+  | "data_cell"
+  | "footnote_item";
+export type EditorialRuleTableFootnoteKind =
+  | "statistical_significance"
+  | "abbreviation"
+  | "general";
+export type EditorialRuleTableUnitContext = "header" | "stub" | "footnote";
 
 export interface EditorialRuleScope {
   [key: string]: unknown;
@@ -25,6 +35,15 @@ export interface EditorialRuleScope {
 
 export interface EditorialRuleSelector {
   [key: string]: unknown;
+}
+
+export interface EditorialRuleTableSemanticSelector extends EditorialRuleSelector {
+  semantic_target: EditorialRuleTableSemanticTarget;
+  header_path_includes?: string[];
+  row_key?: string;
+  column_key?: string;
+  note_kind?: EditorialRuleTableFootnoteKind;
+  unit_context?: EditorialRuleTableUnitContext;
 }
 
 export interface EditorialRuleTrigger {

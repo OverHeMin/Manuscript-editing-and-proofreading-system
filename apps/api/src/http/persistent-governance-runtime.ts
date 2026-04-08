@@ -1,3 +1,4 @@
+import path from "node:path";
 import { PermissionGuard } from "../auth/permission-guard.ts";
 import { PostgresAuditService } from "../audit/index.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
@@ -25,7 +26,10 @@ import {
   PostgresDocumentAssetRepository,
 } from "../modules/assets/index.ts";
 import {
+  DocumentStructureService,
   DocumentExportService,
+  EditorialDocxTransformService,
+  PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
@@ -166,11 +170,20 @@ type PoolLikeClient = QueryableClient & {
 export interface CreatePersistentGovernanceRuntimeOptions {
   authRuntime: HttpAuthRuntime;
   client: PoolLikeClient;
+  uploadRootDir?: string;
 }
 
 export function createPersistentGovernanceRuntime(
   options: CreatePersistentGovernanceRuntimeOptions,
 ): ApiServerRuntime {
+  const uploadRootDir =
+    options.uploadRootDir ??
+    path.resolve(
+      process.cwd(),
+      ".local-data",
+      "uploads",
+      process.env.APP_ENV ?? "development",
+    );
   const permissionGuard = new PermissionGuard();
 
   const manuscriptRepository = new PostgresManuscriptRepository({
@@ -305,6 +318,16 @@ export function createPersistentGovernanceRuntime(
   const documentAssetService = new DocumentAssetService({
     assetRepository,
     manuscriptRepository,
+  });
+  const documentStructureService = new DocumentStructureService({
+    adapter: new PythonDocxStructureWorkerAdapter({
+      assetRepository,
+      rootDir: uploadRootDir,
+    }),
+  });
+  const editorialDocxTransformService = new EditorialDocxTransformService({
+    assetRepository,
+    rootDir: uploadRootDir,
   });
   const exportService = new DocumentExportService({
     assetRepository,
@@ -566,6 +589,8 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
+    editorialDocxTransformService,
     transactionManager: workbenchTransactionManager,
   });
   const proofreadingService = new ProofreadingService({
@@ -587,6 +612,7 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
     transactionManager: workbenchTransactionManager,
   });
 

@@ -269,6 +269,180 @@ test("proofreading draft reports failed checks from the same rule source and nev
   );
 });
 
+test("proofreading draft report includes shared table semantic coordinates for matched table rules", async () => {
+  const harness = await seedHarness();
+
+  await harness.editorialRuleRepository.saveRule({
+    id: "rule-table-treatment-group-proofreading",
+    rule_set_id: "rule-set-proofreading-1",
+    order_no: 20,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Journal Beta checks the same semantic table header.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: {
+      async recordSnapshot() {
+        return {
+          id: "snapshot-proofreading-table-1",
+        };
+      },
+      async getSnapshot() {
+        return undefined;
+      },
+      async listKnowledgeHitLogsBySnapshotId() {
+        return [];
+      },
+    } as never,
+    jobRepository: harness.jobRepository,
+    documentAssetService: {
+      createScoped() {
+        return {
+          async createAsset(input: Record<string, unknown>) {
+            return {
+              id: "asset-proofreading-report-table-1",
+              manuscript_id: input.manuscriptId,
+              asset_type: input.assetType,
+              status: "active",
+              storage_key: input.storageKey,
+              mime_type: input.mimeType,
+              parent_asset_id: input.parentAssetId,
+              source_module: input.sourceModule,
+              source_job_id: input.sourceJobId,
+              created_by: input.createdBy,
+              version_no: 1,
+              is_current: true,
+              file_name: input.fileName,
+              created_at: "2026-04-07T10:00:00.000Z",
+              updated_at: "2026-04-07T10:00:00.000Z",
+            };
+          },
+        };
+      },
+    } as never,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: {
+      async createLog() {
+        return { id: "execution-log-proofreading-table-1" };
+      },
+      async completeLog() {
+        return { id: "execution-log-proofreading-table-1" };
+      },
+    } as never,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    proofreadingSourceBlockResolver: {
+      async resolveBlocks() {
+        return [];
+      },
+    } as never,
+    documentStructureService: {
+      async extract() {
+        return {
+          manuscript_id: "manuscript-1",
+          asset_id: "asset-original-1",
+          file_name: "original.docx",
+          status: "ready",
+          parser: "python_docx",
+          sections: [],
+          tables: [
+            {
+              table_id: "table-1",
+              profile: {
+                is_three_line_table: true,
+                header_depth: 2,
+                has_stub_column: true,
+                has_statistical_footnotes: true,
+                has_unit_markers: true,
+              },
+              header_cells: [
+                {
+                  id: "header-1",
+                  text: "n (%)",
+                  row_index: 1,
+                  column_index: 1,
+                  header_path: ["Treatment group", "n (%)"],
+                  coordinate: {
+                    table_id: "table-1",
+                    target: "header_cell",
+                    header_path: ["Treatment group", "n (%)"],
+                    column_key: "Treatment group > n (%)",
+                  },
+                },
+              ],
+              data_cells: [],
+              footnote_items: [],
+            },
+          ],
+          warnings: [],
+        };
+      },
+    } as never,
+    now: () => new Date("2026-04-07T10:00:00.000Z"),
+    createId: () => "job-proofreading-table-1",
+  } as never);
+
+  const result = await proofreadingService.createDraft({
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "proofreader-1",
+    actorRole: "proofreader",
+    storageKey: "proofreading/manuscript-1/table-draft-report.md",
+    fileName: "table-draft-report.md",
+  });
+
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          semantic_hit?: { table_id: string; semantic_target: string };
+        }>;
+      }
+    ).failedChecks.find(
+      (check) => check.semantic_hit?.semantic_target === "header_cell",
+    )?.semantic_hit?.table_id,
+    "table-1",
+  );
+  assert.match(
+    String(result.job.payload?.reportMarkdown),
+    /Treatment group > n \(%\)/,
+  );
+});
+
 async function seedHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
@@ -707,5 +881,6 @@ async function seedHarness() {
     toolPermissionPolicyService,
     jobRepository,
     aiGatewayService,
+    editorialRuleRepository,
   };
 }

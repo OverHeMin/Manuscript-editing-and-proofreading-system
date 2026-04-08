@@ -222,6 +222,33 @@ test("editing service resolves governed rules and persists deterministic changes
     severity: "warning",
     enabled: true,
   });
+  await editorialRuleRepository.saveRule({
+    id: "rule-table-treatment-group",
+    rule_set_id: "rule-set-1",
+    order_no: 30,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Check treatment group header formatting.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
   await executionGovernanceRepository.saveProfile({
     id: "profile-1",
     module: "editing",
@@ -349,6 +376,48 @@ test("editing service resolves governed rules and persists deterministic changes
         return undefined;
       },
     } as never,
+    documentStructureService: {
+      async extract() {
+        return {
+          manuscript_id: "manuscript-1",
+          asset_id: "asset-original-1",
+          file_name: "original.docx",
+          status: "ready",
+          parser: "python_docx",
+          sections: [],
+          tables: [
+            {
+              table_id: "table-1",
+              profile: {
+                is_three_line_table: true,
+                header_depth: 2,
+                has_stub_column: true,
+                has_statistical_footnotes: true,
+                has_unit_markers: true,
+              },
+              header_cells: [
+                {
+                  id: "header-1",
+                  text: "n (%)",
+                  row_index: 1,
+                  column_index: 1,
+                  header_path: ["Treatment group", "n (%)"],
+                  coordinate: {
+                    table_id: "table-1",
+                    target: "header_cell",
+                    header_path: ["Treatment group", "n (%)"],
+                    column_key: "Treatment group > n (%)",
+                  },
+                },
+              ],
+              data_cells: [],
+              footnote_items: [],
+            },
+          ],
+          warnings: [],
+        };
+      },
+    } as never,
     editorialDocxTransformService: {
       async applyDeterministicRules(input: Record<string, unknown>) {
         transformCalls.push(input);
@@ -359,6 +428,20 @@ test("editing service resolves governed rules and persists deterministic changes
               ruleId: "rule-abstract-objective",
               before: BEFORE_HEADING,
               after: AFTER_HEADING,
+            },
+          ],
+          tableInspectionFindings: [
+            {
+              ruleId: "rule-table-treatment-group",
+              reason:
+                'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+              semantic_hit: {
+                table_id: "table-1",
+                semantic_target: "header_cell",
+                header_path: ["Treatment group", "n (%)"],
+                column_key: "Treatment group > n (%)",
+                override_source: "base",
+              },
             },
           ],
         };
@@ -430,6 +513,62 @@ test("editing service resolves governed rules and persists deterministic changes
       severity: "warning",
       enabled: true,
     },
+    {
+      id: "rule-table-treatment-group",
+      rule_set_id: "rule-set-1",
+      order_no: 30,
+      rule_object: "table",
+      rule_type: "format",
+      execution_mode: "inspect",
+      scope: {
+        sections: ["results"],
+      },
+      selector: {
+        semantic_target: "header_cell",
+        header_path_includes: ["Treatment group", "n (%)"],
+      },
+      trigger: {
+        kind: "table_shape",
+        layout: "three_line_table",
+      },
+      action: {
+        kind: "emit_finding",
+        message: "Check treatment group header formatting.",
+      },
+      authoring_payload: {},
+      confidence_policy: "manual_only",
+      severity: "warning",
+      enabled: true,
+    },
+  ]);
+  assert.deepEqual(transformCalls[0]?.tableSnapshots, [
+    {
+      table_id: "table-1",
+      profile: {
+        is_three_line_table: true,
+        header_depth: 2,
+        has_stub_column: true,
+        has_statistical_footnotes: true,
+        has_unit_markers: true,
+      },
+      header_cells: [
+        {
+          id: "header-1",
+          text: "n (%)",
+          row_index: 1,
+          column_index: 1,
+          header_path: ["Treatment group", "n (%)"],
+          coordinate: {
+            table_id: "table-1",
+            target: "header_cell",
+            header_path: ["Treatment group", "n (%)"],
+            column_key: "Treatment group > n (%)",
+          },
+        },
+      ],
+      data_cells: [],
+      footnote_items: [],
+    },
   ]);
   assert.deepEqual(result.job.payload?.appliedRuleIds, ["rule-abstract-objective"]);
   assert.deepEqual(result.job.payload?.appliedChanges, [
@@ -437,6 +576,20 @@ test("editing service resolves governed rules and persists deterministic changes
       ruleId: "rule-abstract-objective",
       before: BEFORE_HEADING,
       after: AFTER_HEADING,
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.tableInspectionFindings, [
+    {
+      ruleId: "rule-table-treatment-group",
+      reason:
+        'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+      semantic_hit: {
+        table_id: "table-1",
+        semantic_target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+        override_source: "base",
+      },
     },
   ]);
   assert.equal(createdAssets[0]?.storage_key, "edited/manuscript-1/output.docx");

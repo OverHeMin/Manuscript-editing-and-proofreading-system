@@ -6,6 +6,8 @@ import type { DocumentAssetRepository } from "../assets/document-asset-repositor
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
+import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -101,6 +103,7 @@ export interface ProofreadingServiceOptions {
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
   >;
+  documentStructureService?: Pick<DocumentStructureService, "extract">;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -167,6 +170,7 @@ export class ProofreadingService {
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
   >;
+  private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -198,6 +202,7 @@ export class ProofreadingService {
           return [];
         },
       };
+    this.documentStructureService = options.documentStructureService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -604,6 +609,16 @@ export class ProofreadingService {
         trigger: { ...rule.trigger },
         action: { ...rule.action },
       })),
+      resolvedRules: moduleContext.resolvedRules.map((entry) => ({
+        ...entry,
+        rule: {
+          ...entry.rule,
+          scope: { ...entry.rule.scope },
+          selector: { ...entry.rule.selector },
+          trigger: { ...entry.rule.trigger },
+          action: { ...entry.rule.action },
+        },
+      })),
       knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
         knowledgeItemId: selection.knowledgeItem.id,
         matchSourceId: selection.matchSourceId,
@@ -715,10 +730,20 @@ export class ProofreadingService {
       manuscriptId: input.manuscriptId,
       assetId: input.parentAssetId,
     });
+    const sourceAsset = await this.assetRepository.findById(input.parentAssetId);
+    const documentStructureSnapshot = this.documentStructureService
+      ? await this.documentStructureService.extract({
+          manuscriptId: input.manuscriptId,
+          assetId: input.parentAssetId,
+          fileName: sourceAsset?.file_name ?? input.parentAssetId,
+        })
+      : undefined;
 
     return inspectProofreadingRules({
       blocks,
       rules: input.resolvedContext.rules ?? [],
+      resolvedRules: input.resolvedContext.resolvedRules,
+      tableSnapshots: documentStructureSnapshot?.tables ?? [],
     });
   }
 }
@@ -731,6 +756,7 @@ interface ResolvedProofreadingGovernedContext {
   promptTemplateVersion: string;
   ruleSetId?: string;
   rules?: EditorialRuleRecord[];
+  resolvedRules?: ResolvedEditorialRule[];
   skillPackageIds: string[];
   skillPackageVersions: string[];
   knowledgeHits: RecordKnowledgeHitInput[];
@@ -778,7 +804,7 @@ function renderProofreadingReport(
     lines.push("## Failed Checks", "");
     for (const check of findings.failedChecks) {
       lines.push(
-        `- ${check.ruleId}: expected ${check.expected}; found ${check.actual}.`,
+        `- ${check.ruleId}: expected ${check.expected}; found ${formatReportActual(check)}.`,
       );
     }
     lines.push("");
@@ -800,4 +826,31 @@ function renderProofreadingReport(
   }
 
   return lines.join("\n").trim();
+}
+
+function formatReportActual(
+  check: ProofreadingInspectionResult["failedChecks"][number],
+): string {
+  if (!check.semantic_hit) {
+    return check.actual;
+  }
+
+  const segments = [
+    check.semantic_hit.table_id,
+    ...(check.semantic_hit.header_path ?? []),
+  ];
+
+  if (segments.length > 1) {
+    return segments.join(" > ");
+  }
+
+  if (check.semantic_hit.column_key) {
+    return `${check.semantic_hit.table_id} > ${check.semantic_hit.column_key}`;
+  }
+
+  if (check.semantic_hit.footnote_anchor) {
+    return `${check.semantic_hit.table_id} > ${check.semantic_hit.footnote_anchor}`;
+  }
+
+  return check.actual;
 }

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
@@ -53,6 +53,12 @@ import {
   startHttpTestServer,
   stopHttpTestServer,
 } from "./support/http-test-server.ts";
+import {
+  semanticTableColumnKey,
+  semanticTableDocxBase64,
+  semanticTableReportTarget,
+  semanticTableTableId,
+} from "../../../../test-support/semantic-table-docx.ts";
 
 interface PersistentWorkbenchSeededIds {
   manuscriptId: string;
@@ -660,6 +666,121 @@ test("persistent workbench screening routes keep governed execution evidence acr
       }
     } finally {
       await seedPool.end();
+    }
+  });
+});
+
+test("persistent workbench proofreading routes persist semantic table evidence across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(
+      path.join(os.tmpdir(), "medsys-persistent-proofreading-table-"),
+    );
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      await writeSemanticTableFixtureDocx(
+        uploadRootDir,
+        "persistent/uploads/seeded-original.docx",
+      );
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              storageKey: "persistent/runs/proofreading/table-semantic-report.md",
+              fileName: "table-semantic-report.md",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          job: { id: string; status: string };
+        };
+
+        assert.equal(
+          draftResponse.status,
+          201,
+          `Expected proofreading draft to succeed, received ${draftResponse.status}: ${JSON.stringify(draft)}`,
+        );
+        assert.equal(draft.job.status, "completed");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl, {
+          uploadRootDir,
+        });
+        try {
+          const jobResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/jobs/${draft.job.id}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const job = (await jobResponse.json()) as {
+            payload?: {
+              proofreadingFindings?: {
+                failedChecks?: Array<{
+                  semantic_hit?: {
+                    table_id?: string;
+                    column_key?: string;
+                    override_source?: string;
+                  };
+                }>;
+              };
+              reportMarkdown?: string;
+            };
+          };
+
+          assert.equal(jobResponse.status, 200);
+          assert.equal(
+            job.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit
+              ?.table_id,
+            semanticTableTableId,
+          );
+          assert.equal(
+            job.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit
+              ?.column_key,
+            semanticTableColumnKey,
+          );
+          assert.equal(
+            job.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit
+              ?.override_source,
+            "base",
+          );
+          assert.match(
+            String(job.payload?.reportMarkdown),
+            new RegExp(semanticTableReportTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
     }
   });
 });
@@ -2290,6 +2411,33 @@ async function seedPersistentWorkbenchData(pool: Pool): Promise<void> {
     version_no: 1,
     status: "published",
   });
+  await editorialRuleRepository.saveRule({
+    id: "34343434-2222-4333-8444-555555555555",
+    rule_set_id: "23232323-2222-4333-8444-555555555555",
+    order_no: 10,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Persistent proofreading table-semantic integration check.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
   await executionGovernanceRepository.saveProfile({
     id: "bbbb1111-2222-4333-8444-555555555555",
     module: "screening",
@@ -2848,6 +2996,7 @@ async function startPersistentWorkbenchServer(
     runtime: createPersistentGovernanceRuntime({
       client: pool,
       authRuntime,
+      uploadRootDir: input.uploadRootDir,
     }),
     uploadRootDir: input.uploadRootDir,
   });
@@ -2860,3 +3009,12 @@ async function startPersistentWorkbenchServer(
 }
 
 const stopServer = stopHttpTestServer;
+
+async function writeSemanticTableFixtureDocx(
+  rootDir: string,
+  storageKey: string,
+): Promise<void> {
+  const absolutePath = path.join(rootDir, ...storageKey.split("/"));
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, Buffer.from(semanticTableDocxBase64, "base64"));
+}

@@ -3,6 +3,9 @@ import type { EditorialRuleSetViewModel } from "../editorial-rules/index.ts";
 import {
   listRuleAuthoringPresets,
 } from "./rule-authoring-presets.ts";
+import {
+  RuleAuthoringTableSemanticFields,
+} from "./rule-authoring-table-semantic-fields.tsx";
 import type {
   RuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
@@ -344,71 +347,10 @@ function ObjectSpecificRuleFields({
       );
     case "table":
       return (
-        <>
-          <label className="template-governance-field">
-            <span>Table Kind</span>
-            <select
-              value={draft.payload.tableKind}
-              onChange={(event) =>
-                onDraftChange({
-                  ...draft,
-                  payload: {
-                    ...draft.payload,
-                    tableKind: event.target.value as typeof draft.payload.tableKind,
-                  },
-                })
-              }
-            >
-              <option value="three_line_table">three_line_table</option>
-              <option value="general_data_table">general_data_table</option>
-              <option value="baseline_characteristics_table">
-                baseline_characteristics_table
-              </option>
-              <option value="outcome_indicator_table">outcome_indicator_table</option>
-            </select>
-          </label>
-          <TextField
-            label="Caption Requirement"
-            value={draft.payload.captionRequirement}
-            onChange={(value) =>
-              onDraftChange({
-                ...draft,
-                payload: {
-                  ...draft.payload,
-                  captionRequirement: value,
-                },
-              })
-            }
-          />
-          <TextField
-            label="Layout Requirement"
-            value={draft.payload.layoutRequirement}
-            onChange={(value) =>
-              onDraftChange({
-                ...draft,
-                payload: {
-                  ...draft.payload,
-                  layoutRequirement: value,
-                },
-              })
-            }
-          />
-          <TextField
-            label="Manual Review Reason"
-            value={draft.payload.manualReviewReasonTemplate}
-            onChange={(value) =>
-              onDraftChange({
-                ...draft,
-                manualReviewReasonTemplate: value,
-                payload: {
-                  ...draft.payload,
-                  manualReviewReasonTemplate: value,
-                },
-              })
-            }
-            fullWidth
-          />
-        </>
+        <RuleAuthoringTableSemanticFields
+          draft={draft}
+          onDraftChange={onDraftChange}
+        />
       );
     case "reference":
       return (

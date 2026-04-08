@@ -4,6 +4,7 @@ import type {
   TemplateFamilyId,
 } from "./manuscript.js";
 import type { ModuleType } from "./templates.js";
+import type { TableSemanticCoordinate, TableSemanticTarget } from "./table-semantics.js";
 
 export type EditorialRuleSetId = string;
 export type EditorialRuleId = string;
@@ -103,6 +104,15 @@ export interface EditorialRule {
   manual_review_reason_template?: string;
 }
 
+export interface EditorialRuleTableSemanticSelector {
+  semantic_target: "header_cell" | "stub_column" | "data_cell" | "footnote_item";
+  header_path_includes?: string[];
+  row_key?: string;
+  column_key?: string;
+  note_kind?: "statistical_significance" | "abbreviation" | "general";
+  unit_context?: "header" | "stub" | "footnote";
+}
+
 export interface EditorialRulePreviewContext {
   manuscript_type: ManuscriptType;
   module: ModuleType;
@@ -118,6 +128,8 @@ export interface EditorialRulePreviewMatchedRule {
   execution_posture: EditorialRuleExecutionPosture;
   overridden_rule_ids: EditorialRuleId[];
   reason: string;
+  semantic_target?: TableSemanticTarget;
+  semantic_coordinate?: TableSemanticCoordinate;
 }
 
 export interface EditorialRulePreviewResult {

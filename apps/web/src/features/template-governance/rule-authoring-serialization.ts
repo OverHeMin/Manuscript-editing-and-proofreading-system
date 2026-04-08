@@ -21,6 +21,7 @@ import type {
   TerminologyRuleAuthoringDraft,
   TitleRuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
+import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 
 export function createRuleAuthoringDraft<TObject extends RuleAuthoringObject>(
   object: TObject,
@@ -139,10 +140,39 @@ export function hydrateRuleAuthoringDraft(
     }
     case "table": {
       const draft = createRuleAuthoringDraft("table");
+      const selector = asRecord(rule.selector);
+      const legacyTableSelector = selector ? asRecord(selector["table_selector"]) : undefined;
       return applyCommonHydration(draft, rule, {
         ...draft.payload,
         tableKind:
-          asTableKind(rule.authoring_payload["table_kind"]) ?? draft.payload.tableKind,
+          asTableKind(rule.authoring_payload["table_kind"]) ??
+          asTableKind(legacyTableSelector?.["table_kind"]) ??
+          asTableKind(rule.trigger["layout"]) ??
+          draft.payload.tableKind,
+        semanticTarget:
+          asTableSemanticTarget(rule.authoring_payload["semantic_target"]) ??
+          asTableSemanticTarget(selector?.["semantic_target"]) ??
+          draft.payload.semanticTarget,
+        headerPathIncludes:
+          asStringArray(rule.authoring_payload["header_path_includes"]) ??
+          asStringArray(selector?.["header_path_includes"]) ??
+          draft.payload.headerPathIncludes,
+        rowKey:
+          asString(rule.authoring_payload["row_key"]) ??
+          asString(selector?.["row_key"]) ??
+          draft.payload.rowKey,
+        columnKey:
+          asString(rule.authoring_payload["column_key"]) ??
+          asString(selector?.["column_key"]) ??
+          draft.payload.columnKey,
+        noteKind:
+          asTableNoteKind(rule.authoring_payload["note_kind"]) ??
+          asTableNoteKind(selector?.["note_kind"]) ??
+          draft.payload.noteKind,
+        unitContext:
+          asTableUnitContext(rule.authoring_payload["unit_context"]) ??
+          asTableUnitContext(selector?.["unit_context"]) ??
+          draft.payload.unitContext,
         captionRequirement:
           asString(rule.authoring_payload["caption_requirement"]) ??
           draft.payload.captionRequirement,
@@ -299,6 +329,28 @@ export function hydrateRuleAuthoringDraft(
   }
 }
 
+export function resolveRuleAuthoringDraftForOverview(input: {
+  overview: {
+    rules: EditorialRuleViewModel[];
+    selectedJournalTemplateId: string | null;
+    selectedRuleSetId: string | null;
+  };
+  preferredRuleObject: RuleAuthoringObject;
+  previousSelectedRuleSetId?: string | null;
+}): RuleAuthoringDraft {
+  const firstStructuredRule = input.overview.rules.find(isRuleAuthoringDraft);
+  const nextRuleDraft = firstStructuredRule
+    ? hydrateRuleAuthoringDraft(firstStructuredRule)
+    : createRuleAuthoringDraft(
+        shouldResetToAbstractDraft(input) ? "abstract" : input.preferredRuleObject,
+      );
+
+  return {
+    ...nextRuleDraft,
+    journalTemplateId: input.overview.selectedJournalTemplateId,
+  };
+}
+
 export function buildRuleAuthoringPreview(
   draft: RuleAuthoringDraft,
 ): RuleAuthoringPreview {
@@ -307,14 +359,11 @@ export function buildRuleAuthoringPreview(
   return {
     selectorSummary: describeSelector(serialized.selector ?? {}),
     automationRiskPosture: describeAutomationRisk(draft),
-    templateScopeSummary:
-      draft.journalTemplateId != null
-        ? `Journal override: ${draft.journalTemplateId}`
-        : "Base family rule",
-    normalizedExample:
-      serialized.exampleBefore && serialized.exampleAfter
-        ? `${serialized.exampleBefore} -> ${serialized.exampleAfter}`
-        : "No exact example configured.",
+    templateScopeSummary: describeTemplateScope(draft),
+    normalizedExample: describeNormalizedExample(draft, serialized),
+    semanticHitSummary: describeSemanticHit(draft),
+    expectedEvidenceSummary: describeExpectedEvidence(draft),
+    overrideSummary: describeOverrideSummary(draft),
   };
 }
 
@@ -485,6 +534,35 @@ function serializeStatisticalExpressionRule(
 function serializeTableRule(
   draft: TableRuleAuthoringDraft,
 ): SerializedRuleAuthoringDraft {
+  const selector = {
+    semantic_target: draft.payload.semanticTarget,
+    ...(draft.payload.headerPathIncludes.length > 0
+      ? {
+          header_path_includes: [...draft.payload.headerPathIncludes],
+        }
+      : {}),
+    ...(draft.payload.rowKey.trim().length > 0
+      ? {
+          row_key: draft.payload.rowKey.trim(),
+        }
+      : {}),
+    ...(draft.payload.columnKey.trim().length > 0
+      ? {
+          column_key: draft.payload.columnKey.trim(),
+        }
+      : {}),
+    ...(draft.payload.semanticTarget === "footnote_item"
+      ? {
+          note_kind: draft.payload.noteKind,
+        }
+      : {}),
+    ...(draft.payload.semanticTarget === "data_cell"
+      ? {
+          unit_context: draft.payload.unitContext,
+        }
+      : {}),
+  };
+
   return {
     orderNo: draft.orderNo,
     ruleObject: draft.ruleObject,
@@ -493,15 +571,10 @@ function serializeTableRule(
     scope: {
       block_kind: "table",
     },
-    selector: {
-      block_selector: "table",
-      table_selector: {
-        table_kind: draft.payload.tableKind,
-      },
-    },
+    selector,
     trigger: {
-      kind: "table_structure",
-      table_kind: draft.payload.tableKind,
+      kind: "table_shape",
+      layout: resolveTableLayout(draft.payload.tableKind),
     },
     action: {
       kind: "inspect_table_rule",
@@ -510,6 +583,32 @@ function serializeTableRule(
     },
     authoringPayload: {
       table_kind: draft.payload.tableKind,
+      semantic_target: draft.payload.semanticTarget,
+      ...(draft.payload.headerPathIncludes.length > 0
+        ? {
+            header_path_includes: [...draft.payload.headerPathIncludes],
+          }
+        : {}),
+      ...(draft.payload.rowKey.trim().length > 0
+        ? {
+            row_key: draft.payload.rowKey.trim(),
+          }
+        : {}),
+      ...(draft.payload.columnKey.trim().length > 0
+        ? {
+            column_key: draft.payload.columnKey.trim(),
+          }
+        : {}),
+      ...(draft.payload.semanticTarget === "footnote_item"
+        ? {
+            note_kind: draft.payload.noteKind,
+          }
+        : {}),
+      ...(draft.payload.semanticTarget === "data_cell"
+        ? {
+            unit_context: draft.payload.unitContext,
+          }
+        : {}),
       caption_requirement: draft.payload.captionRequirement,
       layout_requirement: draft.payload.layoutRequirement,
       manual_review_reason_template: draft.payload.manualReviewReasonTemplate,
@@ -948,6 +1047,36 @@ function describeSelector(selector: Record<string, unknown>): string {
     parts.push(`block=${blockSelector}`);
   }
 
+  const semanticTarget = asString(selector["semantic_target"]);
+  if (semanticTarget) {
+    parts.push(`semantic_target=${semanticTarget}`);
+  }
+
+  const headerPathIncludes = asStringArray(selector["header_path_includes"]);
+  if (headerPathIncludes?.length) {
+    parts.push(`header_path=${headerPathIncludes.join(" > ")}`);
+  }
+
+  const rowKey = asString(selector["row_key"]);
+  if (rowKey) {
+    parts.push(`row_key=${rowKey}`);
+  }
+
+  const columnKey = asString(selector["column_key"]);
+  if (columnKey) {
+    parts.push(`column_key=${columnKey}`);
+  }
+
+  const noteKind = asString(selector["note_kind"]);
+  if (noteKind) {
+    parts.push(`note_kind=${noteKind}`);
+  }
+
+  const unitContext = asString(selector["unit_context"]);
+  if (unitContext) {
+    parts.push(`unit_context=${unitContext}`);
+  }
+
   const labelSelector = asRecord(selector["label_selector"]);
   const labelText = labelSelector ? asString(labelSelector["text"]) : undefined;
   if (labelText) {
@@ -1022,8 +1151,108 @@ function describeAutomationRisk(draft: RuleAuthoringDraft): string {
   return "Auto-apply";
 }
 
+function describeTemplateScope(draft: RuleAuthoringDraft): string {
+  return draft.journalTemplateId != null
+    ? `Journal override: ${draft.journalTemplateId}`
+    : "Base family rule";
+}
+
+function describeNormalizedExample(
+  draft: RuleAuthoringDraft,
+  serialized: SerializedRuleAuthoringDraft,
+): string {
+  if (serialized.exampleBefore && serialized.exampleAfter) {
+    return `${serialized.exampleBefore} -> ${serialized.exampleAfter}`;
+  }
+
+  if (draft.ruleObject === "table") {
+    return `${draft.payload.captionRequirement} | ${draft.payload.layoutRequirement}`;
+  }
+
+  return "No exact example configured.";
+}
+
+function describeSemanticHit(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject !== "table") {
+    return "Text and section selectors determine the governed match path.";
+  }
+
+  const details = [`semantic_target=${draft.payload.semanticTarget}`];
+  if (draft.payload.headerPathIncludes.length > 0) {
+    details.push(`header_path=${draft.payload.headerPathIncludes.join(" > ")}`);
+  }
+  if (draft.payload.rowKey.trim().length > 0) {
+    details.push(`row_key=${draft.payload.rowKey.trim()}`);
+  }
+  if (draft.payload.columnKey.trim().length > 0) {
+    details.push(`column_key=${draft.payload.columnKey.trim()}`);
+  }
+  if (draft.payload.semanticTarget === "footnote_item") {
+    details.push(`note_kind=${draft.payload.noteKind}`);
+  }
+  if (draft.payload.semanticTarget === "data_cell") {
+    details.push(`unit_context=${draft.payload.unitContext}`);
+  }
+
+  return `Expected semantic hit: ${details.join(" | ")}`;
+}
+
+function describeExpectedEvidence(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject !== "table") {
+    return "Runtime evidence will be derived from the resolved selector and text transformation path.";
+  }
+
+  const details = [
+    "table_id=runtime-resolved",
+    `semantic_target=${draft.payload.semanticTarget}`,
+  ];
+  if (draft.payload.headerPathIncludes.length > 0) {
+    details.push(`header_path=${draft.payload.headerPathIncludes.join(" > ")}`);
+  }
+  if (draft.payload.rowKey.trim().length > 0) {
+    details.push(`row_key=${draft.payload.rowKey.trim()}`);
+  }
+  if (draft.payload.columnKey.trim().length > 0) {
+    details.push(`column_key=${draft.payload.columnKey.trim()}`);
+  }
+  if (draft.payload.semanticTarget === "footnote_item") {
+    details.push(`note_kind=${draft.payload.noteKind}`);
+  }
+  if (draft.payload.semanticTarget === "data_cell") {
+    details.push(`unit_context=${draft.payload.unitContext}`);
+  }
+
+  return details.join(" | ");
+}
+
+function describeOverrideSummary(draft: RuleAuthoringDraft): string {
+  if (draft.journalTemplateId != null) {
+    return `Journal override ${draft.journalTemplateId} replaces the base family rule when both target the same semantic coordinates.`;
+  }
+
+  return "Base family rule stays active until a journal template publishes the same semantic coordinates as an override.";
+}
+
+function shouldResetToAbstractDraft(input: {
+  overview: {
+    selectedRuleSetId: string | null;
+  };
+  previousSelectedRuleSetId?: string | null;
+}): boolean {
+  const nextRuleSetId = input.overview.selectedRuleSetId ?? null;
+  const previousRuleSetId = input.previousSelectedRuleSetId ?? null;
+
+  return nextRuleSetId !== null && nextRuleSetId !== previousRuleSetId;
+}
+
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value.filter((entry) => entry.length > 0)
+    : undefined;
 }
 
 function asAbstractLabelRole(
@@ -1074,6 +1303,35 @@ function asTableKind(
     : undefined;
 }
 
+function asTableSemanticTarget(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["semanticTarget"] | undefined {
+  return value === "header_cell" ||
+    value === "stub_column" ||
+    value === "data_cell" ||
+    value === "footnote_item"
+    ? value
+    : undefined;
+}
+
+function asTableNoteKind(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["noteKind"] | undefined {
+  return value === "statistical_significance" ||
+    value === "abbreviation" ||
+    value === "general"
+    ? value
+    : undefined;
+}
+
+function asTableUnitContext(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["unitContext"] | undefined {
+  return value === "header" || value === "stub" || value === "footnote"
+    ? value
+    : undefined;
+}
+
 function asDeclarationKind(
   value: unknown,
 ): DeclarationRuleAuthoringDraft["payload"]["declarationKind"] | undefined {
@@ -1117,4 +1375,10 @@ function asFigureKind(
     value === "pathology_image"
     ? value
     : undefined;
+}
+
+function resolveTableLayout(
+  tableKind: TableRuleAuthoringDraft["payload"]["tableKind"],
+): string {
+  return tableKind;
 }

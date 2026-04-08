@@ -3,6 +3,7 @@ import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
 } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type {
   AiGatewayService,
   ResolvedModelSelection,
@@ -46,6 +47,7 @@ export interface GovernedModuleContext {
   moduleTemplate: ModuleTemplateRecord;
   ruleSet: EditorialRuleSetRecord;
   rules: EditorialRuleRecord[];
+  resolvedRules: ResolvedEditorialRule[];
   promptTemplate: PromptTemplateRecord;
   skillPackages: SkillPackageRecord[];
   knowledgeSelections: GovernedKnowledgeSelection[];
@@ -142,7 +144,7 @@ export async function resolveGovernedModuleContext(
     skillPackages.push(skillPackage);
   }
 
-  const { ruleSet, rules } =
+  const { ruleSet, rules, resolvedRules } =
     await input.executionGovernanceService.resolvePublishedRuleSource(
       executionProfile,
       {
@@ -216,6 +218,7 @@ export async function resolveGovernedModuleContext(
     moduleTemplate,
     ruleSet,
     rules,
+    resolvedRules,
     promptTemplate,
     skillPackages,
     knowledgeSelections: [...knowledgeSelectionsById.values()],

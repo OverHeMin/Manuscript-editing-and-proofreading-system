@@ -46,11 +46,10 @@ import { RuleAuthoringPreviewPanel } from "./rule-authoring-preview.tsx";
 import { RuleLearningPane } from "./rule-learning-pane.tsx";
 import {
   createRuleAuthoringDraft,
-  hydrateRuleAuthoringDraft,
+  resolveRuleAuthoringDraftForOverview,
   serializeRuleAuthoringDraft,
 } from "./rule-authoring-serialization.ts";
 import type { RuleAuthoringDraft, RuleAuthoringObject } from "./rule-authoring-types.ts";
-import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 import {
   createTemplateGovernanceWorkbenchController,
   type TemplateGovernanceWorkbenchController,
@@ -229,6 +228,7 @@ export function TemplateGovernanceWorkbenchPage({
   initialLearningCandidates = [],
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
+  const initialRuleDraft = resolveInitialRuleAuthoringDraft(initialOverview);
   const selectedModuleTemplateIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(
     initialOverview,
@@ -260,13 +260,14 @@ export function TemplateGovernanceWorkbenchPage({
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeDraftFormState>(
     createKnowledgeDraftFormState(),
   );
-  const [selectedRuleObject, setSelectedRuleObject] =
-    useState<RuleAuthoringObject>("abstract");
+  const [selectedRuleObject, setSelectedRuleObject] = useState<RuleAuthoringObject>(
+    initialRuleDraft.ruleObject,
+  );
   const [ruleSetForm, setRuleSetForm] = useState<RuleSetFormState>({
-    module: "editing",
+    module: initialOverview?.selectedRuleSet?.module ?? "editing",
   });
   const [ruleAuthoringDraft, setRuleAuthoringDraft] = useState<RuleAuthoringDraft>(
-    () => createRuleAuthoringDraft("abstract"),
+    () => initialRuleDraft,
   );
   const [pendingRuleLearningHandoff, setPendingRuleLearningHandoff] =
     useState<RuleAuthoringPrefillFromLearningCandidate | null>(null);
@@ -337,15 +338,13 @@ export function TemplateGovernanceWorkbenchPage({
     setRuleSetForm({
       module: nextOverview.selectedRuleSet?.module ?? "editing",
     });
-    const firstStructuredRule = nextOverview.rules.find(isRuleAuthoringDraft);
-    const nextRuleDraft = firstStructuredRule
-      ? hydrateRuleAuthoringDraft(firstStructuredRule)
-      : createRuleAuthoringDraft(selectedRuleObject);
-    setSelectedRuleObject(nextRuleDraft.ruleObject);
-    setRuleAuthoringDraft({
-      ...nextRuleDraft,
-      journalTemplateId: nextOverview.selectedJournalTemplateId,
+    const nextRuleDraft = resolveRuleAuthoringDraftForOverview({
+      overview: nextOverview,
+      preferredRuleObject: selectedRuleObject,
+      previousSelectedRuleSetId: overview?.selectedRuleSetId ?? null,
     });
+    setSelectedRuleObject(nextRuleDraft.ruleObject);
+    setRuleAuthoringDraft(nextRuleDraft);
 
     const defaultHardRuleSummary =
       nextOverview.rules[0]?.example_before && nextOverview.rules[0]?.example_after
@@ -2863,6 +2862,20 @@ function toKnowledgeDraftFormState(item: {
     sourceType: item.source_type ?? "other",
     sourceLink: item.source_link ?? "",
   };
+}
+
+function resolveInitialRuleAuthoringDraft(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+): RuleAuthoringDraft {
+  if (!overview) {
+    return createRuleAuthoringDraft("abstract");
+  }
+
+  return resolveRuleAuthoringDraftForOverview({
+    overview,
+    preferredRuleObject: "abstract",
+    previousSelectedRuleSetId: overview.selectedRuleSetId,
+  });
 }
 
 function splitCommaSeparatedValues(value: string): string[] | undefined {

@@ -4,6 +4,7 @@ import type {
   ManuscriptModule,
 } from "./assets.js";
 import type { DocumentAssetId, ManuscriptId } from "./manuscript.js";
+import type { TableSemanticSnapshot } from "./table-semantics.js";
 
 export type DocumentStructureStatus =
   | "ready"
@@ -32,6 +33,7 @@ export interface DocumentStructureSnapshot {
   status?: DocumentStructureStatus;
   parser?: "python_docx" | "mammoth" | "other";
   sections: DocumentStructureSection[];
+  tables?: TableSemanticSnapshot[];
   warnings?: string[];
   fallback_to_manual_review?: boolean;
 }

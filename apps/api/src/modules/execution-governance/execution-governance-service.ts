@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import {
+  createEditorialRuleCoverageKey,
+  deriveEditorialRuleExecutionPosture,
   EditorialRuleResolutionService,
   InMemoryEditorialRuleRepository,
 } from "../editorial-rules/index.ts";
 import type {
   EditorialRuleRecord,
   EditorialRuleRepository,
+  ResolvedEditorialRule,
   EditorialRuleSetRecord,
 } from "../editorial-rules/index.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
@@ -413,6 +416,7 @@ export class ExecutionGovernanceService {
   ): Promise<{
     ruleSet: EditorialRuleSetRecord;
     rules: EditorialRuleRecord[];
+    resolvedRules: ResolvedEditorialRule[];
   }> {
     const fallbackRuleSet = await this.requirePublishedRuleSet(profile);
     const resolved = await this.editorialRuleResolutionService.resolve({
@@ -422,14 +426,19 @@ export class ExecutionGovernanceService {
     });
     const ruleSet =
       resolved.journalRuleSet ?? resolved.baseRuleSet ?? fallbackRuleSet;
-    const rules =
+    const fallbackRules =
       resolved.rules.length > 0
-        ? resolved.rules
+        ? []
         : await this.editorialRuleRepository.listRulesByRuleSetId(ruleSet.id);
+    const resolvedRules =
+      resolved.resolved_rules.length > 0
+        ? resolved.resolved_rules
+        : fallbackRules.map((rule) => createFallbackResolvedRule(rule));
 
     return {
       ruleSet,
-      rules,
+      rules: resolvedRules.map((entry) => entry.rule),
+      resolvedRules,
     };
   }
 
@@ -572,6 +581,23 @@ export class ExecutionGovernanceService {
         rule.module_template_ids.includes(scope.moduleTemplateId))
     );
   }
+}
+
+function createFallbackResolvedRule(
+  rule: EditorialRuleRecord,
+): ResolvedEditorialRule {
+  return {
+    rule,
+    coverage_key: createEditorialRuleCoverageKey(rule),
+    source_layer: "base",
+    overridden_rule_ids: [],
+    resolution_reason: `Selected fallback published rule "${rule.id}".`,
+    execution_posture: deriveEditorialRuleExecutionPosture({
+      rule_object: rule.rule_object,
+      execution_mode: rule.execution_mode,
+      confidence_policy: rule.confidence_policy,
+    }),
+  };
 }
 
 function matchesManuscriptType(
