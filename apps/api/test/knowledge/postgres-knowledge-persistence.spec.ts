@@ -389,6 +389,143 @@ test("postgres knowledge repository persists revision-governed assets and approv
   });
 });
 
+test("postgres approved projections ignore future and expired revisions while keeping the current runtime revision", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+
+    await repository.saveAsset({
+      id: "asset-runtime-active-1",
+      status: "active",
+      current_revision_id: "asset-runtime-active-1-revision-1",
+      current_approved_revision_id: "asset-runtime-active-1-revision-1",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-runtime-active-1-revision-1",
+      asset_id: "asset-runtime-active-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Active runtime revision",
+      canonical_text: "This revision is active right now.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+
+    await repository.saveAsset({
+      id: "asset-runtime-future-1",
+      status: "active",
+      current_revision_id: "asset-runtime-future-1-revision-1",
+      current_approved_revision_id: "asset-runtime-future-1-revision-1",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-runtime-future-1-revision-1",
+      asset_id: "asset-runtime-future-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Future runtime revision",
+      canonical_text: "This revision should stay inactive until its schedule opens.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      effective_at: "2099-01-01T00:00:00.000Z",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+
+    await repository.saveAsset({
+      id: "asset-runtime-expired-1",
+      status: "active",
+      current_revision_id: "asset-runtime-expired-1-revision-1",
+      current_approved_revision_id: "asset-runtime-expired-1-revision-1",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-runtime-expired-1-revision-1",
+      asset_id: "asset-runtime-expired-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Expired runtime revision",
+      canonical_text: "This revision should no longer be returned.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      expires_at: "2000-01-01T00:00:00.000Z",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+
+    await repository.saveAsset({
+      id: "asset-runtime-scheduled-1",
+      status: "active",
+      current_revision_id: "asset-runtime-scheduled-1-revision-2",
+      current_approved_revision_id: "asset-runtime-scheduled-1-revision-2",
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:05:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-runtime-scheduled-1-revision-1",
+      asset_id: "asset-runtime-scheduled-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Current runtime revision",
+      canonical_text: "This revision should remain the runtime source until the schedule changes.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-runtime-scheduled-1-revision-2",
+      asset_id: "asset-runtime-scheduled-1",
+      revision_no: 2,
+      status: "approved",
+      title: "Scheduled runtime revision",
+      canonical_text: "This revision should not replace the runtime source yet.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      effective_at: "2099-01-01T00:00:00.000Z",
+      created_at: "2026-04-08T10:05:00.000Z",
+      updated_at: "2026-04-08T10:05:00.000Z",
+    });
+
+    const approvedList = await repository.listApproved();
+
+    assert.deepEqual(
+      approvedList.map((record) => record.id).sort(),
+      ["asset-runtime-active-1", "asset-runtime-scheduled-1"].sort(),
+    );
+    assert.equal(
+      (await repository.findApprovedById("asset-runtime-active-1"))?.title,
+      "Active runtime revision",
+    );
+    assert.equal(await repository.findApprovedById("asset-runtime-future-1"), undefined);
+    assert.equal(await repository.findApprovedById("asset-runtime-expired-1"), undefined);
+    assert.equal(
+      (await repository.findApprovedById("asset-runtime-scheduled-1"))?.title,
+      "Current runtime revision",
+    );
+  });
+});
+
 test("postgres knowledge review action repository can filter history by revision id", async () => {
   await withMigratedKnowledgeClient(async (client) => {
     const knowledgeRepository = new PostgresKnowledgeRepository({ client });

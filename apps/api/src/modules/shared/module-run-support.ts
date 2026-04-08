@@ -187,7 +187,7 @@ export async function prepareModuleExecution(
     manuscript,
     module: input.module,
     template,
-    knowledgeItems: await input.knowledgeRepository.list(),
+    knowledgeItems: await input.knowledgeRepository.listApproved(),
   }).map((selection) => selection.knowledgeItem);
 
   const modelSelection = await input.aiGatewayService.resolveModelSelection({

@@ -160,7 +160,8 @@ export async function resolveGovernedModuleContext(
     });
 
   for (const rule of bindingRules) {
-    const knowledgeItem = await input.knowledgeRepository.findById(rule.knowledge_item_id);
+    const knowledgeItem =
+      await input.knowledgeRepository.findApprovedById(rule.knowledge_item_id);
     if (!knowledgeItem || knowledgeItem.status !== "approved") {
       throw new GovernedKnowledgeItemNotFoundError(rule.knowledge_item_id);
     }
@@ -189,7 +190,7 @@ export async function resolveGovernedModuleContext(
       manuscript,
       module: input.module,
       template: moduleTemplate,
-      knowledgeItems: await input.knowledgeRepository.list(),
+      knowledgeItems: await input.knowledgeRepository.listApproved(),
     });
 
     for (const selection of dynamicSelections) {

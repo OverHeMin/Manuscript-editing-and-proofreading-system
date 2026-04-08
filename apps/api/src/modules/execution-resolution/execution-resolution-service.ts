@@ -151,7 +151,7 @@ export class ExecutionResolutionService {
 
     const knowledgeItems: KnowledgeRecord[] = [];
     for (const rule of knowledgeBindingRules) {
-      const knowledgeItem = await this.knowledgeRepository.findById(
+      const knowledgeItem = await this.knowledgeRepository.findApprovedById(
         rule.knowledge_item_id,
       );
       if (!knowledgeItem || knowledgeItem.status !== "approved") {

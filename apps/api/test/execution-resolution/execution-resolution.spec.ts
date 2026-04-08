@@ -269,6 +269,154 @@ test("execution resolution expands the active profile into a concrete runtime bu
   assert.equal(resolved.runtime_binding_readiness.report, undefined);
 });
 
+test("execution resolution reads the approved revision when a bound asset has a newer draft revision", async () => {
+  const {
+    executionGovernanceService,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+    executionResolutionService,
+  } = createExecutionResolutionHarness();
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 3,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.1.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-editing-1",
+    name: "editing_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
+  });
+  await knowledgeRepository.saveAsset({
+    id: "knowledge-asset-1",
+    status: "active",
+    current_revision_id: "knowledge-asset-1-revision-2",
+    current_approved_revision_id: "knowledge-asset-1-revision-1",
+    created_at: "2026-03-28T12:00:00.000Z",
+    updated_at: "2026-03-28T12:05:00.000Z",
+  });
+  await knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-1",
+    asset_id: "knowledge-asset-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Approved editing rule",
+    canonical_text: "The approved revision should stay in the execution bundle.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-03-28T12:00:00.000Z",
+    updated_at: "2026-03-28T12:00:00.000Z",
+  });
+  await knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-2",
+    asset_id: "knowledge-asset-1",
+    revision_no: 2,
+    status: "draft",
+    title: "Draft editing rule",
+    canonical_text: "This draft must not replace the approved revision in runtime resolution.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-03-28T12:05:00.000Z",
+    updated_at: "2026-03-28T12:05:00.000Z",
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-03-01",
+    allowed_modules: ["editing", "proofreading"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-1",
+  });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
+
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: ["skill-editing-1"],
+    knowledgeBindingMode: "profile_plus_dynamic",
+  });
+  await executionGovernanceService.createKnowledgeBindingRule("admin", {
+    knowledgeItemId: "knowledge-asset-1",
+    module: "editing",
+    manuscriptTypes: ["clinical_study"],
+    templateFamilyIds: ["family-1"],
+    moduleTemplateIds: ["template-editing-1"],
+    priority: 50,
+    bindingPurpose: "required",
+  });
+  await executionGovernanceService.activateKnowledgeBindingRule("rule-1", "admin");
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.deepEqual(
+    resolved.knowledge_items.map((record) => ({
+      id: record.id,
+      status: record.status,
+      title: record.title,
+    })),
+    [
+      {
+        id: "knowledge-asset-1",
+        status: "approved",
+        title: "Approved editing rule",
+      },
+    ],
+  );
+});
+
 test("execution resolution reports runtime binding readiness when observation succeeds", async () => {
   const {
     executionGovernanceService,

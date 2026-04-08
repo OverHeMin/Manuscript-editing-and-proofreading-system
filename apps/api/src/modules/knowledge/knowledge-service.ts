@@ -33,6 +33,7 @@ import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
 } from "./in-memory-knowledge-repository.ts";
+import { isKnowledgeRevisionCurrentlyEffective } from "./knowledge-runtime-projection.ts";
 import type {
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
@@ -639,16 +640,27 @@ export class KnowledgeService {
           );
         }
 
-        const timestamp = this.now().toISOString();
+        const currentTime = this.now();
+        const timestamp = currentTime.toISOString();
         const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
         const priorApprovedRevision = asset.current_approved_revision_id
           ? await repository.findRevisionById(asset.current_approved_revision_id)
           : undefined;
+        const approvedRevisionTakesRuntimeImmediately =
+          isKnowledgeRevisionCurrentlyEffective(
+            {
+              status: "approved",
+              effective_at: revision.effective_at,
+              expires_at: revision.expires_at,
+            },
+            currentTime,
+          );
 
         if (
           priorApprovedRevision &&
           priorApprovedRevision.id !== revision.id &&
-          priorApprovedRevision.status === "approved"
+          priorApprovedRevision.status === "approved" &&
+          approvedRevisionTakesRuntimeImmediately
         ) {
           await repository.saveRevision({
             ...priorApprovedRevision,
