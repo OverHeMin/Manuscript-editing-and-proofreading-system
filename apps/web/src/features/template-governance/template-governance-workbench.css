@@ -1,6 +1,6 @@
 .template-governance-workbench {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .template-governance-hero {
@@ -69,14 +69,14 @@
 
 .template-governance-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
 }
 
 .template-governance-summary-card,
 .template-governance-panel,
 .template-governance-card {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid rgba(126, 101, 51, 0.14);
   border-radius: 16px;
   background:
@@ -93,23 +93,24 @@
 
 .template-governance-summary-card span {
   color: #7a6a54;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .template-governance-summary-card strong {
   color: #2b2215;
-  font-size: 1.4rem;
+  font-size: 1.2rem;
 }
 
 .template-governance-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(300px, 0.84fr) minmax(0, 1.16fr);
+  gap: 14px;
 }
 
 .template-governance-panel {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .template-governance-panel-wide {
@@ -244,14 +245,14 @@
 
 .template-governance-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 2.1fr) minmax(240px, 0.9fr);
+  gap: 10px;
 }
 
 .template-governance-rule-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.4fr);
-  gap: 16px;
+  grid-template-columns: minmax(270px, 0.88fr) minmax(0, 1.12fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -265,8 +266,8 @@
 
 .template-governance-knowledge-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.4fr);
-  gap: 16px;
+  grid-template-columns: minmax(250px, 0.82fr) minmax(0, 1.18fr);
+  gap: 14px;
 }
 
 .template-governance-knowledge-list,

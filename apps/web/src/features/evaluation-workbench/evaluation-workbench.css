@@ -1,6 +1,6 @@
 .evaluation-workbench {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .evaluation-workbench-hero {
@@ -72,12 +72,12 @@
 
 .evaluation-workbench-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  gap: 10px;
 }
 
 .evaluation-workbench-summary-card {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid rgba(126, 101, 51, 0.14);
   border-radius: 16px;
   background:
@@ -97,18 +97,18 @@
 }
 
 .evaluation-workbench-summary-card strong {
-  font-size: 1.7rem;
+  font-size: 1.35rem;
   color: #2b2215;
 }
 
 .evaluation-workbench-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .evaluation-workbench-panel {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid rgba(126, 101, 51, 0.14);
   border-radius: 18px;
   background:
@@ -117,7 +117,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
     0 14px 26px rgba(40, 30, 12, 0.06);
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
