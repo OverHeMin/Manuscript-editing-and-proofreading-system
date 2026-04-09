@@ -196,6 +196,7 @@ import {
   type ManuscriptRecord,
   ManuscriptLifecycleService,
 } from "../modules/manuscripts/index.ts";
+import type { ManuscriptType } from "../modules/manuscripts/manuscript-record.ts";
 import {
   createModelRegistryApi,
   DuplicateModelRegistryEntryError,
@@ -5357,8 +5358,27 @@ function parseDuplicateCheckManuscriptTypes(
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === "string");
+  return value.filter(
+    (item): item is ManuscriptType =>
+      typeof item === "string" && duplicateCheckManuscriptTypeSet.has(item as ManuscriptType),
+  );
 }
+
+const duplicateCheckManuscriptTypeSet = new Set<ManuscriptType>([
+  "clinical_study",
+  "review",
+  "systematic_review",
+  "meta_analysis",
+  "case_report",
+  "guideline_interpretation",
+  "expert_consensus",
+  "diagnostic_study",
+  "basic_research",
+  "nursing_study",
+  "methodology_paper",
+  "brief_report",
+  "other",
+]);
 
 function parseDuplicateAcknowledgements(
   value: unknown,
