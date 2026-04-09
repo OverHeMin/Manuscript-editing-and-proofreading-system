@@ -604,3 +604,31 @@ test("duplicate check excludes self by current asset or current revision", async
   });
   assert.deepEqual(byRevision, []);
 });
+
+test("duplicate check does not warn on routing-only overlap without content signals", async () => {
+  const { service } = createKnowledgeHarness();
+
+  const existing = await service.createLibraryDraft({
+    title: "医学术语标准化建议",
+    canonicalText: "建议统一术语拼写并避免缩略语混用。",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+  await service.submitRevisionForReview(existing.selected_revision.id);
+  await service.approveRevision(
+    existing.selected_revision.id,
+    "knowledge_reviewer",
+    "approved",
+  );
+
+  const matches = await service.checkDuplicates({
+    title: "图表编号检查规则",
+    canonicalText: "图表编号需按出现顺序递增并在正文中引用。",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  assert.deepEqual(matches, []);
+});

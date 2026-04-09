@@ -36,6 +36,7 @@ import {
 import {
   evaluateKnowledgeDuplicateMatches,
   mapLegacyKnowledgeRecordToDuplicateCandidate,
+  selectRepresentativeRevisionForDuplicateDetection,
 } from "./knowledge-duplicate-detection.ts";
 import { isKnowledgeRevisionCurrentlyEffective } from "./knowledge-runtime-projection.ts";
 import type {
@@ -1274,6 +1275,39 @@ export class KnowledgeService {
       return this.repository.listDuplicateCheckCandidatesByAsset();
     }
 
+    if (this.supportsRevisionGovernance(this.repository)) {
+      const assets = await this.repository.listAssets();
+      const groupedByAsset = await Promise.all(
+        assets.map(async (asset) => {
+          const revisions = await this.repository.listRevisionsByAssetId(asset.id);
+          const representativeRevision =
+            selectRepresentativeRevisionForDuplicateDetection(revisions, {
+              preferredApprovedRevisionId: asset.current_approved_revision_id,
+              preferredCurrentRevisionId: asset.current_revision_id,
+            });
+          if (!representativeRevision) {
+            return undefined;
+          }
+
+          const bindings = await this.repository.listBindingsByRevisionId(
+            representativeRevision.id,
+          );
+          return {
+            asset,
+            representative_revision: representativeRevision,
+            bindings: bindings.map((binding) => binding.binding_target_id),
+          } satisfies KnowledgeDuplicateCandidateGroupRecord;
+        }),
+      );
+
+      return groupedByAsset
+        .filter(
+          (record): record is KnowledgeDuplicateCandidateGroupRecord =>
+            record != null,
+        )
+        .sort(compareDuplicateCandidateGroupRecords);
+    }
+
     const records = await this.repository.list();
     return records.map((record) => {
       const candidate = mapLegacyKnowledgeRecordToDuplicateCandidate(record);
@@ -1382,4 +1416,14 @@ function parseRevisionSubmitInput(
     revisionId: value.revisionId,
     duplicateAcknowledgements: value.duplicateAcknowledgements,
   };
+}
+
+function compareDuplicateCandidateGroupRecords(
+  left: KnowledgeDuplicateCandidateGroupRecord,
+  right: KnowledgeDuplicateCandidateGroupRecord,
+): number {
+  return (
+    left.asset.id.localeCompare(right.asset.id) ||
+    left.representative_revision.id.localeCompare(right.representative_revision.id)
+  );
 }

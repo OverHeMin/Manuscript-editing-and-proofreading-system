@@ -32,6 +32,15 @@ const DUPLICATE_SEVERITY_ORDER: Record<KnowledgeDuplicateSeverity, number> = {
   possible: 2,
 };
 
+const CONTENT_BEARING_REASONS: ReadonlySet<KnowledgeDuplicateReason> = new Set([
+  "canonical_text_exact_match",
+  "canonical_text_high_overlap",
+  "title_exact_match",
+  "title_high_similarity",
+  "alias_overlap",
+  "binding_overlap",
+]);
+
 export function normalizeKnowledgeDuplicateText(value: string): string {
   return normalizeWhitespaceAndPunctuation(convertFullWidthToHalfWidth(value)).toLowerCase();
 }
@@ -257,7 +266,7 @@ function scoreKnowledgeDuplicateCandidate(
       reasons.includes("binding_overlap"))
   ) {
     severity = "high";
-  } else if (score >= 22) {
+  } else if (score >= 22 && hasAnyReason(reasons, CONTENT_BEARING_REASONS)) {
     severity = "possible";
   }
 
@@ -441,4 +450,11 @@ function calculateSetOverlapSimilarity(
 
 function roundScore(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function hasAnyReason(
+  reasons: readonly KnowledgeDuplicateReason[],
+  candidates: ReadonlySet<KnowledgeDuplicateReason>,
+): boolean {
+  return reasons.some((reason) => candidates.has(reason));
 }
