@@ -170,7 +170,14 @@ export function resolveKnowledgeReviewActiveItem(
     return visibleQueue[0];
   }
 
-  return visibleQueue.find((item) => item.id === activeItemId) ?? visibleQueue[0];
+  return (
+    visibleQueue.find(
+      (item) =>
+        item.id === activeItemId ||
+        item.asset_id === activeItemId ||
+        item.revision_id === activeItemId,
+    ) ?? visibleQueue[0]
+  );
 }
 
 export function resolveNextActiveItemAfterReviewSuccess(

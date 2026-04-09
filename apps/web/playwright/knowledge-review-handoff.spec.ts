@@ -9,12 +9,12 @@ import {
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
-const queueHeading = "\u5f85\u5ba1\u6838\u961f\u5217";
-const reviewNoteLabel = "\u5ba1\u6838\u5907\u6ce8";
-const approveLabel = "\u901a\u8fc7";
-const rejectLabel = "\u9a73\u56de";
-const approvedMessage = "\u77e5\u8bc6\u6761\u76ee\u5df2\u901a\u8fc7\u5ba1\u6838\u3002";
-const rejectedMessage = "\u77e5\u8bc6\u6761\u76ee\u5df2\u9a73\u56de\u3002";
+const queueHeading = "Pending Review Queue";
+const reviewNoteLabel = "Review Note";
+const approveLabel = "Approve";
+const rejectLabel = "Send Back To Draft";
+const approvedMessage = "Revision approved and the queue advanced.";
+const rejectedMessage = "Revision sent back to draft and removed from the review queue.";
 const seededReviewedCaseSnapshotId = "reviewed-case-snapshot-demo-1";
 const seededHumanFinalAssetId = "human-final-demo-1";
 
