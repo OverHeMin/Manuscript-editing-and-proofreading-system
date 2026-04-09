@@ -1,10 +1,27 @@
 import type {
   KnowledgeAssetRecord,
+  KnowledgeDuplicateSeverity,
+  KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
+
+export interface KnowledgeDuplicateCandidateGroupRecord {
+  asset: KnowledgeAssetRecord;
+  representative_revision: KnowledgeRevisionRecord;
+  bindings: string[];
+}
+
+export interface KnowledgeDuplicateAcknowledgementAuditRecord {
+  id: string;
+  revision_id: string;
+  matched_asset_ids: string[];
+  highest_severity: KnowledgeDuplicateSeverity;
+  acknowledged_by_role: string;
+  created_at: string;
+}
 
 export interface KnowledgeRepository {
   save(record: KnowledgeRecord): Promise<void>;
@@ -29,10 +46,21 @@ export interface KnowledgeRepository {
   listBindingsByRevisionId(
     revisionId: string,
   ): Promise<KnowledgeRevisionBindingRecord[]>;
+  saveDuplicateAcknowledgement?(
+    record: KnowledgeDuplicateAcknowledgementAuditRecord,
+  ): Promise<void>;
+  listDuplicateAcknowledgementsByRevisionId?(
+    revisionId: string,
+  ): Promise<KnowledgeDuplicateAcknowledgementAuditRecord[]>;
+  listDuplicateCheckCandidatesByAsset?(): Promise<KnowledgeDuplicateCandidateGroupRecord[]>;
 }
 
 export interface KnowledgeReviewActionRepository {
   save(record: KnowledgeReviewActionRecord): Promise<void>;
   listByKnowledgeItemId(knowledgeItemId: string): Promise<KnowledgeReviewActionRecord[]>;
   listByRevisionId(revisionId: string): Promise<KnowledgeReviewActionRecord[]>;
+}
+
+export interface SubmitKnowledgeDuplicateAcknowledgementInput {
+  duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
 }

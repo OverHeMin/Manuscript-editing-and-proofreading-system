@@ -4,6 +4,97 @@ import {
   createKnowledgeLibraryWorkbenchController,
 } from "../src/features/knowledge-library/knowledge-library-controller.ts";
 
+test("knowledge library controller posts duplicate-check payloads and preserves duplicate match fields", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/duplicate-check") {
+        return {
+          status: 200,
+          body: [
+            {
+              severity: "high",
+              score: 0.89,
+              matched_asset_id: "knowledge-2",
+              matched_revision_id: "knowledge-2-revision-3",
+              matched_title: "Primary endpoint requirements",
+              matched_status: "approved",
+              matched_summary: "Potential overlap with endpoint gating rule.",
+              reasons: [
+                "canonical_text_high_overlap",
+                "same_knowledge_kind",
+                "same_module_scope",
+              ],
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const duplicateCheckInput = {
+    currentAssetId: "knowledge-1",
+    currentRevisionId: "knowledge-1-revision-2",
+    title: "Primary endpoint reporting requirements",
+    canonicalText: "Clinical studies must report primary endpoints and methods.",
+    summary: "Candidate draft for endpoint reporting.",
+    knowledgeKind: "rule" as const,
+    moduleScope: "screening" as const,
+    manuscriptTypes: ["clinical_study"] as const,
+    sections: ["methods"],
+    riskTags: ["consistency"],
+    disciplineTags: ["oncology"],
+    aliases: ["primary endpoint reporting"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-screening-1",
+        bindingTargetLabel: "Screening Template",
+      },
+      {
+        bindingKind: "section",
+        bindingTargetId: "methods",
+        bindingTargetLabel: "Methods",
+      },
+    ],
+  };
+
+  const result = await controller.checkDuplicates(duplicateCheckInput);
+
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/knowledge/duplicate-check",
+      body: {
+        ...duplicateCheckInput,
+        bindings: ["template-screening-1", "methods"],
+      },
+    },
+  ]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.severity, "high");
+  assert.equal(result[0]?.score, 0.89);
+  assert.equal(result[0]?.matched_asset_id, "knowledge-2");
+  assert.equal(result[0]?.matched_revision_id, "knowledge-2-revision-3");
+  assert.equal(
+    result[0]?.matched_summary,
+    "Potential overlap with endpoint gating rule.",
+  );
+  assert.deepEqual(result[0]?.reasons, [
+    "canonical_text_high_overlap",
+    "same_knowledge_kind",
+    "same_module_scope",
+  ]);
+});
+
 test("knowledge library controller loads the authoring list and selected revision detail", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createKnowledgeLibraryWorkbenchController({
@@ -132,6 +223,119 @@ test("knowledge library controller loads the authoring list and selected revisio
     [
       "GET /api/v1/knowledge/library",
       "GET /api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-2",
+    ],
+  );
+});
+
+test("knowledge library controller can submit a draft revision with duplicate acknowledgement", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/revisions/knowledge-1-revision-1/submit") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "pending_review",
+            title: "Knowledge draft updated",
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "knowledge-1",
+              title: "Knowledge draft updated",
+              canonical_text: "Use consistent terminology.",
+              knowledge_kind: "reference",
+              status: "pending_review",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              template_bindings: ["template-editing-1"],
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-1") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "pending_review",
+            title: "Knowledge draft updated",
+          }) as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const submitted = await controller.submitDraftAndLoad({
+    revisionId: "knowledge-1-revision-1",
+    duplicateAcknowledgement: {
+      acknowledged: true,
+      matches: [
+        {
+          matched_asset_id: "knowledge-2",
+          matched_revision_id: "knowledge-2-revision-3",
+          severity: "exact",
+        },
+        {
+          matched_asset_id: " knowledge-3 ",
+          matched_revision_id: " knowledge-3-revision-1 ",
+          severity: "high",
+        },
+        {
+          matched_asset_id: "",
+          matched_revision_id: "ignored-empty-asset",
+          severity: "possible",
+        },
+      ],
+    },
+  });
+
+  assert.equal(submitted.detail?.selected_revision.status, "pending_review");
+  assert.deepEqual(requests[0], {
+    method: "POST",
+    url: "/api/v1/knowledge/revisions/knowledge-1-revision-1/submit",
+    body: {
+      duplicateAcknowledgements: [
+        {
+          matched_asset_id: "knowledge-2",
+          matched_revision_id: "knowledge-2-revision-3",
+          severity: "exact",
+        },
+        {
+          matched_asset_id: "knowledge-3",
+          matched_revision_id: "knowledge-3-revision-1",
+          severity: "high",
+        },
+      ],
+    },
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/knowledge/revisions/knowledge-1-revision-1/submit",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-1",
     ],
   );
 });
@@ -289,6 +493,10 @@ test("knowledge library controller can create, update, derive, and submit a draf
   assert.equal(submitted.detail?.selected_revision.status, "pending_review");
   assert.equal(derived.selectedRevisionId, "knowledge-1-revision-2");
   assert.equal(derived.detail?.current_approved_revision?.id, "knowledge-1-revision-1");
+  assert.equal(
+    requests.find((request) => request.url.endsWith("/submit"))?.body,
+    undefined,
+  );
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [

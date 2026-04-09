@@ -20,6 +20,10 @@ const migrationDescriptions = new Map<string, string>([
     "0029_learning_reviewed_snapshot_source_kind.sql",
     "Allow reviewed case snapshots to serve as governed learning candidate provenance.",
   ],
+  [
+    "0031_knowledge_duplicate_detection_acknowledgements.sql",
+    "Persist duplicate acknowledgement audit trails for revision-governed knowledge review.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

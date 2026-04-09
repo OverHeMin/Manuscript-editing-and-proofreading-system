@@ -33,13 +33,23 @@ import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
 } from "./in-memory-knowledge-repository.ts";
+import {
+  evaluateKnowledgeDuplicateMatches,
+  mapLegacyKnowledgeRecordToDuplicateCandidate,
+  selectRepresentativeRevisionForDuplicateDetection,
+} from "./knowledge-duplicate-detection.ts";
 import { isKnowledgeRevisionCurrentlyEffective } from "./knowledge-runtime-projection.ts";
 import type {
+  KnowledgeDuplicateCandidateGroupRecord,
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
+  SubmitKnowledgeDuplicateAcknowledgementInput,
 } from "./knowledge-repository.ts";
 import type {
   KnowledgeAssetRecord,
+  KnowledgeDuplicateAcknowledgementRecord,
+  KnowledgeDuplicateCheckInput,
+  KnowledgeDuplicateMatchRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingKind,
   KnowledgeRevisionBindingRecord,
@@ -104,6 +114,21 @@ export interface UpdateKnowledgeRevisionDraftInput extends UpdateKnowledgeDraftI
   expiresAt?: string;
   sourceLearningCandidateId?: string;
   bindings?: KnowledgeRevisionBindingInput[];
+}
+
+interface SubmitKnowledgeAcknowledgementInput
+  extends SubmitKnowledgeDuplicateAcknowledgementInput {
+  acknowledgedByRole?: RoleKey;
+}
+
+export interface SubmitKnowledgeForReviewInput
+  extends SubmitKnowledgeAcknowledgementInput {
+  knowledgeItemId: string;
+}
+
+export interface SubmitKnowledgeRevisionForReviewInput
+  extends SubmitKnowledgeAcknowledgementInput {
+  revisionId: string;
 }
 
 export interface KnowledgeRevisionDetailRecord extends KnowledgeRevisionRecord {
@@ -484,14 +509,23 @@ export class KnowledgeService {
     );
   }
 
-  async submitForReview(knowledgeItemId: string): Promise<KnowledgeRecord> {
+  async submitForReview(
+    knowledgeItemIdOrInput: string | SubmitKnowledgeForReviewInput,
+  ): Promise<KnowledgeRecord> {
+    const { knowledgeItemId, duplicateAcknowledgements, acknowledgedByRole } =
+      parseKnowledgeSubmitInput(knowledgeItemIdOrInput);
+
     const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
     if (asset) {
       const revision = await this.requireRevisionForAssetByStatuses(
         asset,
         ["draft"],
       );
-      const detail = await this.submitRevisionForReview(revision.id);
+      const detail = await this.submitRevisionForReview({
+        revisionId: revision.id,
+        duplicateAcknowledgements,
+        acknowledgedByRole,
+      });
       return this.projectCompatibilityRecord(detail.asset.id);
     }
 
@@ -530,8 +564,11 @@ export class KnowledgeService {
   }
 
   async submitRevisionForReview(
-    revisionId: string,
+    revisionIdOrInput: string | SubmitKnowledgeRevisionForReviewInput,
   ): Promise<KnowledgeAssetDetailRecord> {
+    const { revisionId, duplicateAcknowledgements, acknowledgedByRole } =
+      parseRevisionSubmitInput(revisionIdOrInput);
+
     return this.transactionManager.withTransaction(
       async ({ repository, reviewActionRepository }) => {
         const revision = await this.requireKnowledgeRevision(revisionId, repository);
@@ -563,6 +600,13 @@ export class KnowledgeService {
           action: "submitted_for_review",
           actor_role: "user",
           created_at: timestamp,
+        });
+        await this.persistDuplicateAcknowledgements({
+          repository,
+          revisionId: revision.id,
+          acknowledgements: duplicateAcknowledgements,
+          acknowledgedByRole,
+          createdAt: timestamp,
         });
 
         return this.buildKnowledgeAssetDetail(asset.id, revision.id, repository);
@@ -898,6 +942,34 @@ export class KnowledgeService {
     return this.repository.listByStatus("pending_review");
   }
 
+  async checkDuplicates(
+    input: KnowledgeDuplicateCheckInput,
+  ): Promise<KnowledgeDuplicateMatchRecord[]> {
+    const candidates = await this.listDuplicateCandidates();
+    const excludedAssetIds = new Set(input.currentAssetId ? [input.currentAssetId] : []);
+    if (input.currentRevisionId) {
+      const revision = await this.repository.findRevisionById(input.currentRevisionId);
+      if (revision) {
+        excludedAssetIds.add(revision.asset_id);
+      }
+    }
+
+    return evaluateKnowledgeDuplicateMatches(
+      input,
+      candidates.map((candidate) => ({
+        asset: candidate.asset,
+        revision: candidate.representative_revision,
+        bindings: candidate.bindings,
+      })),
+      {
+        excludedAssetIds,
+        excludedRevisionIds: new Set(
+          input.currentRevisionId ? [input.currentRevisionId] : [],
+        ),
+      },
+    );
+  }
+
   async getKnowledgeAsset(
     assetId: string,
     revisionId?: string,
@@ -1206,6 +1278,93 @@ export class KnowledgeService {
       typeof candidate.listBindingsByRevisionId === "function"
     );
   }
+
+  private async listDuplicateCandidates(): Promise<
+    KnowledgeDuplicateCandidateGroupRecord[]
+  > {
+    if (this.repository.listDuplicateCheckCandidatesByAsset) {
+      return this.repository.listDuplicateCheckCandidatesByAsset();
+    }
+
+    if (this.supportsRevisionGovernance(this.repository)) {
+      const assets = await this.repository.listAssets();
+      const groupedByAsset = await Promise.all(
+        assets.map(async (asset) => {
+          const revisions = await this.repository.listRevisionsByAssetId(asset.id);
+          const representativeRevision =
+            selectRepresentativeRevisionForDuplicateDetection(revisions, {
+              preferredApprovedRevisionId: asset.current_approved_revision_id,
+              preferredCurrentRevisionId: asset.current_revision_id,
+            });
+          if (!representativeRevision) {
+            return undefined;
+          }
+
+          const bindings = await this.repository.listBindingsByRevisionId(
+            representativeRevision.id,
+          );
+          return {
+            asset,
+            representative_revision: representativeRevision,
+            bindings: bindings.map((binding) => binding.binding_target_id),
+          } satisfies KnowledgeDuplicateCandidateGroupRecord;
+        }),
+      );
+
+      return groupedByAsset
+        .filter(
+          (record): record is KnowledgeDuplicateCandidateGroupRecord =>
+            record != null,
+        )
+        .sort(compareDuplicateCandidateGroupRecords);
+    }
+
+    const records = await this.repository.list();
+    return records.map((record) => {
+      const candidate = mapLegacyKnowledgeRecordToDuplicateCandidate(record);
+      return {
+        asset: candidate.asset,
+        representative_revision: candidate.revision,
+        bindings: [...candidate.bindings],
+      };
+    });
+  }
+
+  private async persistDuplicateAcknowledgements(input: {
+    repository: KnowledgeRepository;
+    revisionId: string;
+    acknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+    acknowledgedByRole?: RoleKey;
+    createdAt: string;
+  }): Promise<void> {
+    if (!input.acknowledgements?.length) {
+      return;
+    }
+
+    if (!input.repository.saveDuplicateAcknowledgement) {
+      return;
+    }
+
+    const matchedAssetIds = [
+      ...new Set(
+        input.acknowledgements.map((record) => record.matched_asset_id),
+      ),
+    ];
+    if (matchedAssetIds.length === 0) {
+      return;
+    }
+
+    await input.repository.saveDuplicateAcknowledgement({
+      id: this.createId(),
+      revision_id: input.revisionId,
+      matched_asset_ids: matchedAssetIds,
+      highest_severity: resolveHighestDuplicateAcknowledgementSeverity(
+        input.acknowledgements,
+      ),
+      acknowledged_by_role: input.acknowledgedByRole ?? "user",
+      created_at: input.createdAt,
+    });
+  }
 }
 
 function createKnowledgeWriteTransactionManager(
@@ -1261,4 +1420,63 @@ function mapTemplateBindingsToBindingInputs(
 
 function uniqueDefinedStrings(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => value != null))];
+}
+
+function parseKnowledgeSubmitInput(
+  value: string | SubmitKnowledgeForReviewInput,
+): {
+  knowledgeItemId: string;
+  duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+  acknowledgedByRole: RoleKey;
+} {
+  if (typeof value === "string") {
+    return { knowledgeItemId: value, acknowledgedByRole: "user" };
+  }
+
+  return {
+    knowledgeItemId: value.knowledgeItemId,
+    duplicateAcknowledgements: value.duplicateAcknowledgements,
+    acknowledgedByRole: value.acknowledgedByRole ?? "user",
+  };
+}
+
+function parseRevisionSubmitInput(
+  value: string | SubmitKnowledgeRevisionForReviewInput,
+): {
+  revisionId: string;
+  duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+  acknowledgedByRole: RoleKey;
+} {
+  if (typeof value === "string") {
+    return { revisionId: value, acknowledgedByRole: "user" };
+  }
+
+  return {
+    revisionId: value.revisionId,
+    duplicateAcknowledgements: value.duplicateAcknowledgements,
+    acknowledgedByRole: value.acknowledgedByRole ?? "user",
+  };
+}
+
+function resolveHighestDuplicateAcknowledgementSeverity(
+  acknowledgements: readonly KnowledgeDuplicateAcknowledgementRecord[],
+): "exact" | "high" | "possible" {
+  if (acknowledgements.some((record) => record.severity === "exact")) {
+    return "exact";
+  }
+  if (acknowledgements.some((record) => record.severity === "high")) {
+    return "high";
+  }
+
+  return "possible";
+}
+
+function compareDuplicateCandidateGroupRecords(
+  left: KnowledgeDuplicateCandidateGroupRecord,
+  right: KnowledgeDuplicateCandidateGroupRecord,
+): number {
+  return (
+    left.asset.id.localeCompare(right.asset.id) ||
+    left.representative_revision.id.localeCompare(right.representative_revision.id)
+  );
 }

@@ -87,6 +87,45 @@ export interface KnowledgeRevisionBindingInput {
   bindingTargetLabel: string;
 }
 
+export type DuplicateKnowledgeSeverity = "exact" | "high" | "possible";
+
+export type DuplicateKnowledgeReason =
+  | "canonical_text_exact_match"
+  | "canonical_text_high_overlap"
+  | "title_exact_match"
+  | "title_high_similarity"
+  | "alias_overlap"
+  | "same_knowledge_kind"
+  | "same_module_scope"
+  | "manuscript_type_overlap"
+  | "binding_overlap";
+
+export interface DuplicateKnowledgeMatchViewModel {
+  severity: DuplicateKnowledgeSeverity;
+  score: number;
+  matched_asset_id: string;
+  matched_revision_id: string;
+  matched_title: string;
+  matched_status: KnowledgeRevisionStatus;
+  matched_summary?: string;
+  reasons: DuplicateKnowledgeReason[];
+}
+
+export interface DuplicateKnowledgeCheckInput extends CreateKnowledgeLibraryDraftInput {
+  currentAssetId?: string;
+  currentRevisionId?: string;
+}
+
+export type DuplicateWarningAcknowledgementMatchInput = Pick<
+  DuplicateKnowledgeMatchViewModel,
+  "matched_asset_id" | "matched_revision_id" | "severity"
+>;
+
+export interface DuplicateWarningAcknowledgementInput {
+  acknowledged: boolean;
+  matches: DuplicateWarningAcknowledgementMatchInput[];
+}
+
 export interface CreateKnowledgeLibraryDraftInput {
   title: string;
   canonicalText: string;

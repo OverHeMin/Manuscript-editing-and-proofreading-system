@@ -42,10 +42,16 @@ function createKnowledgeHarness(
     "review-action-4",
     "knowledge-3",
   ];
+  let fallbackId = 1;
   const nextId = () => {
     const value = issuedIds.shift();
-    assert.ok(value, "Expected a knowledge test id to be available.");
-    return value;
+    if (value) {
+      return value;
+    }
+
+    const generated = `knowledge-generated-${fallbackId}`;
+    fallbackId += 1;
+    return generated;
   };
   const service = new KnowledgeService({
     repository,
@@ -464,4 +470,165 @@ test("generated editorial-rule projections remain traceable and refresh in place
       not_applicable_boundary: "",
     },
   );
+});
+
+test("duplicate check returns exact, high, and possible matches by asset using representative revisions", async () => {
+  const { service } = createKnowledgeHarness();
+
+  const exact = await service.createLibraryDraft({
+    title: "统计学报告补充规范",
+    canonicalText: "临床研究　需说明（主要终点）与统计方法。",
+    summary: "用于筛查统计学描述是否完整。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    aliases: ["统计学完整性"],
+    templateBindings: ["screening-core-template"],
+  });
+  await service.submitRevisionForReview(exact.selected_revision.id);
+  await service.approveRevision(
+    exact.selected_revision.id,
+    "knowledge_reviewer",
+    "baseline approved",
+  );
+
+  const high = await service.createLibraryDraft({
+    title: "统计学报告补充规范 扩展",
+    canonicalText: "临床研究需说明主要终点与统计方法，并注明分析假设。",
+    summary: "用于识别统计方法表述不足。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    aliases: ["统计学说明"],
+    templateBindings: ["screening-core-template"],
+  });
+  await service.submitRevisionForReview(high.selected_revision.id);
+  await service.approveRevision(
+    high.selected_revision.id,
+    "knowledge_reviewer",
+    "baseline approved",
+  );
+  const highDraft = await service.createDraftRevisionFromApprovedAsset(high.asset.id);
+  await service.updateRevisionDraft(highDraft.selected_revision.id, {
+    title: "一个与匹配无关的更新草稿标题",
+    canonicalText: "这个草稿文本故意不重叠，用于验证仍以已批准版本作为代表。",
+  });
+
+  const possible = await service.createLibraryDraft({
+    title: "术语规范建议",
+    canonicalText: "投稿文本应尽量统一医学术语，避免口语化表达。",
+    summary: "弱相关项，仅依赖上下文维度命中。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    aliases: ["统计学完整性"],
+    templateBindings: ["screening-core-template"],
+  });
+  await service.submitRevisionForReview(possible.selected_revision.id);
+  await service.approveRevision(
+    possible.selected_revision.id,
+    "knowledge_reviewer",
+    "baseline approved",
+  );
+
+  const matches = await service.checkDuplicates({
+    title: "统计学报告补充规范",
+    canonicalText: "临床研究 需说明(主要终点)与统计方法",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    aliases: ["统计学完整性"],
+    bindings: ["screening-core-template"],
+  });
+
+  assert.equal(matches.length, 3);
+
+  assert.equal(matches[0]?.severity, "exact");
+  assert.equal(matches[0]?.matched_asset_id, exact.asset.id);
+  assert.equal(matches[0]?.matched_revision_id, exact.selected_revision.id);
+  assert.equal(matches[0]?.matched_status, "approved");
+  assert.ok(matches[0]?.reasons.includes("canonical_text_exact_match"));
+
+  assert.equal(matches[1]?.severity, "high");
+  assert.equal(matches[1]?.matched_asset_id, high.asset.id);
+  assert.equal(matches[1]?.matched_status, "approved");
+  assert.equal(matches[1]?.matched_revision_id, high.selected_revision.id);
+  assert.ok(matches[1]?.reasons.includes("same_module_scope"));
+  assert.ok(matches[1]?.reasons.includes("canonical_text_high_overlap"));
+
+  assert.equal(matches[2]?.severity, "possible");
+  assert.equal(matches[2]?.matched_asset_id, possible.asset.id);
+  assert.equal(matches[2]?.matched_status, "approved");
+  assert.ok(matches[2]?.reasons.includes("alias_overlap"));
+});
+
+test("duplicate check excludes self by current asset or current revision", async () => {
+  const { service } = createKnowledgeHarness();
+
+  const duplicate = await service.createLibraryDraft({
+    title: "知情同意关键要素",
+    canonicalText: "知情同意应包含风险、获益与替代方案。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+  await service.submitRevisionForReview(duplicate.selected_revision.id);
+  await service.approveRevision(
+    duplicate.selected_revision.id,
+    "knowledge_reviewer",
+    "approved",
+  );
+  const selfDraft = await service.createDraftRevisionFromApprovedAsset(duplicate.asset.id);
+  await service.updateRevisionDraft(selfDraft.selected_revision.id, {
+    title: "与已批准版本不同的草稿标题",
+    canonicalText: "这段草稿文本与匹配输入不重叠，用于验证 revision 排除按资产生效。",
+  });
+
+  const byAsset = await service.checkDuplicates({
+    currentAssetId: duplicate.asset.id,
+    title: "知情同意关键要素",
+    canonicalText: "知情同意应包含风险、获益与替代方案。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+  assert.deepEqual(byAsset, []);
+
+  const byRevision = await service.checkDuplicates({
+    currentRevisionId: selfDraft.selected_revision.id,
+    title: "知情同意关键要素",
+    canonicalText: "知情同意应包含风险、获益与替代方案。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+  assert.deepEqual(byRevision, []);
+});
+
+test("duplicate check does not warn on routing-only overlap without content signals", async () => {
+  const { service } = createKnowledgeHarness();
+
+  const existing = await service.createLibraryDraft({
+    title: "医学术语标准化建议",
+    canonicalText: "建议统一术语拼写并避免缩略语混用。",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+  await service.submitRevisionForReview(existing.selected_revision.id);
+  await service.approveRevision(
+    existing.selected_revision.id,
+    "knowledge_reviewer",
+    "approved",
+  );
+
+  const matches = await service.checkDuplicates({
+    title: "图表编号检查规则",
+    canonicalText: "图表编号需按出现顺序递增并在正文中引用。",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  assert.deepEqual(matches, []);
 });

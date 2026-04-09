@@ -1,15 +1,20 @@
 import type { KnowledgeItemViewModel } from "../knowledge/index.ts";
 import {
+  checkKnowledgeDuplicates,
   createKnowledgeDraftRevision,
   createKnowledgeLibraryDraft,
   getKnowledgeAssetDetail,
   listKnowledgeLibraryAssets,
+  type DuplicateKnowledgeAcknowledgementPayload,
   submitKnowledgeRevisionForReview,
   updateKnowledgeRevisionDraft,
   type KnowledgeLibraryHttpClient,
 } from "./knowledge-library-api.ts";
 import type {
   CreateKnowledgeLibraryDraftInput,
+  DuplicateKnowledgeCheckInput,
+  DuplicateKnowledgeMatchViewModel,
+  DuplicateWarningAcknowledgementInput,
   KnowledgeLibraryFilterState,
   KnowledgeLibraryWorkbenchViewModel,
   UpdateKnowledgeLibraryDraftInput,
@@ -43,12 +48,16 @@ export interface CreateKnowledgeLibraryDerivedDraftAndLoadInput
 export interface SubmitKnowledgeLibraryDraftAndLoadInput
   extends KnowledgeLibraryMutationOptions {
   revisionId: string;
+  duplicateAcknowledgement?: DuplicateWarningAcknowledgementInput;
 }
 
 export interface KnowledgeLibraryWorkbenchController {
   loadWorkbench(
     input?: LoadKnowledgeLibraryWorkbenchInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  checkDuplicates(
+    input: DuplicateKnowledgeCheckInput,
+  ): Promise<DuplicateKnowledgeMatchViewModel[]>;
   createDraftAndLoad(
     input: CreateKnowledgeLibraryDraftAndLoadInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
@@ -75,6 +84,9 @@ export function createKnowledgeLibraryWorkbenchController(
   return {
     loadWorkbench(input = {}) {
       return loadKnowledgeLibraryWorkbench(client, input);
+    },
+    async checkDuplicates(input) {
+      return (await checkKnowledgeDuplicates(client, input)).body;
     },
     async createDraftAndLoad(input) {
       const { filters, ...draftInput } = input;
@@ -104,8 +116,13 @@ export function createKnowledgeLibraryWorkbenchController(
       });
     },
     async submitDraftAndLoad(input) {
+      const duplicateAcknowledgements = toDuplicateAcknowledgements(
+        input.duplicateAcknowledgement,
+      );
       const detail = (
-        await submitKnowledgeRevisionForReview(client, input.revisionId)
+        await submitKnowledgeRevisionForReview(client, input.revisionId, {
+          duplicateAcknowledgements,
+        })
       ).body;
       return loadKnowledgeLibraryWorkbench(client, {
         selectedAssetId: detail.asset.id,
@@ -205,4 +222,38 @@ function resolveSelectedSummary(
   }
 
   return visibleLibrary[0] ?? library[0] ?? null;
+}
+
+function toDuplicateAcknowledgements(
+  input?: DuplicateWarningAcknowledgementInput,
+): DuplicateKnowledgeAcknowledgementPayload[] | undefined {
+  if (!input?.acknowledged) {
+    return undefined;
+  }
+
+  const dedupedMatches = Array.from(
+    new Map(
+      input.matches
+        .map((match) => ({
+          matched_asset_id: match.matched_asset_id.trim(),
+          matched_revision_id: match.matched_revision_id.trim(),
+          severity: match.severity,
+        }))
+        .filter((match) => match.matched_asset_id.length > 0)
+        .map((match) => [
+          `${match.matched_asset_id}:${match.matched_revision_id}:${match.severity}`,
+          match,
+        ]),
+    ).values(),
+  );
+
+  if (dedupedMatches.length === 0) {
+    return undefined;
+  }
+
+  return dedupedMatches.map((match) => ({
+    matched_asset_id: match.matched_asset_id,
+    matched_revision_id: match.matched_revision_id,
+    severity: match.severity,
+  }));
 }
