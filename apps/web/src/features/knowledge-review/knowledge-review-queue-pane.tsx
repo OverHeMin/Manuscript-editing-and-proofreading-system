@@ -22,28 +22,28 @@ const moduleOptions: Array<{
   value: KnowledgeReviewFilterState["moduleScope"];
   label: string;
 }> = [
-  { value: "all", label: "All Modules" },
-  { value: "any", label: "Any Module" },
-  { value: "upload", label: "Upload Intake" },
-  { value: "screening", label: "Screening" },
-  { value: "editing", label: "Editing" },
-  { value: "proofreading", label: "Proofreading" },
-  { value: "pdf_consistency", label: "PDF Consistency" },
-  { value: "learning", label: "Learning Rewrite" },
-  { value: "manual", label: "Manual Curation" },
+  { value: "all", label: "全部模块" },
+  { value: "any", label: "任意模块" },
+  { value: "upload", label: "接稿" },
+  { value: "screening", label: "初筛" },
+  { value: "editing", label: "编辑" },
+  { value: "proofreading", label: "校对" },
+  { value: "pdf_consistency", label: "PDF 一致性" },
+  { value: "learning", label: "学习改写" },
+  { value: "manual", label: "人工整理" },
 ];
 
 const knowledgeKindOptions: Array<{
   value: KnowledgeReviewFilterState["knowledgeKind"];
   label: string;
 }> = [
-  { value: "all", label: "All Kinds" },
-  { value: "rule", label: "Rule" },
-  { value: "case_pattern", label: "Case Pattern" },
-  { value: "checklist", label: "Checklist" },
-  { value: "prompt_snippet", label: "Prompt Snippet" },
-  { value: "reference", label: "Reference" },
-  { value: "other", label: "Other" },
+  { value: "all", label: "全部类型" },
+  { value: "rule", label: "规则" },
+  { value: "case_pattern", label: "案例模式" },
+  { value: "checklist", label: "检查清单" },
+  { value: "prompt_snippet", label: "提示词片段" },
+  { value: "reference", label: "参考资料" },
+  { value: "other", label: "其他" },
 ];
 
 export function KnowledgeReviewQueuePane({
@@ -64,32 +64,32 @@ export function KnowledgeReviewQueuePane({
   return (
     <section className="knowledge-review-panel knowledge-review-queue-pane">
       <header className="knowledge-review-pane-header">
-        <h2>Pending Review Queue</h2>
-        <p>{`Showing ${queue.length} of ${totalQueueCount} pending revisions.`}</p>
+        <h2>待审核队列</h2>
+        <p>{`当前显示 ${queue.length} / ${totalQueueCount} 条待审修订。`}</p>
       </header>
 
       <div className="knowledge-review-queue-controls">
         <label>
-          Search
+          搜索
           <input
             type="search"
             value={filters.searchText}
-            placeholder="Search title, canonical text, alias, or risk tag"
+            placeholder="搜索标题、规范文本、别名或风险标签"
             onChange={(event) => onSearchTextChange(event.target.value)}
           />
         </label>
 
         <div className="knowledge-review-inline-filters">
           <label>
-            Status
+            状态
             <select value="pending_review" disabled>
-              <option value="pending_review">Pending Review</option>
+              <option value="pending_review">待审核</option>
             </select>
-            <span className="knowledge-review-filter-note">Locked for this workbench</span>
+            <span className="knowledge-review-filter-note">当前工作台固定为该状态</span>
           </label>
 
           <label>
-            Knowledge Kind
+            知识类型
             <select
               value={filters.knowledgeKind}
               onChange={(event) =>
@@ -107,7 +107,7 @@ export function KnowledgeReviewQueuePane({
           </label>
 
           <label>
-            Module Scope
+            模块范围
             <select
               value={filters.moduleScope}
               onChange={(event) =>
@@ -130,26 +130,26 @@ export function KnowledgeReviewQueuePane({
         <div className="knowledge-review-banner knowledge-review-banner-error" role="status">
           <p>{loadErrorMessage}</p>
           <button type="button" onClick={onRetryQueue}>
-            Reload Queue
+            刷新队列
           </button>
         </div>
       ) : null}
 
       {isLoading && totalQueueCount === 0 ? (
         <div className="knowledge-review-empty-state" role="status">
-          Loading pending review revisions...
+          正在加载待审核修订...
         </div>
       ) : null}
 
       {!isLoading && isQueueEmpty ? (
         <div className="knowledge-review-empty-state">
-          There are no revisions waiting for review.
+          当前没有待审核修订。
         </div>
       ) : null}
 
       {!isLoading && !isQueueEmpty && isNoResults ? (
         <div className="knowledge-review-empty-state">
-          No queue items match the active review filters.
+          当前筛选条件下没有匹配的队列项。
         </div>
       ) : null}
 
@@ -193,17 +193,17 @@ export function KnowledgeReviewQueuePane({
 function formatKnowledgeKind(kind: KnowledgeKind): string {
   switch (kind) {
     case "rule":
-      return "Rule";
+      return "规则";
     case "case_pattern":
-      return "Case Pattern";
+      return "案例模式";
     case "checklist":
-      return "Checklist";
+      return "检查清单";
     case "prompt_snippet":
-      return "Prompt Snippet";
+      return "提示词片段";
     case "reference":
-      return "Reference";
+      return "参考资料";
     case "other":
-      return "Other";
+      return "其他";
     default:
       return startCase(kind);
   }
@@ -211,35 +211,35 @@ function formatKnowledgeKind(kind: KnowledgeKind): string {
 
 function formatModuleScope(moduleScope: ManuscriptModule | "any"): string {
   if (moduleScope === "any") {
-    return "Any Module";
+    return "任意模块";
   }
 
   if (moduleScope === "pdf_consistency") {
-    return "PDF Consistency";
+    return "PDF 一致性";
   }
 
   if (moduleScope === "upload") {
-    return "Upload Intake";
+    return "接稿";
   }
 
   if (moduleScope === "screening") {
-    return "Screening";
+    return "初筛";
   }
 
   if (moduleScope === "editing") {
-    return "Editing";
+    return "编辑";
   }
 
   if (moduleScope === "proofreading") {
-    return "Proofreading";
+    return "校对";
   }
 
   if (moduleScope === "learning") {
-    return "Learning Rewrite";
+    return "学习改写";
   }
 
   if (moduleScope === "manual") {
-    return "Manual Curation";
+    return "人工整理";
   }
 
   return startCase(moduleScope);
@@ -249,34 +249,34 @@ function formatEvidenceLevel(
   evidenceLevel: KnowledgeReviewQueueItemViewModel["evidence_level"],
 ): string {
   if (!evidenceLevel) {
-    return "Evidence: Unspecified";
+    return "证据等级：未填写";
   }
 
   if (evidenceLevel === "expert_opinion") {
-    return "Evidence: Expert Opinion";
+    return "证据等级：专家意见";
   }
 
-  return `Evidence: ${startCase(evidenceLevel)}`;
+  return `证据等级：${formatEvidenceLevelValue(evidenceLevel)}`;
 }
 
 function formatManuscriptTypes(types: ManuscriptType[] | "any"): string {
   if (types === "any") {
-    return "Manuscripts: Any";
+    return "稿件类型：任意";
   }
 
   if (types.length === 0) {
-    return "Manuscripts: Not configured";
+    return "稿件类型：未配置";
   }
 
-  return `Manuscripts: ${types.map(formatManuscriptType).join(", ")}`;
+  return `稿件类型：${types.map(formatManuscriptType).join("、")}`;
 }
 
 function resolveHintText(item: KnowledgeReviewQueueItemViewModel): string {
-  const templateHint = compactHint("Templates", item.template_bindings);
-  const riskHint = compactHint("Risks", item.routing.risk_tags);
+  const templateHint = compactHint("模板", item.template_bindings);
+  const riskHint = compactHint("风险", item.routing.risk_tags);
   const hints = [templateHint, riskHint].filter((value): value is string => Boolean(value));
 
-  return hints.join(" | ");
+  return hints.join(" ｜ ");
 }
 
 function compactHint(label: string, values: readonly string[] | undefined): string | null {
@@ -294,32 +294,50 @@ function compactHint(label: string, values: readonly string[] | undefined): stri
 function formatManuscriptType(type: ManuscriptType): string {
   switch (type) {
     case "clinical_study":
-      return "Clinical Study";
+      return "临床研究";
     case "systematic_review":
-      return "Systematic Review";
+      return "系统综述";
     case "meta_analysis":
-      return "Meta Analysis";
+      return "Meta 分析";
     case "case_report":
-      return "Case Report";
+      return "病例报告";
     case "guideline_interpretation":
-      return "Guideline Interpretation";
+      return "指南解读";
     case "expert_consensus":
-      return "Expert Consensus";
+      return "专家共识";
     case "diagnostic_study":
-      return "Diagnostic Study";
+      return "诊断研究";
     case "basic_research":
-      return "Basic Research";
+      return "基础研究";
     case "nursing_study":
-      return "Nursing Study";
+      return "护理研究";
     case "methodology_paper":
-      return "Methodology Paper";
+      return "方法学论文";
     case "brief_report":
-      return "Brief Report";
+      return "简报";
     case "other":
-      return "Other";
+      return "其他";
     case "review":
     default:
-      return "Review";
+      return "综述";
+  }
+}
+
+function formatEvidenceLevelValue(
+  evidenceLevel: NonNullable<KnowledgeReviewQueueItemViewModel["evidence_level"]>,
+): string {
+  switch (evidenceLevel) {
+    case "low":
+      return "低";
+    case "medium":
+      return "中";
+    case "high":
+      return "高";
+    case "expert_opinion":
+      return "专家意见";
+    case "unknown":
+    default:
+      return "未知";
   }
 }
 

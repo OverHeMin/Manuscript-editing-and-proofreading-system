@@ -29,11 +29,11 @@ export function KnowledgeReviewDetailPane({
     return (
       <section className="knowledge-review-panel knowledge-review-detail-pane">
         <header className="knowledge-review-pane-header">
-          <h2>Knowledge Detail</h2>
-          <p>Select a pending revision from the queue to inspect its review context.</p>
+          <h2>知识详情</h2>
+          <p>从待审队列中选择一条修订后，可在这里查看审核上下文。</p>
         </header>
         <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-          Choose a queue item to load the selected asset, revision context, and review history.
+          请选择一条队列记录，以加载对应资产、修订上下文与审核历史。
         </div>
       </section>
     );
@@ -45,70 +45,70 @@ export function KnowledgeReviewDetailPane({
         <h2>{item.title}</h2>
         <p>
           {isUsingStableSnapshot
-            ? "The live queue is temporarily unavailable, so the last stable selection is being preserved."
-            : "Review the selected knowledge revision with stable asset and revision context."}
+            ? "实时队列暂时不可用，当前保留最近一次稳定选择供继续查看。"
+            : "结合稳定的资产与修订上下文，审查当前选中的知识修订。"}
         </p>
       </header>
 
       <dl className="knowledge-review-detail-grid">
         <div>
-          <dt>Asset ID</dt>
+          <dt>资产 ID</dt>
           <dd>{item.asset_id}</dd>
         </div>
         <div>
-          <dt>Revision ID</dt>
+          <dt>修订 ID</dt>
           <dd>{item.revision_id}</dd>
         </div>
         <div>
-          <dt>Revision Status</dt>
+          <dt>修订状态</dt>
           <dd>{renderStatus(item.status)}</dd>
         </div>
         <div>
-          <dt>Canonical Text</dt>
+          <dt>规范文本</dt>
           <dd className="knowledge-review-canonical-text">{item.canonical_text}</dd>
         </div>
         <div>
-          <dt>Summary</dt>
-          <dd>{item.summary?.trim().length ? item.summary : "Not provided"}</dd>
+          <dt>摘要</dt>
+          <dd>{item.summary?.trim().length ? item.summary : "未填写"}</dd>
         </div>
         <div>
-          <dt>Evidence Level</dt>
+          <dt>证据等级</dt>
           <dd>{renderEvidenceLevel(item.evidence_level)}</dd>
         </div>
         <div>
-          <dt>Source Type</dt>
-          <dd>{item.source_type ? startCase(item.source_type) : "Not provided"}</dd>
+          <dt>来源类型</dt>
+          <dd>{item.source_type ? renderSourceType(item.source_type) : "未填写"}</dd>
         </div>
         <div>
-          <dt>Source Link</dt>
+          <dt>来源链接</dt>
           <dd>
             {item.source_link ? (
               <a href={item.source_link} target="_blank" rel="noreferrer">
                 {item.source_link}
               </a>
             ) : (
-              "Not provided"
+              "未填写"
             )}
           </dd>
         </div>
         <div>
-          <dt>Effective Window</dt>
+          <dt>生效区间</dt>
           <dd>{renderEffectiveWindow(item.effective_at, item.expires_at)}</dd>
         </div>
         <div>
-          <dt>Routing Scope</dt>
+          <dt>适用范围</dt>
           <dd>{renderRoutingScope(item)}</dd>
         </div>
         <div>
-          <dt>Template Bindings</dt>
-          <dd>{item.template_bindings?.length ? item.template_bindings.join(", ") : "None"}</dd>
+          <dt>模板绑定</dt>
+          <dd>{item.template_bindings?.length ? item.template_bindings.join("、") : "无"}</dd>
         </div>
       </dl>
 
       <section className="knowledge-review-history">
         <header>
-          <h3>Review History</h3>
-          <p>Trace revision-level review events and reviewer notes.</p>
+          <h3>审核历史</h3>
+          <p>按修订维度追踪审核事件与审核备注。</p>
         </header>
 
         {historyScopeNote ? (
@@ -117,21 +117,21 @@ export function KnowledgeReviewDetailPane({
 
         {history.status === "loading" ? (
           <p className="knowledge-review-history-state" role="status">
-            Loading review history...
+            正在加载审核历史...
           </p>
         ) : null}
 
         {history.status === "error" ? (
           <div className="knowledge-review-banner knowledge-review-banner-error">
-            <p>{history.errorMessage ?? "Review history failed to load."}</p>
+            <p>{history.errorMessage ?? "审核历史加载失败。"}</p>
             <button type="button" onClick={onRetryHistory}>
-              Reload History
+              刷新历史
             </button>
           </div>
         ) : null}
 
         {history.actions.length === 0 && history.status !== "loading" ? (
-          <p className="knowledge-review-history-state">No review actions recorded yet.</p>
+          <p className="knowledge-review-history-state">暂未记录审核动作。</p>
         ) : null}
 
         {history.actions.length > 0 ? (
@@ -139,16 +139,16 @@ export function KnowledgeReviewDetailPane({
             {history.actions.map((action) => (
               <li key={action.id}>
                 <p className="knowledge-review-history-event">
-                  {eventLabel(action.action)} | {actorLabel(action.actor_role)}
+                  {eventLabel(action.action)} ｜ {actorLabel(action.actor_role)}
                 </p>
                 <p className="knowledge-review-history-event">
-                  Revision {action.revision_id ?? action.knowledge_item_id}
+                  修订 {action.revision_id ?? action.knowledge_item_id}
                 </p>
                 <p className="knowledge-review-history-time">{formatTimestamp(action.created_at)}</p>
                 <p className="knowledge-review-history-note">
                   {action.review_note?.trim().length
                     ? action.review_note
-                    : "No reviewer note recorded."}
+                    : "未记录审核备注。"}
                 </p>
               </li>
             ))}
@@ -163,25 +163,27 @@ function renderEvidenceLevel(
   evidenceLevel: KnowledgeReviewQueueItemViewModel["evidence_level"],
 ): string {
   if (!evidenceLevel) {
-    return "Not provided";
+    return "未填写";
   }
 
   if (evidenceLevel === "expert_opinion") {
-    return "Expert Opinion";
+    return "专家意见";
   }
 
-  return startCase(evidenceLevel);
+  return renderEvidenceLevelValue(evidenceLevel);
 }
 
 function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
   const moduleScope =
-    item.routing.module_scope === "any" ? "Any Module" : startCase(item.routing.module_scope);
+    item.routing.module_scope === "any"
+      ? "任意模块"
+      : renderModuleScope(item.routing.module_scope);
   const manuscriptScope =
     item.routing.manuscript_types === "any"
-      ? "Any Manuscript Type"
-      : item.routing.manuscript_types.map(startCase).join(", ");
+      ? "任意稿件类型"
+      : item.routing.manuscript_types.map(renderManuscriptType).join("、");
 
-  return `${moduleScope} | ${manuscriptScope}`;
+  return `${moduleScope} ｜ ${manuscriptScope}`;
 }
 
 function renderEffectiveWindow(
@@ -189,28 +191,28 @@ function renderEffectiveWindow(
   expiresAt: string | undefined,
 ): string {
   if (!effectiveAt && !expiresAt) {
-    return "Always active";
+    return "长期生效";
   }
 
-  const start = effectiveAt ? formatTimestamp(effectiveAt) : "Immediately";
-  const end = expiresAt ? formatTimestamp(expiresAt) : "No expiry";
-  return `${start} -> ${end}`;
+  const start = effectiveAt ? formatTimestamp(effectiveAt) : "立即生效";
+  const end = expiresAt ? formatTimestamp(expiresAt) : "无失效时间";
+  return `${start} 至 ${end}`;
 }
 
 function renderStatus(status: KnowledgeReviewQueueItemViewModel["status"]): string {
   switch (status) {
     case "pending_review":
-      return "Pending Review";
+      return "待审核";
     case "approved":
-      return "Approved";
+      return "已通过";
     case "draft":
-      return "Draft";
+      return "草稿";
     case "deprecated":
-      return "Deprecated";
+      return "已弃用";
     case "superseded":
-      return "Superseded";
+      return "已被替代";
     case "archived":
-      return "Archived";
+      return "已归档";
     default:
       return startCase(status);
   }
@@ -219,11 +221,11 @@ function renderStatus(status: KnowledgeReviewQueueItemViewModel["status"]): stri
 function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
   switch (action) {
     case "submitted_for_review":
-      return "Submitted For Review";
+      return "提交审核";
     case "approved":
-      return "Approved";
+      return "审核通过";
     case "rejected":
-      return "Rejected";
+      return "已驳回";
     default:
       return action;
   }
@@ -231,8 +233,18 @@ function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
 
 function actorLabel(actorRole: KnowledgeReviewActionViewModel["actor_role"]): string {
   switch (actorRole) {
+    case "admin":
+      return "管理员";
+    case "editor":
+      return "编辑";
     case "knowledge_reviewer":
-      return "Knowledge Reviewer";
+      return "知识审核员";
+    case "proofreader":
+      return "校对";
+    case "screener":
+      return "初筛";
+    case "user":
+      return "用户";
     default:
       return startCase(actorRole);
   }
@@ -244,7 +256,7 @@ function formatTimestamp(isoTimestamp: string): string {
     return isoTimestamp;
   }
 
-  return parsed.toLocaleString("en-GB", {
+  return parsed.toLocaleString("zh-CN", {
     hour12: false,
     year: "numeric",
     month: "2-digit",
@@ -252,6 +264,93 @@ function formatTimestamp(isoTimestamp: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function renderModuleScope(value: string): string {
+  switch (value) {
+    case "upload":
+      return "接稿";
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    case "pdf_consistency":
+      return "PDF 一致性";
+    case "learning":
+      return "学习改写";
+    case "manual":
+      return "人工整理";
+    default:
+      return startCase(value);
+  }
+}
+
+function renderManuscriptType(value: string): string {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "systematic_review":
+      return "系统综述";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "case_report":
+      return "病例报告";
+    case "guideline_interpretation":
+      return "指南解读";
+    case "expert_consensus":
+      return "专家共识";
+    case "diagnostic_study":
+      return "诊断研究";
+    case "basic_research":
+      return "基础研究";
+    case "nursing_study":
+      return "护理研究";
+    case "methodology_paper":
+      return "方法学论文";
+    case "brief_report":
+      return "简报";
+    case "other":
+      return "其他";
+    case "review":
+    default:
+      return "综述";
+  }
+}
+
+function renderSourceType(value: string): string {
+  switch (value) {
+    case "paper":
+      return "论文";
+    case "guideline":
+      return "指南";
+    case "book":
+      return "书籍";
+    case "website":
+      return "网站";
+    case "internal_case":
+      return "内部案例";
+    case "other":
+    default:
+      return "其他";
+  }
+}
+
+function renderEvidenceLevelValue(value: string): string {
+  switch (value) {
+    case "low":
+      return "低";
+    case "medium":
+      return "中";
+    case "high":
+      return "高";
+    case "expert_opinion":
+      return "专家意见";
+    case "unknown":
+    default:
+      return "未知";
+  }
 }
 
 function startCase(value: string): string {

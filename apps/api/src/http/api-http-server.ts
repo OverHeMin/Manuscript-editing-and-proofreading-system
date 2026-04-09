@@ -149,6 +149,7 @@ import {
   type CreateKnowledgeDraftInput,
   type ResolveGovernedRetrievalContextInput,
   type KnowledgeRecord,
+  type KnowledgeRevisionRecord,
   type KnowledgeReviewActionRecord,
   type UpdateKnowledgeRevisionDraftInput,
   type UpdateKnowledgeDraftInput,
@@ -1536,9 +1537,29 @@ function seedDemoKnowledgeReviewData(input: {
   repository: InMemoryKnowledgeRepository;
   reviewActionRepository: InMemoryKnowledgeReviewActionRepository;
 }): void {
-  const records: KnowledgeRecord[] = [
+  const timestamp = "2026-03-28T08:00:00.000Z";
+  const assets = [
     {
       id: "knowledge-demo-1",
+      status: "active",
+      current_revision_id: "knowledge-demo-1-revision-1",
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+    {
+      id: "knowledge-demo-2",
+      status: "active",
+      current_revision_id: "knowledge-demo-2-revision-1",
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+  ] as const;
+
+  const revisions: KnowledgeRevisionRecord[] = [
+    {
+      id: "knowledge-demo-1-revision-1",
+      asset_id: "knowledge-demo-1",
+      revision_no: 1,
       title: "Clinical study endpoint rule",
       canonical_text:
         "Clinical study submissions must state the primary endpoint and analysis method.",
@@ -1557,10 +1578,13 @@ function seedDemoKnowledgeReviewData(input: {
       source_type: "guideline",
       source_link: "https://example.org/guideline",
       aliases: ["endpoint-statistics rule"],
-      template_bindings: ["clinical-study-screening-core"],
+      created_at: timestamp,
+      updated_at: timestamp,
     },
     {
-      id: "knowledge-demo-2",
+      id: "knowledge-demo-2-revision-1",
+      asset_id: "knowledge-demo-2",
+      revision_no: 1,
       title: "Case report privacy checklist",
       canonical_text:
         "Case report submissions must remove direct patient identifiers before proofreading.",
@@ -1578,7 +1602,8 @@ function seedDemoKnowledgeReviewData(input: {
       source_type: "guideline",
       source_link: "https://example.org/privacy",
       aliases: ["case privacy checklist"],
-      template_bindings: ["case-report-proofreading-core"],
+      created_at: timestamp,
+      updated_at: timestamp,
     },
   ];
 
@@ -1586,21 +1611,27 @@ function seedDemoKnowledgeReviewData(input: {
     {
       id: "knowledge-demo-action-1",
       knowledge_item_id: "knowledge-demo-1",
+      revision_id: "knowledge-demo-1-revision-1",
       action: "submitted_for_review",
       actor_role: "user",
-      created_at: "2026-03-28T08:00:00.000Z",
+      created_at: timestamp,
     },
     {
       id: "knowledge-demo-action-2",
       knowledge_item_id: "knowledge-demo-2",
+      revision_id: "knowledge-demo-2-revision-1",
       action: "submitted_for_review",
       actor_role: "user",
       created_at: "2026-03-28T09:00:00.000Z",
     },
   ];
 
-  for (const record of records) {
-    void input.repository.save(record);
+  for (const asset of assets) {
+    void input.repository.saveAsset(asset);
+  }
+
+  for (const revision of revisions) {
+    void input.repository.saveRevision(revision);
   }
 
   for (const action of reviewActions) {

@@ -30,29 +30,29 @@ export function KnowledgeReviewActionPanel({
   return (
     <section className="knowledge-review-panel knowledge-review-action-panel">
       <header className="knowledge-review-pane-header">
-        <h2>Review Actions</h2>
-        <p>Record reviewer rationale and complete the current revision decision.</p>
+        <h2>审核动作</h2>
+        <p>记录审核依据并完成当前修订的审核决策。</p>
       </header>
 
       <label className="knowledge-review-action-note">
-        Review Note
+        审核备注
         <textarea
           value={reviewNote}
           disabled={!hasSelection || isSubmitting}
-          placeholder="Optional for approval, strongly recommended when sending a revision back to draft."
+          placeholder="通过时可选填写；若要驳回，强烈建议说明原因。"
           onChange={(event) => onReviewNoteChange(event.target.value)}
         />
       </label>
 
       {isRejectNoteMissing ? (
         <p className="knowledge-review-note-hint">
-          A short reviewer note makes the draft handback easier to follow up.
+          建议补充简短审核说明，便于后续修改与追踪。
         </p>
       ) : null}
 
       <div className="knowledge-review-action-buttons">
         <button type="button" disabled={isDisabled} onClick={onApprove}>
-          {isSubmitting ? "Submitting..." : "Approve"}
+          {isSubmitting ? "提交中..." : "通过"}
         </button>
         <button
           type="button"
@@ -60,7 +60,7 @@ export function KnowledgeReviewActionPanel({
           className="knowledge-review-reject-button"
           onClick={onReject}
         >
-          {isSubmitting ? "Submitting..." : "Send Back To Draft"}
+          {isSubmitting ? "提交中..." : "驳回"}
         </button>
       </div>
 
@@ -72,7 +72,7 @@ export function KnowledgeReviewActionPanel({
           <p>{feedback.message}</p>
           {feedback.status === "manual_recovery" ? (
             <button type="button" onClick={onManualRecovery}>
-              Reload Queue
+              刷新队列
             </button>
           ) : null}
         </div>

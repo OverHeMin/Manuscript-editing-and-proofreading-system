@@ -242,7 +242,8 @@ export function WorkbenchHost({
         return (
           <KnowledgeReviewWorkbenchPage
             actorRole={session.role}
-            prefilledRevisionId={routeState.revisionId ?? routeState.knowledgeItemId}
+            prefilledRevisionId={routeState.revisionId}
+            prefilledAssetId={routeState.assetId ?? routeState.knowledgeItemId}
           />
         );
       case "learning-review":
