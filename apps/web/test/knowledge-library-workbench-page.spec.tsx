@@ -7,7 +7,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
 
 const {
+  buildDuplicateCheckTriggerSignature,
+  getStrongDuplicateMatches,
+  isImmediateDuplicateCheckResultStale,
+  KnowledgeLibraryDuplicateSubmitConfirmation,
+  KnowledgeLibraryDuplicateStatusRow,
+  resolveDuplicateAcknowledgementSubmitDecision,
   KnowledgeLibraryWorkbenchPage,
+  resolveDuplicateSubmitDecision,
+  shouldInvalidateDuplicateSubmitConfirmation,
 } = await import("../src/features/knowledge-library/knowledge-library-workbench-page.tsx");
 
 test("knowledge library workbench page renders the standalone authoring shell", () => {
@@ -166,9 +174,394 @@ test("knowledge library workbench page renders the standalone authoring shell", 
   assert.match(markup, /Authoring Pipeline/);
   assert.match(markup, /Library Queue/);
   assert.match(markup, /Draft Editor/);
+  assert.match(markup, /Duplicate Signals/);
   assert.match(markup, /Structured Bindings/);
   assert.match(markup, /Revision Timeline/);
+  assert.match(markup, /Not checked/);
   assert.match(markup, /Primary endpoint rule draft/);
   assert.match(markup, /knowledge-1-revision-2/);
   assert.match(markup, /Screening Template/);
+  assert.match(markup, /knowledge-library-side-column/);
+});
+
+test("knowledge library duplicate status row renders all inline states", () => {
+  const notCheckedMarkup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateStatusRow
+      checkState="not_checked"
+      strongMatchCount={0}
+      isStale={false}
+    />,
+  );
+  const checkingMarkup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateStatusRow
+      checkState="checking"
+      strongMatchCount={0}
+      isStale={false}
+    />,
+  );
+  const noStrongMarkup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateStatusRow
+      checkState="checked"
+      strongMatchCount={0}
+      isStale={false}
+    />,
+  );
+  const strongMarkup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateStatusRow
+      checkState="checked"
+      strongMatchCount={2}
+      isStale={false}
+    />,
+  );
+  const errorMarkup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateStatusRow
+      checkState="error"
+      strongMatchCount={0}
+      isStale={false}
+      checkErrorMessage="Duplicate check failed: timeout"
+    />,
+  );
+
+  assert.match(notCheckedMarkup, /Not checked/);
+  assert.match(checkingMarkup, /Checking duplicates\.\.\./);
+  assert.match(noStrongMarkup, /No strong duplicate signals/);
+  assert.match(strongMarkup, /2 strong duplicate matches found/);
+  assert.match(errorMarkup, /Duplicate check failed: timeout/);
+});
+
+test("duplicate submit decision requires refresh while duplicate checks are pending or stale", () => {
+  const checkInput = {
+    title: "Primary endpoint draft",
+    canonicalText: "Clinical studies must define the primary endpoint.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [],
+    currentAssetId: "knowledge-1",
+    currentRevisionId: "knowledge-1-revision-1",
+  };
+  const matches = [
+    {
+      severity: "possible" as const,
+      score: 0.42,
+      matched_asset_id: "knowledge-2",
+      matched_revision_id: "knowledge-2-revision-1",
+      matched_title: "Terminology overlap",
+      matched_status: "approved" as const,
+      matched_summary: "Possible overlap only.",
+      reasons: ["alias_overlap" as const],
+    },
+  ];
+
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "not_checked",
+      duplicateCheckSignature: "signature-a",
+      lastCheckedDuplicateSignature: null,
+      matches,
+    }),
+    "refresh_check",
+  );
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "checking",
+      duplicateCheckSignature: "signature-a",
+      lastCheckedDuplicateSignature: null,
+      matches,
+    }),
+    "refresh_check",
+  );
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "error",
+      duplicateCheckSignature: "signature-a",
+      lastCheckedDuplicateSignature: null,
+      matches,
+    }),
+    "refresh_check",
+  );
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "checked",
+      duplicateCheckSignature: "signature-b",
+      lastCheckedDuplicateSignature: "signature-a",
+      matches,
+    }),
+    "refresh_check",
+  );
+});
+
+test("duplicate submit decision keeps exact and high matches behind confirmation", () => {
+  const checkInput = {
+    title: "Primary endpoint draft",
+    canonicalText: "Clinical studies must define the primary endpoint.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [],
+    currentAssetId: "knowledge-1",
+    currentRevisionId: "knowledge-1-revision-1",
+  };
+
+  const strongMatches = [
+    {
+      severity: "exact" as const,
+      score: 0.99,
+      matched_asset_id: "knowledge-2",
+      matched_revision_id: "knowledge-2-revision-1",
+      matched_title: "Endpoint requirement",
+      matched_status: "approved" as const,
+      matched_summary: "Exact overlap.",
+      reasons: ["canonical_text_exact_match" as const],
+    },
+  ];
+  const possibleOnly = [
+    {
+      severity: "possible" as const,
+      score: 0.42,
+      matched_asset_id: "knowledge-3",
+      matched_revision_id: "knowledge-3-revision-1",
+      matched_title: "Terminology overlap",
+      matched_status: "draft" as const,
+      matched_summary: "Possible overlap only.",
+      reasons: ["alias_overlap" as const],
+    },
+  ];
+
+  assert.deepEqual(getStrongDuplicateMatches(strongMatches), strongMatches);
+  assert.deepEqual(getStrongDuplicateMatches(possibleOnly), []);
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "checked",
+      duplicateCheckSignature: "signature-a",
+      lastCheckedDuplicateSignature: "signature-a",
+      matches: strongMatches,
+    }),
+    "confirm",
+  );
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: checkInput,
+      duplicateCheckState: "checked",
+      duplicateCheckSignature: "signature-a",
+      lastCheckedDuplicateSignature: "signature-a",
+      matches: possibleOnly,
+    }),
+    "submit",
+  );
+  assert.equal(
+    resolveDuplicateSubmitDecision({
+      duplicateCheckInput: null,
+      duplicateCheckState: "checked",
+      duplicateCheckSignature: null,
+      lastCheckedDuplicateSignature: "signature-a",
+      matches: strongMatches,
+    }),
+    "submit",
+  );
+});
+
+test("duplicate submit confirmation renders required shell actions", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryDuplicateSubmitConfirmation
+      match={{
+        severity: "exact",
+        score: 0.99,
+        matched_asset_id: "knowledge-2",
+        matched_revision_id: "knowledge-2-revision-1",
+        matched_title: "Endpoint requirement",
+        matched_status: "approved",
+        matched_summary: "Exact overlap.",
+        reasons: ["canonical_text_exact_match"],
+      }}
+      isBusy={false}
+      onOpenAsset={() => undefined}
+      onContinueAnyway={() => undefined}
+    />,
+  );
+
+  assert.match(markup, /Strong duplicate matches detected/);
+  assert.match(markup, /Open Existing Asset/);
+  assert.match(markup, /Continue Anyway/);
+});
+
+test("duplicate submit confirmation invalidates when draft changes after opening", () => {
+  assert.equal(
+    shouldInvalidateDuplicateSubmitConfirmation({
+      isConfirmationOpen: true,
+      confirmationDraftSignature: '{"title":"before"}',
+      currentDraftSignature: '{"title":"after"}',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldInvalidateDuplicateSubmitConfirmation({
+      isConfirmationOpen: true,
+      confirmationDraftSignature: '{"title":"same"}',
+      currentDraftSignature: '{"title":"same"}',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldInvalidateDuplicateSubmitConfirmation({
+      isConfirmationOpen: false,
+      confirmationDraftSignature: '{"title":"before"}',
+      currentDraftSignature: '{"title":"after"}',
+    }),
+    false,
+  );
+});
+
+test("duplicate acknowledgement submit decision blocks stale or unavailable continue actions", () => {
+  assert.equal(
+    resolveDuplicateAcknowledgementSubmitDecision({
+      revisionId: "knowledge-1-revision-2",
+      hasViewModel: true,
+      pendingStrongMatchCount: 1,
+      isBusy: false,
+      isImmediateDuplicateCheckPending: false,
+      isConfirmationOpen: true,
+      confirmationDraftSignature: '{"title":"before"}',
+      currentDraftSignature: '{"title":"after"}',
+    }),
+    "stale",
+  );
+  assert.equal(
+    resolveDuplicateAcknowledgementSubmitDecision({
+      revisionId: "knowledge-1-revision-2",
+      hasViewModel: true,
+      pendingStrongMatchCount: 1,
+      isBusy: false,
+      isImmediateDuplicateCheckPending: false,
+      isConfirmationOpen: true,
+      confirmationDraftSignature: '{"title":"same"}',
+      currentDraftSignature: '{"title":"same"}',
+    }),
+    "submit",
+  );
+  assert.equal(
+    resolveDuplicateAcknowledgementSubmitDecision({
+      revisionId: "knowledge-1-revision-2",
+      hasViewModel: true,
+      pendingStrongMatchCount: 0,
+      isBusy: false,
+      isImmediateDuplicateCheckPending: false,
+      isConfirmationOpen: true,
+      confirmationDraftSignature: '{"title":"same"}',
+      currentDraftSignature: '{"title":"same"}',
+    }),
+    "blocked",
+  );
+});
+
+test("immediate duplicate-check stale guard rejects outdated request ids and draft contexts", () => {
+  assert.equal(
+    isImmediateDuplicateCheckResultStale({
+      requestId: 2,
+      latestRequestId: 3,
+      expectedContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-a",
+      },
+      currentContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-a",
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isImmediateDuplicateCheckResultStale({
+      requestId: 3,
+      latestRequestId: 3,
+      expectedContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-a",
+      },
+      currentContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-b",
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isImmediateDuplicateCheckResultStale({
+      requestId: 3,
+      latestRequestId: 3,
+      expectedContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-b",
+      },
+      currentContext: {
+        selectedRevisionId: "knowledge-1-revision-2",
+        duplicateCheckSignature: "signature-b",
+      },
+    }),
+    false,
+  );
+});
+
+test("duplicate check trigger signature uses normalized request fields only", () => {
+  const baselineSignature = buildDuplicateCheckTriggerSignature({
+    title: " Primary endpoint draft ",
+    canonicalText: " Clinical studies must define the primary endpoint. ",
+    summary: " Key summary ",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: [" methods "],
+    riskTags: [" statistics "],
+    disciplineTags: [" oncology "],
+    aliases: [" endpoint "],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: " template-screening-1 ",
+        bindingTargetLabel: " Screening Template ",
+      },
+    ],
+    currentAssetId: " knowledge-1 ",
+    currentRevisionId: " knowledge-1-revision-2 ",
+  });
+  const noisySignature = buildDuplicateCheckTriggerSignature({
+    title: "Primary endpoint draft",
+    canonicalText: "Clinical studies must define the primary endpoint.",
+    summary: "Key summary",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["methods"],
+    riskTags: ["statistics"],
+    disciplineTags: ["oncology"],
+    aliases: ["endpoint"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-screening-1",
+        bindingTargetLabel: "Screening Template",
+      },
+    ],
+    currentAssetId: "knowledge-1",
+    currentRevisionId: "knowledge-1-revision-2",
+    // This reflects non-request form noise and should not affect the signature.
+    ignoredNoise: "source_link changed",
+  } as unknown as Parameters<typeof buildDuplicateCheckTriggerSignature>[0]);
+  const changedCanonicalTextSignature = buildDuplicateCheckTriggerSignature({
+    title: "Primary endpoint draft",
+    canonicalText: "Clinical studies must define the endpoint before sign-off.",
+    summary: "Key summary",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [],
+  });
+
+  assert.equal(baselineSignature, noisySignature);
+  assert.notEqual(baselineSignature, changedCanonicalTextSignature);
 });

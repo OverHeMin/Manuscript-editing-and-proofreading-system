@@ -163,6 +163,18 @@
   color: #475569;
 }
 
+.knowledge-library-duplicate-status-row {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.knowledge-library-duplicate-status-stale {
+  color: #92400e;
+}
+
 .knowledge-library-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -192,6 +204,31 @@
   font: inherit;
 }
 
+.knowledge-library-duplicate-confirmation {
+  margin-top: 1rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+
+.knowledge-library-duplicate-confirmation h3 {
+  margin: 0;
+  color: #78350f;
+}
+
+.knowledge-library-duplicate-confirmation p {
+  margin: 0.45rem 0 0;
+  color: #92400e;
+}
+
+.knowledge-library-duplicate-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
 .knowledge-library-binding-list li {
   display: flex;
   justify-content: space-between;
@@ -204,6 +241,79 @@
 .knowledge-library-empty {
   margin: 0;
   color: #64748b;
+}
+
+.knowledge-library-duplicate-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.knowledge-library-duplicate-section h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+}
+
+.knowledge-library-duplicate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.knowledge-library-duplicate-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.75rem 0.8rem;
+}
+
+.knowledge-library-duplicate-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.knowledge-library-duplicate-card-head span {
+  text-transform: capitalize;
+  color: #334155;
+}
+
+.knowledge-library-duplicate-card-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+
+.knowledge-library-duplicate-card-meta div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.knowledge-library-duplicate-card-meta dt {
+  font-weight: 700;
+}
+
+.knowledge-library-duplicate-card-meta dd {
+  margin: 0;
+}
+
+.knowledge-library-duplicate-summary {
+  margin: 0.55rem 0 0;
+  color: #475569;
+}
+
+.knowledge-library-duplicate-reasons {
+  margin: 0.55rem 0 0;
+  color: #334155;
+}
+
+.knowledge-library-duplicate-open-button {
+  margin-top: 0.7rem;
 }
 
 @media (max-width: 1200px) {
