@@ -13,6 +13,7 @@ import type {
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
+import { mapLegacyKnowledgeRecordToDuplicateCandidate } from "./knowledge-duplicate-detection.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -697,13 +698,6 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           created_at
         )
         values ($1, $2, $3::text[], $4, $5, $6::timestamptz)
-        on conflict (id) do update
-        set
-          revision_id = excluded.revision_id,
-          matched_asset_ids = excluded.matched_asset_ids,
-          highest_severity = excluded.highest_severity,
-          acknowledged_by_role = excluded.acknowledged_by_role,
-          created_at = excluded.created_at
       `,
       [
         record.id,
@@ -868,8 +862,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
         order by ranked.asset_id asc, ranked.revision_id asc
       `,
     );
-
-    return result.rows.map((row) => ({
+    const revisionCandidates = result.rows.map((row) => ({
       asset: mapKnowledgeAssetRow({
         id: row.asset_id,
         status: row.asset_status,
@@ -906,6 +899,21 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       }),
       bindings: decodeTextArray(row.bindings),
     }));
+    const shadowedAssetIds = new Set(revisionCandidates.map((record) => record.asset.id));
+    const legacyCandidates = (await this.listLegacyKnowledgeRecords())
+      .filter((record) => !shadowedAssetIds.has(record.id))
+      .map((record) => {
+        const candidate = mapLegacyKnowledgeRecordToDuplicateCandidate(record);
+        return {
+          asset: candidate.asset,
+          representative_revision: candidate.revision,
+          bindings: [...candidate.bindings],
+        } satisfies KnowledgeDuplicateCandidateGroupRecord;
+      });
+
+    return [...revisionCandidates, ...legacyCandidates].sort(
+      compareDuplicateCandidateGroupRecords,
+    );
   }
 
   private async listLegacyKnowledgeRecords(
@@ -1288,6 +1296,16 @@ function mapLegacyKnowledgeReviewActionRow(
     ...(row.review_note != null ? { review_note: row.review_note } : {}),
     created_at: row.created_at.toISOString(),
   };
+}
+
+function compareDuplicateCandidateGroupRecords(
+  left: KnowledgeDuplicateCandidateGroupRecord,
+  right: KnowledgeDuplicateCandidateGroupRecord,
+): number {
+  return (
+    left.asset.id.localeCompare(right.asset.id) ||
+    left.representative_revision.id.localeCompare(right.representative_revision.id)
+  );
 }
 
 function encodeManuscriptTypes(

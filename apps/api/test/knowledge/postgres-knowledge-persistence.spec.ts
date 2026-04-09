@@ -665,6 +665,22 @@ test("postgres knowledge repository persists duplicate acknowledgement audit row
       acknowledged_by_role: "knowledge_reviewer",
       created_at: "2026-04-08T10:05:00.000Z",
     });
+    await assert.rejects(
+      () =>
+        acknowledgementsRepository.saveDuplicateAcknowledgement?.({
+          id: "ack-duplicate-1",
+          revision_id: revisionId,
+          matched_asset_ids: ["asset-duplicate-9"],
+          highest_severity: "exact",
+          acknowledged_by_role: "admin",
+          created_at: "2026-04-08T10:06:00.000Z",
+        }) ?? Promise.reject(new Error("Expected acknowledgement save method.")),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, "23505");
+        return true;
+      },
+      "Duplicate acknowledgement ids should not be mutable via upsert.",
+    );
 
     const rows =
       await acknowledgementsRepository.listDuplicateAcknowledgementsByRevisionId?.(
@@ -803,6 +819,18 @@ test("postgres duplicate candidates select approved representative revision per 
         created_at: "2026-04-09T09:10:00.000Z",
       },
     ]);
+    await repository.save({
+      id: "cccccccc-1111-2222-3333-444444444444",
+      title: "Legacy duplicate candidate record",
+      canonical_text: "Legacy duplicate candidate source.",
+      knowledge_kind: "reference",
+      status: "approved",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["review"],
+      },
+      template_bindings: ["legacy-template-binding"],
+    });
 
     assert.equal(
       typeof duplicateCandidateRepository.listDuplicateCheckCandidatesByAsset,
@@ -846,6 +874,17 @@ test("postgres duplicate candidates select approved representative revision per 
           title: "Pending review representative revision",
         },
         bindings: ["template-pending-binding"],
+      },
+      {
+        asset: {
+          id: "cccccccc-1111-2222-3333-444444444444",
+        },
+        representative_revision: {
+          id: "cccccccc-1111-2222-3333-444444444444",
+          status: "approved",
+          title: "Legacy duplicate candidate record",
+        },
+        bindings: ["legacy-template-binding"],
       },
       ],
     );
