@@ -410,6 +410,298 @@ test("workbench http routes expose the knowledge library revision lifecycle", as
   }
 });
 
+test("workbench http routes expose duplicate-check matches and acknowledgement-aware submit flows", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const createExactResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/drafts`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Primary endpoint reporting requirements",
+          canonicalText:
+            "Clinical studies must report primary endpoints and statistical methods.",
+          summary: "Exact duplicate baseline",
+          knowledgeKind: "rule",
+          moduleScope: "screening",
+          manuscriptTypes: ["clinical_study"],
+          aliases: ["endpoint reporting"],
+          bindings: [
+            {
+              bindingKind: "module_template",
+              bindingTargetId: "template-screening-1",
+              bindingTargetLabel: "Screening Template",
+            },
+          ],
+        }),
+      },
+    );
+    const exact = (await createExactResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+    assert.equal(createExactResponse.status, 201);
+
+    const submitExactResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${exact.selected_revision.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          duplicateAcknowledgements: [
+            {
+              matched_asset_id: "seed-asset-ignore",
+              severity: "possible",
+            },
+          ],
+          actorRole: "admin",
+        }),
+      },
+    );
+    assert.equal(submitExactResponse.status, 200);
+    const approveExactResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${exact.selected_revision.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewNote: "Approve exact baseline.",
+        }),
+      },
+    );
+    assert.equal(approveExactResponse.status, 200);
+
+    const createHighResponse = await fetch(`${baseUrl}/api/v1/knowledge/assets/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Primary endpoint and stats reporting guidance",
+        canonicalText:
+          "Clinical studies should report primary endpoint definitions and statistical methods clearly.",
+        summary: "High overlap baseline",
+        knowledgeKind: "rule",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+        aliases: ["stats reporting guidance"],
+        bindings: [
+          {
+            bindingKind: "module_template",
+            bindingTargetId: "template-screening-1",
+            bindingTargetLabel: "Screening Template",
+          },
+        ],
+      }),
+    });
+    const high = (await createHighResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+    assert.equal(createHighResponse.status, 201);
+    const submitHighResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${high.selected_revision.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    assert.equal(submitHighResponse.status, 200);
+    const approveHighResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${high.selected_revision.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewNote: "Approve high baseline.",
+        }),
+      },
+    );
+    assert.equal(approveHighResponse.status, 200);
+
+    const createPossibleResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/drafts`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Terminology consistency checklist",
+          canonicalText:
+            "Use consistent medical terminology and avoid mixed abbreviations.",
+          summary: "Possible overlap baseline",
+          knowledgeKind: "rule",
+          moduleScope: "screening",
+          manuscriptTypes: ["clinical_study"],
+          aliases: ["shared-alias-tag"],
+          bindings: [
+            {
+              bindingKind: "module_template",
+              bindingTargetId: "template-screening-1",
+              bindingTargetLabel: "Screening Template",
+            },
+          ],
+        }),
+      },
+    );
+    const possible = (await createPossibleResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+    assert.equal(createPossibleResponse.status, 201);
+    const submitPossibleResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${possible.selected_revision.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    assert.equal(submitPossibleResponse.status, 200);
+    const approvePossibleResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${possible.selected_revision.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewNote: "Approve possible baseline.",
+        }),
+      },
+    );
+    assert.equal(approvePossibleResponse.status, 200);
+
+    const duplicateCheckResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/duplicate-check`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Primary endpoint reporting requirements",
+          canonicalText:
+            "Clinical studies must report primary endpoints and statistical methods.",
+          summary: "Candidate summary",
+          knowledgeKind: "rule",
+          moduleScope: "screening",
+          manuscriptTypes: ["clinical_study"],
+          aliases: ["shared-alias-tag"],
+          bindings: ["template-screening-1"],
+        }),
+      },
+    );
+    const duplicateMatches = (await duplicateCheckResponse.json()) as Array<{
+      severity: string;
+      score: number;
+      matched_asset_id: string;
+      matched_revision_id: string;
+      matched_title: string;
+      matched_status: string;
+      reasons: string[];
+    }>;
+
+    assert.equal(duplicateCheckResponse.status, 200);
+    assert.ok(
+      duplicateMatches.some((match) => match.severity === "exact"),
+      "Expected duplicate-check response to include at least one exact match.",
+    );
+    assert.ok(
+      duplicateMatches.some((match) => match.severity === "high"),
+      "Expected duplicate-check response to include at least one high match.",
+    );
+    assert.ok(
+      duplicateMatches.some((match) => match.severity === "possible"),
+      "Expected duplicate-check response to include at least one possible match.",
+    );
+
+    const exactMatch = duplicateMatches.find(
+      (match) => match.matched_asset_id === exact.asset.id,
+    );
+    const highMatch = duplicateMatches.find(
+      (match) => match.matched_asset_id === high.asset.id,
+    );
+    const possibleMatch = duplicateMatches.find(
+      (match) => match.matched_asset_id === possible.asset.id,
+    );
+
+    assert.equal(exactMatch?.severity, "exact");
+    assert.equal(highMatch?.severity, "high");
+    assert.equal(possibleMatch?.severity, "possible");
+    assert.equal(exactMatch?.matched_status, "approved");
+    assert.equal(highMatch?.matched_status, "approved");
+    assert.equal(possibleMatch?.matched_status, "approved");
+    assert.ok(
+      exactMatch?.reasons.includes("canonical_text_exact_match"),
+      "Expected exact match to include canonical exact reason.",
+    );
+    assert.ok(
+      highMatch?.reasons.includes("canonical_text_high_overlap"),
+      "Expected high match to include canonical overlap reason.",
+    );
+    assert.ok(
+      possibleMatch?.reasons.includes("alias_overlap"),
+      "Expected possible match to include alias overlap reason.",
+    );
+
+    const createLegacyDraftResponse = await fetch(`${baseUrl}/api/v1/knowledge/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Legacy submit compatibility draft",
+        canonicalText: "Legacy submit path should remain backwards compatible.",
+        knowledgeKind: "rule",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+      }),
+    });
+    const legacyDraft = (await createLegacyDraftResponse.json()) as { id: string };
+    assert.equal(createLegacyDraftResponse.status, 201);
+
+    const legacySubmitResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/${legacyDraft.id}/submit`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+        },
+      },
+    );
+    assert.equal(legacySubmitResponse.status, 200);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http screening route runs with the authenticated screener context", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 

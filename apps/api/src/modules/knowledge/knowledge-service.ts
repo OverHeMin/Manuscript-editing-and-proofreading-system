@@ -116,13 +116,18 @@ export interface UpdateKnowledgeRevisionDraftInput extends UpdateKnowledgeDraftI
   bindings?: KnowledgeRevisionBindingInput[];
 }
 
-export interface SubmitKnowledgeForReviewInput
+interface SubmitKnowledgeAcknowledgementInput
   extends SubmitKnowledgeDuplicateAcknowledgementInput {
+  acknowledgedByRole?: RoleKey;
+}
+
+export interface SubmitKnowledgeForReviewInput
+  extends SubmitKnowledgeAcknowledgementInput {
   knowledgeItemId: string;
 }
 
 export interface SubmitKnowledgeRevisionForReviewInput
-  extends SubmitKnowledgeDuplicateAcknowledgementInput {
+  extends SubmitKnowledgeAcknowledgementInput {
   revisionId: string;
 }
 
@@ -507,9 +512,8 @@ export class KnowledgeService {
   async submitForReview(
     knowledgeItemIdOrInput: string | SubmitKnowledgeForReviewInput,
   ): Promise<KnowledgeRecord> {
-    const { knowledgeItemId, duplicateAcknowledgements } =
+    const { knowledgeItemId, duplicateAcknowledgements, acknowledgedByRole } =
       parseKnowledgeSubmitInput(knowledgeItemIdOrInput);
-    this.consumeDuplicateAcknowledgements(duplicateAcknowledgements);
 
     const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
     if (asset) {
@@ -520,6 +524,7 @@ export class KnowledgeService {
       const detail = await this.submitRevisionForReview({
         revisionId: revision.id,
         duplicateAcknowledgements,
+        acknowledgedByRole,
       });
       return this.projectCompatibilityRecord(detail.asset.id);
     }
@@ -561,9 +566,8 @@ export class KnowledgeService {
   async submitRevisionForReview(
     revisionIdOrInput: string | SubmitKnowledgeRevisionForReviewInput,
   ): Promise<KnowledgeAssetDetailRecord> {
-    const { revisionId, duplicateAcknowledgements } =
+    const { revisionId, duplicateAcknowledgements, acknowledgedByRole } =
       parseRevisionSubmitInput(revisionIdOrInput);
-    this.consumeDuplicateAcknowledgements(duplicateAcknowledgements);
 
     return this.transactionManager.withTransaction(
       async ({ repository, reviewActionRepository }) => {
@@ -596,6 +600,13 @@ export class KnowledgeService {
           action: "submitted_for_review",
           actor_role: "user",
           created_at: timestamp,
+        });
+        await this.persistDuplicateAcknowledgements({
+          repository,
+          revisionId: revision.id,
+          acknowledgements: duplicateAcknowledgements,
+          acknowledgedByRole,
+          createdAt: timestamp,
         });
 
         return this.buildKnowledgeAssetDetail(asset.id, revision.id, repository);
@@ -1319,15 +1330,40 @@ export class KnowledgeService {
     });
   }
 
-  private consumeDuplicateAcknowledgements(
-    acknowledgements: readonly KnowledgeDuplicateAcknowledgementRecord[] | undefined,
-  ): void {
-    if (!acknowledgements) {
+  private async persistDuplicateAcknowledgements(input: {
+    repository: KnowledgeRepository;
+    revisionId: string;
+    acknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+    acknowledgedByRole?: RoleKey;
+    createdAt: string;
+  }): Promise<void> {
+    if (!input.acknowledgements?.length) {
       return;
     }
 
-    // V2.1 keeps submit flows acknowledgement-ready without persistence or gating.
-    void acknowledgements.map((record) => record.matched_asset_id);
+    if (!input.repository.saveDuplicateAcknowledgement) {
+      return;
+    }
+
+    const matchedAssetIds = [
+      ...new Set(
+        input.acknowledgements.map((record) => record.matched_asset_id),
+      ),
+    ];
+    if (matchedAssetIds.length === 0) {
+      return;
+    }
+
+    await input.repository.saveDuplicateAcknowledgement({
+      id: this.createId(),
+      revision_id: input.revisionId,
+      matched_asset_ids: matchedAssetIds,
+      highest_severity: resolveHighestDuplicateAcknowledgementSeverity(
+        input.acknowledgements,
+      ),
+      acknowledged_by_role: input.acknowledgedByRole ?? "user",
+      created_at: input.createdAt,
+    });
   }
 }
 
@@ -1391,14 +1427,16 @@ function parseKnowledgeSubmitInput(
 ): {
   knowledgeItemId: string;
   duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+  acknowledgedByRole: RoleKey;
 } {
   if (typeof value === "string") {
-    return { knowledgeItemId: value };
+    return { knowledgeItemId: value, acknowledgedByRole: "user" };
   }
 
   return {
     knowledgeItemId: value.knowledgeItemId,
     duplicateAcknowledgements: value.duplicateAcknowledgements,
+    acknowledgedByRole: value.acknowledgedByRole ?? "user",
   };
 }
 
@@ -1407,15 +1445,30 @@ function parseRevisionSubmitInput(
 ): {
   revisionId: string;
   duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+  acknowledgedByRole: RoleKey;
 } {
   if (typeof value === "string") {
-    return { revisionId: value };
+    return { revisionId: value, acknowledgedByRole: "user" };
   }
 
   return {
     revisionId: value.revisionId,
     duplicateAcknowledgements: value.duplicateAcknowledgements,
+    acknowledgedByRole: value.acknowledgedByRole ?? "user",
   };
+}
+
+function resolveHighestDuplicateAcknowledgementSeverity(
+  acknowledgements: readonly KnowledgeDuplicateAcknowledgementRecord[],
+): "exact" | "high" | "possible" {
+  if (acknowledgements.some((record) => record.severity === "exact")) {
+    return "exact";
+  }
+  if (acknowledgements.some((record) => record.severity === "high")) {
+    return "high";
+  }
+
+  return "possible";
 }
 
 function compareDuplicateCandidateGroupRecords(

@@ -8,6 +8,8 @@ import { KnowledgeService } from "./knowledge-service.ts";
 import type {
   CreateKnowledgeLibraryDraftInput,
   GovernedRetrievalContextRecord,
+  SubmitKnowledgeForReviewInput,
+  SubmitKnowledgeRevisionForReviewInput,
   KnowledgeAssetDetailRecord,
   ResolveGovernedRetrievalContextInput,
   CreateKnowledgeDraftInput,
@@ -16,6 +18,9 @@ import type {
 } from "./knowledge-service.ts";
 import type { KnowledgeRetrievalSnapshotRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type {
+  KnowledgeDuplicateAcknowledgementRecord,
+  KnowledgeDuplicateCheckInput,
+  KnowledgeDuplicateMatchRecord,
   KnowledgeRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
@@ -34,6 +39,15 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
   const { knowledgeService, harnessDatasetService } = options;
 
   return {
+    async checkDuplicates(
+      input: KnowledgeDuplicateCheckInput,
+    ): Promise<RouteResponse<KnowledgeDuplicateMatchRecord[]>> {
+      return {
+        status: 200,
+        body: await knowledgeService.checkDuplicates(input),
+      };
+    },
+
     async createDraft(
       input: CreateKnowledgeDraftInput,
     ): Promise<RouteResponse<KnowledgeRecord>> {
@@ -65,23 +79,45 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
 
     async submitForReview({
       knowledgeItemId,
+      duplicateAcknowledgements,
+      actorRole,
     }: {
       knowledgeItemId: string;
+      duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+      actorRole?: RoleKey;
     }): Promise<RouteResponse<KnowledgeRecord>> {
+      const submitInput: SubmitKnowledgeForReviewInput = {
+        knowledgeItemId,
+        duplicateAcknowledgements,
+        acknowledgedByRole: actorRole ?? "user",
+      };
+      const record = await knowledgeService.submitForReview(submitInput);
+
       return {
         status: 200,
-        body: await knowledgeService.submitForReview(knowledgeItemId),
+        body: record,
       };
     },
 
     async submitRevisionForReview({
       revisionId,
+      duplicateAcknowledgements,
+      actorRole,
     }: {
       revisionId: string;
+      duplicateAcknowledgements?: readonly KnowledgeDuplicateAcknowledgementRecord[];
+      actorRole?: RoleKey;
     }): Promise<RouteResponse<KnowledgeAssetDetailRecord>> {
+      const submitInput: SubmitKnowledgeRevisionForReviewInput = {
+        revisionId,
+        duplicateAcknowledgements,
+        acknowledgedByRole: actorRole ?? "user",
+      };
+      const record = await knowledgeService.submitRevisionForReview(submitInput);
+
       return {
         status: 200,
-        body: await knowledgeService.submitRevisionForReview(revisionId),
+        body: record,
       };
     },
 

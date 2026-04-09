@@ -310,6 +310,121 @@ test("persistent governance runtime persists knowledge library asset revisions a
   });
 });
 
+test("persistent governance runtime keeps duplicate acknowledgement audit rows across restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const reviewerCookie = await loginAsPersistentReviewer(firstServer.baseUrl);
+
+        const createResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/assets/drafts`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Persistent acknowledgement draft",
+              canonicalText: "Submit flow should persist duplicate acknowledgements.",
+              knowledgeKind: "rule",
+              moduleScope: "screening",
+              manuscriptTypes: ["clinical_study"],
+              bindings: [
+                {
+                  bindingKind: "module_template",
+                  bindingTargetId: "module-template-screening-1",
+                  bindingTargetLabel: "Persistent Screening Template",
+                },
+              ],
+            }),
+          },
+        );
+        const created = (await createResponse.json()) as {
+          selected_revision: { id: string };
+        };
+        assert.equal(createResponse.status, 201);
+
+        const submitResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/submit`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: reviewerCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              duplicateAcknowledgements: [
+                {
+                  matched_asset_id: "22222222-2222-2222-2222-222222222222",
+                  matched_revision_id: "22222222-2222-2222-2222-222222222222-revision-1",
+                  severity: "high",
+                  note: "Reviewed and acceptable overlap.",
+                },
+                {
+                  matched_asset_id: "33333333-3333-3333-3333-333333333333",
+                  severity: "possible",
+                },
+              ],
+              actorRole: "admin",
+            }),
+          },
+        );
+
+        assert.equal(submitResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const repository = new PostgresKnowledgeRepository({ client: seedPool });
+          const acknowledgementRows =
+            await repository.listDuplicateAcknowledgementsByRevisionId?.(
+              created.selected_revision.id,
+            );
+
+          assert.ok(
+            acknowledgementRows,
+            "Expected duplicate acknowledgement rows API to be available.",
+          );
+          assert.equal(acknowledgementRows?.length, 1);
+          assert.deepEqual(acknowledgementRows?.[0]?.matched_asset_ids, [
+            "22222222-2222-2222-2222-222222222222",
+            "33333333-3333-3333-3333-333333333333",
+          ]);
+          assert.equal(acknowledgementRows?.[0]?.highest_severity, "high");
+          assert.equal(
+            acknowledgementRows?.[0]?.acknowledged_by_role,
+            "knowledge_reviewer",
+          );
+          assert.ok(
+            acknowledgementRows?.[0]?.created_at,
+            "Expected acknowledgement row to include created_at timestamp.",
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime keeps prompt and skill registry assets across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

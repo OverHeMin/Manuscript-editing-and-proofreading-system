@@ -144,6 +144,9 @@ import {
   KnowledgeRetrievalSnapshotNotFoundError,
   type CreateKnowledgeLibraryDraftInput,
   type CreateKnowledgeDraftInput,
+  type KnowledgeDuplicateAcknowledgementRecord,
+  type KnowledgeDuplicateCheckInput,
+  type KnowledgeDuplicateSeverity,
   type ResolveGovernedRetrievalContextInput,
   type KnowledgeRecord,
   type KnowledgeReviewActionRecord,
@@ -550,6 +553,9 @@ type HttpRouteMatch =
   | {
       route: "knowledge-create-draft-revision";
       assetId: string;
+    }
+  | {
+      route: "knowledge-duplicate-check";
     }
   | {
       route: "knowledge-submit-revision";
@@ -3284,11 +3290,24 @@ async function handleRoute(
       return runtime.knowledgeApi.createDraftRevision({
         assetId: routeMatch.assetId,
       });
-    case "knowledge-submit-revision":
+    case "knowledge-duplicate-check":
       await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.checkDuplicates(
+        parseKnowledgeDuplicateCheckInput(await readJsonBody(req)),
+      );
+    case "knowledge-submit-revision": {
+      const session = await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as {
+        duplicateAcknowledgements?: unknown;
+      };
       return runtime.knowledgeApi.submitRevisionForReview({
         revisionId: routeMatch.revisionId,
+        duplicateAcknowledgements: parseDuplicateAcknowledgements(
+          body.duplicateAcknowledgements,
+        ),
+        actorRole: session.user.role,
       });
+    }
     case "knowledge-approve-revision": {
       const session = await requirePermission(req, runtime, "knowledge.review");
       const body = (await readJsonBody(req)) as {
@@ -3330,11 +3349,19 @@ async function handleRoute(
     case "knowledge-review-queue":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listPendingReviewItems();
-    case "knowledge-submit":
-      await requirePermission(req, runtime, "permissions.manage");
+    case "knowledge-submit": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        duplicateAcknowledgements?: unknown;
+      };
       return runtime.knowledgeApi.submitForReview({
         knowledgeItemId: routeMatch.knowledgeItemId,
+        duplicateAcknowledgements: parseDuplicateAcknowledgements(
+          body.duplicateAcknowledgements,
+        ),
+        actorRole: session.user.role,
       });
+    }
     case "knowledge-approve": {
       const session = await requirePermission(req, runtime, "knowledge.review");
       const body = (await readJsonBody(req)) as {
@@ -4808,6 +4835,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-create-library-draft" };
   }
 
+  if (method === "POST" && path === "/api/v1/knowledge/duplicate-check") {
+    return { route: "knowledge-duplicate-check" };
+  }
+
   const knowledgeAssetMatch = path.match(/^\/api\/v1\/knowledge\/assets\/([^/]+)$/);
   if (method === "GET" && knowledgeAssetMatch) {
     return {
@@ -5289,6 +5320,122 @@ function isEvaluationSuiteHistoryWindowPreset(
 
 function coalesceOptionalString(value: string | undefined): string | undefined {
   return value?.trim() ? value.trim() : undefined;
+}
+
+function parseKnowledgeDuplicateCheckInput(
+  payload: unknown,
+): KnowledgeDuplicateCheckInput {
+  const body = payload as Record<string, unknown>;
+
+  return {
+    currentAssetId: coalesceOptionalString(asOptionalString(body.currentAssetId)),
+    currentRevisionId: coalesceOptionalString(
+      asOptionalString(body.currentRevisionId),
+    ),
+    title: asRequiredString(body.title),
+    canonicalText: asRequiredString(body.canonicalText),
+    summary: coalesceOptionalString(asOptionalString(body.summary)),
+    knowledgeKind: body.knowledgeKind as KnowledgeDuplicateCheckInput["knowledgeKind"],
+    moduleScope: body.moduleScope as KnowledgeDuplicateCheckInput["moduleScope"],
+    manuscriptTypes: parseDuplicateCheckManuscriptTypes(body.manuscriptTypes),
+    sections: parseOptionalStringArray(body.sections),
+    riskTags: parseOptionalStringArray(body.riskTags),
+    disciplineTags: parseOptionalStringArray(body.disciplineTags),
+    aliases: parseOptionalStringArray(body.aliases),
+    bindings: parseOptionalStringArray(body.bindings),
+  };
+}
+
+function parseDuplicateCheckManuscriptTypes(
+  value: unknown,
+): KnowledgeDuplicateCheckInput["manuscriptTypes"] {
+  if (value === "any") {
+    return "any";
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function parseDuplicateAcknowledgements(
+  value: unknown,
+): KnowledgeDuplicateAcknowledgementRecord[] | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => parseDuplicateAcknowledgementRecord(item))
+    .filter(
+      (
+        item,
+      ): item is KnowledgeDuplicateAcknowledgementRecord =>
+        item.matched_asset_id.length > 0,
+    );
+}
+
+function parseDuplicateAcknowledgementRecord(
+  value: unknown,
+): KnowledgeDuplicateAcknowledgementRecord {
+  const body = value as Record<string, unknown>;
+
+  return {
+    matched_asset_id:
+      coalesceOptionalString(asOptionalString(body.matched_asset_id)) ?? "",
+    matched_revision_id: coalesceOptionalString(
+      asOptionalString(body.matched_revision_id),
+    ),
+    severity: parseDuplicateSeverity(body.severity),
+    note: coalesceOptionalString(asOptionalString(body.note)),
+    acknowledged_at: coalesceOptionalString(
+      asOptionalString(body.acknowledged_at),
+    ),
+    acknowledged_by: coalesceOptionalString(
+      asOptionalString(body.acknowledged_by),
+    ),
+  };
+}
+
+function parseDuplicateSeverity(
+  value: unknown,
+): KnowledgeDuplicateSeverity | undefined {
+  if (value === "exact" || value === "high" || value === "possible") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function parseOptionalStringArray(value: unknown): string[] | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalized = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return normalized;
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asRequiredString(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 async function resolveUploadStorageKey(input: {
