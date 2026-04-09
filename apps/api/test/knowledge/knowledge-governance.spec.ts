@@ -477,7 +477,7 @@ test("duplicate check returns exact, high, and possible matches by asset using r
 
   const exact = await service.createLibraryDraft({
     title: "统计学报告补充规范",
-    canonicalText: "临床研究需说明主要终点与统计方法。",
+    canonicalText: "临床研究　需说明（主要终点）与统计方法。",
     summary: "用于筛查统计学描述是否完整。",
     knowledgeKind: "rule",
     moduleScope: "screening",
@@ -533,7 +533,7 @@ test("duplicate check returns exact, high, and possible matches by asset using r
 
   const matches = await service.checkDuplicates({
     title: "统计学报告补充规范",
-    canonicalText: "临床研究需说明主要终点与统计方法。",
+    canonicalText: "临床研究 需说明(主要终点)与统计方法",
     knowledgeKind: "rule",
     moduleScope: "screening",
     manuscriptTypes: ["clinical_study"],
@@ -578,6 +578,11 @@ test("duplicate check excludes self by current asset or current revision", async
     "knowledge_reviewer",
     "approved",
   );
+  const selfDraft = await service.createDraftRevisionFromApprovedAsset(duplicate.asset.id);
+  await service.updateRevisionDraft(selfDraft.selected_revision.id, {
+    title: "与已批准版本不同的草稿标题",
+    canonicalText: "这段草稿文本与匹配输入不重叠，用于验证 revision 排除按资产生效。",
+  });
 
   const byAsset = await service.checkDuplicates({
     currentAssetId: duplicate.asset.id,
@@ -590,7 +595,7 @@ test("duplicate check excludes self by current asset or current revision", async
   assert.deepEqual(byAsset, []);
 
   const byRevision = await service.checkDuplicates({
-    currentRevisionId: duplicate.selected_revision.id,
+    currentRevisionId: selfDraft.selected_revision.id,
     title: "知情同意关键要素",
     canonicalText: "知情同意应包含风险、获益与替代方案。",
     knowledgeKind: "checklist",

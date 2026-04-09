@@ -254,8 +254,7 @@ function scoreKnowledgeDuplicateCandidate(
       reasons.includes("title_high_similarity")) &&
     (reasons.includes("same_module_scope") ||
       reasons.includes("manuscript_type_overlap") ||
-      reasons.includes("binding_overlap") ||
-      reasons.includes("same_knowledge_kind"))
+      reasons.includes("binding_overlap"))
   ) {
     severity = "high";
   } else if (score >= 22) {

@@ -934,6 +934,14 @@ export class KnowledgeService {
     input: KnowledgeDuplicateCheckInput,
   ): Promise<KnowledgeDuplicateMatchRecord[]> {
     const candidates = await this.listDuplicateCandidates();
+    const excludedAssetIds = new Set(input.currentAssetId ? [input.currentAssetId] : []);
+    if (input.currentRevisionId) {
+      const revision = await this.repository.findRevisionById(input.currentRevisionId);
+      if (revision) {
+        excludedAssetIds.add(revision.asset_id);
+      }
+    }
+
     return evaluateKnowledgeDuplicateMatches(
       input,
       candidates.map((candidate) => ({
@@ -942,9 +950,7 @@ export class KnowledgeService {
         bindings: candidate.bindings,
       })),
       {
-        excludedAssetIds: new Set(
-          input.currentAssetId ? [input.currentAssetId] : [],
-        ),
+        excludedAssetIds,
         excludedRevisionIds: new Set(
           input.currentRevisionId ? [input.currentRevisionId] : [],
         ),
