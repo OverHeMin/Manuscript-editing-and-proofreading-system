@@ -1,9 +1,12 @@
 import type {
+  KnowledgeDuplicateAcknowledgementAuditRecord,
+  KnowledgeDuplicateCandidateGroupRecord,
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
 import type {
   KnowledgeAssetRecord,
+  KnowledgeDuplicateSeverity,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
@@ -93,6 +96,49 @@ interface KnowledgeReviewActionRow {
   actor_role: KnowledgeReviewActionRecord["actor_role"];
   review_note: string | null;
   created_at: Date;
+}
+
+interface KnowledgeDuplicateAcknowledgementRow {
+  id: string;
+  revision_id: string;
+  matched_asset_ids: string[] | string;
+  highest_severity: KnowledgeDuplicateSeverity;
+  acknowledged_by_role: string;
+  created_at: Date;
+}
+
+interface DuplicateCandidateGroupRow {
+  asset_id: string;
+  asset_status: KnowledgeAssetRecord["status"];
+  asset_current_revision_id: string | null;
+  asset_current_approved_revision_id: string | null;
+  asset_created_at: Date;
+  asset_updated_at: Date;
+  revision_id: string;
+  revision_asset_id: string;
+  revision_no: number;
+  revision_status: KnowledgeRevisionRecord["status"];
+  revision_title: string;
+  revision_canonical_text: string;
+  revision_summary: string | null;
+  revision_knowledge_kind: KnowledgeRevisionRecord["knowledge_kind"];
+  revision_module_scope: KnowledgeRevisionRecord["routing"]["module_scope"];
+  revision_manuscript_types: string[] | string;
+  revision_sections: string[] | string;
+  revision_risk_tags: string[] | string;
+  revision_discipline_tags: string[] | string;
+  revision_evidence_level: KnowledgeRevisionRecord["evidence_level"] | null;
+  revision_source_type: KnowledgeRevisionRecord["source_type"] | null;
+  revision_source_link: string | null;
+  revision_effective_at: Date | null;
+  revision_expires_at: Date | null;
+  revision_aliases: string[] | string;
+  revision_source_learning_candidate_id: string | null;
+  revision_projection_source: Record<string, unknown> | string | null;
+  revision_based_on_revision_id: string | null;
+  revision_created_at: Date;
+  revision_updated_at: Date;
+  bindings: string[] | string;
 }
 
 export class PostgresKnowledgeRepository implements KnowledgeRepository {
@@ -637,6 +683,231 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     return result.rows.map(mapKnowledgeRevisionBindingRow);
   }
 
+  async saveDuplicateAcknowledgement(
+    record: KnowledgeDuplicateAcknowledgementAuditRecord,
+  ): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        insert into knowledge_duplicate_acknowledgements (
+          id,
+          revision_id,
+          matched_asset_ids,
+          highest_severity,
+          acknowledged_by_role,
+          created_at
+        )
+        values ($1, $2, $3::text[], $4, $5, $6::timestamptz)
+        on conflict (id) do update
+        set
+          revision_id = excluded.revision_id,
+          matched_asset_ids = excluded.matched_asset_ids,
+          highest_severity = excluded.highest_severity,
+          acknowledged_by_role = excluded.acknowledged_by_role,
+          created_at = excluded.created_at
+      `,
+      [
+        record.id,
+        record.revision_id,
+        record.matched_asset_ids,
+        record.highest_severity,
+        record.acknowledged_by_role,
+        record.created_at,
+      ],
+    );
+  }
+
+  async listDuplicateAcknowledgementsByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeDuplicateAcknowledgementAuditRecord[]> {
+    const result =
+      await this.dependencies.client.query<KnowledgeDuplicateAcknowledgementRow>(
+        `
+          select
+            id,
+            revision_id,
+            matched_asset_ids,
+            highest_severity,
+            acknowledged_by_role,
+            created_at
+          from knowledge_duplicate_acknowledgements
+          where revision_id = $1
+          order by created_at desc, id desc
+        `,
+        [revisionId],
+      );
+
+    return result.rows.map(mapKnowledgeDuplicateAcknowledgementRow);
+  }
+
+  async listDuplicateCheckCandidatesByAsset(): Promise<
+    KnowledgeDuplicateCandidateGroupRecord[]
+  > {
+    const result = await this.dependencies.client.query<DuplicateCandidateGroupRow>(
+      `
+        with ranked_revisions as (
+          select
+            assets.id as asset_id,
+            assets.status as asset_status,
+            assets.current_revision_id as asset_current_revision_id,
+            assets.current_approved_revision_id as asset_current_approved_revision_id,
+            assets.created_at as asset_created_at,
+            assets.updated_at as asset_updated_at,
+            revisions.id as revision_id,
+            revisions.asset_id as revision_asset_id,
+            revisions.revision_no,
+            revisions.status as revision_status,
+            revisions.title as revision_title,
+            revisions.canonical_text as revision_canonical_text,
+            revisions.summary as revision_summary,
+            revisions.knowledge_kind as revision_knowledge_kind,
+            revisions.module_scope as revision_module_scope,
+            revisions.manuscript_types as revision_manuscript_types,
+            revisions.sections as revision_sections,
+            revisions.risk_tags as revision_risk_tags,
+            revisions.discipline_tags as revision_discipline_tags,
+            revisions.evidence_level as revision_evidence_level,
+            revisions.source_type as revision_source_type,
+            revisions.source_link as revision_source_link,
+            revisions.effective_at as revision_effective_at,
+            revisions.expires_at as revision_expires_at,
+            revisions.aliases as revision_aliases,
+            revisions.source_learning_candidate_id::text as revision_source_learning_candidate_id,
+            revisions.projection_source as revision_projection_source,
+            revisions.based_on_revision_id as revision_based_on_revision_id,
+            revisions.created_at as revision_created_at,
+            revisions.updated_at as revision_updated_at,
+            row_number() over (
+              partition by assets.id
+              order by
+                case
+                  when revisions.id = assets.current_approved_revision_id and revisions.status = 'approved' then 0
+                  when revisions.status = 'approved' then 1
+                  when revisions.id = assets.current_revision_id and revisions.status in ('draft', 'pending_review') then 2
+                  when revisions.status in ('draft', 'pending_review') then 3
+                  else 4
+                end asc,
+                revisions.revision_no desc,
+                revisions.updated_at desc,
+                revisions.id desc
+            ) as candidate_rank
+          from knowledge_assets as assets
+          join knowledge_revisions as revisions
+            on revisions.asset_id = assets.id
+        )
+        select
+          ranked.asset_id,
+          ranked.asset_status,
+          ranked.asset_current_revision_id,
+          ranked.asset_current_approved_revision_id,
+          ranked.asset_created_at,
+          ranked.asset_updated_at,
+          ranked.revision_id,
+          ranked.revision_asset_id,
+          ranked.revision_no,
+          ranked.revision_status,
+          ranked.revision_title,
+          ranked.revision_canonical_text,
+          ranked.revision_summary,
+          ranked.revision_knowledge_kind,
+          ranked.revision_module_scope,
+          ranked.revision_manuscript_types,
+          ranked.revision_sections,
+          ranked.revision_risk_tags,
+          ranked.revision_discipline_tags,
+          ranked.revision_evidence_level,
+          ranked.revision_source_type,
+          ranked.revision_source_link,
+          ranked.revision_effective_at,
+          ranked.revision_expires_at,
+          ranked.revision_aliases,
+          ranked.revision_source_learning_candidate_id,
+          ranked.revision_projection_source,
+          ranked.revision_based_on_revision_id,
+          ranked.revision_created_at,
+          ranked.revision_updated_at,
+          coalesce(
+            array_agg(bindings.binding_target_id order by bindings.created_at asc, bindings.id asc)
+              filter (where bindings.id is not null),
+            '{}'::text[]
+          ) as bindings
+        from ranked_revisions as ranked
+        left join knowledge_revision_bindings as bindings
+          on bindings.revision_id = ranked.revision_id
+        where ranked.candidate_rank = 1
+        group by
+          ranked.asset_id,
+          ranked.asset_status,
+          ranked.asset_current_revision_id,
+          ranked.asset_current_approved_revision_id,
+          ranked.asset_created_at,
+          ranked.asset_updated_at,
+          ranked.revision_id,
+          ranked.revision_asset_id,
+          ranked.revision_no,
+          ranked.revision_status,
+          ranked.revision_title,
+          ranked.revision_canonical_text,
+          ranked.revision_summary,
+          ranked.revision_knowledge_kind,
+          ranked.revision_module_scope,
+          ranked.revision_manuscript_types,
+          ranked.revision_sections,
+          ranked.revision_risk_tags,
+          ranked.revision_discipline_tags,
+          ranked.revision_evidence_level,
+          ranked.revision_source_type,
+          ranked.revision_source_link,
+          ranked.revision_effective_at,
+          ranked.revision_expires_at,
+          ranked.revision_aliases,
+          ranked.revision_source_learning_candidate_id,
+          ranked.revision_projection_source,
+          ranked.revision_based_on_revision_id,
+          ranked.revision_created_at,
+          ranked.revision_updated_at
+        order by ranked.asset_id asc, ranked.revision_id asc
+      `,
+    );
+
+    return result.rows.map((row) => ({
+      asset: mapKnowledgeAssetRow({
+        id: row.asset_id,
+        status: row.asset_status,
+        current_revision_id: row.asset_current_revision_id,
+        current_approved_revision_id: row.asset_current_approved_revision_id,
+        created_at: row.asset_created_at,
+        updated_at: row.asset_updated_at,
+      }),
+      representative_revision: mapKnowledgeRevisionRow({
+        id: row.revision_id,
+        asset_id: row.revision_asset_id,
+        revision_no: row.revision_no,
+        status: row.revision_status,
+        title: row.revision_title,
+        canonical_text: row.revision_canonical_text,
+        summary: row.revision_summary,
+        knowledge_kind: row.revision_knowledge_kind,
+        module_scope: row.revision_module_scope,
+        manuscript_types: row.revision_manuscript_types,
+        sections: row.revision_sections,
+        risk_tags: row.revision_risk_tags,
+        discipline_tags: row.revision_discipline_tags,
+        evidence_level: row.revision_evidence_level,
+        source_type: row.revision_source_type,
+        source_link: row.revision_source_link,
+        effective_at: row.revision_effective_at,
+        expires_at: row.revision_expires_at,
+        aliases: row.revision_aliases,
+        source_learning_candidate_id: row.revision_source_learning_candidate_id,
+        projection_source: row.revision_projection_source,
+        based_on_revision_id: row.revision_based_on_revision_id,
+        created_at: row.revision_created_at,
+        updated_at: row.revision_updated_at,
+      }),
+      bindings: decodeTextArray(row.bindings),
+    }));
+  }
+
   private async listLegacyKnowledgeRecords(
     status?: KnowledgeRecord["status"],
   ): Promise<KnowledgeRecord[]> {
@@ -989,6 +1260,19 @@ function mapKnowledgeReviewActionRow(
     action: row.action,
     actor_role: row.actor_role,
     ...(row.review_note != null ? { review_note: row.review_note } : {}),
+    created_at: row.created_at.toISOString(),
+  };
+}
+
+function mapKnowledgeDuplicateAcknowledgementRow(
+  row: KnowledgeDuplicateAcknowledgementRow,
+): KnowledgeDuplicateAcknowledgementAuditRecord {
+  return {
+    id: row.id,
+    revision_id: row.revision_id,
+    matched_asset_ids: decodeTextArray(row.matched_asset_ids),
+    highest_severity: row.highest_severity,
+    acknowledged_by_role: row.acknowledged_by_role,
     created_at: row.created_at.toISOString(),
   };
 }

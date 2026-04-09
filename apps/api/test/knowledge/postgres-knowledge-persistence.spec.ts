@@ -596,6 +596,262 @@ test("postgres knowledge review action repository can filter history by revision
   });
 });
 
+test("postgres knowledge repository persists duplicate acknowledgement audit rows per revision", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+    const revisionId = "asset-duplicate-1-revision-2";
+    const acknowledgementsRepository = repository as {
+      saveDuplicateAcknowledgement?: (record: {
+        id: string;
+        revision_id: string;
+        matched_asset_ids: string[];
+        highest_severity: "exact" | "high" | "possible";
+        acknowledged_by_role: string;
+        created_at: string;
+      }) => Promise<void>;
+      listDuplicateAcknowledgementsByRevisionId?: (
+        revisionId: string,
+      ) => Promise<
+        {
+          id: string;
+          revision_id: string;
+          matched_asset_ids: string[];
+          highest_severity: "exact" | "high" | "possible";
+          acknowledged_by_role: string;
+          created_at: string;
+        }[]
+      >;
+    };
+
+    await repository.saveAsset({
+      id: "asset-duplicate-1",
+      status: "active",
+      current_revision_id: revisionId,
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: revisionId,
+      asset_id: "asset-duplicate-1",
+      revision_no: 2,
+      status: "draft",
+      title: "Duplicate acknowledgement target revision",
+      canonical_text: "Duplicate acknowledgement target text.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-08T10:00:00.000Z",
+      updated_at: "2026-04-08T10:00:00.000Z",
+    });
+
+    assert.equal(
+      typeof acknowledgementsRepository.saveDuplicateAcknowledgement,
+      "function",
+      "Postgres repository should expose duplicate acknowledgement persistence.",
+    );
+    assert.equal(
+      typeof acknowledgementsRepository.listDuplicateAcknowledgementsByRevisionId,
+      "function",
+      "Postgres repository should expose duplicate acknowledgement history lookup.",
+    );
+
+    await acknowledgementsRepository.saveDuplicateAcknowledgement?.({
+      id: "ack-duplicate-1",
+      revision_id: revisionId,
+      matched_asset_ids: ["asset-duplicate-2", "asset-duplicate-3"],
+      highest_severity: "high",
+      acknowledged_by_role: "knowledge_reviewer",
+      created_at: "2026-04-08T10:05:00.000Z",
+    });
+
+    const rows =
+      await acknowledgementsRepository.listDuplicateAcknowledgementsByRevisionId?.(
+        revisionId,
+      );
+
+    assert.deepEqual(rows, [
+      {
+        id: "ack-duplicate-1",
+        revision_id: revisionId,
+        matched_asset_ids: ["asset-duplicate-2", "asset-duplicate-3"],
+        highest_severity: "high",
+        acknowledged_by_role: "knowledge_reviewer",
+        created_at: "2026-04-08T10:05:00.000Z",
+      },
+    ]);
+  });
+});
+
+test("postgres duplicate candidates select approved representative revision per asset when available", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+    const duplicateCandidateRepository = repository as {
+      listDuplicateCheckCandidatesByAsset?: () => Promise<
+        {
+          asset: { id: string };
+          representative_revision: { id: string; status: string; title: string };
+          bindings: string[];
+        }[]
+      >;
+    };
+
+    await repository.saveAsset({
+      id: "asset-duplicate-approved-1",
+      status: "active",
+      current_revision_id: "asset-duplicate-approved-1-revision-2",
+      current_approved_revision_id: "asset-duplicate-approved-1-revision-1",
+      created_at: "2026-04-09T09:00:00.000Z",
+      updated_at: "2026-04-09T09:10:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-duplicate-approved-1-revision-1",
+      asset_id: "asset-duplicate-approved-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Approved representative revision",
+      canonical_text: "Approved duplicate detection source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-09T09:00:00.000Z",
+      updated_at: "2026-04-09T09:00:00.000Z",
+    });
+    await repository.replaceRevisionBindings("asset-duplicate-approved-1-revision-1", [
+      {
+        id: "asset-duplicate-approved-1-revision-1-binding-1",
+        revision_id: "asset-duplicate-approved-1-revision-1",
+        binding_kind: "module_template",
+        binding_target_id: "template-approved-binding",
+        binding_target_label: "Template Approved Binding",
+        created_at: "2026-04-09T09:00:00.000Z",
+      },
+    ]);
+    await repository.saveRevision({
+      id: "asset-duplicate-approved-1-revision-2",
+      asset_id: "asset-duplicate-approved-1",
+      revision_no: 2,
+      status: "draft",
+      title: "Working revision should not represent duplicates",
+      canonical_text: "Working duplicate detection source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-09T09:10:00.000Z",
+      updated_at: "2026-04-09T09:10:00.000Z",
+    });
+    await repository.replaceRevisionBindings("asset-duplicate-approved-1-revision-2", [
+      {
+        id: "asset-duplicate-approved-1-revision-2-binding-1",
+        revision_id: "asset-duplicate-approved-1-revision-2",
+        binding_kind: "module_template",
+        binding_target_id: "template-working-binding",
+        binding_target_label: "Template Working Binding",
+        created_at: "2026-04-09T09:10:00.000Z",
+      },
+    ]);
+
+    await repository.saveAsset({
+      id: "asset-duplicate-working-1",
+      status: "active",
+      current_revision_id: "asset-duplicate-working-1-revision-2",
+      created_at: "2026-04-09T09:00:00.000Z",
+      updated_at: "2026-04-09T09:10:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-duplicate-working-1-revision-1",
+      asset_id: "asset-duplicate-working-1",
+      revision_no: 1,
+      status: "superseded",
+      title: "Superseded revision",
+      canonical_text: "Superseded duplicate detection source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-09T09:00:00.000Z",
+      updated_at: "2026-04-09T09:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: "asset-duplicate-working-1-revision-2",
+      asset_id: "asset-duplicate-working-1",
+      revision_no: 2,
+      status: "pending_review",
+      title: "Pending review representative revision",
+      canonical_text: "Pending review duplicate detection source.",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-09T09:10:00.000Z",
+      updated_at: "2026-04-09T09:10:00.000Z",
+    });
+    await repository.replaceRevisionBindings("asset-duplicate-working-1-revision-2", [
+      {
+        id: "asset-duplicate-working-1-revision-2-binding-1",
+        revision_id: "asset-duplicate-working-1-revision-2",
+        binding_kind: "module_template",
+        binding_target_id: "template-pending-binding",
+        binding_target_label: "Template Pending Binding",
+        created_at: "2026-04-09T09:10:00.000Z",
+      },
+    ]);
+
+    assert.equal(
+      typeof duplicateCandidateRepository.listDuplicateCheckCandidatesByAsset,
+      "function",
+      "Postgres repository should expose duplicate candidate projection.",
+    );
+
+    const groups = await duplicateCandidateRepository.listDuplicateCheckCandidatesByAsset?.();
+
+    assert.deepEqual(
+      groups?.map((group) => ({
+        asset: {
+          id: group.asset.id,
+        },
+        representative_revision: {
+          id: group.representative_revision.id,
+          status: group.representative_revision.status,
+          title: group.representative_revision.title,
+        },
+        bindings: group.bindings,
+      })),
+      [
+      {
+        asset: {
+          id: "asset-duplicate-approved-1",
+        },
+        representative_revision: {
+          id: "asset-duplicate-approved-1-revision-1",
+          status: "approved",
+          title: "Approved representative revision",
+        },
+        bindings: ["template-approved-binding"],
+      },
+      {
+        asset: {
+          id: "asset-duplicate-working-1",
+        },
+        representative_revision: {
+          id: "asset-duplicate-working-1-revision-2",
+          status: "pending_review",
+          title: "Pending review representative revision",
+        },
+        bindings: ["template-pending-binding"],
+      },
+      ],
+    );
+  });
+});
+
 async function withMigratedKnowledgeClient(
   run: (client: Client) => Promise<void>,
 ): Promise<void> {

@@ -1,5 +1,6 @@
 import type {
   KnowledgeAssetRecord,
+  KnowledgeDuplicateSeverity,
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
@@ -11,6 +12,15 @@ export interface KnowledgeDuplicateCandidateGroupRecord {
   asset: KnowledgeAssetRecord;
   representative_revision: KnowledgeRevisionRecord;
   bindings: string[];
+}
+
+export interface KnowledgeDuplicateAcknowledgementAuditRecord {
+  id: string;
+  revision_id: string;
+  matched_asset_ids: string[];
+  highest_severity: KnowledgeDuplicateSeverity;
+  acknowledged_by_role: string;
+  created_at: string;
 }
 
 export interface KnowledgeRepository {
@@ -36,6 +46,12 @@ export interface KnowledgeRepository {
   listBindingsByRevisionId(
     revisionId: string,
   ): Promise<KnowledgeRevisionBindingRecord[]>;
+  saveDuplicateAcknowledgement?(
+    record: KnowledgeDuplicateAcknowledgementAuditRecord,
+  ): Promise<void>;
+  listDuplicateAcknowledgementsByRevisionId?(
+    revisionId: string,
+  ): Promise<KnowledgeDuplicateAcknowledgementAuditRecord[]>;
   listDuplicateCheckCandidatesByAsset?(): Promise<KnowledgeDuplicateCandidateGroupRecord[]>;
 }
 
