@@ -5,7 +5,12 @@ import type {
   KnowledgeRevisionRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
+import {
+  mapLegacyKnowledgeRecordToDuplicateCandidate,
+  selectRepresentativeRevisionForDuplicateDetection,
+} from "./knowledge-duplicate-detection.ts";
 import type {
+  KnowledgeDuplicateCandidateGroupRecord,
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
@@ -210,6 +215,48 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     return (this.bindingsByRevisionId.get(revisionId) ?? []).map(cloneBindingRecord);
   }
 
+  async listDuplicateCheckCandidatesByAsset(): Promise<
+    KnowledgeDuplicateCandidateGroupRecord[]
+  > {
+    const grouped: KnowledgeDuplicateCandidateGroupRecord[] = [];
+
+    for (const asset of this.assets.values()) {
+      const revisions = this.resolveRevisionList(asset.id);
+      const representativeRevision =
+        selectRepresentativeRevisionForDuplicateDetection(revisions, {
+          preferredApprovedRevisionId: asset.current_approved_revision_id,
+          preferredCurrentRevisionId: asset.current_revision_id,
+        });
+      if (!representativeRevision) {
+        continue;
+      }
+
+      grouped.push({
+        asset: cloneAssetRecord(asset),
+        representative_revision: cloneRevisionRecord(representativeRevision),
+        bindings: (this.bindingsByRevisionId.get(representativeRevision.id) ?? []).map(
+          (binding) => binding.binding_target_id,
+        ),
+      });
+    }
+
+    const shadowedIds = new Set(this.assets.keys());
+    for (const [legacyId, legacyRecord] of this.legacyRecords.entries()) {
+      if (shadowedIds.has(legacyId)) {
+        continue;
+      }
+
+      const candidate = mapLegacyKnowledgeRecordToDuplicateCandidate(legacyRecord);
+      grouped.push({
+        asset: cloneAssetRecord(candidate.asset),
+        representative_revision: cloneRevisionRecord(candidate.revision),
+        bindings: [...candidate.bindings],
+      });
+    }
+
+    return grouped.sort(compareDuplicateCandidateGroups);
+  }
+
   snapshotState(): KnowledgeRepositorySnapshot {
     return {
       legacyRecords: new Map(
@@ -353,6 +400,16 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
       .filter((record) => record.asset_id === assetId)
       .sort(compareRevisionRecordsDesc);
   }
+}
+
+function compareDuplicateCandidateGroups(
+  left: KnowledgeDuplicateCandidateGroupRecord,
+  right: KnowledgeDuplicateCandidateGroupRecord,
+): number {
+  return (
+    left.asset.id.localeCompare(right.asset.id) ||
+    left.representative_revision.id.localeCompare(right.representative_revision.id)
+  );
 }
 
 export class InMemoryKnowledgeReviewActionRepository

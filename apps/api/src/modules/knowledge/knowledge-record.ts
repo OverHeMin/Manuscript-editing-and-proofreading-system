@@ -38,6 +38,19 @@ export type KnowledgeSourceType =
 
 export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
 
+export type KnowledgeDuplicateSeverity = "exact" | "high" | "possible";
+
+export type KnowledgeDuplicateReason =
+  | "canonical_text_exact_match"
+  | "canonical_text_high_overlap"
+  | "title_exact_match"
+  | "title_high_similarity"
+  | "alias_overlap"
+  | "same_knowledge_kind"
+  | "same_module_scope"
+  | "manuscript_type_overlap"
+  | "binding_overlap";
+
 export interface KnowledgeProjectionContextRecord {
   module: ManuscriptModule;
   manuscript_type: ManuscriptType;
@@ -139,4 +152,40 @@ export interface KnowledgeReviewActionRecord {
   actor_role: "admin" | "screener" | "editor" | "proofreader" | "knowledge_reviewer" | "user";
   review_note?: string;
   created_at: string;
+}
+
+export interface KnowledgeDuplicateMatchRecord {
+  severity: KnowledgeDuplicateSeverity;
+  score: number;
+  matched_asset_id: string;
+  matched_revision_id: string;
+  matched_title: string;
+  matched_status: KnowledgeRevisionStatus;
+  matched_summary?: string;
+  reasons: KnowledgeDuplicateReason[];
+}
+
+export interface KnowledgeDuplicateCheckInput {
+  currentAssetId?: string;
+  currentRevisionId?: string;
+  title: string;
+  canonicalText: string;
+  summary?: string;
+  knowledgeKind: KnowledgeKind;
+  moduleScope: KnowledgeRoutingRecord["module_scope"];
+  manuscriptTypes: KnowledgeRoutingRecord["manuscript_types"];
+  sections?: string[];
+  riskTags?: string[];
+  disciplineTags?: string[];
+  aliases?: string[];
+  bindings?: string[];
+}
+
+export interface KnowledgeDuplicateAcknowledgementRecord {
+  matched_asset_id: string;
+  matched_revision_id?: string;
+  severity?: KnowledgeDuplicateSeverity;
+  note?: string;
+  acknowledged_at?: string;
+  acknowledged_by?: string;
 }
