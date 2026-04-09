@@ -30,6 +30,7 @@ export interface KnowledgeReviewWorkbenchPageProps {
   controller?: KnowledgeReviewWorkbenchController;
   actorRole?: AuthRole;
   prefilledRevisionId?: string;
+  prefilledAssetId?: string;
 }
 
 const defaultWorkbenchController = createKnowledgeReviewWorkbenchController(
@@ -40,9 +41,11 @@ export function KnowledgeReviewWorkbenchPage({
   controller,
   actorRole = "knowledge_reviewer",
   prefilledRevisionId,
+  prefilledAssetId,
 }: KnowledgeReviewWorkbenchPageProps) {
   const workbenchController = controller ?? defaultWorkbenchController;
   const normalizedPrefilledRevisionId = prefilledRevisionId?.trim() ?? "";
+  const normalizedPrefilledAssetId = prefilledAssetId?.trim() ?? "";
   const [filters, setFilters] = useState(() => createKnowledgeReviewFilterState());
   const [desk, setDesk] = useState<KnowledgeReviewDeskLoadResult | null>(null);
   const [queueLoadStatus, setQueueLoadStatus] = useState<"initial" | "loading" | "ready" | "error">(
@@ -71,8 +74,14 @@ export function KnowledgeReviewWorkbenchPage({
       showLoading: true,
       activeItemId:
         normalizedPrefilledRevisionId.length > 0 ? normalizedPrefilledRevisionId : undefined,
+      activeAssetId:
+        normalizedPrefilledAssetId.length > 0 ? normalizedPrefilledAssetId : undefined,
     });
-  }, [normalizedPrefilledRevisionId, workbenchController]);
+  }, [
+    normalizedPrefilledAssetId,
+    normalizedPrefilledRevisionId,
+    workbenchController,
+  ]);
 
   const effectiveSelectedItem = resolveDetailSelection(
     queueLoadStatus,
@@ -117,6 +126,7 @@ export function KnowledgeReviewWorkbenchPage({
     filters?: Partial<KnowledgeReviewFilterState>;
     showLoading?: boolean;
     activeItemId?: string;
+    activeAssetId?: string;
   }): Promise<void> {
     const requestId = ++queueRequestIdRef.current;
     if (input.showLoading ?? true) {
@@ -125,10 +135,14 @@ export function KnowledgeReviewWorkbenchPage({
     setQueueErrorMessage(null);
 
     try {
-      const nextDesk = await workbenchController.loadDesk({
+      const loadedDesk = await workbenchController.loadDesk({
         state: desk?.state,
         filters: input.filters,
         activeItemId: input.activeItemId,
+      });
+      const nextDesk = resolvePrefilledDeskSelection(loadedDesk, {
+        activeItemId: input.activeItemId,
+        activeAssetId: input.activeAssetId,
       });
       if (requestId !== queueRequestIdRef.current) {
         return;
@@ -262,8 +276,8 @@ export function KnowledgeReviewWorkbenchPage({
       status: "loading",
       message:
         actionType === "approve"
-          ? "Submitting approval decision..."
-          : "Sending revision back to draft...",
+          ? "正在提交审核通过结果..."
+          : "正在驳回并退回草稿...",
     });
 
     const result =
@@ -322,7 +336,7 @@ export function KnowledgeReviewWorkbenchPage({
       setActionFeedback({
         status: "manual_recovery",
         message:
-          "The review action was saved, but the next pending revision could not be selected automatically. Reload the queue to recover continuity.",
+          "审核结果已经保存，但系统没能自动切到下一条待审记录。请刷新队列后继续处理。",
       });
       return;
     }
@@ -331,8 +345,8 @@ export function KnowledgeReviewWorkbenchPage({
       status: "success",
       message:
         actionType === "approve"
-          ? "Revision approved and the queue advanced."
-          : "Revision sent back to draft and removed from the review queue.",
+          ? "知识条目已通过审核。"
+          : "知识条目已驳回。",
     });
   }
 
@@ -377,29 +391,28 @@ export function KnowledgeReviewWorkbenchPage({
     <main className="knowledge-review-workbench">
       <header className="knowledge-review-hero">
         <div className="knowledge-review-hero-copy">
-          <span className="knowledge-review-eyebrow">Knowledge Review</span>
-          <h1>Knowledge Review Desk</h1>
+          <span className="knowledge-review-eyebrow">知识审核</span>
+          <h1>知识审核工作台</h1>
           <p>
-            Review pending knowledge revisions with the queue, revision context, and
-            decision actions on one stable desk.
+            在一个稳定工作台内完成待审知识修订的队列查看、上下文核对与审核决策。
           </p>
           <WorkbenchCoreStrip activePillarId="knowledge" />
         </div>
         <dl className="knowledge-review-hero-stats">
           <div className="knowledge-review-hero-stat">
-            <dt>Reviewer Role</dt>
+            <dt>审核角色</dt>
             <dd>{formatActorRole(actorRole)}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>Selected Asset</dt>
-            <dd>{effectiveSelectedItem?.asset_id ?? "Waiting for queue selection"}</dd>
+            <dt>当前资产</dt>
+            <dd>{effectiveSelectedItem?.asset_id ?? "等待选择队列项"}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>Selected Revision</dt>
-            <dd>{effectiveSelectedItem?.revision_id ?? "Waiting for queue selection"}</dd>
+            <dt>当前修订</dt>
+            <dd>{effectiveSelectedItem?.revision_id ?? "等待选择队列项"}</dd>
           </div>
           <div className="knowledge-review-hero-stat">
-            <dt>Queue Status</dt>
+            <dt>队列状态</dt>
             <dd>{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}</dd>
           </div>
         </dl>
@@ -454,14 +467,14 @@ function resolveQueueStatusLabel(
   queueErrorMessage: string | null,
 ): string {
   if (queueLoadStatus === "error") {
-    return queueErrorMessage ? "Queue requires recovery" : "Queue load failed";
+    return queueErrorMessage ? "队列需要恢复" : "队列加载失败";
   }
 
   if (queueLoadStatus === "loading" || queueLoadStatus === "initial") {
-    return "Loading queue";
+    return "正在加载队列";
   }
 
-  return "Queue ready";
+  return "队列就绪";
 }
 
 function resolveDetailSelection(
@@ -525,17 +538,53 @@ function resolveDisplayedHistory(
 function formatActorRole(role: AuthRole): string {
   switch (role) {
     case "admin":
-      return "Admin";
+      return "管理员";
     case "knowledge_reviewer":
-      return "Knowledge Reviewer";
+      return "知识审核员";
     case "editor":
-      return "Editor";
+      return "编辑";
     case "proofreader":
-      return "Proofreader";
+      return "校对";
     case "screener":
-      return "Screener";
+      return "初筛";
     case "user":
     default:
-      return "User";
+      return "用户";
   }
+}
+
+function resolvePrefilledDeskSelection(
+  desk: KnowledgeReviewDeskLoadResult,
+  input: {
+    activeItemId?: string;
+    activeAssetId?: string;
+  },
+): KnowledgeReviewDeskLoadResult {
+  if (input.activeItemId?.trim()) {
+    return desk;
+  }
+
+  const activeAssetId = input.activeAssetId?.trim();
+  if (!activeAssetId) {
+    return desk;
+  }
+
+  const matchingItem = desk.queue.find((item) => item.asset_id === activeAssetId);
+  if (!matchingItem || matchingItem.id === desk.selectedItem?.id) {
+    return desk;
+  }
+
+  const nextState = createKnowledgeReviewWorkbenchState({
+    queue: desk.state.queue,
+    filters: desk.state.filters,
+    activeItemId: matchingItem.id,
+    refreshPayloadQueue: desk.state.refreshPayloadQueue,
+  });
+
+  return {
+    queue: nextState.queue,
+    visibleQueue: nextState.visibleQueue,
+    selectedItem: nextState.selectedItem,
+    state: nextState,
+  };
 }

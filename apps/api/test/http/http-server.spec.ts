@@ -512,6 +512,52 @@ test("http server exposes the seeded knowledge review queue with CORS for authen
   }
 });
 
+test("http server exposes asset-backed detail for seeded knowledge review queue items", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+    const queueResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const queue = (await queueResponse.json()) as Array<{ id: string }>;
+
+    assert.equal(queueResponse.status, 200);
+    assert.ok(queue[0]?.id);
+
+    const detailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/${queue[0]?.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const detail = (await detailResponse.json()) as {
+      asset: {
+        id: string;
+        current_revision_id?: string;
+      };
+      selected_revision: {
+        id: string;
+        asset_id: string;
+        status: string;
+      };
+    };
+
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detail.asset.id, queue[0]?.id);
+    assert.equal(detail.selected_revision.asset_id, queue[0]?.id);
+    assert.equal(detail.selected_revision.id, `${queue[0]?.id}-revision-1`);
+    assert.equal(detail.asset.current_revision_id, detail.selected_revision.id);
+    assert.equal(detail.selected_revision.status, "pending_review");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server returns review history and updates queue state after approve and reject", async () => {
   const { server, baseUrl } = await startServer();
 
