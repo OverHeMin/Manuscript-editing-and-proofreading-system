@@ -157,6 +157,143 @@ test("editing an approved asset derives a new draft revision and keeps runtime a
   assert.equal(runtimeProjection?.title, "Privacy checklist");
 });
 
+test("approved runtime projections filter out not-yet-effective and expired revisions", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+
+  await repository.saveAsset({
+    id: "asset-active-1",
+    status: "active",
+    current_revision_id: "asset-active-1-revision-1",
+    current_approved_revision_id: "asset-active-1-revision-1",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+  await repository.saveRevision({
+    id: "asset-active-1-revision-1",
+    asset_id: "asset-active-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Active runtime rule",
+    canonical_text: "Applies right now.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+
+  await repository.saveAsset({
+    id: "asset-future-1",
+    status: "active",
+    current_revision_id: "asset-future-1-revision-1",
+    current_approved_revision_id: "asset-future-1-revision-1",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+  await repository.saveRevision({
+    id: "asset-future-1-revision-1",
+    asset_id: "asset-future-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Future runtime rule",
+    canonical_text: "Should stay inactive until scheduled.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    effective_at: "2099-01-01T00:00:00.000Z",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+
+  await repository.saveAsset({
+    id: "asset-expired-1",
+    status: "active",
+    current_revision_id: "asset-expired-1-revision-1",
+    current_approved_revision_id: "asset-expired-1-revision-1",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+  await repository.saveRevision({
+    id: "asset-expired-1-revision-1",
+    asset_id: "asset-expired-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Expired runtime rule",
+    canonical_text: "Should no longer be returned.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    expires_at: "2000-01-01T00:00:00.000Z",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+
+  const approvedList = await repository.listApproved();
+
+  assert.deepEqual(
+    approvedList.map((record) => record.id),
+    ["asset-active-1"],
+  );
+  assert.equal((await repository.findApprovedById("asset-active-1"))?.title, "Active runtime rule");
+  assert.equal(await repository.findApprovedById("asset-future-1"), undefined);
+  assert.equal(await repository.findApprovedById("asset-expired-1"), undefined);
+});
+
+test("approving a future-effective revision keeps the prior runtime projection active", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+  const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  const issuedIds = [
+    "asset-1",
+    "review-action-1",
+    "review-action-2",
+    "review-action-3",
+    "review-action-4",
+  ];
+  const service = new KnowledgeService({
+    repository,
+    reviewActionRepository,
+    createId: () => {
+      const value = issuedIds.shift();
+      assert.ok(value, "Expected a knowledge-library test id to be available.");
+      return value;
+    },
+    now: () => new Date("2026-04-08T10:00:00.000Z"),
+  });
+
+  const created = await service.createLibraryDraft({
+    title: "Current runtime checklist",
+    canonicalText: "Use the currently effective revision.",
+    knowledgeKind: "checklist",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["case_report"],
+  });
+
+  await service.submitRevisionForReview(created.selected_revision.id);
+  await service.approveRevision(created.selected_revision.id, "knowledge_reviewer");
+
+  const derived = await service.createDraftRevisionFromApprovedAsset(created.asset.id);
+  await service.updateRevisionDraft(derived.selected_revision.id, {
+    title: "Scheduled runtime checklist",
+    canonicalText: "Use this revision after the scheduled date.",
+    effectiveAt: "2099-01-01T00:00:00.000Z",
+  });
+  await service.submitRevisionForReview(derived.selected_revision.id);
+  await service.approveRevision(derived.selected_revision.id, "knowledge_reviewer");
+
+  const detail = await service.getKnowledgeAsset(created.asset.id, derived.selected_revision.id);
+  const runtimeProjection = await repository.findApprovedById(created.asset.id);
+
+  assert.equal(detail.asset.current_approved_revision_id, "asset-1-revision-2");
+  assert.equal(detail.selected_revision.status, "approved");
+  assert.equal(runtimeProjection?.title, "Current runtime checklist");
+});
+
 test("reject returns a pending revision to draft without erasing review history", async () => {
   const { service } = createKnowledgeLibraryHarness();
 

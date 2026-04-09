@@ -380,6 +380,120 @@ test("publishing a profile rejects active binding rules that point to unapproved
   );
 });
 
+test("publishing a profile accepts binding rules that point to an approved asset with a newer draft revision", async () => {
+  const {
+    api,
+    editorialRuleRepository,
+    repository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+  } = createExecutionGovernanceHarness();
+
+  await moduleTemplateRepository.save({
+    id: "template-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Screening template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-screening-1",
+    name: "screening_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-screening-1",
+    name: "screening_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["screening"],
+  });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  await knowledgeRepository.saveAsset({
+    id: "knowledge-asset-1",
+    status: "active",
+    current_revision_id: "knowledge-asset-1-revision-2",
+    current_approved_revision_id: "knowledge-asset-1-revision-1",
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:05:00.000Z",
+  });
+  await knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-1",
+    asset_id: "knowledge-asset-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Approved screening knowledge",
+    canonical_text: "This revision is still the approved runtime source.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-08T10:00:00.000Z",
+    updated_at: "2026-04-08T10:00:00.000Z",
+  });
+  await knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-2",
+    asset_id: "knowledge-asset-1",
+    revision_no: 2,
+    status: "draft",
+    title: "Draft screening knowledge",
+    canonical_text: "This draft should not block profile publication.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-08T10:05:00.000Z",
+    updated_at: "2026-04-08T10:05:00.000Z",
+  });
+  await repository.saveKnowledgeBindingRule({
+    id: "rule-active-1",
+    knowledge_item_id: "knowledge-asset-1",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+    template_family_ids: ["family-1"],
+    module_template_ids: ["template-screening-1"],
+    priority: 10,
+    binding_purpose: "required",
+    status: "active",
+  });
+
+  const created = await api.createProfile({
+    actorRole: "admin",
+    input: {
+      module: "screening",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      moduleTemplateId: "template-screening-1",
+      ruleSetId: "rule-set-screening-1",
+      promptTemplateId: "prompt-screening-1",
+      skillPackageIds: ["skill-screening-1"],
+      knowledgeBindingMode: "profile_plus_dynamic",
+    },
+  });
+
+  const published = await api.publishProfile({
+    actorRole: "admin",
+    profileId: created.body.id,
+  });
+
+  assert.equal(published.body.status, "active");
+});
+
 test("knowledge binding rules are created as drafts and listed by priority", async () => {
   const { api } = createExecutionGovernanceHarness();
 

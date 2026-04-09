@@ -543,7 +543,8 @@ export class ExecutionGovernanceService {
   private async assertKnowledgeItemApproved(
     knowledgeItemId: string,
   ): Promise<void> {
-    const knowledgeItem = await this.knowledgeRepository.findById(knowledgeItemId);
+    const knowledgeItem =
+      await this.knowledgeRepository.findApprovedById(knowledgeItemId);
 
     if (!knowledgeItem || knowledgeItem.status !== "approved") {
       throw new ExecutionProfileKnowledgeItemNotApprovedError(knowledgeItemId);

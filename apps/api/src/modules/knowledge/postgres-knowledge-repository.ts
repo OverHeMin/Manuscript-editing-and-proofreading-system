@@ -9,6 +9,7 @@ import type {
   KnowledgeRevisionRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
+import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -706,11 +707,10 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
   private async projectApprovedKnowledgeRecord(
     asset: KnowledgeAssetRecord,
   ): Promise<KnowledgeRecord | undefined> {
-    if (!asset.current_approved_revision_id) {
-      return undefined;
-    }
-
-    const revision = await this.findRevisionById(asset.current_approved_revision_id);
+    const revisions = await this.listRevisionsByAssetId(asset.id);
+    const revision = selectRuntimeApprovedKnowledgeRevision(revisions, {
+      preferredRevisionId: asset.current_approved_revision_id,
+    });
     return revision ? this.projectKnowledgeRecordFromRevision(revision) : undefined;
   }
 

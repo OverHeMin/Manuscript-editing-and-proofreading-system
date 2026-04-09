@@ -9,6 +9,7 @@ import type {
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
+import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
 
 interface KnowledgeRepositorySnapshot {
   legacyRecords: Map<string, KnowledgeRecord>;
@@ -286,11 +287,14 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     assetId: string,
   ): KnowledgeRecord | undefined {
     const asset = this.assets.get(assetId);
-    if (!asset?.current_approved_revision_id) {
+    if (!asset) {
       return undefined;
     }
 
-    const revision = this.revisions.get(asset.current_approved_revision_id);
+    const revisions = this.resolveRevisionList(asset.id);
+    const revision = selectRuntimeApprovedKnowledgeRevision(revisions, {
+      preferredRevisionId: asset.current_approved_revision_id,
+    });
     return revision ? this.projectKnowledgeRecordFromRevision(revision) : undefined;
   }
 

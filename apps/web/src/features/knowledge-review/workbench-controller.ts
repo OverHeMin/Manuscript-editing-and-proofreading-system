@@ -1,9 +1,13 @@
 import type { AuthRole } from "../auth/index.ts";
 import {
+  approveKnowledgeItem,
   approveKnowledgeRevision,
+  listKnowledgeReviewActions,
   listKnowledgeReviewActionsByRevision,
   listPendingKnowledgeReviewItems,
+  rejectKnowledgeItem,
   rejectKnowledgeRevision,
+  type KnowledgeItemViewModel,
   type KnowledgeHttpClient,
   type KnowledgeReviewActionViewModel,
   type KnowledgeReviewQueueItemViewModel,
@@ -94,7 +98,7 @@ export async function loadKnowledgeReviewDesk(
 ): Promise<KnowledgeReviewDeskLoadResult> {
   const request = await listPendingKnowledgeReviewItems(client);
   const queue = await Promise.all(
-    request.body.map((item) => enrichKnowledgeReviewQueueItem(client, item.id)),
+    request.body.map((item) => enrichKnowledgeReviewQueueItem(client, item)),
   );
   const baselineState =
     input.state ??
@@ -126,7 +130,7 @@ export async function loadKnowledgeReviewHistory(
   client: KnowledgeHttpClient,
   input: LoadKnowledgeReviewHistoryInput,
 ): Promise<KnowledgeReviewHistoryLoadResult> {
-  const request = await listKnowledgeReviewActionsByRevision(client, input.revisionId);
+  const request = await loadKnowledgeReviewActions(client, input.revisionId);
 
   return {
     revisionId: input.revisionId,
@@ -143,6 +147,13 @@ export async function approveKnowledgeReviewItem(
     input,
     (httpClient, actionInput) =>
       approveKnowledgeRevision(
+        httpClient,
+        actionInput.revisionId,
+        actionInput.actorRole,
+        actionInput.reviewNote,
+      ),
+    (httpClient, actionInput) =>
+      approveKnowledgeItem(
         httpClient,
         actionInput.revisionId,
         actionInput.actorRole,
@@ -165,6 +176,13 @@ export async function rejectKnowledgeReviewItem(
         actionInput.actorRole,
         actionInput.reviewNote,
       ),
+    (httpClient, actionInput) =>
+      rejectKnowledgeItem(
+        httpClient,
+        actionInput.revisionId,
+        actionInput.actorRole,
+        actionInput.reviewNote,
+      ),
   );
 }
 
@@ -175,9 +193,13 @@ async function runKnowledgeReviewAction(
     client: KnowledgeHttpClient,
     input: KnowledgeReviewItemActionInput,
   ) => Promise<unknown>,
+  fallbackAction?: (
+    client: KnowledgeHttpClient,
+    input: KnowledgeReviewItemActionInput,
+  ) => Promise<unknown>,
 ): Promise<KnowledgeReviewItemActionResult> {
   try {
-    await action(client, input);
+    await runKnowledgeReviewMutation(client, input, action, fallbackAction);
     const postSuccessState =
       input.state == null
         ? undefined
@@ -211,9 +233,40 @@ async function runKnowledgeReviewAction(
 
 async function enrichKnowledgeReviewQueueItem(
   client: KnowledgeHttpClient,
-  assetId: string,
+  item: KnowledgeReviewQueueSourceItem,
 ): Promise<KnowledgeReviewQueueItemViewModel> {
-  const detail = (await getKnowledgeAssetDetail(client, assetId)).body;
+  if (isNormalizedQueueItem(item)) {
+    return item;
+  }
+
+  try {
+    const detail = (await getKnowledgeAssetDetail(client, item.id)).body;
+    return mapKnowledgeReviewDetailToQueueItem(detail);
+  } catch (error) {
+    if (isNotFoundLikeError(error)) {
+      return mapLegacyKnowledgeRecordToQueueItem(item);
+    }
+
+    throw error;
+  }
+}
+
+type KnowledgeReviewQueueSourceItem =
+  | KnowledgeItemViewModel
+  | KnowledgeReviewQueueItemViewModel;
+
+function isNormalizedQueueItem(
+  item: KnowledgeReviewQueueSourceItem,
+): item is KnowledgeReviewQueueItemViewModel {
+  return (
+    typeof (item as Partial<KnowledgeReviewQueueItemViewModel>).asset_id === "string" &&
+    typeof (item as Partial<KnowledgeReviewQueueItemViewModel>).revision_id === "string"
+  );
+}
+
+function mapKnowledgeReviewDetailToQueueItem(
+  detail: Awaited<ReturnType<typeof getKnowledgeAssetDetail>>["body"],
+): KnowledgeReviewQueueItemViewModel {
   const revision = detail.selected_revision;
 
   return {
@@ -234,4 +287,65 @@ async function enrichKnowledgeReviewQueueItem(
     aliases: revision.aliases,
     template_bindings: revision.bindings.map((binding) => binding.binding_target_id),
   };
+}
+
+function mapLegacyKnowledgeRecordToQueueItem(
+  item: KnowledgeItemViewModel,
+): KnowledgeReviewQueueItemViewModel {
+  return {
+    ...item,
+    asset_id: item.id,
+    revision_id: item.id,
+  };
+}
+
+async function loadKnowledgeReviewActions(
+  client: KnowledgeHttpClient,
+  revisionOrKnowledgeItemId: string,
+) {
+  try {
+    return await listKnowledgeReviewActionsByRevision(client, revisionOrKnowledgeItemId);
+  } catch (error) {
+    if (!isNotFoundLikeError(error)) {
+      throw error;
+    }
+
+    return listKnowledgeReviewActions(client, revisionOrKnowledgeItemId);
+  }
+}
+
+async function runKnowledgeReviewMutation(
+  client: KnowledgeHttpClient,
+  input: KnowledgeReviewItemActionInput,
+  action: (
+    client: KnowledgeHttpClient,
+    input: KnowledgeReviewItemActionInput,
+  ) => Promise<unknown>,
+  fallbackAction?: (
+    client: KnowledgeHttpClient,
+    input: KnowledgeReviewItemActionInput,
+  ) => Promise<unknown>,
+) {
+  try {
+    return await action(client, input);
+  } catch (error) {
+    if (!isNotFoundLikeError(error) || fallbackAction == null) {
+      throw error;
+    }
+
+    return fallbackAction(client, input);
+  }
+}
+
+function isNotFoundLikeError(error: unknown): boolean {
+  if (
+    typeof error === "object" &&
+    error != null &&
+    "status" in error &&
+    (error as { status?: unknown }).status === 404
+  ) {
+    return true;
+  }
+
+  return error instanceof Error && /HTTP 404\b/.test(error.message);
 }

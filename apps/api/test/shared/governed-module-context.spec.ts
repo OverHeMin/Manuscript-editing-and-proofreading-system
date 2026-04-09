@@ -176,6 +176,7 @@ async function createGovernedContextHarness() {
   return {
     aiGatewayService,
     executionGovernanceService,
+    executionGovernanceRepository,
     knowledgeRepository,
     manuscriptRepository,
     moduleTemplateRepository,
@@ -223,4 +224,80 @@ test("governed module context preserves projected knowledge provenance through d
     projectedSelection?.knowledgeItem.projection_source?.projection_kind,
     "prompt_snippet",
   );
+});
+
+test("governed module context resolves an approved asset id even when authoring has a newer draft revision", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-asset-1",
+    status: "active",
+    current_revision_id: "knowledge-asset-1-revision-2",
+    current_approved_revision_id: "knowledge-asset-1-revision-1",
+    created_at: "2026-04-07T08:40:00.000Z",
+    updated_at: "2026-04-07T08:50:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-1",
+    asset_id: "knowledge-asset-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Approved governed knowledge",
+    canonical_text: "This approved revision should stay in governed retrieval.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:40:00.000Z",
+    updated_at: "2026-04-07T08:40:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-asset-1-revision-2",
+    asset_id: "knowledge-asset-1",
+    revision_no: 2,
+    status: "draft",
+    title: "Draft governed knowledge",
+    canonical_text: "This draft must never replace the runtime revision.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:50:00.000Z",
+    updated_at: "2026-04-07T08:50:00.000Z",
+  });
+  await harness.executionGovernanceRepository.saveKnowledgeBindingRule({
+    id: "binding-rule-1",
+    knowledge_item_id: "knowledge-asset-1",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+    template_family_ids: ["family-1"],
+    module_template_ids: ["template-screening-1"],
+    priority: 20,
+    binding_purpose: "required",
+    status: "active",
+  });
+
+  const screeningContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-2",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+
+  const selected = screeningContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-asset-1",
+  );
+
+  assert.equal(selected?.matchSource, "binding_rule");
+  assert.equal(selected?.knowledgeItem.status, "approved");
+  assert.equal(selected?.knowledgeItem.title, "Approved governed knowledge");
 });
