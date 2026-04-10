@@ -340,6 +340,14 @@ function EvaluationWorkbenchOperationsView(props: {
         )}
       </section>
 
+      <EvaluationWorkbenchReleaseGateSummaryCard
+        defaultComparison={defaultComparison}
+        selectedRunId={selectedRun?.id ?? null}
+        selectedInspectionFinalization={selectedInspectionFinalization}
+        honestDegradation={props.overview.suiteOperations.honestDegradation}
+        historyWindowPreset={props.overview.suiteOperations.defaultWindow}
+      />
+
       <section className="evaluation-workbench-summary">
         <SummaryCard label="Check Profiles" value={props.overview.checkProfiles.length} />
         <SummaryCard label="Release Profiles" value={props.overview.releaseCheckProfiles.length} />
@@ -586,6 +594,80 @@ function EvaluationWorkbenchOperationsView(props: {
   );
 }
 
+function EvaluationWorkbenchReleaseGateSummaryCard(input: {
+  defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"];
+  selectedRunId: string | null;
+  selectedInspectionFinalization: FinalizeEvaluationRunResultViewModel | null;
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"];
+  historyWindowPreset: EvaluationWorkbenchHistoryWindowPreset;
+}) {
+  const unavailableCopy = describeReleaseGateUnavailableCopy(input);
+
+  if (unavailableCopy) {
+    return (
+      <section className="evaluation-workbench-panel evaluation-workbench-release-gate-panel">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Release Gate Summary</h3>
+          <span>Manifest-ready</span>
+        </div>
+        <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+          <strong>Release gate summary unavailable</strong>
+          <p className="evaluation-workbench-empty">{unavailableCopy}</p>
+        </div>
+      </section>
+    );
+  }
+
+  const comparison = input.defaultComparison!;
+  const candidateEntry = comparison.selected;
+  const baselineEntry = comparison.baseline;
+  const candidateEvidencePack = candidateEntry.finalized.evidence_pack;
+  const manifestReadySummary = buildReleaseGateManifestReadySummary({
+    candidateEntry,
+    baselineEntry,
+  });
+
+  return (
+    <section className="evaluation-workbench-panel evaluation-workbench-release-gate-panel">
+      <div className="evaluation-workbench-panel-header">
+        <h3>Release Gate Summary</h3>
+        <span>Manifest-ready</span>
+      </div>
+      <div className="evaluation-workbench-result evaluation-workbench-history-detail">
+        <strong>
+          Baseline vs candidate: {baselineEntry.run.id} vs {candidateEntry.run.id}
+        </strong>
+        <div className="evaluation-workbench-history-compare">
+          <span>Candidate run: {candidateEntry.run.id}</span>
+          <span>Baseline run: {baselineEntry.run.id}</span>
+          <span>
+            Recommendation status: {candidateEntry.finalized.recommendation.status}
+          </span>
+        </div>
+      </div>
+      <div className="evaluation-workbench-history-summary-grid">
+        <article className="evaluation-workbench-history-summary-card">
+          <strong>Candidate evidence pack</strong>
+          <div className="evaluation-workbench-history-compare">
+            <span>
+              Regression summary:{" "}
+              {candidateEvidencePack.regression_summary ?? "No regression summary recorded."}
+            </span>
+            <span>
+              Failure summary:{" "}
+              {candidateEvidencePack.failure_summary ?? "No failure summary recorded."}
+            </span>
+          </div>
+        </article>
+        <article className="evaluation-workbench-history-summary-card">
+          <strong>Manifest-ready summary</strong>
+          <p className="evaluation-workbench-empty">{manifestReadySummary}</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function describeDefaultComparisonRoleLabel(
   entryRunId: string,
   defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"],
@@ -598,6 +680,35 @@ function describeDefaultComparisonRoleLabel(
     return ["Default baseline"];
   }
   return [];
+}
+
+function describeReleaseGateUnavailableCopy(input: {
+  defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"];
+  selectedRunId: string | null;
+  selectedInspectionFinalization: FinalizeEvaluationRunResultViewModel | null;
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"];
+  historyWindowPreset: EvaluationWorkbenchHistoryWindowPreset;
+}) {
+  if (input.defaultComparison == null) {
+    if (input.honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
+      return "Release gate summary is unavailable until at least two finalized runs are visible in the current history window.";
+    }
+    return `Release gate summary is unavailable until the ${describeHistoryWindowPresetLabel(input.historyWindowPreset)} view exposes a stable baseline and candidate pair.`;
+  }
+
+  if (input.selectedRunId != null && input.selectedInspectionFinalization == null) {
+    return "Release gate summary is unavailable until the selected run has a finalized recommendation and evidence pack.";
+  }
+
+  return null;
+}
+
+function buildReleaseGateManifestReadySummary(input: {
+  candidateEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+  baselineEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
+}) {
+  const candidateEvidencePack = input.candidateEntry.finalized.evidence_pack;
+  return `Candidate run ${input.candidateEntry.run.id} compared against baseline run ${input.baselineEntry.run.id} is ${input.candidateEntry.finalized.recommendation.status}. Regression summary: ${candidateEvidencePack.regression_summary ?? "No regression summary recorded."} Failure summary: ${candidateEvidencePack.failure_summary ?? "No failure summary recorded."}`;
 }
 
 function describeDeltaReasonCopy(input: {

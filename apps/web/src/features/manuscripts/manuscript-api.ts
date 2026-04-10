@@ -2,6 +2,8 @@ import type {
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
   JobViewModel,
+  UploadManuscriptBatchInput,
+  UploadManuscriptBatchResult,
   ManuscriptViewModel,
   UploadManuscriptInput,
   UploadManuscriptResult,
@@ -25,6 +27,17 @@ export function uploadManuscript(
   return client.request<UploadManuscriptResult>({
     method: "POST",
     url: "/api/v1/manuscripts/upload",
+    body: input,
+  });
+}
+
+export function uploadManuscriptBatch(
+  client: ManuscriptHttpClient,
+  input: UploadManuscriptBatchInput,
+) {
+  return client.request<UploadManuscriptBatchResult>({
+    method: "POST",
+    url: "/api/v1/manuscripts/upload-batch",
     body: input,
   });
 }

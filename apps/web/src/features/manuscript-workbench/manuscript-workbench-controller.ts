@@ -4,11 +4,14 @@ import {
   getJob,
   getManuscript,
   listManuscriptAssets,
+  uploadManuscriptBatch,
   uploadManuscript,
   updateManuscriptTemplateSelection,
   type DocumentAssetExportViewModel,
   type DocumentAssetViewModel,
   type JobViewModel,
+  type UploadManuscriptBatchInput,
+  type UploadManuscriptBatchResult,
   type ManuscriptViewModel,
   type UploadManuscriptInput,
   type UploadManuscriptResult,
@@ -74,6 +77,11 @@ export interface UploadManuscriptAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface UploadManuscriptBatchAndLoadResult {
+  upload: UploadManuscriptBatchResult;
+  workspace: ManuscriptWorkbenchWorkspace;
+}
+
 export type ManuscriptWorkbenchRunResult =
   | ScreeningRunResultViewModel
   | EditingRunResultViewModel
@@ -124,6 +132,9 @@ export interface ManuscriptWorkbenchController {
   uploadManuscriptAndLoad(
     input: UploadManuscriptInput,
   ): Promise<UploadManuscriptAndLoadResult>;
+  uploadManuscriptBatchAndLoad?(
+    input: UploadManuscriptBatchInput,
+  ): Promise<UploadManuscriptBatchAndLoadResult>;
   updateTemplateSelectionAndLoad(
     input: UpdateTemplateSelectionAndLoadInput,
   ): Promise<{ workspace: ManuscriptWorkbenchWorkspace }>;
@@ -159,6 +170,26 @@ export function createManuscriptWorkbenchController(
         upload: {
           ...response.body,
           job,
+        },
+        workspace,
+      };
+    },
+    async uploadManuscriptBatchAndLoad(input) {
+      const response = await uploadManuscriptBatch(client, input);
+      const firstManuscriptId = response.body.items[0]?.manuscript.id;
+      if (!firstManuscriptId) {
+        throw new Error("Batch uploads require at least one manuscript item.");
+      }
+
+      const [batchJob, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, response.body.batch_job),
+        loadWorkspace(client, firstManuscriptId),
+      ]);
+
+      return {
+        upload: {
+          ...response.body,
+          batch_job: batchJob,
         },
         workspace,
       };
@@ -351,6 +382,14 @@ function resolveCurrentAsset(
   manuscript: ManuscriptViewModel,
   assets: readonly DocumentAssetViewModel[],
 ): DocumentAssetViewModel | null {
+  const exportSelectedAssetId = manuscript.current_export_selection?.asset?.id;
+  if (exportSelectedAssetId) {
+    const exportSelectedAsset = assets.find((asset) => asset.id === exportSelectedAssetId);
+    if (exportSelectedAsset) {
+      return exportSelectedAsset;
+    }
+  }
+
   const preferredIds = [
     manuscript.current_proofreading_asset_id,
     manuscript.current_editing_asset_id,

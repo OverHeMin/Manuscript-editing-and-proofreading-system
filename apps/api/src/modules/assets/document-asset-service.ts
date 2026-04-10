@@ -10,6 +10,7 @@ import type {
   DocumentAssetRecord,
   DocumentAssetType,
 } from "./document-asset-record.ts";
+import { shouldAdvanceProofreadingCurrentAsset } from "./document-asset-record.ts";
 import type { DocumentAssetRepository } from "./document-asset-repository.ts";
 
 export interface CreateDocumentAssetInput {
@@ -80,6 +81,19 @@ function pointerFieldForAssetType(
   }
 
   return undefined;
+}
+
+function isProofreadingPointerField(
+  pointerField:
+    | keyof Pick<
+        ManuscriptRecord,
+        | "current_screening_asset_id"
+        | "current_editing_asset_id"
+        | "current_proofreading_asset_id"
+      >
+    | undefined,
+): pointerField is "current_proofreading_asset_id" {
+  return pointerField === "current_proofreading_asset_id";
 }
 
 export class DocumentAssetService {
@@ -166,6 +180,18 @@ export class DocumentAssetService {
 
         const pointerField = pointerFieldForAssetType(input.assetType);
         if (pointerField) {
+          const shouldUpdatePointer = isProofreadingPointerField(pointerField)
+            ? await shouldUpdateProofreadingPointer({
+                manuscript,
+                assetRepository,
+                nextAssetType: input.assetType,
+              })
+            : true;
+
+          if (!shouldUpdatePointer) {
+            return asset;
+          }
+
           await manuscriptRepository.save({
             ...manuscript,
             [pointerField]: asset.id,
@@ -200,4 +226,29 @@ export class DocumentAssetService {
       now: this.now,
     });
   }
+}
+
+async function shouldUpdateProofreadingPointer(input: {
+  manuscript: ManuscriptRecord;
+  assetRepository: DocumentAssetRepository;
+  nextAssetType: DocumentAssetType;
+}): Promise<boolean> {
+  const existingPointerId = input.manuscript.current_proofreading_asset_id;
+  if (!existingPointerId) {
+    return true;
+  }
+
+  const existingAsset = await input.assetRepository.findById(existingPointerId);
+  if (
+    !existingAsset ||
+    existingAsset.manuscript_id !== input.manuscript.id ||
+    existingAsset.status === "archived"
+  ) {
+    return true;
+  }
+
+  return shouldAdvanceProofreadingCurrentAsset(
+    existingAsset.asset_type,
+    input.nextAssetType,
+  );
 }

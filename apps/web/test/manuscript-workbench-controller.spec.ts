@@ -278,6 +278,251 @@ test("manuscript workbench controller forwards inline file content uploads witho
   });
 });
 
+test("manuscript workbench controller uploads a manuscript batch and hydrates the first workspace plus batch progress", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const hydratedBatchJob = {
+    id: "job-batch-1",
+    module: "upload",
+    job_type: "manuscript_upload_batch",
+    status: "queued",
+    requested_by: "user-1",
+    attempt_count: 0,
+    created_at: "2026-04-09T09:00:00.000Z",
+    updated_at: "2026-04-09T09:00:00.000Z",
+    batch_progress: {
+      lifecycle_status: "queued" as const,
+      settlement_status: "in_progress" as const,
+      total_count: 2,
+      queued_count: 2,
+      running_count: 0,
+      succeeded_count: 0,
+      failed_count: 0,
+      cancelled_count: 0,
+      remaining_count: 2,
+      restart_posture: {
+        status: "fresh" as const,
+        reason: "Batch has not required restart recovery.",
+        observed_at: "2026-04-09T09:00:00.000Z",
+      },
+      items: [
+        {
+          item_id: "item-1",
+          title: "Batch Review A",
+          file_name: "batch-review-a.docx",
+          manuscript_id: "manuscript-batch-1",
+          upload_job_id: "job-upload-batch-1",
+          status: "queued" as const,
+          attempt_count: 0,
+          updated_at: "2026-04-09T09:00:00.000Z",
+        },
+        {
+          item_id: "item-2",
+          title: "Batch Review B",
+          file_name: "batch-review-b.docx",
+          manuscript_id: "manuscript-batch-2",
+          upload_job_id: "job-upload-batch-2",
+          status: "queued" as const,
+          attempt_count: 0,
+          updated_at: "2026-04-09T09:00:00.000Z",
+        },
+      ],
+    },
+    execution_tracking: {
+      observation_status: "not_tracked" as const,
+    },
+  };
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/manuscripts/upload-batch") {
+        return {
+          status: 201,
+          body: {
+            batch_job: {
+              id: "job-batch-1",
+              module: "upload",
+              job_type: "manuscript_upload_batch",
+              status: "queued",
+              requested_by: "user-1",
+              attempt_count: 0,
+              created_at: "2026-04-09T09:00:00.000Z",
+              updated_at: "2026-04-09T09:00:00.000Z",
+            },
+            items: [
+              {
+                manuscript: {
+                  id: "manuscript-batch-1",
+                  title: "Batch Review A",
+                  manuscript_type: "review",
+                  status: "uploaded",
+                  created_by: "user-1",
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+                asset: {
+                  id: "asset-batch-1",
+                  manuscript_id: "manuscript-batch-1",
+                  asset_type: "original",
+                  status: "active",
+                  storage_key: "uploads/batch-review-a.docx",
+                  mime_type:
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  source_module: "upload",
+                  created_by: "user-1",
+                  version_no: 1,
+                  is_current: true,
+                  file_name: "batch-review-a.docx",
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+                job: {
+                  id: "job-upload-batch-1",
+                  manuscript_id: "manuscript-batch-1",
+                  module: "upload",
+                  job_type: "manuscript_upload",
+                  status: "queued",
+                  requested_by: "user-1",
+                  attempt_count: 0,
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+              },
+              {
+                manuscript: {
+                  id: "manuscript-batch-2",
+                  title: "Batch Review B",
+                  manuscript_type: "clinical_study",
+                  status: "uploaded",
+                  created_by: "user-1",
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+                asset: {
+                  id: "asset-batch-2",
+                  manuscript_id: "manuscript-batch-2",
+                  asset_type: "original",
+                  status: "active",
+                  storage_key: "uploads/batch-review-b.docx",
+                  mime_type:
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  source_module: "upload",
+                  created_by: "user-1",
+                  version_no: 1,
+                  is_current: true,
+                  file_name: "batch-review-b.docx",
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+                job: {
+                  id: "job-upload-batch-2",
+                  manuscript_id: "manuscript-batch-2",
+                  module: "upload",
+                  job_type: "manuscript_upload",
+                  status: "queued",
+                  requested_by: "user-1",
+                  attempt_count: 0,
+                  created_at: "2026-04-09T09:00:00.000Z",
+                  updated_at: "2026-04-09T09:00:00.000Z",
+                },
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-batch-1") {
+        return {
+          status: 200,
+          body: hydratedBatchJob as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-batch-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-batch-1",
+            title: "Batch Review A",
+            manuscript_type: "review",
+            status: "uploaded",
+            created_by: "user-1",
+            created_at: "2026-04-09T09:00:00.000Z",
+            updated_at: "2026-04-09T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-batch-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-batch-1",
+              manuscript_id: "manuscript-batch-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/batch-review-a.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "user-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "batch-review-a.docx",
+              created_at: "2026-04-09T09:00:00.000Z",
+              updated_at: "2026-04-09T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.uploadManuscriptBatchAndLoad?.({
+    createdBy: "forged-user",
+    items: [
+      {
+        title: "Batch Review A",
+        manuscriptType: "review",
+        fileName: "batch-review-a.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "QQ==",
+      },
+      {
+        title: "Batch Review B",
+        manuscriptType: "clinical_study",
+        fileName: "batch-review-b.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "Qg==",
+      },
+    ],
+  });
+
+  assert.ok(result, "Expected the controller to expose batch upload support.");
+  assert.deepEqual(result.upload.batch_job, hydratedBatchJob);
+  assert.equal(result.workspace.manuscript.id, "manuscript-batch-1");
+  assert.equal(result.workspace.currentAsset?.id, "asset-batch-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/manuscripts/upload-batch",
+      "GET /api/v1/jobs/job-batch-1",
+      "GET /api/v1/manuscripts/manuscript-batch-1",
+      "GET /api/v1/manuscripts/manuscript-batch-1/assets",
+    ],
+  );
+});
+
 test("manuscript workbench controller runs proofreading draft and finalize flows while reloading workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   let assetPhase: "draft" | "final" = "draft";

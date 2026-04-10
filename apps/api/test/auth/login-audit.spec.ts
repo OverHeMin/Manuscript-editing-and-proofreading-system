@@ -102,4 +102,6 @@ test("session and audit provider identity come from the provider path", async ()
 
   assert.equal(session.provider, "ldap");
   assert.equal(auditService.list()[0]?.metadata?.authProvider, "ldap");
+  assert.equal(auditService.list()[0]?.roleKey, "knowledge_reviewer");
+  assert.equal(auditService.list()[0]?.targetId, "user-2");
 });

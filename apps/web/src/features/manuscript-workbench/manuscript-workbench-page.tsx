@@ -20,7 +20,9 @@ import {
 } from "./manuscript-workbench-notice.tsx";
 import { createInlineUploadFields } from "./manuscript-upload-file.ts";
 import {
+  buildJobBatchProgressDetails,
   buildJobPostureDetails,
+  buildJobReviewEvidenceDetails,
   buildLatestJobPostureDetails,
   buildManuscriptMainlineAttentionHandoffPackDetails,
   buildManuscriptMainlineAttemptLedgerDetails,
@@ -111,7 +113,12 @@ export function buildWorkbenchJobActionResultDetails(
   job: JobViewModel | ModuleJobViewModel,
   overview?: ManuscriptWorkbenchWorkspace["manuscript"]["module_execution_overview"],
 ): WorkbenchActionResultDetail[] {
-  return [...baseDetails, ...buildJobPostureDetails(job, "Job", overview)];
+  return [
+    ...baseDetails,
+    ...buildJobPostureDetails(job, "Job", overview),
+    ...buildJobBatchProgressDetails(job),
+    ...buildJobReviewEvidenceDetails(job),
+  ];
 }
 
 export function resolveWorkbenchNotice(input: {
@@ -268,6 +275,13 @@ export function ManuscriptWorkbenchPage({
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     storageKey: "",
   });
+  const [attachedUploadFiles, setAttachedUploadFiles] = useState<
+    Array<{
+      fileName: string;
+      mimeType: string;
+      fileContentBase64: string;
+    }>
+  >([]);
   const [parentAssetId, setParentAssetId] = useState("");
   const [draftAssetId, setDraftAssetId] = useState("");
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
@@ -275,7 +289,7 @@ export function ManuscriptWorkbenchPage({
     uploadForm.title.trim().length > 0 &&
     uploadForm.fileName.trim().length > 0 &&
     uploadForm.mimeType.trim().length > 0 &&
-    hasUploadPayload(uploadForm);
+    (attachedUploadFiles.length > 1 || hasUploadPayload(uploadForm));
   const workbenchBusy = busy || isPrefillLoading;
   const activeCoreStripPillar = resolveCoreStripActivePillar(mode);
   const notice = resolveWorkbenchNotice({
@@ -319,6 +333,7 @@ export function ManuscriptWorkbenchPage({
     setLatestActionResult(null);
     setStatus("");
     setError("");
+    setAttachedUploadFiles([]);
     setParentAssetId("");
     setDraftAssetId("");
     setSelectedJournalTemplateId("");
@@ -398,28 +413,49 @@ export function ManuscriptWorkbenchPage({
     }
   }
 
-  async function attachUploadFile(file: File) {
+  async function attachUploadFiles(files: File[]) {
     setBusy(true);
     setError("");
     try {
-      const inlineFields = await createInlineUploadFields(file);
+      const inlineFieldsList = await Promise.all(
+        files.map((file) => createInlineUploadFields(file)),
+      );
+      const primaryInlineFields = inlineFieldsList[0];
+      if (!primaryInlineFields) {
+        throw new Error("No upload files were selected.");
+      }
+
+      setAttachedUploadFiles(inlineFieldsList);
       setUploadForm((current) => ({
         ...current,
-        ...inlineFields,
+        ...primaryInlineFields,
       }));
-      setStatus(`Attached file ${inlineFields.fileName}`);
+      setStatus(
+        inlineFieldsList.length > 1
+          ? `Attached ${inlineFieldsList.length} files for batch upload`
+          : `Attached file ${primaryInlineFields.fileName}`,
+      );
       setLatestActionResult({
         tone: "success",
         actionLabel: "Attach Manuscript File",
-        message: `Attached file ${inlineFields.fileName}`,
+        message:
+          inlineFieldsList.length > 1
+            ? `Attached ${inlineFieldsList.length} files for batch upload`
+            : `Attached file ${primaryInlineFields.fileName}`,
         details: [
           {
             label: "File",
-            value: inlineFields.fileName,
+            value:
+              inlineFieldsList.length > 1
+                ? `${inlineFieldsList.length} files`
+                : primaryInlineFields.fileName,
           },
           {
             label: "MIME Type",
-            value: inlineFields.mimeType,
+            value:
+              inlineFieldsList.length > 1
+                ? "Mixed inline batch"
+                : primaryInlineFields.mimeType,
           },
         ],
       });
@@ -583,6 +619,8 @@ export function ManuscriptWorkbenchPage({
           canUpload
             ? {
                 uploadForm,
+                attachedFileCount: attachedUploadFiles.length,
+                attachedFileNames: attachedUploadFiles.map((file) => file.fileName),
                 canSubmit: canSubmitUpload,
                 onTitleChange: (value) =>
                   setUploadForm((current) => ({
@@ -599,11 +637,50 @@ export function ManuscriptWorkbenchPage({
                     ...current,
                     storageKey: normalizeOptionalText(value),
                   })),
-                onFileSelect: (file) => {
-                  void attachUploadFile(file);
+                onFilesSelect: (files) => {
+                  void attachUploadFiles(files);
                 },
                 onSubmit: () =>
                   void run("Upload Manuscript", async () => {
+                    if (attachedUploadFiles.length > 1) {
+                      if (!controller.uploadManuscriptBatchAndLoad) {
+                        throw new Error("Batch uploads are unavailable in the current workbench controller.");
+                      }
+
+                      const result = await controller.uploadManuscriptBatchAndLoad({
+                        createdBy: uploadForm.createdBy,
+                        items: attachedUploadFiles.map((file) => ({
+                          title: deriveBatchUploadTitle(file.fileName, uploadForm.title),
+                          manuscriptType: uploadForm.manuscriptType,
+                          fileName: file.fileName,
+                          mimeType: file.mimeType,
+                          fileContentBase64: file.fileContentBase64,
+                        })),
+                      });
+                      setWorkspace(result.workspace);
+                      setLatestJob(result.upload.batch_job);
+                      setStatus(`Uploaded batch ${result.upload.batch_job.id}`);
+                      return {
+                        tone: "success",
+                        actionLabel: "Upload Manuscript",
+                        message: `Uploaded batch ${result.upload.batch_job.id}`,
+                        details: buildWorkbenchJobActionResultDetails(
+                          [
+                            {
+                              label: "Batch Job",
+                              value: result.upload.batch_job.id,
+                            },
+                            {
+                              label: "Batch Items",
+                              value: String(result.upload.items.length),
+                            },
+                          ],
+                          result.upload.batch_job,
+                          result.workspace.manuscript.module_execution_overview,
+                        ),
+                      };
+                    }
+
                     const result = await controller.uploadManuscriptAndLoad(uploadForm);
                     setWorkspace(result.workspace);
                     setLatestJob(result.upload.job);
@@ -1139,6 +1216,20 @@ function hasUploadPayload(input: UploadManuscriptInput): boolean {
     (input.fileContentBase64?.trim().length ?? 0) > 0 ||
     (input.storageKey?.trim().length ?? 0) > 0
   );
+}
+
+function deriveBatchUploadTitle(fileName: string, fallbackTitle: string): string {
+  const trimmedFileName = fileName.trim();
+  if (trimmedFileName.length === 0) {
+    return fallbackTitle;
+  }
+
+  const extensionIndex = trimmedFileName.lastIndexOf(".");
+  const baseName =
+    extensionIndex > 0
+      ? trimmedFileName.slice(0, extensionIndex)
+      : trimmedFileName;
+  return baseName.trim().length > 0 ? baseName : fallbackTitle;
 }
 
 function formatAssetOptionLabel(asset: {

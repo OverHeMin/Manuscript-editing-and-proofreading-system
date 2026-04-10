@@ -327,6 +327,23 @@ test("evaluation workbench page renders an explicit loading state for server-sid
   assert.match(markup, /Loading suites, runs, and verification assets\.\.\./);
 });
 
+test("evaluation workbench loaded page renders a read-only release-gate summary card", () => {
+  const markup = renderLoadedPage(createOperationsOverviewFixture());
+
+  assert.match(markup, /Release Gate Summary/);
+  assert.match(markup, /Candidate run: run-12/);
+  assert.match(markup, /Baseline run: run-11/);
+  assert.match(markup, /Baseline vs candidate: run-11 vs run-12/);
+  assert.match(markup, /Recommendation status: recommended/);
+  assert.match(markup, /Regression summary: No regression failures were recorded\./);
+  assert.match(markup, /Failure summary: No failure annotations were recorded\./);
+  assert.match(markup, /Manifest-ready summary/);
+  assert.match(
+    markup,
+    /Candidate run run-12 compared against baseline run run-11 is recommended\./,
+  );
+});
+
 test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
@@ -369,6 +386,49 @@ test("evaluation workbench loaded page renders a delta-first summary with bounde
   assert.doesNotMatch(markup, /Run Launch/);
   assert.doesNotMatch(markup, /Complete And Finalize Run/);
   assert.doesNotMatch(markup, /Finalize Recommendation/);
+});
+
+test("evaluation workbench release-gate summary falls back to an honest empty state when finalized evidence is missing", () => {
+  const insufficientComparisonOverview = createOperationsOverviewFixture();
+  const onlyVisibleEntry = insufficientComparisonOverview.finalizedRunHistory[0];
+  insufficientComparisonOverview.suiteOperations = {
+    ...insufficientComparisonOverview.suiteOperations,
+    visibleHistory: [onlyVisibleEntry],
+    defaultComparison: null,
+    defaultComparisonDetail: null,
+    delta: null,
+    honestDegradation: {
+      kind: "comparison_unavailable",
+      reason: "fewer_than_two_visible_finalized_runs",
+    },
+  };
+  const insufficientComparisonMarkup = renderLoadedPage(insufficientComparisonOverview);
+
+  assert.match(insufficientComparisonMarkup, /Release Gate Summary/);
+  assert.match(
+    insufficientComparisonMarkup,
+    /Release gate summary is unavailable until at least two finalized runs are visible in the current history window\./,
+  );
+
+  const selectedRunNotFinalizedOverview = createOperationsOverviewFixture();
+  selectedRunNotFinalizedOverview.runs = [
+    {
+      ...selectedRunNotFinalizedOverview.runs[0],
+      id: "run-current",
+      status: "passed",
+      finished_at: "2026-04-13T09:00:00.000Z",
+    },
+    ...selectedRunNotFinalizedOverview.runs,
+  ];
+  selectedRunNotFinalizedOverview.selectedRunId = "run-current";
+  selectedRunNotFinalizedOverview.selectedRunFinalization = null;
+  const selectedRunNotFinalizedMarkup = renderLoadedPage(selectedRunNotFinalizedOverview);
+
+  assert.match(selectedRunNotFinalizedMarkup, /Release Gate Summary/);
+  assert.match(
+    selectedRunNotFinalizedMarkup,
+    /Release gate summary is unavailable until the selected run has a finalized recommendation and evidence pack\./,
+  );
 });
 
 test("evaluation workbench loaded page keeps selected inspection finalization outside the visible history window", () => {

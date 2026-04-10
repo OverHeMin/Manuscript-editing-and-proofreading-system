@@ -37,6 +37,8 @@ export interface ManuscriptRecord {
 }
 
 export interface ManuscriptViewRecord extends ManuscriptRecord {
+  result_asset_matrix: import("../assets/document-asset-record.ts").ResultAssetMatrixRecord;
+  current_export_selection?: import("../assets/document-asset-record.ts").CurrentExportSelectionRecord;
   module_execution_overview: import("./manuscript-mainline-settlement.ts").ManuscriptModuleExecutionOverviewRecord;
   mainline_readiness_summary: import("./manuscript-mainline-settlement.ts").ManuscriptMainlineReadinessSummaryRecord;
   mainline_attention_handoff_pack: import("./manuscript-mainline-settlement.ts").ManuscriptMainlineAttentionHandoffPackRecord;

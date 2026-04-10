@@ -220,6 +220,65 @@ test("validateReleaseManifest requires rehearsal proof when upgrade rehearsal is
   ]);
 });
 
+test("validateReleaseManifest requires AI release gate evidence when the harness release gate is required", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest({
+      harnessReleaseGateRequired: "yes",
+      goldSetVersionsCovered: "",
+      evaluationSuitesCovered: "",
+      finalizedRunIds: "",
+      recommendationStatuses: "",
+      manualPromotionDecision: "",
+      aiReleaseGateApprovedBy: "",
+    }),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, [
+    "AI Release Gate.Gold set versions covered",
+    "AI Release Gate.Evaluation suites covered",
+    "AI Release Gate.Finalized run IDs",
+    "AI Release Gate.Recommendation statuses",
+    "AI Release Gate.Manual promotion decision",
+    "AI Release Gate.Approved by",
+  ]);
+});
+
+test("validateReleaseManifest rejects non-promotable AI release gate evidence", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest({
+      harnessReleaseGateRequired: "yes",
+      goldSetVersionsCovered: "gold-set/screening-v3, gold-set/editing-v2",
+      evaluationSuitesCovered: "suite-screening-1, suite-editing-1",
+      finalizedRunIds: "run-screening-final-1, run-editing-final-1",
+      recommendationStatuses: "approved, needs_review",
+      manualPromotionDecision: "pending",
+      aiReleaseGateApprovedBy: "release-approver@example.com",
+    }),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, []);
+  assert.deepEqual(validation.blockingFields, [
+    "AI Release Gate.Recommendation statuses",
+    "AI Release Gate.Manual promotion decision",
+  ]);
+});
+
+test("validateReleaseManifest requires an explicit AI release gate declaration even when the section is omitted", () => {
+  const validation = releaseContract.validateReleaseManifest(
+    createReleaseManifest().replace(
+      /\n## AI Release Gate[\s\S]*$/u,
+      "\n",
+    ),
+  );
+
+  assert.equal(validation.status, "error");
+  assert.deepEqual(validation.missingFields, [
+    "AI Release Gate.Harness release gate required",
+  ]);
+});
+
 test("enforceManifestMigrationConsistency fails when a manifest says no schema change but pending migrations exist", () => {
   assert.equal(typeof releaseContract.enforceManifestMigrationConsistency, "function");
 
@@ -243,6 +302,59 @@ test("enforceManifestMigrationConsistency fails when a manifest says no schema c
       }),
     /schema change.*pending migrations/i,
   );
+});
+
+test("runMigrationDoctor executes the API migration doctor directly and preserves blocked JSON output", () => {
+  const blockedAudit = {
+    status: "blocked",
+    pendingMigrations: [
+      "0029_learning_reviewed_snapshot_source_kind.sql",
+      "0030_knowledge_library_v1_revision_governance.sql",
+      "0031_knowledge_duplicate_detection_acknowledgements.sql",
+    ],
+    repairableMigrations: [],
+    blockingMigrations: [
+      {
+        version: "0028_medical_rule_library_v2_foundations.sql",
+        reason: "checksum-mismatch",
+        expectedChecksum: "expected-checksum",
+        databaseChecksum: "database-checksum",
+      },
+    ],
+  };
+  const spawnCalls = [];
+
+  const audit = releaseContract.runMigrationDoctor({
+    apiPackageRoot: "C:\\repo\\apps\\api",
+    migrationDoctorScriptPath:
+      "C:\\repo\\apps\\api\\src\\database\\scripts\\migration-doctor.ts",
+    spawnSyncImpl(command, args, options) {
+      spawnCalls.push({ command, args, options });
+      return {
+        status: 1,
+        stdout: `${JSON.stringify(blockedAudit)}\n`,
+        stderr: "",
+      };
+    },
+  });
+
+  assert.deepEqual(audit, blockedAudit);
+  assert.deepEqual(spawnCalls, [
+    {
+      command: process.execPath,
+      args: [
+        "--import",
+        "tsx",
+        "C:\\repo\\apps\\api\\src\\database\\scripts\\migration-doctor.ts",
+        "--json",
+      ],
+      options: {
+        cwd: "C:\\repo\\apps\\api",
+        env: process.env,
+        encoding: "utf8",
+      },
+    },
+  ]);
 });
 
 test("buildUpgradeRehearsalPlan requires a manifest path", () => {
@@ -341,6 +453,14 @@ function createReleaseManifest(overrides = {}) {
     uploadRootSnapshot: ".local-data/uploads/production-2026-04-04",
     restorePointSnapshotId: "restore-point-2026-04-04",
     backupVerifiedBy: "operator@example.com",
+    harnessReleaseGateRequired: "no",
+    goldSetVersionsCovered: "",
+    evaluationSuitesCovered: "",
+    finalizedRunIds: "",
+    recommendationStatuses: "",
+    manualPromotionDecision: "",
+    aiReleaseGateApprovedBy: "",
+    aiReleaseGateEvidenceNotesOrUri: "",
     ...overrides,
   };
 
@@ -378,5 +498,16 @@ function createReleaseManifest(overrides = {}) {
 - Upload root snapshot: ${manifest.uploadRootSnapshot}
 - Restore point / snapshot ID: ${manifest.restorePointSnapshotId}
 - Backup verified by: ${manifest.backupVerifiedBy}
+
+## AI Release Gate
+
+- Harness release gate required: \`${manifest.harnessReleaseGateRequired}\`
+- Gold set versions covered: ${manifest.goldSetVersionsCovered}
+- Evaluation suites covered: ${manifest.evaluationSuitesCovered}
+- Finalized run IDs: ${manifest.finalizedRunIds}
+- Recommendation statuses: ${manifest.recommendationStatuses}
+- Manual promotion decision: ${manifest.manualPromotionDecision}
+- Approved by: ${manifest.aiReleaseGateApprovedBy}
+- Evidence notes or URI: ${manifest.aiReleaseGateEvidenceNotesOrUri}
 `;
 }

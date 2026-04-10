@@ -151,7 +151,8 @@ async function reapplyAdditiveMigrationRepair(
 ): Promise<void> {
   if (
     version !== "0025_editorial_rule_engine_persistence.sql" &&
-    version !== "0027_medical_editorial_rule_authoring_workbench.sql"
+    version !== "0027_medical_editorial_rule_authoring_workbench.sql" &&
+    version !== "0028_medical_rule_library_v2_foundations.sql"
   ) {
     return;
   }
@@ -172,6 +173,7 @@ async function reconcileAppliedAdditiveMigrations(client: Client): Promise<void>
   const additiveRepairVersions = [
     "0025_editorial_rule_engine_persistence.sql",
     "0027_medical_editorial_rule_authoring_workbench.sql",
+    "0028_medical_rule_library_v2_foundations.sql",
   ];
   const result = await client.query<{ version: string }>(
     `

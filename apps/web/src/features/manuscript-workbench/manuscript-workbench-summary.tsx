@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
 import type {
+  DocumentCurrentExportSelectionViewModel,
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
+  DocumentResultAssetMatrixViewModel,
   JobExecutionTrackingObservationViewModel,
   JobViewModel,
   LinkedAgentExecutionRecoverySummaryViewModel,
@@ -54,6 +56,110 @@ export function buildLatestJobPostureDetails(
   overview?: ManuscriptModuleExecutionOverviewViewModel,
 ): WorkbenchActionResultDetail[] {
   return buildJobPostureDetails(latestJob, "最近任务", overview);
+}
+
+export function buildJobReviewEvidenceDetails(
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+): WorkbenchActionResultDetail[] {
+  if (!latestJob) {
+    return [];
+  }
+
+  const payload = latestJob.payload;
+  const manualReviewItems = getJobManualReviewItems(payload);
+  const failedCheckRuleIds = getJobFailedCheckRuleIds(payload);
+  const executionTracking = getJobExecutionTracking(latestJob);
+  const snapshot =
+    executionTracking?.observation_status === "reported"
+      ? executionTracking.snapshot
+      : undefined;
+  const knowledgeItemIds =
+    snapshot?.knowledge_item_ids ?? getPayloadStringArray(payload, "knowledgeItemIds");
+  const modelId = snapshot?.model_id ?? getPayloadStringValue(payload, "modelId");
+  const modelVersion = snapshot?.model_version;
+  const reasonSummary =
+    manualReviewItems.length > 0
+      ? uniqueValues(manualReviewItems.map((item) => item.reason))
+      : uniqueValues(executionTracking?.settlement?.reason ? [executionTracking.settlement.reason] : []);
+
+  const details: WorkbenchActionResultDetail[] = [];
+
+  if (manualReviewItems.length > 0) {
+    details.push({
+      label: "人工复核",
+      value: `需要人工复核（${manualReviewItems.length} 项）`,
+    });
+  }
+
+  if (failedCheckRuleIds.length > 0) {
+    details.push({
+      label: "规则命中",
+      value: failedCheckRuleIds.join(", "),
+    });
+  }
+
+  if (knowledgeItemIds.length > 0) {
+    details.push({
+      label: "知识引用",
+      value: knowledgeItemIds.join(", "),
+    });
+  }
+
+  if (modelId) {
+    details.push({
+      label: "模型版本",
+      value: modelVersion ? `${modelId} / ${modelVersion}` : modelId,
+    });
+  }
+
+  if (reasonSummary.length > 0) {
+    details.push({
+      label: "原因摘要",
+      value: reasonSummary.join(" | "),
+    });
+  }
+
+  return details;
+}
+
+export function buildJobBatchProgressDetails(
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+): WorkbenchActionResultDetail[] {
+  const batchProgress = getJobBatchProgress(latestJob);
+  if (!batchProgress) {
+    return [];
+  }
+
+  return [
+    {
+      label: "Batch Lifecycle",
+      value: formatBatchLifecycleStatusLabel(batchProgress.lifecycle_status),
+    },
+    {
+      label: "Batch Settlement",
+      value: formatBatchSettlementStatusLabel(batchProgress.settlement_status),
+    },
+    {
+      label: "Succeeded",
+      value: String(batchProgress.succeeded_count),
+    },
+    {
+      label: "Failed",
+      value: String(batchProgress.failed_count),
+    },
+    {
+      label: "Running",
+      value: String(batchProgress.running_count),
+    },
+    {
+      label: "Remaining",
+      value: String(batchProgress.remaining_count),
+    },
+    {
+      label: "Restart Posture",
+      value: batchProgress.restart_posture.reason,
+    },
+  ];
 }
 
 export function buildJobPostureDetails(
@@ -134,6 +240,56 @@ export function buildJobPostureDetails(
     details.push({
       label: `${labelPrefix}运行时就绪度`,
       value: runtimeBindingReadiness,
+    });
+  }
+
+  return details;
+}
+
+function buildResultAssetMatrixDetails(
+  matrix: DocumentResultAssetMatrixViewModel | undefined,
+  selection: DocumentCurrentExportSelectionViewModel | undefined,
+): WorkbenchActionResultDetail[] {
+  const details: WorkbenchActionResultDetail[] = [];
+  const slots: Array<{
+    label: string;
+    asset?: DocumentAssetViewModel;
+  }> = [
+    {
+      label: "初筛报告",
+      asset: matrix?.screening_report,
+    },
+    {
+      label: "编辑稿",
+      asset: matrix?.edited_docx,
+    },
+    {
+      label: "校对草稿报告",
+      asset: matrix?.proofreading_draft_report,
+    },
+    {
+      label: "终校输出",
+      asset: matrix?.final_proof_output,
+    },
+  ];
+
+  for (const slot of slots) {
+    details.push({
+      label: slot.label,
+      value: slot.asset ? renderAssetMatrixValue(slot.asset) : "未生成",
+    });
+  }
+
+  if (selection) {
+    details.push({
+      label: "当前导出选择",
+      value: selection.asset
+        ? `${selection.label} / ${renderAssetMatrixValue(selection.asset)}`
+        : selection.label,
+    });
+    details.push({
+      label: "导出依据",
+      value: selection.reason,
     });
   }
 
@@ -412,6 +568,20 @@ export function ManuscriptWorkbenchSummary({
         workspace.manuscript.module_execution_overview,
       )
     : null;
+  const latestJobBatchProgressDetails = buildJobBatchProgressDetails(latestJob);
+  const latestJobReviewEvidenceDetails = buildJobReviewEvidenceDetails(latestJob);
+  const resultAssetMatrix =
+    latestExport?.matrix ?? workspace.manuscript.result_asset_matrix;
+  const currentExportSelection = latestExport?.selection
+    ? {
+        ...latestExport.selection,
+        asset: latestExport.asset,
+      }
+    : workspace.manuscript.current_export_selection;
+  const resultAssetMatrixDetails = buildResultAssetMatrixDetails(
+    resultAssetMatrix,
+    currentExportSelection,
+  );
 
   return (
     <section className="manuscript-workbench-summary">
@@ -703,6 +873,31 @@ export function ManuscriptWorkbenchSummary({
           )}
         </SummaryCard>
 
+        {latestJobBatchProgressDetails.length > 0 ? (
+          <SummaryCard title="批次进度">
+            {latestJobBatchProgressDetails.map((detail) => (
+              <SummaryMetric
+                key={`${detail.label}:${detail.value}`}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
+            {renderBatchProgressItems(getJobBatchProgress(latestJob))}
+          </SummaryCard>
+        ) : null}
+
+        {latestJobReviewEvidenceDetails.length > 0 ? (
+          <SummaryCard title="审核证据">
+            {latestJobReviewEvidenceDetails.map((detail) => (
+              <SummaryMetric
+                key={`${detail.label}:${detail.value}`}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
+          </SummaryCard>
+        ) : null}
+
         <SummaryCard title="最近导出">
           {latestExport ? (
             <>
@@ -742,6 +937,24 @@ export function ManuscriptWorkbenchSummary({
           ) : (
             <p className="manuscript-workbench-empty">
               请使用导出操作准备当前稿件资产。
+            </p>
+          )}
+        </SummaryCard>
+
+        <SummaryCard title="结果矩阵">
+          {resultAssetMatrixDetails.length > 0 ? (
+            <>
+              {resultAssetMatrixDetails.map((detail) => (
+                <SummaryMetric
+                  key={`${detail.label}:${detail.value}`}
+                  label={detail.label}
+                  value={detail.value}
+                />
+              ))}
+            </>
+          ) : (
+            <p className="manuscript-workbench-empty">
+              当前还没有稳定的阶段结果资产。
             </p>
           )}
         </SummaryCard>
@@ -911,6 +1124,36 @@ function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
       <span>{asset.file_name ?? formatAssetTypeLabel(asset.asset_type)}</span>
       <code>{asset.id}</code>
     </span>
+  );
+}
+
+function renderAssetMatrixValue(asset: DocumentAssetViewModel): string {
+  return `${asset.file_name ?? formatAssetTypeLabel(asset.asset_type)} / ${formatAssetTypeLabel(asset.asset_type)} / ${asset.id}`;
+}
+
+function renderBatchProgressItems(
+  batchProgress: NonNullable<JobViewModel["batch_progress"]> | undefined,
+): ReactNode | null {
+  if (!batchProgress || batchProgress.items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+      <span>Batch Items</span>
+      <ul className="manuscript-workbench-activity-list">
+        {batchProgress.items.map((item) => (
+          <li
+            key={`${item.item_id}:${item.updated_at}`}
+            className="manuscript-workbench-activity-item"
+          >
+            <strong>{item.file_name}</strong>
+            <p>{formatBatchItemStatusLabel(item.status)}</p>
+            <p>{item.title}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -2444,6 +2687,154 @@ function getJobExecutionTracking(
   }
 
   return latestJob.execution_tracking;
+}
+
+function getJobBatchProgress(
+  latestJob: AnyWorkbenchJob | null,
+): JobViewModel["batch_progress"] | undefined {
+  if (!latestJob || !("batch_progress" in latestJob)) {
+    return undefined;
+  }
+
+  return latestJob.batch_progress;
+}
+
+function formatBatchLifecycleStatusLabel(
+  status: NonNullable<JobViewModel["batch_progress"]>["lifecycle_status"],
+): string {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "running":
+      return "Running";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+  }
+}
+
+function formatBatchSettlementStatusLabel(
+  status: NonNullable<JobViewModel["batch_progress"]>["settlement_status"],
+): string {
+  switch (status) {
+    case "in_progress":
+      return "In progress";
+    case "succeeded":
+      return "Succeeded";
+    case "partial_success":
+      return "Partial success";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+  }
+}
+
+function formatBatchItemStatusLabel(
+  status: NonNullable<JobViewModel["batch_progress"]>["items"][number]["status"],
+): string {
+  switch (status) {
+    case "queued":
+      return "queued";
+    case "running":
+      return "running";
+    case "succeeded":
+      return "succeeded";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+  }
+}
+
+function getJobManualReviewItems(
+  payload: Record<string, unknown> | undefined,
+): Array<{ ruleId: string; reason: string }> {
+  const directItems = getManualReviewItemsValue(payload?.manualReviewItems);
+  if (directItems.length > 0) {
+    return directItems;
+  }
+
+  const proofreadingFindings = asRecord(payload?.proofreadingFindings);
+  return getManualReviewItemsValue(proofreadingFindings?.manualReviewItems);
+}
+
+function getJobFailedCheckRuleIds(
+  payload: Record<string, unknown> | undefined,
+): string[] {
+  const proofreadingFindings = asRecord(payload?.proofreadingFindings);
+  const failedChecks = Array.isArray(proofreadingFindings?.failedChecks)
+    ? proofreadingFindings.failedChecks
+    : [];
+
+  return uniqueValues(
+    failedChecks
+      .map((item) => {
+        const record = asRecord(item);
+        return typeof record?.ruleId === "string" ? record.ruleId : undefined;
+      })
+      .filter((value): value is string => Boolean(value)),
+  );
+}
+
+function getManualReviewItemsValue(
+  value: unknown,
+): Array<{ ruleId: string; reason: string }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return undefined;
+      }
+
+      const ruleId = typeof record.ruleId === "string" ? record.ruleId : "";
+      const reason = typeof record.reason === "string" ? record.reason : "";
+      if (ruleId.length === 0 || reason.length === 0) {
+        return undefined;
+      }
+
+      return { ruleId, reason };
+    })
+    .filter((item): item is { ruleId: string; reason: string } => Boolean(item));
+}
+
+function getPayloadStringArray(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  const value = payload?.[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return uniqueValues(
+    value.filter((item): item is string => typeof item === "string" && item.length > 0),
+  );
+}
+
+function getPayloadStringValue(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = payload?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function uniqueValues(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.length > 0))];
 }
 
 function describeAsset(asset: DocumentAssetViewModel | null): string {

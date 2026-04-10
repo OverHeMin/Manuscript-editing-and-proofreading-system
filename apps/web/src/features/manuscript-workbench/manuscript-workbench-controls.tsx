@@ -24,11 +24,13 @@ export interface WorkbenchSelectOption {
 
 export interface ManuscriptWorkbenchIntakePanelProps {
   uploadForm: UploadManuscriptInput;
+  attachedFileCount: number;
+  attachedFileNames: string[];
   canSubmit: boolean;
   onTitleChange(value: string): void;
   onManuscriptTypeChange(value: ManuscriptType): void;
   onStorageKeyChange(value: string): void;
-  onFileSelect(file: File): void;
+  onFilesSelect(files: File[]): void;
   onSubmit(): void;
 }
 
@@ -90,12 +92,15 @@ export function ManuscriptWorkbenchControls({
   finalizeAction,
   utilities,
 }: ManuscriptWorkbenchControlsProps) {
-  const intakeMessages = intake ? buildIntakeValidationMessages(intake.uploadForm) : [];
+  const intakeMessages = intake
+    ? buildIntakeValidationMessages(intake.uploadForm, intake.attachedFileCount > 0)
+    : [];
   const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
   const canRunModule = Boolean(moduleAction?.selectedAssetId.length);
   const canFinalizeProofreading = Boolean(finalizeAction?.selectedAssetId.length);
   const requiresUploadPayload = Boolean(
     intake &&
+      intake.attachedFileCount === 0 &&
       (intake.uploadForm.fileContentBase64?.trim().length ?? 0) === 0 &&
       (intake.uploadForm.storageKey?.trim().length ?? 0) === 0,
   );
@@ -168,10 +173,11 @@ export function ManuscriptWorkbenchControls({
                 <span>稿件文件</span>
                 <input
                   type="file"
+                  multiple
                   onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      intake.onFileSelect(file);
+                    const files = Array.from(event.target.files ?? []);
+                    if (files.length > 0) {
+                      intake.onFilesSelect(files);
                     }
                   }}
                 />
@@ -440,7 +446,10 @@ function describeMode(mode: ManuscriptWorkbenchMode): string {
   return "校对";
 }
 
-function buildIntakeValidationMessages(input: UploadManuscriptInput): string[] {
+function buildIntakeValidationMessages(
+  input: UploadManuscriptInput,
+  hasAttachedFiles: boolean,
+): string[] {
   const messages: string[] = [];
 
   if (input.title.trim().length === 0) {
@@ -448,6 +457,7 @@ function buildIntakeValidationMessages(input: UploadManuscriptInput): string[] {
   }
 
   if (
+    !hasAttachedFiles &&
     (input.fileContentBase64?.trim().length ?? 0) === 0 &&
     (input.storageKey?.trim().length ?? 0) === 0
   ) {

@@ -233,6 +233,230 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http manuscript and export surfaces stay hidden from non-mainline public-beta roles", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-surface-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const userCookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: userCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Protected Manuscript Surface",
+        manuscriptType: "review",
+        createdBy: "forged-user",
+        fileName: "protected-surface.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "UHVibGljIGJldGEgc3VyZmFjZSBjaGVjaw==",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: {
+        id: string;
+      };
+      asset: {
+        id: string;
+      };
+      job: {
+        id: string;
+      };
+    };
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    assert.equal(uploadResponse.status, 201);
+
+    const manuscriptResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const templateSelectionResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/template-selection`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          journalTemplateId: "journal-template-public-beta-1",
+        }),
+      },
+    );
+    const assetsResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/assets`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const jobResponse = await fetch(`${baseUrl}/api/v1/jobs/${uploaded.job.id}`, {
+      headers: {
+        Cookie: reviewerCookie,
+      },
+    });
+    const exportResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/export-current-asset`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: uploaded.manuscript.id,
+        }),
+      },
+    );
+    const downloadResponse = await fetch(
+      `${baseUrl}/api/v1/document-assets/${uploaded.asset.id}/download`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const blockedUploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: reviewerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Reviewer Upload Should Stay Hidden",
+        manuscriptType: "review",
+        createdBy: "forged-reviewer",
+        fileName: "blocked-upload.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "QQ==",
+      }),
+    });
+
+    assert.equal(manuscriptResponse.status, 403);
+    assert.equal(templateSelectionResponse.status, 403);
+    assert.equal(assetsResponse.status, 403);
+    assert.equal(jobResponse.status, 403);
+    assert.equal(exportResponse.status, 403);
+    assert.equal(downloadResponse.status, 403);
+    assert.equal(blockedUploadResponse.status, 403);
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("workbench http routes accept manuscript batch uploads and expose queued batch progress", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-batch-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload-batch`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        createdBy: "forged-user",
+        items: [
+          {
+            title: "Batch HTTP Review A",
+            manuscriptType: "review",
+            fileName: "batch-http-a.docx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            fileContentBase64: "QQ==",
+          },
+          {
+            title: "Batch HTTP Review B",
+            manuscriptType: "clinical_study",
+            fileName: "batch-http-b.docx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            fileContentBase64: "Qg==",
+          },
+        ],
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      batch_job: {
+        id: string;
+        requested_by: string;
+        module: string;
+        job_type: string;
+      };
+      items: Array<{
+        manuscript: { id: string; created_by: string };
+        asset: { id: string; created_by: string };
+        job: { id: string; requested_by: string };
+      }>;
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.batch_job.requested_by, "dev-user");
+    assert.equal(uploaded.batch_job.module, "upload");
+    assert.equal(uploaded.batch_job.job_type, "manuscript_upload_batch");
+    assert.equal(uploaded.items.length, 2);
+    assert.equal(uploaded.items[0]?.manuscript.created_by, "dev-user");
+    assert.equal(uploaded.items[1]?.job.requested_by, "dev-user");
+
+    const jobResponse = await fetch(`${baseUrl}/api/v1/jobs/${uploaded.batch_job.id}`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const job = (await jobResponse.json()) as {
+      id: string;
+      batch_progress?: {
+        lifecycle_status: string;
+        settlement_status: string;
+        total_count: number;
+        queued_count: number;
+        running_count: number;
+        succeeded_count: number;
+        failed_count: number;
+        cancelled_count: number;
+        remaining_count: number;
+        items: Array<{ status: string }>;
+      };
+    };
+
+    assert.equal(jobResponse.status, 200);
+    assert.equal(job.id, uploaded.batch_job.id);
+    assert.equal(job.batch_progress?.lifecycle_status, "queued");
+    assert.equal(job.batch_progress?.settlement_status, "in_progress");
+    assert.equal(job.batch_progress?.total_count, 2);
+    assert.equal(job.batch_progress?.queued_count, 2);
+    assert.equal(job.batch_progress?.running_count, 0);
+    assert.equal(job.batch_progress?.succeeded_count, 0);
+    assert.equal(job.batch_progress?.failed_count, 0);
+    assert.equal(job.batch_progress?.cancelled_count, 0);
+    assert.equal(job.batch_progress?.remaining_count, 2);
+    assert.deepEqual(
+      job.batch_progress?.items.map((item) => item.status),
+      ["queued", "queued"],
+    );
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
 test("workbench http routes expose the knowledge library revision lifecycle", async () => {
   const { server, baseUrl } = await startWorkbenchServer();
 
@@ -697,6 +921,90 @@ test("workbench http routes expose duplicate-check matches and acknowledgement-a
       },
     );
     assert.equal(legacySubmitResponse.status, 200);
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http module routes reject operators outside the assigned public-beta desk", async () => {
+  const { server, baseUrl, seededIds } = await startWorkbenchServer();
+
+  try {
+    const editorCookie = await loginAsDemoUser(baseUrl, "dev.editor");
+    const screenerCookie = await loginAsDemoUser(baseUrl, "dev.screener");
+    const proofreaderCookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+
+    const screeningResponse = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
+      method: "POST",
+      headers: {
+        Cookie: editorCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/forbidden-screening/report.md",
+        fileName: "forbidden-screening-report.md",
+      }),
+    });
+    const editingResponse = await fetch(`${baseUrl}/api/v1/modules/editing/run`, {
+      method: "POST",
+      headers: {
+        Cookie: screenerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/forbidden-editing/final.docx",
+        fileName: "forbidden-editing-final.docx",
+      }),
+    });
+    const proofreadingResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/draft`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: editorCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          parentAssetId: seededIds.originalAssetId,
+          requestedBy: "forged-requester",
+          actorRole: "admin",
+          storageKey: "runs/http/forbidden-proofreading/draft.md",
+          fileName: "forbidden-proofreading-draft.md",
+        }),
+      },
+    );
+    const screeningUploadResponse = await fetch(
+      `${baseUrl}/api/v1/modules/screening/run`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: proofreaderCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          parentAssetId: seededIds.originalAssetId,
+          requestedBy: "forged-requester",
+          actorRole: "admin",
+          storageKey: "runs/http/forbidden-screening-proofreader/report.md",
+          fileName: "forbidden-screening-proofreader-report.md",
+        }),
+      },
+    );
+
+    assert.equal(screeningResponse.status, 403);
+    assert.equal(editingResponse.status, 403);
+    assert.equal(proofreadingResponse.status, 403);
+    assert.equal(screeningUploadResponse.status, 403);
   } finally {
     await stopServer(server);
   }

@@ -219,6 +219,7 @@ function HarnessDatasetVersionCard(props: {
   actions?: ReactNode;
 }) {
   const { version, actions } = props;
+  const releaseFreezeStatus = describeReleaseFreezeStatus(version);
 
   return (
     <article className="harness-datasets-card">
@@ -248,6 +249,12 @@ function HarnessDatasetVersionCard(props: {
         Rubric: {describeRubricAssignment(version)}
       </p>
       <p className="harness-datasets-copy">Curated items: {version.itemCount}</p>
+      {releaseFreezeStatus != null ? (
+        <div className="harness-datasets-provenance">
+          <strong>{releaseFreezeStatus.label}</strong>
+          <p className="harness-datasets-copy">{releaseFreezeStatus.copy}</p>
+        </div>
+      ) : null}
 
       <div className="harness-datasets-provenance">
         <strong>Source provenance</strong>
@@ -295,6 +302,38 @@ function describeRubricAssignment(version: HarnessDatasetVersionViewModel) {
   return `${version.rubricAssignment.rubricName ?? "Assigned rubric"} v${
     version.rubricAssignment.rubricVersionNo ?? "?"
   } (${version.rubricAssignment.status})`;
+}
+
+function describeReleaseFreezeStatus(version: HarnessDatasetVersionViewModel) {
+  if (version.status !== "published") {
+    return null;
+  }
+
+  if (version.rubricAssignment.status !== "published") {
+    return {
+      label: "Release-freeze not ready",
+      copy: "Release-freeze not ready: missing published rubric.",
+    };
+  }
+
+  if (!version.deidentificationGatePassed) {
+    return {
+      label: "Release-freeze not ready",
+      copy: "Release-freeze not ready: de-identification pending.",
+    };
+  }
+
+  if (!version.humanReviewGatePassed) {
+    return {
+      label: "Release-freeze not ready",
+      copy: "Release-freeze not ready: human review pending.",
+    };
+  }
+
+  return {
+    label: "Release-freeze ready",
+    copy: "Release-freeze ready for manifest and export citation.",
+  };
 }
 
 function toErrorMessage(error: unknown) {
