@@ -23,6 +23,15 @@ function buildOverview() {
     executionProfiles: [],
     modelRegistryEntries: [
       {
+        id: "model-fallback-1",
+        provider: "openai",
+        model_name: "deepseek-chat",
+        model_version: "2026-04-10",
+        allowed_modules: ["editing"],
+        is_prod_allowed: true,
+        connection_id: "connection-deepseek-1",
+      },
+      {
         id: "model-qwen-1",
         provider: "openai",
         model_name: "qwen-max",
@@ -30,6 +39,7 @@ function buildOverview() {
         allowed_modules: ["editing"],
         is_prod_allowed: true,
         connection_id: "connection-qwen-1",
+        fallback_model_id: "model-fallback-1",
       },
     ],
     modelRoutingPolicy: {
@@ -64,6 +74,18 @@ function buildOverview() {
         credential_summary: {
           mask: "sk-***a562",
           version: 1,
+        },
+      },
+      {
+        id: "connection-deepseek-1",
+        name: "DeepSeek Production",
+        provider_kind: "deepseek",
+        compatibility_mode: "openai_chat_compatible",
+        enabled: true,
+        last_test_status: "passed",
+        credential_summary: {
+          mask: "sk-***c101",
+          version: 2,
         },
       },
     ],
@@ -178,7 +200,10 @@ test("admin governance workbench page renders connection-aware model authoring c
   assert.match(markup, /qwen/);
   assert.match(markup, /connection-qwen-1/);
   assert.match(markup, /openai_chat_compatible/);
-  assert.match(markup, /model-fallback-1/);
+  assert.match(markup, /Fallback Model/);
+  assert.match(markup, /openai \/ deepseek-chat \(model-fallback-1\)/);
+  assert.match(markup, /Fallback Model openai \/ deepseek-chat \(model-fallback-1\)/);
+  assert.match(markup, /DeepSeek Production/);
   assert.match(markup, /legacy_unbound/);
   assert.match(markup, /connection_test_unknown/);
   assert.match(markup, /Provider Connection/);

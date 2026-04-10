@@ -74,6 +74,7 @@ export function AdminGovernanceWorkbenchPage({
     allowedModules: TemplateModule[];
     isProdAllowed: boolean;
     connectionId: string;
+    fallbackModelId: string;
   }>({
     provider: "openai",
     modelName: "gpt-5.4",
@@ -81,6 +82,7 @@ export function AdminGovernanceWorkbenchPage({
     allowedModules: [...templateModules],
     isProdAllowed: true,
     connectionId: initialOverview?.aiProviderConnections[0]?.id ?? "",
+    fallbackModelId: "",
   });
   const [routingPolicyForm, setRoutingPolicyForm] = useState<{
     systemDefaultModelId: string;
@@ -251,6 +253,7 @@ export function AdminGovernanceWorkbenchPage({
         allowedModules: modelForm.allowedModules,
         isProdAllowed: modelForm.isProdAllowed,
         connectionId: normalizeOptionalText(modelForm.connectionId),
+        fallbackModelId: normalizeOptionalText(modelForm.fallbackModelId),
       });
 
       startTransition(() => {
@@ -638,6 +641,32 @@ export function AdminGovernanceWorkbenchPage({
               </select>
             </label>
             <label className="admin-governance-field">
+              <span>Fallback Model</span>
+              <select
+                value={modelForm.fallbackModelId}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    fallbackModelId: event.target.value,
+                  }))
+                }
+                disabled={isMutating}
+              >
+                <option value="">None</option>
+                {(overview?.modelRegistryEntries ?? [])
+                  .filter((model) =>
+                    model.allowed_modules.some((module) =>
+                      modelForm.allowedModules.includes(module),
+                    ),
+                  )
+                  .map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {formatModelDisplayName(model)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="admin-governance-field">
               <span>Production Approved</span>
               <select
                 value={modelForm.isProdAllowed ? "yes" : "no"}
@@ -715,6 +744,10 @@ export function AdminGovernanceWorkbenchPage({
                     <p>
                       Connection Kind{" "}
                       {resolveConnectionProviderKind(overview?.aiProviderConnections ?? [], model.connection_id)}
+                    </p>
+                    <p>
+                      Fallback Model{" "}
+                      {resolveModelDisplayName(overview?.modelRegistryEntries ?? [], model.fallback_model_id)}
                     </p>
                   </div>
                   <div className="admin-governance-template-actions">
@@ -982,7 +1015,7 @@ export function AdminGovernanceWorkbenchPage({
               <article className="admin-governance-asset-row">
                 <span>Fallback Chain</span>
                 <small>
-                  {executionPreview.fallback_chain.map((model) => model.id).join(", ") || "none"}
+                  {executionPreview.fallback_chain.map((model) => formatModelDisplayName(model)).join(" -> ") || "none"}
                 </small>
               </article>
               <article className="admin-governance-asset-row">
@@ -1167,6 +1200,24 @@ function resolveConnectionProviderKind(
   }
 
   return connections.find((record) => record.id === connectionId)?.provider_kind ?? "unknown";
+}
+
+function formatModelDisplayName(
+  model: Pick<ModelRegistryEntryViewModel, "id" | "provider" | "model_name">,
+): string {
+  return `${model.provider} / ${model.model_name} (${model.id})`;
+}
+
+function resolveModelDisplayName(
+  models: readonly ModelRegistryEntryViewModel[],
+  modelId: string | undefined,
+): string {
+  if (!modelId) {
+    return "None";
+  }
+
+  const model = models.find((record) => record.id === modelId);
+  return model ? formatModelDisplayName(model) : modelId;
 }
 
 function toErrorMessage(error: unknown): string {
