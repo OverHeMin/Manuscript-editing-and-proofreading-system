@@ -2904,6 +2904,183 @@ test("admin governance controller keeps connectionId in model creation payloads 
   );
 });
 
+test("admin governance controller updates existing model bindings and reloads connection-aware overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/model-registry/model-qwen-1") {
+        return {
+          status: 200,
+          body: {
+            id: "model-qwen-1",
+            provider: "openai",
+            model_name: "qwen-max",
+            model_version: "2026-04-10",
+            allowed_modules: ["editing", "proofreading"],
+            is_prod_allowed: false,
+            connection_id: "connection-deepseek-1",
+            fallback_model_id: "model-fallback-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-qwen-1",
+              provider: "openai",
+              model_name: "qwen-max",
+              model_version: "2026-04-10",
+              allowed_modules: ["editing", "proofreading"],
+              is_prod_allowed: false,
+              connection_id: "connection-deepseek-1",
+              fallback_model_id: "model-fallback-1",
+            },
+            {
+              id: "model-fallback-1",
+              provider: "openai",
+              model_name: "deepseek-chat",
+              model_version: "2026-04-10",
+              allowed_modules: ["editing", "proofreading"],
+              is_prod_allowed: true,
+              connection_id: "connection-qwen-1",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/system-settings/ai-providers") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "connection-qwen-1",
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "passed",
+              credential_summary: {
+                mask: "sk-***a562",
+                version: 1,
+              },
+            },
+            {
+              id: "connection-deepseek-1",
+              name: "DeepSeek Production",
+              provider_kind: "deepseek",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "passed",
+              credential_summary: {
+                mask: "sk-***c101",
+                version: 2,
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-qwen-1",
+            module_defaults: {
+              editing: "model-qwen-1",
+            },
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const result = await (controller as typeof controller & {
+    updateModelEntryAndReload: (input: {
+      modelId: string;
+      actorRole: "admin";
+      allowedModules: string[];
+      isProdAllowed: boolean;
+      connectionId: string;
+      fallbackModelId: string;
+    }) => Promise<{
+      updatedModel: {
+        connection_id?: string;
+        fallback_model_id?: string;
+        is_prod_allowed?: boolean;
+      };
+      overview: {
+        modelRegistryEntries: Array<{
+          id: string;
+          connection_id?: string;
+          fallback_model_id?: string;
+          is_prod_allowed?: boolean;
+        }>;
+      };
+    }>;
+  }).updateModelEntryAndReload({
+    modelId: "model-qwen-1",
+    actorRole: "admin",
+    allowedModules: ["editing", "proofreading"],
+    isProdAllowed: false,
+    connectionId: "connection-deepseek-1",
+    fallbackModelId: "model-fallback-1",
+  });
+
+  assert.deepEqual(requests[0]?.body, {
+    actorRole: "admin",
+    allowedModules: ["editing", "proofreading"],
+    isProdAllowed: false,
+    connectionId: "connection-deepseek-1",
+    fallbackModelId: "model-fallback-1",
+  });
+  assert.equal(result.updatedModel.connection_id, "connection-deepseek-1");
+  assert.equal(result.updatedModel.fallback_model_id, "model-fallback-1");
+  assert.equal(result.updatedModel.is_prod_allowed, false);
+  assert.equal(
+    result.overview.modelRegistryEntries.find((model) => model.id === "model-qwen-1")?.connection_id,
+    "connection-deepseek-1",
+  );
+  assert.equal(
+    result.overview.modelRegistryEntries.find((model) => model.id === "model-qwen-1")?.fallback_model_id,
+    "model-fallback-1",
+  );
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/model-registry/model-qwen-1",
+      "/api/v1/templates/families",
+      "/api/v1/prompt-skill-registry/prompt-templates",
+      "/api/v1/prompt-skill-registry/skill-packages",
+      "/api/v1/model-registry",
+      "/api/v1/model-registry/routing-policy",
+      routingGovernanceOverviewUrl,
+      "/api/v1/execution-governance/profiles",
+      ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
+    ],
+  );
+});
+
 function createEmptyAgentToolingListResponse<TResponse>(url: string) {
   if (url === routingGovernanceOverviewUrl) {
     return {

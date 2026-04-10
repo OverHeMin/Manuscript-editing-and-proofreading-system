@@ -50,6 +50,7 @@ import {
   createModelRegistryEntry,
   getModelRoutingPolicy,
   listModelRegistryEntries,
+  updateModelRegistryEntry,
   updateModelRoutingPolicy,
 } from "../model-registry/index.ts";
 import {
@@ -119,6 +120,7 @@ import type {
   CreateModelRegistryEntryInput,
   ModelRegistryEntryViewModel,
   ModelRoutingPolicyViewModel,
+  UpdateModelRegistryEntryInput,
   UpdateModelRoutingPolicyInput,
 } from "../model-registry/index.ts";
 import type {
@@ -218,6 +220,12 @@ export interface AdminGovernanceWorkbenchController {
   }>;
   createModelEntryAndReload(input: CreateModelRegistryEntryInput): Promise<{
     createdModel: ModelRegistryEntryViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  updateModelEntryAndReload(
+    input: { modelId: string } & UpdateModelRegistryEntryInput,
+  ): Promise<{
+    updatedModel: ModelRegistryEntryViewModel;
     overview: AdminGovernanceOverview;
   }>;
   createRoutingPolicyAndReload(input: CreateModelRoutingPolicyInput): Promise<{
@@ -352,6 +360,31 @@ export function createAdminGovernanceWorkbenchController(
 
       return {
         createdModel,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async updateModelEntryAndReload(input) {
+      const updateInput: UpdateModelRegistryEntryInput = {
+        actorRole: input.actorRole,
+        ...(input.allowedModules ? { allowedModules: input.allowedModules } : {}),
+        ...(input.isProdAllowed !== undefined
+          ? { isProdAllowed: input.isProdAllowed }
+          : {}),
+        ...(input.costProfile ? { costProfile: input.costProfile } : {}),
+        ...(input.rateLimit ? { rateLimit: input.rateLimit } : {}),
+        ...(input.fallbackModelId !== undefined
+          ? { fallbackModelId: input.fallbackModelId }
+          : {}),
+        ...(input.connectionId !== undefined
+          ? { connectionId: input.connectionId }
+          : {}),
+      };
+      const updatedModel = (
+        await updateModelRegistryEntry(client, input.modelId, updateInput)
+      ).body;
+
+      return {
+        updatedModel,
         overview: await loadAdminGovernanceOverview(client),
       };
     },

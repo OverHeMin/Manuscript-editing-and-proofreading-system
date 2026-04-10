@@ -106,6 +106,20 @@ export function AdminGovernanceWorkbenchPage({
   });
   const [executionPreview, setExecutionPreview] =
     useState<ResolvedExecutionBundleViewModel | null>(initialExecutionPreview);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(
+    initialOverview?.modelRegistryEntries[0]?.id ?? null,
+  );
+  const [selectedModelForm, setSelectedModelForm] = useState<{
+    allowedModules: TemplateModule[];
+    isProdAllowed: boolean;
+    connectionId: string;
+    fallbackModelId: string;
+  }>(
+    createSelectedModelForm(
+      initialOverview?.modelRegistryEntries[0] ?? null,
+      initialOverview?.aiProviderConnections[0]?.id ?? "",
+    ),
+  );
 
   useEffect(() => {
     if (initialOverview) {
@@ -162,7 +176,21 @@ export function AdminGovernanceWorkbenchPage({
           ? current.connectionId
           : (overview.aiProviderConnections[0]?.id ?? ""),
     }));
-  }, [overview]);
+    const nextSelectedModelId = resolveSelectedModelId(
+      overview.modelRegistryEntries,
+      selectedModelId,
+    );
+    setSelectedModelId(nextSelectedModelId);
+    setSelectedModelForm(
+      createSelectedModelForm(
+        overview.modelRegistryEntries.find((model) => model.id === nextSelectedModelId) ?? null,
+        overview.aiProviderConnections[0]?.id ?? "",
+      ),
+    );
+  }, [overview, selectedModelId]);
+
+  const selectedModel =
+    overview?.modelRegistryEntries.find((model) => model.id === selectedModelId) ?? null;
 
   async function loadOverview(input?: { selectedTemplateFamilyId?: string | null }) {
     setLoadStatus("loading");
@@ -258,7 +286,31 @@ export function AdminGovernanceWorkbenchPage({
 
       startTransition(() => {
         setOverview(result.overview);
+        setSelectedModelId(result.createdModel.id);
         setStatusMessage(`Created model entry: ${result.createdModel.model_name}`);
+      });
+    });
+  }
+
+  async function handleUpdateSelectedModel() {
+    if (!selectedModel) {
+      return;
+    }
+
+    await runMutation(async () => {
+      const result = await controller.updateModelEntryAndReload({
+        modelId: selectedModel.id,
+        actorRole,
+        allowedModules: selectedModelForm.allowedModules,
+        isProdAllowed: selectedModelForm.isProdAllowed,
+        connectionId: normalizeOptionalSelection(selectedModelForm.connectionId),
+        fallbackModelId: normalizeOptionalSelection(selectedModelForm.fallbackModelId),
+      });
+
+      startTransition(() => {
+        setOverview(result.overview);
+        setSelectedModelId(result.updatedModel.id);
+        setStatusMessage(`Updated model entry: ${result.updatedModel.model_name}`);
       });
     });
   }
@@ -653,12 +705,10 @@ export function AdminGovernanceWorkbenchPage({
                 disabled={isMutating}
               >
                 <option value="">None</option>
-                {(overview?.modelRegistryEntries ?? [])
-                  .filter((model) =>
-                    model.allowed_modules.some((module) =>
-                      modelForm.allowedModules.includes(module),
-                    ),
-                  )
+                {filterEligibleFallbackModels(
+                  overview?.modelRegistryEntries ?? [],
+                  modelForm.allowedModules,
+                )
                   .map((model) => (
                     <option key={model.id} value={model.id}>
                       {formatModelDisplayName(model)}
@@ -728,7 +778,10 @@ export function AdminGovernanceWorkbenchPage({
           {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
             <ul className="admin-governance-list admin-governance-list-spaced">
               {(overview?.modelRegistryEntries ?? []).map((model) => (
-                <li key={model.id} className="admin-governance-template-row">
+                <li
+                  key={model.id}
+                  className={`admin-governance-template-row${model.id === selectedModelId ? " is-active" : ""}`}
+                >
                   <div>
                     <strong>
                       {model.provider} / {model.model_name}
@@ -754,6 +807,14 @@ export function AdminGovernanceWorkbenchPage({
                     <span className="admin-governance-badge">
                       {model.is_prod_allowed ? "prod_allowed" : "review_only"}
                     </span>
+                    <button
+                      type="button"
+                      className="workbench-secondary-action"
+                      onClick={() => setSelectedModelId(model.id)}
+                      disabled={isMutating}
+                    >
+                      {model.id === selectedModelId ? "Selected" : "Select"}
+                    </button>
                   </div>
                 </li>
               ))}
@@ -762,6 +823,123 @@ export function AdminGovernanceWorkbenchPage({
             <p className="admin-governance-empty">
               No model entries yet. Add at least one production-approved model before assigning
               routing defaults.
+            </p>
+          )}
+        </article>
+
+        <article className="admin-governance-panel">
+          <h3>Selected Model</h3>
+          {selectedModel ? (
+            <>
+              <p className="admin-governance-empty">
+                {formatModelDisplayName(selectedModel)}
+              </p>
+              <div className="admin-governance-form-grid">
+                <label className="admin-governance-field">
+                  <span>Provider Connection</span>
+                  <select
+                    value={selectedModelForm.connectionId}
+                    onChange={(event) =>
+                      setSelectedModelForm((current) => ({
+                        ...current,
+                        connectionId: event.target.value,
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    <option value="">Unassigned</option>
+                    {(overview?.aiProviderConnections ?? []).map((connection) => (
+                      <option key={connection.id} value={connection.id}>
+                        {connection.name} 路 {connection.provider_kind}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="admin-governance-field">
+                  <span>Fallback Model</span>
+                  <select
+                    value={selectedModelForm.fallbackModelId}
+                    onChange={(event) =>
+                      setSelectedModelForm((current) => ({
+                        ...current,
+                        fallbackModelId: event.target.value,
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    <option value="">None</option>
+                    {filterEligibleFallbackModels(
+                      overview?.modelRegistryEntries ?? [],
+                      selectedModelForm.allowedModules,
+                      selectedModel.id,
+                    ).map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {formatModelDisplayName(model)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="admin-governance-field">
+                  <span>Production Approved</span>
+                  <select
+                    value={selectedModelForm.isProdAllowed ? "yes" : "no"}
+                    onChange={(event) =>
+                      setSelectedModelForm((current) => ({
+                        ...current,
+                        isProdAllowed: event.target.value === "yes",
+                      }))
+                    }
+                    disabled={isMutating}
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+              </div>
+
+              <fieldset className="admin-governance-module-selector">
+                <legend>Allowed Modules</legend>
+                <div className="admin-governance-module-options">
+                  {templateModules.map((module) => (
+                    <label key={module} className="admin-governance-module-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedModelForm.allowedModules.includes(module)}
+                        onChange={() =>
+                          setSelectedModelForm((current) => ({
+                            ...current,
+                            allowedModules: toggleModuleSelection(
+                              current.allowedModules,
+                              module,
+                            ),
+                          }))
+                        }
+                        disabled={isMutating}
+                      />
+                      <span>{module}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="auth-actions">
+                <button
+                  type="button"
+                  className="auth-primary-action"
+                  onClick={() => void handleUpdateSelectedModel()}
+                  disabled={
+                    isMutating ||
+                    selectedModelForm.allowedModules.length === 0 ||
+                    selectedModelForm.connectionId.trim().length === 0
+                  }
+                >
+                  Save Model Changes
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="admin-governance-empty">
+              Select a model entry to adjust its provider connection, fallback, and module access.
             </p>
           )}
         </article>
@@ -1206,6 +1384,46 @@ function formatModelDisplayName(
   model: Pick<ModelRegistryEntryViewModel, "id" | "provider" | "model_name">,
 ): string {
   return `${model.provider} / ${model.model_name} (${model.id})`;
+}
+
+function createSelectedModelForm(
+  model: ModelRegistryEntryViewModel | null,
+  defaultConnectionId: string,
+): {
+  allowedModules: TemplateModule[];
+  isProdAllowed: boolean;
+  connectionId: string;
+  fallbackModelId: string;
+} {
+  return {
+    allowedModules: [...(model?.allowed_modules ?? [])],
+    isProdAllowed: model?.is_prod_allowed ?? true,
+    connectionId: model?.connection_id ?? defaultConnectionId,
+    fallbackModelId: model?.fallback_model_id ?? "",
+  };
+}
+
+function resolveSelectedModelId(
+  models: readonly ModelRegistryEntryViewModel[],
+  requestedId: string | null,
+): string | null {
+  if (requestedId && models.some((model) => model.id === requestedId)) {
+    return requestedId;
+  }
+
+  return models[0]?.id ?? null;
+}
+
+function filterEligibleFallbackModels(
+  models: readonly ModelRegistryEntryViewModel[],
+  allowedModules: readonly TemplateModule[],
+  excludeModelId?: string,
+): ModelRegistryEntryViewModel[] {
+  return models.filter(
+    (model) =>
+      model.id !== excludeModelId &&
+      model.allowed_modules.some((module) => allowedModules.includes(module)),
+  );
 }
 
 function resolveModelDisplayName(

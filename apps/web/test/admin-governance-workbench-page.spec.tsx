@@ -23,15 +23,6 @@ function buildOverview() {
     executionProfiles: [],
     modelRegistryEntries: [
       {
-        id: "model-fallback-1",
-        provider: "openai",
-        model_name: "deepseek-chat",
-        model_version: "2026-04-10",
-        allowed_modules: ["editing"],
-        is_prod_allowed: true,
-        connection_id: "connection-deepseek-1",
-      },
-      {
         id: "model-qwen-1",
         provider: "openai",
         model_name: "qwen-max",
@@ -40,6 +31,15 @@ function buildOverview() {
         is_prod_allowed: true,
         connection_id: "connection-qwen-1",
         fallback_model_id: "model-fallback-1",
+      },
+      {
+        id: "model-fallback-1",
+        provider: "openai",
+        model_name: "deepseek-chat",
+        model_version: "2026-04-10",
+        allowed_modules: ["editing"],
+        is_prod_allowed: true,
+        connection_id: "connection-deepseek-1",
       },
     ],
     modelRoutingPolicy: {
@@ -207,4 +207,7 @@ test("admin governance workbench page renders connection-aware model authoring c
   assert.match(markup, /legacy_unbound/);
   assert.match(markup, /connection_test_unknown/);
   assert.match(markup, /Provider Connection/);
+  assert.match(markup, /Selected Model/);
+  assert.match(markup, /Save Model Changes/);
+  assert.match(markup, /openai \/ qwen-max \(model-qwen-1\)/);
 });
