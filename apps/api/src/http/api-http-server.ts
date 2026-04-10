@@ -86,6 +86,11 @@ import {
 import { InMemoryAuditService } from "../audit/index.ts";
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
+  AiProviderConnectionNotFoundError,
+  AiProviderConnectionValidationError,
+  createAiProviderConnectionApi,
+} from "../modules/ai-provider-connections/index.ts";
+import {
   createHarnessDatasetApi,
   HarnessDatasetDependencyMissingError,
   HarnessGoldSetVersionExportValidationError,
@@ -376,6 +381,24 @@ type HttpRouteMatch =
   | {
       route: "system-settings-users-enable";
       userId: string;
+    }
+  | {
+      route: "system-settings-ai-providers-list";
+    }
+  | {
+      route: "system-settings-ai-providers-create";
+    }
+  | {
+      route: "system-settings-ai-providers-update";
+      connectionId: string;
+    }
+  | {
+      route: "system-settings-ai-providers-rotate-credential";
+      connectionId: string;
+    }
+  | {
+      route: "system-settings-ai-providers-test";
+      connectionId: string;
     }
   | {
       route: "manuscripts-upload";
@@ -1043,6 +1066,7 @@ export interface ApiServerRuntime {
   toolGatewayApi: ReturnType<typeof createToolGatewayApi>;
   toolPermissionPolicyApi: ReturnType<typeof createToolPermissionPolicyApi>;
   userAdminApi?: ReturnType<typeof createUserAdminApi>;
+  aiProviderConnectionApi?: ReturnType<typeof createAiProviderConnectionApi>;
   permissionGuard: PermissionGuard;
 }
 
@@ -2530,6 +2554,86 @@ async function handleRoute(
         actorId: session.user.id,
         actorRole: session.user.role,
         userId: routeMatch.userId,
+      });
+    }
+    case "system-settings-ai-providers-list": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      await requirePermission(req, runtime, "permissions.manage");
+      return aiProviderConnectionApi.listConnections();
+    }
+    case "system-settings-ai-providers-create": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof aiProviderConnectionApi.createConnection
+      >[0]["input"];
+
+      return aiProviderConnectionApi.createConnection({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        input: body,
+      });
+    }
+    case "system-settings-ai-providers-update": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof aiProviderConnectionApi.updateConnection
+      >[0]["input"];
+
+      return aiProviderConnectionApi.updateConnection({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        connectionId: routeMatch.connectionId,
+        input: body,
+      });
+    }
+    case "system-settings-ai-providers-rotate-credential": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof aiProviderConnectionApi.rotateCredential
+      >[0]["input"];
+
+      return aiProviderConnectionApi.rotateCredential({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        connectionId: routeMatch.connectionId,
+        input: body,
+      });
+    }
+    case "system-settings-ai-providers-test": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof aiProviderConnectionApi.testConnection
+      >[0]["input"];
+
+      return aiProviderConnectionApi.testConnection({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        connectionId: routeMatch.connectionId,
+        input: body,
       });
     }
     case "manuscripts-upload": {
@@ -4186,6 +4290,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "system-settings-users-create" };
   }
 
+  if (method === "GET" && path === "/api/v1/system-settings/ai-providers") {
+    return { route: "system-settings-ai-providers-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/system-settings/ai-providers") {
+    return { route: "system-settings-ai-providers-create" };
+  }
+
   const systemSettingsUpdateProfileMatch = path.match(
     /^\/api\/v1\/system-settings\/users\/([^/]+)\/profile$/,
   );
@@ -4223,6 +4335,36 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "system-settings-users-enable",
       userId: systemSettingsEnableUserMatch[1],
+    };
+  }
+
+  const systemSettingsUpdateAiProviderMatch = path.match(
+    /^\/api\/v1\/system-settings\/ai-providers\/([^/]+)$/,
+  );
+  if (method === "POST" && systemSettingsUpdateAiProviderMatch) {
+    return {
+      route: "system-settings-ai-providers-update",
+      connectionId: systemSettingsUpdateAiProviderMatch[1],
+    };
+  }
+
+  const systemSettingsRotateAiProviderCredentialMatch = path.match(
+    /^\/api\/v1\/system-settings\/ai-providers\/([^/]+)\/rotate-credential$/,
+  );
+  if (method === "POST" && systemSettingsRotateAiProviderCredentialMatch) {
+    return {
+      route: "system-settings-ai-providers-rotate-credential",
+      connectionId: systemSettingsRotateAiProviderCredentialMatch[1],
+    };
+  }
+
+  const systemSettingsTestAiProviderMatch = path.match(
+    /^\/api\/v1\/system-settings\/ai-providers\/([^/]+)\/test$/,
+  );
+  if (method === "POST" && systemSettingsTestAiProviderMatch) {
+    return {
+      route: "system-settings-ai-providers-test",
+      connectionId: systemSettingsTestAiProviderMatch[1],
     };
   }
 
@@ -5542,6 +5684,19 @@ function createUnavailableSystemSettingsResponse(): RouteResponse<{
   };
 }
 
+function createUnavailableAiProviderConnectionsResponse(): RouteResponse<{
+  error: string;
+  message: string;
+}> {
+  return {
+    status: 404,
+    body: {
+      error: "not_found",
+      message: "System settings ai provider management is unavailable in this runtime.",
+    },
+  };
+}
+
 function mapErrorToHttpResponse(
   error: unknown,
 ): [number, unknown, Record<string, string>?] {
@@ -5572,6 +5727,7 @@ function mapErrorToHttpResponse(
     error instanceof PromptTemplateNotFoundError ||
     error instanceof EditorialRuleSetNotFoundError ||
     error instanceof EditorialRuleTemplateFamilyNotFoundError ||
+    error instanceof AiProviderConnectionNotFoundError ||
     error instanceof RuntimeBindingNotFoundError ||
     error instanceof SandboxProfileNotFoundError ||
     error instanceof ToolGatewayToolNotFoundError ||
@@ -5660,6 +5816,7 @@ function mapErrorToHttpResponse(
     error instanceof ToolPermissionPolicyUnknownToolError ||
     error instanceof ProofreadingDraftAssetRequiredError ||
     error instanceof ProofreadingFinalAssetRequiredError ||
+    error instanceof AiProviderConnectionValidationError ||
     error instanceof InlineUploadStorageReferenceRequiredError ||
     error instanceof InlineUploadPayloadInvalidError ||
     error instanceof DocumentAssetDownloadUnsupportedError ||

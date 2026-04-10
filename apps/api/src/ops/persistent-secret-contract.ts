@@ -3,9 +3,19 @@ import type { PersistentAppEnv } from "./persistent-runtime-contract.ts";
 interface SecretPlaceholderGuard {
   envName: string;
   placeholderValues: Set<string>;
+  requiredInProductionLike?: boolean;
 }
 
 const PRODUCTION_PLACEHOLDER_SECRET_GUARDS: SecretPlaceholderGuard[] = [
+  {
+    envName: "AI_PROVIDER_MASTER_KEY",
+    placeholderValues: new Set([
+      "place_holder_key",
+      "change-me",
+      "change-me-in-prod",
+    ]),
+    requiredInProductionLike: true,
+  },
   {
     envName: "ONLYOFFICE_JWT_SECRET",
     placeholderValues: new Set(["change-me-in-prod"]),
@@ -33,10 +43,19 @@ export function assertPersistentSecretContract(
     const normalizedValue = rawValue?.trim();
 
     if (!normalizedValue) {
+      if (guard.requiredInProductionLike) {
+        throw new Error(
+          `Persistent API runtime requires ${guard.envName} for APP_ENV="${appEnv}".`,
+        );
+      }
+
       continue;
     }
 
-    if (guard.placeholderValues.has(normalizedValue)) {
+    if (
+      guard.placeholderValues.has(normalizedValue) ||
+      guard.placeholderValues.has(normalizedValue.toLowerCase())
+    ) {
       throw new Error(
         `Persistent API runtime requires ${guard.envName} to be replaced for APP_ENV="${appEnv}".`,
       );

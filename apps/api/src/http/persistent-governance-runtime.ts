@@ -25,6 +25,14 @@ import {
 } from "../modules/agent-runtime/index.ts";
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
+  type AiProviderConnectivityProbe,
+  AiProviderCredentialCrypto,
+  createAiProviderConnectionApi,
+  createAiProviderConnectionService,
+  OpenAiChatCompatibleConnectivityProbe,
+  PostgresAiProviderConnectionRepository,
+} from "../modules/ai-provider-connections/index.ts";
+import {
   DocumentAssetService,
   PostgresDocumentAssetRepository,
 } from "../modules/assets/index.ts";
@@ -179,6 +187,8 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   authRuntime: HttpAuthRuntime;
   client: PoolLikeClient;
   uploadRootDir?: string;
+  aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
+  aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
 }
 
 export function createPersistentGovernanceRuntime(
@@ -296,6 +306,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const auditService = new PostgresAuditService({
+    client: options.client,
+  });
+  const aiProviderConnectionRepository = new PostgresAiProviderConnectionRepository({
     client: options.client,
   });
 
@@ -640,6 +653,15 @@ export function createPersistentGovernanceRuntime(
     auditService,
     passwordHasher: new BcryptPasswordHasher(),
   });
+  const aiProviderConnectionService = createAiProviderConnectionService({
+    repository: aiProviderConnectionRepository,
+    auditService,
+    credentialCrypto:
+      options.aiProviderCredentialCrypto ?? new AiProviderCredentialCrypto(),
+    connectivityProbe:
+      options.aiProviderConnectivityProbe ??
+      new OpenAiChatCompatibleConnectivityProbe(),
+  });
 
   return {
     authRuntime: options.authRuntime,
@@ -755,6 +777,9 @@ export function createPersistentGovernanceRuntime(
     }),
     userAdminApi: createUserAdminApi({
       userAdminService,
+    }),
+    aiProviderConnectionApi: createAiProviderConnectionApi({
+      aiProviderConnectionService,
     }),
     permissionGuard,
   };
