@@ -31,6 +31,26 @@ const expectedTableColumns: Record<string, string[]> = {
     "user_agent",
     "revoked_at",
   ],
+  ai_provider_connections: [
+    "id",
+    "name",
+    "provider_kind",
+    "compatibility_mode",
+    "base_url",
+    "enabled",
+    "connection_metadata",
+    "last_test_status",
+    "last_test_at",
+    "last_error_summary",
+  ],
+  ai_provider_credentials: [
+    "id",
+    "connection_id",
+    "credential_ciphertext",
+    "credential_mask",
+    "credential_version",
+    "last_rotated_at",
+  ],
   login_attempts: [
     "username",
     "failure_count",
@@ -461,6 +481,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "model_version",
     "allowed_modules",
     "fallback_model_id",
+    "connection_id",
   ],
   agent_runtimes: [
     "id",
@@ -718,8 +739,8 @@ test("database schema exposes the editorial rule learning writeback target", { c
   });
 });
 
-test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
-  await withMigratedSchemaClient(async (client) => {
+  test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
+    await withMigratedSchemaClient(async (client) => {
     const indexesResult = await client.query<{ indexname: string }>(
       `
         select indexname
@@ -731,15 +752,120 @@ test("database schema creates the required lookup indexes", { concurrency: false
     const actualIndexNames = new Set(indexesResult.rows.map((row) => row.indexname));
     const missingIndexes = expectedIndexes.filter((indexName) => !actualIndexNames.has(indexName));
 
-    assert.deepEqual(
-      missingIndexes,
-      [],
-      `Missing lookup indexes: ${missingIndexes.join(", ") || "none"}`,
-    );
+      assert.deepEqual(
+        missingIndexes,
+        [],
+        `Missing lookup indexes: ${missingIndexes.join(", ") || "none"}`,
+      );
+    });
   });
-});
 
-test("migration seeds system roles and records migration bookkeeping", { concurrency: false }, async () => {
+test(
+  "database schema enforces ai provider relationships",
+  { concurrency: false },
+  async () => {
+    await withMigratedSchemaClient(async (client) => {
+      const connectionColumnResult = await client.query<{
+        is_nullable: string;
+      }>(
+        `
+          select is_nullable
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'model_registry'
+            and column_name = 'connection_id'
+        `,
+      );
+
+      assert.ok(
+        connectionColumnResult.rows.length > 0,
+        "Expected model_registry.connection_id to exist.",
+      );
+      assert.equal(
+        connectionColumnResult.rows[0].is_nullable,
+        "YES",
+        "model_registry.connection_id should be nullable.",
+      );
+
+      const expectForeignKey = async (
+        tableName: string,
+        columnName: string,
+        referencedTable: string,
+      ) => {
+        const result = await client.query<{ exists: boolean }>(
+          `
+            select exists (
+              select 1
+              from information_schema.table_constraints tc
+              join information_schema.key_column_usage kcu
+                on tc.constraint_name = kcu.constraint_name
+                and tc.constraint_schema = kcu.constraint_schema
+              join information_schema.constraint_column_usage ccu
+                on ccu.constraint_name = tc.constraint_name
+                and ccu.constraint_schema = tc.constraint_schema
+              where tc.constraint_schema = 'public'
+                and tc.constraint_type = 'FOREIGN KEY'
+                and tc.table_name = $1
+                and kcu.column_name = $2
+                and ccu.table_name = $3
+                and ccu.column_name = 'id'
+            )
+          `,
+          [tableName, columnName, referencedTable],
+        );
+
+        assert.equal(
+          result.rows[0]?.exists,
+          true,
+          `Expected foreign key from ${tableName}.${columnName} to ${referencedTable}.id`,
+        );
+      };
+
+      await expectForeignKey("model_registry", "connection_id", "ai_provider_connections");
+      await expectForeignKey(
+        "ai_provider_credentials",
+        "connection_id",
+        "ai_provider_connections",
+      );
+
+      const uniqueConstraintResult = await client.query<{ exists: boolean }>(
+        `
+          select exists (
+            select 1
+            from information_schema.table_constraints tc
+            join information_schema.key_column_usage kcu
+              on tc.constraint_name = kcu.constraint_name
+              and tc.constraint_schema = kcu.constraint_schema
+            where tc.constraint_schema = 'public'
+              and tc.table_name = 'ai_provider_credentials'
+              and tc.constraint_type = 'UNIQUE'
+              and kcu.column_name = 'connection_id'
+          )
+        `,
+      );
+
+      const uniqueIndexResult = await client.query<{ exists: boolean }>(
+        `
+          select exists (
+            select 1
+            from pg_indexes
+            where schemaname = 'public'
+              and tablename = 'ai_provider_credentials'
+              and indexdef like 'CREATE UNIQUE INDEX%'
+              and indexdef like '%(connection_id)%'
+          )
+        `,
+      );
+
+      assert.ok(
+        uniqueConstraintResult.rows[0]?.exists || uniqueIndexResult.rows[0]?.exists,
+        "Expected ai_provider_credentials.connection_id to be enforced as unique.",
+      );
+    });
+  },
+);
+
+  test("migration seeds system roles and records migration bookkeeping", { concurrency: false }, async () => {
   await withMigratedSchemaClient(async (client) => {
     const rolesResult = await client.query<{ key: string }>(
       `
@@ -807,6 +933,7 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0029_learning_reviewed_snapshot_source_kind.sql",
       "0030_knowledge_library_v1_revision_governance.sql",
       "0031_knowledge_duplicate_detection_acknowledgements.sql",
+      "0032_ai_provider_control_plane.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );

@@ -24,6 +24,7 @@ interface ModelRegistryRow {
   cost_profile: ModelRegistryRecord["cost_profile"] | null;
   rate_limit: ModelRegistryRecord["rate_limit"] | null;
   fallback_model_id: string | null;
+  connection_id: string | null;
 }
 
 interface ModelRoutingPolicyRow {
@@ -38,6 +39,10 @@ export class PostgresModelRegistryRepository
   constructor(private readonly dependencies: { client: QueryableClient }) {}
 
   async save(record: ModelRegistryRecord): Promise<void> {
+    if (record.connection_id) {
+      await ensureConnectionExists(this.dependencies.client, record);
+    }
+
     await this.dependencies.client.query(
       `
         insert into model_registry (
@@ -49,7 +54,8 @@ export class PostgresModelRegistryRepository
           is_prod_allowed,
           cost_profile,
           rate_limit,
-          fallback_model_id
+          fallback_model_id,
+          connection_id
         )
         values (
           $1,
@@ -60,7 +66,8 @@ export class PostgresModelRegistryRepository
           $6,
           $7::jsonb,
           $8::jsonb,
-          $9
+          $9,
+          $10
         )
         on conflict (id) do update
         set
@@ -72,6 +79,7 @@ export class PostgresModelRegistryRepository
           cost_profile = excluded.cost_profile,
           rate_limit = excluded.rate_limit,
           fallback_model_id = excluded.fallback_model_id,
+          connection_id = excluded.connection_id,
           updated_at = now()
       `,
       [
@@ -84,6 +92,7 @@ export class PostgresModelRegistryRepository
         record.cost_profile ?? null,
         record.rate_limit ?? null,
         record.fallback_model_id ?? null,
+        record.connection_id ?? null,
       ],
     );
   }
@@ -100,7 +109,8 @@ export class PostgresModelRegistryRepository
           is_prod_allowed,
           cost_profile,
           rate_limit,
-          fallback_model_id
+          fallback_model_id,
+          connection_id
         from model_registry
         where id = $1
       `,
@@ -126,7 +136,8 @@ export class PostgresModelRegistryRepository
           is_prod_allowed,
           cost_profile,
           rate_limit,
-          fallback_model_id
+          fallback_model_id,
+          connection_id
         from model_registry
         where provider = $1
           and model_name = $2
@@ -150,7 +161,8 @@ export class PostgresModelRegistryRepository
           is_prod_allowed,
           cost_profile,
           rate_limit,
-          fallback_model_id
+          fallback_model_id,
+          connection_id
         from model_registry
         order by provider::text asc, model_name asc, model_version asc, id asc
       `,
@@ -217,6 +229,48 @@ export class PostgresModelRoutingPolicyRepository
   }
 }
 
+async function ensureConnectionExists(
+  client: QueryableClient,
+  record: ModelRegistryRecord,
+): Promise<void> {
+  await client.query(
+    `
+      insert into ai_provider_connections (
+        id,
+        name,
+        provider_kind,
+        compatibility_mode,
+        base_url,
+        enabled,
+        connection_metadata,
+        last_test_status
+      )
+      values (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        false,
+        $6::jsonb,
+        'unknown'::ai_provider_test_status
+      )
+      on conflict (id) do nothing
+    `,
+    [
+      record.connection_id,
+      `${record.provider} connection ${record.connection_id}`,
+      record.provider,
+      `${record.provider}_compatible`,
+      "https://placeholder.invalid",
+      {
+        placeholder: true,
+        source: "model_registry_repository",
+      },
+    ],
+  );
+}
+
 function mapModelRegistryRow(row: ModelRegistryRow): ModelRegistryRecord {
   return {
     id: row.id,
@@ -232,6 +286,7 @@ function mapModelRegistryRow(row: ModelRegistryRow): ModelRegistryRecord {
     ...(row.fallback_model_id
       ? { fallback_model_id: row.fallback_model_id }
       : {}),
+    ...(row.connection_id ? { connection_id: row.connection_id } : {}),
   };
 }
 

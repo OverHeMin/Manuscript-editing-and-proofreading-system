@@ -30,6 +30,7 @@ export interface ModelRegistryRecord {
   cost_profile?: ModelCostProfile;
   rate_limit?: ModelRateLimit;
   fallback_model_id?: string;
+  connection_id?: string;
 }
 
 export interface ModelRoutingPolicyRecord {

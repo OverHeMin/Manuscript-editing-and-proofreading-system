@@ -159,6 +159,12 @@ enum ModelProvider {
   other
 }
 
+enum AiProviderTestStatus {
+  unknown
+  passed
+  failed
+}
+
 model Role {
   key         String   @id @db.Text
   description String   @db.Text
@@ -407,13 +413,48 @@ model ModelRegistry {
   costProfile     Json?           @map("cost_profile")
   rateLimit       Json?           @map("rate_limit")
   fallbackModelId String?         @map("fallback_model_id") @db.Uuid
+  connectionId    String?         @map("connection_id") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
   fallbackModel   ModelRegistry?  @relation("ModelRegistryFallback", fields: [fallbackModelId], references: [id], onDelete: SetNull)
   fallbackFor     ModelRegistry[] @relation("ModelRegistryFallback")
+  connection      AiProviderConnection? @relation("AiProviderConnectionModels", fields: [connectionId], references: [id], onDelete: SetNull)
 
   @@unique([provider, modelName, modelVersion], map: "model_registry_provider_model_name_model_version_key")
   @@map("model_registry")
+}
+
+model AiProviderConnection {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String                 @db.Text
+  providerKind      String                 @map("provider_kind") @db.Text
+  compatibilityMode String                 @map("compatibility_mode") @db.Text
+  baseUrl           String                 @map("base_url") @db.Text
+  enabled           Boolean                @default(true)
+  connectionMetadata Json                  @map("connection_metadata")
+  lastTestStatus    AiProviderTestStatus   @default(unknown) @map("last_test_status")
+  lastTestAt        DateTime?              @map("last_test_at") @db.Timestamptz(6)
+  lastErrorSummary  String?                @map("last_error_summary") @db.Text
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  credential        AiProviderCredential?
+  models            ModelRegistry[]        @relation("AiProviderConnectionModels")
+
+  @@map("ai_provider_connections")
+}
+
+model AiProviderCredential {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connectionId         String               @unique @map("connection_id") @db.Uuid
+  credentialCiphertext String               @map("credential_ciphertext") @db.Text
+  credentialMask       String               @map("credential_mask") @db.Text
+  credentialVersion    Int                  @default(1) @map("credential_version")
+  lastRotatedAt        DateTime             @default(now()) @map("last_rotated_at") @db.Timestamptz(6)
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  connection           AiProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_provider_credentials")
 }
 
 model AuditLog {

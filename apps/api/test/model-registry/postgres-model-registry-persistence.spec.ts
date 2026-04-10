@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Pool } from "pg";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
+import type { ModelRegistryRecord } from "../../src/modules/model-registry/model-record.ts";
 import {
   PostgresModelRegistryRepository,
   PostgresModelRoutingPolicyRepository,
@@ -17,7 +18,10 @@ test("postgres model registry persistence stores models and routing policy", asy
       client: pool,
     });
 
-    await modelRepository.save({
+    const openAiConnectionId = "00000000-0000-0000-0000-000000000101";
+    const anthropicConnectionId = "00000000-0000-0000-0000-000000000102";
+
+    const openAiRecord = {
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       provider: "openai",
       model_name: "gpt-5.4",
@@ -34,8 +38,10 @@ test("postgres model registry persistence stores models and routing policy", asy
         rpm: 60,
         tpm: 120000,
       },
-    });
-    await modelRepository.save({
+      connection_id: openAiConnectionId,
+    } satisfies ModelRegistryRecord & { connection_id: string };
+    await modelRepository.save(openAiRecord);
+    const anthropicRecord = {
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       provider: "anthropic",
       model_name: "claude-sonnet",
@@ -43,7 +49,9 @@ test("postgres model registry persistence stores models and routing policy", asy
       allowed_modules: ["editing", "proofreading"],
       is_prod_allowed: true,
       fallback_model_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    });
+      connection_id: anthropicConnectionId,
+    } satisfies ModelRegistryRecord & { connection_id: string };
+    await modelRepository.save(anthropicRecord);
     await routingPolicyRepository.save({
       system_default_model_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       module_defaults: {
@@ -63,8 +71,12 @@ test("postgres model registry persistence stores models and routing policy", asy
       "claude-sonnet",
       "2026-02-15",
     );
+    const anthropicById = await modelRepository.findById(
+      "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    );
     const loadedPolicy = await routingPolicyRepository.get();
 
+    assert.ok(loadedPrimaryModel, "Expected primary model to be persisted.");
     assert.deepEqual(loadedPrimaryModel, {
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       provider: "openai",
@@ -82,26 +94,21 @@ test("postgres model registry persistence stores models and routing policy", asy
         rpm: 60,
         tpm: 120000,
       },
+      connection_id: openAiConnectionId,
     });
-    assert.deepEqual(
-      listedModels.map((record) => ({
-        id: record.id,
-        provider: record.provider,
-        model_name: record.model_name,
-      })),
-      [
-        {
-          id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-          provider: "anthropic",
-          model_name: "claude-sonnet",
-        },
-        {
-          id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-          provider: "openai",
-          model_name: "gpt-5.4",
-        },
-      ],
+    const modelsById = new Map(listedModels.map((record) => [record.id, record]));
+    const openAiListed = modelsById.get(openAiRecord.id);
+    const anthropicListed = modelsById.get(anthropicRecord.id);
+    assert.ok(openAiListed);
+    assert.ok(anthropicListed);
+    assert.equal(getConnectionId(openAiListed), openAiConnectionId);
+    assert.equal(openAiListed.fallback_model_id, undefined);
+    assert.equal(getConnectionId(anthropicListed), anthropicConnectionId);
+    assert.equal(
+      anthropicListed.fallback_model_id,
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     );
+    assert.ok(foundByProvider, "Expected anthropic model to be persisted.");
     assert.deepEqual(foundByProvider, {
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       provider: "anthropic",
@@ -110,7 +117,15 @@ test("postgres model registry persistence stores models and routing policy", asy
       allowed_modules: ["editing", "proofreading"],
       is_prod_allowed: true,
       fallback_model_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      connection_id: anthropicConnectionId,
     });
+    assert.equal(getConnectionId(foundByProvider), anthropicConnectionId);
+    assert.ok(anthropicById, "Expected anthropic `findById` to return a record.");
+    assert.equal(
+      anthropicById.fallback_model_id,
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    );
+    assert.equal(getConnectionId(anthropicById), anthropicConnectionId);
     assert.deepEqual(loadedPolicy, {
       system_default_model_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       module_defaults: {
@@ -141,4 +156,13 @@ async function withTemporaryModelRegistryPool(
       await pool.end();
     }
   });
+}
+
+function getConnectionId(record: unknown): string | undefined {
+  if (typeof record !== "object" || record === null) {
+    return undefined;
+  }
+
+  const value = Reflect.get(record, "connection_id");
+  return typeof value === "string" ? value : undefined;
 }

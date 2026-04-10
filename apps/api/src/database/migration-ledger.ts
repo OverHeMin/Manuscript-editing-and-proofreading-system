@@ -24,6 +24,10 @@ const migrationDescriptions = new Map<string, string>([
     "0031_knowledge_duplicate_detection_acknowledgements.sql",
     "Persist duplicate acknowledgement audit trails for revision-governed knowledge review.",
   ],
+  [
+    "0032_ai_provider_control_plane.sql",
+    "Add ai provider connection and credential persistence plus nullable model registry connection linkage.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [
