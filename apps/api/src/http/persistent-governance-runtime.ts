@@ -32,6 +32,7 @@ import {
   OpenAiChatCompatibleConnectivityProbe,
   PostgresAiProviderConnectionRepository,
 } from "../modules/ai-provider-connections/index.ts";
+import { createAiProviderRuntimeService } from "../modules/ai-provider-runtime/index.ts";
 import {
   DocumentAssetService,
   PostgresDocumentAssetRepository,
@@ -189,6 +190,7 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   uploadRootDir?: string;
   aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
   aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
+  aiProviderRuntimeCutoverEnabled?: boolean;
 }
 
 export function createPersistentGovernanceRuntime(
@@ -202,6 +204,10 @@ export function createPersistentGovernanceRuntime(
       "uploads",
       process.env.APP_ENV ?? "development",
     );
+  const aiProviderCredentialCrypto =
+    options.aiProviderCredentialCrypto ?? new AiProviderCredentialCrypto();
+  const aiProviderRuntimeCutoverEnabled =
+    options.aiProviderRuntimeCutoverEnabled ?? false;
   const permissionGuard = new PermissionGuard();
 
   const manuscriptRepository = new PostgresManuscriptRepository({
@@ -310,6 +316,10 @@ export function createPersistentGovernanceRuntime(
   });
   const aiProviderConnectionRepository = new PostgresAiProviderConnectionRepository({
     client: options.client,
+  });
+  const aiProviderRuntimeService = createAiProviderRuntimeService({
+    repository: aiProviderConnectionRepository,
+    credentialCrypto: aiProviderCredentialCrypto,
   });
 
   const workbenchTransactionManager = createPostgresWriteTransactionManager({
@@ -556,6 +566,8 @@ export function createPersistentGovernanceRuntime(
       agentRuntimeService,
       runtimeBindingService,
       runtimeBindingReadinessService,
+      aiProviderRuntimeService,
+      aiProviderRuntimeCutoverEnabled,
       toolPermissionPolicyService,
     },
     transactionManager: knowledgeServiceTransactionManager,
@@ -599,6 +611,8 @@ export function createPersistentGovernanceRuntime(
     agentRuntimeService,
     runtimeBindingService,
     runtimeBindingReadinessService,
+    aiProviderRuntimeService,
+    aiProviderRuntimeCutoverEnabled,
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
@@ -620,6 +634,8 @@ export function createPersistentGovernanceRuntime(
     agentRuntimeService,
     runtimeBindingService,
     runtimeBindingReadinessService,
+    aiProviderRuntimeService,
+    aiProviderRuntimeCutoverEnabled,
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
@@ -643,6 +659,8 @@ export function createPersistentGovernanceRuntime(
     agentRuntimeService,
     runtimeBindingService,
     runtimeBindingReadinessService,
+    aiProviderRuntimeService,
+    aiProviderRuntimeCutoverEnabled,
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
@@ -659,8 +677,7 @@ export function createPersistentGovernanceRuntime(
   const aiProviderConnectionService = createAiProviderConnectionService({
     repository: aiProviderConnectionRepository,
     auditService,
-    credentialCrypto:
-      options.aiProviderCredentialCrypto ?? new AiProviderCredentialCrypto(),
+    credentialCrypto: aiProviderCredentialCrypto,
     connectivityProbe:
       options.aiProviderConnectivityProbe ??
       new OpenAiChatCompatibleConnectivityProbe(),

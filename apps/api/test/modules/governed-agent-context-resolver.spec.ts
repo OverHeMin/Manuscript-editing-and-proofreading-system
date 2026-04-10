@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryAuditService } from "../../src/audit/audit-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/ai-provider-credential-crypto.ts";
+import { InMemoryAiProviderConnectionRepository } from "../../src/modules/ai-provider-connections/in-memory-ai-provider-connection-repository.ts";
+import {
+  AiProviderRuntimeConfigurationError,
+  createAiProviderRuntimeService,
+} from "../../src/modules/ai-provider-runtime/index.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryAgentProfileRepository } from "../../src/modules/agent-profiles/in-memory-agent-profile-repository.ts";
 import { AgentProfileService } from "../../src/modules/agent-profiles/agent-profile-service.ts";
@@ -33,7 +39,16 @@ import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-p
 import { ToolPermissionPolicyService } from "../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 
-async function createResolverHarness() {
+const TEST_MASTER_KEY = Buffer.alloc(32, 0x44).toString("base64");
+
+async function createResolverHarness(input?: {
+  providerConnection?: {
+    id?: string;
+    enabled?: boolean;
+    compatibilityMode?: string;
+    apiKey?: string;
+  };
+}) {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
@@ -58,9 +73,18 @@ async function createResolverHarness() {
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
   const auditService = new InMemoryAuditService();
+  const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
+  const aiProviderCredentialCrypto = new AiProviderCredentialCrypto({
+    AI_PROVIDER_MASTER_KEY: TEST_MASTER_KEY,
+  } as NodeJS.ProcessEnv);
+  const aiProviderRuntimeService = createAiProviderRuntimeService({
+    repository: aiProviderConnectionRepository,
+    credentialCrypto: aiProviderCredentialCrypto,
+  });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRepository,
     routingPolicyRepository,
+    aiProviderConnectionRepository,
     createId: (() => {
       const ids = ["model-1"];
       return () => {
@@ -73,6 +97,7 @@ async function createResolverHarness() {
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
     routingPolicyRepository,
+    aiProviderConnectionRepository,
     auditService,
     now: () => new Date("2026-03-28T12:00:00.000Z"),
   });
@@ -253,12 +278,44 @@ async function createResolverHarness() {
     status: "active",
   });
 
+  if (input?.providerConnection) {
+    const connectionId = input.providerConnection.id ?? "connection-1";
+    await aiProviderConnectionRepository.save({
+      id: connectionId,
+      name: "Resolver runtime connection",
+      provider_kind: "qwen",
+      compatibility_mode:
+        input.providerConnection.compatibilityMode ?? "openai_chat_compatible",
+      base_url: "https://resolver.example.com/v1",
+      enabled: input.providerConnection.enabled ?? true,
+    });
+
+    if (input.providerConnection.apiKey) {
+      await aiProviderConnectionRepository.saveCredential({
+        id: `${connectionId}-credential`,
+        connection_id: connectionId,
+        credential_ciphertext: aiProviderCredentialCrypto.encrypt({
+          apiKey: input.providerConnection.apiKey,
+        }),
+        credential_mask: aiProviderCredentialCrypto.maskApiKey(
+          input.providerConnection.apiKey,
+        ),
+        last_rotated_at: new Date("2026-03-28T12:00:00.000Z"),
+      });
+    }
+  }
+
   const systemModel = await modelRegistryService.createModelEntry("admin", {
     provider: "openai",
     modelName: "gpt-5-default",
     modelVersion: "2026-03",
     allowedModules: ["screening", "editing", "proofreading"],
     isProdAllowed: true,
+    ...(input?.providerConnection
+      ? {
+          connectionId: input.providerConnection.id ?? "connection-1",
+        }
+      : {}),
   });
   await modelRegistryService.updateRoutingPolicy("admin", {
     systemDefaultModelId: systemModel.id,
@@ -367,6 +424,7 @@ async function createResolverHarness() {
     knowledgeRepository,
     executionGovernanceService,
     aiGatewayService,
+    aiProviderRuntimeService,
     sandboxProfileService,
     agentProfileService,
     agentRuntimeService,
@@ -438,6 +496,11 @@ test("resolver returns the active runtime binding with profile runtime sandbox a
   assert.equal(context.toolPolicy.id, "policy-1");
   assert.equal(context.runtimeBinding.id, "binding-1");
   assert.equal(context.moduleContext.executionProfile.id, "profile-1");
+  assert.ok(
+    context.moduleContext.modelSelection.warnings.some(
+      (warning) => warning.code === "legacy_unbound",
+    ),
+  );
   assert.deepEqual(context.verificationExpectations, {
     verification_check_profile_ids: ["check-profile-1"],
     evaluation_suite_ids: ["suite-1"],
@@ -446,6 +509,77 @@ test("resolver returns the active runtime binding with profile runtime sandbox a
   assert.equal(context.runtimeBindingReadiness.observation_status, "reported");
   assert.deepEqual(context.runtimeBindingReadiness.report, readinessReport);
   assert.equal(context.runtimeBindingReadiness.error, undefined);
+});
+
+test("resolver rejects legacy unbound selections after AI provider runtime cutover", async () => {
+  const harness = await createResolverHarness();
+
+  await assert.rejects(
+    () =>
+      resolveGovernedAgentContext({
+        manuscriptId: "manuscript-1",
+        module: "editing",
+        jobId: "job-cutover-legacy",
+        actorId: "admin-1",
+        actorRole: "admin",
+        manuscriptRepository: harness.manuscriptRepository,
+        moduleTemplateRepository: harness.moduleTemplateRepository,
+        executionGovernanceService: harness.executionGovernanceService,
+        promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+        knowledgeRepository: harness.knowledgeRepository,
+        aiGatewayService: harness.aiGatewayService,
+        aiProviderRuntimeService: harness.aiProviderRuntimeService,
+        aiProviderRuntimeCutoverEnabled: true,
+        sandboxProfileService: harness.sandboxProfileService,
+        agentProfileService: harness.agentProfileService,
+        agentRuntimeService: harness.agentRuntimeService,
+        runtimeBindingService: harness.runtimeBindingService,
+        toolPermissionPolicyService: harness.toolPermissionPolicyService,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof AiProviderRuntimeConfigurationError);
+      assert.equal(error.code, "legacy_unbound");
+      return true;
+    },
+  );
+});
+
+test("resolver rejects structurally invalid connection-backed selections after AI provider runtime cutover", async () => {
+  const harness = await createResolverHarness({
+    providerConnection: {
+      enabled: false,
+      apiKey: "sk-disabled-runtime",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      resolveGovernedAgentContext({
+        manuscriptId: "manuscript-1",
+        module: "editing",
+        jobId: "job-cutover-disabled",
+        actorId: "admin-1",
+        actorRole: "admin",
+        manuscriptRepository: harness.manuscriptRepository,
+        moduleTemplateRepository: harness.moduleTemplateRepository,
+        executionGovernanceService: harness.executionGovernanceService,
+        promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+        knowledgeRepository: harness.knowledgeRepository,
+        aiGatewayService: harness.aiGatewayService,
+        aiProviderRuntimeService: harness.aiProviderRuntimeService,
+        aiProviderRuntimeCutoverEnabled: true,
+        sandboxProfileService: harness.sandboxProfileService,
+        agentProfileService: harness.agentProfileService,
+        agentRuntimeService: harness.agentRuntimeService,
+        runtimeBindingService: harness.runtimeBindingService,
+        toolPermissionPolicyService: harness.toolPermissionPolicyService,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof AiProviderRuntimeConfigurationError);
+      assert.equal(error.code, "connection_disabled");
+      return true;
+    },
+  );
 });
 
 test("resolver fails when no active runtime binding exists for the governed module scope", async () => {

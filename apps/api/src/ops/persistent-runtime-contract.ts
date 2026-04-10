@@ -22,6 +22,7 @@ export interface PersistentRuntimeContract {
   databaseUrl: string;
   uploadRootDir: string;
   uploadRootSource: UploadRootSource;
+  aiProviderRuntimeCutoverEnabled: boolean;
   dependencies: {
     database: PersistentRuntimeDependencyContract;
     uploadRoot: PersistentRuntimeDependencyContract;
@@ -60,6 +61,9 @@ export function resolvePersistentRuntimeContract(
     databaseUrl: parseDatabaseUrl(env.DATABASE_URL),
     uploadRootDir: uploadRoot.path,
     uploadRootSource: uploadRoot.source,
+    aiProviderRuntimeCutoverEnabled: parseBooleanFlag(
+      env.AI_PROVIDER_RUNTIME_CUTOVER,
+    ),
     dependencies: {
       database: {
         mode: "required",
@@ -85,6 +89,17 @@ export function resolvePersistentRuntimeContract(
       },
     },
   };
+}
+
+function parseBooleanFlag(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
 }
 
 function parsePersistentAppEnv(value: string | undefined): PersistentAppEnv {

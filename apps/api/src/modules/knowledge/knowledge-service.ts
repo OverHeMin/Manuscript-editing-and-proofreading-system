@@ -4,6 +4,7 @@ import type { RoleKey } from "../../users/roles.ts";
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
+import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type {
   KnowledgeRetrievalSnapshotRecord,
@@ -174,6 +175,8 @@ export interface GovernedRetrievalResolverDependencies {
     RuntimeBindingReadinessService,
     "getBindingReadiness"
   >;
+  aiProviderRuntimeService?: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
+  aiProviderRuntimeCutoverEnabled?: boolean;
   toolPermissionPolicyService: ToolPermissionPolicyService;
 }
 
@@ -1035,6 +1038,10 @@ export class KnowledgeService {
         this.governedRetrievalResolverDependencies.runtimeBindingService,
       runtimeBindingReadinessService:
         this.governedRetrievalResolverDependencies.runtimeBindingReadinessService,
+      aiProviderRuntimeService:
+        this.governedRetrievalResolverDependencies.aiProviderRuntimeService,
+      aiProviderRuntimeCutoverEnabled:
+        this.governedRetrievalResolverDependencies.aiProviderRuntimeCutoverEnabled,
       toolPermissionPolicyService:
         this.governedRetrievalResolverDependencies.toolPermissionPolicyService,
       knowledgeRetrievalService: this.knowledgeRetrievalService,

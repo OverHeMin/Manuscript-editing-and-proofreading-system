@@ -5,6 +5,7 @@ import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import { DocumentAssetService } from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
+import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
 import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
@@ -96,6 +97,8 @@ export interface ProofreadingServiceOptions {
     RuntimeBindingReadinessService,
     "getBindingReadiness"
   >;
+  aiProviderRuntimeService?: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
+  aiProviderRuntimeCutoverEnabled?: boolean;
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
@@ -163,6 +166,11 @@ export class ProofreadingService {
     RuntimeBindingReadinessService,
     "getBindingReadiness"
   >;
+  private readonly aiProviderRuntimeService?: Pick<
+    AiProviderRuntimeService,
+    "resolveSelectionRuntime"
+  >;
+  private readonly aiProviderRuntimeCutoverEnabled: boolean;
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
@@ -192,6 +200,9 @@ export class ProofreadingService {
     this.agentRuntimeService = options.agentRuntimeService;
     this.runtimeBindingService = options.runtimeBindingService;
     this.runtimeBindingReadinessService = options.runtimeBindingReadinessService;
+    this.aiProviderRuntimeService = options.aiProviderRuntimeService;
+    this.aiProviderRuntimeCutoverEnabled =
+      options.aiProviderRuntimeCutoverEnabled ?? false;
     this.toolPermissionPolicyService = options.toolPermissionPolicyService;
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
@@ -588,6 +599,8 @@ export class ProofreadingService {
       agentRuntimeService: this.agentRuntimeService,
       runtimeBindingService: this.runtimeBindingService,
       runtimeBindingReadinessService: this.runtimeBindingReadinessService,
+      aiProviderRuntimeService: this.aiProviderRuntimeService,
+      aiProviderRuntimeCutoverEnabled: this.aiProviderRuntimeCutoverEnabled,
       toolPermissionPolicyService: this.toolPermissionPolicyService,
     });
     const moduleContext = governedContext.moduleContext;

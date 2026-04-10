@@ -150,6 +150,8 @@ export async function startPersistentServer<
           typeof createPersistentGovernanceRuntime
         >[0]["authRuntime"],
         uploadRootDir: config.uploadRootDir,
+        aiProviderRuntimeCutoverEnabled:
+          config.aiProviderRuntimeCutoverEnabled,
       });
 
     const serviceHealth = createPersistentServiceHealthProvider({

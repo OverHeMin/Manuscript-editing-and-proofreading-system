@@ -1,4 +1,5 @@
 import type { AiProviderConnectionTestStatus } from "./ai-provider-connection-record.ts";
+import { OpenAiChatCompatibleRuntimeAdapter } from "../ai-provider-runtime/openai-chat-compatible-runtime-adapter.ts";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_ERROR_SUMMARY_LENGTH = 200;
@@ -25,6 +26,7 @@ export interface OpenAiChatCompatibleConnectivityProbeOptions {
   fetchImpl?: FetchLike;
   now?: () => Date;
   timeoutMs?: number;
+  adapter?: OpenAiChatCompatibleRuntimeAdapter;
 }
 
 export class OpenAiChatCompatibleConnectivityProbe
@@ -36,10 +38,13 @@ export class OpenAiChatCompatibleConnectivityProbe
 
   private readonly timeoutMs: number;
 
+  private readonly adapter: OpenAiChatCompatibleRuntimeAdapter;
+
   constructor(options: OpenAiChatCompatibleConnectivityProbeOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.now = options.now ?? (() => new Date());
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.adapter = options.adapter ?? new OpenAiChatCompatibleRuntimeAdapter();
   }
 
   async testConnection(input: {
@@ -54,21 +59,13 @@ export class OpenAiChatCompatibleConnectivityProbe
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const response = await this.fetchImpl(buildChatCompletionsUrl(input.baseUrl), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${input.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: input.modelName,
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 1,
-          temperature: 0,
-          stream: false,
-        }),
+      const request = this.adapter.buildProbeRequest({
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+        modelName: input.modelName,
         signal: controller.signal,
       });
+      const response = await this.fetchImpl(request.url, request.init);
       const rawBody = await response.text();
 
       if (!response.ok) {
@@ -102,11 +99,6 @@ export class OpenAiChatCompatibleConnectivityProbe
       clearTimeout(timeout);
     }
   }
-}
-
-function buildChatCompletionsUrl(baseUrl: string): string {
-  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  return new URL("chat/completions", normalizedBaseUrl).toString();
 }
 
 function parseJsonBody(rawBody: string): unknown {

@@ -26,6 +26,10 @@ import {
   type ToolPermissionPolicyService,
 } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
+import type {
+  AiProviderRuntimeSelectionRecord,
+} from "../ai-provider-runtime/ai-provider-runtime-record.ts";
+import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import {
   type GovernedModuleContext,
   type ResolveGovernedModuleContextInput,
@@ -54,6 +58,7 @@ export interface GovernedAgentContext {
   moduleContext: GovernedModuleContext;
   manuscript: GovernedModuleContext["manuscript"];
   executionProfile: GovernedModuleContext["executionProfile"];
+  aiProviderRuntime?: AiProviderRuntimeSelectionRecord;
   runtimeBinding: RuntimeBindingRecord;
   runtime: AgentRuntimeRecord;
   sandboxProfile: SandboxProfileRecord;
@@ -79,6 +84,8 @@ export interface ResolveGovernedAgentContextInput
     RuntimeBindingReadinessService,
     "getBindingReadiness"
   >;
+  aiProviderRuntimeService?: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
+  aiProviderRuntimeCutoverEnabled?: boolean;
 }
 
 export class ActiveRuntimeBindingNotFoundError extends Error {
@@ -101,6 +108,11 @@ export async function resolveGovernedAgentContext(
   input: ResolveGovernedAgentContextInput,
 ): Promise<GovernedAgentContext> {
   const moduleContext = await resolveGovernedModuleContext(input);
+  const aiProviderRuntime = await maybeResolveAiProviderRuntime({
+    aiProviderRuntimeService: input.aiProviderRuntimeService,
+    cutoverEnabled: input.aiProviderRuntimeCutoverEnabled ?? false,
+    modelSelection: moduleContext.modelSelection,
+  });
 
   const activeBinding = await findActiveRuntimeBinding({
     runtimeBindingService: input.runtimeBindingService,
@@ -145,6 +157,7 @@ export async function resolveGovernedAgentContext(
     moduleContext,
     manuscript: moduleContext.manuscript,
     executionProfile: moduleContext.executionProfile,
+    ...(aiProviderRuntime ? { aiProviderRuntime } : {}),
     runtimeBinding: activeBinding,
     runtime,
     sandboxProfile,
@@ -349,6 +362,26 @@ function sameOrderedIds(left: string[], right: string[]): boolean {
   }
 
   return left.every((value, index) => value === right[index]);
+}
+
+async function maybeResolveAiProviderRuntime(input: {
+  modelSelection: GovernedModuleContext["modelSelection"];
+  aiProviderRuntimeService?: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
+  cutoverEnabled: boolean;
+}): Promise<AiProviderRuntimeSelectionRecord | undefined> {
+  if (!input.cutoverEnabled) {
+    return undefined;
+  }
+
+  if (!input.aiProviderRuntimeService) {
+    throw new GovernedAgentContextConsistencyError(
+      "AI provider runtime cutover is enabled but ai provider runtime service is unavailable.",
+    );
+  }
+
+  return input.aiProviderRuntimeService.resolveSelectionRuntime(
+    input.modelSelection,
+  );
 }
 
 async function observeRuntimeBindingReadiness(input: {

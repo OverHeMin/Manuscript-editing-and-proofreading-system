@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { resolvePersistentRuntimeContract } from "../../src/ops/persistent-runtime-contract.ts";
 import {
   resolvePersistentServerConfig,
 } from "../../src/http/persistent-server-config.ts";
@@ -28,6 +29,7 @@ test("persistent server config resolves non-demo defaults", () => {
     allowedOrigins: [],
     databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
     uploadRootDir: path.resolve(process.cwd(), ".local-data", "uploads", "development"),
+    aiProviderRuntimeCutoverEnabled: false,
   });
 });
 
@@ -109,4 +111,21 @@ test("persistent server config resolves development when AI_PROVIDER_MASTER_KEY 
   });
 
   assert.deepEqual(config.appEnv, "development");
+});
+
+test("persistent runtime contract exposes a dedicated AI provider runtime cutover flag", () => {
+  const disabled = resolvePersistentRuntimeContract({
+    APP_ENV: "development",
+    DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+  });
+  const enabled = resolvePersistentRuntimeContract({
+    APP_ENV: "development",
+    DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+    AI_PROVIDER_RUNTIME_CUTOVER: "true",
+  });
+
+  assert.equal(disabled.aiProviderRuntimeCutoverEnabled, false);
+  assert.equal(enabled.aiProviderRuntimeCutoverEnabled, true);
 });

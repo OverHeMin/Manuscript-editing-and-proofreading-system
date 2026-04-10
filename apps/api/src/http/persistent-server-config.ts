@@ -10,6 +10,7 @@ export interface PersistentServerConfig {
   allowedOrigins: string[];
   databaseUrl: string;
   uploadRootDir: string;
+  aiProviderRuntimeCutoverEnabled: boolean;
 }
 
 export function resolvePersistentServerConfig(
@@ -24,5 +25,6 @@ export function resolvePersistentServerConfig(
     allowedOrigins: contract.allowedOrigins,
     databaseUrl: contract.databaseUrl,
     uploadRootDir: contract.uploadRootDir,
+    aiProviderRuntimeCutoverEnabled: contract.aiProviderRuntimeCutoverEnabled,
   };
 }
