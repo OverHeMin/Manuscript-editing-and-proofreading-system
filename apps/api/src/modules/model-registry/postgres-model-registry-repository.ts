@@ -39,10 +39,6 @@ export class PostgresModelRegistryRepository
   constructor(private readonly dependencies: { client: QueryableClient }) {}
 
   async save(record: ModelRegistryRecord): Promise<void> {
-    if (record.connection_id) {
-      await ensureConnectionExists(this.dependencies.client, record);
-    }
-
     await this.dependencies.client.query(
       `
         insert into model_registry (
@@ -227,48 +223,6 @@ export class PostgresModelRoutingPolicyRepository
       ],
     );
   }
-}
-
-async function ensureConnectionExists(
-  client: QueryableClient,
-  record: ModelRegistryRecord,
-): Promise<void> {
-  await client.query(
-    `
-      insert into ai_provider_connections (
-        id,
-        name,
-        provider_kind,
-        compatibility_mode,
-        base_url,
-        enabled,
-        connection_metadata,
-        last_test_status
-      )
-      values (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        false,
-        $6::jsonb,
-        'unknown'::ai_provider_test_status
-      )
-      on conflict (id) do nothing
-    `,
-    [
-      record.connection_id,
-      `${record.provider} connection ${record.connection_id}`,
-      record.provider,
-      `${record.provider}_compatible`,
-      "https://placeholder.invalid",
-      {
-        placeholder: true,
-        source: "model_registry_repository",
-      },
-    ],
-  );
 }
 
 function mapModelRegistryRow(row: ModelRegistryRow): ModelRegistryRecord {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Pool } from "pg";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
+import { PostgresAiProviderConnectionRepository } from "../../src/modules/ai-provider-connections/index.ts";
 import type { ModelRegistryRecord } from "../../src/modules/model-registry/model-record.ts";
 import {
   PostgresModelRegistryRepository,
@@ -11,6 +12,9 @@ import {
 
 test("postgres model registry persistence stores models and routing policy", async () => {
   await withTemporaryModelRegistryPool(async (pool) => {
+    const connectionRepository = new PostgresAiProviderConnectionRepository({
+      client: pool,
+    });
     const modelRepository = new PostgresModelRegistryRepository({
       client: pool,
     });
@@ -20,6 +24,25 @@ test("postgres model registry persistence stores models and routing policy", asy
 
     const openAiConnectionId = "00000000-0000-0000-0000-000000000101";
     const anthropicConnectionId = "00000000-0000-0000-0000-000000000102";
+
+    await connectionRepository.save({
+      id: openAiConnectionId,
+      name: "Primary OpenAI connection",
+      provider_kind: "openai",
+      compatibility_mode: "openai_chat_compatible",
+      base_url: "https://api.openai.example.com",
+      enabled: true,
+      connection_metadata: { environment: "test" },
+    });
+    await connectionRepository.save({
+      id: anthropicConnectionId,
+      name: "Primary Anthropic connection",
+      provider_kind: "anthropic",
+      compatibility_mode: "anthropic_messages_compatible",
+      base_url: "https://api.anthropic.example.com",
+      enabled: true,
+      connection_metadata: { environment: "test" },
+    });
 
     const openAiRecord = {
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
