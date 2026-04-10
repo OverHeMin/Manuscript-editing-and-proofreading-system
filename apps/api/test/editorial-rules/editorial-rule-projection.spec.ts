@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { EditorialRuleProjectionService } from "../../src/modules/editorial-rules/editorial-rule-projection-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
+import { EditorialRuleResolutionService } from "../../src/modules/editorial-rules/editorial-rule-resolution-service.ts";
+import { RulePackageCompileService } from "../../src/modules/editorial-rules/rule-package-compile-service.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import type { RulePackageDraft } from "@medical/contracts";
 
 const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
 const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
@@ -47,14 +50,115 @@ function createProjectionHarness() {
       };
     })(),
   });
+  const resolutionService = new EditorialRuleResolutionService({
+    repository: editorialRuleRepository,
+  });
+  const compileService = new RulePackageCompileService({
+    repository: editorialRuleRepository,
+    editorialRuleService,
+    resolutionService,
+  });
 
   return {
+    compileService,
     editorialRuleRepository,
     editorialRuleService,
     knowledgeRepository,
     projectionService,
     templateFamilyRepository,
   };
+}
+
+function buildCompiledFrontMatterPackageDraft(): RulePackageDraft {
+  return {
+    package_id: "package-front-matter-knowledge",
+    package_kind: "front_matter",
+    title: "Front matter package",
+    rule_object: "front_matter",
+    suggested_layer: "journal_template",
+    automation_posture: "guarded_auto",
+    status: "draft",
+    cards: {
+      rule_what: {
+        title: "Front matter package",
+        object: "front_matter",
+        publish_layer: "journal_template",
+      },
+      ai_understanding: {
+        summary: "Normalize author and corresponding-author blocks.",
+        hit_objects: ["author_line", "corresponding_author"],
+        hit_locations: ["front_matter"],
+      },
+      applicability: {
+        manuscript_types: ["clinical_study"],
+        modules: ["editing"],
+        sections: ["front_matter"],
+        table_targets: [],
+      },
+      evidence: {
+        examples: [
+          {
+            before: "First author: Zhang San",
+            after: "Author: Zhang San",
+          },
+        ],
+      },
+      exclusions: {
+        not_applicable_when: ["Source metadata is missing."],
+        human_review_required_when: ["Review when adding a corresponding author."],
+        risk_posture: "guarded_auto",
+      },
+    },
+    semantic_draft: {
+      semantic_summary: "Normalize author and corresponding-author blocks.",
+      hit_scope: ["author_line:text_style_normalization"],
+      applicability: ["front_matter"],
+      evidence_examples: [
+        {
+          before: "First author: Zhang San",
+          after: "Author: Zhang San",
+        },
+      ],
+      failure_boundaries: ["Source metadata is missing."],
+      normalization_recipe: ["Normalize author labels and markers."],
+      review_policy: ["Review when adding a corresponding author."],
+      confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+    },
+    supporting_signals: [],
+  };
+}
+
+async function seedPublishedPackageCompiledRuleSet() {
+  const harness = createProjectionHarness();
+
+  await harness.templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await harness.templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "journal-alpha",
+    journal_name: "Journal Alpha",
+    status: "active",
+  });
+
+  const compileResult = await harness.compileService.compileToDraft({
+    actorRole: "admin",
+    source: {
+      sourceKind: "uploaded_example_pair",
+      exampleSourceSessionId: "session-demo-1",
+    },
+    packageDrafts: [buildCompiledFrontMatterPackageDraft()],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-template-1",
+    module: "editing",
+  });
+  await harness.editorialRuleService.publishRuleSet("admin", compileResult.rule_set_id);
+
+  return harness;
 }
 
 async function seedPublishedRuleSet() {
@@ -274,6 +378,39 @@ test("projection uses explainability and projection payload text when available"
       not_applicable_boundary: "",
       evidence_summary:
         "Abstract headings should use full-width punctuation and spacing in the normalized journal style.",
+    },
+  );
+});
+
+test("publishing a package-compiled rule set projects confirmed semantic rationale, examples, and boundaries", async () => {
+  const { knowledgeRepository } = await seedPublishedPackageCompiledRuleSet();
+  const projectedRuleKnowledge = (await knowledgeRepository.list()).find(
+    (record) => record.projection_source?.projection_kind === "rule",
+  );
+
+  assert.match(
+    projectedRuleKnowledge?.summary ?? "",
+    /Normalize author and corresponding-author blocks\./,
+  );
+  assert.match(projectedRuleKnowledge?.canonical_text ?? "", /Rationale:/);
+  assert.match(
+    projectedRuleKnowledge?.canonical_text ?? "",
+    /Incorrect example detail: "First author: Zhang San"\./,
+  );
+  assert.deepEqual(
+    projectedRuleKnowledge?.projection_source?.projection_context,
+    {
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      journal_template_id: "journal-template-1",
+      journal_key: "journal-alpha",
+      rule_object: "author_line",
+      standard_example: "Author: Zhang San",
+      incorrect_example: "First author: Zhang San",
+      not_applicable_boundary: "Source metadata is missing.",
+      evidence_summary:
+        "Normalize author and corresponding-author blocks. Normalize author labels and markers.",
     },
   );
 });

@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@medical/contracts": ["../../packages/contracts/src/index.ts"]
+    },
     "lib": ["ES2022"],
     "strict": true,
     "allowImportingTsExtensions": true,

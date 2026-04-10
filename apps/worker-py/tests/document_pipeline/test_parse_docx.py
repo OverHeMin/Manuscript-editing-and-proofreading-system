@@ -123,3 +123,34 @@ def test_document_xml_extracts_table_semantics_snapshot():
         "n (%)",
     ]
     assert semantic["footnote_items"][0]["note_kind"] == "statistical_significance"
+
+
+def test_document_xml_recovers_sections_from_numbered_plain_paragraphs():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p>
+          <w:r><w:t>第一作者：张三</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:r><w:t>1 资料与方法</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:r><w:t>1.1 一般资料</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:r><w:t>2 结果</w:t></w:r>
+        </w:p>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert [section["heading"] for section in result["sections"]] == [
+        "1 资料与方法",
+        "1.1 一般资料",
+        "2 结果",
+    ]
+    assert [section["level"] for section in result["sections"]] == [1, 2, 1]

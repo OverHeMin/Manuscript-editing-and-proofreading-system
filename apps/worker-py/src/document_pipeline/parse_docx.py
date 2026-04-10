@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from xml.etree import ElementTree as ET
 
 from .table_semantics import build_table_semantic_snapshot
@@ -14,6 +15,7 @@ HEADING_STYLE_LEVELS = {
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NS = {"w": WORD_NS}
+NUMBERED_HEADING_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+.+$")
 
 
 def normalize_style_name(style_name: str | None) -> str:
@@ -27,14 +29,22 @@ def extract_structure_from_paragraphs(paragraphs: list[dict]) -> dict:
         text = (paragraph.get("text") or "").strip()
         style = normalize_style_name(paragraph.get("style"))
 
-        if not text or style not in HEADING_STYLE_LEVELS:
+        if not text:
+            continue
+
+        inferred_level = (
+            HEADING_STYLE_LEVELS[style]
+            if style in HEADING_STYLE_LEVELS
+            else infer_numbered_heading_level(text)
+        )
+        if inferred_level is None:
             continue
 
         sections.append(
             {
                 "order": len(sections) + 1,
                 "heading": text,
-                "level": HEADING_STYLE_LEVELS[style],
+                "level": inferred_level,
                 "paragraph_index": index,
             }
         )
@@ -84,11 +94,16 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
             paragraph_index = len(paragraphs)
             paragraphs.append({"text": text, "style": style})
 
-            if normalize_style_name(style) in HEADING_STYLE_LEVELS:
+            inferred_level = (
+                HEADING_STYLE_LEVELS[normalize_style_name(style)]
+                if normalize_style_name(style) in HEADING_STYLE_LEVELS
+                else infer_numbered_heading_level(text)
+            )
+            if inferred_level is not None:
                 section = {
                     "order": len(sections) + 1,
                     "heading": text,
-                    "level": HEADING_STYLE_LEVELS[normalize_style_name(style)],
+                    "level": inferred_level,
                     "paragraph_index": paragraph_index,
                 }
                 sections.append(section)
@@ -251,3 +266,16 @@ def is_table_note(text: str) -> bool:
         or stripped.lower().startswith("note:")
         or stripped.lower().startswith("notes:")
     )
+
+
+def infer_numbered_heading_level(text: str) -> int | None:
+    stripped = text.strip()
+    if is_table_caption(stripped):
+        return None
+
+    match = NUMBERED_HEADING_RE.match(stripped)
+    if not match:
+        return None
+
+    number_token = match.group(1)
+    return number_token.count(".") + 1
