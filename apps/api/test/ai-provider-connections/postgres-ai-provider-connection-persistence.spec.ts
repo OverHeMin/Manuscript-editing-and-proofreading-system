@@ -10,6 +10,7 @@ test("postgres ai provider connection persistence captures credentials and test 
     const repository = new PostgresAiProviderConnectionRepository({ client: pool });
     const connectionId = "00000000-0000-0000-0000-000000000111";
     const credentialId = "00000000-0000-0000-0000-000000000222";
+    const rotatedCredentialId = "00000000-0000-0000-0000-000000000333";
     const baseUrlWithSlash = "https://api-edge.example.com/";
     const normalizedBaseUrl = "https://api-edge.example.com";
 
@@ -79,6 +80,20 @@ test("postgres ai provider connection persistence captures credentials and test 
       "Expected last_rotated_at to round-trip as a timestamp.",
     );
 
+    const rotatedCredential = await repository.saveCredential({
+      id: rotatedCredentialId,
+      connection_id: connectionId,
+      credential_ciphertext: "ciphertext:v1:edge-token-rotated",
+      credential_mask: "***9999",
+      credential_version: 1,
+      last_rotated_at: new Date("2026-04-10T00:30:00Z"),
+    });
+    assert.equal(
+      rotatedCredential.credential_version,
+      4,
+      "Expected a repeated credential rotation to atomically advance the version.",
+    );
+
     const testTimestamp = new Date("2026-04-10T01:00:00Z");
     await repository.updateConnectionTestStatus({
       connection_id: connectionId,
@@ -92,7 +107,7 @@ test("postgres ai provider connection persistence captures credentials and test 
     assert.equal(reloaded.base_url, normalizedBaseUrl);
     assert.equal(reloaded.last_test_status, "failed");
     assert.equal(reloaded.last_error_summary, "timeout during handshake");
-    expectCredentialSummary(reloaded, { mask: "****", version: 3 });
+    expectCredentialSummary(reloaded, { mask: "***9999", version: 4 });
     assertLastTestAt(reloaded, testTimestamp);
 
     const [listedWithCredentials] = await repository.list();
@@ -100,8 +115,51 @@ test("postgres ai provider connection persistence captures credentials and test 
       listedWithCredentials,
       "Expected the credential summary to surface on list.",
     );
-    expectCredentialSummary(listedWithCredentials, { mask: "****", version: 3 });
+    expectCredentialSummary(listedWithCredentials, { mask: "***9999", version: 4 });
     assertLastTestAt(listedWithCredentials, testTimestamp);
+
+    const updatedCredentialRowResult = await pool.query<{
+      id: string;
+      credential_mask: string;
+      credential_version: number;
+      credential_ciphertext: string;
+    }>(
+      `
+        select
+          id,
+          credential_mask,
+          credential_version,
+          credential_ciphertext
+        from ai_provider_credentials
+        where connection_id = $1
+      `,
+      [connectionId],
+    );
+    assert.equal(updatedCredentialRowResult.rowCount, 1);
+    assert.equal(updatedCredentialRowResult.rows[0]?.id, rotatedCredentialId);
+    assert.equal(updatedCredentialRowResult.rows[0]?.credential_mask, "***9999");
+    assert.equal(updatedCredentialRowResult.rows[0]?.credential_version, 4);
+    assert.equal(
+      updatedCredentialRowResult.rows[0]?.credential_ciphertext,
+      "ciphertext:v1:edge-token-rotated",
+    );
+  });
+});
+
+test("postgres ai provider connection persistence rejects test status updates for unknown connections", async () => {
+  await withTemporaryAiProviderConnectionPool(async (pool) => {
+    const repository = new PostgresAiProviderConnectionRepository({ client: pool });
+
+    await assert.rejects(
+      () =>
+        repository.updateConnectionTestStatus({
+          connection_id: "00000000-0000-0000-0000-000000000999",
+          status: "failed",
+          error_summary: "missing connection",
+          tested_at: new Date("2026-04-10T02:00:00Z"),
+        }),
+      /unknown ai provider connection/i,
+    );
   });
 });
 

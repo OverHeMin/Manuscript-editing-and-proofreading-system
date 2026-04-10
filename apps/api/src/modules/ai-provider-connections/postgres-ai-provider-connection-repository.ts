@@ -120,14 +120,7 @@ export class PostgresAiProviderConnectionRepository
   async saveCredential(
     record: AiProviderCredentialRecord,
   ): Promise<AiProviderCredentialRecord> {
-    const existing = await this.findCredentialByConnectionId(record.connection_id);
-    const nextVersion = existing
-      ? Math.max(
-          record.credential_version ?? existing.credential_version,
-          existing.credential_version + 1,
-        )
-      : (record.credential_version ?? 1);
-    await this.dependencies.client.query(
+    const result = await this.dependencies.client.query<AiProviderCredentialRow>(
       `
         insert into ai_provider_credentials (
           id,
@@ -143,25 +136,38 @@ export class PostgresAiProviderConnectionRepository
           id = excluded.id,
           credential_ciphertext = excluded.credential_ciphertext,
           credential_mask = excluded.credential_mask,
-          credential_version = excluded.credential_version,
+          credential_version = greatest(
+            excluded.credential_version,
+            ai_provider_credentials.credential_version + 1
+          ),
           last_rotated_at = excluded.last_rotated_at,
           updated_at = now()
+        returning
+          id,
+          connection_id,
+          credential_ciphertext,
+          credential_mask,
+          credential_version,
+          last_rotated_at
       `,
       [
         record.id,
         record.connection_id,
         record.credential_ciphertext,
         record.credential_mask,
-        nextVersion,
+        record.credential_version ?? 1,
         record.last_rotated_at,
       ],
     );
 
-    return {
-      ...record,
-      credential_version: nextVersion,
-      last_rotated_at: new Date(record.last_rotated_at),
-    };
+    const persisted = result.rows[0];
+    if (!persisted) {
+      throw new Error(
+        `Failed to persist credentials for ai provider connection ${record.connection_id}.`,
+      );
+    }
+
+    return mapCredentialRow(persisted);
   }
 
   async findCredentialByConnectionId(
@@ -191,7 +197,7 @@ export class PostgresAiProviderConnectionRepository
     error_summary?: string;
     tested_at: Date;
   }): Promise<void> {
-    await this.dependencies.client.query(
+    const result = await this.dependencies.client.query(
       `
         update ai_provider_connections
         set
@@ -208,6 +214,12 @@ export class PostgresAiProviderConnectionRepository
         input.error_summary ?? null,
       ],
     );
+
+    if ((result.rowCount ?? 0) === 0) {
+      throw new Error(
+        `Cannot update test status for unknown ai provider connection ${input.connection_id}.`,
+      );
+    }
   }
 }
 
