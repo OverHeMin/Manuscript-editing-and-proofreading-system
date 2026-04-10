@@ -10,6 +10,7 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
 import {
   PostgresAgentProfileRepository,
 } from "../../src/modules/agent-profiles/index.ts";
@@ -2997,6 +2998,9 @@ async function startPersistentWorkbenchServer(
       client: pool,
       authRuntime,
       uploadRootDir: input.uploadRootDir,
+      aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
+        AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+      }),
     }),
     uploadRootDir: input.uploadRootDir,
   });

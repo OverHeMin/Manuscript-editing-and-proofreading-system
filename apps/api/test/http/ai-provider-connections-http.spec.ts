@@ -36,7 +36,7 @@ test("GET /api/v1/system-settings/ai-providers is available to admins", async ()
           },
         );
 
-        const body = await response.json();
+        const body = (await response.json()) as Array<unknown>;
         assert.equal(response.status, 200);
         assert.ok(Array.isArray(body));
       } finally {
@@ -82,7 +82,10 @@ test("POST /api/v1/system-settings/ai-providers lets admins create connections",
           },
         );
 
-        const created = await createResponse.json();
+        const created = (await createResponse.json()) as {
+          id: string;
+          name: string;
+        };
         assert.equal(createResponse.status, 201);
         assert.equal(created.name, "Edge Bridge");
       } finally {
@@ -128,7 +131,10 @@ test("POST /api/v1/system-settings/ai-providers/:id updates an existing connecti
         );
 
         assert.equal(createResponse.status, 201);
-        const created = await createResponse.json();
+        const created = (await createResponse.json()) as {
+          id: string;
+          name: string;
+        };
 
         const updateResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}`,
@@ -144,7 +150,10 @@ test("POST /api/v1/system-settings/ai-providers/:id updates an existing connecti
           },
         );
 
-        const updated = await updateResponse.json();
+        const updated = (await updateResponse.json()) as {
+          id: string;
+          name: string;
+        };
         assert.equal(updateResponse.status, 200);
         assert.equal(updated.name, "Edge Bridge Updated");
       } finally {
@@ -188,7 +197,9 @@ test("POST /api/v1/system-settings/ai-providers/:id/rotate-credential rotates a 
             }),
           },
         );
-        const created = await createResponse.json();
+        const created = (await createResponse.json()) as {
+          id: string;
+        };
 
         const rotateResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}/rotate-credential`,
@@ -246,7 +257,9 @@ test("POST /api/v1/system-settings/ai-providers/:id/test runs connectivity asser
             }),
           },
         );
-        const created = await createResponse.json();
+        const created = (await createResponse.json()) as {
+          id: string;
+        };
 
         const testResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}/test`,
@@ -297,7 +310,7 @@ test("non-admin access to ai-provider routes is forbidden", async () => {
           },
         );
 
-        const body = await response.json();
+        const body = (await response.json()) as { error: string };
         assert.equal(response.status, 403);
         assert.equal(body.error, "forbidden");
       } finally {
