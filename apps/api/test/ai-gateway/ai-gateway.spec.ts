@@ -14,6 +14,7 @@ import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
 import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import { InMemoryAiProviderConnectionRepository } from "../../src/modules/ai-provider-connections/in-memory-ai-provider-connection-repository.ts";
 import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
@@ -24,6 +25,7 @@ import { ModelRegistryService } from "../../src/modules/model-registry/model-reg
 function createAiGatewayHarness() {
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
   const modelRoutingGovernanceRepository =
     new InMemoryModelRoutingGovernanceRepository();
   const auditService = new InMemoryAuditService();
@@ -61,6 +63,7 @@ function createAiGatewayHarness() {
   const modelRegistryService = new ModelRegistryService({
     repository: modelRepository,
     routingPolicyRepository,
+    aiProviderConnectionRepository,
     permissionGuard: new PermissionGuard(),
     createId: nextId,
   });
@@ -73,6 +76,7 @@ function createAiGatewayHarness() {
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
     routingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     auditService,
     now: () => new Date("2026-03-27T08:00:00.000Z"),
@@ -85,6 +89,7 @@ function createAiGatewayHarness() {
     aiGatewayApi: createAiGatewayApi({
       aiGatewayService,
     }),
+    aiProviderConnectionRepository,
     modelRoutingGovernanceRepository,
     auditService,
   };
@@ -783,4 +788,119 @@ test("ai gateway writes an audit record for each model resolution", async () => 
       },
     },
   ]);
+});
+
+test("ai gateway exposes resolved connection metadata and model fallback chains", async () => {
+  const {
+    modelRegistryApi,
+    aiGatewayApi,
+    aiProviderConnectionRepository,
+  } = createAiGatewayHarness();
+
+  await aiProviderConnectionRepository.save({
+    id: "connection-qwen-1",
+    name: "Qwen Production",
+    provider_kind: "qwen",
+    compatibility_mode: "openai_chat_compatible",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    enabled: true,
+    last_test_status: "passed",
+    credential_summary: {
+      mask: "sk-***562",
+      version: 2,
+    },
+  });
+
+  const fallbackModel = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "qwen-fallback",
+      modelVersion: "2026-04",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+      connectionId: "connection-qwen-1",
+    } as Parameters<typeof modelRegistryApi.createModelEntry>[0]["input"],
+  });
+  const primaryModel = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "qwen-max",
+      modelVersion: "2026-04",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+      connectionId: "connection-qwen-1",
+      fallbackModelId: fallbackModel.body.id,
+    } as Parameters<typeof modelRegistryApi.createModelEntry>[0]["input"],
+  });
+
+  await modelRegistryApi.updateRoutingPolicy({
+    actorRole: "admin",
+    input: {
+      moduleDefaults: {
+        editing: primaryModel.body.id,
+      },
+    },
+  });
+
+  const resolved = await aiGatewayApi.resolveModelSelection({
+    module: "editing",
+    taskId: "task-connection-aware",
+  });
+
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.model.connection_id, "connection-qwen-1");
+  assert.deepEqual(resolved.body.resolved_connection, {
+    id: "connection-qwen-1",
+    name: "Qwen Production",
+    provider_kind: "qwen",
+    compatibility_mode: "openai_chat_compatible",
+    enabled: true,
+    last_test_status: "passed",
+    credential_present: true,
+  });
+  assert.deepEqual(
+    resolved.body.fallback_chain.map((model) => model.id),
+    [fallbackModel.body.id],
+  );
+  assert.deepEqual(resolved.body.warnings, []);
+});
+
+test("ai gateway marks legacy unbound selections with a migration warning", async () => {
+  const { modelRegistryApi, aiGatewayApi } = createAiGatewayHarness();
+
+  const unboundModel = await modelRegistryApi.createModelEntry({
+    actorRole: "admin",
+    input: {
+      provider: "openai",
+      modelName: "legacy-unbound-model",
+      modelVersion: "2026-04",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    },
+  });
+
+  await modelRegistryApi.updateRoutingPolicy({
+    actorRole: "admin",
+    input: {
+      moduleDefaults: {
+        screening: unboundModel.body.id,
+      },
+    },
+  });
+
+  const resolved = await aiGatewayApi.resolveModelSelection({
+    module: "screening",
+    taskId: "task-legacy-warning",
+  });
+
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.model.id, unboundModel.body.id);
+  assert.equal(resolved.body.resolved_connection, undefined);
+  assert.ok(
+    resolved.body.warnings.some(
+      (warning) => warning.code === "legacy_unbound",
+    ),
+  );
 });

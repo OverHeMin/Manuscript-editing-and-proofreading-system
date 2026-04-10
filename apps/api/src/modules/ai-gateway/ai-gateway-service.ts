@@ -1,5 +1,7 @@
 import type { AuditService } from "../../audit/audit-service.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { AiProviderConnectionRecord } from "../ai-provider-connections/ai-provider-connection-record.ts";
+import type { AiProviderConnectionRepository } from "../ai-provider-connections/ai-provider-connection-repository.ts";
 import type { ModelRoutingPolicyScopeKind } from "../model-routing-governance/model-routing-governance-record.ts";
 import type { ModelRoutingGovernanceService } from "../model-routing-governance/model-routing-governance-service.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
@@ -32,14 +34,36 @@ export interface ResolvedModelSelection {
   layer: ResolvedModelSelectionLayer;
   model: ModelRegistryRecord;
   fallback_chain: ModelRegistryRecord[];
+  resolved_connection?: ResolvedAiProviderConnectionSummary;
+  warnings: ModelSelectionWarning[];
   policy_version_id?: string;
   policy_scope_kind?: ModelRoutingPolicyScopeKind;
   policy_scope_value?: string;
 }
 
+export interface ResolvedAiProviderConnectionSummary {
+  id: string;
+  name: string;
+  provider_kind: string;
+  compatibility_mode: string;
+  enabled: boolean;
+  last_test_status: AiProviderConnectionRecord["last_test_status"];
+  credential_present: boolean;
+}
+
+export interface ModelSelectionWarning {
+  code:
+    | "legacy_unbound"
+    | "connection_missing"
+    | "connection_disabled"
+    | "credential_missing";
+  message: string;
+}
+
 export interface AiGatewayServiceOptions {
   repository: ModelRegistryRepository;
   routingPolicyRepository: ModelRoutingPolicyRepository;
+  aiProviderConnectionRepository?: AiProviderConnectionRepository;
   modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   auditService: AuditService;
   now?: () => Date;
@@ -71,6 +95,7 @@ export class ModelSelectionNotAllowedError extends Error {
 export class AiGatewayService {
   private readonly repository: ModelRegistryRepository;
   private readonly routingPolicyRepository: ModelRoutingPolicyRepository;
+  private readonly aiProviderConnectionRepository?: AiProviderConnectionRepository;
   private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   private readonly auditService: AuditService;
   private readonly now: () => Date;
@@ -78,6 +103,7 @@ export class AiGatewayService {
   constructor(options: AiGatewayServiceOptions) {
     this.repository = options.repository;
     this.routingPolicyRepository = options.routingPolicyRepository;
+    this.aiProviderConnectionRepository = options.aiProviderConnectionRepository;
     this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
     this.auditService = options.auditService;
     this.now = options.now ?? (() => new Date());
@@ -90,18 +116,18 @@ export class AiGatewayService {
     let decision: ModelSelectionDecision | undefined;
     let model: ModelRegistryRecord | undefined;
     let fallbackChain: ModelRegistryRecord[] = [];
+    let resolvedConnection: ResolvedAiProviderConnectionSummary | undefined;
+    let warnings: ModelSelectionWarning[] = [];
 
     try {
       decision = await this.selectLayer(input);
       model = await this.requireAllowedModel(decision.modelId, input.module);
-      fallbackChain =
-        decision.layer === "task_override" && model.fallback_model_id
-          ? [await this.requireAllowedModel(model.fallback_model_id, input.module)]
-          : await Promise.all(
-              decision.fallbackModelIds.map((modelId) =>
-                this.requireAllowedModel(modelId, input.module),
-              ),
-            );
+      fallbackChain = await this.resolveFallbackChain({
+        model,
+        module: input.module,
+        fallbackModelIds: decision.fallbackModelIds,
+      });
+      ({ resolvedConnection, warnings } = await this.resolveConnectionState(model));
 
       await this.recordAudit({
         input,
@@ -115,6 +141,8 @@ export class AiGatewayService {
         layer: decision.layer,
         model,
         fallback_chain: fallbackChain,
+        ...(resolvedConnection ? { resolved_connection: resolvedConnection } : {}),
+        warnings,
         ...(decision.policyVersionId
           ? { policy_version_id: decision.policyVersionId }
           : {}),
@@ -141,6 +169,74 @@ export class AiGatewayService {
 
       throw error;
     }
+  }
+
+  private async resolveFallbackChain(input: {
+    model: ModelRegistryRecord;
+    module: TemplateModule;
+    fallbackModelIds: string[];
+  }): Promise<ModelRegistryRecord[]> {
+    if (input.fallbackModelIds.length > 0) {
+      return Promise.all(
+        input.fallbackModelIds.map((modelId) =>
+          this.requireAllowedModel(modelId, input.module),
+        ),
+      );
+    }
+
+    const result: ModelRegistryRecord[] = [];
+    const seen = new Set<string>([input.model.id]);
+    let nextModelId = input.model.fallback_model_id;
+
+    while (nextModelId && !seen.has(nextModelId)) {
+      const fallbackModel = await this.requireAllowedModel(nextModelId, input.module);
+      result.push(fallbackModel);
+      seen.add(nextModelId);
+      nextModelId = fallbackModel.fallback_model_id;
+    }
+
+    return result;
+  }
+
+  private async resolveConnectionState(
+    model: ModelRegistryRecord,
+  ): Promise<{
+    resolvedConnection?: ResolvedAiProviderConnectionSummary;
+    warnings: ModelSelectionWarning[];
+  }> {
+    if (!model.connection_id) {
+      return {
+        warnings: [createLegacyUnboundWarning()],
+      };
+    }
+
+    if (!this.aiProviderConnectionRepository) {
+      return {
+        warnings: [],
+      };
+    }
+
+    const connection = await this.aiProviderConnectionRepository.findById(
+      model.connection_id,
+    );
+    if (!connection) {
+      return {
+        warnings: [createWarning("connection_missing", model.connection_id)],
+      };
+    }
+
+    const warnings: ModelSelectionWarning[] = [];
+    if (!connection.enabled) {
+      warnings.push(createWarning("connection_disabled", connection.name));
+    }
+    if (!connection.credential_summary) {
+      warnings.push(createWarning("credential_missing", connection.name));
+    }
+
+    return {
+      resolvedConnection: summarizeConnection(connection),
+      warnings,
+    };
   }
 
   private async selectLayer(
@@ -295,5 +391,49 @@ export class AiGatewayService {
         ...(input.error ? { error: input.error } : {}),
       },
     });
+  }
+}
+
+function summarizeConnection(
+  connection: AiProviderConnectionRecord,
+): ResolvedAiProviderConnectionSummary {
+  return {
+    id: connection.id,
+    name: connection.name,
+    provider_kind: connection.provider_kind,
+    compatibility_mode: connection.compatibility_mode,
+    enabled: connection.enabled,
+    last_test_status: connection.last_test_status ?? "unknown",
+    credential_present: Boolean(connection.credential_summary),
+  };
+}
+
+function createLegacyUnboundWarning(): ModelSelectionWarning {
+  return {
+    code: "legacy_unbound",
+    message: "Resolved model is still using legacy provider fields without connection_id.",
+  };
+}
+
+function createWarning(
+  code: Exclude<ModelSelectionWarning["code"], "legacy_unbound">,
+  label: string,
+): ModelSelectionWarning {
+  switch (code) {
+    case "connection_missing":
+      return {
+        code,
+        message: `Resolved model references missing ai provider connection ${label}.`,
+      };
+    case "connection_disabled":
+      return {
+        code,
+        message: `AI provider connection "${label}" is disabled.`,
+      };
+    case "credential_missing":
+      return {
+        code,
+        message: `AI provider connection "${label}" does not have credentials configured.`,
+      };
   }
 }

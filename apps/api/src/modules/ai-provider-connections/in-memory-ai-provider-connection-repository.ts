@@ -64,6 +64,9 @@ export class InMemoryAiProviderConnectionRepository
         : {},
       last_test_status: record.last_test_status ?? existing?.last_test_status ?? "unknown",
       credential_summary:
+        record.credential_summary
+          ? { ...record.credential_summary }
+          :
         existing?.credential_summary ??
         this.toCredentialSummary(this.credentialsByConnectionId.get(record.id)),
     });

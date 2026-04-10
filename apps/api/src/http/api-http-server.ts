@@ -86,9 +86,12 @@ import {
 import { InMemoryAuditService } from "../audit/index.ts";
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
+  AiProviderCredentialCrypto,
   AiProviderConnectionNotFoundError,
   AiProviderConnectionValidationError,
   createAiProviderConnectionApi,
+  createAiProviderConnectionService,
+  InMemoryAiProviderConnectionRepository,
 } from "../modules/ai-provider-connections/index.ts";
 import {
   createHarnessDatasetApi,
@@ -211,6 +214,7 @@ import {
   DuplicateModelRegistryEntryError,
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
+  ModelRegistryConnectionReferenceNotFoundError,
   ModelRegistryEntryNotFoundError,
   ModelRegistryService,
   ModelRoutingPolicyValidationError,
@@ -1185,6 +1189,7 @@ export function createInMemoryApiRuntime(input: {
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const auditService = new InMemoryAuditService();
+  const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -1327,12 +1332,14 @@ export function createInMemoryApiRuntime(input: {
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     auditService,
   });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
@@ -1341,8 +1348,16 @@ export function createInMemoryApiRuntime(input: {
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     runtimeBindingReadinessService,
+  });
+  const aiProviderConnectionService = createAiProviderConnectionService({
+    repository: aiProviderConnectionRepository,
+    auditService,
+    credentialCrypto: new AiProviderCredentialCrypto({
+      AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+    }),
   });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
@@ -1578,6 +1593,9 @@ export function createInMemoryApiRuntime(input: {
     }),
     toolPermissionPolicyApi: createToolPermissionPolicyApi({
       toolPermissionPolicyService,
+    }),
+    aiProviderConnectionApi: createAiProviderConnectionApi({
+      aiProviderConnectionService,
     }),
     permissionGuard,
   };
@@ -3495,6 +3513,7 @@ async function handleRoute(
           typeof runtime.modelRegistryApi.createModelEntry
         >[0]["input"]["rateLimit"];
         fallbackModelId?: string | null;
+        connectionId?: string | null;
       };
 
       return runtime.modelRegistryApi.createModelEntry({
@@ -3515,6 +3534,10 @@ async function handleRoute(
             typeof body.fallbackModelId === "string"
               ? coalesceOptionalString(body.fallbackModelId)
               : undefined,
+          connectionId:
+            typeof body.connectionId === "string"
+              ? coalesceOptionalString(body.connectionId)
+              : undefined,
         },
       });
     }
@@ -3534,6 +3557,7 @@ async function handleRoute(
           typeof runtime.modelRegistryApi.updateModelEntry
         >[0]["input"]["rateLimit"];
         fallbackModelId?: string | null;
+        connectionId?: string | null;
       };
 
       return runtime.modelRegistryApi.updateModelEntry({
@@ -3550,6 +3574,12 @@ async function handleRoute(
             typeof body.fallbackModelId === "string"
               ? coalesceOptionalString(body.fallbackModelId)
               : body.fallbackModelId === null
+                ? null
+                : undefined,
+          connectionId:
+            typeof body.connectionId === "string"
+              ? coalesceOptionalString(body.connectionId)
+              : body.connectionId === null
                 ? null
                 : undefined,
         },
@@ -5720,6 +5750,7 @@ function mapErrorToHttpResponse(
     error instanceof TemplateRetrievalQualityRunNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
+    error instanceof ModelRegistryConnectionReferenceNotFoundError ||
     error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof ModelRoutingPolicyNotFoundError ||
     error instanceof ModelRoutingPolicyVersionNotFoundError ||

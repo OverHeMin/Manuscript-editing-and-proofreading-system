@@ -13,7 +13,7 @@ function cloneModelRegistryRecord(record: ModelRegistryRecord): ModelRegistryRec
     allowed_modules: [...record.allowed_modules],
     cost_profile: record.cost_profile ? { ...record.cost_profile } : undefined,
     rate_limit: record.rate_limit ? { ...record.rate_limit } : undefined,
-    connection_id: record.connection_id,
+    ...(record.connection_id ? { connection_id: record.connection_id } : {}),
   };
 }
 

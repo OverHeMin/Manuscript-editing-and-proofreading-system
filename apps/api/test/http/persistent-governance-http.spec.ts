@@ -10,6 +10,7 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
 import { PostgresDocumentAssetRepository } from "../../src/modules/assets/index.ts";
 import { PostgresHarnessDatasetRepository } from "../../src/modules/harness-datasets/index.ts";
 import { PostgresHarnessIntegrationRepository } from "../../src/modules/harness-integrations/index.ts";
@@ -864,6 +865,152 @@ test("persistent governance runtime keeps model registry entries and routing pol
             editing: created.id,
             proofreading: created.id,
           });
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime reloads connection-backed model bindings across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const providerResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Persistent DeepSeek",
+              provider_kind: "deepseek",
+              connection_metadata: {
+                test_model_name: "deepseek-chat",
+              },
+              credentials: {
+                apiKey: "sk-deepseek-persistent-12345678",
+              },
+            }),
+          },
+        );
+        const provider = (await providerResponse.json()) as { id: string };
+
+        assert.equal(providerResponse.status, 201);
+
+        const createResponse = await fetch(`${firstServer.baseUrl}/api/v1/model-registry`, {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorRole: "editor",
+            provider: "openai",
+            modelName: "deepseek-persistent-primary",
+            modelVersion: "2026-04-10",
+            allowedModules: ["editing"],
+            isProdAllowed: true,
+            connectionId: provider.id,
+          }),
+        });
+        const created = (await createResponse.json()) as { id: string };
+
+        assert.equal(createResponse.status, 201);
+
+        const routingResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/model-registry/routing-policy`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "admin",
+              moduleDefaults: {
+                editing: created.id,
+              },
+            }),
+          },
+        );
+
+        assert.equal(routingResponse.status, 200);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const listResponse = await fetch(`${secondServer.baseUrl}/api/v1/model-registry`, {
+            headers: {
+              Cookie: cookie,
+            },
+          });
+          const models = (await listResponse.json()) as Array<{
+            id: string;
+            model_name: string;
+            connection_id?: string;
+          }>;
+          const providersResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/system-settings/ai-providers`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const providers = (await providersResponse.json()) as Array<{
+            id: string;
+            provider_kind: string;
+          }>;
+
+          assert.equal(listResponse.status, 200);
+          assert.equal(providersResponse.status, 200);
+          assert.deepEqual(
+            models.map((record) => ({
+              id: record.id,
+              model_name: record.model_name,
+              connection_id: record.connection_id,
+            })),
+            [
+              {
+                id: created.id,
+                model_name: "deepseek-persistent-primary",
+                connection_id: provider.id,
+              },
+            ],
+          );
+          assert.deepEqual(
+            providers.map((record) => ({
+              id: record.id,
+              provider_kind: record.provider_kind,
+            })),
+            [
+              {
+                id: provider.id,
+                provider_kind: "deepseek",
+              },
+            ],
+          );
         } finally {
           await stopServer(secondServer.server);
         }
@@ -4919,6 +5066,9 @@ async function startPersistentGovernanceServer(
       client: pool,
       authRuntime,
       uploadRootDir: input.uploadRootDir,
+      aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
+        AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+      }),
     }),
     uploadRootDir: input.uploadRootDir,
   });

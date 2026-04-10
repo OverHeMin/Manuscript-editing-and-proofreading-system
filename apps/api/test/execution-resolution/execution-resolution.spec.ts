@@ -8,6 +8,7 @@ import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
 import { ModelRoutingGovernanceService } from "../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import { InMemoryAiProviderConnectionRepository } from "../../src/modules/ai-provider-connections/in-memory-ai-provider-connection-repository.ts";
 import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
@@ -34,6 +35,7 @@ function createExecutionResolutionHarness(input?: {
   const knowledgeRepository = new InMemoryKnowledgeRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
   const modelRoutingGovernanceRepository =
     new InMemoryModelRoutingGovernanceRepository();
   const executionGovernanceService = new ExecutionGovernanceService({
@@ -76,6 +78,7 @@ function createExecutionResolutionHarness(input?: {
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     runtimeBindingReadinessService: input?.runtimeBindingReadinessService,
   });
@@ -88,6 +91,7 @@ function createExecutionResolutionHarness(input?: {
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceRepository,
     executionResolutionService,
   };
@@ -953,4 +957,201 @@ test("execution resolution falls back through legacy template override, module d
   });
   assert.equal(systemResolved.resolved_model.id, "model-system-1");
   assert.equal(systemResolved.model_source, "legacy_system_default");
+});
+
+test("execution resolution returns connection summaries, provider readiness, and fallback chain output", async () => {
+  const {
+    executionGovernanceService,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    knowledgeRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
+    executionResolutionService,
+  } = createExecutionResolutionHarness();
+
+  await aiProviderConnectionRepository.save({
+    id: "connection-deepseek-1",
+    name: "DeepSeek Primary",
+    provider_kind: "deepseek",
+    compatibility_mode: "openai_chat_compatible",
+    base_url: "https://api.deepseek.com",
+    enabled: true,
+    last_test_status: "failed",
+    credential_summary: {
+      mask: "sk-***9999",
+      version: 3,
+    },
+  });
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+  await knowledgeRepository.save({
+    id: "knowledge-1",
+    title: "Editing guidance",
+    canonical_text: "Approved editing guidance.",
+    knowledge_kind: "rule",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-fallback-1",
+    provider: "openai",
+    model_name: "deepseek-fallback",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+    connection_id: "connection-deepseek-1",
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-primary-1",
+    provider: "openai",
+    model_name: "deepseek-chat",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+    fallback_model_id: "model-editing-fallback-1",
+    connection_id: "connection-deepseek-1",
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-primary-1",
+    },
+    template_overrides: {},
+  });
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(resolved.resolved_model.id, "model-editing-primary-1");
+  assert.deepEqual(resolved.resolved_connection, {
+    id: "connection-deepseek-1",
+    name: "DeepSeek Primary",
+    provider_kind: "deepseek",
+    compatibility_mode: "openai_chat_compatible",
+    enabled: true,
+    last_test_status: "failed",
+    credential_present: true,
+  });
+  assert.equal(resolved.provider_readiness.status, "warning");
+  assert.ok(
+    resolved.provider_readiness.issues.some(
+      (issue) => issue.code === "connection_test_failed",
+    ),
+  );
+  assert.deepEqual(
+    resolved.fallback_chain.map((record) => record.id),
+    ["model-editing-fallback-1"],
+  );
+  assert.deepEqual(resolved.warnings, []);
+});
+
+test("execution resolution surfaces legacy_unbound warnings before runtime cutover", async () => {
+  const {
+    executionGovernanceService,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    executionResolutionService,
+  } = createExecutionResolutionHarness();
+
+  await moduleTemplateRepository.save({
+    id: "template-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Screening template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-screening-1",
+    name: "screening_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+  });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-screening-1",
+    module: "screening",
+  });
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "screening",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-screening-1",
+    ruleSetId: "rule-set-screening-1",
+    promptTemplateId: "prompt-screening-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+  await modelRegistryRepository.save({
+    id: "model-screening-legacy-1",
+    provider: "openai",
+    model_name: "legacy-screening-model",
+    model_version: "2026-04-01",
+    allowed_modules: ["screening"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      screening: "model-screening-legacy-1",
+    },
+    template_overrides: {},
+  });
+
+  const resolved = await executionResolutionService.resolveExecutionBundle({
+    module: "screening",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.equal(resolved.resolved_model.id, "model-screening-legacy-1");
+  assert.equal(resolved.resolved_connection, undefined);
+  assert.ok(
+    resolved.warnings.some((warning) => warning.code === "legacy_unbound"),
+  );
 });

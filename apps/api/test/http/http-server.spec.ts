@@ -1274,6 +1274,359 @@ test("http server lets admin manage model registry entries and routing policy", 
   }
 });
 
+test("http server returns connection-aware model registry and execution preview payloads", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const providerResponse = await fetch(
+      `${baseUrl}/api/v1/system-settings/ai-providers`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Qwen Production",
+          provider_kind: "qwen",
+          connection_metadata: {
+            test_model_name: "qwen-max",
+          },
+          credentials: {
+            apiKey: "sk-qwen-connection-12345678",
+          },
+        }),
+      },
+    );
+    const provider = (await providerResponse.json()) as { id: string };
+
+    assert.equal(providerResponse.status, 201);
+
+    const fallbackModelResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        provider: "openai",
+        modelName: "qwen-fallback-http",
+        modelVersion: "2026-04-10",
+        allowedModules: ["editing"],
+        isProdAllowed: true,
+        connectionId: provider.id,
+      }),
+    });
+    const fallbackModel = (await fallbackModelResponse.json()) as { id: string };
+
+    assert.equal(fallbackModelResponse.status, 201);
+
+    const modelResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        provider: "openai",
+        modelName: "qwen-max-http",
+        modelVersion: "2026-04-10",
+        allowedModules: ["editing"],
+        isProdAllowed: true,
+        connectionId: provider.id,
+        fallbackModelId: fallbackModel.id,
+      }),
+    });
+    const model = (await modelResponse.json()) as {
+      id: string;
+      connection_id?: string;
+    };
+
+    assert.equal(modelResponse.status, 201);
+    assert.equal(model.connection_id, provider.id);
+
+    const listResponse = await fetch(`${baseUrl}/api/v1/model-registry`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const models = (await listResponse.json()) as Array<{
+      id: string;
+      connection_id?: string;
+    }>;
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(
+      models.find((record) => record.id === model.id)?.connection_id,
+      provider.id,
+    );
+
+    await fetch(`${baseUrl}/api/v1/model-registry/routing-policy`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        moduleDefaults: {
+          editing: model.id,
+        },
+      }),
+    });
+
+    const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "clinical_study",
+        name: "Connection Aware Preview",
+      }),
+    });
+    const family = (await familyResponse.json()) as { id: string };
+
+    assert.equal(familyResponse.status, 201);
+
+    const moduleTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/module-drafts`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          templateFamilyId: family.id,
+          module: "editing",
+          manuscriptType: "clinical_study",
+          prompt: "Connection aware preview template",
+        }),
+      },
+    );
+    const moduleTemplateDraft = (await moduleTemplateResponse.json()) as { id: string };
+
+    assert.equal(moduleTemplateResponse.status, 201);
+
+    const publishModuleTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/module-templates/${moduleTemplateDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishModuleTemplateResponse.status, 200);
+
+    const ruleSetResponse = await fetch(`${baseUrl}/api/v1/editorial-rules/rule-sets`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorRole: "editor",
+        templateFamilyId: family.id,
+        module: "editing",
+      }),
+    });
+    const ruleSet = (await ruleSetResponse.json()) as { id: string };
+
+    assert.equal(ruleSetResponse.status, 201);
+
+    const publishRuleSetResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/${ruleSet.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishRuleSetResponse.status, 200);
+
+    const promptTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "connection_aware_preview_prompt",
+          version: "1.0.0",
+          module: "editing",
+          manuscriptTypes: ["clinical_study"],
+        }),
+      },
+    );
+    const promptTemplate = (await promptTemplateResponse.json()) as { id: string };
+
+    assert.equal(promptTemplateResponse.status, 201);
+
+    const publishPromptTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates/${promptTemplate.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishPromptTemplateResponse.status, 200);
+
+    const skillPackageResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          name: "connection_aware_preview_skills",
+          version: "1.0.0",
+          appliesToModules: ["editing"],
+        }),
+      },
+    );
+    const skillPackage = (await skillPackageResponse.json()) as { id: string };
+
+    assert.equal(skillPackageResponse.status, 201);
+
+    const publishSkillPackageResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/skill-packages/${skillPackage.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishSkillPackageResponse.status, 200);
+
+    const profileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: family.id,
+            moduleTemplateId: moduleTemplateDraft.id,
+            ruleSetId: ruleSet.id,
+            promptTemplateId: promptTemplate.id,
+            skillPackageIds: [skillPackage.id],
+            knowledgeBindingMode: "profile_only",
+          },
+        }),
+      },
+    );
+    const profile = (await profileResponse.json()) as { id: string };
+
+    assert.equal(profileResponse.status, 201);
+
+    const publishProfileResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/profiles/${profile.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorRole: "editor",
+        }),
+      },
+    );
+
+    assert.equal(publishProfileResponse.status, 200);
+
+    const resolveResponse = await fetch(
+      `${baseUrl}/api/v1/execution-governance/resolve`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          module: "editing",
+          manuscriptType: "clinical_study",
+          templateFamilyId: family.id,
+        }),
+      },
+    );
+    const resolved = (await resolveResponse.json()) as {
+      resolved_model: { id: string; connection_id?: string };
+      resolved_connection?: {
+        id: string;
+        provider_kind: string;
+      };
+      provider_readiness?: {
+        status: string;
+        issues: Array<{ code: string }>;
+      };
+      fallback_chain?: Array<{ id: string }>;
+      warnings?: Array<{ code: string }>;
+    };
+
+    assert.equal(resolveResponse.status, 200);
+    assert.equal(resolved.resolved_model.id, model.id);
+    assert.equal(resolved.resolved_model.connection_id, provider.id);
+    assert.equal(resolved.resolved_connection?.id, provider.id);
+    assert.equal(resolved.resolved_connection?.provider_kind, "qwen");
+    assert.equal(resolved.provider_readiness?.status, "warning");
+    assert.ok(
+      resolved.provider_readiness?.issues.some(
+        (issue) => issue.code === "connection_test_unknown",
+      ),
+    );
+    assert.deepEqual(
+      resolved.fallback_chain?.map((record) => record.id),
+      [fallbackModel.id],
+    );
+    assert.deepEqual(resolved.warnings, []);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server lets admin manage the model routing governance lifecycle", async () => {
   const { server, baseUrl } = await startServer();
 

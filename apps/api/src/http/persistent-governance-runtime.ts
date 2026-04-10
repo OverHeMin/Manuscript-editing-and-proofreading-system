@@ -491,6 +491,7 @@ export function createPersistentGovernanceRuntime(
   const aiGatewayService = new AiGatewayService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     auditService,
   });
@@ -501,6 +502,7 @@ export function createPersistentGovernanceRuntime(
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
   });
   const runtimeBindingService = new RuntimeBindingService({
     repository: runtimeBindingRepository,
@@ -528,6 +530,7 @@ export function createPersistentGovernanceRuntime(
     knowledgeRepository,
     modelRegistryRepository,
     modelRoutingPolicyRepository,
+    aiProviderConnectionRepository,
     modelRoutingGovernanceService,
     runtimeBindingReadinessService,
   });

@@ -1,4 +1,10 @@
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
+import type {
+  ModelSelectionWarning,
+  ResolvedAiProviderConnectionSummary,
+} from "../ai-gateway/ai-gateway-service.ts";
+import type { AiProviderConnectionRecord } from "../ai-provider-connections/ai-provider-connection-record.ts";
+import type { AiProviderConnectionRepository } from "../ai-provider-connections/ai-provider-connection-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type { ModelRoutingGovernanceService } from "../model-routing-governance/model-routing-governance-service.ts";
@@ -15,6 +21,8 @@ import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type {
   ExecutionResolutionModelSource,
+  ProviderReadinessIssueRecord,
+  ProviderReadinessRecord,
   ResolvedExecutionBundleRecord,
   RuntimeBindingReadinessObservationRecord,
 } from "./execution-resolution-record.ts";
@@ -32,6 +40,7 @@ export interface ExecutionResolutionServiceOptions {
   knowledgeRepository: KnowledgeRepository;
   modelRegistryRepository: ModelRegistryRepository;
   modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
+  aiProviderConnectionRepository?: AiProviderConnectionRepository;
   modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   runtimeBindingReadinessService?: Pick<
     RuntimeBindingReadinessService,
@@ -76,6 +85,7 @@ export class ExecutionResolutionService {
   private readonly knowledgeRepository: KnowledgeRepository;
   private readonly modelRegistryRepository: ModelRegistryRepository;
   private readonly modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
+  private readonly aiProviderConnectionRepository?: AiProviderConnectionRepository;
   private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   private readonly runtimeBindingReadinessService?: Pick<
     RuntimeBindingReadinessService,
@@ -89,6 +99,7 @@ export class ExecutionResolutionService {
     this.knowledgeRepository = options.knowledgeRepository;
     this.modelRegistryRepository = options.modelRegistryRepository;
     this.modelRoutingPolicyRepository = options.modelRoutingPolicyRepository;
+    this.aiProviderConnectionRepository = options.aiProviderConnectionRepository;
     this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
     this.runtimeBindingReadinessService = options.runtimeBindingReadinessService;
   }
@@ -140,7 +151,12 @@ export class ExecutionResolutionService {
     const { ruleSet, rules } =
       await this.executionGovernanceService.resolvePublishedRuleSource(profile);
 
-    const { model, source } = await this.resolveModel(profile);
+    const { model, source, fallbackChain } = await this.resolveModel(profile);
+    const {
+      resolvedConnection,
+      warnings,
+      providerReadiness,
+    } = await this.resolveProviderState(model);
     const knowledgeBindingRules =
       await this.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
         module: profile.module,
@@ -178,6 +194,10 @@ export class ExecutionResolutionService {
       skill_packages: skillPackages,
       resolved_model: model,
       model_source: source,
+      ...(resolvedConnection ? { resolved_connection: resolvedConnection } : {}),
+      provider_readiness: providerReadiness,
+      fallback_chain: fallbackChain,
+      warnings,
       knowledge_binding_rules: knowledgeBindingRules,
       knowledge_items: dedupeKnowledgeItems(knowledgeItems),
       runtime_binding_readiness: runtimeBindingReadiness,
@@ -221,6 +241,7 @@ export class ExecutionResolutionService {
   }): Promise<{
     model: ModelRegistryRecord;
     source: ExecutionResolutionModelSource;
+    fallbackChain: ModelRegistryRecord[];
   }> {
     if (this.modelRoutingGovernanceService) {
       const templateFamilyPolicy =
@@ -230,7 +251,7 @@ export class ExecutionResolutionService {
         );
       const activeTemplateFamilyVersion = templateFamilyPolicy?.active_version;
       if (activeTemplateFamilyVersion) {
-        const model = await this.requireGovernedPolicyModel(
+        const { model, fallbackChain } = await this.requireGovernedPolicyModel(
           activeTemplateFamilyVersion.primary_model_id,
           profile.module,
           profile.template_family_id,
@@ -240,6 +261,7 @@ export class ExecutionResolutionService {
         return {
           model,
           source: "template_family_policy",
+          fallbackChain,
         };
       }
 
@@ -249,7 +271,7 @@ export class ExecutionResolutionService {
       );
       const activeModuleVersion = modulePolicy?.active_version;
       if (activeModuleVersion) {
-        const model = await this.requireGovernedPolicyModel(
+        const { model, fallbackChain } = await this.requireGovernedPolicyModel(
           activeModuleVersion.primary_model_id,
           profile.module,
           profile.template_family_id,
@@ -259,6 +281,7 @@ export class ExecutionResolutionService {
         return {
           model,
           source: "module_policy",
+          fallbackChain,
         };
       }
     }
@@ -299,6 +322,11 @@ export class ExecutionResolutionService {
       return {
         model,
         source: candidate.source,
+        fallbackChain: await this.resolveModelFallbackChain(
+          model,
+          profile.module,
+          profile.template_family_id,
+        ),
       };
     }
 
@@ -313,7 +341,10 @@ export class ExecutionResolutionService {
     module: TemplateModule,
     templateFamilyId: string,
     fallbackModelIds: string[],
-  ): Promise<ModelRegistryRecord> {
+  ): Promise<{
+    model: ModelRegistryRecord;
+    fallbackChain: ModelRegistryRecord[];
+  }> {
     const model = await this.modelRegistryRepository.findById(primaryModelId);
     if (!model) {
       throw new ExecutionResolutionModelNotFoundError(module, templateFamilyId);
@@ -322,6 +353,21 @@ export class ExecutionResolutionService {
     if (!model.is_prod_allowed || !model.allowed_modules.includes(module)) {
       throw new ExecutionResolutionModelIncompatibleError(model.id, module);
     }
+
+    const fallbackChain =
+      fallbackModelIds.length > 0
+        ? await this.requireFallbackModels(fallbackModelIds, module, templateFamilyId)
+        : await this.resolveModelFallbackChain(model, module, templateFamilyId);
+
+    return { model, fallbackChain };
+  }
+
+  private async requireFallbackModels(
+    fallbackModelIds: string[],
+    module: TemplateModule,
+    templateFamilyId: string,
+  ): Promise<ModelRegistryRecord[]> {
+    const result: ModelRegistryRecord[] = [];
 
     for (const fallbackModelId of fallbackModelIds) {
       const fallbackModel = await this.modelRegistryRepository.findById(fallbackModelId);
@@ -338,9 +384,227 @@ export class ExecutionResolutionService {
           module,
         );
       }
+
+      result.push(fallbackModel);
     }
 
-    return model;
+    return result;
+  }
+
+  private async resolveModelFallbackChain(
+    model: ModelRegistryRecord,
+    module: TemplateModule,
+    templateFamilyId: string,
+  ): Promise<ModelRegistryRecord[]> {
+    const result: ModelRegistryRecord[] = [];
+    const seen = new Set<string>([model.id]);
+    let nextModelId = model.fallback_model_id;
+
+    while (nextModelId && !seen.has(nextModelId)) {
+      const fallbackModel = await this.modelRegistryRepository.findById(nextModelId);
+      if (!fallbackModel) {
+        throw new ExecutionResolutionModelNotFoundError(module, templateFamilyId);
+      }
+
+      if (
+        !fallbackModel.is_prod_allowed ||
+        !fallbackModel.allowed_modules.includes(module)
+      ) {
+        throw new ExecutionResolutionModelIncompatibleError(
+          fallbackModel.id,
+          module,
+        );
+      }
+
+      result.push(fallbackModel);
+      seen.add(nextModelId);
+      nextModelId = fallbackModel.fallback_model_id;
+    }
+
+    return result;
+  }
+
+  private async resolveProviderState(
+    model: ModelRegistryRecord,
+  ): Promise<{
+    resolvedConnection?: ResolvedAiProviderConnectionSummary;
+    warnings: ModelSelectionWarning[];
+    providerReadiness: ProviderReadinessRecord;
+  }> {
+    if (!model.connection_id) {
+      return {
+        warnings: [createLegacyUnboundWarning()],
+        providerReadiness: {
+          status: "warning",
+          issues: [createProviderIssue("legacy_unbound")],
+        },
+      };
+    }
+
+    if (!this.aiProviderConnectionRepository) {
+      return {
+        warnings: [],
+        providerReadiness: {
+          status: "warning",
+          issues: [createProviderIssue("connection_missing", model.connection_id)],
+        },
+      };
+    }
+
+    const connection = await this.aiProviderConnectionRepository.findById(
+      model.connection_id,
+    );
+    if (!connection) {
+      return {
+        warnings: [createWarning("connection_missing", model.connection_id)],
+        providerReadiness: {
+          status: "warning",
+          issues: [createProviderIssue("connection_missing", model.connection_id)],
+        },
+      };
+    }
+
+    return {
+      resolvedConnection: summarizeConnection(connection),
+      warnings: buildConnectionWarnings(connection),
+      providerReadiness: buildProviderReadiness(connection),
+    };
+  }
+}
+
+function summarizeConnection(
+  connection: AiProviderConnectionRecord,
+): ResolvedAiProviderConnectionSummary {
+  return {
+    id: connection.id,
+    name: connection.name,
+    provider_kind: connection.provider_kind,
+    compatibility_mode: connection.compatibility_mode,
+    enabled: connection.enabled,
+    last_test_status: connection.last_test_status ?? "unknown",
+    credential_present: Boolean(connection.credential_summary),
+  };
+}
+
+function buildConnectionWarnings(
+  connection: AiProviderConnectionRecord,
+): ModelSelectionWarning[] {
+  const warnings: ModelSelectionWarning[] = [];
+
+  if (!connection.enabled) {
+    warnings.push(createWarning("connection_disabled", connection.name));
+  }
+
+  if (!connection.credential_summary) {
+    warnings.push(createWarning("credential_missing", connection.name));
+  }
+
+  return warnings;
+}
+
+function buildProviderReadiness(
+  connection: AiProviderConnectionRecord,
+): ProviderReadinessRecord {
+  const issues: ProviderReadinessIssueRecord[] = [];
+
+  if (!connection.enabled) {
+    issues.push(createProviderIssue("connection_disabled", connection.name));
+  }
+
+  if (!connection.credential_summary) {
+    issues.push(createProviderIssue("credential_missing", connection.name));
+  }
+
+  const lastTestStatus = connection.last_test_status ?? "unknown";
+  if (lastTestStatus === "failed") {
+    issues.push(createProviderIssue("connection_test_failed", connection.name));
+  }
+
+  if (lastTestStatus === "unknown") {
+    issues.push(createProviderIssue("connection_test_unknown", connection.name));
+  }
+
+  return {
+    status: issues.length > 0 ? "warning" : "ok",
+    issues,
+  };
+}
+
+function createLegacyUnboundWarning(): ModelSelectionWarning {
+  return {
+    code: "legacy_unbound",
+    message: "Resolved model is still using legacy provider fields without connection_id.",
+  };
+}
+
+function createWarning(
+  code: Exclude<ModelSelectionWarning["code"], "legacy_unbound">,
+  label: string,
+): ModelSelectionWarning {
+  switch (code) {
+    case "connection_missing":
+      return {
+        code,
+        message: `Resolved model references missing ai provider connection ${label}.`,
+      };
+    case "connection_disabled":
+      return {
+        code,
+        message: `AI provider connection "${label}" is disabled.`,
+      };
+    case "credential_missing":
+      return {
+        code,
+        message: `AI provider connection "${label}" does not have credentials configured.`,
+      };
+    default:
+      return {
+        code,
+        message: label,
+      };
+  }
+}
+
+function createProviderIssue(
+  code: ProviderReadinessIssueRecord["code"],
+  label?: string,
+): ProviderReadinessIssueRecord {
+  switch (code) {
+    case "legacy_unbound":
+      return {
+        code,
+        message: "Resolved model is still using legacy provider fields without connection_id.",
+      };
+    case "connection_missing":
+      return {
+        code,
+        message: `Resolved model references missing ai provider connection ${label}.`,
+      };
+    case "connection_disabled":
+      return {
+        code,
+        message: `AI provider connection "${label}" is disabled.`,
+      };
+    case "credential_missing":
+      return {
+        code,
+        message: `AI provider connection "${label}" does not have credentials configured.`,
+      };
+    case "connection_test_failed":
+      return {
+        code,
+        message: `AI provider connection "${label}" failed its latest connectivity test.`,
+      };
+    case "connection_test_unknown":
+      return {
+        code,
+        message: `AI provider connection "${label}" has not been connectivity-tested yet.`,
+      };
+    default:
+      return {
+        code,
+        message: label ?? code,
+      };
   }
 }
 

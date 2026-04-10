@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
+import type { AiProviderConnectionRepository } from "../ai-provider-connections/ai-provider-connection-repository.ts";
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
@@ -20,6 +21,7 @@ export interface CreateModelRegistryEntryInput {
   costProfile?: ModelRegistryRecord["cost_profile"];
   rateLimit?: ModelRegistryRecord["rate_limit"];
   fallbackModelId?: string;
+  connectionId?: string;
 }
 
 export interface UpdateModelRegistryEntryInput {
@@ -28,6 +30,7 @@ export interface UpdateModelRegistryEntryInput {
   costProfile?: ModelRegistryRecord["cost_profile"];
   rateLimit?: ModelRegistryRecord["rate_limit"];
   fallbackModelId?: string | null;
+  connectionId?: string | null;
 }
 
 export interface UpdateModelRoutingPolicyInput {
@@ -39,6 +42,7 @@ export interface UpdateModelRoutingPolicyInput {
 export interface ModelRegistryServiceOptions {
   repository: ModelRegistryRepository;
   routingPolicyRepository: ModelRoutingPolicyRepository;
+  aiProviderConnectionRepository?: AiProviderConnectionRepository;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -73,15 +77,24 @@ export class ModelRoutingPolicyValidationError extends Error {
   }
 }
 
+export class ModelRegistryConnectionReferenceNotFoundError extends Error {
+  constructor(connectionId: string) {
+    super(`connectionId references missing ai provider connection ${connectionId}.`);
+    this.name = "ModelRegistryConnectionReferenceNotFoundError";
+  }
+}
+
 export class ModelRegistryService {
   private readonly repository: ModelRegistryRepository;
   private readonly routingPolicyRepository: ModelRoutingPolicyRepository;
+  private readonly aiProviderConnectionRepository?: AiProviderConnectionRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
   constructor(options: ModelRegistryServiceOptions) {
     this.repository = options.repository;
     this.routingPolicyRepository = options.routingPolicyRepository;
+    this.aiProviderConnectionRepository = options.aiProviderConnectionRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -111,6 +124,10 @@ export class ModelRegistryService {
       await this.requireModel(input.fallbackModelId, "fallbackModelId");
     }
 
+    const connectionId = input.connectionId
+      ? await this.requireConnection(input.connectionId)
+      : undefined;
+
     const record: ModelRegistryRecord = {
       id: this.createId(),
       provider: input.provider,
@@ -121,6 +138,7 @@ export class ModelRegistryService {
       cost_profile: input.costProfile ? { ...input.costProfile } : undefined,
       rate_limit: input.rateLimit ? { ...input.rateLimit } : undefined,
       fallback_model_id: input.fallbackModelId,
+      ...(connectionId ? { connection_id: connectionId } : {}),
     };
 
     await this.repository.save(record);
@@ -141,6 +159,12 @@ export class ModelRegistryService {
         : input.fallbackModelId === null
           ? undefined
           : (await this.requireModel(input.fallbackModelId, "fallbackModelId")).id;
+    const connectionId =
+      input.connectionId === undefined
+        ? existing.connection_id
+        : input.connectionId === null
+          ? undefined
+          : await this.requireConnection(input.connectionId);
 
     const updatedRecord: ModelRegistryRecord = {
       ...existing,
@@ -161,6 +185,7 @@ export class ModelRegistryService {
             ? { ...input.rateLimit }
             : undefined,
       fallback_model_id: fallbackModelId,
+      ...(connectionId ? { connection_id: connectionId } : {}),
     };
 
     await this.repository.save(updatedRecord);
@@ -251,6 +276,19 @@ export class ModelRegistryService {
     }
 
     return record;
+  }
+
+  private async requireConnection(connectionId: string): Promise<string> {
+    if (!this.aiProviderConnectionRepository) {
+      return connectionId;
+    }
+
+    const connection = await this.aiProviderConnectionRepository.findById(connectionId);
+    if (!connection) {
+      throw new ModelRegistryConnectionReferenceNotFoundError(connectionId);
+    }
+
+    return connection.id;
   }
 
   private async requireModelForPolicy(input: {
