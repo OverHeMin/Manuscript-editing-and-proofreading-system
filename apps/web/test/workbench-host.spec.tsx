@@ -93,6 +93,78 @@ test("general user navigation model hides management navigation", async () => {
   );
 });
 
+test("operator navigation keeps each public-beta desk on its own mainline surface", async () => {
+  const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
+    () => null,
+  );
+
+  assert.ok(navigationModule, "expected workbench-navigation module to exist");
+
+  const screenerGroups = navigationModule.buildWorkbenchNavigationGroups(
+    buildSession("screener").availableWorkbenchEntries,
+  );
+  const editorGroups = navigationModule.buildWorkbenchNavigationGroups(
+    buildSession("editor").availableWorkbenchEntries,
+  );
+  const proofreaderGroups = navigationModule.buildWorkbenchNavigationGroups(
+    buildSession("proofreader").availableWorkbenchEntries,
+  );
+
+  assert.deepEqual(
+    screenerGroups.map((group: { id: string }) => group.id),
+    ["core-workbench"],
+  );
+  assert.deepEqual(
+    screenerGroups[0]?.items.map((item: { id: string }) => item.id),
+    ["screening"],
+  );
+  assert.deepEqual(
+    editorGroups.map((group: { id: string }) => group.id),
+    ["core-workbench"],
+  );
+  assert.deepEqual(
+    editorGroups[0]?.items.map((item: { id: string }) => item.id),
+    ["editing"],
+  );
+  assert.deepEqual(
+    proofreaderGroups.map((group: { id: string }) => group.id),
+    ["core-workbench"],
+  );
+  assert.deepEqual(
+    proofreaderGroups[0]?.items.map((item: { id: string }) => item.id),
+    ["proofreading"],
+  );
+});
+
+test("knowledge reviewer navigation excludes manuscript desks and governance entries", async () => {
+  const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
+    () => null,
+  );
+
+  assert.ok(navigationModule, "expected workbench-navigation module to exist");
+
+  const groups = navigationModule.buildWorkbenchNavigationGroups(
+    buildSession("knowledge_reviewer").availableWorkbenchEntries,
+  );
+
+  assert.deepEqual(
+    groups.map((group: { id: string }) => group.id),
+    ["core-workbench", "supporting-workbench"],
+  );
+  assert.deepEqual(
+    groups[0]?.items.map((item: { id: string }) => item.id),
+    ["knowledge-library"],
+  );
+  assert.deepEqual(
+    groups[1]?.items.map((item: { id: string }) => item.id),
+    ["knowledge-review", "learning-review"],
+  );
+  assert.equal(
+    groups.some((group: { id: string }) => group.id === "governance"),
+    false,
+  );
+});
+
 test("navigation menu renders grouped admin navigation with rule center as the active governance product entry", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts");
   const menuModule = await import("../src/app/workbench-navigation-menu.tsx").catch(

@@ -98,6 +98,7 @@ function createLifecycleHarness(
 
   return {
     api,
+    manuscriptService,
     assetService,
     manuscriptRepository,
     assetRepository,
@@ -285,6 +286,305 @@ test("upload creates manuscript, original asset, and queued upload job records",
   assert.equal(jobResponse.status, 200);
   assert.equal(jobResponse.body.id, "job-1");
   assert.equal(jobResponse.body.status, "queued");
+});
+
+test("batch upload creates a stable root job with queued items and visible progress counts", async () => {
+  const { api } = createLifecycleHarness([
+    "job-batch-1",
+    "manuscript-batch-1",
+    "asset-batch-1",
+    "job-upload-batch-1",
+    "manuscript-batch-2",
+    "asset-batch-2",
+    "job-upload-batch-2",
+  ]);
+
+  const uploadResponse = await api.uploadBatch({
+    createdBy: "user-batch",
+    items: [
+      {
+        title: "Batch Review A",
+        manuscriptType: "review",
+        fileName: "batch-review-a.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-review-a.docx",
+      },
+      {
+        title: "Batch Review B",
+        manuscriptType: "clinical_study",
+        fileName: "batch-review-b.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-review-b.docx",
+      },
+    ],
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploadResponse.body.batch_job.id, "job-batch-1");
+  assert.equal(uploadResponse.body.batch_job.job_type, "manuscript_upload_batch");
+  assert.equal(uploadResponse.body.batch_job.status, "queued");
+  assert.equal(uploadResponse.body.items.length, 2);
+  assert.equal(uploadResponse.body.items[0]?.job.id, "job-upload-batch-1");
+  assert.equal(uploadResponse.body.items[1]?.job.id, "job-upload-batch-2");
+
+  const jobResponse = await api.getJob({
+    jobId: uploadResponse.body.batch_job.id,
+  });
+
+  assert.equal(jobResponse.status, 200);
+  assert.equal(jobResponse.body.batch_progress?.lifecycle_status, "queued");
+  assert.equal(jobResponse.body.batch_progress?.settlement_status, "in_progress");
+  assert.equal(jobResponse.body.batch_progress?.total_count, 2);
+  assert.equal(jobResponse.body.batch_progress?.queued_count, 2);
+  assert.equal(jobResponse.body.batch_progress?.running_count, 0);
+  assert.equal(jobResponse.body.batch_progress?.succeeded_count, 0);
+  assert.equal(jobResponse.body.batch_progress?.failed_count, 0);
+  assert.equal(jobResponse.body.batch_progress?.cancelled_count, 0);
+  assert.equal(jobResponse.body.batch_progress?.remaining_count, 2);
+  assert.equal(
+    jobResponse.body.batch_progress?.restart_posture.status,
+    "fresh",
+  );
+  assert.equal(
+    jobResponse.body.batch_progress?.items.map((item) => item.status).join(","),
+    "queued,queued",
+  );
+});
+
+test("batch lifecycle reports running work, failed-item retry, cancellation, and restart recovery posture", async () => {
+  const {
+    api,
+    manuscriptService,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+  } = createLifecycleHarness([
+    "job-batch-2",
+    "manuscript-batch-3",
+    "asset-batch-3",
+    "job-upload-batch-3",
+    "manuscript-batch-4",
+    "asset-batch-4",
+    "job-upload-batch-4",
+    "manuscript-batch-5",
+    "asset-batch-5",
+    "job-upload-batch-5",
+  ]);
+
+  const uploadResponse = await manuscriptService.uploadBatch({
+    createdBy: "user-batch",
+    items: [
+      {
+        title: "Batch Review C",
+        manuscriptType: "review",
+        fileName: "batch-review-c.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-review-c.docx",
+      },
+      {
+        title: "Batch Review D",
+        manuscriptType: "review",
+        fileName: "batch-review-d.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-review-d.docx",
+      },
+      {
+        title: "Batch Review E",
+        manuscriptType: "review",
+        fileName: "batch-review-e.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-review-e.docx",
+      },
+    ],
+  });
+
+  await manuscriptService.markBatchItemRunning({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-1",
+  });
+  await manuscriptService.markBatchItemSucceeded({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-1",
+  });
+  await manuscriptService.markBatchItemRunning({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-2",
+  });
+
+  const runningResponse = await api.getJob({
+    jobId: uploadResponse.batch_job.id,
+  });
+
+  assert.equal(runningResponse.body.batch_progress?.lifecycle_status, "running");
+  assert.equal(runningResponse.body.batch_progress?.settlement_status, "in_progress");
+  assert.equal(runningResponse.body.batch_progress?.succeeded_count, 1);
+  assert.equal(runningResponse.body.batch_progress?.running_count, 1);
+  assert.equal(runningResponse.body.batch_progress?.queued_count, 1);
+  assert.equal(runningResponse.body.batch_progress?.remaining_count, 2);
+
+  await manuscriptService.markBatchItemFailed({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-2",
+    errorMessage: "Inline normalization failed.",
+  });
+
+  const failedResponse = await api.getJob({
+    jobId: uploadResponse.batch_job.id,
+  });
+
+  assert.equal(failedResponse.body.batch_progress?.failed_count, 1);
+  assert.equal(
+    failedResponse.body.batch_progress?.items.find((item) => item.item_id === "item-2")
+      ?.status,
+    "failed",
+  );
+
+  await manuscriptService.retryBatchItem({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-2",
+  });
+  await manuscriptService.markBatchItemRunning({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-2",
+  });
+
+  const restartedManuscriptRepository = new InMemoryManuscriptRepository();
+  restartedManuscriptRepository.restoreState(manuscriptRepository.snapshotState());
+  const restartedAssetRepository = new InMemoryDocumentAssetRepository();
+  restartedAssetRepository.restoreState(assetRepository.snapshotState());
+  const restartedJobRepository = new InMemoryJobRepository();
+  restartedJobRepository.restoreState(jobRepository.snapshotState());
+  const restartedTemplateFamilyRepository = new InMemoryTemplateFamilyRepository();
+
+  const restartedService = new ManuscriptLifecycleService({
+    manuscriptRepository: restartedManuscriptRepository,
+    assetRepository: restartedAssetRepository,
+    jobRepository: restartedJobRepository,
+    templateFamilyRepository: restartedTemplateFamilyRepository,
+    now: () => new Date("2026-03-26T10:15:00.000Z"),
+    createId: () => "unused-id",
+  });
+  const restartedApi = createManuscriptApi({
+    manuscriptService: restartedService,
+    assetService: new DocumentAssetService({
+      assetRepository: restartedAssetRepository,
+      manuscriptRepository: restartedManuscriptRepository,
+      now: () => new Date("2026-03-26T10:15:00.000Z"),
+      createId: () => "unused-asset-id",
+    }),
+  });
+
+  await restartedService.resumeBatchAfterRestart({
+    batchJobId: uploadResponse.batch_job.id,
+  });
+  await restartedService.cancelBatch({
+    batchJobId: uploadResponse.batch_job.id,
+    reason: "Operator cancelled the remaining queue after restart.",
+  });
+
+  const cancelledResponse = await restartedApi.getJob({
+    jobId: uploadResponse.batch_job.id,
+  });
+
+  assert.equal(
+    cancelledResponse.body.batch_progress?.lifecycle_status,
+    "cancelled",
+  );
+  assert.equal(
+    cancelledResponse.body.batch_progress?.settlement_status,
+    "partial_success",
+  );
+  assert.equal(cancelledResponse.body.batch_progress?.succeeded_count, 1);
+  assert.equal(cancelledResponse.body.batch_progress?.failed_count, 0);
+  assert.equal(cancelledResponse.body.batch_progress?.running_count, 0);
+  assert.equal(cancelledResponse.body.batch_progress?.queued_count, 0);
+  assert.equal(cancelledResponse.body.batch_progress?.cancelled_count, 2);
+  assert.equal(cancelledResponse.body.batch_progress?.remaining_count, 0);
+  assert.equal(
+    cancelledResponse.body.batch_progress?.restart_posture.status,
+    "resumed_after_restart",
+  );
+  assert.match(
+    cancelledResponse.body.batch_progress?.restart_posture.reason ?? "",
+    /restart/i,
+  );
+  assert.equal(
+    cancelledResponse.body.batch_progress?.items.find((item) => item.item_id === "item-2")
+      ?.attempt_count,
+    2,
+  );
+  assert.equal(
+    cancelledResponse.body.batch_progress?.items.find((item) => item.item_id === "item-2")
+      ?.status,
+    "cancelled",
+  );
+  assert.equal(
+    cancelledResponse.body.batch_progress?.items.find((item) => item.item_id === "item-3")
+      ?.status,
+    "cancelled",
+  );
+});
+
+test("batch lifecycle marks the root batch job as failed when every item fails", async () => {
+  const { api, manuscriptService } = createLifecycleHarness([
+    "job-batch-all-failed-1",
+    "manuscript-batch-all-failed-1",
+    "asset-batch-all-failed-1",
+    "job-upload-batch-all-failed-1",
+    "manuscript-batch-all-failed-2",
+    "asset-batch-all-failed-2",
+    "job-upload-batch-all-failed-2",
+  ]);
+
+  const uploadResponse = await manuscriptService.uploadBatch({
+    createdBy: "user-batch",
+    items: [
+      {
+        title: "Batch Failure A",
+        manuscriptType: "review",
+        fileName: "batch-failure-a.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-failure-a.docx",
+      },
+      {
+        title: "Batch Failure B",
+        manuscriptType: "review",
+        fileName: "batch-failure-b.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageKey: "uploads/batch-failure-b.docx",
+      },
+    ],
+  });
+
+  await manuscriptService.markBatchItemFailed({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-1",
+    errorMessage: "Normalization failed.",
+  });
+  await manuscriptService.markBatchItemFailed({
+    batchJobId: uploadResponse.batch_job.id,
+    itemId: "item-2",
+    errorMessage: "Template resolution failed.",
+  });
+
+  const failedResponse = await api.getJob({
+    jobId: uploadResponse.batch_job.id,
+  });
+
+  assert.equal(failedResponse.status, 200);
+  assert.equal(failedResponse.body.status, "failed");
+  assert.equal(failedResponse.body.batch_progress?.lifecycle_status, "completed");
+  assert.equal(failedResponse.body.batch_progress?.settlement_status, "failed");
+  assert.equal(failedResponse.body.batch_progress?.failed_count, 2);
+  assert.equal(failedResponse.body.batch_progress?.succeeded_count, 0);
+  assert.equal(failedResponse.body.batch_progress?.remaining_count, 0);
 });
 
 test("writing new derived assets updates the manuscript current asset pointers without overwriting history", async () => {
@@ -483,6 +783,183 @@ test("proofreading draft assets do not advance the formal proofreading pointer u
   assert.equal(
     manuscriptResponse.body.current_proofreading_asset_id,
     "asset-3",
+  );
+});
+
+test("manuscript reads expose a settled result asset matrix and current export selection", async () => {
+  const { api, assetService } = createLifecycleHarness([
+    "manuscript-1",
+    "asset-1",
+    "job-1",
+    "asset-2",
+    "asset-3",
+    "asset-4",
+    "asset-5",
+  ]);
+
+  const uploadResponse = await api.upload({
+    title: "Result Matrix Manuscript",
+    manuscriptType: "review",
+    createdBy: "user-4",
+    fileName: "result-matrix.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/result-matrix.docx",
+  });
+
+  const screeningAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "screening_report",
+    storageKey: "screening/result-matrix.md",
+    mimeType: "text/markdown",
+    createdBy: "user-4",
+    fileName: "result-matrix-screening.md",
+    sourceModule: "screening",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  const editingAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "edited_docx",
+    storageKey: "editing/result-matrix.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "user-4",
+    fileName: "result-matrix-editing.docx",
+    parentAssetId: screeningAsset.id,
+    sourceModule: "editing",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  const proofreadingDraftAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "proofreading_draft_report",
+    storageKey: "proofreading/result-matrix-draft.md",
+    mimeType: "text/markdown",
+    createdBy: "user-4",
+    fileName: "result-matrix-draft.md",
+    parentAssetId: editingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  const humanFinalAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "human_final_docx",
+    storageKey: "proofreading/result-matrix-human-final.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "user-4",
+    fileName: "result-matrix-human-final.docx",
+    parentAssetId: editingAsset.id,
+    sourceModule: "manual",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.result_asset_matrix.screening_report?.id,
+    screeningAsset.id,
+  );
+  assert.equal(
+    manuscriptResponse.body.result_asset_matrix.edited_docx?.id,
+    editingAsset.id,
+  );
+  assert.equal(
+    manuscriptResponse.body.result_asset_matrix.proofreading_draft_report?.id,
+    proofreadingDraftAsset.id,
+  );
+  assert.equal(
+    manuscriptResponse.body.result_asset_matrix.final_proof_output?.id,
+    humanFinalAsset.id,
+  );
+  assert.ok(manuscriptResponse.body.current_export_selection);
+  assert.equal(
+    manuscriptResponse.body.current_export_selection.slot,
+    "final_proof_output",
+  );
+  assert.equal(
+    manuscriptResponse.body.current_export_selection.asset.id,
+    humanFinalAsset.id,
+  );
+});
+
+test("human-final publish remains the formal proofreading output even if a lower-precedence proof asset is written later", async () => {
+  const { api, assetService } = createLifecycleHarness([
+    "manuscript-1",
+    "asset-1",
+    "job-1",
+    "asset-2",
+    "asset-3",
+    "asset-4",
+    "asset-5",
+    "asset-6",
+  ]);
+
+  const uploadResponse = await api.upload({
+    title: "Human Final Priority",
+    manuscriptType: "review",
+    createdBy: "user-5",
+    fileName: "human-final-priority.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/human-final-priority.docx",
+  });
+
+  const editingAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "edited_docx",
+    storageKey: "editing/human-final-priority.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "user-5",
+    fileName: "human-final-priority-editing.docx",
+    parentAssetId: uploadResponse.body.asset.id,
+    sourceModule: "editing",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "final_proof_annotated_docx",
+    storageKey: "proofreading/human-final-priority-annotated.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "user-5",
+    fileName: "human-final-priority-annotated.docx",
+    parentAssetId: editingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  const humanFinalAsset = await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "human_final_docx",
+    storageKey: "proofreading/human-final-priority-human-final.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "user-5",
+    fileName: "human-final-priority-human-final.docx",
+    parentAssetId: editingAsset.id,
+    sourceModule: "manual",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+  await assetService.createAsset({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    assetType: "final_proof_issue_report",
+    storageKey: "proofreading/human-final-priority-report.md",
+    mimeType: "text/markdown",
+    createdBy: "user-5",
+    fileName: "human-final-priority-report.md",
+    parentAssetId: editingAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: uploadResponse.body.job.id,
+  });
+
+  const manuscriptResponse = await api.getManuscript({
+    manuscriptId: uploadResponse.body.manuscript.id,
+  });
+
+  assert.equal(manuscriptResponse.status, 200);
+  assert.equal(
+    manuscriptResponse.body.current_proofreading_asset_id,
+    humanFinalAsset.id,
+  );
+  assert.equal(
+    manuscriptResponse.body.result_asset_matrix.final_proof_output?.id,
+    humanFinalAsset.id,
   );
 });
 

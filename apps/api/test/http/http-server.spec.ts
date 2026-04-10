@@ -65,6 +65,41 @@ test("http server rejects protected review routes without a trusted session", as
   }
 });
 
+test("http server keeps harness dataset governance routes admin-only during public beta", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const editorCookie = await loginAsDemoUser(baseUrl, "dev.editor");
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    const adminResponse = await fetch(`${baseUrl}/api/v1/harness-datasets/workbench`, {
+      headers: {
+        Cookie: adminCookie,
+      },
+    });
+    const editorResponse = await fetch(`${baseUrl}/api/v1/harness-datasets/workbench`, {
+      headers: {
+        Cookie: editorCookie,
+      },
+    });
+    const reviewerResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/workbench`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+
+    assert.equal(adminResponse.status, 200);
+    assert.equal(editorResponse.status, 403);
+    assert.equal(reviewerResponse.status, 403);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server returns 401 for invalid login credentials", async () => {
   const { server, baseUrl } = await startServer();
 

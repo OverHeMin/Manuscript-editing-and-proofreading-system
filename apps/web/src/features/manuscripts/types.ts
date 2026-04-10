@@ -336,6 +336,8 @@ export interface ManuscriptViewModel {
   current_journal_template_id?: string;
   created_at: string;
   updated_at: string;
+  result_asset_matrix: DocumentResultAssetMatrixViewModel;
+  current_export_selection?: DocumentCurrentExportSelectionViewModel;
   module_execution_overview?: ManuscriptModuleExecutionOverviewViewModel;
   mainline_readiness_summary?: ManuscriptMainlineReadinessSummaryViewModel;
   mainline_attention_handoff_pack?: ManuscriptMainlineAttentionHandoffPackViewModel;
@@ -360,9 +362,29 @@ export interface DocumentAssetViewModel {
   updated_at: string;
 }
 
+export interface DocumentResultAssetMatrixViewModel {
+  screening_report?: DocumentAssetViewModel;
+  edited_docx?: DocumentAssetViewModel;
+  proofreading_draft_report?: DocumentAssetViewModel;
+  final_proof_output?: DocumentAssetViewModel;
+}
+
+export interface DocumentCurrentExportSelectionViewModel {
+  slot:
+    | "screening_report"
+    | "edited_docx"
+    | "proofreading_draft_report"
+    | "final_proof_output";
+  label: string;
+  reason: string;
+  asset?: DocumentAssetViewModel;
+}
+
 export interface DocumentAssetExportViewModel {
   manuscript_id: string;
   asset: DocumentAssetViewModel;
+  matrix: DocumentResultAssetMatrixViewModel;
+  selection?: DocumentCurrentExportSelectionViewModel;
   download: {
     storage_key: string;
     file_name?: string;
@@ -386,6 +408,40 @@ export interface JobViewModel {
   created_at: string;
   updated_at: string;
   execution_tracking?: JobExecutionTrackingObservationViewModel;
+  batch_progress?: {
+    lifecycle_status: "queued" | "running" | "completed" | "cancelled";
+    settlement_status:
+      | "in_progress"
+      | "succeeded"
+      | "partial_success"
+      | "failed"
+      | "cancelled";
+    total_count: number;
+    queued_count: number;
+    running_count: number;
+    succeeded_count: number;
+    failed_count: number;
+    cancelled_count: number;
+    remaining_count: number;
+    restart_posture: {
+      status: "fresh" | "resumed_after_restart";
+      reason: string;
+      resumed_item_count?: number;
+      observed_at: string;
+    };
+    items: Array<{
+      item_id: string;
+      title: string;
+      file_name: string;
+      manuscript_id: string;
+      upload_job_id: string;
+      status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+      attempt_count: number;
+      error_message?: string;
+      resumed_after_restart?: boolean;
+      updated_at: string;
+    }>;
+  };
 }
 
 export interface UploadManuscriptInput {
@@ -398,8 +454,18 @@ export interface UploadManuscriptInput {
   fileContentBase64?: string;
 }
 
+export interface UploadManuscriptBatchInput {
+  createdBy: string;
+  items: Array<Omit<UploadManuscriptInput, "createdBy">>;
+}
+
 export interface UploadManuscriptResult {
   manuscript: ManuscriptViewModel;
   asset: DocumentAssetViewModel;
   job: JobViewModel;
+}
+
+export interface UploadManuscriptBatchResult {
+  batch_job: JobViewModel;
+  items: UploadManuscriptResult[];
 }

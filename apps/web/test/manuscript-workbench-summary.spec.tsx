@@ -176,6 +176,337 @@ test("manuscript workbench summary renders operator-facing overview cards and th
   assert.match(markup, /调试快照/);
 });
 
+test("manuscript workbench summary renders the settled result matrix and current export selection", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      accessibleHandoffModes={["proofreading"]}
+      workspace={{
+        manuscript: {
+          id: "manuscript-matrix-1",
+          title: "Result matrix manuscript",
+          manuscript_type: "review",
+          status: "completed",
+          created_by: "proofreader-1",
+          current_screening_asset_id: "asset-screening-1",
+          current_editing_asset_id: "asset-edited-1",
+          current_proofreading_asset_id: "asset-human-final-1",
+          result_asset_matrix: {
+            screening_report: {
+              id: "asset-screening-1",
+              manuscript_id: "manuscript-matrix-1",
+              asset_type: "screening_report",
+              status: "superseded",
+              storage_key: "runs/matrix/screening.md",
+              mime_type: "text/markdown",
+              source_module: "screening",
+              source_job_id: "job-screening-1",
+              created_by: "screener-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "screening.md",
+              created_at: "2026-04-09T08:00:00.000Z",
+              updated_at: "2026-04-09T08:00:00.000Z",
+            },
+            edited_docx: {
+              id: "asset-edited-1",
+              manuscript_id: "manuscript-matrix-1",
+              asset_type: "edited_docx",
+              status: "superseded",
+              storage_key: "runs/matrix/editing.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-screening-1",
+              source_module: "editing",
+              source_job_id: "job-editing-1",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "editing.docx",
+              created_at: "2026-04-09T08:15:00.000Z",
+              updated_at: "2026-04-09T08:15:00.000Z",
+            },
+            proofreading_draft_report: {
+              id: "asset-proof-draft-1",
+              manuscript_id: "manuscript-matrix-1",
+              asset_type: "proofreading_draft_report",
+              status: "superseded",
+              storage_key: "runs/matrix/proof-draft.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-edited-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-draft-1",
+              created_by: "proofreader-1",
+              version_no: 3,
+              is_current: true,
+              file_name: "proof-draft.md",
+              created_at: "2026-04-09T08:30:00.000Z",
+              updated_at: "2026-04-09T08:30:00.000Z",
+            },
+            final_proof_output: {
+              id: "asset-human-final-1",
+              manuscript_id: "manuscript-matrix-1",
+              asset_type: "human_final_docx",
+              status: "active",
+              storage_key: "runs/matrix/human-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-edited-1",
+              source_module: "manual",
+              source_job_id: "job-human-final-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "human-final.docx",
+              created_at: "2026-04-09T08:45:00.000Z",
+              updated_at: "2026-04-09T08:45:00.000Z",
+            },
+          },
+          current_export_selection: {
+            slot: "final_proof_output",
+            label: "终校输出",
+            reason: "已发布人工终稿，默认导出正式交付件。",
+            asset: {
+              id: "asset-human-final-1",
+              manuscript_id: "manuscript-matrix-1",
+              asset_type: "human_final_docx",
+              status: "active",
+              storage_key: "runs/matrix/human-final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-edited-1",
+              source_module: "manual",
+              source_job_id: "job-human-final-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "human-final.docx",
+              created_at: "2026-04-09T08:45:00.000Z",
+              updated_at: "2026-04-09T08:45:00.000Z",
+            },
+          },
+          created_at: "2026-04-09T08:00:00.000Z",
+          updated_at: "2026-04-09T08:45:00.000Z",
+        },
+        assets: [],
+        currentAsset: null,
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={null}
+      latestExport={{
+        manuscript_id: "manuscript-matrix-1",
+        asset: {
+          id: "asset-human-final-1",
+          manuscript_id: "manuscript-matrix-1",
+          asset_type: "human_final_docx",
+          status: "active",
+          storage_key: "runs/matrix/human-final.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-edited-1",
+          source_module: "manual",
+          source_job_id: "job-human-final-1",
+          created_by: "proofreader-1",
+          version_no: 4,
+          is_current: true,
+          file_name: "human-final.docx",
+          created_at: "2026-04-09T08:45:00.000Z",
+          updated_at: "2026-04-09T08:45:00.000Z",
+        },
+        selection: {
+          slot: "final_proof_output",
+          label: "终校输出",
+          reason: "已发布人工终稿，默认导出正式交付件。",
+        },
+        matrix: {
+          screening_report: {
+            id: "asset-screening-1",
+            manuscript_id: "manuscript-matrix-1",
+            asset_type: "screening_report",
+            status: "superseded",
+            storage_key: "runs/matrix/screening.md",
+            mime_type: "text/markdown",
+            source_module: "screening",
+            source_job_id: "job-screening-1",
+            created_by: "screener-1",
+            version_no: 1,
+            is_current: true,
+            file_name: "screening.md",
+            created_at: "2026-04-09T08:00:00.000Z",
+            updated_at: "2026-04-09T08:00:00.000Z",
+          },
+          edited_docx: {
+            id: "asset-edited-1",
+            manuscript_id: "manuscript-matrix-1",
+            asset_type: "edited_docx",
+            status: "superseded",
+            storage_key: "runs/matrix/editing.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-screening-1",
+            source_module: "editing",
+            source_job_id: "job-editing-1",
+            created_by: "editor-1",
+            version_no: 2,
+            is_current: true,
+            file_name: "editing.docx",
+            created_at: "2026-04-09T08:15:00.000Z",
+            updated_at: "2026-04-09T08:15:00.000Z",
+          },
+          proofreading_draft_report: {
+            id: "asset-proof-draft-1",
+            manuscript_id: "manuscript-matrix-1",
+            asset_type: "proofreading_draft_report",
+            status: "superseded",
+            storage_key: "runs/matrix/proof-draft.md",
+            mime_type: "text/markdown",
+            parent_asset_id: "asset-edited-1",
+            source_module: "proofreading",
+            source_job_id: "job-proof-draft-1",
+            created_by: "proofreader-1",
+            version_no: 3,
+            is_current: true,
+            file_name: "proof-draft.md",
+            created_at: "2026-04-09T08:30:00.000Z",
+            updated_at: "2026-04-09T08:30:00.000Z",
+          },
+          final_proof_output: {
+            id: "asset-human-final-1",
+            manuscript_id: "manuscript-matrix-1",
+            asset_type: "human_final_docx",
+            status: "active",
+            storage_key: "runs/matrix/human-final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-edited-1",
+            source_module: "manual",
+            source_job_id: "job-human-final-1",
+            created_by: "proofreader-1",
+            version_no: 4,
+            is_current: true,
+            file_name: "human-final.docx",
+            created_at: "2026-04-09T08:45:00.000Z",
+            updated_at: "2026-04-09T08:45:00.000Z",
+          },
+        },
+        download: {
+          storage_key: "runs/matrix/human-final.docx",
+          file_name: "human-final.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url: "/api/v1/document-assets/asset-human-final-1/download",
+        },
+      }}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /结果矩阵/);
+  assert.match(markup, /初筛报告/);
+  assert.match(markup, /编辑稿/);
+  assert.match(markup, /校对草稿报告/);
+  assert.match(markup, /终校输出/);
+  assert.match(markup, /human-final\.docx \/ 人工终稿 \/ asset-human-final-1/);
+  assert.match(markup, /当前导出选择/);
+  assert.match(markup, /已发布人工终稿，默认导出正式交付件。/);
+});
+
+test("manuscript workbench summary renders batch progress counts and restart posture for the latest batch job", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="submission"
+      workspace={{
+        manuscript: {
+          id: "manuscript-batch-1",
+          title: "Batch Review A",
+          manuscript_type: "review",
+          status: "uploaded",
+          created_by: "editor-1",
+          created_at: "2026-04-09T09:00:00.000Z",
+          updated_at: "2026-04-09T09:05:00.000Z",
+        },
+        assets: [],
+        currentAsset: null,
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+      }}
+      latestJob={{
+        id: "job-batch-1",
+        module: "upload",
+        job_type: "manuscript_upload_batch",
+        status: "cancelled",
+        requested_by: "editor-1",
+        attempt_count: 0,
+        created_at: "2026-04-09T09:00:00.000Z",
+        updated_at: "2026-04-09T09:05:00.000Z",
+        batch_progress: {
+          lifecycle_status: "cancelled",
+          settlement_status: "partial_success",
+          total_count: 3,
+          queued_count: 0,
+          running_count: 0,
+          succeeded_count: 1,
+          failed_count: 0,
+          cancelled_count: 2,
+          remaining_count: 0,
+          restart_posture: {
+            status: "resumed_after_restart",
+            reason: "Resumed 1 running batch item(s) after server restart.",
+            resumed_item_count: 1,
+            observed_at: "2026-04-09T09:04:00.000Z",
+          },
+          items: [
+            {
+              item_id: "item-1",
+              title: "Batch Review A",
+              file_name: "batch-review-a.docx",
+              manuscript_id: "manuscript-batch-1",
+              upload_job_id: "job-upload-batch-1",
+              status: "succeeded",
+              attempt_count: 1,
+              updated_at: "2026-04-09T09:02:00.000Z",
+            },
+            {
+              item_id: "item-2",
+              title: "Batch Review B",
+              file_name: "batch-review-b.docx",
+              manuscript_id: "manuscript-batch-2",
+              upload_job_id: "job-upload-batch-2",
+              status: "cancelled",
+              attempt_count: 2,
+              updated_at: "2026-04-09T09:05:00.000Z",
+            },
+            {
+              item_id: "item-3",
+              title: "Batch Review C",
+              file_name: "batch-review-c.docx",
+              manuscript_id: "manuscript-batch-3",
+              upload_job_id: "job-upload-batch-3",
+              status: "cancelled",
+              attempt_count: 0,
+              updated_at: "2026-04-09T09:05:00.000Z",
+            },
+          ],
+        },
+      }}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /批次进度/u);
+  assert.match(markup, /Partial success/i);
+  assert.match(markup, /Succeeded/i);
+  assert.match(markup, /Failed/i);
+  assert.match(markup, /Running/i);
+  assert.match(markup, /Remaining/i);
+  assert.match(markup, /Restart posture/i);
+  assert.match(markup, /Resumed 1 running batch item\(s\) after server restart\./);
+  assert.match(markup, /batch-review-b\.docx/);
+  assert.match(markup, /cancelled/i);
+});
+
 test("manuscript workbench summary shows the resolved base family and journal template context", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
@@ -2346,4 +2677,204 @@ test("manuscript workbench summary incorporates recovery and readiness posture i
   assert.match(markup, /运行时就绪度/);
   assert.match(markup, /缺失（1 项问题）/);
   assert.doesNotMatch(markup, /前往校对工作台/);
+});
+
+test("manuscript workbench summary renders read-only review evidence for the latest proofreading job", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      {...({
+        mode: "proofreading",
+        accessibleHandoffModes: ["proofreading"],
+        workspace: {
+          manuscript: {
+            id: "manuscript-review-evidence-1",
+            title: "Proofreading review evidence manuscript",
+            manuscript_type: "clinical_study",
+            status: "awaiting_review",
+            created_by: "proofreader-1",
+            current_proofreading_asset_id: "asset-proof-draft-evidence-1",
+            created_at: "2026-04-09T09:00:00.000Z",
+            updated_at: "2026-04-09T10:00:00.000Z",
+          },
+          assets: [
+            {
+              id: "asset-proof-draft-evidence-1",
+              manuscript_id: "manuscript-review-evidence-1",
+              asset_type: "proofreading_draft_report",
+              status: "active",
+              storage_key: "runs/proofreading/evidence.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-edit-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-evidence-1",
+              created_by: "proofreader-1",
+              version_no: 3,
+              is_current: true,
+              file_name: "proofreading-evidence.md",
+              created_at: "2026-04-09T09:45:00.000Z",
+              updated_at: "2026-04-09T09:45:00.000Z",
+            },
+          ],
+          currentAsset: {
+            id: "asset-proof-draft-evidence-1",
+            manuscript_id: "manuscript-review-evidence-1",
+            asset_type: "proofreading_draft_report",
+            status: "active",
+            storage_key: "runs/proofreading/evidence.md",
+            mime_type: "text/markdown",
+            parent_asset_id: "asset-edit-1",
+            source_module: "proofreading",
+            source_job_id: "job-proof-evidence-1",
+            created_by: "proofreader-1",
+            version_no: 3,
+            is_current: true,
+            file_name: "proofreading-evidence.md",
+            created_at: "2026-04-09T09:45:00.000Z",
+            updated_at: "2026-04-09T09:45:00.000Z",
+          },
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: {
+            id: "asset-proof-draft-evidence-1",
+            manuscript_id: "manuscript-review-evidence-1",
+            asset_type: "proofreading_draft_report",
+            status: "active",
+            storage_key: "runs/proofreading/evidence.md",
+            mime_type: "text/markdown",
+            parent_asset_id: "asset-edit-1",
+            source_module: "proofreading",
+            source_job_id: "job-proof-evidence-1",
+            created_by: "proofreader-1",
+            version_no: 3,
+            is_current: true,
+            file_name: "proofreading-evidence.md",
+            created_at: "2026-04-09T09:45:00.000Z",
+            updated_at: "2026-04-09T09:45:00.000Z",
+          },
+        },
+        latestJob: {
+          id: "job-proof-evidence-1",
+          manuscript_id: "manuscript-review-evidence-1",
+          module: "proofreading",
+          job_type: "proofreading_draft_run",
+          status: "completed",
+          requested_by: "proofreader-1",
+          attempt_count: 1,
+          created_at: "2026-04-09T09:40:00.000Z",
+          updated_at: "2026-04-09T09:45:00.000Z",
+          payload: {
+            proofreadingFindings: {
+              failedChecks: [
+                {
+                  ruleId: "rule-table-header",
+                  expected: "Treatment group",
+                  actual: "Treatmnt group",
+                },
+                {
+                  ruleId: "rule-abbreviation",
+                  expected: "统一缩写",
+                  actual: "缩写未说明",
+                },
+              ],
+              manualReviewItems: [
+                {
+                  ruleId: "rule-abbreviation",
+                  reason: "术语缩写需要人工确认。",
+                },
+                {
+                  ruleId: "rule-table-header",
+                  reason: "表头格式需要人工复核。",
+                },
+              ],
+            },
+          },
+          execution_tracking: {
+            observation_status: "reported",
+            settlement: {
+              derived_status: "business_completed_follow_up_pending",
+              business_completed: true,
+              orchestration_completed: false,
+              attention_required: false,
+              reason: "Proofreading findings require manual review before final output.",
+            },
+            snapshot: {
+              id: "snapshot-proof-evidence-1",
+              manuscript_id: "manuscript-review-evidence-1",
+              module: "proofreading",
+              job_id: "job-proof-evidence-1",
+              execution_profile_id: "profile-proofreading",
+              module_template_id: "template-proofreading",
+              module_template_version_no: 2,
+              prompt_template_id: "prompt-proofreading",
+              prompt_template_version: "2026-04-08",
+              skill_package_ids: ["proofreading-skill-pack"],
+              skill_package_versions: ["1.1.0"],
+              model_id: "model-proofreading-1",
+              model_version: "2026-04-07",
+              knowledge_item_ids: [
+                "knowledge-proofreading-1",
+                "knowledge-proofreading-2",
+              ],
+              created_asset_ids: ["asset-proof-draft-evidence-1"],
+              created_at: "2026-04-09T09:45:00.000Z",
+              agent_execution: {
+                observation_status: "reported",
+                log_id: "agent-log-proof-evidence-1",
+                log: {
+                  id: "agent-log-proof-evidence-1",
+                  status: "completed",
+                  orchestration_status: "pending",
+                  completion_summary: {
+                    derived_status: "business_completed_follow_up_pending",
+                    business_completed: true,
+                    follow_up_required: true,
+                    fully_settled: false,
+                    attention_required: false,
+                  },
+                  recovery_summary: {
+                    category: "recoverable_now",
+                    recovery_readiness: "ready_now",
+                    reason: "Manual review is still pending.",
+                  },
+                },
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "ready",
+                  scope: {
+                    module: "proofreading",
+                    manuscriptType: "clinical_study",
+                    templateFamilyId: "template-family-proofreading",
+                  },
+                  issues: [],
+                  execution_profile_alignment: {
+                    status: "aligned",
+                    binding_execution_profile_id: "profile-proofreading",
+                    active_execution_profile_id: "profile-proofreading",
+                  },
+                },
+              },
+            },
+          },
+        },
+        latestExport: null,
+        latestActionResult: null,
+      } as never)}
+    />,
+  );
+
+  assert.match(markup, /审核证据/);
+  assert.match(markup, /人工复核/);
+  assert.match(markup, /需要人工复核（2 项）/);
+  assert.match(markup, /规则命中/);
+  assert.match(markup, /rule-table-header/);
+  assert.match(markup, /rule-abbreviation/);
+  assert.match(markup, /知识引用/);
+  assert.match(markup, /knowledge-proofreading-1/);
+  assert.match(markup, /knowledge-proofreading-2/);
+  assert.match(markup, /模型版本/);
+  assert.match(markup, /model-proofreading-1 \/ 2026-04-07/);
+  assert.match(markup, /原因摘要/);
+  assert.match(markup, /术语缩写需要人工确认。/);
+  assert.match(markup, /表头格式需要人工复核。/);
 });

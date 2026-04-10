@@ -1,6 +1,13 @@
 import type {
+  CurrentExportSelectionRecord,
   DocumentAssetRecord,
   DocumentAssetType,
+  ResultAssetMatrixRecord,
+} from "../assets/document-asset-record.ts";
+import {
+  compareDocumentAssetRecency,
+  resolveCurrentExportSelection,
+  resolveResultAssetMatrix,
 } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
@@ -13,6 +20,8 @@ export interface ExportCurrentDocumentAssetInput {
 export interface DocumentExportResult {
   manuscript_id: string;
   asset: DocumentAssetRecord;
+  matrix: ResultAssetMatrixRecord;
+  selection?: Omit<CurrentExportSelectionRecord, "asset">;
   download: {
     storage_key: string;
     file_name?: string;
@@ -37,21 +46,6 @@ export class DocumentExportAssetNotFoundError extends Error {
   }
 }
 
-function sortAssetsByRecency(
-  left: DocumentAssetRecord,
-  right: DocumentAssetRecord,
-): number {
-  if (left.created_at !== right.created_at) {
-    return right.created_at.localeCompare(left.created_at);
-  }
-
-  if (left.version_no !== right.version_no) {
-    return right.version_no - left.version_no;
-  }
-
-  return right.id.localeCompare(left.id);
-}
-
 export class DocumentExportService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly manuscriptRepository: ManuscriptRepository;
@@ -64,11 +58,37 @@ export class DocumentExportService {
   async exportCurrentAsset(
     input: ExportCurrentDocumentAssetInput,
   ): Promise<DocumentExportResult> {
-    const asset = await this.resolveCurrentAsset(input);
+    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+    const candidates = input.preferredAssetType
+      ? await this.assetRepository.listByManuscriptIdAndType(
+          input.manuscriptId,
+          input.preferredAssetType,
+        )
+      : await this.assetRepository.listByManuscriptId(input.manuscriptId);
+    const matrix = resolveResultAssetMatrix({
+      assets: candidates,
+      pointers: {
+        screeningAssetId: manuscript?.current_screening_asset_id,
+        editingAssetId: manuscript?.current_editing_asset_id,
+        proofreadingAssetId: manuscript?.current_proofreading_asset_id,
+      },
+    });
+    const selection = resolveCurrentExportSelection(matrix);
+    const asset = await this.resolveCurrentAsset(input, candidates, selection);
 
     return {
       manuscript_id: input.manuscriptId,
       asset,
+      matrix,
+      ...(selection
+        ? {
+            selection: {
+              slot: selection.slot,
+              label: selection.label,
+              reason: selection.reason,
+            },
+          }
+        : {}),
       download: {
         storage_key: asset.storage_key,
         file_name: asset.file_name,
@@ -80,30 +100,15 @@ export class DocumentExportService {
 
   private async resolveCurrentAsset(
     input: ExportCurrentDocumentAssetInput,
+    candidates: readonly DocumentAssetRecord[],
+    selection: CurrentExportSelectionRecord | undefined,
   ): Promise<DocumentAssetRecord> {
-    const candidates = input.preferredAssetType
-      ? await this.assetRepository.listByManuscriptIdAndType(
-          input.manuscriptId,
-          input.preferredAssetType,
-        )
-      : await this.assetRepository.listByManuscriptId(input.manuscriptId);
+    if (!input.preferredAssetType && selection) {
+      return selection.asset;
+    }
 
     if (input.preferredAssetType) {
       return this.resolveLatestUsableAsset(candidates, input);
-    }
-
-    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
-    const preferredAssetIds = [
-      manuscript?.current_proofreading_asset_id,
-      manuscript?.current_editing_asset_id,
-      manuscript?.current_screening_asset_id,
-    ].filter((value): value is string => typeof value === "string" && value.length > 0);
-
-    for (const assetId of preferredAssetIds) {
-      const asset = await this.assetRepository.findById(assetId);
-      if (asset && asset.manuscript_id === input.manuscriptId && asset.status !== "archived") {
-        return asset;
-      }
     }
 
     return this.resolveLatestUsableAsset(candidates, input);
@@ -115,7 +120,7 @@ export class DocumentExportService {
   ): DocumentAssetRecord {
     const currentAsset = [...candidates]
       .filter((asset) => asset.is_current && asset.status !== "archived")
-      .sort(sortAssetsByRecency)[0];
+      .sort(compareDocumentAssetRecency)[0];
 
     if (currentAsset) {
       return currentAsset;
@@ -123,7 +128,7 @@ export class DocumentExportService {
 
     const latestAsset = [...candidates]
       .filter((asset) => asset.status !== "archived")
-      .sort(sortAssetsByRecency)[0];
+      .sort(compareDocumentAssetRecency)[0];
 
     if (!latestAsset) {
       throw new DocumentExportAssetNotFoundError(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
-from document_pipeline.table_semantics import build_table_semantic_snapshot
+from .table_semantics import build_table_semantic_snapshot
 
 
 HEADING_STYLE_LEVELS = {

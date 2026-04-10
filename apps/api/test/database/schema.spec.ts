@@ -642,6 +642,8 @@ const legacyModelRoutingGovernanceChecksum =
   "ebdbfda29dcaa66f6839f1dfe89914327d56f6154340cfaa18fea1bc61da2ab4";
 const legacyEditorialRuleEngineChecksum =
   "bff19d8b5bcdebe649b314a987a7dac6c02254404f205ea863fee666000c3882";
+const legacyRuleLibraryV2Checksum =
+  "68a0e22596898642bc396ac4664b8c5781b0a9dbbd624ed20b228313b11966b5";
 
 test("database schema exposes the required core tables and columns", { concurrency: false }, async () => {
   await withMigratedSchemaClient(async (client) => {
@@ -1291,6 +1293,115 @@ test("migrate repairs legacy 0025 editorial rule databases by restoring projecte
   });
 });
 
+test("migrate repairs legacy 0028 rule-library databases by restoring editorial rule draft writeback coverage", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await applyRepositoryMigrationsThrough(
+        client,
+        "0027_medical_editorial_rule_authoring_workbench.sql",
+      );
+
+      await client.query("begin");
+
+      try {
+        await client.query(createLegacyRuleLibraryV2MigrationSql());
+        await client.query(
+          `
+            insert into schema_migrations (version, checksum)
+            values ($1, $2)
+          `,
+          [
+            "0028_medical_rule_library_v2_foundations.sql",
+            legacyRuleLibraryV2Checksum,
+          ],
+        );
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+
+      const beforeRepairEnum = await client.query<{ enumlabel: string }>(
+        `
+          select enumlabel
+          from pg_enum e
+          join pg_type t on t.oid = e.enumtypid
+          where t.typname = 'learning_writeback_target'
+            and enumlabel = 'editorial_rule_draft'
+        `,
+      );
+
+      assert.deepEqual(
+        beforeRepairEnum.rows,
+        [],
+        "Expected the legacy 0028 fixture to miss the editorial_rule_draft enum value before repair.",
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to repair legacy 0028 rule-library databases.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const enumResult = await verificationClient.query<{ enumlabel: string }>(
+        `
+          select enumlabel
+          from pg_enum e
+          join pg_type t on t.oid = e.enumtypid
+          where t.typname = 'learning_writeback_target'
+            and enumlabel = 'editorial_rule_draft'
+        `,
+      );
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          where version in (
+            '0028_medical_rule_library_v2_foundations.sql',
+            '0029_learning_reviewed_snapshot_source_kind.sql',
+            '0030_knowledge_library_v1_revision_governance.sql',
+            '0031_knowledge_duplicate_detection_acknowledgements.sql'
+          )
+          order by version
+        `,
+      );
+
+      assert.deepEqual(enumResult.rows, [{ enumlabel: "editorial_rule_draft" }]);
+      assert.deepEqual(migrationResult.rows, [
+        {
+          version: "0028_medical_rule_library_v2_foundations.sql",
+          checksum: getMigrationChecksum("0028_medical_rule_library_v2_foundations.sql"),
+        },
+        {
+          version: "0029_learning_reviewed_snapshot_source_kind.sql",
+          checksum: getMigrationChecksum("0029_learning_reviewed_snapshot_source_kind.sql"),
+        },
+        {
+          version: "0030_knowledge_library_v1_revision_governance.sql",
+          checksum: getMigrationChecksum("0030_knowledge_library_v1_revision_governance.sql"),
+        },
+        {
+          version: "0031_knowledge_duplicate_detection_acknowledgements.sql",
+          checksum: getMigrationChecksum("0031_knowledge_duplicate_detection_acknowledgements.sql"),
+        },
+      ]);
+    } finally {
+      await verificationClient.end();
+    }
+  });
+});
+
 test("migrate blocks unknown database migration versions instead of treating them as pending repo work", { concurrency: false }, async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const initialMigration = runMigrateProcess(databaseUrl);
@@ -1491,4 +1602,60 @@ async function withMigratedSchemaClient<T>(
       await client.end();
     }
   });
+}
+
+async function applyRepositoryMigrationsThrough(client: Client, stopAtVersion: string): Promise<void> {
+  await client.query(`
+    create table if not exists schema_migrations (
+      version text primary key,
+      checksum text not null,
+      applied_at timestamptz not null default now()
+    )
+  `);
+
+  for (const version of expectedMigrationFiles) {
+    const migrationSql = readFileSync(
+      path.join(import.meta.dirname, "../../src/database/migrations", version),
+      "utf8",
+    );
+    const checksum = getMigrationChecksum(version);
+
+    await client.query("begin");
+
+    try {
+      await client.query(migrationSql);
+      await client.query(
+        `
+          insert into schema_migrations (version, checksum)
+          values ($1, $2)
+        `,
+        [version, checksum],
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+
+    if (version === stopAtVersion) {
+      return;
+    }
+  }
+
+  throw new Error(`Unable to stop at migration ${stopAtVersion}.`);
+}
+
+function createLegacyRuleLibraryV2MigrationSql(): string {
+  return readFileSync(
+    path.join(
+      import.meta.dirname,
+      "../../src/database/migrations/0028_medical_rule_library_v2_foundations.sql",
+    ),
+    "utf8",
+  )
+    .replaceAll("\r\n", "\n")
+    .replace(
+      /\ndo \$\$\nbegin\n  if exists \([\s\S]*?end\n\$\$;\n/u,
+      "\n",
+    );
 }

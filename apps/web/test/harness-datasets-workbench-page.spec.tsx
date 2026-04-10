@@ -107,13 +107,119 @@ function createHarnessDatasetsOverviewFixture() {
           },
         ],
       },
+      {
+        id: "version-published-3",
+        familyId: "family-3",
+        familyName: "Screening gold set",
+        familyScope: {
+          module: "screening",
+          manuscriptTypes: ["clinical_study"],
+          measureFocus: "triage",
+        },
+        versionNo: 3,
+        status: "published",
+        itemCount: 3,
+        createdBy: "persistent.admin",
+        createdAt: "2026-04-04T12:00:00.000Z",
+        publishedBy: "persistent.admin",
+        publishedAt: "2026-04-04T13:00:00.000Z",
+        deidentificationGatePassed: true,
+        humanReviewGatePassed: true,
+        rubricAssignment: {
+          status: "missing",
+        },
+        sourceProvenance: [
+          {
+            sourceKind: "evaluation_evidence_pack",
+            sourceId: "pack-3",
+            manuscriptId: "manuscript-4",
+            manuscriptType: "clinical_study",
+            deidentificationPassed: true,
+            humanReviewed: true,
+          },
+        ],
+        publications: [],
+      },
+      {
+        id: "version-published-4",
+        familyId: "family-4",
+        familyName: "Review gold set",
+        familyScope: {
+          module: "editing",
+          manuscriptTypes: ["review"],
+          measureFocus: "deidentification",
+        },
+        versionNo: 1,
+        status: "published",
+        itemCount: 2,
+        createdBy: "persistent.admin",
+        createdAt: "2026-04-04T14:00:00.000Z",
+        publishedBy: "persistent.admin",
+        publishedAt: "2026-04-04T15:00:00.000Z",
+        deidentificationGatePassed: false,
+        humanReviewGatePassed: true,
+        rubricAssignment: {
+          status: "published",
+          rubricDefinitionId: "rubric-2",
+          rubricName: "Editing rubric",
+          rubricVersionNo: 2,
+        },
+        sourceProvenance: [
+          {
+            sourceKind: "human_final_asset",
+            sourceId: "asset-4",
+            manuscriptId: "manuscript-5",
+            manuscriptType: "review",
+            deidentificationPassed: false,
+            humanReviewed: true,
+          },
+        ],
+        publications: [],
+      },
+      {
+        id: "version-published-5",
+        familyId: "family-5",
+        familyName: "Proofreading release candidate gold set",
+        familyScope: {
+          module: "proofreading",
+          manuscriptTypes: ["case_report"],
+          measureFocus: "human review",
+        },
+        versionNo: 5,
+        status: "published",
+        itemCount: 4,
+        createdBy: "persistent.admin",
+        createdAt: "2026-04-04T16:00:00.000Z",
+        publishedBy: "persistent.admin",
+        publishedAt: "2026-04-04T17:00:00.000Z",
+        deidentificationGatePassed: true,
+        humanReviewGatePassed: false,
+        rubricAssignment: {
+          status: "published",
+          rubricDefinitionId: "rubric-2",
+          rubricName: "Editing rubric",
+          rubricVersionNo: 2,
+        },
+        sourceProvenance: [
+          {
+            sourceKind: "reviewed_case_snapshot",
+            sourceId: "snapshot-5",
+            manuscriptId: "manuscript-6",
+            manuscriptType: "case_report",
+            deidentificationPassed: true,
+            humanReviewed: false,
+          },
+        ],
+        publications: [],
+      },
     ],
     archivedVersions: [],
   };
 }
 
-function renderLoadedPage() {
-  const overview = createHarnessDatasetsOverviewFixture();
+function renderLoadedPage(
+  overview = createHarnessDatasetsOverviewFixture(),
+) {
   const controller = {
     loadOverview: async () => overview,
   } as React.ComponentProps<typeof HarnessDatasetsWorkbenchPage>["controller"];
@@ -159,4 +265,34 @@ test("harness datasets workbench page renders curation queue, published exports,
   assert.match(markup, /Export JSON/);
   assert.match(markup, /Export JSONL/);
   assert.doesNotMatch(markup, /Export JSON<\/button><button[^>]*>Export JSONL<\/button><\/div><\/article><article[^>]*><header[^>]*><div><h4>Proofreading gold set/);
+});
+
+test("harness datasets workbench page reports release-freeze readiness and exact blocking reasons for published gold sets", () => {
+  const markup = renderLoadedPage();
+
+  assert.match(markup, /Release-freeze ready/);
+  assert.match(markup, /Editing gold set/);
+  assert.match(markup, /De-identification: passed/);
+  assert.match(markup, /Human review: passed/);
+  assert.match(markup, /Release-freeze ready for manifest and export citation\./);
+
+  assert.match(markup, /Screening gold set/);
+  assert.match(markup, /Release-freeze not ready: missing published rubric\./);
+
+  assert.match(markup, /Review gold set/);
+  assert.match(markup, /Release-freeze not ready: de-identification pending\./);
+
+  assert.match(markup, /Proofreading release candidate gold set/);
+  assert.match(markup, /Release-freeze not ready: human review pending\./);
+});
+
+test("harness datasets workbench page keeps export behavior local-first after readiness signals are added", () => {
+  const markup = renderLoadedPage();
+
+  assert.match(markup, /Export JSON/);
+  assert.match(markup, /Export JSONL/);
+  assert.match(markup, /\.local-data\/harness-exports\/development\/version-published-2\.json/);
+  assert.doesNotMatch(markup, /Activate/);
+  assert.doesNotMatch(markup, /Promote/);
+  assert.doesNotMatch(markup, /Publish online/);
 });

@@ -4,8 +4,18 @@ import type { JobRepository } from "./job-repository.ts";
 function cloneRecord(record: JobRecord): JobRecord {
   return {
     ...record,
-    payload: record.payload ? { ...record.payload } : undefined,
+    payload: clonePayload(record.payload),
   };
+}
+
+function clonePayload(
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!payload) {
+    return undefined;
+  }
+
+  return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
 }
 
 export class InMemoryJobRepository implements JobRepository {

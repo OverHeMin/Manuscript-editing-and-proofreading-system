@@ -16,7 +16,7 @@ import {
   resolveWorkbenchLatestJobStatusPill,
 } from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
 
-test("submission workbench renders a real file picker for inline uploads", () => {
+test("submission workbench renders a real multi-file picker for inline batch uploads", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchPage
       mode="submission"
@@ -50,6 +50,7 @@ test("submission workbench renders a real file picker for inline uploads", () =>
   assert.match(markup, /投稿工作台/);
   assert.match(markup, /工作线定位/);
   assert.match(markup, /type="file"/);
+  assert.match(markup, /multiple/);
   assert.match(markup, /存储键/);
   assert.match(markup, /上传稿件/);
 });
@@ -1345,6 +1346,18 @@ test("buildWorkbenchJobActionResultDetails appends hydrated execution posture fo
       label: "Job运行时就绪度",
       value: "已降级（1 项问题）",
     },
+    {
+      label: "知识引用",
+      value: "knowledge-editing-1",
+    },
+    {
+      label: "模型版本",
+      value: "model-editing",
+    },
+    {
+      label: "原因摘要",
+      value: "Business execution is complete and governed follow-up is retryable.",
+    },
   ]);
 });
 
@@ -1639,6 +1652,18 @@ test("buildWorkbenchJobActionResultDetails keeps hydrated execution posture ahea
       label: "Job运行时就绪度",
       value: "就绪",
     },
+    {
+      label: "知识引用",
+      value: "knowledge-editing-1",
+    },
+    {
+      label: "模型版本",
+      value: "model-editing",
+    },
+    {
+      label: "原因摘要",
+      value: "Business execution is complete and governed follow-up is retryable.",
+    },
   ]);
 });
 
@@ -1677,6 +1702,157 @@ test("buildWorkbenchJobActionResultDetails fails open to base details when execu
       value: "queued",
     },
   ]);
+});
+
+test("buildWorkbenchJobActionResultDetails appends review evidence summary for proofreading jobs", () => {
+  const details = buildWorkbenchJobActionResultDetails(
+    [
+      {
+        label: "Asset",
+        value: "asset-proof-evidence-1",
+      },
+      {
+        label: "Job",
+        value: "job-proof-evidence-1",
+      },
+    ],
+    {
+      id: "job-proof-evidence-1",
+      manuscript_id: "manuscript-proof-evidence-1",
+      module: "proofreading",
+      job_type: "proofreading_draft_run",
+      status: "completed",
+      requested_by: "proofreader-1",
+      attempt_count: 1,
+      created_at: "2026-04-09T09:40:00.000Z",
+      updated_at: "2026-04-09T09:45:00.000Z",
+      payload: {
+        proofreadingFindings: {
+          failedChecks: [
+            {
+              ruleId: "rule-table-header",
+            },
+            {
+              ruleId: "rule-abbreviation",
+            },
+          ],
+          manualReviewItems: [
+            {
+              ruleId: "rule-abbreviation",
+              reason: "术语缩写需要人工确认。",
+            },
+            {
+              ruleId: "rule-table-header",
+              reason: "表头格式需要人工复核。",
+            },
+          ],
+        },
+      },
+      execution_tracking: {
+        observation_status: "reported",
+        settlement: {
+          derived_status: "business_completed_follow_up_pending",
+          business_completed: true,
+          orchestration_completed: false,
+          attention_required: false,
+          reason: "Proofreading findings require manual review before final output.",
+        },
+        snapshot: {
+          id: "snapshot-proof-evidence-1",
+          manuscript_id: "manuscript-proof-evidence-1",
+          module: "proofreading",
+          job_id: "job-proof-evidence-1",
+          execution_profile_id: "profile-proofreading",
+          module_template_id: "template-proofreading",
+          module_template_version_no: 2,
+          prompt_template_id: "prompt-proofreading",
+          prompt_template_version: "2026-04-08",
+          skill_package_ids: ["proofreading-skill-pack"],
+          skill_package_versions: ["1.1.0"],
+          model_id: "model-proofreading-1",
+          model_version: "2026-04-07",
+          knowledge_item_ids: [
+            "knowledge-proofreading-1",
+            "knowledge-proofreading-2",
+          ],
+          created_asset_ids: ["asset-proof-evidence-1"],
+          created_at: "2026-04-09T09:45:00.000Z",
+          agent_execution: {
+            observation_status: "reported",
+            log_id: "agent-log-proof-evidence-1",
+            log: {
+              id: "agent-log-proof-evidence-1",
+              status: "completed",
+              orchestration_status: "pending",
+              completion_summary: {
+                derived_status: "business_completed_follow_up_pending",
+                business_completed: true,
+                follow_up_required: true,
+                fully_settled: false,
+                attention_required: false,
+              },
+              recovery_summary: {
+                category: "recoverable_now",
+                recovery_readiness: "ready_now",
+                reason: "Manual review is still pending.",
+              },
+            },
+          },
+          runtime_binding_readiness: {
+            observation_status: "reported",
+            report: {
+              status: "ready",
+              scope: {
+                module: "proofreading",
+                manuscriptType: "clinical_study",
+                templateFamilyId: "template-family-proofreading",
+              },
+              issues: [],
+              execution_profile_alignment: {
+                status: "aligned",
+                binding_execution_profile_id: "profile-proofreading",
+                active_execution_profile_id: "profile-proofreading",
+              },
+            },
+          },
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(
+    details.filter((detail) =>
+      [
+        "人工复核",
+        "规则命中",
+        "知识引用",
+        "模型版本",
+        "原因摘要",
+      ].includes(detail.label)
+    ),
+    [
+      {
+        label: "人工复核",
+        value: "需要人工复核（2 项）",
+      },
+      {
+        label: "规则命中",
+        value: "rule-table-header, rule-abbreviation",
+      },
+      {
+        label: "知识引用",
+        value: "knowledge-proofreading-1, knowledge-proofreading-2",
+      },
+      {
+        label: "模型版本",
+        value: "model-proofreading-1 / 2026-04-07",
+      },
+      {
+        label: "原因摘要",
+        value: "术语缩写需要人工确认。 | 表头格式需要人工复核。",
+      },
+    ],
+  );
 });
 
 test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchronizes workspace when both reads succeed", async () => {
@@ -1942,6 +2118,18 @@ test("refreshLatestWorkbenchJobContext refreshes the latest job and resynchroniz
       value: "就绪",
     },
     {
+      label: "知识引用",
+      value: "knowledge-editing-1",
+    },
+    {
+      label: "模型版本",
+      value: "model-editing",
+    },
+    {
+      label: "原因摘要",
+      value: "Editing is settled.",
+    },
+    {
       label: "主线就绪度",
       value: "可进入下一步",
     },
@@ -2095,6 +2283,18 @@ test("refreshLatestWorkbenchJobContext fails open when workspace resynchronizati
     {
       label: "Job运行时就绪度",
       value: "已降级（1 项问题）",
+    },
+    {
+      label: "知识引用",
+      value: "knowledge-editing-1",
+    },
+    {
+      label: "模型版本",
+      value: "model-editing",
+    },
+    {
+      label: "原因摘要",
+      value: "Editing follow-up is retryable.",
     },
   ]);
 });

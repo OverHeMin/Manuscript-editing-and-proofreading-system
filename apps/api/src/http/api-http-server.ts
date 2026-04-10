@@ -321,6 +321,7 @@ import {
   LastActiveAdminDisableError,
   UserAdminNotFoundError,
 } from "../users/index.ts";
+import type { RoleKey } from "../users/roles.ts";
 
 type RouteResponse<TBody> = {
   status: number;
@@ -328,6 +329,13 @@ type RouteResponse<TBody> = {
   headers?: Record<string, string>;
   rawBody?: Buffer;
 };
+
+class RoleRouteAuthorizationError extends Error {
+  constructor(role: RoleKey, routeSurface: string) {
+    super(`Role "${role}" is not allowed to access "${routeSurface}".`);
+    this.name = "RoleRouteAuthorizationError";
+  }
+}
 
 export type AppEnv = "local" | "test" | "development" | "staging" | "production";
 
@@ -371,6 +379,9 @@ type HttpRouteMatch =
     }
   | {
       route: "manuscripts-upload";
+    }
+  | {
+      route: "manuscripts-upload-batch";
     }
   | {
       route: "manuscripts-get";
@@ -957,6 +968,14 @@ type HttpRouteMatch =
       route: "verification-ops-create-harness-dataset-candidate";
       evidencePackId: string;
     };
+
+const MANUSCRIPT_SURFACE_ROLES: readonly RoleKey[] = [
+  "admin",
+  "user",
+  "screener",
+  "editor",
+  "proofreader",
+];
 
 export interface CreateApiHttpServerOptions {
   appEnv?: AppEnv;
@@ -2539,13 +2558,58 @@ async function handleRoute(
         storageKey,
       });
     }
+    case "manuscripts-upload-batch": {
+      const session = await requirePermission(req, runtime, "manuscripts.submit");
+      type UploadBatchRequestItem = Omit<
+        Parameters<typeof runtime.manuscriptApi.uploadBatch>[0]["items"][number],
+        "storageKey"
+      > & {
+        fileContentBase64?: string;
+        storageKey?: string;
+      };
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.manuscriptApi.uploadBatch>[0],
+        "items"
+      > & {
+        items?: UploadBatchRequestItem[];
+      };
+      const items = await Promise.all(
+        (body.items ?? []).map(async (item) => {
+          const {
+            fileContentBase64,
+            storageKey: requestedStorageKey,
+            ...uploadBody
+          } = item;
+          const storageKey = await resolveUploadStorageKey({
+            fileName: uploadBody.fileName,
+            fileContentBase64,
+            requestedStorageKey,
+            uploadRootDir,
+          });
+
+          return {
+            ...uploadBody,
+            storageKey,
+          };
+        }),
+      );
+
+      return runtime.manuscriptApi.uploadBatch({
+        createdBy: session.user.id,
+        items,
+      });
+    }
     case "manuscripts-get":
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getManuscript({
         manuscriptId: routeMatch.manuscriptId,
       });
     case "manuscripts-update-template-selection": {
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(
+        req,
+        runtime,
+        "manuscript workbench",
+      );
       const body = (await readJsonBody(req)) as Omit<
         Parameters<typeof runtime.manuscriptApi.updateTemplateSelection>[0],
         "manuscriptId"
@@ -2556,24 +2620,24 @@ async function handleRoute(
       });
     }
     case "manuscripts-list-assets":
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.listAssets({
         manuscriptId: routeMatch.manuscriptId,
       });
     case "jobs-get":
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getJob({
         jobId: routeMatch.jobId,
       });
     case "document-pipeline-export-current-asset": {
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.documentPipelineApi.exportCurrentAsset
       >[0];
       return runtime.documentPipelineApi.exportCurrentAsset(body);
     }
     case "document-assets-download":
-      await runtime.authRuntime.requireSession(req);
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
       return runtime.documentPipelineApi.downloadAsset({
         assetId: routeMatch.assetId,
         uploadRootDir,
@@ -4166,6 +4230,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "manuscripts-upload" };
   }
 
+  if (method === "POST" && path === "/api/v1/manuscripts/upload-batch") {
+    return { route: "manuscripts-upload-batch" };
+  }
+
   if (method === "POST" && path === "/api/v1/document-pipeline/export-current-asset") {
     return { route: "document-pipeline-export-current-asset" };
   }
@@ -5386,6 +5454,19 @@ async function requirePermission(
   return session;
 }
 
+async function requireManuscriptSurfaceSession(
+  req: IncomingMessage,
+  runtime: ApiServerRuntime,
+  routeSurface: string,
+): Promise<HttpAuthenticatedSession> {
+  const session = await runtime.authRuntime.requireSession(req);
+  if (!MANUSCRIPT_SURFACE_ROLES.includes(session.user.role)) {
+    throw new RoleRouteAuthorizationError(session.user.role, routeSurface);
+  }
+
+  return session;
+}
+
 function createCorsHeaders(
   req: IncomingMessage,
   allowedOrigins: readonly string[],
@@ -5597,7 +5678,10 @@ function mapErrorToHttpResponse(
     return [413, { error: "payload_too_large", message: error.message }];
   }
 
-  if (error instanceof AuthorizationError) {
+  if (
+    error instanceof AuthorizationError ||
+    error instanceof RoleRouteAuthorizationError
+  ) {
     return [403, { error: "forbidden", message: error.message }];
   }
 

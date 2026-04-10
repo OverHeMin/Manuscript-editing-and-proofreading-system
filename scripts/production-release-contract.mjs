@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
-const migrationDoctorCommand =
-  "pnpm --filter @medical/api exec node --import tsx ./src/database/scripts/migration-doctor.ts --json";
 
 const REQUIRED_RELEASE_SUMMARY_FIELDS = [
   "Release Summary.Environment",
@@ -23,6 +21,19 @@ const REQUIRED_CHANGE_SCOPE_FIELDS = [
   "Change Scope.Secret rotation required",
 ];
 const SECRET_ROTATION_SECTION = "Secret Rotation And Upgrade Rehearsal";
+const AI_RELEASE_GATE_SECTION = "AI Release Gate";
+const REQUIRED_AI_RELEASE_GATE_FIELDS = [
+  `${AI_RELEASE_GATE_SECTION}.Gold set versions covered`,
+  `${AI_RELEASE_GATE_SECTION}.Evaluation suites covered`,
+  `${AI_RELEASE_GATE_SECTION}.Finalized run IDs`,
+  `${AI_RELEASE_GATE_SECTION}.Recommendation statuses`,
+  `${AI_RELEASE_GATE_SECTION}.Manual promotion decision`,
+  `${AI_RELEASE_GATE_SECTION}.Approved by`,
+];
+const NON_PROMOTABLE_AI_RECOMMENDATION_STATUSES = new Set([
+  "needs_review",
+  "rejected",
+]);
 
 export function buildPredeploySteps() {
   return [
@@ -39,6 +50,7 @@ export function buildPredeploySteps() {
 export function validateReleaseManifest(manifestMarkdown, { manifestPath } = {}) {
   const fields = parseReleaseManifest(manifestMarkdown);
   const missingFields = [];
+  const blockingFields = [];
 
   for (const fieldKey of REQUIRED_RELEASE_SUMMARY_FIELDS) {
     if (!fields.get(fieldKey)) {
@@ -130,14 +142,51 @@ export function validateReleaseManifest(manifestMarkdown, { manifestPath } = {})
     }
   }
 
+  const aiReleaseGateRequired = parseManifestBoolean(
+    fields.get(`${AI_RELEASE_GATE_SECTION}.Harness release gate required`),
+  );
+  if (aiReleaseGateRequired == null) {
+    addMissingField(
+      missingFields,
+      `${AI_RELEASE_GATE_SECTION}.Harness release gate required`,
+    );
+  }
+
+  if (aiReleaseGateRequired === true) {
+    for (const fieldKey of REQUIRED_AI_RELEASE_GATE_FIELDS) {
+      if (!fields.get(fieldKey)) {
+        addMissingField(missingFields, fieldKey);
+      }
+    }
+
+    const recommendationStatuses = parseDelimitedManifestValues(
+      fields.get(`${AI_RELEASE_GATE_SECTION}.Recommendation statuses`),
+    );
+    if (
+      recommendationStatuses.some((status) =>
+        NON_PROMOTABLE_AI_RECOMMENDATION_STATUSES.has(status),
+      )
+    ) {
+      addBlockingField(blockingFields, `${AI_RELEASE_GATE_SECTION}.Recommendation statuses`);
+    }
+
+    const manualPromotionDecision =
+      fields.get(`${AI_RELEASE_GATE_SECTION}.Manual promotion decision`)?.toLowerCase() ?? "";
+    if (manualPromotionDecision && manualPromotionDecision !== "approved") {
+      addBlockingField(blockingFields, `${AI_RELEASE_GATE_SECTION}.Manual promotion decision`);
+    }
+  }
+
   return {
-    status: missingFields.length === 0 ? "ok" : "error",
+    status: missingFields.length === 0 && blockingFields.length === 0 ? "ok" : "error",
     manifestPath: manifestPath ?? null,
     schemaChangeRequired: schemaChangeRequired === true,
     storageImpactRequired: storageImpactRequired === true,
     secretRotationRequired: secretRotationRequired === true,
     upgradeRehearsalRequired: upgradeRehearsalRequired === true,
+    aiReleaseGateRequired: aiReleaseGateRequired === true,
     missingFields,
+    blockingFields,
   };
 }
 
@@ -159,12 +208,20 @@ export function enforceManifestMigrationConsistency({ manifestValidation, migrat
 export function runMigrationDoctor({
   cwd = repoRoot,
   env = process.env,
+  apiPackageRoot = path.join(cwd, "apps", "api"),
+  migrationDoctorScriptPath = path.join(
+    apiPackageRoot,
+    "src",
+    "database",
+    "scripts",
+    "migration-doctor.ts",
+  ),
+  spawnSyncImpl = spawnSync,
 } = {}) {
-  const result = spawnSync(migrationDoctorCommand, {
-    cwd,
+  const result = spawnSyncImpl(process.execPath, ["--import", "tsx", migrationDoctorScriptPath, "--json"], {
+    cwd: apiPackageRoot,
     env,
     encoding: "utf8",
-    shell: true,
   });
 
   if (result.error) {
@@ -269,7 +326,9 @@ export function buildUpgradeRehearsalPlan({
   });
 
   if (manifestValidation.status !== "ok") {
-    throw new Error(`Upgrade rehearsal manifest is incomplete: ${manifestValidation.missingFields.join(", ")}`);
+    throw new Error(
+      `Upgrade rehearsal manifest is incomplete or blocked: ${formatManifestValidationProblems(manifestValidation)}`,
+    );
   }
 
   const steps = [
@@ -503,8 +562,39 @@ function addMissingField(missingFields, fieldKey) {
   }
 }
 
+function addBlockingField(blockingFields, fieldKey) {
+  if (!blockingFields.includes(fieldKey)) {
+    blockingFields.push(fieldKey);
+  }
+}
+
+function parseDelimitedManifestValues(value) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[,\n;]/u)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function formatManifestValidationFailure(validation) {
-  return `Release manifest is incomplete: ${validation.missingFields.join(", ")}`;
+  return `Release manifest is incomplete or blocked: ${formatManifestValidationProblems(validation)}`;
+}
+
+function formatManifestValidationProblems(validation) {
+  const problems = [];
+
+  if (validation.missingFields?.length) {
+    problems.push(`missing: ${validation.missingFields.join(", ")}`);
+  }
+
+  if (validation.blockingFields?.length) {
+    problems.push(`blocked: ${validation.blockingFields.join(", ")}`);
+  }
+
+  return problems.join("; ");
 }
 
 function formatMigrationAuditFailure(audit) {

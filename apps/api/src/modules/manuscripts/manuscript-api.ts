@@ -3,9 +3,24 @@ import {
   ManuscriptNotFoundError,
 } from "../assets/document-asset-service.ts";
 import { ManuscriptLifecycleService } from "./manuscript-lifecycle-service.ts";
-import type { UploadManuscriptInput } from "./manuscript-lifecycle-service.ts";
+import {
+  deriveBatchSettlementStatus,
+  type UploadManuscriptBatchInput,
+  type UploadManuscriptInput,
+} from "./manuscript-lifecycle-service.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
-import type { JobRecord, JobViewRecord } from "../jobs/job-record.ts";
+import {
+  resolveCurrentExportSelection,
+  resolveResultAssetMatrix,
+} from "../assets/document-asset-record.ts";
+import type {
+  JobBatchItemRecord,
+  JobBatchLifecycleStatus,
+  JobBatchProgressRecord,
+  JobBatchStateRecord,
+  JobRecord,
+  JobViewRecord,
+} from "../jobs/job-record.ts";
 import type { ManuscriptRecord, ManuscriptViewRecord } from "./manuscript-record.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { ExecutionGovernanceRepository } from "../execution-governance/execution-governance-repository.ts";
@@ -87,6 +102,19 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
       };
     },
 
+    async uploadBatch(
+      input: UploadManuscriptBatchInput,
+    ): Promise<
+      RouteResponse<Awaited<ReturnType<ManuscriptLifecycleService["uploadBatch"]>>>
+    > {
+      const result = await manuscriptService.uploadBatch(input);
+
+      return {
+        status: 201,
+        body: result,
+      };
+    },
+
     async getManuscript({
       manuscriptId,
     }: {
@@ -102,6 +130,7 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
         status: 200,
         body: await enrichManuscriptView(manuscript, {
           manuscriptService,
+          assetService,
           executionTrackingService: options.executionTrackingService,
           executionTrackingViewOptions: {
             executionGovernanceRepository: options.executionGovernanceRepository,
@@ -130,6 +159,7 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
         status: 200,
         body: await enrichManuscriptView(manuscript, {
           manuscriptService,
+          assetService,
           executionTrackingService: options.executionTrackingService,
           executionTrackingViewOptions: {
             executionGovernanceRepository: options.executionGovernanceRepository,
@@ -193,6 +223,7 @@ async function enrichManuscriptView(
   manuscript: ManuscriptRecord,
   input: {
     manuscriptService: Pick<ManuscriptLifecycleService, "listJobsByManuscriptId">;
+    assetService: Pick<DocumentAssetService, "listAssets">;
     executionTrackingService?: Pick<
       ExecutionTrackingService,
       "listSnapshotsByManuscriptId"
@@ -201,6 +232,16 @@ async function enrichManuscriptView(
   },
 ): Promise<ManuscriptViewRecord> {
   const overview = buildEmptyManuscriptModuleExecutionOverview();
+  const assets = await input.assetService.listAssets(manuscript.id);
+  const resultAssetMatrix = resolveResultAssetMatrix({
+    assets,
+    pointers: {
+      screeningAssetId: manuscript.current_screening_asset_id,
+      editingAssetId: manuscript.current_editing_asset_id,
+      proofreadingAssetId: manuscript.current_proofreading_asset_id,
+    },
+  });
+  const currentExportSelection = resolveCurrentExportSelection(resultAssetMatrix);
   let jobs: JobRecord[] = [];
 
   try {
@@ -223,6 +264,10 @@ async function enrichManuscriptView(
 
     return {
       ...manuscript,
+      result_asset_matrix: resultAssetMatrix,
+      ...(currentExportSelection
+        ? { current_export_selection: currentExportSelection }
+        : {}),
       module_execution_overview: overview,
       mainline_readiness_summary: readinessSummary,
       mainline_attention_handoff_pack:
@@ -346,6 +391,10 @@ async function enrichManuscriptView(
 
   return {
     ...manuscript,
+    result_asset_matrix: resultAssetMatrix,
+    ...(currentExportSelection
+      ? { current_export_selection: currentExportSelection }
+      : {}),
     module_execution_overview: overview,
     mainline_readiness_summary: readinessSummary,
     mainline_attention_handoff_pack: deriveManuscriptMainlineAttentionHandoffPack({
@@ -364,10 +413,12 @@ async function enrichJobView(
     executionTrackingViewOptions: ExecutionTrackingSnapshotViewOptions;
   },
 ): Promise<JobViewRecord> {
+  const batchProgress = buildJobBatchProgressView(job);
   const snapshotId = extractSnapshotId(job);
   if (!snapshotId) {
     return {
       ...job,
+      ...(batchProgress ? { batch_progress: batchProgress } : {}),
       execution_tracking: createNotTrackedJobExecutionObservation(),
     };
   }
@@ -375,6 +426,7 @@ async function enrichJobView(
   if (!input.executionTrackingService) {
     return {
       ...job,
+      ...(batchProgress ? { batch_progress: batchProgress } : {}),
       execution_tracking: {
         observation_status: "failed_open",
         error: "Execution tracking service is unavailable.",
@@ -387,6 +439,7 @@ async function enrichJobView(
     if (!snapshot) {
       return {
         ...job,
+        ...(batchProgress ? { batch_progress: batchProgress } : {}),
         execution_tracking: {
           observation_status: "failed_open",
           error: `Execution snapshot ${snapshotId} was not found.`,
@@ -401,6 +454,7 @@ async function enrichJobView(
 
     return {
       ...job,
+      ...(batchProgress ? { batch_progress: batchProgress } : {}),
       execution_tracking: {
         observation_status: "reported",
         snapshot: snapshotView,
@@ -413,6 +467,7 @@ async function enrichJobView(
   } catch (error) {
     return {
       ...job,
+      ...(batchProgress ? { batch_progress: batchProgress } : {}),
       execution_tracking: {
         observation_status: "failed_open",
         error:
@@ -422,6 +477,74 @@ async function enrichJobView(
       },
     };
   }
+}
+
+function buildJobBatchProgressView(
+  job: JobRecord,
+): JobBatchProgressRecord | undefined {
+  const batch = readJobBatchState(job);
+  if (!batch) {
+    return undefined;
+  }
+
+  const totalCount = batch.items.length;
+  const queuedCount = countBatchItems(batch.items, "queued");
+  const runningCount = countBatchItems(batch.items, "running");
+  const succeededCount = countBatchItems(batch.items, "succeeded");
+  const failedCount = countBatchItems(batch.items, "failed");
+  const cancelledCount = countBatchItems(batch.items, "cancelled");
+  const lifecycleStatus = deriveBatchLifecycleStatus(batch.items);
+
+  return {
+    lifecycle_status: lifecycleStatus,
+    settlement_status: deriveBatchSettlementStatus(lifecycleStatus, batch.items),
+    total_count: totalCount,
+    queued_count: queuedCount,
+    running_count: runningCount,
+    succeeded_count: succeededCount,
+    failed_count: failedCount,
+    cancelled_count: cancelledCount,
+    remaining_count: queuedCount + runningCount,
+    restart_posture: batch.restart_posture,
+    items: batch.items,
+  };
+}
+
+function readJobBatchState(job: JobRecord): JobBatchStateRecord | undefined {
+  const batch = job.payload?.batch;
+  if (!batch || typeof batch !== "object") {
+    return undefined;
+  }
+
+  return JSON.parse(JSON.stringify(batch)) as JobBatchStateRecord;
+}
+
+function countBatchItems(
+  items: readonly JobBatchItemRecord[],
+  status: JobBatchItemRecord["status"],
+): number {
+  return items.filter((item) => item.status === status).length;
+}
+
+function deriveBatchLifecycleStatus(
+  items: readonly JobBatchItemRecord[],
+): JobBatchLifecycleStatus {
+  if (items.every((item) => item.status === "queued")) {
+    return "queued";
+  }
+
+  if (
+    items.some((item) => item.status === "queued") ||
+    items.some((item) => item.status === "running")
+  ) {
+    return "running";
+  }
+
+  if (items.some((item) => item.status === "cancelled")) {
+    return "cancelled";
+  }
+
+  return "completed";
 }
 
 function selectLatestJobForModule(
