@@ -22,7 +22,10 @@ import {
   type AdminGovernanceOverview,
 } from "./admin-governance-controller.ts";
 import { AgentToolingGovernanceSection } from "./agent-tooling-governance-section.tsx";
-import "./admin-governance-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./admin-governance-workbench.css");
+}
 
 const defaultController = createAdminGovernanceWorkbenchController(
   createBrowserHttpClient(),
@@ -33,17 +36,23 @@ const templateModules: TemplateModule[] = ["screening", "editing", "proofreading
 export interface AdminGovernanceWorkbenchPageProps {
   actorRole?: AuthRole;
   controller?: AdminGovernanceWorkbenchController;
+  initialOverview?: AdminGovernanceOverview | null;
+  initialExecutionPreview?: ResolvedExecutionBundleViewModel | null;
+  initialErrorMessage?: string | null;
 }
 
 export function AdminGovernanceWorkbenchPage({
   actorRole = "admin",
   controller = defaultController,
+  initialOverview = null,
+  initialExecutionPreview = null,
+  initialErrorMessage = null,
 }: AdminGovernanceWorkbenchPageProps) {
-  const [overview, setOverview] = useState<AdminGovernanceOverview | null>(null);
+  const [overview, setOverview] = useState<AdminGovernanceOverview | null>(initialOverview);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
+    initialErrorMessage ? "error" : initialOverview ? "ready" : "idle",
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(initialErrorMessage);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [familyForm, setFamilyForm] = useState({
@@ -64,12 +73,14 @@ export function AdminGovernanceWorkbenchPage({
     modelVersion: string;
     allowedModules: TemplateModule[];
     isProdAllowed: boolean;
+    connectionId: string;
   }>({
     provider: "openai",
     modelName: "gpt-5.4",
     modelVersion: "",
     allowedModules: [...templateModules],
     isProdAllowed: true,
+    connectionId: initialOverview?.aiProviderConnections[0]?.id ?? "",
   });
   const [routingPolicyForm, setRoutingPolicyForm] = useState<{
     systemDefaultModelId: string;
@@ -92,11 +103,15 @@ export function AdminGovernanceWorkbenchPage({
     templateFamilyId: "",
   });
   const [executionPreview, setExecutionPreview] =
-    useState<ResolvedExecutionBundleViewModel | null>(null);
+    useState<ResolvedExecutionBundleViewModel | null>(initialExecutionPreview);
 
   useEffect(() => {
+    if (initialOverview) {
+      return;
+    }
+
     void loadOverview();
-  }, []);
+  }, [controller, initialOverview]);
 
   useEffect(() => {
     if (!overview?.selectedTemplateFamilyId) {
@@ -117,8 +132,13 @@ export function AdminGovernanceWorkbenchPage({
       manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
       templateFamilyId: overview.selectedTemplateFamilyId ?? "",
     }));
-    setExecutionPreview(null);
-  }, [overview?.selectedTemplateFamilyId]);
+    if (
+      executionPreview?.profile.template_family_id &&
+      executionPreview.profile.template_family_id !== overview.selectedTemplateFamilyId
+    ) {
+      setExecutionPreview(null);
+    }
+  }, [executionPreview?.profile.template_family_id, overview?.selectedTemplateFamilyId, overview?.templateFamilies]);
 
   useEffect(() => {
     if (!overview) {
@@ -133,6 +153,13 @@ export function AdminGovernanceWorkbenchPage({
         proofreading: overview.modelRoutingPolicy.module_defaults.proofreading ?? "",
       },
     });
+    setModelForm((current) => ({
+      ...current,
+      connectionId:
+        current.connectionId.trim().length > 0
+          ? current.connectionId
+          : (overview.aiProviderConnections[0]?.id ?? ""),
+    }));
   }, [overview]);
 
   async function loadOverview(input?: { selectedTemplateFamilyId?: string | null }) {
@@ -223,6 +250,7 @@ export function AdminGovernanceWorkbenchPage({
         modelVersion: normalizeOptionalText(modelForm.modelVersion),
         allowedModules: modelForm.allowedModules,
         isProdAllowed: modelForm.isProdAllowed,
+        connectionId: normalizeOptionalText(modelForm.connectionId),
       });
 
       startTransition(() => {
@@ -550,6 +578,9 @@ export function AdminGovernanceWorkbenchPage({
                 disabled={isMutating}
               >
                 <option value="openai">OpenAI</option>
+                <option value="openai_compatible">OpenAI Compatible</option>
+                <option value="qwen">Qwen</option>
+                <option value="deepseek">DeepSeek</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="google">Google</option>
                 <option value="azure_openai">Azure OpenAI</option>
@@ -585,6 +616,26 @@ export function AdminGovernanceWorkbenchPage({
                 disabled={isMutating}
                 placeholder="optional"
               />
+            </label>
+            <label className="admin-governance-field">
+              <span>Provider Connection</span>
+              <select
+                value={modelForm.connectionId}
+                onChange={(event) =>
+                  setModelForm((current) => ({
+                    ...current,
+                    connectionId: event.target.value,
+                  }))
+                }
+                disabled={isMutating}
+              >
+                <option value="">Unassigned</option>
+                {(overview?.aiProviderConnections ?? []).map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.name} · {connection.provider_kind}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="admin-governance-field">
               <span>Production Approved</span>
@@ -637,7 +688,8 @@ export function AdminGovernanceWorkbenchPage({
               disabled={
                 isMutating ||
                 modelForm.modelName.trim().length === 0 ||
-                modelForm.allowedModules.length === 0
+                modelForm.allowedModules.length === 0 ||
+                modelForm.connectionId.trim().length === 0
               }
             >
               Create Model Entry
@@ -655,6 +707,14 @@ export function AdminGovernanceWorkbenchPage({
                     <p>
                       Version {model.model_version || "default"} · Modules{" "}
                       {model.allowed_modules.join(", ")}
+                    </p>
+                    <p>
+                      Provider Connection{" "}
+                      {resolveConnectionDisplayName(overview?.aiProviderConnections ?? [], model.connection_id)}
+                    </p>
+                    <p>
+                      Connection Kind{" "}
+                      {resolveConnectionProviderKind(overview?.aiProviderConnections ?? [], model.connection_id)}
                     </p>
                   </div>
                   <div className="admin-governance-template-actions">
@@ -898,6 +958,39 @@ export function AdminGovernanceWorkbenchPage({
                 <span>Skill Packages</span>
                 <small>{executionPreview.skill_packages.length}</small>
               </article>
+              <article className="admin-governance-asset-row">
+                <span>Provider Connection</span>
+                <small>
+                  {executionPreview.resolved_connection
+                    ? `${executionPreview.resolved_connection.name} (${executionPreview.resolved_connection.id})`
+                    : "Unassigned"}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Compatibility Mode</span>
+                <small>
+                  {executionPreview.resolved_connection?.compatibility_mode ?? "legacy_unbound"}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Provider Readiness</span>
+                <small>
+                  {executionPreview.provider_readiness.status} ·{" "}
+                  {executionPreview.provider_readiness.issues.map((issue) => issue.code).join(", ") || "none"}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Fallback Chain</span>
+                <small>
+                  {executionPreview.fallback_chain.map((model) => model.id).join(", ") || "none"}
+                </small>
+              </article>
+              <article className="admin-governance-asset-row">
+                <span>Preview Warnings</span>
+                <small>
+                  {executionPreview.warnings.map((warning) => warning.code).join(", ") || "none"}
+                </small>
+              </article>
             </div>
           ) : (
             <p className="admin-governance-empty">
@@ -1051,6 +1144,29 @@ function toggleModuleSelection(
   }
 
   return [...currentModules, module];
+}
+
+function resolveConnectionDisplayName(
+  connections: AdminGovernanceOverview["aiProviderConnections"],
+  connectionId: string | undefined,
+): string {
+  if (!connectionId) {
+    return "Unassigned";
+  }
+
+  const connection = connections.find((record) => record.id === connectionId);
+  return connection ? `${connection.name} (${connection.id})` : connectionId;
+}
+
+function resolveConnectionProviderKind(
+  connections: AdminGovernanceOverview["aiProviderConnections"],
+  connectionId: string | undefined,
+): string {
+  if (!connectionId) {
+    return "legacy_unbound";
+  }
+
+  return connections.find((record) => record.id === connectionId)?.provider_kind ?? "unknown";
 }
 
 function toErrorMessage(error: unknown): string {

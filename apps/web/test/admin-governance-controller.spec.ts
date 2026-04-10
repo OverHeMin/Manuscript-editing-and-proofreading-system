@@ -115,6 +115,7 @@ test("admin governance controller loads families, prompts, skills, and the selec
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -280,6 +281,7 @@ test("admin governance controller loads model registry entries and routing polic
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
     ],
   );
 });
@@ -413,6 +415,7 @@ test("admin governance controller loads versioned routing policies alongside reg
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
     ],
   );
 });
@@ -619,6 +622,7 @@ test("admin governance controller loads harness adapter health as a read-only go
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
       "/api/v1/harness-integrations/adapters/adapter-promptfoo-1/executions",
       "/api/v1/harness-integrations/adapters/adapter-langfuse-1/executions",
       "/api/v1/harness-integrations/adapters/adapter-judge-1/executions",
@@ -733,6 +737,7 @@ test("admin governance controller fails open when harness read endpoints are una
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -1130,6 +1135,7 @@ test("admin governance controller creates a model entry and reloads governance o
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
     ],
   );
 });
@@ -1227,6 +1233,7 @@ test("admin governance controller updates routing policy and reloads governance 
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
     ],
   );
 });
@@ -1426,6 +1433,7 @@ test("admin governance controller loads execution profiles and resolves executio
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
       "/api/v1/templates/families/family-1/module-templates",
       "/api/v1/execution-governance/resolve",
     ],
@@ -1681,6 +1689,7 @@ test("admin governance controller loads agent-tooling registries and recent exec
       routingGovernanceOverviewUrl,
       "/api/v1/execution-governance/profiles",
       ...agentToolingOverviewUrls,
+      "/api/v1/system-settings/ai-providers",
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -2596,6 +2605,302 @@ test("admin governance controller returns log-only execution evidence when a sna
       "/api/v1/manuscripts/manuscript-2",
       "/api/v1/manuscripts/manuscript-2/assets",
     ],
+  );
+});
+
+test("admin governance controller loads ai provider connections for connection-aware model governance", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/system-settings/ai-providers") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "connection-qwen-1",
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "passed",
+              credential_summary: {
+                mask: "sk-***a562",
+                version: 1,
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: undefined,
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.loadOverview();
+  const providerOverview = overview as typeof overview & {
+    aiProviderConnections?: Array<{
+      id: string;
+      name: string;
+      provider_kind?: string;
+      compatibility_mode?: string;
+      enabled?: boolean;
+      last_test_status?: string;
+      credential_summary?: { mask?: string; version?: number };
+    }>;
+  };
+
+  assert.deepEqual(
+    providerOverview.aiProviderConnections?.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      provider_kind: connection.provider_kind,
+      compatibility_mode: connection.compatibility_mode,
+      enabled: connection.enabled,
+      last_test_status: connection.last_test_status,
+      credential_mask: connection.credential_summary?.mask,
+      credential_version: connection.credential_summary?.version,
+    })),
+    [
+      {
+        id: "connection-qwen-1",
+        name: "Qwen Production",
+        provider_kind: "qwen",
+        compatibility_mode: "openai_chat_compatible",
+        enabled: true,
+        last_test_status: "passed",
+        credential_mask: "sk-***a562",
+        credential_version: 1,
+      },
+    ],
+  );
+  assert.ok(
+    requests.some(
+      (request) =>
+        request.method === "GET" && request.url === "/api/v1/system-settings/ai-providers",
+    ),
+  );
+});
+
+test("admin governance controller keeps connectionId in model creation payloads and returns connection-aware execution preview fields", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/model-registry") {
+        return {
+          status: 201,
+          body: {
+            id: "model-qwen-1",
+            provider: "openai",
+            model_name: "qwen-max",
+            model_version: "2026-04-10",
+            allowed_modules: ["editing"],
+            is_prod_allowed: true,
+            connection_id: "connection-qwen-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-qwen-1",
+              provider: "openai",
+              model_name: "qwen-max",
+              model_version: "2026-04-10",
+              allowed_modules: ["editing"],
+              is_prod_allowed: true,
+              connection_id: "connection-qwen-1",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/system-settings/ai-providers") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "connection-qwen-1",
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "unknown",
+              credential_summary: {
+                mask: "sk-***a562",
+                version: 1,
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-qwen-1",
+            module_defaults: {
+              editing: "model-qwen-1",
+            },
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/execution-governance/resolve") {
+        return {
+          status: 200,
+          body: {
+            profile: {
+              id: "profile-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              module_template_id: "template-1",
+              prompt_template_id: "prompt-1",
+              skill_package_ids: [],
+              knowledge_binding_mode: "profile_only",
+              status: "active",
+              version: 1,
+            },
+            module_template: {
+              id: "template-1",
+            },
+            rule_set: {
+              id: "rule-set-1",
+            },
+            rules: [],
+            prompt_template: {
+              id: "prompt-1",
+              name: "editing_mainline",
+            },
+            skill_packages: [],
+            knowledge_binding_rules: [],
+            knowledge_items: [],
+            resolved_model: {
+              id: "model-qwen-1",
+              connection_id: "connection-qwen-1",
+            },
+            model_source: "legacy_module_default",
+            resolved_connection: {
+              id: "connection-qwen-1",
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "unknown",
+              credential_present: true,
+            },
+            provider_readiness: {
+              status: "warning",
+              issues: [
+                {
+                  code: "connection_test_unknown",
+                },
+              ],
+            },
+            fallback_chain: [
+              {
+                id: "model-fallback-1",
+              },
+            ],
+            warnings: [
+              {
+                code: "legacy_unbound",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const created = await controller.createModelEntryAndReload({
+    actorRole: "admin",
+    provider: "openai",
+    modelName: "qwen-max",
+    modelVersion: "2026-04-10",
+    allowedModules: ["editing"],
+    isProdAllowed: true,
+    connectionId: "connection-qwen-1",
+  } as never);
+  const preview = await controller.resolveExecutionBundlePreview({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+
+  assert.deepEqual(requests[0]?.body, {
+    actorRole: "admin",
+    provider: "openai",
+    modelName: "qwen-max",
+    modelVersion: "2026-04-10",
+    allowedModules: ["editing"],
+    isProdAllowed: true,
+    connectionId: "connection-qwen-1",
+  });
+  assert.equal((created.createdModel as { connection_id?: string }).connection_id, "connection-qwen-1");
+  assert.equal((preview.resolved_model as { connection_id?: string }).connection_id, "connection-qwen-1");
+  assert.equal(
+    (preview as { resolved_connection?: { provider_kind?: string } }).resolved_connection?.provider_kind,
+    "qwen",
+  );
+  assert.equal(
+    (preview as { provider_readiness?: { status?: string } }).provider_readiness?.status,
+    "warning",
+  );
+  assert.deepEqual(
+    (preview as { fallback_chain?: Array<{ id: string }> }).fallback_chain?.map((record) => record.id),
+    ["model-fallback-1"],
+  );
+  assert.ok(
+    (preview as { warnings?: Array<{ code: string }> }).warnings?.some(
+      (warning) => warning.code === "legacy_unbound",
+    ),
   );
 });
 

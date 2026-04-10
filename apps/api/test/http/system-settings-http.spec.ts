@@ -7,6 +7,7 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -306,6 +307,9 @@ async function startPersistentSystemSettingsServer(databaseUrl: string): Promise
     runtime: createPersistentGovernanceRuntime({
       client: pool,
       authRuntime,
+      aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
+        AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+      }),
     }),
   });
 

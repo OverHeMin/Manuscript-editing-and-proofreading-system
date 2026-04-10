@@ -27,6 +27,18 @@ export type KnowledgeBindingPurpose =
   | "recommended"
   | "risk_guardrail"
   | "section_specific";
+export type ExecutionPreviewWarningCode =
+  | "legacy_unbound"
+  | "connection_missing"
+  | "connection_disabled"
+  | "credential_missing";
+export type ProviderReadinessIssueCode =
+  | "legacy_unbound"
+  | "connection_missing"
+  | "connection_disabled"
+  | "credential_missing"
+  | "connection_test_failed"
+  | "connection_test_unknown";
 
 export interface ModuleExecutionProfileViewModel {
   id: string;
@@ -104,6 +116,31 @@ export interface ResolveExecutionBundlePreviewInput {
   templateFamilyId: string;
 }
 
+export interface ResolvedAiProviderConnectionSummaryViewModel {
+  id: string;
+  name: string;
+  provider_kind: string;
+  compatibility_mode: string;
+  enabled: boolean;
+  last_test_status: "unknown" | "passed" | "failed";
+  credential_present: boolean;
+}
+
+export interface ProviderReadinessIssueViewModel {
+  code: ProviderReadinessIssueCode;
+  message: string;
+}
+
+export interface ProviderReadinessViewModel {
+  status: "ok" | "warning";
+  issues: ProviderReadinessIssueViewModel[];
+}
+
+export interface ExecutionPreviewWarningViewModel {
+  code: ExecutionPreviewWarningCode;
+  message: string;
+}
+
 export interface ResolvedExecutionBundleViewModel {
   profile: ModuleExecutionProfileViewModel;
   module_template: ModuleTemplateViewModel;
@@ -113,6 +150,10 @@ export interface ResolvedExecutionBundleViewModel {
   skill_packages: SkillPackageViewModel[];
   resolved_model: ModelRegistryEntryViewModel;
   model_source: ExecutionResolutionModelSource;
+  resolved_connection?: ResolvedAiProviderConnectionSummaryViewModel;
+  provider_readiness: ProviderReadinessViewModel;
+  fallback_chain: ModelRegistryEntryViewModel[];
+  warnings: ExecutionPreviewWarningViewModel[];
   knowledge_binding_rules: KnowledgeBindingRuleViewModel[];
   knowledge_items: KnowledgeItemViewModel[];
 }

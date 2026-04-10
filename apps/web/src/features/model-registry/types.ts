@@ -3,6 +3,9 @@ import type { TemplateModule } from "../templates/types.ts";
 
 export type ModelProvider =
   | "openai"
+  | "openai_compatible"
+  | "qwen"
+  | "deepseek"
   | "anthropic"
   | "google"
   | "azure_openai"
@@ -31,6 +34,7 @@ export interface ModelRegistryEntryViewModel {
   cost_profile?: ModelCostProfileViewModel;
   rate_limit?: ModelRateLimitViewModel;
   fallback_model_id?: string;
+  connection_id?: string;
 }
 
 export interface ModelRoutingPolicyViewModel {
@@ -49,6 +53,7 @@ export interface CreateModelRegistryEntryInput {
   costProfile?: ModelCostProfileViewModel;
   rateLimit?: ModelRateLimitViewModel;
   fallbackModelId?: string;
+  connectionId?: string;
 }
 
 export interface UpdateModelRegistryEntryInput {
@@ -58,6 +63,7 @@ export interface UpdateModelRegistryEntryInput {
   costProfile?: ModelCostProfileViewModel;
   rateLimit?: ModelRateLimitViewModel;
   fallbackModelId?: string | null;
+  connectionId?: string | null;
 }
 
 export interface UpdateModelRoutingPolicyInput {

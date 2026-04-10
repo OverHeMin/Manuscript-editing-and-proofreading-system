@@ -136,12 +136,14 @@ import {
   listReleaseCheckProfiles,
   listVerificationCheckProfiles,
 } from "../verification-ops/index.ts";
+import { listSystemSettingsAiProviders } from "../system-settings/system-settings-api.ts";
 import type {
   EvaluationSuiteViewModel,
   ReleaseCheckProfileViewModel,
   VerificationCheckProfileViewModel,
   VerificationEvidenceViewModel,
 } from "../verification-ops/index.ts";
+import type { SystemSettingsAiProviderConnectionViewModel } from "../system-settings/types.ts";
 import type {
   CreateModuleTemplateDraftInput,
   ModuleTemplateViewModel,
@@ -182,6 +184,7 @@ export interface AdminGovernanceOverview {
   harnessAdapterHealth: HarnessAdapterHealthViewModel[];
   latestJudgeCalibrationBatchOutcome: HarnessJudgeCalibrationOutcomeViewModel | null;
   agentExecutionLogs: AgentExecutionLogViewModel[];
+  aiProviderConnections: SystemSettingsAiProviderConnectionViewModel[];
 }
 
 export interface AdminGovernanceExecutionEvidence {
@@ -518,6 +521,7 @@ export async function loadAdminGovernanceOverview(
     runtimeBindingResponse,
     harnessAdapters,
     agentExecutionResponse,
+    aiProviderConnections,
   ] = await Promise.all([
     listTemplateFamilies(client),
     listPromptTemplates(client),
@@ -540,6 +544,10 @@ export async function loadAdminGovernanceOverview(
       [] as HarnessAdapterViewModel[],
     ),
     listAgentExecutionLogs(client),
+    loadOptional(
+      () => listSystemSettingsAiProviders(client).then((response) => response.body),
+      [] as SystemSettingsAiProviderConnectionViewModel[],
+    ),
   ]);
 
   const templateFamilies = familyResponse.body;
@@ -585,6 +593,7 @@ export async function loadAdminGovernanceOverview(
     latestJudgeCalibrationBatchOutcome:
       selectLatestJudgeCalibrationBatchOutcome(harnessAdapterHealth),
     agentExecutionLogs: agentExecutionResponse.body,
+    aiProviderConnections: aiProviderConnections ?? [],
   };
 }
 

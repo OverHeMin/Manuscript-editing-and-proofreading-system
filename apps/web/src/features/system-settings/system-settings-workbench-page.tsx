@@ -14,6 +14,8 @@ import {
   type SystemSettingsWorkbenchController,
 } from "./system-settings-controller.ts";
 import type {
+  AiProviderKind,
+  SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsUserViewModel,
   SystemSettingsWorkbenchOverview,
 } from "./types.ts";
@@ -33,6 +35,12 @@ const accountRoles: AuthRole[] = [
   "knowledge_reviewer",
   "user",
 ];
+const providerKindOptions: Array<{ value: AiProviderKind; label: string }> = [
+  { value: "openai", label: "OpenAI" },
+  { value: "openai_compatible", label: "OpenAI Compatible" },
+  { value: "qwen", label: "Qwen" },
+  { value: "deepseek", label: "DeepSeek" },
+];
 
 interface CreateAccountFormState {
   username: string;
@@ -44,6 +52,23 @@ interface CreateAccountFormState {
 interface SelectedAccountFormState {
   displayName: string;
   role: AuthRole;
+}
+
+interface CreateProviderFormState {
+  name: string;
+  providerKind: AiProviderKind;
+  baseUrl: string;
+  testModelName: string;
+  apiKey: string;
+  enabled: boolean;
+}
+
+interface SelectedProviderFormState {
+  name: string;
+  providerKind: AiProviderKind;
+  baseUrl: string;
+  testModelName: string;
+  enabled: boolean;
 }
 
 export interface SystemSettingsWorkbenchPageProps {
@@ -79,6 +104,22 @@ export function SystemSettingsWorkbenchPage({
     role: initialOverview?.selectedUser?.role ?? "editor",
   });
   const [passwordResetValue, setPasswordResetValue] = useState("");
+  const [createProviderForm, setCreateProviderForm] = useState<CreateProviderFormState>({
+    name: "",
+    providerKind: "qwen",
+    baseUrl: "",
+    testModelName: "qwen-max",
+    apiKey: "",
+    enabled: true,
+  });
+  const [selectedProviderForm, setSelectedProviderForm] = useState<SelectedProviderFormState>({
+    name: initialOverview?.selectedConnection?.name ?? "",
+    providerKind: initialOverview?.selectedConnection?.provider_kind ?? "qwen",
+    baseUrl: initialOverview?.selectedConnection?.base_url ?? "",
+    testModelName: readTestModelName(initialOverview?.selectedConnection) ?? "",
+    enabled: initialOverview?.selectedConnection?.enabled ?? true,
+  });
+  const [credentialRotationValue, setCredentialRotationValue] = useState("");
 
   useEffect(() => {
     if (runtimeMode !== "persistent") {
@@ -86,7 +127,7 @@ export function SystemSettingsWorkbenchPage({
     }
 
     if (initialOverview) {
-      synchronizeSelectedForms(initialOverview.selectedUser);
+      synchronizeForms(initialOverview.selectedUser, initialOverview.selectedConnection);
       return;
     }
 
@@ -95,30 +136,45 @@ export function SystemSettingsWorkbenchPage({
 
   function applyOverview(nextOverview: SystemSettingsWorkbenchOverview) {
     setOverview(nextOverview);
-    synchronizeSelectedForms(nextOverview.selectedUser);
+    synchronizeForms(nextOverview.selectedUser, nextOverview.selectedConnection);
   }
 
-  function synchronizeSelectedForms(selectedUser: SystemSettingsUserViewModel | null) {
+  function synchronizeForms(
+    selectedUser: SystemSettingsUserViewModel | null,
+    selectedConnection: SystemSettingsAiProviderConnectionViewModel | null,
+  ) {
     setSelectedForm({
       displayName: selectedUser?.displayName ?? "",
       role: selectedUser?.role ?? "editor",
     });
+    setSelectedProviderForm({
+      name: selectedConnection?.name ?? "",
+      providerKind: selectedConnection?.provider_kind ?? "qwen",
+      baseUrl: selectedConnection?.base_url ?? "",
+      testModelName: readTestModelName(selectedConnection) ?? "",
+      enabled: selectedConnection?.enabled ?? true,
+    });
     setPasswordResetValue("");
+    setCredentialRotationValue("");
   }
 
-  async function loadOverview(input: { selectedUserId?: string | null } = {}) {
+  async function loadOverview(input: {
+    selectedUserId?: string | null;
+    selectedConnectionId?: string | null;
+  } = {}) {
     setLoadStatus("loading");
     setErrorMessage(null);
 
     try {
       const nextOverview = await controller.loadOverview({
         selectedUserId: input.selectedUserId ?? overview?.selectedUserId,
+        selectedConnectionId: input.selectedConnectionId ?? overview?.selectedConnectionId,
       });
       applyOverview(nextOverview);
       setLoadStatus("ready");
     } catch (error) {
       setLoadStatus("error");
-      setErrorMessage(toErrorMessage(error, "账号列表加载失败"));
+      setErrorMessage(toErrorMessage(error, "系统设置加载失败"));
     }
   }
 
@@ -136,7 +192,7 @@ export function SystemSettingsWorkbenchPage({
       setLoadStatus("ready");
       setStatusMessage(successMessage);
     } catch (error) {
-      setErrorMessage(toErrorMessage(error, "账号管理操作失败"));
+      setErrorMessage(toErrorMessage(error, "系统设置操作失败"));
     } finally {
       setIsBusy(false);
     }
@@ -191,6 +247,7 @@ export function SystemSettingsWorkbenchPage({
           role: selectedForm.role,
         },
         selectedUserId: selectedUser.id,
+        selectedConnectionId: overview?.selectedConnectionId,
       });
       return result.overview;
     }, "账号信息已更新。");
@@ -214,6 +271,7 @@ export function SystemSettingsWorkbenchPage({
         userId: selectedUser.id,
         nextPassword: passwordResetValue,
         selectedUserId: selectedUser.id,
+        selectedConnectionId: overview?.selectedConnectionId,
       });
       return result.overview;
     }, "登录密码已重置。");
@@ -232,13 +290,126 @@ export function SystemSettingsWorkbenchPage({
           ? await controller.enableUserAndReload({
               userId: selectedUser.id,
               selectedUserId: selectedUser.id,
+              selectedConnectionId: overview?.selectedConnectionId,
             })
           : await controller.disableUserAndReload({
               userId: selectedUser.id,
               selectedUserId: selectedUser.id,
+              selectedConnectionId: overview?.selectedConnectionId,
             });
       return result.overview;
     }, selectedUser.status === "disabled" ? "账号已启用。" : "账号已停用。");
+  }
+
+  async function handleCreateProviderConnection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      createProviderForm.name.trim().length === 0 ||
+      createProviderForm.testModelName.trim().length === 0 ||
+      createProviderForm.apiKey.trim().length === 0
+    ) {
+      setErrorMessage("请完整填写 AI 提供方连接信息。");
+      return;
+    }
+
+    await runAction(async () => {
+      const result = await controller.createProviderConnectionAndReload({
+        name: createProviderForm.name.trim(),
+        providerKind: createProviderForm.providerKind,
+        baseUrl: normalizeOptionalText(createProviderForm.baseUrl),
+        testModelName: createProviderForm.testModelName.trim(),
+        apiKey: createProviderForm.apiKey,
+        enabled: createProviderForm.enabled,
+      });
+      setCreateProviderForm({
+        name: "",
+        providerKind: "qwen",
+        baseUrl: "",
+        testModelName: "qwen-max",
+        apiKey: "",
+        enabled: true,
+      });
+      return result.overview;
+    }, "AI 提供方连接已创建。");
+  }
+
+  async function handleUpdateSelectedProvider(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedConnection = overview?.selectedConnection;
+    if (!selectedConnection) {
+      setErrorMessage("请先选择要维护的 AI 提供方连接。");
+      return;
+    }
+
+    if (
+      selectedProviderForm.name.trim().length === 0 ||
+      selectedProviderForm.testModelName.trim().length === 0
+    ) {
+      setErrorMessage("连接名称与测试模型不能为空。");
+      return;
+    }
+
+    await runAction(async () => {
+      const result = await controller.updateProviderConnectionAndReload({
+        connectionId: selectedConnection.id,
+        input: {
+          name: selectedProviderForm.name.trim(),
+          baseUrl: normalizeOptionalText(selectedProviderForm.baseUrl),
+          testModelName: selectedProviderForm.testModelName.trim(),
+          enabled: selectedProviderForm.enabled,
+        },
+        selectedUserId: overview?.selectedUserId,
+        selectedConnectionId: selectedConnection.id,
+      });
+      return result.overview;
+    }, "AI 提供方连接已更新。");
+  }
+
+  async function handleRotateProviderCredential(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedConnection = overview?.selectedConnection;
+    if (!selectedConnection) {
+      setErrorMessage("请先选择要轮换密钥的连接。");
+      return;
+    }
+
+    if (credentialRotationValue.trim().length === 0) {
+      setErrorMessage("请输入新的 API Key。");
+      return;
+    }
+
+    await runAction(async () => {
+      const result = await controller.rotateProviderCredentialAndReload({
+        connectionId: selectedConnection.id,
+        nextApiKey: credentialRotationValue,
+        selectedUserId: overview?.selectedUserId,
+        selectedConnectionId: selectedConnection.id,
+      });
+      return result.overview;
+    }, "AI 提供方密钥已轮换。");
+  }
+
+  async function handleTestProviderConnection() {
+    const selectedConnection = overview?.selectedConnection;
+    if (!selectedConnection) {
+      setErrorMessage("请先选择要测试的连接。");
+      return;
+    }
+
+    if (selectedProviderForm.testModelName.trim().length === 0) {
+      setErrorMessage("请先填写测试模型。");
+      return;
+    }
+
+    await runAction(async () => {
+      const result = await controller.testProviderConnectionAndReload({
+        connectionId: selectedConnection.id,
+        testModelName: selectedProviderForm.testModelName.trim(),
+        selectedUserId: overview?.selectedUserId,
+        selectedConnectionId: selectedConnection.id,
+      });
+      return result.overview;
+    }, "连接测试已完成。");
   }
 
   function selectUser(userId: string) {
@@ -255,6 +426,26 @@ export function SystemSettingsWorkbenchPage({
       ...overview,
       selectedUserId: selectedUser.id,
       selectedUser,
+    });
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  function selectConnection(connectionId: string) {
+    if (!overview) {
+      return;
+    }
+
+    const selectedConnection =
+      overview.providerConnections.find((connection) => connection.id === connectionId) ?? null;
+    if (!selectedConnection) {
+      return;
+    }
+
+    applyOverview({
+      ...overview,
+      selectedConnectionId: selectedConnection.id,
+      selectedConnection,
     });
     setStatusMessage(null);
     setErrorMessage(null);
@@ -281,7 +472,7 @@ export function SystemSettingsWorkbenchPage({
       <header className="system-settings-hero">
         <p className="system-settings-kicker">系统设置</p>
         <h2>账号管理</h2>
-        <p>集中维护内测环境账号、角色权限和可登录状态。</p>
+        <p>集中维护内测环境账号、角色权限，以及 AI 提供方连接状态。</p>
       </header>
 
       {statusMessage ? (
@@ -506,6 +697,289 @@ export function SystemSettingsWorkbenchPage({
               )}
             </article>
           </div>
+
+          <section className="system-settings-provider-shell">
+            <div className="system-settings-section-header">
+              <div>
+                <h3>AI 提供方</h3>
+                <p>统一维护国内外模型连接、密钥轮换与连通性测试结果。</p>
+              </div>
+              <div className="system-settings-provider-summary">
+                <span>连接数 {overview.providerConnections.length}</span>
+                <span>
+                  已启用 {overview.providerConnections.filter((connection) => connection.enabled).length}
+                </span>
+              </div>
+            </div>
+
+            <div className="system-settings-provider-layout">
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>连接列表</h3>
+                    <p>选择一个连接查看兼容模式、密钥掩码与测试结果。</p>
+                  </div>
+                  <button type="button" onClick={() => void loadOverview()} disabled={isBusy}>
+                    刷新连接
+                  </button>
+                </div>
+                <ul className="system-settings-user-list">
+                  {overview.providerConnections.map((connection) => {
+                    const isActive = connection.id === overview.selectedConnectionId;
+                    return (
+                      <li key={connection.id}>
+                        <button
+                          type="button"
+                          className={`system-settings-user-row${isActive ? " is-active" : ""}`}
+                          onClick={() => selectConnection(connection.id)}
+                        >
+                          <span>{connection.name}</span>
+                          <small>
+                            {formatProviderKindLabel(connection.provider_kind)} ·{" "}
+                            {connection.enabled ? "启用状态" : "停用状态"} ·{" "}
+                            {formatConnectionTestStatusLabel(connection.last_test_status)}
+                          </small>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>新增连接</h3>
+                    <p>支持 Qwen、DeepSeek、OpenAI 与兼容 OpenAI 的聚合入口。</p>
+                  </div>
+                </div>
+                <form className="system-settings-form-grid" onSubmit={handleCreateProviderConnection}>
+                  <label className="system-settings-field">
+                    <span>连接名称</span>
+                    <input
+                      value={createProviderForm.name}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="Qwen Production"
+                    />
+                  </label>
+                  <label className="system-settings-field">
+                    <span>提供方类型</span>
+                    <select
+                      value={createProviderForm.providerKind}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          providerKind: event.target.value as AiProviderKind,
+                        }))
+                      }
+                    >
+                      {providerKindOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="system-settings-field">
+                    <span>Base URL</span>
+                    <input
+                      value={createProviderForm.baseUrl}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          baseUrl: event.target.value,
+                        }))
+                      }
+                      placeholder="https://api.deepseek.com"
+                    />
+                  </label>
+                  <label className="system-settings-field">
+                    <span>测试模型</span>
+                    <input
+                      value={createProviderForm.testModelName}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          testModelName: event.target.value,
+                        }))
+                      }
+                      placeholder="qwen-max"
+                    />
+                  </label>
+                  <label className="system-settings-field">
+                    <span>API Key</span>
+                    <input
+                      type="password"
+                      value={createProviderForm.apiKey}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          apiKey: event.target.value,
+                        }))
+                      }
+                      placeholder="sk-..."
+                    />
+                  </label>
+                  <label className="system-settings-field">
+                    <span>启用状态</span>
+                    <select
+                      value={createProviderForm.enabled ? "enabled" : "disabled"}
+                      onChange={(event) =>
+                        setCreateProviderForm((current) => ({
+                          ...current,
+                          enabled: event.target.value === "enabled",
+                        }))
+                      }
+                    >
+                      <option value="enabled">启用</option>
+                      <option value="disabled">停用</option>
+                    </select>
+                  </label>
+                  <div className="system-settings-actions system-settings-actions-full">
+                    <button type="submit" disabled={isBusy}>
+                      创建连接
+                    </button>
+                  </div>
+                </form>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>连接详情</h3>
+                    <p>
+                      {overview.selectedConnection
+                        ? `当前选中：${overview.selectedConnection.name}（${overview.selectedConnection.id}）`
+                        : "请选择一个连接后再执行维护操作。"}
+                    </p>
+                  </div>
+                </div>
+
+                {overview.selectedConnection ? (
+                  <>
+                    <div className="system-settings-provider-meta">
+                      <div className="system-settings-provider-badge">
+                        兼容模式：{overview.selectedConnection.compatibility_mode}
+                      </div>
+                      <div className="system-settings-provider-badge">
+                        密钥掩码：{overview.selectedConnection.credential_summary?.mask ?? "未配置"}
+                      </div>
+                      <div className="system-settings-provider-badge">
+                        最后测试：{formatConnectionTestStatusLabel(overview.selectedConnection.last_test_status)}
+                      </div>
+                    </div>
+
+                    <form className="system-settings-form-grid" onSubmit={handleUpdateSelectedProvider}>
+                      <label className="system-settings-field">
+                        <span>连接名称</span>
+                        <input
+                          value={selectedProviderForm.name}
+                          onChange={(event) =>
+                            setSelectedProviderForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="system-settings-field">
+                        <span>提供方类型</span>
+                        <select value={selectedProviderForm.providerKind} disabled>
+                          {providerKindOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="system-settings-field">
+                        <span>Base URL</span>
+                        <input
+                          value={selectedProviderForm.baseUrl}
+                          onChange={(event) =>
+                            setSelectedProviderForm((current) => ({
+                              ...current,
+                              baseUrl: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="system-settings-field">
+                        <span>测试模型</span>
+                        <input
+                          value={selectedProviderForm.testModelName}
+                          onChange={(event) =>
+                            setSelectedProviderForm((current) => ({
+                              ...current,
+                              testModelName: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="system-settings-field">
+                        <span>启用状态</span>
+                        <select
+                          value={selectedProviderForm.enabled ? "enabled" : "disabled"}
+                          onChange={(event) =>
+                            setSelectedProviderForm((current) => ({
+                              ...current,
+                              enabled: event.target.value === "enabled",
+                            }))
+                          }
+                        >
+                          <option value="enabled">启用</option>
+                          <option value="disabled">停用</option>
+                        </select>
+                      </label>
+                      <div className="system-settings-actions system-settings-actions-full">
+                        <button type="submit" disabled={isBusy}>
+                          保存连接信息
+                        </button>
+                      </div>
+                    </form>
+
+                    <form className="system-settings-form-grid" onSubmit={handleRotateProviderCredential}>
+                      <label className="system-settings-field">
+                        <span>轮换 API Key</span>
+                        <input
+                          type="password"
+                          value={credentialRotationValue}
+                          onChange={(event) => setCredentialRotationValue(event.target.value)}
+                          placeholder="输入新的 API Key"
+                        />
+                      </label>
+                      <div className="system-settings-actions system-settings-actions-full">
+                        <button type="submit" disabled={isBusy}>
+                          轮换密钥
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void handleTestProviderConnection()}
+                        >
+                          连接测试
+                        </button>
+                      </div>
+                    </form>
+
+                    <div className="system-settings-provider-inline">
+                      <span>最后测试时间：{overview.selectedConnection.last_test_at ?? "尚未测试"}</span>
+                      <span>
+                        错误摘要：{overview.selectedConnection.last_error_summary ?? "无"}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="system-settings-empty">当前没有可维护的 AI 提供方连接。</p>
+                )}
+              </article>
+            </div>
+          </section>
         </>
       ) : loadStatus === "loading" || loadStatus === "idle" ? (
         <article className="system-settings-panel" role="status">
@@ -545,6 +1019,36 @@ function formatStatusLabel(status: SystemSettingsUserViewModel["status"]): strin
     default:
       return status;
   }
+}
+
+function formatProviderKindLabel(providerKind: AiProviderKind): string {
+  return providerKindOptions.find((option) => option.value === providerKind)?.label ?? providerKind;
+}
+
+function formatConnectionTestStatusLabel(
+  status: SystemSettingsAiProviderConnectionViewModel["last_test_status"],
+): string {
+  switch (status) {
+    case "passed":
+      return "已通过";
+    case "failed":
+      return "失败";
+    case "unknown":
+    default:
+      return "未测试";
+  }
+}
+
+function readTestModelName(
+  connection: SystemSettingsAiProviderConnectionViewModel | null | undefined,
+): string | null {
+  const rawValue = connection?.connection_metadata?.test_model_name;
+  return typeof rawValue === "string" && rawValue.trim().length > 0 ? rawValue : null;
+}
+
+function normalizeOptionalText(value: string): string | undefined {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
