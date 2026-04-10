@@ -13,7 +13,98 @@ const {
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
 const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 
-test("template governance workbench page renders the rule-center authoring shell and journal-aware rule authoring panels", () => {
+function buildRulePackageWorkspaceFixture() {
+  return {
+    source: {
+      sourceKind: "reviewed_case" as const,
+      reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-1",
+    },
+    selectedPackageId: "package-front-matter",
+    candidates: [
+      {
+        package_id: "package-front-matter",
+        package_kind: "front_matter" as const,
+        title: "\u524d\u7f6e\u4fe1\u606f\u5305",
+        rule_object: "front_matter",
+        suggested_layer: "journal_template" as const,
+        automation_posture: "guarded_auto" as const,
+        status: "draft" as const,
+        cards: {
+          rule_what: {
+            title: "\u524d\u7f6e\u4fe1\u606f\u5305",
+            object: "front_matter",
+            publish_layer: "journal_template" as const,
+          },
+          ai_understanding: {
+            summary:
+              "\u7edf\u4e00\u4f5c\u8005\u3001\u5355\u4f4d\u4e0e\u901a\u4fe1\u4f5c\u8005\u5757\u3002",
+            hit_objects: ["author_line", "corresponding_author"],
+            hit_locations: ["front_matter"],
+          },
+          applicability: {
+            manuscript_types: ["clinical_study"],
+            modules: ["editing"],
+            sections: ["front_matter"],
+            table_targets: [],
+          },
+          evidence: {
+            examples: [
+              {
+                before: "\u7b2c\u4e00\u4f5c\u8005\uff1a\u5f20\u4e09",
+                after: "\uff08\u4f5c\u8005\u7b80\u4ecb\uff09\u5f20\u4e09",
+              },
+            ],
+          },
+          exclusions: {
+            not_applicable_when: ["\u539f\u7a3f\u5143\u6570\u636e\u7f3a\u5931"],
+            human_review_required_when: ["\u65b0\u589e\u901a\u4fe1\u4f5c\u8005"],
+            risk_posture: "guarded_auto" as const,
+          },
+        },
+        preview: {
+          hit_summary: "\u547d\u4e2d\u524d\u7f6e\u4fe1\u606f\u5757",
+          hits: [
+            {
+              target: "author_line",
+              reason: "\u4f5c\u8005\u884c\u6837\u5f0f\u53d1\u751f\u5f52\u4e00\u5316",
+              matched_text: "\u5f20\u4e09 \u674e\u56db",
+            },
+          ],
+          misses: [
+            {
+              target: "classification_line",
+              reason: "\u6837\u672c\u6587\u672c\u4e2d\u672a\u51fa\u73b0\u5206\u7c7b\u53f7",
+            },
+          ],
+          decision: {
+            automation_posture: "guarded_auto" as const,
+            needs_human_review: true,
+            reason: "\u4f5c\u8005\u5143\u6570\u636e\u53d8\u66f4\u9700\u8981\u4eba\u5de5\u590d\u6838\u3002",
+          },
+        },
+        semantic_draft: {
+          semantic_summary:
+            "\u7edf\u4e00\u4f5c\u8005\u3001\u5355\u4f4d\u4e0e\u901a\u4fe1\u4f5c\u8005\u5757\u3002",
+          hit_scope: ["author_line:text_style_normalization"],
+          applicability: ["front_matter"],
+          evidence_examples: [
+            {
+              before: "\u7b2c\u4e00\u4f5c\u8005\uff1a\u5f20\u4e09",
+              after: "\uff08\u4f5c\u8005\u7b80\u4ecb\uff09\u5f20\u4e09",
+            },
+          ],
+          failure_boundaries: ["\u539f\u7a3f\u5143\u6570\u636e\u7f3a\u5931"],
+          normalization_recipe: ["\u7edf\u4e00\u4f5c\u8005\u4e0e\u901a\u4fe1\u4f5c\u8005\u6807\u7b7e"],
+          review_policy: ["\u65b0\u589e\u901a\u4fe1\u4f5c\u8005\u65f6\u4eba\u5de5\u590d\u6838"],
+          confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+        },
+        supporting_signals: [],
+      },
+    ],
+  };
+}
+
+test("template governance workbench page renders the package-first rule center while keeping journal-aware governance panels", () => {
   const Page = TemplateGovernanceWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -222,6 +313,7 @@ test("template governance workbench page renders the rule-center authoring shell
           output_contract: "Return a governed editing payload.",
         },
       }}
+      initialRulePackageWorkspace={buildRulePackageWorkspaceFixture()}
     />,
   );
 
@@ -230,28 +322,31 @@ test("template governance workbench page renders the rule-center authoring shell
   assert.match(markup, /workbench-core-strip is-secondary/);
   assert.match(markup, /\u89c4\u5219\u5f55\u5165\u5de5\u4f5c\u53f0/u);
   assert.match(markup, /\u89c4\u5219\u5b66\u4e60\u5de5\u4f5c\u53f0/u);
-  assert.match(markup, /Rule Authoring Navigator/);
-  assert.match(markup, /Rule Authoring Form/);
-  assert.match(markup, /Rule Authoring Preview/);
-  assert.match(markup, /Rule Ledger/);
-  assert.match(markup, /Rule Explainability/);
-  assert.match(markup, /Journal Template Profiles/);
+  assert.match(markup, /Rule Packages/);
+  assert.match(markup, /\u793a\u4f8b\u9a71\u52a8\u5f55\u5165/u);
+  assert.match(markup, /Preview/);
+  assert.match(markup, /Refresh Preview/);
+  assert.match(markup, /Open Advanced Rule Editor/);
+  assert.doesNotMatch(markup, /Rule Authoring Navigator/);
+  assert.doesNotMatch(markup, /Rule Authoring Form/);
+  assert.doesNotMatch(markup, /Rule Authoring Preview/);
+  assert.doesNotMatch(markup, /Rule Ledger/);
+  assert.doesNotMatch(markup, /Rule Explainability/);
+  assert.match(markup, /Template Families/);
+  assert.match(markup, /Module Templates/);
+  assert.match(markup, /Retrieval Quality/);
+  assert.match(markup, /Knowledge Library/);
   assert.match(markup, /AI Instruction Template/);
   assert.match(markup, /Knowledge authoring has moved to the standalone Knowledge Library workbench\./);
   assert.match(markup, /Open Knowledge Library/);
   assert.match(markup, /Continue In Knowledge Library/);
   assert.doesNotMatch(markup, /Create Knowledge Draft/);
   assert.doesNotMatch(markup, /Submit Draft for Review/);
-  assert.match(markup, /Statement/);
-  assert.match(markup, /Title/);
-  assert.match(markup, /Keyword/);
-  assert.match(markup, /Journal Column/);
-  assert.match(markup, /Semantic Target/);
-  assert.match(markup, /Header Path Includes/);
-  assert.match(markup, /Expected Runtime Evidence/);
-  assert.match(markup, /Treatment group/);
-  assert.match(markup, /header_cell/);
-  assert.match(markup, /journal-alpha/);
+  assert.match(markup, /front_matter/);
+  assert.match(markup, /author_line/);
+  assert.match(markup, /Automation/);
+  assert.match(markup, /Human Review/);
+  assert.match(markup, /guarded_auto/);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });

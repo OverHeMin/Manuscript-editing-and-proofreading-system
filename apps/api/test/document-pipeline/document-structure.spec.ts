@@ -99,3 +99,51 @@ test("docx structure extraction marks malformed files for manual review", async 
     "No title or heading styles were detected in the document.",
   ]);
 });
+
+test("docx structure extraction preserves fallback-recovered numbered sections", async () => {
+  const structureService = createStructureService({
+    async extract() {
+      return {
+        status: "ready",
+        parser: "python_docx",
+        sections: [
+          {
+            order: 1,
+            heading: "1 资料与方法",
+            level: 1,
+            paragraph_index: 8,
+          },
+          {
+            order: 2,
+            heading: "1.1 一般资料",
+            level: 2,
+            paragraph_index: 9,
+          },
+          {
+            order: 3,
+            heading: "2 结果",
+            level: 1,
+            paragraph_index: 15,
+          },
+        ],
+        tables: [],
+        warnings: ["No title or heading styles were detected in the document."],
+      };
+    },
+  });
+
+  const structure = await structureService.extract({
+    manuscriptId: "manuscript-3",
+    assetId: "asset-normalized-3",
+    fileName: "numbered-sections.docx",
+  });
+
+  assert.deepEqual(
+    structure.sections.map((section) => section.heading),
+    ["1 资料与方法", "1.1 一般资料", "2 结果"],
+  );
+  assert.deepEqual(
+    structure.sections.map((section) => section.level),
+    [1, 2, 1],
+  );
+});

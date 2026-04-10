@@ -22,16 +22,23 @@ import type {
   KnowledgeSourceType,
 } from "../knowledge/index.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
+import {
+  createInlineUploadFields,
+  type BrowserUploadFile,
+} from "../manuscript-workbench/manuscript-upload-file.ts";
 import type {
   PromptTemplateKind,
   PromptTemplateViewModel,
 } from "../prompt-skill-registry/index.ts";
 import type {
+  CreateRulePackageExampleSourceSessionInput,
   EditorialRuleConfidencePolicy,
   EditorialRuleExecutionMode,
   EditorialRuleSeverity,
   EditorialRuleSetViewModel,
   EditorialRuleType,
+  RulePackageDraftViewModel,
+  RulePackageWorkspaceSourceInputViewModel,
 } from "../editorial-rules/index.ts";
 import type {
   ModuleTemplateViewModel,
@@ -43,7 +50,28 @@ import { RuleAuthoringGrid } from "./rule-authoring-grid.tsx";
 import { RuleAuthoringNavigation } from "./rule-authoring-navigation.tsx";
 import { RuleAuthoringExplainability } from "./rule-authoring-explainability.tsx";
 import { RuleAuthoringPreviewPanel } from "./rule-authoring-preview.tsx";
+import { RulePackageAuthoringShell } from "./rule-package-authoring-shell.tsx";
+import {
+  buildRulePackagePreviewSampleText,
+  createRulePackageAuthoringWorkspaceState,
+  getSelectedRulePackageDraft,
+  rebaseRulePackageAuthoringWorkspaceState,
+  restoreRulePackageAuthoringWorkspaceState,
+  serializeRulePackageAuthoringWorkspaceState,
+  setRulePackageCompilePreview,
+  setRulePackageCompileResult,
+  selectRulePackageWorkspaceCandidate,
+  setRulePackagePreview,
+  toggleRulePackageAdvancedEditor,
+  updateRulePackageSemanticDraft,
+  type RulePackageWorkspaceViewModel,
+} from "./rule-package-authoring-state.ts";
 import { RuleLearningPane } from "./rule-learning-pane.tsx";
+import {
+  loadRulePackageDraft,
+  saveRulePackageDraft,
+} from "./rule-package-draft-storage.ts";
+import { RulePackageUploadIntake } from "./rule-package-upload-intake.tsx";
 import {
   createRuleAuthoringDraft,
   resolveRuleAuthoringDraftForOverview,
@@ -214,6 +242,7 @@ export interface TemplateGovernanceWorkbenchPageProps {
   initialMode?: TemplateGovernanceWorkbenchMode;
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
+  initialRulePackageWorkspace?: RulePackageWorkspaceViewModel | null;
   initialLearningCandidates?: readonly LearningCandidateViewModel[];
   initialSelectedLearningCandidateId?: string;
 }
@@ -225,10 +254,22 @@ export function TemplateGovernanceWorkbenchPage({
   initialMode = "authoring",
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
+  initialRulePackageWorkspace = null,
   initialLearningCandidates = [],
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
   const initialRuleDraft = resolveInitialRuleAuthoringDraft(initialOverview);
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+  const initialRulePackageSource =
+    initialRulePackageWorkspace?.source ??
+    (normalizedPrefilledReviewedCaseSnapshotId.length > 0
+      ? {
+          sourceKind: "reviewed_case" as const,
+          reviewedCaseSnapshotId: normalizedPrefilledReviewedCaseSnapshotId,
+        }
+      : null);
   const selectedModuleTemplateIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<TemplateGovernanceWorkbenchOverview | null>(
     initialOverview,
@@ -239,6 +280,34 @@ export function TemplateGovernanceWorkbenchPage({
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [rulePackageLoadStatus, setRulePackageLoadStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >(initialRulePackageWorkspace ? "ready" : "idle");
+  const [rulePackageErrorMessage, setRulePackageErrorMessage] =
+    useState<string | null>(null);
+  const [isRulePackagePreviewBusy, setIsRulePackagePreviewBusy] = useState(false);
+  const [isRulePackageCompilePreviewBusy, setIsRulePackageCompilePreviewBusy] =
+    useState(false);
+  const [isRulePackageCompileBusy, setIsRulePackageCompileBusy] = useState(false);
+  const [rulePackageWorkspaceSource, setRulePackageWorkspaceSource] =
+    useState<RulePackageWorkspaceSourceInputViewModel | null>(initialRulePackageSource);
+  const [rulePackageOriginalFile, setRulePackageOriginalFile] =
+    useState<BrowserUploadFile | null>(null);
+  const [rulePackageEditedFile, setRulePackageEditedFile] =
+    useState<BrowserUploadFile | null>(null);
+  const [rulePackageRestoreMessage, setRulePackageRestoreMessage] =
+    useState<string | null>(null);
+  const [rulePackageWorkspaceState, setRulePackageWorkspaceState] = useState(() =>
+    initialRulePackageWorkspace
+      ? createRulePackageAuthoringWorkspaceState(initialRulePackageWorkspace)
+      : initialRulePackageSource
+        ? createRulePackageAuthoringWorkspaceState({
+            source: initialRulePackageSource,
+            candidates: [],
+            selectedPackageId: null,
+          })
+        : null,
+  );
   const [selectedModuleTemplateId, setSelectedModuleTemplateId] = useState<string | null>(null);
   const [workbenchMode, setWorkbenchMode] =
     useState<TemplateGovernanceWorkbenchMode>(initialMode);
@@ -291,6 +360,119 @@ export function TemplateGovernanceWorkbenchPage({
     setWorkbenchMode(initialMode);
   }, [initialMode]);
 
+  useEffect(() => {
+    if (!initialRulePackageWorkspace) {
+      return;
+    }
+
+    setRulePackageWorkspaceSource(initialRulePackageWorkspace.source);
+    setRulePackageWorkspaceState((current) =>
+      rebaseRulePackageAuthoringWorkspaceState(initialRulePackageWorkspace, current),
+    );
+    setRulePackageLoadStatus("ready");
+    setRulePackageErrorMessage(null);
+  }, [initialRulePackageWorkspace]);
+
+  useEffect(() => {
+    if (initialRulePackageWorkspace || !initialRulePackageSource) {
+      return;
+    }
+
+    setRulePackageWorkspaceSource(initialRulePackageSource);
+    setRulePackageWorkspaceState((current) =>
+      current ??
+      createRulePackageAuthoringWorkspaceState({
+        source: initialRulePackageSource,
+        candidates: [],
+        selectedPackageId: null,
+      }),
+    );
+  }, [initialRulePackageSource, initialRulePackageWorkspace]);
+
+  useEffect(() => {
+    if (workbenchMode !== "authoring") {
+      return;
+    }
+
+    if (!rulePackageWorkspaceSource || initialRulePackageWorkspace) {
+      return;
+    }
+
+    let isCancelled = false;
+    setRulePackageLoadStatus("loading");
+    setRulePackageErrorMessage(null);
+    setRulePackageRestoreMessage(null);
+    setRulePackageWorkspaceState((current) =>
+      current && isSameRulePackageSource(current.source, rulePackageWorkspaceSource)
+        ? current
+        : createRulePackageAuthoringWorkspaceState({
+            source: rulePackageWorkspaceSource,
+            candidates: [],
+            selectedPackageId: null,
+          }),
+    );
+
+    const storedDraft =
+      typeof window !== "undefined"
+        ? loadRulePackageDraft(window.localStorage, rulePackageWorkspaceSource)
+        : null;
+
+    void controller
+      .loadRulePackageWorkspace(rulePackageWorkspaceSource)
+      .then((workspace) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setRulePackageWorkspaceState((current) =>
+          storedDraft
+            ? restoreRulePackageAuthoringWorkspaceState(workspace, storedDraft, current)
+            : rebaseRulePackageAuthoringWorkspaceState(workspace, current),
+        );
+        setRulePackageLoadStatus("ready");
+        setRulePackageRestoreMessage(
+          storedDraft ? "已自动恢复上次草稿。" : null,
+        );
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setRulePackageLoadStatus("error");
+        setRulePackageErrorMessage(
+          toErrorMessage(error, "Rule-package workspace load failed"),
+        );
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    controller,
+    initialRulePackageWorkspace,
+    rulePackageWorkspaceSource,
+    workbenchMode,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !rulePackageWorkspaceState) {
+      return;
+    }
+
+    if (rulePackageWorkspaceState.candidates.length === 0) {
+      return;
+    }
+
+    saveRulePackageDraft(
+      window.localStorage,
+      serializeRulePackageAuthoringWorkspaceState(
+        rulePackageWorkspaceState,
+        new Date().toISOString(),
+      ),
+    );
+  }, [rulePackageWorkspaceState]);
+
   async function loadOverview(input: {
     selectedTemplateFamilyId?: string | null;
     selectedJournalTemplateId?: string | null;
@@ -316,6 +498,258 @@ export function TemplateGovernanceWorkbenchPage({
   function setModuleTemplateSelection(moduleTemplateId: string | null) {
     selectedModuleTemplateIdRef.current = moduleTemplateId;
     setSelectedModuleTemplateId(moduleTemplateId);
+  }
+
+  function handleSelectRulePackage(packageId: string) {
+    setRulePackageWorkspaceState((current) =>
+      current ? selectRulePackageWorkspaceCandidate(current, packageId) : current,
+    );
+  }
+
+  function handleToggleRulePackageAdvancedEditor() {
+    setRulePackageWorkspaceState((current) =>
+      current ? toggleRulePackageAdvancedEditor(current) : current,
+    );
+  }
+
+  function handleUpdateSelectedRulePackageDraft(
+    recipe: (draft: RulePackageDraftViewModel) => RulePackageDraftViewModel,
+  ) {
+    setRulePackageWorkspaceState((current) => {
+      if (!current?.selectedPackageId) {
+        return current;
+      }
+
+      return updateRulePackageSemanticDraft(current, current.selectedPackageId, recipe);
+    });
+  }
+
+  async function handleRefreshRulePackagePreview() {
+    const selectedDraft = getSelectedRulePackageDraft(rulePackageWorkspaceState);
+    if (!selectedDraft) {
+      return;
+    }
+
+    setIsRulePackagePreviewBusy(true);
+    setRulePackageErrorMessage(null);
+
+    try {
+      const preview = await controller.previewRulePackageDraft({
+        packageDraft: selectedDraft,
+        sampleText: buildRulePackagePreviewSampleText(selectedDraft),
+      });
+
+      setRulePackageWorkspaceState((current) =>
+        current
+          ? setRulePackagePreview(current, selectedDraft.package_id, preview)
+          : current,
+      );
+    } catch (error) {
+      setRulePackageErrorMessage(toErrorMessage(error, "Rule-package preview failed"));
+    } finally {
+      setIsRulePackagePreviewBusy(false);
+    }
+  }
+
+  async function handlePreviewRulePackageCompile() {
+    if (!rulePackageWorkspaceState || rulePackageWorkspaceState.candidates.length === 0) {
+      return;
+    }
+
+    const compileContext = resolveRulePackageCompileContext(overview);
+    if (!compileContext.templateFamilyId) {
+      setRulePackageErrorMessage(
+        "Select a template family before running compile preview.",
+      );
+      return;
+    }
+
+    setIsRulePackageCompilePreviewBusy(true);
+    setRulePackageErrorMessage(null);
+
+    try {
+      const compilePreview = await controller.previewRulePackageCompile({
+        source: rulePackageWorkspaceState.source,
+        packageDrafts: rulePackageWorkspaceState.candidates.map((candidate) =>
+          rulePackageWorkspaceState.editableDraftById[candidate.package_id] ?? {
+            ...candidate,
+            preview: undefined,
+          },
+        ),
+        templateFamilyId: compileContext.templateFamilyId,
+        ...(compileContext.journalTemplateId
+          ? { journalTemplateId: compileContext.journalTemplateId }
+          : {}),
+        module: compileContext.module,
+      });
+
+      setRulePackageWorkspaceState((current) =>
+        current
+          ? setRulePackageCompilePreview(
+              setRulePackageCompileResult(current, null),
+              compilePreview,
+            )
+          : current,
+      );
+    } catch (error) {
+      setRulePackageErrorMessage(
+        toErrorMessage(error, "Rule-package compile preview failed"),
+      );
+    } finally {
+      setIsRulePackageCompilePreviewBusy(false);
+    }
+  }
+
+  async function handleCompileRulePackagesToDraft() {
+    if (!rulePackageWorkspaceState || rulePackageWorkspaceState.candidates.length === 0) {
+      return;
+    }
+
+    const compileContext = resolveRulePackageCompileContext(overview);
+    if (!compileContext.templateFamilyId) {
+      setRulePackageErrorMessage(
+        "Select a template family before compiling to a draft rule set.",
+      );
+      return;
+    }
+
+    setIsRulePackageCompileBusy(true);
+    setRulePackageErrorMessage(null);
+
+    try {
+      const targetRuleSetId = resolveSelectedDraftCompileTargetRuleSetId(
+        overview,
+        compileContext,
+      );
+      const compileResult = await controller.compileRulePackagesToDraft({
+        actorRole,
+        source: rulePackageWorkspaceState.source,
+        ...(targetRuleSetId ? { targetRuleSetId } : {}),
+        packageDrafts: rulePackageWorkspaceState.candidates.map((candidate) =>
+          rulePackageWorkspaceState.editableDraftById[candidate.package_id] ?? {
+            ...candidate,
+            preview: undefined,
+          },
+        ),
+        templateFamilyId: compileContext.templateFamilyId,
+        ...(compileContext.journalTemplateId
+          ? { journalTemplateId: compileContext.journalTemplateId }
+          : {}),
+        module: compileContext.module,
+      });
+
+      setRulePackageWorkspaceState((current) =>
+        current ? setRulePackageCompileResult(current, compileResult) : current,
+      );
+      setStatusMessage(`Draft rule set ready: ${compileResult.rule_set_id}`);
+
+      await loadOverview({
+        selectedTemplateFamilyId: compileContext.templateFamilyId,
+        selectedJournalTemplateId: compileContext.journalTemplateId ?? null,
+        selectedRuleSetId: compileResult.rule_set_id,
+      });
+    } catch (error) {
+      setRulePackageErrorMessage(
+        toErrorMessage(error, "Rule-package compile-to-draft failed"),
+      );
+    } finally {
+      setIsRulePackageCompileBusy(false);
+    }
+  }
+
+  async function handleOpenCompiledDraftRuleSet() {
+    const compileResult = rulePackageWorkspaceState?.compileResult;
+    if (!compileResult) {
+      return;
+    }
+
+    setWorkbenchMode("authoring");
+    setRulePackageWorkspaceState((current) =>
+      current ? { ...current, isAdvancedEditorVisible: false } : current,
+    );
+    await loadOverview(
+      currentReloadContext({
+        selectedRuleSetId: compileResult.rule_set_id,
+      }),
+    );
+    setStatusMessage(`Draft rule set selected: ${compileResult.rule_set_id}`);
+  }
+
+  async function handleOpenCompiledDraftAdvancedEditor() {
+    const compileResult = rulePackageWorkspaceState?.compileResult;
+    if (!compileResult) {
+      return;
+    }
+
+    setWorkbenchMode("authoring");
+    setRulePackageWorkspaceState((current) =>
+      current ? { ...current, isAdvancedEditorVisible: true } : current,
+    );
+    await loadOverview(
+      currentReloadContext({
+        selectedRuleSetId: compileResult.rule_set_id,
+      }),
+    );
+    setStatusMessage(`Advanced rule editor opened for ${compileResult.rule_set_id}.`);
+  }
+
+  async function handleGoToCompiledDraftPublishArea() {
+    const compileResult = rulePackageWorkspaceState?.compileResult;
+    if (!compileResult) {
+      return;
+    }
+
+    setWorkbenchMode("authoring");
+    setRulePackageWorkspaceState((current) =>
+      current ? { ...current, isAdvancedEditorVisible: true } : current,
+    );
+    await loadOverview(
+      currentReloadContext({
+        selectedRuleSetId: compileResult.rule_set_id,
+      }),
+    );
+    setStatusMessage(
+      `Publish area ready for ${compileResult.rule_set_id}. Use Publish Rule Set when review is complete.`,
+    );
+  }
+
+  function handleSelectRulePackageOriginalFile(file: BrowserUploadFile | null) {
+    setRulePackageOriginalFile(file);
+  }
+
+  function handleSelectRulePackageEditedFile(file: BrowserUploadFile | null) {
+    setRulePackageEditedFile(file);
+  }
+
+  async function handleStartRulePackageRecognition() {
+    if (!rulePackageOriginalFile || !rulePackageEditedFile) {
+      return;
+    }
+
+    setRulePackageLoadStatus("loading");
+    setRulePackageErrorMessage(null);
+    setRulePackageRestoreMessage(null);
+
+    try {
+      const sessionInput: CreateRulePackageExampleSourceSessionInput = {
+        originalFile: await createInlineUploadFields(rulePackageOriginalFile),
+        editedFile: await createInlineUploadFields(rulePackageEditedFile),
+      };
+      const session = await controller.createRulePackageExampleSourceSession(
+        sessionInput,
+      );
+
+      setRulePackageWorkspaceSource({
+        sourceKind: "uploaded_example_pair",
+        exampleSourceSessionId: session.session_id,
+        ...(session.journal_key ? { journalKey: session.journal_key } : {}),
+      });
+    } catch (error) {
+      setRulePackageLoadStatus("error");
+      setRulePackageErrorMessage(
+        toErrorMessage(error, "Rule-package example upload failed"),
+      );
+    }
   }
 
   function synchronizeForms(nextOverview: TemplateGovernanceWorkbenchOverview) {
@@ -1117,6 +1551,10 @@ export function TemplateGovernanceWorkbenchPage({
   const selectedKnowledgeItem = overview?.selectedKnowledgeItem ?? null;
   const isEditingDraft = selectedKnowledgeItem?.status === "draft";
   const retrievalInsights = overview?.retrievalInsights ?? null;
+  const shouldUseRulePackageWorkbench =
+    normalizedPrefilledReviewedCaseSnapshotId.length > 0 ||
+    initialRulePackageWorkspace != null ||
+    workbenchMode === "authoring";
   const knowledgeLibraryHash =
     selectedKnowledgeItem?.asset_id
       ? formatWorkbenchHash("knowledge-library", {
@@ -1124,9 +1562,6 @@ export function TemplateGovernanceWorkbenchPage({
           revisionId: selectedKnowledgeItem.revision_id,
         })
       : formatWorkbenchHash("knowledge-library");
-  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
-  const normalizedPrefilledReviewedCaseSnapshotId =
-    prefilledReviewedCaseSnapshotId?.trim() ?? "";
   const authoringModeHash = formatWorkbenchHash("template-governance", {
     manuscriptId:
       normalizedPrefilledManuscriptId.length > 0
@@ -1149,6 +1584,53 @@ export function TemplateGovernanceWorkbenchPage({
         : undefined,
     ruleCenterMode: "learning",
   });
+  const advancedRuleEditor = (
+    <div className="template-governance-advanced-shell">
+      <div className="template-governance-panel-header">
+        <div>
+          <h4>Advanced Rule Editor</h4>
+          <p>Keep the legacy low-level rule workbench available when operators need to inspect or repair the underlying rule details.</p>
+        </div>
+      </div>
+      <div className="template-governance-rule-layout">
+        <RuleAuthoringNavigation
+          overview={overview}
+          selectedRuleObject={selectedRuleObject}
+          selectedModule={ruleSetForm.module}
+          journalTemplateForm={journalTemplateForm}
+          isBusy={isBusy}
+          onJournalScopeChange={handleRuleScopeChange}
+          onModuleChange={handleRuleModuleChange}
+          onRuleObjectChange={handleRuleObjectChange}
+          onSelectRuleSet={handleRuleSetSelection}
+          onCreateRuleSet={handleCreateRuleSet}
+          onCreateJournalTemplate={handleCreateJournalTemplate}
+          onJournalTemplateFormChange={setJournalTemplateForm}
+          onActivateJournalTemplate={handleActivateJournalTemplate}
+          onArchiveJournalTemplate={handleArchiveJournalTemplate}
+          onPublishRuleSet={(ruleSetId) => {
+            void handlePublishRuleSet(ruleSetId);
+          }}
+        />
+        <div className="template-governance-rule-layout-main">
+          <RuleAuthoringForm
+            selectedRuleSet={selectedRuleSet}
+            draft={ruleAuthoringDraft}
+            isBusy={isBusy}
+            onDraftChange={setRuleAuthoringDraft}
+            onSubmit={handleSubmitRule}
+          />
+          <RuleAuthoringExplainability draft={ruleAuthoringDraft} />
+          <RuleAuthoringPreviewPanel overview={overview} draft={ruleAuthoringDraft} />
+          <RuleAuthoringGrid
+            overview={overview}
+            selectedRuleSet={selectedRuleSet}
+            draft={ruleAuthoringDraft}
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <section className="template-governance-workbench">
@@ -1394,53 +1876,82 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-panel template-governance-panel-wide">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Rule Workbench</h3>
+              <h3>{shouldUseRulePackageWorkbench ? "Rule Packages" : "Rule Workbench"}</h3>
               <p>
-                Author structured medical editorial rules with family-level defaults and
-                journal-level overrides from one governed surface.
+                {shouldUseRulePackageWorkbench
+                  ? "Start from grouped example-driven candidates, confirm the AI-readable semantics, and only open the legacy editor when deeper repair work is needed."
+                  : "Author structured medical editorial rules with family-level defaults and journal-level overrides from one governed surface."}
               </p>
             </div>
           </div>
-          <div className="template-governance-rule-layout">
-            <RuleAuthoringNavigation
-              overview={overview}
-              selectedRuleObject={selectedRuleObject}
-              selectedModule={ruleSetForm.module}
-              journalTemplateForm={journalTemplateForm}
-              isBusy={isBusy}
-              onJournalScopeChange={handleRuleScopeChange}
-              onModuleChange={handleRuleModuleChange}
-              onRuleObjectChange={handleRuleObjectChange}
-              onSelectRuleSet={handleRuleSetSelection}
-              onCreateRuleSet={handleCreateRuleSet}
-              onCreateJournalTemplate={handleCreateJournalTemplate}
-              onJournalTemplateFormChange={setJournalTemplateForm}
-              onActivateJournalTemplate={handleActivateJournalTemplate}
-              onArchiveJournalTemplate={handleArchiveJournalTemplate}
-              onPublishRuleSet={(ruleSetId) => {
-                void handlePublishRuleSet(ruleSetId);
-              }}
-            />
-            <div className="template-governance-rule-layout-main">
-              <RuleAuthoringForm
-                selectedRuleSet={selectedRuleSet}
-                draft={ruleAuthoringDraft}
-                isBusy={isBusy}
-                onDraftChange={setRuleAuthoringDraft}
-                onSubmit={handleSubmitRule}
+
+          {shouldUseRulePackageWorkbench ? (
+            <>
+              <RulePackageUploadIntake
+                originalFileName={rulePackageOriginalFile?.name ?? null}
+                editedFileName={rulePackageEditedFile?.name ?? null}
+                canStart={
+                  rulePackageOriginalFile != null && rulePackageEditedFile != null
+                }
+                isBusy={rulePackageLoadStatus === "loading"}
+                onOriginalFileSelect={handleSelectRulePackageOriginalFile}
+                onEditedFileSelect={handleSelectRulePackageEditedFile}
+                onStart={() => {
+                  void handleStartRulePackageRecognition();
+                }}
               />
-              <RuleAuthoringExplainability draft={ruleAuthoringDraft} />
-              <RuleAuthoringPreviewPanel
-                overview={overview}
-                draft={ruleAuthoringDraft}
+              {rulePackageRestoreMessage ? (
+                <p className="template-governance-context-note template-governance-context-note--compact">
+                  {rulePackageRestoreMessage}
+                </p>
+              ) : null}
+              <RulePackageAuthoringShell
+                workspaceState={rulePackageWorkspaceState}
+                targetModule={overview?.selectedRuleSet?.module ?? "editing"}
+                isLoading={rulePackageLoadStatus === "loading"}
+                isPreviewRefreshing={isRulePackagePreviewBusy}
+                isCompilePreviewBusy={isRulePackageCompilePreviewBusy}
+                isCompileBusy={isRulePackageCompileBusy}
+                compilePreview={rulePackageWorkspaceState?.compilePreview ?? null}
+                compileResult={rulePackageWorkspaceState?.compileResult ?? null}
+                canPreviewCompile={
+                  rulePackageWorkspaceState != null &&
+                  rulePackageWorkspaceState.candidates.length > 0 &&
+                  overview?.selectedTemplateFamilyId != null
+                }
+                canCompile={
+                  rulePackageWorkspaceState != null &&
+                  rulePackageWorkspaceState.candidates.length > 0 &&
+                  overview?.selectedTemplateFamilyId != null
+                }
+                loadErrorMessage={rulePackageErrorMessage}
+                onSelectPackage={handleSelectRulePackage}
+                onUpdateDraft={handleUpdateSelectedRulePackageDraft}
+                onRefreshPreview={() => {
+                  void handleRefreshRulePackagePreview();
+                }}
+                onPreviewCompile={() => {
+                  void handlePreviewRulePackageCompile();
+                }}
+                onCompileToDraft={() => {
+                  void handleCompileRulePackagesToDraft();
+                }}
+                onOpenDraftRuleSet={() => {
+                  void handleOpenCompiledDraftRuleSet();
+                }}
+                onOpenAdvancedRuleEditor={() => {
+                  void handleOpenCompiledDraftAdvancedEditor();
+                }}
+                onGoToPublishArea={() => {
+                  void handleGoToCompiledDraftPublishArea();
+                }}
+                onToggleAdvancedEditor={handleToggleRulePackageAdvancedEditor}
+                advancedEditor={advancedRuleEditor}
               />
-              <RuleAuthoringGrid
-                overview={overview}
-                selectedRuleSet={selectedRuleSet}
-                draft={ruleAuthoringDraft}
-              />
-            </div>
-          </div>
+            </>
+          ) : (
+            advancedRuleEditor
+          )}
         </article>
 
         <TemplateGovernanceInstructionPanel
@@ -2668,6 +3179,56 @@ function resolveInitialRuleAuthoringDraft(
     preferredRuleObject: "abstract",
     previousSelectedRuleSetId: overview.selectedRuleSetId,
   });
+}
+
+function resolveRulePackageCompileContext(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+): {
+  templateFamilyId: string | null;
+  journalTemplateId?: string;
+  module: TemplateModule;
+} {
+  return {
+    templateFamilyId: overview?.selectedTemplateFamilyId ?? null,
+    ...(overview?.selectedJournalTemplateId
+      ? { journalTemplateId: overview.selectedJournalTemplateId }
+      : {}),
+    module: overview?.selectedRuleSet?.module ?? "editing",
+  };
+}
+
+function resolveSelectedDraftCompileTargetRuleSetId(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+  compileContext: ReturnType<typeof resolveRulePackageCompileContext>,
+): string | undefined {
+  const selectedRuleSet = overview?.selectedRuleSet;
+  if (!selectedRuleSet || selectedRuleSet.status !== "draft") {
+    return undefined;
+  }
+
+  const selectedJournalTemplateId = selectedRuleSet.journal_template_id ?? undefined;
+  if (
+    selectedRuleSet.template_family_id !== compileContext.templateFamilyId ||
+    selectedJournalTemplateId !== (compileContext.journalTemplateId ?? undefined) ||
+    selectedRuleSet.module !== compileContext.module
+  ) {
+    return undefined;
+  }
+
+  return selectedRuleSet.id;
+}
+
+function isSameRulePackageSource(
+  left: RulePackageWorkspaceSourceInputViewModel,
+  right: RulePackageWorkspaceSourceInputViewModel,
+): boolean {
+  if (left.sourceKind !== right.sourceKind) {
+    return false;
+  }
+
+  return left.sourceKind === "reviewed_case"
+    ? left.reviewedCaseSnapshotId === right.reviewedCaseSnapshotId
+    : left.exampleSourceSessionId === right.exampleSourceSessionId;
 }
 
 function splitCommaSeparatedValues(value: string): string[] | undefined {

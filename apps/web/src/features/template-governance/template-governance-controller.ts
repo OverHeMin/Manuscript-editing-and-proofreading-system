@@ -31,16 +31,32 @@ import {
   type PromptTemplateViewModel,
 } from "../prompt-skill-registry/index.ts";
 import {
+  compileRulePackagesToDraft as requestCompileRulePackagesToDraft,
+  createRulePackageExampleSourceSession as requestCreateRulePackageExampleSourceSession,
   createEditorialRule,
   createEditorialRuleSet,
   listEditorialRulesByRuleSetId,
   listEditorialRuleSets,
+  loadRulePackageWorkspace as requestRulePackageWorkspace,
+  previewRulePackageCompile as requestRulePackageCompilePreview,
+  previewRulePackageDraft as requestRulePackagePreview,
   publishEditorialRuleSet,
+  type CompileRulePackagesToDraftInputViewModel,
   type CreateEditorialRuleInput,
   type CreateEditorialRuleSetInput,
+  type CreateRulePackageExampleSourceSessionInput,
   type EditorialRulesHttpClient,
   type EditorialRuleSetViewModel,
   type EditorialRuleViewModel,
+  type PreviewCompileRulePackagesInputViewModel,
+  type RulePackageCandidateViewModel,
+  type RulePackageCompilePreviewViewModel,
+  type RulePackageCompileToDraftResultViewModel,
+  type RulePackageDraftViewModel,
+  type RulePackageExampleSourceSessionViewModel,
+  type RulePackagePreviewViewModel,
+  type RulePackageWorkspaceSourceInputViewModel,
+  type RulePackageWorkspaceViewModel,
 } from "../editorial-rules/index.ts";
 import {
   activateJournalTemplateProfile,
@@ -107,6 +123,22 @@ export interface TemplateGovernanceWorkbenchController {
   loadOverview(
     input?: TemplateGovernanceReloadContext,
   ): Promise<TemplateGovernanceWorkbenchOverview>;
+  loadRulePackageWorkspace(
+    input: RulePackageWorkspaceSourceInputViewModel,
+  ): Promise<RulePackageWorkspaceViewModel>;
+  createRulePackageExampleSourceSession(
+    input: CreateRulePackageExampleSourceSessionInput,
+  ): Promise<RulePackageExampleSourceSessionViewModel>;
+  previewRulePackageDraft(input: {
+    packageDraft: RulePackageDraftViewModel | RulePackageCandidateViewModel;
+    sampleText: string;
+  }): Promise<RulePackagePreviewViewModel>;
+  previewRulePackageCompile(
+    input: PreviewCompileRulePackagesInputViewModel,
+  ): Promise<RulePackageCompilePreviewViewModel>;
+  compileRulePackagesToDraft(
+    input: CompileRulePackagesToDraftInputViewModel,
+  ): Promise<RulePackageCompileToDraftResultViewModel>;
   createTemplateFamilyAndReload(input: CreateTemplateFamilyInput): Promise<{
     templateFamily: TemplateFamilyViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
@@ -231,6 +263,22 @@ export function createTemplateGovernanceWorkbenchController(
   return {
     loadOverview(input) {
       return loadTemplateGovernanceOverview(client, input);
+    },
+    async loadRulePackageWorkspace(input) {
+      return (await requestRulePackageWorkspace(client, input)).body;
+    },
+    async createRulePackageExampleSourceSession(input) {
+      return (await requestCreateRulePackageExampleSourceSession(client, input))
+        .body;
+    },
+    async previewRulePackageDraft(input) {
+      return (await requestRulePackagePreview(client, input)).body;
+    },
+    async previewRulePackageCompile(input) {
+      return (await requestRulePackageCompilePreview(client, input)).body;
+    },
+    async compileRulePackagesToDraft(input) {
+      return (await requestCompileRulePackagesToDraft(client, input)).body;
     },
     async createTemplateFamilyAndReload(input) {
       const templateFamily = (await createTemplateFamily(client, input)).body;

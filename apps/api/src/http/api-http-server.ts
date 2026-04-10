@@ -123,7 +123,15 @@ import {
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
+  EditorialRulePackageService,
   EditorialRuleProjectionService,
+  EditorialRuleResolutionService,
+  ExampleSourceSessionService,
+  ReviewedCaseRulePackageSourceService,
+  RulePackageCompileService,
+  RulePackageExampleSourceSessionNotFoundError,
+  ReviewedCaseSourceAssetNotFoundError,
+  ReviewedCaseSourceAssetPayloadError,
   EditorialRuleService,
   EditorialRuleSetNotEditableError,
   EditorialRuleSetNotFoundError,
@@ -716,6 +724,27 @@ type HttpRouteMatch =
       ruleSetId: string;
     }
   | {
+      route: "editorial-rules-generate-rule-package-candidates";
+    }
+  | {
+      route: "editorial-rules-create-rule-package-example-source-session";
+    }
+  | {
+      route: "editorial-rules-load-rule-package-workspace";
+    }
+  | {
+      route: "editorial-rules-preview-rule-package";
+    }
+  | {
+      route: "editorial-rules-preview-rule-package-compile";
+    }
+  | {
+      route: "editorial-rules-compile-rule-packages-to-draft";
+    }
+  | {
+      route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case";
+    }
+  | {
       route: "prompt-skill-create-skill-package";
     }
   | {
@@ -1255,6 +1284,9 @@ export function createInMemoryApiRuntime(input: {
     templateFamilyRepository,
     projectionService: editorialRuleProjectionService,
   });
+  const editorialRuleResolutionService = new EditorialRuleResolutionService({
+    repository: editorialRuleRepository,
+  });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
   });
@@ -1501,6 +1533,21 @@ export function createInMemoryApiRuntime(input: {
     }),
     editorialRuleApi: createEditorialRuleApi({
       editorialRuleService,
+      editorialRulePackageService: new EditorialRulePackageService({
+        exampleSourceSessionService: new ExampleSourceSessionService({
+          uploadRootDir: input.uploadRootDir,
+        }),
+        reviewedCaseSourceService: new ReviewedCaseRulePackageSourceService({
+          snapshotRepository: reviewedCaseSnapshotRepository,
+          assetRepository,
+          rootDir: input.uploadRootDir,
+        }),
+      }),
+      rulePackageCompileService: new RulePackageCompileService({
+        repository: editorialRuleRepository,
+        resolutionService: editorialRuleResolutionService,
+        editorialRuleService,
+      }),
     }),
     editingApi: createEditingApi({
       editingService,
@@ -3409,6 +3456,74 @@ async function handleRoute(
       return runtime.editorialRuleApi.listRules({
         ruleSetId: routeMatch.ruleSetId,
       });
+    case "editorial-rules-generate-rule-package-candidates": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.generateRulePackageCandidates
+      >[0];
+
+      return runtime.editorialRuleApi.generateRulePackageCandidates({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-create-rule-package-example-source-session": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.createRulePackageExampleSourceSession
+      >[0];
+
+      return runtime.editorialRuleApi.createRulePackageExampleSourceSession({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-load-rule-package-workspace": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.loadRulePackageWorkspace
+      >[0];
+
+      return runtime.editorialRuleApi.loadRulePackageWorkspace({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-preview-rule-package": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.previewRulePackage
+      >[0];
+
+      return runtime.editorialRuleApi.previewRulePackage(body);
+    }
+    case "editorial-rules-preview-rule-package-compile": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.previewRulePackageCompile
+      >[0];
+
+      return runtime.editorialRuleApi.previewRulePackageCompile({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-compile-rule-packages-to-draft": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.compileRulePackagesToDraft
+      >[0];
+
+      return runtime.editorialRuleApi.compileRulePackagesToDraft({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-generate-rule-package-candidates-from-reviewed-case": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.generateRulePackageCandidatesFromReviewedCase
+      >[0];
+
+      return runtime.editorialRuleApi.generateRulePackageCandidatesFromReviewedCase({
+        input: body.input,
+      });
+    }
     case "prompt-skill-create-skill-package": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -4550,6 +4665,58 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/api/v1/editorial-rules/rule-sets") {
     return { route: "editorial-rules-list-rule-sets" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/candidates"
+  ) {
+    return { route: "editorial-rules-generate-rule-package-candidates" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/example-source-sessions"
+  ) {
+    return { route: "editorial-rules-create-rule-package-example-source-session" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/workspace"
+  ) {
+    return { route: "editorial-rules-load-rule-package-workspace" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/preview"
+  ) {
+    return { route: "editorial-rules-preview-rule-package" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/compile-preview"
+  ) {
+    return { route: "editorial-rules-preview-rule-package-compile" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/rule-packages/compile-to-draft"
+  ) {
+    return { route: "editorial-rules-compile-rule-packages-to-draft" };
+  }
+
+  if (
+    method === "POST" &&
+    path ===
+      "/api/v1/editorial-rules/rule-packages/candidates/from-reviewed-case"
+  ) {
+    return {
+      route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case",
+    };
   }
 
   if (method === "POST" && path === "/api/v1/prompt-skill-registry/skill-packages") {
@@ -5758,6 +5925,8 @@ function mapErrorToHttpResponse(
     error instanceof PromptTemplateNotFoundError ||
     error instanceof EditorialRuleSetNotFoundError ||
     error instanceof EditorialRuleTemplateFamilyNotFoundError ||
+    error instanceof RulePackageExampleSourceSessionNotFoundError ||
+    error instanceof ReviewedCaseSourceAssetNotFoundError ||
     error instanceof AiProviderConnectionNotFoundError ||
     error instanceof RuntimeBindingNotFoundError ||
     error instanceof SandboxProfileNotFoundError ||
@@ -5838,6 +6007,7 @@ function mapErrorToHttpResponse(
     error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
+    error instanceof ReviewedCaseSourceAssetPayloadError ||
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||
     error instanceof ModelRoutingPolicyValidationError ||

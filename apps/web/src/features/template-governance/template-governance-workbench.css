@@ -347,13 +347,112 @@
   gap: 10px;
 }
 
+.rule-package-workbench {
+  display: grid;
+  gap: 14px;
+}
+
+.rule-package-upload-intake,
+.rule-package-upload-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.rule-package-upload-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rule-package-workbench-columns {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.78fr) minmax(0, 1.08fr) minmax(240px, 0.84fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.rule-package-panel {
+  align-self: start;
+}
+
+.rule-package-card-stack,
+.rule-package-preview-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.rule-package-definition-grid,
+.rule-package-evidence-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.rule-package-definition-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rule-package-definition-grid span,
+.rule-package-evidence-grid span,
+.rule-package-preview-card span {
+  display: block;
+  color: #7a6a54;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.rule-package-definition-grid p,
+.rule-package-evidence-grid p,
+.rule-package-preview-card p,
+.rule-package-preview-list p,
+.rule-package-preview-list small {
+  margin: 0;
+  color: #2b2215;
+}
+
+.rule-package-evidence-grid article,
+.rule-package-preview-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+  background: rgba(255, 252, 247, 0.84);
+}
+
+.rule-package-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.rule-package-preview-list li {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(126, 101, 51, 0.08);
+}
+
+.rule-package-preview-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.template-governance-advanced-shell {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
 @media (max-width: 960px) {
   .template-governance-grid,
   .template-governance-form-grid,
   .template-governance-toolbar,
   .template-governance-rule-layout,
   .template-governance-knowledge-grid,
-  .template-governance-learning-diff-grid {
+  .template-governance-learning-diff-grid,
+  .rule-package-workbench-columns,
+  .rule-package-definition-grid {
     grid-template-columns: 1fr;
   }
 }

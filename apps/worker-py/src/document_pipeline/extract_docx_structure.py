@@ -29,17 +29,20 @@ def build_manual_review_result(message: str) -> dict:
     }
 
 
+def emit_json(payload: dict) -> None:
+    text = json.dumps(payload, ensure_ascii=False)
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.buffer.write(b"\n")
+
+
 def main() -> None:
     args = parse_args()
     source_path = Path(args.source_path)
 
     if not source_path.exists():
-        print(
-            json.dumps(
-                build_manual_review_result(
-                    f"The DOCX file could not be found at {source_path}."
-                ),
-                ensure_ascii=False,
+        emit_json(
+            build_manual_review_result(
+                f"The DOCX file could not be found at {source_path}."
             )
         )
         return
@@ -48,26 +51,20 @@ def main() -> None:
         with zipfile.ZipFile(source_path, "r") as archive:
             document_xml = archive.read("word/document.xml")
     except KeyError:
-        print(
-            json.dumps(
-                build_manual_review_result(
-                    "The DOCX archive does not contain word/document.xml."
-                ),
-                ensure_ascii=False,
+        emit_json(
+            build_manual_review_result(
+                "The DOCX archive does not contain word/document.xml."
             )
         )
         return
     except zipfile.BadZipFile:
-        print(
-            json.dumps(
-                build_manual_review_result("The source asset is not a valid DOCX archive."),
-                ensure_ascii=False,
-            )
+        emit_json(
+            build_manual_review_result("The source asset is not a valid DOCX archive.")
         )
         return
 
     result = extract_structure_from_document_xml(document_xml)
-    print(json.dumps(result, ensure_ascii=False))
+    emit_json(result)
 
 
 if __name__ == "__main__":
