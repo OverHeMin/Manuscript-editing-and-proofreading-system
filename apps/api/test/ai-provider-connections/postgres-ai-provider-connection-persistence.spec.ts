@@ -184,13 +184,21 @@ async function withTemporaryAiProviderConnectionPool(
 }
 
 function expectCredentialSummary(
-  record: object,
+  record: unknown,
   summary: { mask: string; version: number },
 ): void {
+  assert.ok(
+    typeof record === "object" && record !== null,
+    "Expected ai provider connection record to be an object.",
+  );
   assert.deepEqual(Reflect.get(record, "credential_summary"), summary);
 }
 
-function assertLastTestAt(record: object, expected: Date): void {
+function assertLastTestAt(record: unknown, expected: Date): void {
+  assert.ok(
+    typeof record === "object" && record !== null,
+    "Expected ai provider connection record to be an object.",
+  );
   const value = Reflect.get(record, "last_test_at");
   assert.ok(value !== undefined, "Expected last_test_at to be present.");
   const actualDate =

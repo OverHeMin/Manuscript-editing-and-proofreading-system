@@ -10,7 +10,7 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
-import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/ai-provider-credential-crypto.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
 import {
   PostgresAgentProfileRepository,
 } from "../../src/modules/agent-profiles/index.ts";

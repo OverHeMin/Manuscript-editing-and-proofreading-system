@@ -121,11 +121,31 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
   },
   model_source: "legacy_module_default",
   provider_readiness: {
-    status: "ok",
-    issues: [],
+    status: "warning",
+    issues: [
+      {
+        code: "legacy_unbound",
+        message: "Legacy default is still being used.",
+      },
+    ],
   },
-  fallback_chain: [],
-  warnings: [],
+  fallback_chain: [
+    {
+      id: "model-2",
+      provider: "deepseek",
+      model_name: "deepseek-chat",
+      model_version: "2026-03-01",
+      allowed_modules: ["editing"],
+      is_prod_allowed: true,
+      connection_id: "connection-1",
+    },
+  ],
+  warnings: [
+    {
+      code: "legacy_unbound",
+      message: "Execution preview still depends on a legacy fallback.",
+    },
+  ],
   knowledge_binding_rules: [
     {
       id: "rule-1",
