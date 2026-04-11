@@ -347,3 +347,39 @@ test("reject returns a pending revision to draft without erasing review history"
     ],
   );
 });
+
+test("updating a draft revision marks a confirmed semantic layer stale", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Dose reporting rule",
+    canonicalText: "Clinical studies must report dose adjustments in methods.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.regenerateSemanticLayer(created.selected_revision.id, {
+    pageSummary: "AI extracted a screening rule about dose adjustments.",
+    retrievalTerms: ["dose adjustment", "methods"],
+    retrievalSnippets: ["Check whether dose adjustments are disclosed in methods."],
+  });
+  await service.confirmSemanticLayer(created.selected_revision.id);
+
+  const updated = await service.updateRevisionDraft(created.selected_revision.id, {
+    canonicalText:
+      "Clinical studies must report dose adjustments and protocol deviations in methods.",
+  });
+
+  assert.equal(updated.selected_revision.semantic_layer?.status, "stale");
+
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    created.selected_revision.id,
+  );
+  assert.equal(detail.selected_revision.semantic_layer?.status, "stale");
+  assert.equal(
+    detail.selected_revision.semantic_layer?.page_summary,
+    "AI extracted a screening rule about dose adjustments.",
+  );
+});

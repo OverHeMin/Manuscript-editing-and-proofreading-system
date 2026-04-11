@@ -3,19 +3,29 @@ import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
-import type { KnowledgeItemStatus, KnowledgeKind } from "../knowledge/index.ts";
+import type { KnowledgeKind } from "../knowledge/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
 } from "./knowledge-library-controller.ts";
 import { KnowledgeLibraryDuplicatePanel } from "./knowledge-library-duplicate-panel.tsx";
+import { KnowledgeLibraryGridTable } from "./knowledge-library-grid-table.tsx";
+import { KnowledgeLibraryGridToolbar } from "./knowledge-library-grid-toolbar.tsx";
+import { KnowledgeLibraryRecordDrawer } from "./knowledge-library-record-drawer.tsx";
+import { KnowledgeLibraryRichContentEditor } from "./knowledge-library-rich-content-editor.tsx";
+import { KnowledgeLibrarySemanticPanel } from "./knowledge-library-semantic-panel.tsx";
 import type {
   CreateKnowledgeLibraryDraftInput,
+  KnowledgeContentBlockViewModel,
   DuplicateKnowledgeCheckInput,
   DuplicateKnowledgeMatchViewModel,
   DuplicateWarningAcknowledgementInput,
   KnowledgeLibraryFilterState,
+  KnowledgeSemanticLayerInput,
+  KnowledgeSemanticLayerViewModel,
+  KnowledgeUploadInput,
+  KnowledgeUploadViewModel,
   KnowledgeLibraryWorkbenchViewModel,
   KnowledgeRevisionBindingInput,
   KnowledgeRevisionBindingKind,
@@ -89,15 +99,6 @@ const knowledgeKinds: Array<KnowledgeKind | "all"> = [
   "other",
 ];
 
-const knowledgeStatuses: Array<KnowledgeItemStatus | "all"> = [
-  "all",
-  "draft",
-  "pending_review",
-  "approved",
-  "superseded",
-  "archived",
-];
-
 const moduleOptions: Array<ManuscriptModule | "any"> = [
   "any",
   "screening",
@@ -168,6 +169,12 @@ export function KnowledgeLibraryWorkbenchPage({
     useState(false);
   const [duplicateConfirmationDraftSignature, setDuplicateConfirmationDraftSignature] =
     useState<string | null>(null);
+  const [contentBlocksDraft, setContentBlocksDraft] = useState<KnowledgeContentBlockViewModel[]>(
+    () => initialViewModel?.detail?.selected_revision.content_blocks ?? [],
+  );
+  const [semanticLayerDraft, setSemanticLayerDraft] = useState<
+    KnowledgeSemanticLayerViewModel | undefined
+  >(() => initialViewModel?.detail?.selected_revision.semantic_layer);
   const duplicateCheckRequestIdRef = useRef(0);
   const latestDuplicateCheckContextRef =
     useRef<ImmediateDuplicateCheckContext>({
@@ -185,6 +192,8 @@ export function KnowledgeLibraryWorkbenchPage({
       latestFormStateRef.current = nextFormState;
       latestFormDraftSignatureRef.current = serializeConfirmationDraftSignature(nextFormState);
       setFormState(nextFormState);
+      setContentBlocksDraft(initialViewModel.detail?.selected_revision.content_blocks ?? []);
+      setSemanticLayerDraft(initialViewModel.detail?.selected_revision.semantic_layer);
       setLoadStatus("ready");
       return;
     }
@@ -206,7 +215,9 @@ export function KnowledgeLibraryWorkbenchPage({
     setPendingSubmitStrongMatches([]);
     setDuplicateConfirmationDraftSignature(null);
     setDuplicateCheckErrorMessage(null);
-  }, [viewModel?.selectedRevisionId]);
+    setContentBlocksDraft(viewModel?.detail?.selected_revision.content_blocks ?? []);
+    setSemanticLayerDraft(viewModel?.detail?.selected_revision.semantic_layer);
+  }, [viewModel?.detail, viewModel?.selectedRevisionId]);
 
   const duplicateCheckDraftFields = toDuplicateCheckDraftFields(formState);
   const duplicateCheckInput = createDuplicateCheckInput(duplicateCheckDraftFields, {
@@ -595,6 +606,81 @@ export function KnowledgeLibraryWorkbenchPage({
     );
   }
 
+  async function handleSaveRichContent() {
+    const revisionId = viewModel?.selectedRevisionId;
+    if (!revisionId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.replaceContentBlocksAndLoad({
+          revisionId,
+          blocks: contentBlocksDraft,
+          filters: viewModel.filters,
+        }),
+      "Rich content saved.",
+    );
+  }
+
+  function handleSemanticDraftChange(input: KnowledgeSemanticLayerInput) {
+    setSemanticLayerDraft((current) => ({
+      revision_id: current?.revision_id ?? viewModel?.selectedRevisionId ?? "draft-revision",
+      status: current?.status ?? "stale",
+      page_summary:
+        input.pageSummary ?? current?.page_summary ?? selectedRevision?.semantic_layer?.page_summary,
+      retrieval_terms: input.retrievalTerms ?? current?.retrieval_terms,
+      retrieval_snippets: input.retrievalSnippets ?? current?.retrieval_snippets,
+      table_semantics: input.tableSemantics ?? current?.table_semantics,
+      image_understanding: input.imageUnderstanding ?? current?.image_understanding,
+    }));
+  }
+
+  async function handleRegenerateSemanticLayer() {
+    const revisionId = viewModel?.selectedRevisionId;
+    if (!revisionId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.regenerateSemanticLayerAndLoad({
+          revisionId,
+          filters: viewModel.filters,
+        }),
+      "AI semantic layer regenerated.",
+    );
+  }
+
+  async function handleConfirmSemanticLayer() {
+    const revisionId = viewModel?.selectedRevisionId;
+    if (!revisionId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.confirmSemanticLayerAndLoad({
+          revisionId,
+          filters: viewModel.filters,
+          input: {
+            pageSummary: semanticLayerDraft?.page_summary,
+            retrievalTerms: semanticLayerDraft?.retrieval_terms,
+            retrievalSnippets: semanticLayerDraft?.retrieval_snippets,
+            tableSemantics: semanticLayerDraft?.table_semantics,
+            imageUnderstanding: semanticLayerDraft?.image_understanding,
+          },
+        }),
+      "AI semantic layer confirmed.",
+    );
+  }
+
+  async function handleUploadImage(
+    input: KnowledgeUploadInput,
+  ): Promise<KnowledgeUploadViewModel | void> {
+    return controller.uploadImage(input);
+  }
+
   function handleOpenExistingAsset(match: DuplicateKnowledgeMatchViewModel) {
     setIsDuplicateSubmitConfirmationOpen(false);
     setPendingSubmitStrongMatches([]);
@@ -729,113 +815,47 @@ export function KnowledgeLibraryWorkbenchPage({
         </div>
       ) : null}
 
-      <div className="knowledge-library-layout">
-        <section className="knowledge-library-panel knowledge-library-queue">
-          <header className="knowledge-library-panel-header">
-            <div>
-              <h2>Library Queue</h2>
-              <p>
-                Browse authoring projections, search drafts, and reopen a
-                revision for editing.
-              </p>
-            </div>
-            <button type="button" onClick={handleStartNewAsset}>
-              Start New Asset
-            </button>
-          </header>
-
-          <div className="knowledge-library-filters">
-            <label>
-              Search
-              <input
-                type="search"
-                value={viewModel?.filters.searchText ?? ""}
-                onChange={(event) => updateFilters({ searchText: event.target.value })}
-                placeholder="Title, summary, alias, or binding"
-              />
-            </label>
-            <label>
-              Status
-              <select
-                value={viewModel?.filters.status ?? "all"}
-                onChange={(event) =>
-                  updateFilters({
-                    status: event.target.value as KnowledgeLibraryFilterState["status"],
-                  })
-                }
-              >
-                {knowledgeStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Kind
-              <select
-                value={viewModel?.filters.knowledgeKind ?? "all"}
-                onChange={(event) =>
-                  updateFilters({
-                    knowledgeKind:
-                      event.target.value as KnowledgeLibraryFilterState["knowledgeKind"],
-                  })
-                }
-              >
-                {knowledgeKinds.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+      <div className="knowledge-library-layout knowledge-library-layout--ledger">
+        <section className="knowledge-library-grid-shell">
+          <KnowledgeLibraryGridToolbar
+            searchText={viewModel?.filters.searchText ?? ""}
+            queryMode={viewModel?.filters.queryMode ?? "keyword"}
+            resultCount={viewModel?.visibleLibrary.length ?? 0}
+            onSearchTextChange={(value) => updateFilters({ searchText: value })}
+            onQueryModeChange={(value) => updateFilters({ queryMode: value })}
+            onStartNewAsset={handleStartNewAsset}
+          />
 
           {loadStatus === "loading" && (viewModel?.library.length ?? 0) === 0 ? (
-            <p className="knowledge-library-empty">Loading knowledge library...</p>
+            <section className="knowledge-library-panel">
+              <p className="knowledge-library-empty">Loading knowledge library...</p>
+            </section>
           ) : null}
 
-          {(viewModel?.visibleLibrary.length ?? 0) === 0 && loadStatus !== "loading" ? (
-            <p className="knowledge-library-empty">
-              No knowledge assets match the current authoring filters.
-            </p>
-          ) : null}
-
-          <ul className="knowledge-library-list">
-            {(viewModel?.visibleLibrary ?? []).map((item) => {
-              const isActive = item.id === viewModel?.selectedAssetId;
-              return (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className={`knowledge-library-list-item${isActive ? " is-active" : ""}`}
-                    onClick={() => handleSelectAsset(item.id)}
-                  >
-                    <strong>{item.title}</strong>
-                    <span>{item.status}</span>
-                    <small>{item.knowledge_kind}</small>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <KnowledgeLibraryGridTable
+            items={viewModel?.visibleLibrary ?? []}
+            selectedAssetId={viewModel?.selectedAssetId ?? null}
+            onSelectAsset={handleSelectAsset}
+          />
         </section>
 
-        <section className="knowledge-library-main-column">
+        <KnowledgeLibraryRecordDrawer
+          detail={viewModel?.detail ?? null}
+          selectedAssetId={viewModel?.selectedAssetId ?? null}
+          selectedRevisionId={viewModel?.selectedRevisionId ?? null}
+          reviewHash={reviewHash}
+          onSelectRevision={handleSelectRevision}
+        >
+          <section className="knowledge-library-main-column">
           <section className="knowledge-library-panel knowledge-library-editor">
             <header className="knowledge-library-panel-header">
               <div>
-                <h2>Draft Editor</h2>
+                <h2>Record Metadata</h2>
                 <p>
-                  Edit the current draft revision, or create a new asset when no
-                  revision is selected.
+                  Edit the active draft inside the record drawer without leaving the
+                  summary ledger.
                 </p>
               </div>
-              {reviewHash ? (
-                <a className="knowledge-library-link" href={reviewHash}>
-                  Open Review Queue
-                </a>
-              ) : null}
             </header>
 
             <div className="knowledge-library-editor-meta">
@@ -1116,7 +1136,34 @@ export function KnowledgeLibraryWorkbenchPage({
             </div>
           </section>
 
-          <section className="knowledge-library-panel knowledge-library-bindings">
+          <div className="knowledge-library-drawer-section">
+            <KnowledgeLibraryRichContentEditor
+              blocks={contentBlocksDraft}
+              onChange={setContentBlocksDraft}
+              onUploadImage={handleUploadImage}
+            />
+            <div className="knowledge-library-actions knowledge-library-rich-content-save">
+              <button
+                type="button"
+                disabled={isBusy || !viewModel?.selectedRevisionId}
+                onClick={() => void handleSaveRichContent()}
+              >
+                Save Rich Content
+              </button>
+            </div>
+          </div>
+
+          <div className="knowledge-library-drawer-section">
+            <KnowledgeLibrarySemanticPanel
+              semanticLayer={semanticLayerDraft}
+              onChange={handleSemanticDraftChange}
+              onRegenerate={() => void handleRegenerateSemanticLayer()}
+              onConfirm={() => void handleConfirmSemanticLayer()}
+              isBusy={isBusy}
+            />
+          </div>
+
+          <section className="knowledge-library-panel knowledge-library-bindings knowledge-library-drawer-section">
             <header className="knowledge-library-panel-header">
               <div>
                 <h2>Structured Bindings</h2>
@@ -1148,7 +1195,7 @@ export function KnowledgeLibraryWorkbenchPage({
           </section>
         </section>
 
-        <aside className="knowledge-library-side-column">
+          <aside className="knowledge-library-side-column">
           <KnowledgeLibraryDuplicatePanel
             matches={duplicateMatches}
             checkState={duplicateCheckState}
@@ -1193,7 +1240,8 @@ export function KnowledgeLibraryWorkbenchPage({
               })}
             </ol>
           </section>
-        </aside>
+          </aside>
+        </KnowledgeLibraryRecordDrawer>
       </div>
     </main>
   );

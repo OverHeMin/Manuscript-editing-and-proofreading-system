@@ -18,7 +18,7 @@ const {
   shouldInvalidateDuplicateSubmitConfirmation,
 } = await import("../src/features/knowledge-library/knowledge-library-workbench-page.tsx");
 
-test("knowledge library workbench page renders the standalone authoring shell", () => {
+test("knowledge library workbench page renders the ledger grid shell and record drawer", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryWorkbenchPage
       initialViewModel={{
@@ -26,51 +26,50 @@ test("knowledge library workbench page renders the standalone authoring shell", 
           {
             id: "knowledge-1",
             title: "Primary endpoint rule",
-            canonical_text: "Clinical studies must define the primary endpoint.",
             summary: "Screening knowledge.",
             knowledge_kind: "rule",
             status: "draft",
-            routing: {
-              module_scope: "screening",
-              manuscript_types: ["clinical_study"],
-            },
-            template_bindings: ["template-screening-1"],
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 3,
+            updated_at: "2026-04-08T08:30:00.000Z",
           },
         ],
         visibleLibrary: [
           {
             id: "knowledge-1",
             title: "Primary endpoint rule",
-            canonical_text: "Clinical studies must define the primary endpoint.",
             summary: "Screening knowledge.",
             knowledge_kind: "rule",
             status: "draft",
-            routing: {
-              module_scope: "screening",
-              manuscript_types: ["clinical_study"],
-            },
-            template_bindings: ["template-screening-1"],
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 3,
+            updated_at: "2026-04-08T08:30:00.000Z",
           },
         ],
         filters: {
-          searchText: "",
-          status: "all",
-          knowledgeKind: "all",
+          searchText: "endpoint",
+          queryMode: "semantic",
         },
         selectedAssetId: "knowledge-1",
         selectedRevisionId: "knowledge-1-revision-2",
         selectedSummary: {
           id: "knowledge-1",
           title: "Primary endpoint rule",
-          canonical_text: "Clinical studies must define the primary endpoint.",
           summary: "Screening knowledge.",
           knowledge_kind: "rule",
           status: "draft",
-          routing: {
-            module_scope: "screening",
-            manuscript_types: ["clinical_study"],
-          },
-          template_bindings: ["template-screening-1"],
+          module_scope: "screening",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 3,
+          updated_at: "2026-04-08T08:30:00.000Z",
         },
         detail: {
           asset: {
@@ -101,6 +100,25 @@ test("knowledge library workbench page renders the standalone authoring shell", 
             source_link: "https://example.test/guideline",
             aliases: ["endpoint"],
             effective_at: "2026-04-08T00:00:00.000Z",
+            content_blocks: [
+              {
+                id: "knowledge-1-revision-2-block-1",
+                revision_id: "knowledge-1-revision-2",
+                block_type: "text_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  text: "Rich-space canonical explanation.",
+                },
+              },
+            ],
+            semantic_layer: {
+              revision_id: "knowledge-1-revision-2",
+              status: "confirmed",
+              page_summary: "Operator-confirmed summary.",
+              retrieval_terms: ["endpoint"],
+              retrieval_snippets: ["screening rule"],
+            },
             bindings: [
               {
                 id: "knowledge-1-revision-2-binding-1",
@@ -122,6 +140,7 @@ test("knowledge library workbench page renders the standalone authoring shell", 
             title: "Primary endpoint rule",
             canonical_text: "Clinical studies must define the primary endpoint.",
             knowledge_kind: "rule",
+            content_blocks: [],
             routing: {
               module_scope: "screening",
               manuscript_types: ["clinical_study"],
@@ -140,6 +159,7 @@ test("knowledge library workbench page renders the standalone authoring shell", 
               canonical_text:
                 "Clinical studies must define the primary endpoint before screening sign-off.",
               knowledge_kind: "rule",
+              content_blocks: [],
               routing: {
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
@@ -156,6 +176,7 @@ test("knowledge library workbench page renders the standalone authoring shell", 
               title: "Primary endpoint rule",
               canonical_text: "Clinical studies must define the primary endpoint.",
               knowledge_kind: "rule",
+              content_blocks: [],
               routing: {
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
@@ -171,17 +192,18 @@ test("knowledge library workbench page renders the standalone authoring shell", 
   );
 
   assert.match(markup, /Knowledge Library/);
-  assert.match(markup, /Authoring Pipeline/);
-  assert.match(markup, /Library Queue/);
-  assert.match(markup, /Draft Editor/);
-  assert.match(markup, /Duplicate Signals/);
-  assert.match(markup, /Structured Bindings/);
-  assert.match(markup, /Revision Timeline/);
-  assert.match(markup, /Not checked/);
+  assert.match(markup, /Knowledge Summary/);
+  assert.match(markup, /Search knowledge/);
+  assert.match(markup, /Keyword Search/);
+  assert.match(markup, /Semantic Search/);
+  assert.match(markup, /AI Semantic Status/);
+  assert.match(markup, /Record Drawer/);
+  assert.match(markup, /knowledge-library-grid-table/);
+  assert.match(markup, /knowledge-library-record-drawer/);
   assert.match(markup, /Primary endpoint rule draft/);
   assert.match(markup, /knowledge-1-revision-2/);
   assert.match(markup, /Screening Template/);
-  assert.match(markup, /knowledge-library-side-column/);
+  assert.doesNotMatch(markup, /Draft Editor/);
 });
 
 test("knowledge library duplicate status row renders all inline states", () => {

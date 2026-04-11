@@ -141,6 +141,29 @@ const expectedTableColumns: Record<string, string[]> = {
     "binding_target_label",
     "created_at",
   ],
+  knowledge_revision_content_blocks: [
+    "id",
+    "revision_id",
+    "block_type",
+    "order_no",
+    "status",
+    "content_payload",
+    "table_semantics",
+    "image_understanding",
+    "created_at",
+    "updated_at",
+  ],
+  knowledge_semantic_layers: [
+    "revision_id",
+    "status",
+    "page_summary",
+    "retrieval_terms",
+    "retrieval_snippets",
+    "table_semantics",
+    "image_understanding",
+    "created_at",
+    "updated_at",
+  ],
   knowledge_review_actions: [
     "id",
     "knowledge_item_id",
@@ -595,6 +618,10 @@ const expectedIndexes = [
   "knowledge_revisions_status_updated_at_idx",
   "knowledge_revisions_asset_status_updated_at_idx",
   "knowledge_revision_bindings_revision_id_created_at_idx",
+  "knowledge_revision_content_blocks_revision_id_order_no_idx",
+  "knowledge_revision_content_blocks_status_idx",
+  "knowledge_revision_content_blocks_block_type_idx",
+  "knowledge_semantic_layers_status_idx",
   "knowledge_review_actions_knowledge_item_id_created_at_idx",
   "knowledge_review_actions_revision_id_created_at_idx",
   "knowledge_duplicate_acknowledgements_revision_created_at_idx",
@@ -934,6 +961,7 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0030_knowledge_library_v1_revision_governance.sql",
       "0031_knowledge_duplicate_detection_acknowledgements.sql",
       "0032_ai_provider_control_plane.sql",
+      "0033_knowledge_library_rich_space.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1498,7 +1526,9 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
             '0028_medical_rule_library_v2_foundations.sql',
             '0029_learning_reviewed_snapshot_source_kind.sql',
             '0030_knowledge_library_v1_revision_governance.sql',
-            '0031_knowledge_duplicate_detection_acknowledgements.sql'
+            '0031_knowledge_duplicate_detection_acknowledgements.sql',
+            '0032_ai_provider_control_plane.sql',
+            '0033_knowledge_library_rich_space.sql'
           )
           order by version
         `,
@@ -1521,6 +1551,14 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
         {
           version: "0031_knowledge_duplicate_detection_acknowledgements.sql",
           checksum: getMigrationChecksum("0031_knowledge_duplicate_detection_acknowledgements.sql"),
+        },
+        {
+          version: "0032_ai_provider_control_plane.sql",
+          checksum: getMigrationChecksum("0032_ai_provider_control_plane.sql"),
+        },
+        {
+          version: "0033_knowledge_library_rich_space.sql",
+          checksum: getMigrationChecksum("0033_knowledge_library_rich_space.sql"),
         },
       ]);
     } finally {

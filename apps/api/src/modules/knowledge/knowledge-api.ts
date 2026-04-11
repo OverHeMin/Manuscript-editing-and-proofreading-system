@@ -4,24 +4,33 @@ import type {
   HarnessDatasetDraftCandidateRecord,
   HarnessDatasetService,
 } from "../harness-datasets/harness-dataset-service.ts";
-import { KnowledgeService } from "./knowledge-service.ts";
+import { normalizeKnowledgeContentBlocksInput } from "./knowledge-content-block-normalizer.ts";
+import type { KnowledgeSemanticLayerService } from "./knowledge-semantic-layer-service.ts";
+import { KnowledgeAssetNotFoundError, KnowledgeService } from "./knowledge-service.ts";
 import type {
+  ConfirmKnowledgeSemanticLayerInput,
   CreateKnowledgeLibraryDraftInput,
   GovernedRetrievalContextRecord,
+  KnowledgeContentBlockInput,
   SubmitKnowledgeForReviewInput,
   SubmitKnowledgeRevisionForReviewInput,
   KnowledgeAssetDetailRecord,
+  KnowledgeRevisionDetailRecord,
+  RegenerateKnowledgeSemanticLayerInput,
+  ReplaceKnowledgeRevisionContentBlocksInput,
   ResolveGovernedRetrievalContextInput,
   CreateKnowledgeDraftInput,
   UpdateKnowledgeRevisionDraftInput,
   UpdateKnowledgeDraftInput,
 } from "./knowledge-service.ts";
 import type { KnowledgeRetrievalSnapshotRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
+import type { CreateKnowledgeUploadInput, KnowledgeUploadRecord, KnowledgeUploadService } from "./knowledge-upload-service.ts";
 import type {
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeDuplicateCheckInput,
   KnowledgeDuplicateMatchRecord,
   KnowledgeRecord,
+  KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 
@@ -30,13 +39,42 @@ interface RouteResponse<T> {
   body: T;
 }
 
+export type KnowledgeLibraryQueryMode = "keyword" | "semantic";
+
+export interface KnowledgeLibraryListItemRecord {
+  asset_id: string;
+  title: string;
+  summary?: string;
+  knowledge_kind: KnowledgeRecord["knowledge_kind"];
+  status: string;
+  module_scope: KnowledgeRecord["routing"]["module_scope"];
+  manuscript_types: KnowledgeRecord["routing"]["manuscript_types"];
+  selected_revision_id?: string;
+  semantic_status?: KnowledgeSemanticLayerRecord["status"];
+  content_block_count: number;
+  updated_at?: string;
+}
+
+export interface KnowledgeLibraryListResponse {
+  query_mode: KnowledgeLibraryQueryMode;
+  search?: string;
+  items: KnowledgeLibraryListItemRecord[];
+}
+
 export interface CreateKnowledgeApiOptions {
   knowledgeService: KnowledgeService;
   harnessDatasetService?: HarnessDatasetService;
+  semanticLayerService?: KnowledgeSemanticLayerService;
+  uploadService?: KnowledgeUploadService;
 }
 
 export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
-  const { knowledgeService, harnessDatasetService } = options;
+  const {
+    knowledgeService,
+    harnessDatasetService,
+    semanticLayerService,
+    uploadService,
+  } = options;
 
   return {
     async checkDuplicates(
@@ -215,10 +253,82 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       };
     },
 
+    async replaceRevisionContentBlocks({
+      revisionId,
+      input,
+    }: {
+      revisionId: string;
+      input: ReplaceKnowledgeRevisionContentBlocksInput | { blocks?: unknown };
+    }): Promise<RouteResponse<KnowledgeRevisionDetailRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.replaceRevisionContentBlocks(
+          revisionId,
+          await normalizeKnowledgeContentBlocksInput(input, { uploadService }),
+        ),
+      };
+    },
+
+    async regenerateSemanticLayer({
+      revisionId,
+      input,
+    }: {
+      revisionId: string;
+      input?: RegenerateKnowledgeSemanticLayerInput;
+    }): Promise<RouteResponse<KnowledgeRevisionDetailRecord>> {
+      const generatedInput = semanticLayerService
+        ? await semanticLayerService.buildSemanticLayerDraft(revisionId)
+        : {};
+      return {
+        status: 200,
+        body: await knowledgeService.regenerateSemanticLayer(revisionId, {
+          ...generatedInput,
+          ...input,
+        }),
+      };
+    },
+
+    async confirmSemanticLayer({
+      revisionId,
+      input,
+    }: {
+      revisionId: string;
+      input?: ConfirmKnowledgeSemanticLayerInput;
+    }): Promise<RouteResponse<KnowledgeRevisionDetailRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.confirmSemanticLayer(revisionId, input),
+      };
+    },
+
     async listKnowledgeItems(): Promise<RouteResponse<KnowledgeRecord[]>> {
       return {
         status: 200,
         body: await knowledgeService.listKnowledgeItems(),
+      };
+    },
+
+    async listLibrary({
+      search,
+      queryMode,
+    }: {
+      search?: string;
+      queryMode?: KnowledgeLibraryQueryMode;
+    }): Promise<RouteResponse<KnowledgeLibraryListResponse>> {
+      const normalizedQueryMode = queryMode === "semantic" ? "semantic" : "keyword";
+      const items = await buildKnowledgeLibraryListItems({
+        knowledgeService,
+        search,
+        queryMode: normalizedQueryMode,
+      });
+
+      return {
+        status: 200,
+        body: {
+          query_mode: normalizedQueryMode,
+          ...(search ? { search } : {}),
+          items,
+        },
       };
     },
 
@@ -299,6 +409,21 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       };
     },
 
+    async uploadImage({
+      input,
+    }: {
+      input: CreateKnowledgeUploadInput;
+    }): Promise<RouteResponse<KnowledgeUploadRecord>> {
+      if (!uploadService) {
+        throw new Error("Knowledge upload service is not configured.");
+      }
+
+      return {
+        status: 201,
+        body: await uploadService.createImageUpload(input),
+      };
+    },
+
     async createHarnessDatasetCandidateFromHumanFinalAsset({
       actorRole,
       humanFinalAssetId,
@@ -324,4 +449,96 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       };
     },
   };
+}
+
+async function buildKnowledgeLibraryListItems(input: {
+  knowledgeService: KnowledgeService;
+  search?: string;
+  queryMode: KnowledgeLibraryQueryMode;
+}): Promise<KnowledgeLibraryListItemRecord[]> {
+  const records = await input.knowledgeService.listKnowledgeItems();
+  const normalizedSearch = normalizeSearchTerm(input.search);
+  const items = await Promise.all(
+    records.map(async (record) => {
+      let detail: KnowledgeAssetDetailRecord | undefined;
+      try {
+        detail = await input.knowledgeService.getKnowledgeAsset(record.id);
+      } catch (error) {
+        if (!(error instanceof KnowledgeAssetNotFoundError)) {
+          throw error;
+        }
+        detail = undefined;
+      }
+
+      const selectedRevision = detail?.selected_revision;
+      const semanticLayer = selectedRevision?.semantic_layer;
+      const searchHaystack =
+        input.queryMode === "semantic"
+          ? buildSemanticSearchHaystack(semanticLayer)
+          : buildKeywordSearchHaystack(record, selectedRevision);
+
+      if (
+        normalizedSearch &&
+        !searchHaystack.some((value) => value.includes(normalizedSearch))
+      ) {
+        return undefined;
+      }
+
+      return {
+        asset_id: record.id,
+        title: record.title,
+        ...(record.summary ? { summary: record.summary } : {}),
+        knowledge_kind: record.knowledge_kind,
+        status: selectedRevision?.status ?? record.status,
+        module_scope: record.routing.module_scope,
+        manuscript_types: record.routing.manuscript_types,
+        ...(selectedRevision ? { selected_revision_id: selectedRevision.id } : {}),
+        ...(semanticLayer ? { semantic_status: semanticLayer.status } : {}),
+        content_block_count: selectedRevision?.content_blocks.length ?? 0,
+        ...(selectedRevision?.updated_at
+          ? { updated_at: selectedRevision.updated_at }
+          : {}),
+      } satisfies KnowledgeLibraryListItemRecord;
+    }),
+  );
+
+  return items.filter((item): item is KnowledgeLibraryListItemRecord => item != null);
+}
+
+function normalizeSearchTerm(search: string | undefined): string {
+  return search?.trim().toLowerCase() ?? "";
+}
+
+function buildKeywordSearchHaystack(
+  record: KnowledgeRecord,
+  selectedRevision?: KnowledgeRevisionDetailRecord,
+): string[] {
+  return [
+    record.title,
+    record.canonical_text,
+    record.summary ?? "",
+    ...(selectedRevision?.content_blocks.flatMap((block) =>
+      Object.values(block.content_payload).filter(
+        (value): value is string => typeof value === "string",
+      ),
+    ) ?? []),
+  ]
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
+function buildSemanticSearchHaystack(
+  semanticLayer: KnowledgeSemanticLayerRecord | undefined,
+): string[] {
+  if (!semanticLayer || semanticLayer.status !== "confirmed") {
+    return [];
+  }
+
+  return [
+    semanticLayer.page_summary ?? "",
+    ...(semanticLayer.retrieval_terms ?? []),
+    ...(semanticLayer.retrieval_snippets ?? []),
+  ]
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
 }

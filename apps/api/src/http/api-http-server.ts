@@ -153,16 +153,23 @@ import {
 } from "../modules/feedback-governance/index.ts";
 import {
   createKnowledgeApi,
+  KnowledgeContentBlockOrderError,
+  KnowledgeContentBlockPayloadInvalidError,
   KnowledgeAssetNotFoundError,
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
   KnowledgeItemNotFoundError,
+  KnowledgeSemanticLayerNotFoundError,
+  KnowledgeSemanticLayerService,
   KnowledgeRevisionNotFoundError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
+  KnowledgeUploadNotFoundError,
+  KnowledgeUploadService,
   KnowledgeRetrievalSnapshotNotFoundError,
   type CreateKnowledgeLibraryDraftInput,
   type CreateKnowledgeDraftInput,
+  type CreateKnowledgeUploadInput,
   type KnowledgeDuplicateAcknowledgementRecord,
   type KnowledgeDuplicateCheckInput,
   type KnowledgeDuplicateSeverity,
@@ -649,14 +656,29 @@ type HttpRouteMatch =
       route: "knowledge-reject-revision";
       revisionId: string;
     }
-  | {
-      route: "knowledge-update-revision-draft";
-      revisionId: string;
-    }
-  | {
-      route: "knowledge-revision-review-actions";
-      revisionId: string;
-    }
+    | {
+        route: "knowledge-update-revision-draft";
+        revisionId: string;
+      }
+    | {
+        route: "knowledge-replace-content-blocks";
+        revisionId: string;
+      }
+    | {
+        route: "knowledge-regenerate-semantic-layer";
+        revisionId: string;
+      }
+    | {
+        route: "knowledge-confirm-semantic-layer";
+        revisionId: string;
+      }
+    | {
+        route: "knowledge-upload-image";
+      }
+    | {
+        route: "knowledge-revision-review-actions";
+        revisionId: string;
+      }
   | {
       route: "templates-create-family";
     }
@@ -1412,8 +1434,16 @@ export function createInMemoryApiRuntime(input: {
       agentRuntimeService,
       runtimeBindingService,
       runtimeBindingReadinessService,
-      toolPermissionPolicyService,
-    },
+        toolPermissionPolicyService,
+      },
+    });
+  const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
+    repository: knowledgeRepository,
+  });
+  const knowledgeUploadService = new KnowledgeUploadService({
+    rootDir: input.uploadRootDir,
+    createId: () => nextId("knowledge-upload"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
@@ -1609,6 +1639,8 @@ export function createInMemoryApiRuntime(input: {
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      semanticLayerService: knowledgeSemanticLayerService,
+      uploadService: knowledgeUploadService,
       harnessDatasetService,
     }),
     learningApi: createLearningApi({ learningService }),
@@ -3847,8 +3879,16 @@ async function handleRoute(
         (await readJsonBody(req)) as CreateKnowledgeDraftInput,
       );
     case "knowledge-library-list":
-      await requirePermission(req, runtime, "knowledge.review");
-      return runtime.knowledgeApi.listKnowledgeItems();
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.listLibrary({
+          search: coalesceOptionalString(
+            readRequestUrl(req).searchParams.get("search") ?? undefined,
+          ),
+          queryMode:
+            readRequestUrl(req).searchParams.get("queryMode") === "semantic"
+              ? "semantic"
+              : "keyword",
+        });
     case "knowledge-get-asset":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.getKnowledgeAsset({
@@ -3910,16 +3950,39 @@ async function handleRoute(
       });
     }
     case "knowledge-update-revision-draft":
-      await requirePermission(req, runtime, "knowledge.review");
-      return runtime.knowledgeApi.updateRevisionDraft({
-        revisionId: routeMatch.revisionId,
-        input: (await readJsonBody(req)) as UpdateKnowledgeRevisionDraftInput,
-      });
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.updateRevisionDraft({
+          revisionId: routeMatch.revisionId,
+          input: (await readJsonBody(req)) as UpdateKnowledgeRevisionDraftInput,
+        });
+    case "knowledge-replace-content-blocks":
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.replaceRevisionContentBlocks({
+          revisionId: routeMatch.revisionId,
+          input: (await readJsonBody(req)) as { blocks?: unknown },
+        });
+    case "knowledge-regenerate-semantic-layer":
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.regenerateSemanticLayer({
+          revisionId: routeMatch.revisionId,
+          input: (await readJsonBody(req)) as Record<string, unknown>,
+        });
+    case "knowledge-confirm-semantic-layer":
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.confirmSemanticLayer({
+          revisionId: routeMatch.revisionId,
+          input: (await readJsonBody(req)) as Record<string, unknown>,
+        });
+    case "knowledge-upload-image":
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.uploadImage({
+          input: (await readJsonBody(req)) as CreateKnowledgeUploadInput,
+        });
     case "knowledge-revision-review-actions":
-      await requirePermission(req, runtime, "knowledge.review");
-      return runtime.knowledgeApi.listReviewActionsByRevision({
-        revisionId: routeMatch.revisionId,
-      });
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.listReviewActionsByRevision({
+          revisionId: routeMatch.revisionId,
+        });
     case "knowledge-list":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.listKnowledgeItems();
@@ -5550,9 +5613,13 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-library-list" };
   }
 
-  if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
-    return { route: "knowledge-create-library-draft" };
-  }
+    if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
+      return { route: "knowledge-create-library-draft" };
+    }
+
+    if (method === "POST" && path === "/api/v1/knowledge/uploads") {
+      return { route: "knowledge-upload-image" };
+    }
 
   if (method === "POST" && path === "/api/v1/knowledge/duplicate-check") {
     return { route: "knowledge-duplicate-check" };
@@ -5758,18 +5825,48 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
-  const knowledgeRevisionDraftMatch = path.match(
-    /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/draft$/,
-  );
-  if (method === "POST" && knowledgeRevisionDraftMatch) {
-    return {
-      route: "knowledge-update-revision-draft",
-      revisionId: knowledgeRevisionDraftMatch[1],
-    };
-  }
+    const knowledgeRevisionDraftMatch = path.match(
+      /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/draft$/,
+    );
+    if (method === "POST" && knowledgeRevisionDraftMatch) {
+      return {
+        route: "knowledge-update-revision-draft",
+        revisionId: knowledgeRevisionDraftMatch[1],
+      };
+    }
 
-  return null;
-}
+    const knowledgeRevisionContentBlocksMatch = path.match(
+      /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/content-blocks\/replace$/,
+    );
+    if (method === "POST" && knowledgeRevisionContentBlocksMatch) {
+      return {
+        route: "knowledge-replace-content-blocks",
+        revisionId: knowledgeRevisionContentBlocksMatch[1],
+      };
+    }
+
+    const knowledgeSemanticLayerRegenerateMatch = path.match(
+      /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/semantic-layer\/regenerate$/,
+    );
+    if (method === "POST" && knowledgeSemanticLayerRegenerateMatch) {
+      return {
+        route: "knowledge-regenerate-semantic-layer",
+        revisionId: knowledgeSemanticLayerRegenerateMatch[1],
+      };
+    }
+
+    const knowledgeSemanticLayerConfirmMatch = path.match(
+      /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/semantic-layer\/confirm$/,
+    );
+    if (method === "POST" && knowledgeSemanticLayerConfirmMatch) {
+      return {
+        route: "knowledge-confirm-semantic-layer",
+        revisionId: knowledgeSemanticLayerConfirmMatch[1],
+      };
+    }
+
+    return null;
+  }
 
 function readRequestPath(req: IncomingMessage): string {
   return readRequestUrl(req).pathname;
@@ -5905,6 +6002,8 @@ function mapErrorToHttpResponse(
     error instanceof KnowledgeAssetNotFoundError ||
     error instanceof KnowledgeItemNotFoundError ||
     error instanceof KnowledgeRevisionNotFoundError ||
+    error instanceof KnowledgeSemanticLayerNotFoundError ||
+    error instanceof KnowledgeUploadNotFoundError ||
     error instanceof LearningCandidateNotFoundError ||
     error instanceof ReviewedCaseSnapshotNotFoundError ||
     error instanceof LearningWritebackNotFoundError ||
@@ -6003,8 +6102,10 @@ function mapErrorToHttpResponse(
   }
 
   if (
-    error instanceof LearningHumanFinalAssetRequiredError ||
-    error instanceof LearningDeidentificationRequiredError ||
+      error instanceof LearningHumanFinalAssetRequiredError ||
+      error instanceof KnowledgeContentBlockOrderError ||
+      error instanceof KnowledgeContentBlockPayloadInvalidError ||
+      error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
     error instanceof ReviewedCaseSourceAssetPayloadError ||
