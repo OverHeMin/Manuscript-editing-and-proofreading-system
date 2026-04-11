@@ -242,10 +242,18 @@ export function createEvaluationRun(
       actorRole: input.actorRole,
       input: {
         suiteId: input.suiteId,
-        sampleSetId: input.sampleSetId,
-        baselineBinding: input.baselineBinding,
-        candidateBinding: input.candidateBinding,
-        releaseCheckProfileId: input.releaseCheckProfileId,
+        ...(input.sampleSetId !== undefined
+          ? { sampleSetId: input.sampleSetId }
+          : {}),
+        ...(input.baselineBinding !== undefined
+          ? { baselineBinding: input.baselineBinding }
+          : {}),
+        ...(input.candidateBinding !== undefined
+          ? { candidateBinding: input.candidateBinding }
+          : {}),
+        ...(input.releaseCheckProfileId !== undefined
+          ? { releaseCheckProfileId: input.releaseCheckProfileId }
+          : {}),
       },
     },
   });

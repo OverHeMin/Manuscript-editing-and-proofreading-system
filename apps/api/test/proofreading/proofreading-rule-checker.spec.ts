@@ -136,6 +136,58 @@ test("instruction assembler combines structured template fields, hard rules, and
   ]);
 });
 
+test("instruction assembler honors governed manual review confidence thresholds", () => {
+  const instructionPayload = assembleInstructionTemplate({
+    promptTemplate: {
+      id: "prompt-editing-1",
+      name: "editing_mainline",
+      version: "1.0.0",
+      status: "published",
+      module: "editing",
+      manuscript_types: ["clinical_study"],
+      template_kind: "editing_instruction",
+      system_instructions: "Apply editorial rules without changing medical meaning.",
+      task_frame: "Apply deterministic rules first, then stage AI-only candidates.",
+      allowed_content_operations: ["sentence_rewrite", "paragraph_reshape"],
+      forbidden_operations: ["fabrication", "meaning_shift"],
+      manual_review_policy: "Escalate any content rewrite with medical meaning risk.",
+      output_contract: "Return applied changes and staged manual review items.",
+    },
+    ruleSet: {
+      id: "rule-set-1",
+      template_family_id: "family-1",
+      module: "editing",
+      version_no: 1,
+      status: "published",
+    },
+    rules: createRules(),
+    knowledgeSelections: [],
+    manualReviewPolicy: {
+      id: "manual-review-editing-1",
+      module: "editing",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      name: "Editing relaxed review",
+      min_confidence_threshold: 0.7,
+      high_risk_force_review: false,
+      conflict_force_review: false,
+      insufficient_knowledge_force_review: false,
+      status: "active",
+      version: 1,
+    },
+  } as never);
+
+  assert.deepEqual(instructionPayload.manualReviewItems, []);
+  assert.deepEqual(instructionPayload.contentRuleCandidates, [
+    {
+      ruleId: "rule-discussion-reshape",
+      reason: "medical_meaning_risk",
+      severity: "warning",
+      actionKind: "rewrite_content",
+    },
+  ]);
+});
+
 test("proofreading checker reports failed rule checks without applying manuscript changes", () => {
   const findings = inspectProofreadingRules({
     blocks: [
@@ -157,6 +209,35 @@ test("proofreading checker reports failed rule checks without applying manuscrip
       reason: "medical_meaning_risk",
     },
   ]);
+});
+
+test("proofreading checker honors governed manual review confidence thresholds", () => {
+  const findings = inspectProofreadingRules({
+    blocks: [
+      {
+        section: "abstract",
+        block_kind: "heading",
+        text: BEFORE_HEADING,
+      },
+    ],
+    rules: createRules(),
+    manualReviewPolicy: {
+      id: "manual-review-proofreading-1",
+      module: "proofreading",
+      manuscript_type: "clinical_study",
+      template_family_id: "family-1",
+      name: "Proofreading relaxed review",
+      min_confidence_threshold: 0.7,
+      high_risk_force_review: false,
+      conflict_force_review: false,
+      insufficient_knowledge_force_review: false,
+      status: "active",
+      version: 1,
+    },
+  } as never);
+
+  assert.equal(findings.failedChecks[0]?.expected, AFTER_HEADING);
+  assert.deepEqual(findings.manualReviewItems, []);
 });
 
 test("proofreading checker reports shared table semantic hits with override metadata", () => {

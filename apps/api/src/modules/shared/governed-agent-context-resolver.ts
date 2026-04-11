@@ -434,6 +434,34 @@ async function maybeRecordGovernedRetrievalSnapshot(input: {
   const snapshotItems = knowledgeSelections.map((selection, index) =>
     buildSnapshotItem(selection.knowledgeItem.id, index, selection),
   );
+  const retrievalPreset = input.moduleContext.retrievalPreset;
+  const retrievalTopK =
+    retrievalPreset?.top_k ?? Math.max(snapshotItems.length, 1);
+  const retrievalFilters = {
+    source: "governed_agent_context",
+    ...(retrievalPreset?.section_filters?.length
+      ? {
+          section_filters: [...retrievalPreset.section_filters],
+        }
+      : {}),
+    ...(retrievalPreset?.risk_tag_filters?.length
+      ? {
+          risk_tag_filters: [...retrievalPreset.risk_tag_filters],
+        }
+      : {}),
+    ...(retrievalPreset?.min_retrieval_score !== undefined
+      ? {
+          min_retrieval_score: retrievalPreset.min_retrieval_score,
+        }
+      : {}),
+    ...(retrievalPreset
+      ? {
+          retrieval_preset_id: retrievalPreset.id,
+          citation_required: retrievalPreset.citation_required,
+          rerank_enabled: retrievalPreset.rerank_enabled,
+        }
+      : {}),
+  };
 
   try {
     const snapshot = await input.knowledgeRetrievalService.recordRetrievalSnapshot({
@@ -451,19 +479,26 @@ async function maybeRecordGovernedRetrievalSnapshot(input: {
         execution_profile_id: input.moduleContext.executionProfile.id,
         module_template_id: input.moduleContext.moduleTemplate.id,
         prompt_template_id: input.moduleContext.promptTemplate.id,
+        retrieval_preset_id: retrievalPreset?.id,
+        manual_review_policy_id: input.moduleContext.manualReviewPolicy?.id,
         knowledge_item_ids: knowledgeSelections.map(
           (selection) => selection.knowledgeItem.id,
         ),
       },
       retrieverConfig: {
         strategy: "template_pack",
-        topK: Math.max(snapshotItems.length, 1),
-        filters: {
-          source: "governed_agent_context",
-        },
+        topK: retrievalTopK,
+        filters: retrievalFilters,
       },
       retrievedItems: snapshotItems,
-      rerankedItems: snapshotItems,
+      rerankedItems: retrievalPreset?.rerank_enabled
+        ? [...snapshotItems].sort(
+            (left, right) =>
+              (right.rerankScore ?? right.retrievalScore ?? 0) -
+                (left.rerankScore ?? left.retrievalScore ?? 0) ||
+              left.knowledgeItemId.localeCompare(right.knowledgeItemId),
+          )
+        : snapshotItems,
     });
 
     return {
@@ -489,13 +524,14 @@ function buildSnapshotItem(
   return {
     knowledgeItemId,
     retrievalRank: index + 1,
-    retrievalScore: Math.max(0, 1 - index * 0.05),
-    rerankScore: Math.max(0, 1 - index * 0.05),
+    retrievalScore: selection.retrievalScore ?? Math.max(0, 1 - index * 0.05),
+    rerankScore: selection.retrievalScore ?? Math.max(0, 1 - index * 0.05),
     metadata: {
       match_source: selection.matchSource,
       match_source_id: selection.matchSourceId,
       binding_rule_id: selection.bindingRuleId,
       match_reasons: [...selection.matchReasons],
+      retrieval_score: selection.retrievalScore,
     },
   };
 }

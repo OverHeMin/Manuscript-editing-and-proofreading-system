@@ -78,6 +78,10 @@ import {
   ExecutionResolutionService,
 } from "../modules/execution-resolution/index.ts";
 import {
+  createHarnessControlPlaneApi,
+  HarnessControlPlaneService,
+} from "../modules/harness-control-plane/index.ts";
+import {
   createExecutionTrackingApi,
   ExecutionTrackingService,
   ExecutionTrackingSkillPackageVersionMismatchError,
@@ -206,6 +210,11 @@ import {
   LearningWritebackTargetMismatchError,
 } from "../modules/learning-governance/index.ts";
 import {
+  createManualReviewPolicyApi,
+  InMemoryManualReviewPolicyRepository,
+  ManualReviewPolicyService,
+} from "../modules/manual-review-policies/index.ts";
+import {
   InMemoryJobRepository,
   type JobRecord,
 } from "../modules/jobs/index.ts";
@@ -254,6 +263,11 @@ import {
   ProofreadingFinalAssetRequiredError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
+import {
+  createRetrievalPresetApi,
+  InMemoryRetrievalPresetRepository,
+  RetrievalPresetService,
+} from "../modules/retrieval-presets/index.ts";
 import {
   createRuntimeBindingApi,
   InMemoryRuntimeBindingRepository,
@@ -459,6 +473,21 @@ type HttpRouteMatch =
       adapterId: string;
     }
   | {
+      route: "harness-control-plane-get-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+    }
+  | {
+      route: "harness-control-plane-preview";
+    }
+  | {
+      route: "harness-control-plane-activate";
+    }
+  | {
+      route: "harness-control-plane-rollback";
+    }
+  | {
       route: "modules-screening-run";
     }
   | {
@@ -558,6 +587,20 @@ type HttpRouteMatch =
     }
   | {
       route: "runtime-binding-list-by-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "retrieval-preset-list-by-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "manual-review-policy-list-by-scope";
       module: string;
       manuscriptType: string;
       templateFamilyId: string;
@@ -1084,6 +1127,7 @@ export interface ApiServerRuntime {
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
+  harnessControlPlaneApi: ReturnType<typeof createHarnessControlPlaneApi>;
   harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
@@ -1093,6 +1137,8 @@ export interface ApiServerRuntime {
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   modelRoutingGovernanceApi: ReturnType<typeof createModelRoutingGovernanceApi>;
+  retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
+  manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
   runtimeBindingApi: ReturnType<typeof createRuntimeBindingApi>;
   sandboxProfileApi: ReturnType<typeof createSandboxProfileApi>;
@@ -1209,6 +1255,8 @@ export function createInMemoryApiRuntime(input: {
   const modelRoutingGovernanceRepository =
     new InMemoryModelRoutingGovernanceRepository();
   const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
+  const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
+  const manualReviewPolicyRepository = new InMemoryManualReviewPolicyRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
   const toolPermissionPolicyRepository =
@@ -1312,6 +1360,12 @@ export function createInMemoryApiRuntime(input: {
     promptSkillRegistryRepository,
     verificationOpsRepository,
   });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
+  });
   const runtimeBindingReadinessService = new RuntimeBindingReadinessService({
     runtimeBindingService,
     agentRuntimeRepository,
@@ -1382,7 +1436,17 @@ export function createInMemoryApiRuntime(input: {
     modelRoutingPolicyRepository,
     aiProviderConnectionRepository,
     modelRoutingGovernanceService,
+    runtimeBindingService,
+    retrievalPresetService,
+    manualReviewPolicyService,
     runtimeBindingReadinessService,
+  });
+  const harnessControlPlaneService = new HarnessControlPlaneService({
+    executionGovernanceService,
+    runtimeBindingService,
+    modelRoutingGovernanceService,
+    retrievalPresetService,
+    manualReviewPolicyService,
   });
   const aiProviderConnectionService = createAiProviderConnectionService({
     repository: aiProviderConnectionRepository,
@@ -1449,9 +1513,12 @@ export function createInMemoryApiRuntime(input: {
       agentProfileRepository,
       agentRuntimeRepository,
       runtimeBindingRepository,
+      retrievalPresetRepository,
+      manualReviewPolicyRepository,
       toolPermissionPolicyRepository,
       modelRegistryRepository,
       modelRoutingPolicyRepository,
+      modelRoutingGovernanceRepository,
     });
   }
 
@@ -1601,6 +1668,9 @@ export function createInMemoryApiRuntime(input: {
       runtimeBindingReadinessService,
       agentExecutionService,
     }),
+    harnessControlPlaneApi: createHarnessControlPlaneApi({
+      harnessControlPlaneService,
+    }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
     }),
@@ -1624,6 +1694,12 @@ export function createInMemoryApiRuntime(input: {
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
       modelRoutingGovernanceService,
+    }),
+    retrievalPresetApi: createRetrievalPresetApi({
+      retrievalPresetService,
+    }),
+    manualReviewPolicyApi: createManualReviewPolicyApi({
+      manualReviewPolicyService,
     }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
@@ -1961,9 +2037,12 @@ function seedDemoWorkbenchData(input: {
   agentProfileRepository: InMemoryAgentProfileRepository;
   agentRuntimeRepository: InMemoryAgentRuntimeRepository;
   runtimeBindingRepository: InMemoryRuntimeBindingRepository;
+  retrievalPresetRepository: InMemoryRetrievalPresetRepository;
+  manualReviewPolicyRepository: InMemoryManualReviewPolicyRepository;
   toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
   modelRegistryRepository: InMemoryModelRegistryRepository;
   modelRoutingPolicyRepository: InMemoryModelRoutingPolicyRepository;
+  modelRoutingGovernanceRepository: InMemoryModelRoutingGovernanceRepository;
 }): void {
   void input.manuscriptRepository.save({
     id: "manuscript-seeded-1",
@@ -2441,6 +2520,124 @@ function seedDemoWorkbenchData(input: {
     },
     template_overrides: {},
   });
+
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Screening retrieval",
+    top_k: 4,
+    section_filters: ["abstract"],
+    risk_tag_filters: ["triage"],
+    rerank_enabled: true,
+    citation_required: false,
+    min_retrieval_score: 0.5,
+    status: "active",
+    version: 1,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval",
+    top_k: 6,
+    section_filters: ["discussion"],
+    risk_tag_filters: ["grounding"],
+    rerank_enabled: true,
+    citation_required: true,
+    min_retrieval_score: 0.55,
+    status: "active",
+    version: 1,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval preview",
+    top_k: 10,
+    section_filters: ["methods"],
+    risk_tag_filters: ["coverage"],
+    rerank_enabled: false,
+    citation_required: false,
+    min_retrieval_score: 0.4,
+    status: "draft",
+    version: 2,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Proofreading retrieval",
+    top_k: 5,
+    section_filters: ["results"],
+    risk_tag_filters: ["consistency"],
+    rerank_enabled: true,
+    citation_required: false,
+    min_retrieval_score: 0.45,
+    status: "active",
+    version: 1,
+  });
+
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Screening review policy",
+    min_confidence_threshold: 0.75,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["safety-escalation"],
+    status: "active",
+    version: 1,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["unsafe-claim"],
+    status: "active",
+    version: 1,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review preview",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: false,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["statistical-overreach"],
+    status: "draft",
+    version: 2,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Proofreading review policy",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["meaning-change"],
+    status: "active",
+    version: 1,
+  });
 }
 
 async function handleRoute(
@@ -2852,6 +3049,51 @@ async function handleRoute(
       return runtime.harnessIntegrationApi.listExecutionAuditsByAdapterId({
         adapterId: routeMatch.adapterId,
       });
+    case "harness-control-plane-get-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessControlPlaneApi.getScopeEnvironment({
+        input: {
+          module: routeMatch.module as Parameters<
+            typeof runtime.harnessControlPlaneApi.getScopeEnvironment
+          >[0]["input"]["module"],
+          manuscriptType: routeMatch.manuscriptType as Parameters<
+            typeof runtime.harnessControlPlaneApi.getScopeEnvironment
+          >[0]["input"]["manuscriptType"],
+          templateFamilyId: routeMatch.templateFamilyId,
+        },
+      });
+    case "harness-control-plane-preview": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.previewEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.previewEnvironment({
+        input: body.input,
+      });
+    }
+    case "harness-control-plane-activate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.activateEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.activateEnvironment({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "harness-control-plane-rollback": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.rollbackEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.rollbackEnvironment({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3085,6 +3327,30 @@ async function handleRoute(
         >[0]["module"],
         manuscriptType: routeMatch.manuscriptType as Parameters<
           typeof runtime.runtimeBindingApi.listBindingsForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+        activeOnly: routeMatch.activeOnly,
+      });
+    case "retrieval-preset-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.retrievalPresetApi.listPresetsForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.retrievalPresetApi.listPresetsForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.retrievalPresetApi.listPresetsForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+        activeOnly: routeMatch.activeOnly,
+      });
+    case "manual-review-policy-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.manualReviewPolicyApi.listPoliciesForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.manualReviewPolicyApi.listPoliciesForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.manualReviewPolicyApi.listPoliciesForScope
         >[0]["manuscriptType"],
         templateFamilyId: routeMatch.templateFamilyId,
         activeOnly: routeMatch.activeOnly,
@@ -4937,6 +5203,32 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const retrievalPresetByScopeMatch = path.match(
+    /^\/api\/v1\/retrieval-presets\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && retrievalPresetByScopeMatch) {
+    return {
+      route: "retrieval-preset-list-by-scope",
+      module: retrievalPresetByScopeMatch[1],
+      manuscriptType: retrievalPresetByScopeMatch[2],
+      templateFamilyId: retrievalPresetByScopeMatch[3],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
+  }
+
+  const manualReviewPolicyByScopeMatch = path.match(
+    /^\/api\/v1\/manual-review-policies\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && manualReviewPolicyByScopeMatch) {
+    return {
+      route: "manual-review-policy-list-by-scope",
+      module: manualReviewPolicyByScopeMatch[1],
+      manuscriptType: manualReviewPolicyByScopeMatch[2],
+      templateFamilyId: manualReviewPolicyByScopeMatch[3],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
+  }
+
   const runtimeBindingActiveReadinessByScopeMatch = path.match(
     /^\/api\/v1\/runtime-bindings\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)\/active-readiness$/,
   );
@@ -4947,6 +5239,30 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
       manuscriptType: runtimeBindingActiveReadinessByScopeMatch[2],
       templateFamilyId: runtimeBindingActiveReadinessByScopeMatch[3],
     };
+  }
+
+  const harnessControlPlaneScopeMatch = path.match(
+    /^\/api\/v1\/harness-control-plane\/scopes\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && harnessControlPlaneScopeMatch) {
+    return {
+      route: "harness-control-plane-get-scope",
+      module: harnessControlPlaneScopeMatch[1],
+      manuscriptType: harnessControlPlaneScopeMatch[2],
+      templateFamilyId: harnessControlPlaneScopeMatch[3],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/preview") {
+    return { route: "harness-control-plane-preview" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/activate") {
+    return { route: "harness-control-plane-activate" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/rollback") {
+    return { route: "harness-control-plane-rollback" };
   }
 
   const templateFamilyUpdateMatch = path.match(/^\/api\/v1\/templates\/families\/([^/]+)$/);

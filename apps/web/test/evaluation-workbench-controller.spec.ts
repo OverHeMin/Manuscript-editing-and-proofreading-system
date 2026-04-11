@@ -3371,3 +3371,135 @@ test("evaluation workbench controller surfaces honest degradation when fewer tha
     "fewer_than_two_visible_finalized_runs",
   );
 });
+
+test("evaluation workbench controller preserves richer harness candidate binding ids in loaded runs", async () => {
+  const controller = createEvaluationWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/verification-ops/check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/release-check-profiles") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "sample-set-1",
+              name: "Editing samples",
+              module: "editing",
+              manuscript_types: ["clinical_study"],
+              sample_count: 1,
+              source_policy: {
+                source_kind: "reviewed_case_snapshot",
+                requires_deidentification_pass: true,
+                requires_human_final_asset: true,
+              },
+              status: "published",
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "suite-1",
+              name: "Editing suite",
+              suite_type: "regression",
+              status: "active",
+              verification_check_profile_ids: [],
+              module_scope: ["editing"],
+              supports_ab_comparison: true,
+              admin_only: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites/suite-1/runs") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "run-1",
+              suite_id: "suite-1",
+              sample_set_id: "sample-set-1",
+              candidate_binding: {
+                lane: "candidate",
+                execution_profile_id: "profile-preview-2",
+                runtime_binding_id: "binding-preview-2",
+                model_routing_policy_version_id: "routing-preview-2",
+                retrieval_preset_id: "retrieval-preview-2",
+                manual_review_policy_id: "manual-review-preview-2",
+                model_id: "model-preview-2",
+                runtime_id: "runtime-preview-2",
+                prompt_template_id: "prompt-preview-2",
+                skill_package_ids: ["skill-preview-2"],
+                module_template_id: "template-preview-2",
+              },
+              status: "queued",
+              evidence_ids: [],
+              started_at: "2026-04-11T08:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-sample-sets/sample-set-1/items") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-runs/run-1/items") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/verification-ops/evaluation-suites/suite-1/finalized-results?history_window=latest_10"
+      ) {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedSuiteId: "suite-1",
+    selectedRunId: "run-1",
+  });
+  const firstRun = (overview.runs[0] ?? null) as {
+    candidate_binding?: {
+      execution_profile_id?: string;
+      retrieval_preset_id?: string;
+      manual_review_policy_id?: string;
+    };
+  } | null;
+
+  assert.equal(firstRun?.candidate_binding?.execution_profile_id, "profile-preview-2");
+  assert.equal(firstRun?.candidate_binding?.retrieval_preset_id, "retrieval-preview-2");
+  assert.equal(
+    firstRun?.candidate_binding?.manual_review_policy_id,
+    "manual-review-preview-2",
+  );
+});

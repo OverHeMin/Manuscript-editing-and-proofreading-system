@@ -26,7 +26,9 @@ import {
   resolveExecutionBundlePreview,
 } from "../execution-governance/index.ts";
 import type {
+  ManualReviewPolicyViewModel,
   ModuleExecutionProfileViewModel,
+  RetrievalPresetViewModel,
   ResolvedExecutionBundleViewModel,
   ResolveExecutionBundlePreviewInput,
 } from "../execution-governance/index.ts";
@@ -133,6 +135,7 @@ import type {
 } from "../model-routing-governance/index.ts";
 import type { PromptTemplateViewModel, SkillPackageViewModel } from "../prompt-skill-registry/index.ts";
 import {
+  createEvaluationRun,
   getVerificationEvidence,
   listEvaluationSuites,
   listReleaseCheckProfiles,
@@ -140,7 +143,9 @@ import {
 } from "../verification-ops/index.ts";
 import { listSystemSettingsAiProviders } from "../system-settings/system-settings-api.ts";
 import type {
+  EvaluationRunViewModel,
   EvaluationSuiteViewModel,
+  FrozenExperimentBindingInput,
   ReleaseCheckProfileViewModel,
   VerificationCheckProfileViewModel,
   VerificationEvidenceViewModel,
@@ -198,6 +203,34 @@ export interface AdminGovernanceExecutionEvidence {
   knowledgeHitLogs: KnowledgeHitLogViewModel[];
   verificationEvidence: VerificationEvidenceViewModel[];
   unresolvedVerificationEvidenceIds: string[];
+}
+
+export interface HarnessEnvironmentViewModel {
+  execution_profile: ModuleExecutionProfileViewModel;
+  runtime_binding: RuntimeBindingViewModel;
+  model_routing_policy_version: GovernedModelRoutingPolicyViewModel["versions"][number];
+  retrieval_preset: RetrievalPresetViewModel;
+  manual_review_policy: ManualReviewPolicyViewModel;
+}
+
+export interface HarnessEnvironmentPreviewViewModel {
+  active_environment: HarnessEnvironmentViewModel;
+  candidate_environment: HarnessEnvironmentViewModel;
+  diff: {
+    changed_components: Array<
+      | "execution_profile"
+      | "runtime_binding"
+      | "model_routing_policy_version"
+      | "retrieval_preset"
+      | "manual_review_policy"
+    >;
+  };
+}
+
+export interface AdminHarnessScopeViewModel {
+  activeEnvironment: HarnessEnvironmentViewModel;
+  retrievalPresets: RetrievalPresetViewModel[];
+  manualReviewPolicies: ManualReviewPolicyViewModel[];
 }
 
 export interface AdminGovernanceWorkbenchController {
@@ -308,6 +341,41 @@ export interface AdminGovernanceWorkbenchController {
     bindingId: string;
     selectedTemplateFamilyId?: string | null;
   }): Promise<AdminGovernanceOverview>;
+  loadHarnessScope(input: {
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+  }): Promise<AdminHarnessScopeViewModel>;
+  previewHarnessEnvironment(
+    input: ResolveExecutionBundlePreviewInput,
+  ): Promise<HarnessEnvironmentPreviewViewModel>;
+  activateHarnessEnvironment(input: {
+    actorRole: AuthRole;
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+    executionProfileId?: string;
+    runtimeBindingId?: string;
+    modelRoutingPolicyVersionId?: string;
+    retrievalPresetId?: string;
+    manualReviewPolicyId?: string;
+    reason?: string;
+  }): Promise<HarnessEnvironmentViewModel>;
+  rollbackHarnessEnvironment(input: {
+    actorRole: AuthRole;
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+    reason?: string;
+  }): Promise<HarnessEnvironmentViewModel>;
+  createHarnessRun(input: {
+    actorRole: AuthRole;
+    suiteId: string;
+    sampleSetId?: string;
+    baselineBinding?: FrozenExperimentBindingInput;
+    candidateBinding?: FrozenExperimentBindingInput;
+    releaseCheckProfileId?: string;
+  }): Promise<EvaluationRunViewModel>;
   loadExecutionEvidence(logId: string): Promise<AdminGovernanceExecutionEvidence>;
   updateRoutingPolicyAndReload(
     input: UpdateModelRoutingPolicyInput,
@@ -509,6 +577,65 @@ export function createAdminGovernanceWorkbenchController(
       return loadAdminGovernanceOverview(client, {
         selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
       });
+    },
+    async loadHarnessScope(input) {
+      const [scopeResponse, retrievalPresets, manualReviewPolicies] = await Promise.all([
+        getHarnessScopeEnvironment(client, input),
+        listRetrievalPresetsForScope(client, input),
+        listManualReviewPoliciesForScope(client, input),
+      ]);
+
+      return {
+        activeEnvironment: scopeResponse.body.active_environment,
+        retrievalPresets: retrievalPresets.body,
+        manualReviewPolicies: manualReviewPolicies.body,
+      };
+    },
+    async previewHarnessEnvironment(input) {
+      return (await requestHarnessEnvironmentPreview(client, input)).body;
+    },
+    async activateHarnessEnvironment(input) {
+      return (
+        await requestHarnessEnvironmentActivation(client, {
+          actorRole: input.actorRole,
+          input: {
+            module: input.module,
+            manuscriptType: input.manuscriptType,
+            templateFamilyId: input.templateFamilyId,
+            executionProfileId: input.executionProfileId,
+            runtimeBindingId: input.runtimeBindingId,
+            modelRoutingPolicyVersionId: input.modelRoutingPolicyVersionId,
+            retrievalPresetId: input.retrievalPresetId,
+            manualReviewPolicyId: input.manualReviewPolicyId,
+            reason: input.reason,
+          },
+        })
+      ).body;
+    },
+    async rollbackHarnessEnvironment(input) {
+      return (
+        await requestHarnessEnvironmentRollback(client, {
+          actorRole: input.actorRole,
+          input: {
+            module: input.module,
+            manuscriptType: input.manuscriptType,
+            templateFamilyId: input.templateFamilyId,
+            reason: input.reason,
+          },
+        })
+      ).body;
+    },
+    async createHarnessRun(input) {
+      return (
+        await createEvaluationRun(client, {
+          actorRole: input.actorRole,
+          suiteId: input.suiteId,
+          sampleSetId: input.sampleSetId,
+          baselineBinding: input.baselineBinding,
+          candidateBinding: input.candidateBinding,
+          releaseCheckProfileId: input.releaseCheckProfileId,
+        })
+      ).body;
     },
     loadExecutionEvidence(logId) {
       return loadAdminGovernanceExecutionEvidence(client, logId);
@@ -748,6 +875,119 @@ async function loadHarnessAdapterHealth(
   return executionResponses.map(({ adapter, executions }) =>
     buildHarnessAdapterHealth(adapter, executions),
   );
+}
+
+function getHarnessScopeEnvironment(
+  client: AdminGovernanceHttpClient,
+  input: {
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+  },
+) {
+  return client.request<{ active_environment: HarnessEnvironmentViewModel }>({
+    method: "GET",
+    url: `/api/v1/harness-control-plane/scopes/${encodeURIComponent(input.module)}/${encodeURIComponent(input.manuscriptType)}/${encodeURIComponent(input.templateFamilyId)}`,
+  });
+}
+
+function listRetrievalPresetsForScope(
+  client: AdminGovernanceHttpClient,
+  input: {
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+  },
+) {
+  return client.request<RetrievalPresetViewModel[]>({
+    method: "GET",
+    url: `/api/v1/retrieval-presets/by-scope/${encodeURIComponent(input.module)}/${encodeURIComponent(input.manuscriptType)}/${encodeURIComponent(input.templateFamilyId)}`,
+  });
+}
+
+function listManualReviewPoliciesForScope(
+  client: AdminGovernanceHttpClient,
+  input: {
+    module: ModuleExecutionProfileViewModel["module"];
+    manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+    templateFamilyId: string;
+  },
+) {
+  return client.request<ManualReviewPolicyViewModel[]>({
+    method: "GET",
+    url: `/api/v1/manual-review-policies/by-scope/${encodeURIComponent(input.module)}/${encodeURIComponent(input.manuscriptType)}/${encodeURIComponent(input.templateFamilyId)}`,
+  });
+}
+
+function requestHarnessEnvironmentPreview(
+  client: AdminGovernanceHttpClient,
+  input: ResolveExecutionBundlePreviewInput,
+) {
+  return client.request<HarnessEnvironmentPreviewViewModel>({
+    method: "POST",
+    url: "/api/v1/harness-control-plane/preview",
+    body: {
+      input: {
+        module: input.module,
+        manuscriptType: input.manuscriptType,
+        templateFamilyId: input.templateFamilyId,
+        executionProfileId: input.executionProfileId,
+        runtimeBindingId: input.runtimeBindingId,
+        modelRoutingPolicyVersionId: input.modelRoutingPolicyVersionId,
+        retrievalPresetId: input.retrievalPresetId,
+        manualReviewPolicyId: input.manualReviewPolicyId,
+      },
+    },
+  });
+}
+
+function requestHarnessEnvironmentActivation(
+  client: AdminGovernanceHttpClient,
+  input: {
+    actorRole: AuthRole;
+    input: {
+      module: ModuleExecutionProfileViewModel["module"];
+      manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+      templateFamilyId: string;
+      executionProfileId?: string;
+      runtimeBindingId?: string;
+      modelRoutingPolicyVersionId?: string;
+      retrievalPresetId?: string;
+      manualReviewPolicyId?: string;
+      reason?: string;
+    };
+  },
+) {
+  return client.request<HarnessEnvironmentViewModel>({
+    method: "POST",
+    url: "/api/v1/harness-control-plane/activate",
+    body: {
+      actorRole: input.actorRole,
+      input: input.input,
+    },
+  });
+}
+
+function requestHarnessEnvironmentRollback(
+  client: AdminGovernanceHttpClient,
+  input: {
+    actorRole: AuthRole;
+    input: {
+      module: ModuleExecutionProfileViewModel["module"];
+      manuscriptType: ModuleExecutionProfileViewModel["manuscript_type"];
+      templateFamilyId: string;
+      reason?: string;
+    };
+  },
+) {
+  return client.request<HarnessEnvironmentViewModel>({
+    method: "POST",
+    url: "/api/v1/harness-control-plane/rollback",
+    body: {
+      actorRole: input.actorRole,
+      input: input.input,
+    },
+  });
 }
 
 function buildHarnessAdapterHealth(

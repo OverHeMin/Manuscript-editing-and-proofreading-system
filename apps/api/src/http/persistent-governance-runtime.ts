@@ -67,6 +67,10 @@ import {
   ExecutionResolutionService,
 } from "../modules/execution-resolution/index.ts";
 import {
+  createHarnessControlPlaneApi,
+  HarnessControlPlaneService,
+} from "../modules/harness-control-plane/index.ts";
+import {
   createExecutionTrackingApi,
   ExecutionTrackingService,
   PostgresExecutionTrackingRepository,
@@ -103,6 +107,11 @@ import {
   PostgresLearningGovernanceRepository,
 } from "../modules/learning-governance/index.ts";
 import {
+  createManualReviewPolicyApi,
+  ManualReviewPolicyService,
+  PostgresManualReviewPolicyRepository,
+} from "../modules/manual-review-policies/index.ts";
+import {
   PostgresJobRepository,
 } from "../modules/jobs/index.ts";
 import {
@@ -130,6 +139,11 @@ import {
   createProofreadingApi,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
+import {
+  createRetrievalPresetApi,
+  PostgresRetrievalPresetRepository,
+  RetrievalPresetService,
+} from "../modules/retrieval-presets/index.ts";
 import {
   createRuntimeBindingApi,
   PostgresRuntimeBindingRepository,
@@ -277,6 +291,12 @@ export function createPersistentGovernanceRuntime(
       client: options.client,
     });
   const runtimeBindingRepository = new PostgresRuntimeBindingRepository({
+    client: options.client,
+  });
+  const retrievalPresetRepository = new PostgresRetrievalPresetRepository({
+    client: options.client,
+  });
+  const manualReviewPolicyRepository = new PostgresManualReviewPolicyRepository({
     client: options.client,
   });
   const sandboxProfileRepository = new PostgresSandboxProfileRepository({
@@ -523,6 +543,12 @@ export function createPersistentGovernanceRuntime(
     promptSkillRegistryRepository,
     verificationOpsRepository,
   });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
+  });
   const runtimeBindingReadinessService = new RuntimeBindingReadinessService({
     runtimeBindingService,
     agentRuntimeRepository,
@@ -542,7 +568,17 @@ export function createPersistentGovernanceRuntime(
     modelRoutingPolicyRepository,
     aiProviderConnectionRepository,
     modelRoutingGovernanceService,
+    runtimeBindingService,
+    retrievalPresetService,
+    manualReviewPolicyService,
     runtimeBindingReadinessService,
+  });
+  const harnessControlPlaneService = new HarnessControlPlaneService({
+    executionGovernanceService,
+    runtimeBindingService,
+    modelRoutingGovernanceService,
+    retrievalPresetService,
+    manualReviewPolicyService,
   });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
@@ -561,6 +597,8 @@ export function createPersistentGovernanceRuntime(
       executionGovernanceService,
       promptSkillRegistryRepository,
       aiGatewayService,
+      retrievalPresetService,
+      manualReviewPolicyService,
       sandboxProfileService,
       agentProfileService,
       agentRuntimeService,
@@ -601,6 +639,8 @@ export function createPersistentGovernanceRuntime(
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
+    retrievalPresetService,
+    manualReviewPolicyService,
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
@@ -624,6 +664,8 @@ export function createPersistentGovernanceRuntime(
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
+    retrievalPresetService,
+    manualReviewPolicyService,
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
@@ -649,6 +691,8 @@ export function createPersistentGovernanceRuntime(
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
+    retrievalPresetService,
+    manualReviewPolicyService,
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
@@ -755,6 +799,9 @@ export function createPersistentGovernanceRuntime(
       runtimeBindingReadinessService,
       agentExecutionService,
     }),
+    harnessControlPlaneApi: createHarnessControlPlaneApi({
+      harnessControlPlaneService,
+    }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
     }),
@@ -778,6 +825,12 @@ export function createPersistentGovernanceRuntime(
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
       modelRoutingGovernanceService,
+    }),
+    retrievalPresetApi: createRetrievalPresetApi({
+      retrievalPresetService,
+    }),
+    manualReviewPolicyApi: createManualReviewPolicyApi({
+      manualReviewPolicyService,
     }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,

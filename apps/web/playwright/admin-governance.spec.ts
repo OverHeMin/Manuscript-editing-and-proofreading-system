@@ -21,7 +21,7 @@ test("admin can create a template family and module draft from the governance co
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Harness Control Plane" })).toBeVisible();
 
   const createFamilyPanel = page
     .locator("article.admin-governance-panel")
@@ -54,36 +54,342 @@ test("admin can create a template family and module draft from the governance co
   await expect(moduleDraftPanel).toContainText("draft");
 });
 
-test("admin can preview the seeded governed execution bundle from the governance console", async ({
+test("admin can preview, verify, activate, and roll back the seeded harness environment from the control plane", async ({
   page,
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
+  const harnessRouting = await ensureHarnessRoutingPolicy(request);
+  const suiteId = await prepareHarnessEditingSuite(request, {
+    label: `Harness editing suite ${Date.now()}`,
+  });
 
   await page.goto("/#admin-console", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Admin Governance Console" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Harness Control Plane" })).toBeVisible();
 
-  const executionPanel = page
+  const statusMessage = page.locator(".admin-governance-status");
+  const environmentEditor = page
     .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Execution Governance" }) });
+    .filter({ has: page.getByRole("heading", { name: "Environment Editor" }) });
+  const qualityLab = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Quality Lab" }) });
+  const activationGate = page
+    .locator("article.admin-governance-panel")
+    .filter({ has: page.getByRole("heading", { name: "Activation Gate" }) });
 
-  await executionPanel.getByLabel("Template Family").selectOption({ label: seededFamilyName });
-  await executionPanel.getByLabel("Module").selectOption("editing");
-  await executionPanel.getByRole("button", { name: "Preview Execution Bundle" }).click();
+  const activeEnvironmentCard = environmentEditor.locator(".admin-governance-asset-row").nth(0);
+  const candidatePreviewCard = environmentEditor.locator(".admin-governance-asset-row").nth(1);
+  const diffCard = environmentEditor.locator(".admin-governance-asset-row").nth(2);
 
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    "Resolved execution bundle preview.",
+  await expect(environmentEditor).toContainText("Tune the real governed environment");
+  await expect(qualityLab).toContainText("Launch a candidate-bound verification run");
+  await expect(activationGate).toContainText("Promotion and rollback stay here");
+  await expect(
+    environmentEditor.getByLabel("Routing Version").locator("option"),
+  ).toContainText([harnessRouting.activeVersionId, harnessRouting.candidateVersionId]);
+  await expect(
+    environmentEditor.getByLabel("Retrieval Preset").locator("option"),
+  ).toContainText(["retrieval-editing-1", "retrieval-editing-preview-2"]);
+  await expect(
+    environmentEditor.getByLabel("Manual Review Policy").locator("option"),
+  ).toContainText(["manual-review-editing-1", "manual-review-editing-preview-2"]);
+  await expect(
+    environmentEditor.getByRole("button", { name: "Preview Candidate Environment" }),
+  ).toBeEnabled();
+  await expect(activeEnvironmentCard).toContainText("Execution Profile profile-editing-1");
+  await expect(activeEnvironmentCard).toContainText("Runtime Binding binding-editing-1");
+  await expect(activeEnvironmentCard).toContainText(`Routing ${harnessRouting.activeVersionId}`);
+  await expect(activeEnvironmentCard).toContainText("Retrieval retrieval-editing-1");
+  await expect(activeEnvironmentCard).toContainText("Manual Review manual-review-editing-1");
+
+  await environmentEditor
+    .getByLabel("Routing Version")
+    .selectOption(harnessRouting.candidateVersionId);
+  await environmentEditor.getByLabel("Retrieval Preset").selectOption(
+    "retrieval-editing-preview-2",
+  );
+  await environmentEditor.getByLabel("Manual Review Policy").selectOption(
+    "manual-review-editing-preview-2",
+  );
+  await environmentEditor
+    .getByRole("button", { name: "Preview Candidate Environment" })
+    .click();
+
+  await expect(statusMessage).toContainText("Previewed harness candidate environment.");
+  await expect(candidatePreviewCard).toContainText(
+    "Execution Profile profile-editing-1",
+  );
+  await expect(candidatePreviewCard).toContainText(
+    "Runtime Binding binding-editing-1",
+  );
+  await expect(candidatePreviewCard).toContainText(
+    `Routing ${harnessRouting.candidateVersionId}`,
+  );
+  await expect(candidatePreviewCard).toContainText(
+    "Retrieval retrieval-editing-preview-2",
+  );
+  await expect(candidatePreviewCard).toContainText(
+    "Manual Review manual-review-editing-preview-2",
+  );
+  await expect(diffCard).toContainText("model_routing_policy_version");
+  await expect(diffCard).toContainText("retrieval_preset");
+  await expect(diffCard).toContainText("manual_review_policy");
+
+  await qualityLab.getByLabel("Evaluation Suite").selectOption(suiteId);
+  await qualityLab.getByRole("button", { name: "Launch Candidate Run" }).click();
+
+  await expect(statusMessage).toContainText(/Launched candidate harness run .*?\./);
+  await expect(qualityLab).toContainText("Latest Candidate Run");
+  await expect(qualityLab).toContainText("queued");
+
+  await activationGate
+    .getByLabel("Operator Reason")
+    .fill("Promote the preview editing environment after harness verification.");
+  await activationGate
+    .getByRole("button", { name: "Activate Candidate Environment" })
+    .click();
+
+  await expect(statusMessage).toContainText("Activated the candidate harness environment.");
+  await expect(activeEnvironmentCard).toContainText(
+    "Execution Profile profile-editing-1",
+  );
+  await expect(activeEnvironmentCard).toContainText(
+    "Runtime Binding binding-editing-1",
+  );
+  await expect(activeEnvironmentCard).toContainText(
+    `Routing ${harnessRouting.candidateVersionId}`,
+  );
+  await expect(activeEnvironmentCard).toContainText(
+    "Retrieval retrieval-editing-preview-2",
+  );
+  await expect(activeEnvironmentCard).toContainText(
+    "Manual Review manual-review-editing-preview-2",
+  );
+  await expect(candidatePreviewCard).toContainText(
+    "Choose governed objects and preview the candidate bundle.",
   );
 
-  const resolutionGrid = executionPanel.locator(".admin-governance-resolution-grid");
-  await expect(resolutionGrid).toContainText("profile-editing-1");
-  await expect(resolutionGrid).toContainText("openai / editing-model");
-  await expect(resolutionGrid).toContainText("rule-set-editing-1");
-  await expect(resolutionGrid).toContainText("editing_mainline");
+  await activationGate.getByRole("button", { name: "Roll Back Scope" }).click();
+
+  await expect(statusMessage).toContainText(
+    "Rolled the scope back to the previous harness environment.",
+  );
+  await expect(activeEnvironmentCard).toContainText("Execution Profile profile-editing-1");
+  await expect(activeEnvironmentCard).toContainText("Runtime Binding binding-editing-1");
+  await expect(activeEnvironmentCard).toContainText(`Routing ${harnessRouting.activeVersionId}`);
+  await expect(activeEnvironmentCard).toContainText("Retrieval retrieval-editing-1");
+  await expect(activeEnvironmentCard).toContainText("Manual Review manual-review-editing-1");
 });
+
+async function ensureHarnessRoutingPolicy(
+  request: APIRequestContext,
+) : Promise<{
+  activeVersionId: string;
+  candidateVersionId: string;
+}> {
+  const alternateModelResponse = await request.post(`${apiBaseUrl}/api/v1/model-registry`, {
+    data: {
+      actorRole: "admin",
+      provider: "openai",
+      modelName: `harness-editing-preview-${Date.now()}`,
+      modelVersion: "2026-04-11",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    },
+  });
+  expect(alternateModelResponse.ok()).toBeTruthy();
+  const alternateModel = (await alternateModelResponse.json()) as { id: string };
+
+  const createPolicyResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/policies`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          scopeKind: "template_family",
+          scopeValue: seededFamilyId,
+          primaryModelId: "model-editing-1",
+          fallbackModelIds: [],
+          evidenceLinks: [
+            {
+              kind: "evaluation_run",
+              id: `harness-routing-evidence-${Date.now()}`,
+            },
+          ],
+          notes: "Enable the Harness control-plane smoke route for the seeded editing family.",
+        },
+      },
+    },
+  );
+  expect(createPolicyResponse.ok()).toBeTruthy();
+  const createdPolicy = (await createPolicyResponse.json()) as {
+    policy_id: string;
+    version: { id: string };
+  };
+
+  const submitResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/submit`,
+    {
+      data: {
+        actorRole: "admin",
+        reason: "Submit the seeded Harness routing draft.",
+      },
+    },
+  );
+  expect(submitResponse.ok()).toBeTruthy();
+
+  const approveResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/approve`,
+    {
+      data: {
+        actorRole: "admin",
+        reason: "Approve the seeded Harness routing draft.",
+      },
+    },
+  );
+  expect(approveResponse.ok()).toBeTruthy();
+
+  const activateResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/activate`,
+    {
+      data: {
+        actorRole: "admin",
+        reason: "Activate the seeded Harness routing version.",
+      },
+    },
+  );
+  expect(activateResponse.ok()).toBeTruthy();
+
+  const createDraftVersionResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/policies/${createdPolicy.policy_id}/versions`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          primaryModelId: alternateModel.id,
+          fallbackModelIds: [],
+          evidenceLinks: [
+            {
+              kind: "evaluation_run",
+              id: `harness-routing-preview-${Date.now()}`,
+            },
+          ],
+          notes: "Prepare a candidate routing version for the Harness control-plane smoke flow.",
+        },
+      },
+    },
+  );
+  expect(createDraftVersionResponse.ok()).toBeTruthy();
+  const candidateDraft = (await createDraftVersionResponse.json()) as {
+    version: { id: string };
+  };
+
+  const submitCandidateResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${candidateDraft.version.id}/submit`,
+    {
+      data: {
+        actorRole: "admin",
+        reason: "Submit the Harness candidate routing version.",
+      },
+    },
+  );
+  expect(submitCandidateResponse.ok()).toBeTruthy();
+
+  const approveCandidateResponse = await request.post(
+    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${candidateDraft.version.id}/approve`,
+    {
+      data: {
+        actorRole: "admin",
+        reason: "Approve the Harness candidate routing version.",
+      },
+    },
+  );
+  expect(approveCandidateResponse.ok()).toBeTruthy();
+
+  return {
+    activeVersionId: createdPolicy.version.id,
+    candidateVersionId: candidateDraft.version.id,
+  };
+}
+
+async function prepareHarnessEditingSuite(
+  request: APIRequestContext,
+  input: {
+    label: string;
+  },
+): Promise<string> {
+  const checkProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          name: `${input.label} Browser QA`,
+          checkType: "browser_qa",
+        },
+      },
+    },
+  );
+  expect(checkProfileResponse.ok()).toBeTruthy();
+  const checkProfile = (await checkProfileResponse.json()) as { id: string };
+
+  const publishCheckProfileResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(publishCheckProfileResponse.ok()).toBeTruthy();
+
+  const suiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites`,
+    {
+      data: {
+        actorRole: "admin",
+        input: {
+          name: `${input.label} Regression`,
+          suiteType: "regression",
+          verificationCheckProfileIds: [checkProfile.id],
+          moduleScope: ["editing"],
+          requiresProductionBaseline: true,
+          supportsAbComparison: true,
+          hardGatePolicy: {
+            mustUseDeidentifiedSamples: true,
+            requiresParsableOutput: true,
+          },
+          scoreWeights: {
+            structure: 25,
+            terminology: 20,
+            knowledgeCoverage: 20,
+            riskDetection: 20,
+            humanEditBurden: 10,
+            costAndLatency: 5,
+          },
+        },
+      },
+    },
+  );
+  expect(suiteResponse.ok()).toBeTruthy();
+  const suite = (await suiteResponse.json()) as { id: string };
+
+  const activateSuiteResponse = await request.post(
+    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
+    {
+      data: {
+        actorRole: "admin",
+      },
+    },
+  );
+  expect(activateSuiteResponse.ok()).toBeTruthy();
+
+  return suite.id;
+}
 
 test("template governance supports journal-scoped abstract and table rule authoring", async ({
   page,

@@ -1988,15 +1988,32 @@ function summarizeBinding(
   if (!binding) return "Not recorded";
 
   return [
+    binding.execution_profile_id
+      ? `Execution Profile ${binding.execution_profile_id}`
+      : null,
+    binding.runtime_binding_id
+      ? `Runtime Binding ${binding.runtime_binding_id}`
+      : null,
+    binding.model_routing_policy_version_id
+      ? `Routing Version ${binding.model_routing_policy_version_id}`
+      : null,
+    binding.retrieval_preset_id
+      ? `Retrieval Preset ${binding.retrieval_preset_id}`
+      : null,
+    binding.manual_review_policy_id
+      ? `Manual Review Policy ${binding.manual_review_policy_id}`
+      : null,
     `Model ${binding.model_id}`,
     `Runtime ${binding.runtime_id}`,
     `Prompt ${binding.prompt_template_id}`,
     `Skills ${formatOptionalList(binding.skill_package_ids)}`,
     `Module Template ${binding.module_template_id}`,
-  ].join(" | ");
+  ]
+    .filter((value): value is string => value != null)
+    .join(" | ");
 }
 
-function summarizeBindingChanges(
+export function summarizeBindingChanges(
   selectedRun: EvaluationWorkbenchOverview["runs"][number],
   previousRun: EvaluationWorkbenchOverview["runs"][number],
 ) {
@@ -2057,6 +2074,36 @@ function compareBindingFields(
   pushBindingChange(changes, `${label} runtime`, selectedBinding.runtime_id, previousBinding.runtime_id);
   pushBindingChange(
     changes,
+    `${label} execution profile`,
+    selectedBinding.execution_profile_id,
+    previousBinding.execution_profile_id,
+  );
+  pushBindingChange(
+    changes,
+    `${label} runtime binding`,
+    selectedBinding.runtime_binding_id,
+    previousBinding.runtime_binding_id,
+  );
+  pushBindingChange(
+    changes,
+    `${label} routing version`,
+    selectedBinding.model_routing_policy_version_id,
+    previousBinding.model_routing_policy_version_id,
+  );
+  pushBindingChange(
+    changes,
+    `${label} retrieval preset`,
+    selectedBinding.retrieval_preset_id,
+    previousBinding.retrieval_preset_id,
+  );
+  pushBindingChange(
+    changes,
+    `${label} manual review policy`,
+    selectedBinding.manual_review_policy_id,
+    previousBinding.manual_review_policy_id,
+  );
+  pushBindingChange(
+    changes,
     `${label} prompt`,
     selectedBinding.prompt_template_id,
     previousBinding.prompt_template_id,
@@ -2080,11 +2127,15 @@ function compareBindingFields(
 function pushBindingChange(
   changes: string[],
   label: string,
-  selectedValue: string,
-  previousValue: string,
+  selectedValue: string | undefined,
+  previousValue: string | undefined,
 ) {
-  if (selectedValue === previousValue) return;
-  changes.push(`${label} changed: ${selectedValue} (was ${previousValue})`);
+  const normalizedSelectedValue = selectedValue ?? "None recorded";
+  const normalizedPreviousValue = previousValue ?? "None recorded";
+  if (normalizedSelectedValue === normalizedPreviousValue) return;
+  changes.push(
+    `${label} changed: ${normalizedSelectedValue} (was ${normalizedPreviousValue})`,
+  );
 }
 
 function pushOptionalChange(

@@ -5,7 +5,11 @@ import {
   type EditorialRuleTableHit,
 } from "../editorial-rules/editorial-rule-table-hit-service.ts";
 import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
-import { deriveManualReviewReason } from "./instruction-template-assembler.ts";
+import type { ManualReviewPolicyRecord } from "../manual-review-policies/manual-review-policy-record.ts";
+import {
+  deriveManualReviewReason,
+  shouldStageManualReviewRule,
+} from "./instruction-template-assembler.ts";
 import type {
   EditorialTextBlock,
   ProofreadingCheckResult,
@@ -18,6 +22,7 @@ export function inspectProofreadingRules(input: {
   rules: readonly EditorialRuleRecord[];
   resolvedRules?: readonly ResolvedEditorialRule[];
   tableSnapshots?: readonly DocumentStructureTableSnapshot[];
+  manualReviewPolicy?: ManualReviewPolicyRecord;
 }): ProofreadingInspectionResult {
   const passedChecks: ProofreadingCheckResult[] = [];
   const failedChecks: ProofreadingCheckResult[] = [];
@@ -43,7 +48,7 @@ export function inspectProofreadingRules(input: {
   for (const entry of resolvedRules) {
     const rule = entry.rule;
     if (rule.rule_type === "content") {
-      if (rule.confidence_policy !== "always_auto") {
+      if (shouldStageManualReviewRule(rule, input.manualReviewPolicy)) {
         const reason = deriveManualReviewReason(rule);
         manualReviewItems.push({
           ruleId: rule.id,

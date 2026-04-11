@@ -11,6 +11,8 @@ import { InMemoryExecutionGovernanceRepository } from "../../src/modules/executi
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
+import { InMemoryManualReviewPolicyRepository } from "../../src/modules/manual-review-policies/in-memory-manual-review-policy-repository.ts";
+import { ManualReviewPolicyService } from "../../src/modules/manual-review-policies/manual-review-policy-service.ts";
 import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
@@ -21,6 +23,8 @@ import {
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
 import { ModelRegistryService } from "../../src/modules/model-registry/model-registry-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
+import { InMemoryRetrievalPresetRepository } from "../../src/modules/retrieval-presets/in-memory-retrieval-preset-repository.ts";
+import { RetrievalPresetService } from "../../src/modules/retrieval-presets/retrieval-preset-service.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
 import type { RuntimeBindingReadinessReport } from "../../src/modules/runtime-bindings/runtime-binding-readiness.ts";
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
@@ -44,6 +48,9 @@ async function createResolverHarness() {
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
+  const manualReviewPolicyRepository =
+    new InMemoryManualReviewPolicyRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
@@ -183,6 +190,12 @@ async function createResolverHarness() {
         return value;
       };
     })(),
+  });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
   });
 
   await manuscriptRepository.save({
@@ -405,6 +418,8 @@ async function createResolverHarness() {
     agentRuntimeService,
     toolPermissionPolicyService,
     runtimeBindingService,
+    retrievalPresetService,
+    manualReviewPolicyService,
   };
 }
 
@@ -477,6 +492,93 @@ test("resolver fails when no active execution profile exists for the module scop
         aiGatewayService: harness.aiGatewayService,
       }),
     ActiveExecutionProfileNotFoundError,
+  );
+});
+
+test("resolver applies active retrieval presets to dynamic knowledge and returns governed retrieval/manual-review settings", async () => {
+  const harness = await createResolverHarness();
+
+  await harness.knowledgeRepository.save({
+    id: "knowledge-dynamic-2",
+    title: "Methods coverage rule",
+    canonical_text: "Expand methods coverage for trial workflow descriptions.",
+    knowledge_kind: "checklist",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["methods"],
+      risk_tags: ["coverage"],
+    },
+  });
+  await harness.knowledgeRepository.save({
+    id: "knowledge-dynamic-3",
+    title: "Results conflict rule",
+    canonical_text: "Check conflicting results statements before rewriting.",
+    knowledge_kind: "checklist",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+      risk_tags: ["conflict"],
+    },
+  });
+
+  const retrievalPreset = await harness.retrievalPresetService.createPreset("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    name: "Methods coverage only",
+    topK: 1,
+    sectionFilters: ["methods"],
+    riskTagFilters: ["coverage"],
+    rerankEnabled: true,
+    citationRequired: true,
+    minRetrievalScore: 0.6,
+  });
+  await harness.retrievalPresetService.activatePreset(retrievalPreset.id, "admin");
+
+  const manualReviewPolicy =
+    await harness.manualReviewPolicyService.createPolicy("admin", {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      name: "Editing relaxed review",
+      minConfidenceThreshold: 0.7,
+      highRiskForceReview: false,
+      conflictForceReview: false,
+      insufficientKnowledgeForceReview: false,
+    });
+  await harness.manualReviewPolicyService.activatePolicy(
+    manualReviewPolicy.id,
+    "admin",
+  );
+
+  const context = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    jobId: "job-3",
+    actorId: "editor-1",
+    actorRole: "editor",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    retrievalPresetService: harness.retrievalPresetService,
+    manualReviewPolicyService: harness.manualReviewPolicyService,
+  } as never);
+
+  assert.equal((context as { retrievalPreset?: { id: string } }).retrievalPreset?.id, retrievalPreset.id);
+  assert.equal(
+    (context as { manualReviewPolicy?: { id: string } }).manualReviewPolicy?.id,
+    manualReviewPolicy.id,
+  );
+  assert.deepEqual(
+    context.knowledgeSelections.map((selection) => selection.knowledgeItem.id),
+    ["knowledge-bound-1", "knowledge-dynamic-2"],
   );
 });
 

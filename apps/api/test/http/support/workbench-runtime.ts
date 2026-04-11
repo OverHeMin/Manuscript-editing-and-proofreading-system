@@ -28,6 +28,8 @@ import { EditingService } from "../../../src/modules/editing/editing-service.ts"
 import { InMemoryEditorialRuleRepository } from "../../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../../src/modules/execution-governance/execution-governance-service.ts";
+import { createHarnessControlPlaneApi } from "../../../src/modules/harness-control-plane/harness-control-plane-api.ts";
+import { HarnessControlPlaneService } from "../../../src/modules/harness-control-plane/harness-control-plane-service.ts";
 import { ExecutionTrackingService } from "../../../src/modules/execution-tracking/execution-tracking-service.ts";
 import { InMemoryExecutionTrackingRepository } from "../../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
 import { InMemoryJobRepository } from "../../../src/modules/jobs/in-memory-job-repository.ts";
@@ -44,9 +46,17 @@ import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
 } from "../../../src/modules/model-registry/in-memory-model-registry-repository.ts";
+import { InMemoryModelRoutingGovernanceRepository } from "../../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
+import { ModelRoutingGovernanceService } from "../../../src/modules/model-routing-governance/model-routing-governance-service.ts";
+import { InMemoryManualReviewPolicyRepository } from "../../../src/modules/manual-review-policies/in-memory-manual-review-policy-repository.ts";
+import { createManualReviewPolicyApi } from "../../../src/modules/manual-review-policies/manual-review-policy-api.ts";
+import { ManualReviewPolicyService } from "../../../src/modules/manual-review-policies/manual-review-policy-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { createProofreadingApi } from "../../../src/modules/proofreading/proofreading-api.ts";
 import { ProofreadingService } from "../../../src/modules/proofreading/proofreading-service.ts";
+import { InMemoryRetrievalPresetRepository } from "../../../src/modules/retrieval-presets/in-memory-retrieval-preset-repository.ts";
+import { createRetrievalPresetApi } from "../../../src/modules/retrieval-presets/retrieval-preset-api.ts";
+import { RetrievalPresetService } from "../../../src/modules/retrieval-presets/retrieval-preset-service.ts";
 import { InMemoryRuntimeBindingRepository } from "../../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
 import { RuntimeBindingService } from "../../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
@@ -114,6 +124,9 @@ export interface WorkbenchRuntimeBundle {
   editingApi: ReturnType<typeof createEditingApi>;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
+  harnessControlPlaneApi: ReturnType<typeof createHarnessControlPlaneApi>;
+  retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
+  manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   seededIds: WorkbenchSeededIds;
 }
@@ -200,6 +213,10 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const modelRoutingGovernanceRepository =
+    new InMemoryModelRoutingGovernanceRepository();
+  const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
+  const manualReviewPolicyRepository = new InMemoryManualReviewPolicyRepository();
   const auditService = new InMemoryAuditService();
 
   const counters = new Map<string, number>();
@@ -235,6 +252,16 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+  });
+  const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
+    repository: modelRoutingGovernanceRepository,
+    modelRegistryRepository: modelRepository,
+  });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
   });
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -316,10 +343,21 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     agentProfileRepository,
     agentRuntimeRepository,
     runtimeBindingRepository,
+    modelRoutingGovernanceRepository,
+    retrievalPresetRepository,
+    manualReviewPolicyRepository,
     toolPermissionPolicyRepository,
     verificationOpsRepository,
     modelRepository,
     routingPolicyRepository,
+  });
+
+  const harnessControlPlaneService = new HarnessControlPlaneService({
+    executionGovernanceService,
+    runtimeBindingService,
+    modelRoutingGovernanceService,
+    retrievalPresetService,
+    manualReviewPolicyService,
   });
 
   return {
@@ -364,6 +402,8 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         moduleTemplateRepository,
         promptSkillRegistryRepository,
         knowledgeRepository,
+        retrievalPresetService,
+        manualReviewPolicyService,
         executionGovernanceService,
         executionTrackingService,
         jobRepository,
@@ -387,6 +427,8 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         moduleTemplateRepository,
         promptSkillRegistryRepository,
         knowledgeRepository,
+        retrievalPresetService,
+        manualReviewPolicyService,
         executionGovernanceService,
         executionTrackingService,
         jobRepository,
@@ -410,6 +452,8 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
         moduleTemplateRepository,
         promptSkillRegistryRepository,
         knowledgeRepository,
+        retrievalPresetService,
+        manualReviewPolicyService,
         executionGovernanceService,
         executionTrackingService,
         jobRepository,
@@ -428,6 +472,15 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+    }),
+    harnessControlPlaneApi: createHarnessControlPlaneApi({
+      harnessControlPlaneService,
+    }),
+    retrievalPresetApi: createRetrievalPresetApi({
+      retrievalPresetService,
+    }),
+    manualReviewPolicyApi: createManualReviewPolicyApi({
+      manualReviewPolicyService,
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,
@@ -460,6 +513,9 @@ function seedWorkbenchGovernance(input: {
   agentProfileRepository: InMemoryAgentProfileRepository;
   agentRuntimeRepository: InMemoryAgentRuntimeRepository;
   runtimeBindingRepository: InMemoryRuntimeBindingRepository;
+  modelRoutingGovernanceRepository: InMemoryModelRoutingGovernanceRepository;
+  retrievalPresetRepository: InMemoryRetrievalPresetRepository;
+  manualReviewPolicyRepository: InMemoryManualReviewPolicyRepository;
   toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
   verificationOpsRepository: InMemoryVerificationOpsRepository;
   modelRepository: InMemoryModelRegistryRepository;
@@ -524,6 +580,15 @@ function seedWorkbenchGovernance(input: {
     status: "published",
     prompt: "Seeded proofreading prompt",
   });
+  void input.moduleTemplateRepository.save({
+    id: "template-editing-preview-2",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 2,
+    status: "published",
+    prompt: "Seeded editing preview prompt",
+  });
 
   void input.promptSkillRegistryRepository.savePromptTemplate({
     id: "prompt-screening-1",
@@ -549,6 +614,14 @@ function seedWorkbenchGovernance(input: {
     module: "proofreading",
     manuscript_types: ["clinical_study"],
   });
+  void input.promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-preview-2",
+    name: "editing_preview",
+    version: "2.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
   void input.promptSkillRegistryRepository.saveSkillPackage({
     id: "skill-screening-1",
     name: "screening_skills",
@@ -572,6 +645,14 @@ function seedWorkbenchGovernance(input: {
     scope: "admin_only",
     status: "published",
     applies_to_modules: ["proofreading"],
+  });
+  void input.promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-editing-preview-2",
+    name: "editing_preview_skills",
+    version: "2.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
   });
 
   void input.knowledgeRepository.save({
@@ -671,6 +752,19 @@ function seedWorkbenchGovernance(input: {
     knowledge_binding_mode: "profile_plus_dynamic",
     status: "active",
     version: 1,
+  });
+  void input.executionGovernanceRepository.saveProfile({
+    id: "profile-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    module_template_id: "template-editing-preview-2",
+    rule_set_id: "rule-set-editing-1",
+    prompt_template_id: "prompt-editing-preview-2",
+    skill_package_ids: ["skill-editing-preview-2"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "draft",
+    version: 2,
   });
 
   void input.verificationOpsRepository.saveVerificationCheckProfile({
@@ -821,6 +915,16 @@ function seedWorkbenchGovernance(input: {
     allowed_tool_ids: [],
     admin_only: true,
   });
+  void input.sandboxProfileRepository.save({
+    id: "sandbox-editing-preview-2",
+    name: "Editing Preview Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
 
   void input.agentRuntimeRepository.save({
     id: "runtime-screening-1",
@@ -852,6 +956,16 @@ function seedWorkbenchGovernance(input: {
     runtime_slot: "proofreading",
     admin_only: true,
   });
+  void input.agentRuntimeRepository.save({
+    id: "runtime-editing-preview-2",
+    name: "Editing Preview Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "sandbox-editing-preview-2",
+    allowed_modules: ["editing"],
+    runtime_slot: "editing",
+    admin_only: true,
+  });
 
   void input.agentProfileRepository.save({
     id: "agent-profile-screening-1",
@@ -880,6 +994,15 @@ function seedWorkbenchGovernance(input: {
     manuscript_types: ["clinical_study"],
     admin_only: true,
   });
+  void input.agentProfileRepository.save({
+    id: "agent-profile-editing-preview-2",
+    name: "Editing Preview Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["editing"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
 
   void input.toolPermissionPolicyRepository.save({
     id: "policy-screening-1",
@@ -904,6 +1027,16 @@ function seedWorkbenchGovernance(input: {
   void input.toolPermissionPolicyRepository.save({
     id: "policy-proofreading-1",
     name: "Proofreading Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+  void input.toolPermissionPolicyRepository.save({
+    id: "policy-editing-preview-2",
+    name: "Editing Preview Policy",
     status: "active",
     default_mode: "read",
     allowed_tool_ids: [],
@@ -966,6 +1099,24 @@ function seedWorkbenchGovernance(input: {
     status: "active",
     version: 1,
   });
+  void input.runtimeBindingRepository.save({
+    id: "binding-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    runtime_id: "runtime-editing-preview-2",
+    sandbox_profile_id: "sandbox-editing-preview-2",
+    agent_profile_id: "agent-profile-editing-preview-2",
+    tool_permission_policy_id: "policy-editing-preview-2",
+    prompt_template_id: "prompt-editing-preview-2",
+    skill_package_ids: ["skill-editing-preview-2"],
+    execution_profile_id: "profile-editing-preview-2",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    evaluation_suite_ids: ["suite-editing-1"],
+    release_check_profile_id: "release-profile-editing-1",
+    status: "draft",
+    version: 2,
+  });
 
   void input.modelRepository.save({
     id: "model-screening-1",
@@ -991,6 +1142,14 @@ function seedWorkbenchGovernance(input: {
     allowed_modules: ["proofreading"],
     is_prod_allowed: true,
   });
+  void input.modelRepository.save({
+    id: "model-editing-preview-2",
+    provider: "openai",
+    model_name: "editing-preview-model",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
   void input.routingPolicyRepository.save({
     system_default_model_id: undefined,
     module_defaults: {
@@ -999,5 +1158,100 @@ function seedWorkbenchGovernance(input: {
       proofreading: "model-proofreading-1",
     },
     template_overrides: {},
+  });
+
+  void input.modelRoutingGovernanceRepository.saveScope({
+    id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    active_version_id: "routing-version-editing-1",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  void input.modelRoutingGovernanceRepository.saveVersion({
+    id: "routing-version-editing-1",
+    policy_scope_id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 1,
+    primary_model_id: "model-editing-1",
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-1" }],
+    status: "active",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  void input.modelRoutingGovernanceRepository.saveVersion({
+    id: "routing-version-editing-preview-2",
+    policy_scope_id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 2,
+    primary_model_id: "model-editing-preview-2",
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-2" }],
+    status: "approved",
+    created_at: "2026-03-31T08:10:00.000Z",
+    updated_at: "2026-03-31T08:10:00.000Z",
+  });
+
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval",
+    top_k: 6,
+    section_filters: ["discussion"],
+    risk_tag_filters: ["grounding"],
+    rerank_enabled: true,
+    citation_required: true,
+    min_retrieval_score: 0.55,
+    status: "active",
+    version: 1,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval preview",
+    top_k: 10,
+    section_filters: ["methods"],
+    risk_tag_filters: ["coverage"],
+    rerank_enabled: false,
+    citation_required: false,
+    min_retrieval_score: 0.4,
+    status: "draft",
+    version: 2,
+  });
+
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["unsafe-claim"],
+    status: "active",
+    version: 1,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review preview",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: false,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["statistical-overreach"],
+    status: "draft",
+    version: 2,
   });
 }

@@ -97,7 +97,7 @@ export class RetrievalPresetService {
       this.assertValidRecord(preset);
       return preset;
     }
-    if (preset.status !== "draft") {
+    if (preset.status !== "draft" && preset.status !== "archived") {
       throw new RetrievalPresetStatusTransitionError(
         presetId,
         preset.status,

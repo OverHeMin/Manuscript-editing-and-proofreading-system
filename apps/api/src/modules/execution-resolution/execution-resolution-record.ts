@@ -11,11 +11,21 @@ import type {
   ModelSelectionWarning,
   ResolvedAiProviderConnectionSummary,
 } from "../ai-gateway/ai-gateway-service.ts";
+import type {
+  ManualReviewPolicyRecord,
+} from "../manual-review-policies/manual-review-policy-record.ts";
 import type { ModelRegistryRecord } from "../model-registry/model-record.ts";
+import type {
+  ModelRoutingPolicyVersionRecord,
+} from "../model-routing-governance/model-routing-governance-record.ts";
 import type {
   PromptTemplateRecord,
   SkillPackageRecord,
 } from "../prompt-skill-registry/prompt-skill-record.ts";
+import type {
+  RetrievalPresetRecord,
+} from "../retrieval-presets/retrieval-preset-record.ts";
+import type { RuntimeBindingRecord } from "../runtime-bindings/runtime-binding-record.ts";
 import type { RuntimeBindingReadinessReport } from "../runtime-bindings/runtime-binding-readiness.ts";
 import type { ModuleTemplateRecord } from "../templates/template-record.ts";
 
@@ -50,6 +60,10 @@ export interface ProviderReadinessRecord {
 
 export interface ResolvedExecutionBundleRecord {
   profile: ModuleExecutionProfileRecord;
+  runtime_binding?: RuntimeBindingRecord;
+  model_routing_policy_version?: ModelRoutingPolicyVersionRecord;
+  retrieval_preset?: RetrievalPresetRecord;
+  manual_review_policy?: ManualReviewPolicyRecord;
   module_template: ModuleTemplateRecord;
   rule_set: EditorialRuleSetRecord;
   rules: EditorialRuleRecord[];

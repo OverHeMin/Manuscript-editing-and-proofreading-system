@@ -314,3 +314,17 @@
 - Use `GET /api/v1/runtime-bindings/:bindingId/readiness` to inspect one specific binding, or `GET /api/v1/runtime-bindings/by-scope/:module/:manuscriptType/:templateFamilyId/active-readiness` to inspect the binding that governed mainline execution would use for that scope right now.
 - The report is additive and fail-open. It explains missing, inactive, or incompatible runtime/prompt/skill/policy/check/suite references plus execution-profile drift, but it does not activate, archive, route, repair, or auto-switch anything.
 - This slice serves execution safety for `screening`, `editing`, and `proofreading` without reopening `Phase 10`, adding a new workbench, or turning runtime readiness into a startup or execution hard gate.
+
+## Harness Control Plane P0
+
+- `Harness Control Plane` is now the operator surface for changing the live governed AI environment of one scope. It is not a decorative parameter dashboard.
+- The control plane works on the full five-part environment for one scope:
+  - execution profile
+  - runtime binding
+  - model routing policy version
+  - retrieval preset
+  - manual review policy
+- Candidate selections stay non-production until an operator previews them, launches candidate-bound verification, and explicitly activates them.
+- After activation, new governed manuscript work for that scope resolves against the promoted environment. This includes live retrieval behavior and live manual-review staging.
+- Rollback restores the previous approved scope environment and affects only new work created after the rollback.
+- `Evaluation Workbench` remains an evidence-first comparison surface. It does not activate policy, switch runtime, or mutate the live governed environment by itself.

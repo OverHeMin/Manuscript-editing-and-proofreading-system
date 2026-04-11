@@ -21,6 +21,8 @@ import {
 } from "../../src/modules/knowledge/index.ts";
 import { PostgresReviewedCaseSnapshotRepository } from "../../src/modules/learning/index.ts";
 import { PostgresManuscriptRepository } from "../../src/modules/manuscripts/index.ts";
+import { PostgresManualReviewPolicyRepository } from "../../src/modules/manual-review-policies/index.ts";
+import { PostgresRetrievalPresetRepository } from "../../src/modules/retrieval-presets/index.ts";
 import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
@@ -2572,6 +2574,160 @@ test("persistent governance runtime keeps agent-tooling governance records acros
   });
 });
 
+test("persistent governance runtime lists persisted retrieval presets and manual review policies by scope", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const retrievalPresetRepository = new PostgresRetrievalPresetRepository({
+        client: seedPool,
+      });
+      const manualReviewPolicyRepository =
+        new PostgresManualReviewPolicyRepository({
+          client: seedPool,
+        });
+
+      await retrievalPresetRepository.save({
+        id: "persistent-retrieval-editing-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing retrieval",
+        top_k: 6,
+        section_filters: ["discussion"],
+        risk_tag_filters: ["grounding"],
+        rerank_enabled: true,
+        citation_required: true,
+        min_retrieval_score: 0.55,
+        status: "active",
+        version: 1,
+      });
+      await retrievalPresetRepository.save({
+        id: "persistent-retrieval-editing-2",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing retrieval preview",
+        top_k: 10,
+        section_filters: ["methods"],
+        risk_tag_filters: ["coverage"],
+        rerank_enabled: false,
+        citation_required: false,
+        min_retrieval_score: 0.4,
+        status: "draft",
+        version: 2,
+      });
+
+      await manualReviewPolicyRepository.save({
+        id: "persistent-manual-review-editing-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing review policy",
+        min_confidence_threshold: 0.8,
+        high_risk_force_review: true,
+        conflict_force_review: true,
+        insufficient_knowledge_force_review: true,
+        module_blocklist_rules: ["unsafe-claim"],
+        status: "active",
+        version: 1,
+      });
+      await manualReviewPolicyRepository.save({
+        id: "persistent-manual-review-editing-2",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing review preview",
+        min_confidence_threshold: 0.7,
+        high_risk_force_review: false,
+        conflict_force_review: true,
+        insufficient_knowledge_force_review: false,
+        module_blocklist_rules: ["statistical-overreach"],
+        status: "draft",
+        version: 2,
+      });
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const retrievalResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/retrieval-presets/by-scope/editing/clinical_study/persistent-family-1`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const retrievalPresets = (await retrievalResponse.json()) as Array<{
+          id: string;
+          status: string;
+        }>;
+
+        const manualReviewResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/manual-review-policies/by-scope/editing/clinical_study/persistent-family-1`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const manualReviewPolicies = (await manualReviewResponse.json()) as Array<{
+          id: string;
+          status: string;
+        }>;
+
+        assert.equal(retrievalResponse.status, 200);
+        assert.deepEqual(
+          retrievalPresets.map((preset) => ({
+            id: preset.id,
+            status: preset.status,
+          })),
+          [
+            {
+              id: "persistent-retrieval-editing-1",
+              status: "active",
+            },
+            {
+              id: "persistent-retrieval-editing-2",
+              status: "draft",
+            },
+          ],
+        );
+        assert.equal(manualReviewResponse.status, 200);
+        assert.deepEqual(
+          manualReviewPolicies.map((policy) => ({
+            id: policy.id,
+            status: policy.status,
+          })),
+          [
+            {
+              id: "persistent-manual-review-editing-1",
+              status: "active",
+            },
+            {
+              id: "persistent-manual-review-editing-2",
+              status: "draft",
+            },
+          ],
+        );
+      } finally {
+        await stopServer(serverHandle.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime extracts reviewed snapshot diffs into pending rule candidates", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -4267,6 +4423,7 @@ async function createPersistentHarnessEvaluationSuite(input: {
           suiteType: "regression",
           verificationCheckProfileIds: [],
           moduleScope: ["editing"],
+          supportsAbComparison: true,
           hardGatePolicy: {
             mustUseDeidentifiedSamples: true,
             requiresParsableOutput: false,
@@ -5026,6 +5183,163 @@ async function createPersistentRetrievalQualityFixture(input: {
     moduleTemplateId: moduleTemplate.id,
   };
 }
+
+test("persistent governance runtime preserves full harness candidate bindings across evaluation run reloads", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(migrate.status, 0, migrate.stderr || migrate.stdout);
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const suite = await createPersistentHarnessEvaluationSuite({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          name: "Persistent harness candidate suite",
+        });
+
+        const createRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                suiteId: suite.id,
+                baselineBinding: {
+                  lane: "baseline",
+                  executionProfileId: "profile-active-1",
+                  runtimeBindingId: "binding-active-1",
+                  modelRoutingPolicyVersionId: "routing-version-active-1",
+                  retrievalPresetId: "retrieval-active-1",
+                  manualReviewPolicyId: "manual-review-active-1",
+                  modelId: "model-active-1",
+                  runtimeId: "runtime-active-1",
+                  promptTemplateId: "prompt-active-1",
+                  skillPackageIds: ["skill-active-1"],
+                  moduleTemplateId: "template-active-1",
+                },
+                candidateBinding: {
+                  lane: "candidate",
+                  executionProfileId: "profile-draft-2",
+                  runtimeBindingId: "binding-draft-2",
+                  modelRoutingPolicyVersionId: "routing-version-draft-2",
+                  retrievalPresetId: "retrieval-draft-2",
+                  manualReviewPolicyId: "manual-review-draft-2",
+                  modelId: "model-draft-2",
+                  runtimeId: "runtime-draft-2",
+                  promptTemplateId: "prompt-draft-2",
+                  skillPackageIds: ["skill-draft-2"],
+                  moduleTemplateId: "template-draft-2",
+                },
+              },
+            }),
+          },
+        );
+        const createdRun = (await createRunResponse.json()) as {
+          id: string;
+          baseline_binding?: {
+            execution_profile_id?: string;
+          };
+          candidate_binding?: {
+            execution_profile_id?: string;
+            runtime_binding_id?: string;
+            model_routing_policy_version_id?: string;
+            retrieval_preset_id?: string;
+            manual_review_policy_id?: string;
+          };
+        };
+
+        assert.equal(createRunResponse.status, 201);
+        assert.equal(
+          createdRun.baseline_binding?.execution_profile_id,
+          "profile-active-1",
+        );
+        assert.equal(
+          createdRun.candidate_binding?.execution_profile_id,
+          "profile-draft-2",
+        );
+        assert.equal(
+          createdRun.candidate_binding?.runtime_binding_id,
+          "binding-draft-2",
+        );
+        assert.equal(
+          createdRun.candidate_binding?.model_routing_policy_version_id,
+          "routing-version-draft-2",
+        );
+        assert.equal(
+          createdRun.candidate_binding?.retrieval_preset_id,
+          "retrieval-draft-2",
+        );
+        assert.equal(
+          createdRun.candidate_binding?.manual_review_policy_id,
+          "manual-review-draft-2",
+        );
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const listRunsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const runs = (await listRunsResponse.json()) as Array<{
+            id: string;
+            candidate_binding?: {
+              execution_profile_id?: string;
+              runtime_binding_id?: string;
+              model_routing_policy_version_id?: string;
+              retrieval_preset_id?: string;
+              manual_review_policy_id?: string;
+            };
+          }>;
+
+          assert.equal(listRunsResponse.status, 200);
+          assert.equal(runs[0]?.id, createdRun.id);
+          assert.equal(
+            runs[0]?.candidate_binding?.execution_profile_id,
+            "profile-draft-2",
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.runtime_binding_id,
+            "binding-draft-2",
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.model_routing_policy_version_id,
+            "routing-version-draft-2",
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.retrieval_preset_id,
+            "retrieval-draft-2",
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.manual_review_policy_id,
+            "manual-review-draft-2",
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
 
 async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {

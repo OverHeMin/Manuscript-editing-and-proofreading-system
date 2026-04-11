@@ -96,7 +96,7 @@ export class ManualReviewPolicyService {
       this.assertValidRecord(policy);
       return policy;
     }
-    if (policy.status !== "draft") {
+    if (policy.status !== "draft" && policy.status !== "archived") {
       throw new ManualReviewPolicyStatusTransitionError(
         policyId,
         policy.status,
