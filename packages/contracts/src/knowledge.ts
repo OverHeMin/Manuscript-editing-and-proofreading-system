@@ -85,6 +85,8 @@ export interface KnowledgeContentBlock {
   order_no: number;
   status: "active" | "archived";
   content_payload: Record<string, unknown>;
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
 }
 
 export interface KnowledgeSemanticLayer {
@@ -93,4 +95,6 @@ export interface KnowledgeSemanticLayer {
   page_summary?: string;
   retrieval_terms?: string[];
   retrieval_snippets?: string[];
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
 }
