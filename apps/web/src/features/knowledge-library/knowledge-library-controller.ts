@@ -1,12 +1,16 @@
-import type { KnowledgeItemViewModel } from "../knowledge/index.ts";
 import {
   checkKnowledgeDuplicates,
+  confirmKnowledgeSemanticLayer,
   createKnowledgeDraftRevision,
   createKnowledgeLibraryDraft,
   getKnowledgeAssetDetail,
   listKnowledgeLibraryAssets,
+  type KnowledgeLibraryListItemResponseBody,
+  regenerateKnowledgeSemanticLayer,
+  replaceKnowledgeRevisionContentBlocks,
   type DuplicateKnowledgeAcknowledgementPayload,
   submitKnowledgeRevisionForReview,
+  uploadKnowledgeImage,
   updateKnowledgeRevisionDraft,
   type KnowledgeLibraryHttpClient,
 } from "./knowledge-library-api.ts";
@@ -15,8 +19,13 @@ import type {
   DuplicateKnowledgeCheckInput,
   DuplicateKnowledgeMatchViewModel,
   DuplicateWarningAcknowledgementInput,
+  KnowledgeContentBlockViewModel,
   KnowledgeLibraryFilterState,
+  KnowledgeLibrarySummaryViewModel,
   KnowledgeLibraryWorkbenchViewModel,
+  KnowledgeSemanticLayerInput,
+  KnowledgeUploadInput,
+  KnowledgeUploadViewModel,
   UpdateKnowledgeLibraryDraftInput,
 } from "./types.ts";
 
@@ -51,6 +60,18 @@ export interface SubmitKnowledgeLibraryDraftAndLoadInput
   duplicateAcknowledgement?: DuplicateWarningAcknowledgementInput;
 }
 
+export interface ReplaceKnowledgeRevisionContentBlocksAndLoadInput
+  extends KnowledgeLibraryMutationOptions {
+  revisionId: string;
+  blocks: readonly KnowledgeContentBlockViewModel[];
+}
+
+export interface UpdateKnowledgeSemanticLayerAndLoadInput
+  extends KnowledgeLibraryMutationOptions {
+  revisionId: string;
+  input?: KnowledgeSemanticLayerInput;
+}
+
 export interface KnowledgeLibraryWorkbenchController {
   loadWorkbench(
     input?: LoadKnowledgeLibraryWorkbenchInput,
@@ -70,12 +91,21 @@ export interface KnowledgeLibraryWorkbenchController {
   submitDraftAndLoad(
     input: SubmitKnowledgeLibraryDraftAndLoadInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  replaceContentBlocksAndLoad(
+    input: ReplaceKnowledgeRevisionContentBlocksAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  regenerateSemanticLayerAndLoad(
+    input: UpdateKnowledgeSemanticLayerAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  confirmSemanticLayerAndLoad(
+    input: UpdateKnowledgeSemanticLayerAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  uploadImage(input: KnowledgeUploadInput): Promise<KnowledgeUploadViewModel>;
 }
 
 const defaultFilters: KnowledgeLibraryFilterState = {
   searchText: "",
-  status: "all",
-  knowledgeKind: "all",
+  queryMode: "keyword",
 };
 
 export function createKnowledgeLibraryWorkbenchController(
@@ -130,6 +160,41 @@ export function createKnowledgeLibraryWorkbenchController(
         filters: input.filters,
       });
     },
+    async replaceContentBlocksAndLoad(input) {
+      const revision = (
+        await replaceKnowledgeRevisionContentBlocks(client, input.revisionId, {
+          blocks: input.blocks,
+        })
+      ).body;
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: revision.asset_id,
+        selectedRevisionId: revision.id,
+        filters: input.filters,
+      });
+    },
+    async regenerateSemanticLayerAndLoad(input) {
+      const revision = (
+        await regenerateKnowledgeSemanticLayer(client, input.revisionId, input.input)
+      ).body;
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: revision.asset_id,
+        selectedRevisionId: revision.id,
+        filters: input.filters,
+      });
+    },
+    async confirmSemanticLayerAndLoad(input) {
+      const revision = (
+        await confirmKnowledgeSemanticLayer(client, input.revisionId, input.input)
+      ).body;
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: revision.asset_id,
+        selectedRevisionId: revision.id,
+        filters: input.filters,
+      });
+    },
+    async uploadImage(input) {
+      return (await uploadKnowledgeImage(client, input)).body;
+    },
   };
 }
 
@@ -137,9 +202,15 @@ async function loadKnowledgeLibraryWorkbench(
   client: KnowledgeLibraryHttpClient,
   input: LoadKnowledgeLibraryWorkbenchInput = {},
 ): Promise<KnowledgeLibraryWorkbenchViewModel> {
-  const library = (await listKnowledgeLibraryAssets(client)).body;
   const filters = createKnowledgeLibraryFilterState(input.filters);
-  const visibleLibrary = applyKnowledgeLibraryFilters(library, filters);
+  const libraryResponse = (
+    await listKnowledgeLibraryAssets(client, {
+      searchText: filters.searchText,
+      queryMode: filters.queryMode,
+    })
+  ).body;
+  const library = libraryResponse.items.map(mapKnowledgeLibraryListItem);
+  const visibleLibrary = applyKnowledgeLibraryFilters(library);
   const selectedSummary = resolveSelectedSummary(
     library,
     visibleLibrary,
@@ -174,45 +245,21 @@ export function createKnowledgeLibraryFilterState(
     ...defaultFilters,
     ...overrides,
     searchText: overrides.searchText?.trim() ?? defaultFilters.searchText,
+    queryMode: overrides.queryMode === "semantic" ? "semantic" : "keyword",
   };
 }
 
 export function applyKnowledgeLibraryFilters(
-  library: readonly KnowledgeItemViewModel[],
-  filters: KnowledgeLibraryFilterState,
-): KnowledgeItemViewModel[] {
-  const query = filters.searchText.trim().toLowerCase();
-
-  return library.filter((item) => {
-    if (filters.status !== "all" && item.status !== filters.status) {
-      return false;
-    }
-
-    if (filters.knowledgeKind !== "all" && item.knowledge_kind !== filters.knowledgeKind) {
-      return false;
-    }
-
-    if (query.length === 0) {
-      return true;
-    }
-
-    const fields = [
-      item.title,
-      item.canonical_text,
-      item.summary ?? "",
-      ...(item.aliases ?? []),
-      ...(item.template_bindings ?? []),
-    ];
-
-    return fields.some((value) => value.toLowerCase().includes(query));
-  });
+  library: readonly KnowledgeLibrarySummaryViewModel[],
+): KnowledgeLibrarySummaryViewModel[] {
+  return [...library];
 }
 
 function resolveSelectedSummary(
-  library: readonly KnowledgeItemViewModel[],
-  visibleLibrary: readonly KnowledgeItemViewModel[],
+  library: readonly KnowledgeLibrarySummaryViewModel[],
+  visibleLibrary: readonly KnowledgeLibrarySummaryViewModel[],
   preferredAssetId: string | null,
-): KnowledgeItemViewModel | null {
+): KnowledgeLibrarySummaryViewModel | null {
   if (preferredAssetId) {
     return (
       library.find((item) => item.id === preferredAssetId) ??
@@ -222,6 +269,24 @@ function resolveSelectedSummary(
   }
 
   return visibleLibrary[0] ?? library[0] ?? null;
+}
+
+function mapKnowledgeLibraryListItem(
+  item: KnowledgeLibraryListItemResponseBody,
+): KnowledgeLibrarySummaryViewModel {
+  return {
+    id: item.asset_id,
+    title: item.title,
+    summary: item.summary,
+    knowledge_kind: item.knowledge_kind,
+    status: item.status,
+    module_scope: item.module_scope,
+    manuscript_types: item.manuscript_types,
+    selected_revision_id: item.selected_revision_id,
+    semantic_status: item.semantic_status,
+    content_block_count: item.content_block_count,
+    updated_at: item.updated_at,
+  };
 }
 
 function toDuplicateAcknowledgements(

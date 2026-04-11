@@ -597,7 +597,10 @@ test("workbench http routes expose the knowledge library revision lifecycle", as
         Cookie: cookie,
       },
     });
-    const library = (await libraryResponse.json()) as Array<{ id: string; status: string }>;
+    const library = (await libraryResponse.json()) as {
+      query_mode: string;
+      items: Array<{ asset_id: string; status: string }>;
+    };
 
     assert.equal(updateResponse.status, 200);
     assert.equal(detailResponse.status, 200);
@@ -626,11 +629,251 @@ test("workbench http routes expose the knowledge library revision lifecycle", as
     );
     assert.equal(libraryResponse.status, 200);
     assert.ok(
-      library.some((record) => record.id === "knowledge-1" && record.status === "draft"),
+      library.items.some(
+        (record) => record.asset_id === "knowledge-1" && record.status === "draft",
+      ),
       "Expected knowledge library list to expose the derived draft revision as the authoring projection.",
     );
   } finally {
     await stopServer(server);
+  }
+});
+
+test("workbench http rich-space routes support search, uploads, and semantic confirmation", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-knowledge-rich-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createResponse = await fetch(`${baseUrl}/api/v1/knowledge/assets/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "HTTP rich-space knowledge draft",
+        canonicalText: "Screening should review rich text, tables, and images.",
+        knowledgeKind: "reference",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+      }),
+    });
+    const created = (await createResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+
+    assert.equal(createResponse.status, 201);
+
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/knowledge/uploads`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fileName: "knowledge-figure.png",
+        mimeType: "image/png",
+        fileContentBase64: Buffer.from("rich-space-image").toString("base64"),
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      upload_id: string;
+      storage_key: string;
+      file_name: string;
+      mime_type: string;
+      byte_length: number;
+      uploaded_at: string;
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.file_name, "knowledge-figure.png");
+    assert.equal(uploaded.mime_type, "image/png");
+    assert.ok(uploaded.storage_key.length > 0);
+    assert.ok(uploaded.uploaded_at.length > 0);
+
+    const storedUpload = await stat(path.join(uploadRootDir, ...uploaded.storage_key.split("/")));
+    assert.ok(storedUpload.isFile(), "Expected uploaded image to be materialized on disk.");
+
+    const replaceResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/content-blocks/replace`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          blocks: [
+            {
+              blockType: "text_block",
+              orderNo: 1,
+              contentPayload: {
+                text: "Rich-space knowledge supports tables and uploaded images.",
+              },
+            },
+            {
+              blockType: "image_block",
+              orderNo: 2,
+              contentPayload: {
+                uploadId: uploaded.upload_id,
+              },
+            },
+          ],
+        }),
+      },
+    );
+    const replaced = (await replaceResponse.json()) as {
+      content_blocks: Array<{
+        block_type: string;
+        content_payload: {
+          upload_id?: string;
+          storage_key?: string;
+          file_name?: string;
+          mime_type?: string;
+          byte_length?: number;
+        };
+      }>;
+      semantic_layer?: { status: string };
+    };
+
+    assert.equal(replaceResponse.status, 200);
+    assert.equal(replaced.content_blocks.length, 2);
+    assert.equal(
+      replaced.content_blocks[1]?.content_payload.storage_key,
+      uploaded.storage_key,
+    );
+    assert.equal(replaced.semantic_layer?.status, "stale");
+
+    const regenerateResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/semantic-layer/regenerate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    const regenerated = (await regenerateResponse.json()) as {
+      semantic_layer?: {
+        status: string;
+        page_summary?: string;
+      };
+    };
+
+    assert.equal(regenerateResponse.status, 200);
+    assert.equal(regenerated.semantic_layer?.status, "pending_confirmation");
+    assert.match(regenerated.semantic_layer?.page_summary ?? "", /rich-space/i);
+
+    const confirmResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/semantic-layer/confirm`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pageSummary: "Operator confirmed rich-space retrieval guidance.",
+          retrievalTerms: ["operator-confirmed-tag", "rich-space"],
+          retrievalSnippets: ["Prefer this item for semantic retrieval."],
+        }),
+      },
+    );
+    const confirmed = (await confirmResponse.json()) as {
+      semantic_layer?: {
+        status: string;
+        page_summary?: string;
+        retrieval_terms?: string[];
+      };
+    };
+
+    assert.equal(confirmResponse.status, 200);
+    assert.equal(confirmed.semantic_layer?.status, "confirmed");
+    assert.equal(
+      confirmed.semantic_layer?.page_summary,
+      "Operator confirmed rich-space retrieval guidance.",
+    );
+    assert.deepEqual(confirmed.semantic_layer?.retrieval_terms, [
+      "operator-confirmed-tag",
+      "rich-space",
+    ]);
+
+    const detailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/${created.asset.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const detail = (await detailResponse.json()) as {
+      selected_revision: {
+        content_blocks: Array<{
+          content_payload: {
+            storage_key?: string;
+          };
+        }>;
+        semantic_layer?: {
+          status: string;
+          page_summary?: string;
+        };
+      };
+    };
+
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detail.selected_revision.semantic_layer?.status, "confirmed");
+    assert.equal(
+      detail.selected_revision.semantic_layer?.page_summary,
+      "Operator confirmed rich-space retrieval guidance.",
+    );
+    assert.equal(
+      detail.selected_revision.content_blocks[1]?.content_payload.storage_key,
+      uploaded.storage_key,
+    );
+
+    const keywordListResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/library?search=rich-space&queryMode=keyword`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const keywordList = (await keywordListResponse.json()) as {
+      query_mode: string;
+      items: Array<{ asset_id: string }>;
+    };
+
+    assert.equal(keywordListResponse.status, 200);
+    assert.equal(keywordList.query_mode, "keyword");
+    assert.deepEqual(keywordList.items.map((item) => item.asset_id), [created.asset.id]);
+
+    const semanticListResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/library?search=operator-confirmed-tag&queryMode=semantic`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const semanticList = (await semanticListResponse.json()) as {
+      query_mode: string;
+      items: Array<{ asset_id: string; semantic_status?: string }>;
+    };
+
+    assert.equal(semanticListResponse.status, 200);
+    assert.equal(semanticList.query_mode, "semantic");
+    assert.deepEqual(semanticList.items.map((item) => item.asset_id), [created.asset.id]);
+    assert.equal(semanticList.items[0]?.semantic_status, "confirmed");
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
 

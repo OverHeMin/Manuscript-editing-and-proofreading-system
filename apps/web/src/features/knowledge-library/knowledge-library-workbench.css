@@ -60,6 +60,219 @@
   align-items: start;
 }
 
+.knowledge-library-layout--ledger {
+  grid-template-columns: minmax(0, 1.35fr) minmax(24rem, 0.95fr);
+}
+
+.knowledge-library-grid-shell,
+.knowledge-library-record-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.knowledge-library-grid-toolbar-header {
+  align-items: center;
+}
+
+.knowledge-library-grid-toolbar-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.knowledge-library-grid-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.knowledge-library-grid-search input {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.knowledge-library-query-mode {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.knowledge-library-query-mode button {
+  padding: 0.72rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.knowledge-library-query-mode button.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.knowledge-library-grid-toolbar-meta {
+  margin: 0;
+  color: #475569;
+}
+
+.knowledge-library-grid-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.knowledge-library-grid-row {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.2fr) minmax(12rem, 1fr) minmax(10rem, 0.8fr) minmax(11rem, 0.9fr) minmax(10rem, 0.85fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.knowledge-library-grid-row-head {
+  padding: 0 0.25rem;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.knowledge-library-grid-row-button {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: #f8fafc;
+  text-align: left;
+  font: inherit;
+}
+
+.knowledge-library-grid-row-button.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.knowledge-library-grid-row-button span,
+.knowledge-library-grid-row-button strong,
+.knowledge-library-grid-row-button small {
+  display: block;
+}
+
+.knowledge-library-grid-cell-main strong {
+  margin-bottom: 0.2rem;
+}
+
+.knowledge-library-grid-row-button small {
+  margin-top: 0.2rem;
+  color: #64748b;
+}
+
+.knowledge-library-record-drawer {
+  min-height: 100%;
+}
+
+.knowledge-library-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.knowledge-library-rich-content-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.knowledge-library-rich-content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.knowledge-library-rich-block {
+  padding: 0.9rem 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.knowledge-library-rich-block-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.knowledge-library-rich-block-header h3 {
+  margin: 0;
+}
+
+.knowledge-library-block-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.knowledge-library-block-editor input,
+.knowledge-library-block-editor textarea {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.knowledge-library-block-image-editor {
+  gap: 0.75rem;
+}
+
+.knowledge-library-block-image-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #475569;
+}
+
+.knowledge-library-semantic-panel {
+  gap: 1rem;
+}
+
+.knowledge-library-semantic-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+}
+
+.knowledge-library-semantic-status.is-confirmed {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.knowledge-library-semantic-status.is-stale {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.knowledge-library-semantic-status.is-pending_confirmation {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .knowledge-library-main-column {
   display: flex;
   flex-direction: column;
@@ -326,6 +539,14 @@
   }
 
   .knowledge-library-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-library-grid-toolbar-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-library-grid-row {
     grid-template-columns: 1fr;
   }
 }

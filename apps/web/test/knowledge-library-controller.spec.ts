@@ -95,7 +95,7 @@ test("knowledge library controller posts duplicate-check payloads and preserves 
   ]);
 });
 
-test("knowledge library controller loads the authoring list and selected revision detail", async () => {
+test("knowledge library controller loads the ledger list with search mode and selected revision detail", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createKnowledgeLibraryWorkbenchController({
     request: async <TResponse>(input: {
@@ -105,25 +105,28 @@ test("knowledge library controller loads the authoring list and selected revisio
     }) => {
       requests.push(input);
 
-      if (input.url === "/api/v1/knowledge/library") {
+      if (input.url === "/api/v1/knowledge/library?search=rich-space&queryMode=semantic") {
         return {
           status: 200,
-          body: [
-            {
-              id: "knowledge-1",
-              title: "Primary endpoint rule",
-              canonical_text: "Clinical studies must define the primary endpoint.",
-              summary: "Bind screening knowledge to the endpoint check.",
-              knowledge_kind: "rule",
-              status: "draft",
-              routing: {
+          body: {
+            query_mode: "semantic",
+            search: "rich-space",
+            items: [
+              {
+                asset_id: "knowledge-1",
+                title: "Primary endpoint rule",
+                summary: "Bind screening knowledge to the endpoint check.",
+                knowledge_kind: "rule",
+                status: "draft",
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
-                sections: ["methods"],
+                selected_revision_id: "knowledge-1-revision-2",
+                semantic_status: "confirmed",
+                content_block_count: 3,
+                updated_at: "2026-04-08T08:30:00.000Z",
               },
-              template_bindings: ["template-screening-1"],
-            },
-          ] as TResponse,
+            ],
+          } as TResponse,
         };
       }
 
@@ -162,6 +165,25 @@ test("knowledge library controller loads the authoring list and selected revisio
               source_link: "https://example.test/guideline",
               aliases: ["endpoint"],
               effective_at: "2026-04-08T00:00:00.000Z",
+              content_blocks: [
+                {
+                  id: "knowledge-1-revision-2-block-1",
+                  revision_id: "knowledge-1-revision-2",
+                  block_type: "text_block",
+                  order_no: 0,
+                  status: "active",
+                  content_payload: {
+                    text: "Rich-space canonical explanation.",
+                  },
+                },
+              ],
+              semantic_layer: {
+                revision_id: "knowledge-1-revision-2",
+                status: "confirmed",
+                page_summary: "Operator-confirmed summary.",
+                retrieval_terms: ["rich-space"],
+                retrieval_snippets: ["screening endpoint"],
+              },
               bindings: [
                 {
                   id: "knowledge-1-revision-2-binding-1",
@@ -183,6 +205,7 @@ test("knowledge library controller loads the authoring list and selected revisio
               title: "Primary endpoint rule",
               canonical_text: "Clinical studies must define the primary endpoint.",
               knowledge_kind: "rule",
+              content_blocks: [],
               routing: {
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
@@ -203,17 +226,27 @@ test("knowledge library controller loads the authoring list and selected revisio
   const result = await controller.loadWorkbench({
     selectedAssetId: "knowledge-1",
     selectedRevisionId: "knowledge-1-revision-2",
+    filters: {
+      searchText: " rich-space ",
+      queryMode: "semantic",
+    },
   });
 
   assert.equal(result.library.length, 1);
   assert.equal(result.selectedAssetId, "knowledge-1");
   assert.equal(result.selectedRevisionId, "knowledge-1-revision-2");
   assert.equal(result.selectedSummary?.title, "Primary endpoint rule");
+  assert.equal(result.selectedSummary?.semantic_status, "confirmed");
+  assert.equal(result.selectedSummary?.content_block_count, 3);
   assert.equal(result.detail?.selected_revision.id, "knowledge-1-revision-2");
+  assert.equal(result.detail?.selected_revision.content_blocks.length, 1);
+  assert.equal(result.detail?.selected_revision.semantic_layer?.status, "confirmed");
   assert.equal(
     result.detail?.current_approved_revision?.id,
     "knowledge-1-revision-1",
   );
+  assert.equal(result.filters.searchText, "rich-space");
+  assert.equal(result.filters.queryMode, "semantic");
   assert.equal(
     result.detail?.selected_revision.bindings[0]?.binding_target_label,
     "Screening Template",
@@ -221,7 +254,7 @@ test("knowledge library controller loads the authoring list and selected revisio
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
-      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/library?search=rich-space&queryMode=semantic",
       "GET /api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-2",
     ],
   );
@@ -253,20 +286,24 @@ test("knowledge library controller can submit a draft revision with duplicate ac
       if (input.url === "/api/v1/knowledge/library") {
         return {
           status: 200,
-          body: [
-            {
-              id: "knowledge-1",
-              title: "Knowledge draft updated",
-              canonical_text: "Use consistent terminology.",
-              knowledge_kind: "reference",
-              status: "pending_review",
-              routing: {
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-1",
+                title: "Knowledge draft updated",
+                summary: "Use consistent terminology.",
+                knowledge_kind: "reference",
+                status: "pending_review",
                 module_scope: "editing",
                 manuscript_types: ["review"],
+                selected_revision_id: "knowledge-1-revision-1",
+                semantic_status: "stale",
+                content_block_count: 1,
+                updated_at: "2026-04-08T08:40:00.000Z",
               },
-              template_bindings: ["template-editing-1"],
-            },
-          ] as TResponse,
+            ],
+          } as TResponse,
         };
       }
 
@@ -406,20 +443,24 @@ test("knowledge library controller can create, update, derive, and submit a draf
       if (input.url === "/api/v1/knowledge/library") {
         return {
           status: 200,
-          body: [
-            {
-              id: "knowledge-1",
-              title: "Knowledge draft updated",
-              canonical_text: "Use consistent terminology.",
-              knowledge_kind: "reference",
-              status: "draft",
-              routing: {
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-1",
+                title: "Knowledge draft updated",
+                summary: "Use consistent terminology.",
+                knowledge_kind: "reference",
+                status: "draft",
                 module_scope: "editing",
                 manuscript_types: ["review"],
+                selected_revision_id: "knowledge-1-revision-1",
+                semantic_status: "stale",
+                content_block_count: 1,
+                updated_at: "2026-04-08T08:40:00.000Z",
               },
-              template_bindings: ["template-editing-1"],
-            },
-          ] as TResponse,
+            ],
+          } as TResponse,
         };
       }
 
@@ -516,6 +557,208 @@ test("knowledge library controller can create, update, derive, and submit a draf
   );
 });
 
+test("knowledge library controller can persist rich content, semantic confirmation, and image uploads", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.url ===
+        "/api/v1/knowledge/revisions/knowledge-1-revision-2/content-blocks/replace"
+      ) {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            revisionNo: 2,
+            status: "draft",
+            title: "Knowledge draft updated",
+          }).selected_revision as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/knowledge/revisions/knowledge-1-revision-2/semantic-layer/regenerate"
+      ) {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            revisionNo: 2,
+            status: "draft",
+            title: "Knowledge draft updated",
+          }).selected_revision as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/knowledge/revisions/knowledge-1-revision-2/semantic-layer/confirm"
+      ) {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            revisionNo: 2,
+            status: "draft",
+            title: "Knowledge draft updated",
+          }).selected_revision as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/uploads") {
+        return {
+          status: 201,
+          body: {
+            upload_id: "upload-1",
+            storage_key: "knowledge/rich-space/endpoint-figure.png",
+            file_name: "endpoint-figure.png",
+            mime_type: "image/png",
+            byte_length: 2048,
+            uploaded_at: "2026-04-11T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-1",
+                title: "Knowledge draft updated",
+                summary: "Use consistent terminology.",
+                knowledge_kind: "reference",
+                status: "draft",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-1-revision-2",
+                semantic_status: "confirmed",
+                content_block_count: 3,
+                updated_at: "2026-04-08T08:40:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-2") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            revisionNo: 2,
+            status: "draft",
+            title: "Knowledge draft updated",
+          }) as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const replaced = await controller.replaceContentBlocksAndLoad({
+    revisionId: "knowledge-1-revision-2",
+    blocks: [
+      {
+        id: "block-1",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "text_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          text: "Clinical studies must define the primary endpoint.",
+        },
+      },
+      {
+        id: "block-2",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "table_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          rows: [["Field", "Rule"]],
+        },
+      },
+    ],
+  });
+  const regenerated = await controller.regenerateSemanticLayerAndLoad({
+    revisionId: "knowledge-1-revision-2",
+  });
+  const confirmed = await controller.confirmSemanticLayerAndLoad({
+    revisionId: "knowledge-1-revision-2",
+    input: {
+      pageSummary: "Operator confirmed semantic guidance.",
+      retrievalTerms: ["endpoint", "screening"],
+      retrievalSnippets: ["Prefer this rule for endpoint screening."],
+    },
+  });
+  const uploaded = await controller.uploadImage({
+    fileName: "endpoint-figure.png",
+    mimeType: "image/png",
+    fileContentBase64: "RkFLRQ==",
+  });
+
+  assert.equal(replaced.detail?.selected_revision.id, "knowledge-1-revision-2");
+  assert.equal(regenerated.detail?.selected_revision.id, "knowledge-1-revision-2");
+  assert.equal(confirmed.detail?.selected_revision.id, "knowledge-1-revision-2");
+  assert.equal(uploaded.upload_id, "upload-1");
+  assert.equal(uploaded.file_name, "endpoint-figure.png");
+  assert.deepEqual(requests[0], {
+    method: "POST",
+    url: "/api/v1/knowledge/revisions/knowledge-1-revision-2/content-blocks/replace",
+    body: {
+      blocks: [
+        {
+          blockType: "text_block",
+          orderNo: 0,
+          contentPayload: {
+            text: "Clinical studies must define the primary endpoint.",
+          },
+        },
+        {
+          blockType: "table_block",
+          orderNo: 1,
+          contentPayload: {
+            rows: [["Field", "Rule"]],
+          },
+        },
+      ],
+    },
+  });
+  assert.deepEqual(requests[6], {
+    method: "POST",
+    url: "/api/v1/knowledge/revisions/knowledge-1-revision-2/semantic-layer/confirm",
+    body: {
+      pageSummary: "Operator confirmed semantic guidance.",
+      retrievalTerms: ["endpoint", "screening"],
+      retrievalSnippets: ["Prefer this rule for endpoint screening."],
+    },
+  });
+  assert.deepEqual(requests[9], {
+    method: "POST",
+    url: "/api/v1/knowledge/uploads",
+    body: {
+      fileName: "endpoint-figure.png",
+      mimeType: "image/png",
+      fileContentBase64: "RkFLRQ==",
+    },
+  });
+});
+
 function createKnowledgeAssetDetail(input: {
   assetId: string;
   revisionId: string;
@@ -541,6 +784,25 @@ function createKnowledgeAssetDetail(input: {
       title: input.title,
       canonical_text: "Use consistent terminology.",
       knowledge_kind: "reference",
+      content_blocks: [
+        {
+          id: `${input.revisionId}-block-1`,
+          revision_id: input.revisionId,
+          block_type: "text_block",
+          order_no: 0,
+          status: "active",
+          content_payload: {
+            text: "Use consistent terminology.",
+          },
+        },
+      ],
+      semantic_layer: {
+        revision_id: input.revisionId,
+        status: input.status === "approved" ? "confirmed" : "stale",
+        page_summary: "Draft summary",
+        retrieval_terms: ["terminology"],
+        retrieval_snippets: ["consistent terminology"],
+      },
       routing: {
         module_scope: "editing",
         manuscript_types: ["review"],
@@ -567,6 +829,7 @@ function createKnowledgeAssetDetail(input: {
           title: "Knowledge draft updated",
           canonical_text: "Use consistent terminology.",
           knowledge_kind: "reference",
+          content_blocks: [],
           routing: {
             module_scope: "editing",
             manuscript_types: ["review"],

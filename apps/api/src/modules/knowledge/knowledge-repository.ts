@@ -1,10 +1,12 @@
 import type {
   KnowledgeAssetRecord,
+  KnowledgeContentBlockRecord,
   KnowledgeDuplicateSeverity,
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
+  KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 
@@ -43,9 +45,20 @@ export interface KnowledgeRepository {
     revisionId: string,
     records: readonly KnowledgeRevisionBindingRecord[],
   ): Promise<void>;
+  replaceRevisionContentBlocks?(
+    revisionId: string,
+    records: readonly KnowledgeContentBlockRecord[],
+  ): Promise<void>;
   listBindingsByRevisionId(
     revisionId: string,
   ): Promise<KnowledgeRevisionBindingRecord[]>;
+  listContentBlocksByRevisionId?(
+    revisionId: string,
+  ): Promise<KnowledgeContentBlockRecord[]>;
+  saveSemanticLayer?(record: KnowledgeSemanticLayerRecord): Promise<void>;
+  findSemanticLayerByRevisionId?(
+    revisionId: string,
+  ): Promise<KnowledgeSemanticLayerRecord | undefined>;
   saveDuplicateAcknowledgement?(
     record: KnowledgeDuplicateAcknowledgementAuditRecord,
   ): Promise<void>;

@@ -84,6 +84,8 @@ import {
 import {
   createKnowledgeApi,
   KnowledgeService,
+  KnowledgeSemanticLayerService,
+  KnowledgeUploadService,
   PostgresKnowledgeRepository,
   PostgresKnowledgeReviewActionRepository,
 } from "../modules/knowledge/index.ts";
@@ -572,6 +574,12 @@ export function createPersistentGovernanceRuntime(
     },
     transactionManager: knowledgeServiceTransactionManager,
   });
+  const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
+    repository: knowledgeRepository,
+  });
+  const knowledgeUploadService = new KnowledgeUploadService({
+    rootDir: uploadRootDir,
+  });
   const learningGovernanceService = new LearningGovernanceService({
     repository: learningGovernanceRepository,
     learningCandidateRepository,
@@ -763,6 +771,8 @@ export function createPersistentGovernanceRuntime(
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      semanticLayerService: knowledgeSemanticLayerService,
+      uploadService: knowledgeUploadService,
       harnessDatasetService,
     }),
     learningApi: createLearningApi({ learningService }),
