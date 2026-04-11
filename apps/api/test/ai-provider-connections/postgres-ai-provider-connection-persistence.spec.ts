@@ -184,13 +184,13 @@ async function withTemporaryAiProviderConnectionPool(
 }
 
 function expectCredentialSummary(
-  record: unknown,
+  record: object,
   summary: { mask: string; version: number },
 ): void {
   assert.deepEqual(Reflect.get(record, "credential_summary"), summary);
 }
 
-function assertLastTestAt(record: unknown, expected: Date): void {
+function assertLastTestAt(record: object, expected: Date): void {
   const value = Reflect.get(record, "last_test_at");
   assert.ok(value !== undefined, "Expected last_test_at to be present.");
   const actualDate =

@@ -17,6 +17,7 @@ import {
 export interface RulePackageAuthoringShellProps {
   workspaceState: RulePackageAuthoringWorkspaceState | null;
   targetModule: string;
+  isAdvancedEditorVisible: boolean;
   isLoading: boolean;
   isPreviewRefreshing?: boolean;
   isCompilePreviewBusy?: boolean;
@@ -41,6 +42,7 @@ export interface RulePackageAuthoringShellProps {
 export function RulePackageAuthoringShell({
   workspaceState,
   targetModule,
+  isAdvancedEditorVisible,
   isLoading,
   isPreviewRefreshing = false,
   isCompilePreviewBusy = false,
@@ -119,13 +121,13 @@ export function RulePackageAuthoringShell({
 
       <div className="template-governance-actions">
         <button type="button" onClick={onToggleAdvancedEditor}>
-          {workspaceState?.isAdvancedEditorVisible
+          {isAdvancedEditorVisible
             ? "Hide Advanced Rule Editor"
             : "Open Advanced Rule Editor"}
         </button>
       </div>
 
-      {workspaceState?.isAdvancedEditorVisible ? advancedEditor : null}
+      {isAdvancedEditorVisible ? advancedEditor : null}
     </section>
   );
 }

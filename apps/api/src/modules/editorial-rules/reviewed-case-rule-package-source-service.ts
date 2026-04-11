@@ -95,7 +95,7 @@ export class ReviewedCaseRulePackageSourceService {
     return {
       context: {
         manuscript_type: snapshot.manuscript_type,
-        module: snapshot.module,
+        module: resolveRulePackageModule(snapshot.module),
         ...(input.journalKey ? { journal_key: input.journalKey } : {}),
       },
       original: await this.extractExampleSnapshot({
@@ -521,56 +521,75 @@ function normalizeTables(value: unknown): ExampleDocumentTableSnapshot[] {
             ? { has_merged_headers: profile.has_merged_headers }
             : {}),
         },
-        header_cells: normalizeTableCells(semantic.header_cells, tableId, "header"),
-        data_cells: normalizeTableCells(semantic.data_cells, tableId, "data"),
-        footnote_items: normalizeTableCells(semantic.footnote_items, tableId, "footnote"),
+        header_cells: normalizeHeaderCells(semantic.header_cells, tableId),
+        data_cells: normalizeDataCells(semantic.data_cells, tableId),
+        footnote_items: normalizeFootnoteItems(semantic.footnote_items, tableId),
       } as ExampleDocumentTableSnapshot,
     ];
   });
 }
 
-function normalizeTableCells(
+function resolveRulePackageModule(
+  module: string,
+): GenerateRulePackageCandidatesInput["context"]["module"] {
+  switch (module) {
+    case "screening":
+    case "editing":
+    case "proofreading":
+      return module;
+    default:
+      return "editing";
+  }
+}
+
+function normalizeHeaderCells(
   value: unknown,
   tableId: string,
-  kind: "header" | "data" | "footnote",
-) {
+): ExampleDocumentTableSnapshot["header_cells"] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((entry, index) => {
-    const cell = isRecord(entry) ? entry : {};
-    const baseCoordinate = normalizeCoordinate(cell.coordinate, {
-      tableId,
-      target:
-        kind === "header"
-          ? "header_cell"
-          : kind === "data"
-            ? "data_cell"
-            : "footnote_item",
-      headerPath: normalizeStringArray(cell.header_path),
-      rowKey: readOptionalString(cell.row_key),
-      columnKey: readOptionalString(cell.column_key),
-      footnoteAnchor: readOptionalString(cell.marker),
-    });
-    if (kind === "header") {
+  return value.flatMap<ExampleDocumentTableSnapshot["header_cells"][number]>(
+    (entry, index) => {
+      const cell = isRecord(entry) ? entry : {};
+      const headerPath = normalizeStringArray(cell.header_path);
       return [
         {
           id: readOptionalString(cell.id) ?? `${tableId}-header-${index + 1}`,
           text: readOptionalString(cell.text) ?? "",
           row_index: readOptionalNumber(cell.row_index) ?? 0,
           column_index: readOptionalNumber(cell.column_index) ?? 0,
-          header_path: normalizeStringArray(cell.header_path),
+          header_path: headerPath,
           ...(readOptionalNumber(cell.row_span) !== undefined
             ? { row_span: readOptionalNumber(cell.row_span) }
             : {}),
           ...(readOptionalNumber(cell.column_span) !== undefined
             ? { column_span: readOptionalNumber(cell.column_span) }
             : {}),
-          coordinate: baseCoordinate,
+          coordinate: normalizeCoordinate(cell.coordinate, {
+            tableId,
+            target: "header_cell",
+            headerPath,
+            rowKey: readOptionalString(cell.row_key),
+            columnKey: readOptionalString(cell.column_key),
+            footnoteAnchor: readOptionalString(cell.marker),
+          }),
         },
       ];
-    }
-    if (kind === "data") {
+    },
+  );
+}
+
+function normalizeDataCells(
+  value: unknown,
+  tableId: string,
+): ExampleDocumentTableSnapshot["data_cells"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap<ExampleDocumentTableSnapshot["data_cells"][number]>(
+    (entry, index) => {
+      const cell = isRecord(entry) ? entry : {};
       const unitContext = readOptionalString(cell.unit_context);
       return [
         {
@@ -580,7 +599,14 @@ function normalizeTableCells(
           column_index: readOptionalNumber(cell.column_index) ?? 0,
           row_key: readOptionalString(cell.row_key) ?? "",
           column_key: readOptionalString(cell.column_key) ?? "",
-          coordinate: baseCoordinate,
+          coordinate: normalizeCoordinate(cell.coordinate, {
+            tableId,
+            target: "data_cell",
+            headerPath: normalizeStringArray(cell.header_path),
+            rowKey: readOptionalString(cell.row_key),
+            columnKey: readOptionalString(cell.column_key),
+            footnoteAnchor: readOptionalString(cell.marker),
+          }),
           ...(unitContext === "header" ||
           unitContext === "stub" ||
           unitContext === "footnote"
@@ -588,23 +614,44 @@ function normalizeTableCells(
             : {}),
         },
       ];
-    }
-    const noteKind = readOptionalString(cell.note_kind);
-    return [
-      {
-        id: readOptionalString(cell.id) ?? `${tableId}-footnote-${index + 1}`,
-        text: readOptionalString(cell.text) ?? "",
-        note_kind:
-          noteKind === "statistical_significance" ||
-          noteKind === "abbreviation" ||
-          noteKind === "general"
-            ? noteKind
-            : "general",
-        ...(readOptionalString(cell.marker) ? { marker: readOptionalString(cell.marker) } : {}),
-        coordinate: baseCoordinate,
-      },
-    ];
-  });
+    },
+  );
+}
+
+function normalizeFootnoteItems(
+  value: unknown,
+  tableId: string,
+): ExampleDocumentTableSnapshot["footnote_items"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap<ExampleDocumentTableSnapshot["footnote_items"][number]>(
+    (entry, index) => {
+      const cell = isRecord(entry) ? entry : {};
+      const noteKind = readOptionalString(cell.note_kind);
+      return [
+        {
+          id: readOptionalString(cell.id) ?? `${tableId}-footnote-${index + 1}`,
+          text: readOptionalString(cell.text) ?? "",
+          note_kind:
+            noteKind === "statistical_significance" ||
+            noteKind === "abbreviation" ||
+            noteKind === "general"
+              ? noteKind
+              : "general",
+          ...(readOptionalString(cell.marker) ? { marker: readOptionalString(cell.marker) } : {}),
+          coordinate: normalizeCoordinate(cell.coordinate, {
+            tableId,
+            target: "footnote_item",
+            headerPath: normalizeStringArray(cell.header_path),
+            rowKey: readOptionalString(cell.row_key),
+            columnKey: readOptionalString(cell.column_key),
+            footnoteAnchor: readOptionalString(cell.marker),
+          }),
+        },
+      ];
+    },
+  );
 }
 
 function normalizeCoordinate(

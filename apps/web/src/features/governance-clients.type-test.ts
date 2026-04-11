@@ -120,6 +120,12 @@ const resolvedExecutionBundleCheck: ResolvedExecutionBundleViewModel = {
     is_prod_allowed: true,
   },
   model_source: "legacy_module_default",
+  provider_readiness: {
+    status: "ok",
+    issues: [],
+  },
+  fallback_chain: [],
+  warnings: [],
   knowledge_binding_rules: [
     {
       id: "rule-1",
