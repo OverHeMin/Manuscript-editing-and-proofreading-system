@@ -135,6 +135,19 @@ export type KnowledgeRevisionBindingKind =
   | "section"
   | "journal_template";
 
+export type KnowledgeContentBlockType =
+  | "text_block"
+  | "table_block"
+  | "image_block";
+
+export type KnowledgeContentBlockStatus = "active" | "archived";
+
+export type KnowledgeSemanticLayerStatus =
+  | "not_generated"
+  | "pending_confirmation"
+  | "confirmed"
+  | "stale";
+
 export interface KnowledgeRevisionBindingRecord {
   id: string;
   revision_id: string;
@@ -142,6 +155,31 @@ export interface KnowledgeRevisionBindingRecord {
   binding_target_id: string;
   binding_target_label: string;
   created_at: string;
+}
+
+export interface KnowledgeContentBlockRecord {
+  id: string;
+  revision_id: string;
+  block_type: KnowledgeContentBlockType;
+  order_no: number;
+  status: KnowledgeContentBlockStatus;
+  content_payload: Record<string, unknown>;
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeSemanticLayerRecord {
+  revision_id: string;
+  status: KnowledgeSemanticLayerStatus;
+  page_summary?: string;
+  retrieval_terms?: string[];
+  retrieval_snippets?: string[];
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface KnowledgeReviewActionRecord {
