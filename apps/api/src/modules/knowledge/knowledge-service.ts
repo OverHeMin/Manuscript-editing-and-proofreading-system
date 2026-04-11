@@ -50,6 +50,7 @@ import type {
 } from "./knowledge-repository.ts";
 import type {
   KnowledgeAssetRecord,
+  KnowledgeContentBlockRecord,
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeDuplicateCheckInput,
   KnowledgeDuplicateMatchRecord,
@@ -57,6 +58,7 @@ import type {
   KnowledgeRevisionBindingKind,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
+  KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 
@@ -119,6 +121,29 @@ export interface UpdateKnowledgeRevisionDraftInput extends UpdateKnowledgeDraftI
   bindings?: KnowledgeRevisionBindingInput[];
 }
 
+export interface KnowledgeContentBlockInput {
+  blockType: KnowledgeContentBlockRecord["block_type"];
+  orderNo: number;
+  contentPayload: Record<string, unknown>;
+  tableSemantics?: Record<string, unknown>;
+  imageUnderstanding?: Record<string, unknown>;
+}
+
+export interface ReplaceKnowledgeRevisionContentBlocksInput {
+  blocks: readonly KnowledgeContentBlockInput[];
+}
+
+export interface RegenerateKnowledgeSemanticLayerInput {
+  pageSummary?: string;
+  retrievalTerms?: string[];
+  retrievalSnippets?: string[];
+  tableSemantics?: Record<string, unknown>;
+  imageUnderstanding?: Record<string, unknown>;
+}
+
+export interface ConfirmKnowledgeSemanticLayerInput
+  extends RegenerateKnowledgeSemanticLayerInput {}
+
 interface SubmitKnowledgeAcknowledgementInput
   extends SubmitKnowledgeDuplicateAcknowledgementInput {
   acknowledgedByRole?: RoleKey;
@@ -136,6 +161,8 @@ export interface SubmitKnowledgeRevisionForReviewInput
 
 export interface KnowledgeRevisionDetailRecord extends KnowledgeRevisionRecord {
   bindings: KnowledgeRevisionBindingRecord[];
+  content_blocks: KnowledgeContentBlockRecord[];
+  semantic_layer?: KnowledgeSemanticLayerRecord;
 }
 
 export interface KnowledgeAssetDetailRecord {
@@ -231,6 +258,13 @@ export class KnowledgeRevisionNotFoundError extends Error {
   }
 }
 
+export class KnowledgeSemanticLayerNotFoundError extends Error {
+  constructor(revisionId: string) {
+    super(`Knowledge semantic layer for revision ${revisionId} was not found.`);
+    this.name = "KnowledgeSemanticLayerNotFoundError";
+  }
+}
+
 export class KnowledgeStatusTransitionError extends Error {
   constructor(knowledgeItemId: string, fromStatus: string, toStatus: string) {
     super(
@@ -253,6 +287,33 @@ export class KnowledgeRetrievalSnapshotNotFoundError extends Error {
     this.name = "KnowledgeRetrievalSnapshotNotFoundError";
   }
 }
+
+export class KnowledgeRichSpaceNotSupportedError extends Error {
+  constructor() {
+    super("Knowledge rich-space is not supported by the configured repository.");
+    this.name = "KnowledgeRichSpaceNotSupportedError";
+  }
+}
+
+export class KnowledgeContentBlockOrderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KnowledgeContentBlockOrderError";
+  }
+}
+
+type RichSpaceKnowledgeRepository = KnowledgeRepository & {
+  replaceRevisionContentBlocks: NonNullable<
+    KnowledgeRepository["replaceRevisionContentBlocks"]
+  >;
+  listContentBlocksByRevisionId: NonNullable<
+    KnowledgeRepository["listContentBlocksByRevisionId"]
+  >;
+  saveSemanticLayer: NonNullable<KnowledgeRepository["saveSemanticLayer"]>;
+  findSemanticLayerByRevisionId: NonNullable<
+    KnowledgeRepository["findSemanticLayerByRevisionId"]
+  >;
+};
 
 export class KnowledgeService {
   private readonly repository: KnowledgeRepository;
@@ -443,6 +504,34 @@ export class KnowledgeService {
             created_at: timestamp,
           })),
         );
+        const richSpaceRepository = this.getRichSpaceRepository(repository);
+        if (richSpaceRepository) {
+          const approvedContentBlocks =
+            await richSpaceRepository.listContentBlocksByRevisionId(approvedRevision.id);
+          await richSpaceRepository.replaceRevisionContentBlocks(
+            nextRevisionId,
+            approvedContentBlocks.map((block, index) => ({
+              ...block,
+              id: createContentBlockId(nextRevisionId, index + 1),
+              revision_id: nextRevisionId,
+              created_at: timestamp,
+              updated_at: timestamp,
+            })),
+          );
+
+          const approvedSemanticLayer =
+            await richSpaceRepository.findSemanticLayerByRevisionId(
+              approvedRevision.id,
+            );
+          if (approvedSemanticLayer) {
+            await richSpaceRepository.saveSemanticLayer({
+              ...approvedSemanticLayer,
+              revision_id: nextRevisionId,
+              created_at: timestamp,
+              updated_at: timestamp,
+            });
+          }
+        }
         await repository.saveAsset({
           ...asset,
           current_revision_id: nextRevisionId,
@@ -504,19 +593,131 @@ export class KnowledgeService {
         }
 
         const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
-        await repository.saveAsset({
-          ...asset,
-          current_revision_id: revision.id,
-          updated_at: timestamp,
-        });
+          await repository.saveAsset({
+            ...asset,
+            current_revision_id: revision.id,
+            updated_at: timestamp,
+          });
+          if (this.hasRevisionDraftChanges(input)) {
+            await this.markRevisionSemanticLayerStale(
+              revision.id,
+              repository,
+              timestamp,
+            );
+          }
 
-        return this.buildKnowledgeAssetDetail(
-          revision.asset_id,
-          revision.id,
-          repository,
-        );
-      },
-    );
+          return this.buildKnowledgeAssetDetail(
+            revision.asset_id,
+            revision.id,
+            repository,
+          );
+        },
+      );
+    }
+
+  async replaceRevisionContentBlocks(
+    revisionId: string,
+    input: ReplaceKnowledgeRevisionContentBlocksInput,
+  ): Promise<KnowledgeRevisionDetailRecord> {
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const revision = await this.requireKnowledgeRevision(revisionId, repository);
+      if (revision.status !== "draft") {
+        throw new KnowledgeStatusTransitionError(revisionId, revision.status, "draft");
+      }
+
+      const richSpaceRepository = this.requireRichSpaceRepository(repository);
+      assertValidContentBlocks(input.blocks);
+      const timestamp = this.now().toISOString();
+      await richSpaceRepository.replaceRevisionContentBlocks(
+        revision.id,
+        buildContentBlockRecords(revision.id, input.blocks, timestamp),
+      );
+
+      const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+      await repository.saveAsset({
+        ...asset,
+        current_revision_id: revision.id,
+        updated_at: timestamp,
+      });
+      await this.markRevisionSemanticLayerStale(revision.id, repository, timestamp);
+
+      return this.buildKnowledgeRevisionDetail(revision.id, repository);
+    });
+  }
+
+  async regenerateSemanticLayer(
+    revisionId: string,
+    input: RegenerateKnowledgeSemanticLayerInput,
+  ): Promise<KnowledgeRevisionDetailRecord> {
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const revision = await this.requireKnowledgeRevision(revisionId, repository);
+      const richSpaceRepository = this.requireRichSpaceRepository(repository);
+      const timestamp = this.now().toISOString();
+      const existing = await richSpaceRepository.findSemanticLayerByRevisionId(
+        revision.id,
+      );
+
+      await richSpaceRepository.saveSemanticLayer({
+        revision_id: revision.id,
+        status: "pending_confirmation",
+        page_summary: input.pageSummary ?? existing?.page_summary,
+        retrieval_terms: input.retrievalTerms ?? existing?.retrieval_terms,
+        retrieval_snippets: input.retrievalSnippets ?? existing?.retrieval_snippets,
+        table_semantics: input.tableSemantics ?? existing?.table_semantics,
+        image_understanding:
+          input.imageUnderstanding ?? existing?.image_understanding,
+        created_at: existing?.created_at ?? timestamp,
+        updated_at: timestamp,
+      });
+
+      const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+      await repository.saveAsset({
+        ...asset,
+        current_revision_id: revision.id,
+        updated_at: timestamp,
+      });
+
+      return this.buildKnowledgeRevisionDetail(revision.id, repository);
+    });
+  }
+
+  async confirmSemanticLayer(
+    revisionId: string,
+    input: ConfirmKnowledgeSemanticLayerInput = {},
+  ): Promise<KnowledgeRevisionDetailRecord> {
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const revision = await this.requireKnowledgeRevision(revisionId, repository);
+      const richSpaceRepository = this.requireRichSpaceRepository(repository);
+      const existing = await richSpaceRepository.findSemanticLayerByRevisionId(
+        revision.id,
+      );
+      if (!existing) {
+        throw new KnowledgeSemanticLayerNotFoundError(revision.id);
+      }
+
+      const timestamp = this.now().toISOString();
+      await richSpaceRepository.saveSemanticLayer({
+        revision_id: revision.id,
+        status: "confirmed",
+        page_summary: input.pageSummary ?? existing.page_summary,
+        retrieval_terms: input.retrievalTerms ?? existing.retrieval_terms,
+        retrieval_snippets: input.retrievalSnippets ?? existing.retrieval_snippets,
+        table_semantics: input.tableSemantics ?? existing.table_semantics,
+        image_understanding:
+          input.imageUnderstanding ?? existing.image_understanding,
+        created_at: existing.created_at,
+        updated_at: timestamp,
+      });
+
+      const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
+      await repository.saveAsset({
+        ...asset,
+        current_revision_id: revision.id,
+        updated_at: timestamp,
+      });
+
+      return this.buildKnowledgeRevisionDetail(revision.id, repository);
+    });
   }
 
   async submitForReview(
@@ -1104,10 +1305,9 @@ export class KnowledgeService {
     const asset = await this.requireKnowledgeAsset(assetId, repository);
     const revisions = await repository.listRevisionsByAssetId(asset.id);
     const detailedRevisions = await Promise.all(
-      revisions.map(async (revision) => ({
-        ...revision,
-        bindings: await repository.listBindingsByRevisionId(revision.id),
-      })),
+      revisions.map((revision) =>
+        this.buildKnowledgeRevisionDetailFromRecord(revision, repository),
+      ),
     );
     const selectedRevision = revisionId
       ? detailedRevisions.find((record) => record.id === revisionId)
@@ -1170,6 +1370,40 @@ export class KnowledgeService {
     return undefined;
   }
 
+  private async buildKnowledgeRevisionDetail(
+    revisionId: string,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionDetailRecord> {
+    const revision = await this.requireKnowledgeRevision(revisionId, repository);
+    return this.buildKnowledgeRevisionDetailFromRecord(revision, repository);
+  }
+
+  private async buildKnowledgeRevisionDetailFromRecord(
+    revision: KnowledgeRevisionRecord,
+    repository: KnowledgeRepository = this.repository,
+  ): Promise<KnowledgeRevisionDetailRecord> {
+    const bindings = await repository.listBindingsByRevisionId(revision.id);
+    const persistedContentBlocks = repository.listContentBlocksByRevisionId
+      ? await repository.listContentBlocksByRevisionId(revision.id)
+      : [];
+    const persistedSemanticLayer = repository.findSemanticLayerByRevisionId
+      ? await repository.findSemanticLayerByRevisionId(revision.id)
+      : undefined;
+    const contentBlocks =
+      persistedContentBlocks.length > 0
+        ? persistedContentBlocks
+        : [buildImplicitTextContentBlock(revision)];
+    const semanticLayer =
+      persistedSemanticLayer ?? buildNotGeneratedSemanticLayer(revision);
+
+    return {
+      ...revision,
+      bindings,
+      content_blocks: contentBlocks,
+      semantic_layer: semanticLayer,
+    };
+  }
+
   private async projectCompatibilityRecord(
     knowledgeItemId: string,
     repository: KnowledgeRepository = this.repository,
@@ -1180,6 +1414,81 @@ export class KnowledgeService {
     }
 
     return record;
+  }
+
+  private hasRevisionDraftChanges(input: UpdateKnowledgeRevisionDraftInput): boolean {
+    return (
+      input.title !== undefined ||
+      input.canonicalText !== undefined ||
+      input.summary !== undefined ||
+      input.knowledgeKind !== undefined ||
+      input.moduleScope !== undefined ||
+      input.manuscriptTypes !== undefined ||
+      input.sections !== undefined ||
+      input.riskTags !== undefined ||
+      input.disciplineTags !== undefined ||
+      input.evidenceLevel !== undefined ||
+      input.sourceType !== undefined ||
+      input.sourceLink !== undefined ||
+      input.effectiveAt !== undefined ||
+      input.expiresAt !== undefined ||
+      input.aliases !== undefined ||
+      input.sourceLearningCandidateId !== undefined ||
+      input.bindings !== undefined
+    );
+  }
+
+  private getRichSpaceRepository(
+    repository: KnowledgeRepository = this.repository,
+  ): RichSpaceKnowledgeRepository | undefined {
+    const candidate = repository as Partial<RichSpaceKnowledgeRepository>;
+    if (
+      typeof candidate.replaceRevisionContentBlocks === "function" &&
+      typeof candidate.listContentBlocksByRevisionId === "function" &&
+      typeof candidate.saveSemanticLayer === "function" &&
+      typeof candidate.findSemanticLayerByRevisionId === "function"
+    ) {
+      return candidate as RichSpaceKnowledgeRepository;
+    }
+
+    return undefined;
+  }
+
+  private requireRichSpaceRepository(
+    repository: KnowledgeRepository = this.repository,
+  ): RichSpaceKnowledgeRepository {
+    const candidate = this.getRichSpaceRepository(repository);
+    if (!candidate) {
+      throw new KnowledgeRichSpaceNotSupportedError();
+    }
+
+    return candidate;
+  }
+
+  private async markRevisionSemanticLayerStale(
+    revisionId: string,
+    repository: KnowledgeRepository,
+    timestamp: string,
+  ): Promise<void> {
+    const richSpaceRepository = this.getRichSpaceRepository(repository);
+    if (!richSpaceRepository) {
+      return;
+    }
+
+    const existing = await richSpaceRepository.findSemanticLayerByRevisionId(
+      revisionId,
+    );
+    await richSpaceRepository.saveSemanticLayer({
+      revision_id: revisionId,
+      status: "stale",
+      page_summary: existing?.page_summary,
+      retrieval_terms: existing?.retrieval_terms,
+      retrieval_snippets: existing?.retrieval_snippets,
+      table_semantics: existing?.table_semantics,
+      image_understanding: existing?.image_understanding,
+      created_at: existing?.created_at ?? timestamp,
+      updated_at: timestamp,
+    });
   }
 
   private async findKnowledgeAssetIfSupported(
@@ -1418,12 +1727,65 @@ function buildBindingRecords(
   }));
 }
 
+function buildContentBlockRecords(
+  revisionId: string,
+  blocks: readonly KnowledgeContentBlockInput[],
+  timestamp: string,
+): KnowledgeContentBlockRecord[] {
+  return blocks.map((block, index) => ({
+    id: createContentBlockId(revisionId, index + 1),
+    revision_id: revisionId,
+    block_type: block.blockType,
+    order_no: block.orderNo,
+    status: "active",
+    content_payload: block.contentPayload,
+    ...(block.tableSemantics ? { table_semantics: block.tableSemantics } : {}),
+    ...(block.imageUnderstanding
+      ? { image_understanding: block.imageUnderstanding }
+      : {}),
+    created_at: timestamp,
+    updated_at: timestamp,
+  }));
+}
+
 function createRevisionId(assetId: string, revisionNo: number): string {
   return `${assetId}-revision-${revisionNo}`;
 }
 
 function createBindingId(revisionId: string, bindingNo: number): string {
   return `${revisionId}-binding-${bindingNo}`;
+}
+
+function createContentBlockId(revisionId: string, blockNo: number): string {
+  return `${revisionId}-content-block-${blockNo}`;
+}
+
+function buildImplicitTextContentBlock(
+  revision: KnowledgeRevisionRecord,
+): KnowledgeContentBlockRecord {
+  return {
+    id: `${revision.id}-implicit-text-block-1`,
+    revision_id: revision.id,
+    block_type: "text_block",
+    order_no: 0,
+    status: "active",
+    content_payload: {
+      text: revision.canonical_text,
+    },
+    created_at: revision.created_at,
+    updated_at: revision.updated_at,
+  };
+}
+
+function buildNotGeneratedSemanticLayer(
+  revision: KnowledgeRevisionRecord,
+): KnowledgeSemanticLayerRecord {
+  return {
+    revision_id: revision.id,
+    status: "not_generated",
+    created_at: revision.created_at,
+    updated_at: revision.updated_at,
+  };
 }
 
 function mapTemplateBindingsToBindingInputs(
@@ -1438,6 +1800,25 @@ function mapTemplateBindingsToBindingInputs(
 
 function uniqueDefinedStrings(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => value != null))];
+}
+
+function assertValidContentBlocks(
+  blocks: readonly KnowledgeContentBlockInput[],
+): void {
+  const seenOrderNos = new Set<number>();
+  for (const block of blocks) {
+    if (block.orderNo < 0) {
+      throw new KnowledgeContentBlockOrderError(
+        `Knowledge content block order_no must be >= 0; received ${block.orderNo}.`,
+      );
+    }
+    if (seenOrderNos.has(block.orderNo)) {
+      throw new KnowledgeContentBlockOrderError(
+        `Knowledge content block order_no must be unique per revision; duplicate ${block.orderNo}.`,
+      );
+    }
+    seenOrderNos.add(block.orderNo);
+  }
 }
 
 function parseKnowledgeSubmitInput(

@@ -29,7 +29,11 @@ const migrationDescriptions = new Map<string, string>([
     "Add ai provider connection and credential persistence plus nullable model registry connection linkage.",
   ],
   [
-    "0033_harness_control_plane_p0.sql",
+    "0033_knowledge_library_rich_space.sql",
+    "Add revision-rich knowledge content blocks and semantic retrieval layers.",
+  ],
+  [
+    "0034_harness_control_plane_p0.sql",
     "Add governed retrieval presets and manual review policies for the Harness control plane.",
   ],
 ]);

@@ -5,3 +5,6 @@ export * from "./in-memory-knowledge-repository.ts";
 export * from "./postgres-knowledge-repository.ts";
 export * from "./knowledge-service.ts";
 export * from "./knowledge-api.ts";
+export * from "./knowledge-semantic-layer-service.ts";
+export * from "./knowledge-content-block-normalizer.ts";
+export * from "./knowledge-upload-service.ts";
