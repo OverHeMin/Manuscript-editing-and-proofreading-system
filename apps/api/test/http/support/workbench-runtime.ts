@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import assert from "node:assert/strict";
+import path from "node:path";
 import {
   createApiHttpServer,
   type ApiHttpServer,
@@ -36,7 +37,9 @@ import {
   InMemoryKnowledgeReviewActionRepository,
 } from "../../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { createKnowledgeApi } from "../../../src/modules/knowledge/knowledge-api.ts";
+import { KnowledgeSemanticLayerService } from "../../../src/modules/knowledge/knowledge-semantic-layer-service.ts";
 import { KnowledgeService } from "../../../src/modules/knowledge/knowledge-service.ts";
+import { KnowledgeUploadService } from "../../../src/modules/knowledge/knowledge-upload-service.ts";
 import { createManuscriptApi } from "../../../src/modules/manuscripts/manuscript-api.ts";
 import { ManuscriptLifecycleService } from "../../../src/modules/manuscripts/manuscript-lifecycle-service.ts";
 import { InMemoryManuscriptRepository } from "../../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
@@ -125,7 +128,9 @@ export async function startWorkbenchServer(input: {
   baseUrl: string;
   seededIds: WorkbenchSeededIds;
 }> {
-  const runtime = createWorkbenchRuntime();
+  const runtime = createWorkbenchRuntime({
+    uploadRootDir: input.uploadRootDir,
+  });
   const server = createApiHttpServer({
     appEnv: "local",
     allowedOrigins: ["http://127.0.0.1:4173"],
@@ -176,7 +181,9 @@ export async function loginAsDemoUser(
   return setCookie.split(";")[0] ?? "";
 }
 
-export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
+export function createWorkbenchRuntime(input: {
+  uploadRootDir?: string;
+} = {}): WorkbenchRuntimeBundle {
   const authRuntime = createDemoHttpAuthRuntime();
   const permissionGuard = new PermissionGuard();
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -301,6 +308,16 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
     createId: () => nextId("knowledge"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
+  const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
+    repository: knowledgeRepository,
+  });
+  const knowledgeUploadService = new KnowledgeUploadService({
+    rootDir:
+      input.uploadRootDir ??
+      path.resolve(process.cwd(), ".local-data", "uploads", "local"),
+    createId: () => nextId("knowledge-upload"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
 
@@ -428,6 +445,8 @@ export function createWorkbenchRuntime(): WorkbenchRuntimeBundle {
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      semanticLayerService: knowledgeSemanticLayerService,
+      uploadService: knowledgeUploadService,
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,
