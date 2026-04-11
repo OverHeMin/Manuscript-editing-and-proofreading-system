@@ -1,7 +1,5 @@
 import type {
   EvidenceLevel,
-  KnowledgeItemStatus,
-  KnowledgeItemViewModel,
   KnowledgeKind,
   KnowledgeSourceType,
 } from "../knowledge/index.ts";
@@ -61,6 +59,8 @@ export interface KnowledgeRevisionViewModel {
   effective_at?: string;
   expires_at?: string;
   based_on_revision_id?: string;
+  content_blocks: KnowledgeContentBlockViewModel[];
+  semantic_layer?: KnowledgeSemanticLayerViewModel;
   bindings: KnowledgeRevisionBindingViewModel[];
   created_at: string;
   updated_at: string;
@@ -73,12 +73,77 @@ export interface KnowledgeAssetDetailViewModel {
   revisions: KnowledgeRevisionViewModel[];
 }
 
-export type KnowledgeLibrarySummaryViewModel = KnowledgeItemViewModel;
+export type KnowledgeLibraryQueryMode = "keyword" | "semantic";
+
+export type KnowledgeSemanticStatus =
+  | "not_generated"
+  | "pending_confirmation"
+  | "confirmed"
+  | "stale";
+
+export type KnowledgeContentBlockType = "text_block" | "table_block" | "image_block";
+
+export interface KnowledgeContentBlockViewModel {
+  id: string;
+  revision_id: string;
+  block_type: KnowledgeContentBlockType;
+  order_no: number;
+  status: "active" | "archived";
+  content_payload: Record<string, unknown>;
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
+}
+
+export interface KnowledgeSemanticLayerViewModel {
+  revision_id: string;
+  status: KnowledgeSemanticStatus;
+  page_summary?: string;
+  retrieval_terms?: string[];
+  retrieval_snippets?: string[];
+  table_semantics?: Record<string, unknown>;
+  image_understanding?: Record<string, unknown>;
+}
+
+export interface KnowledgeSemanticLayerInput {
+  pageSummary?: string;
+  retrievalTerms?: string[];
+  retrievalSnippets?: string[];
+  tableSemantics?: Record<string, unknown>;
+  imageUnderstanding?: Record<string, unknown>;
+}
+
+export interface KnowledgeUploadViewModel {
+  upload_id: string;
+  storage_key: string;
+  file_name: string;
+  mime_type: string;
+  byte_length: number;
+  uploaded_at: string;
+}
+
+export interface KnowledgeUploadInput {
+  fileName: string;
+  mimeType: string;
+  fileContentBase64: string;
+}
+
+export interface KnowledgeLibrarySummaryViewModel {
+  id: string;
+  title: string;
+  summary?: string;
+  knowledge_kind: KnowledgeKind;
+  status: KnowledgeRevisionStatus;
+  module_scope: ManuscriptModule | "any";
+  manuscript_types: ManuscriptType[] | "any";
+  selected_revision_id?: string;
+  semantic_status?: KnowledgeSemanticStatus;
+  content_block_count: number;
+  updated_at?: string;
+}
 
 export interface KnowledgeLibraryFilterState {
   searchText: string;
-  status: KnowledgeItemStatus | "all";
-  knowledgeKind: KnowledgeKind | "all";
+  queryMode: KnowledgeLibraryQueryMode;
 }
 
 export interface KnowledgeRevisionBindingInput {
