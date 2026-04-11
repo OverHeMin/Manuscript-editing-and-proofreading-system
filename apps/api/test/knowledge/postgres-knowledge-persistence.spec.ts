@@ -689,6 +689,76 @@ test("postgres approved projections ignore future and expired revisions while ke
   });
 });
 
+test("postgres approved projections prefer confirmed semantic retrieval text", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+    const revisionId = "asset-runtime-semantic-1-revision-1";
+
+    await repository.saveAsset({
+      id: "asset-runtime-semantic-1",
+      status: "active",
+      current_revision_id: revisionId,
+      current_approved_revision_id: revisionId,
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:05:00.000Z",
+    });
+    await repository.saveRevision({
+      id: revisionId,
+      asset_id: "asset-runtime-semantic-1",
+      revision_no: 1,
+      status: "approved",
+      title: "Semantic runtime revision",
+      canonical_text: "Fallback canonical text should not be indexed first.",
+      summary: "Fallback summary",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:00:00.000Z",
+    });
+    await repository.saveSemanticLayer?.({
+      revision_id: revisionId,
+      status: "confirmed",
+      page_summary: "Confirmed semantic summary for runtime retrieval.",
+      retrieval_terms: ["primary endpoint", "confirmed semantic"],
+      retrieval_snippets: ["Prefer this record when endpoint wording is ambiguous."],
+      table_semantics: {
+        tables: [{ role: "endpoint_matrix", summary: "Endpoint matrix from a table." }],
+      },
+      image_understanding: {
+        images: [{ summary: "Flow diagram confirming cohort eligibility." }],
+      },
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:05:00.000Z",
+    });
+
+    const runtimeProjection = await repository.findApprovedById("asset-runtime-semantic-1");
+
+    assert.deepEqual(runtimeProjection, {
+      id: "asset-runtime-semantic-1",
+      title: "Semantic runtime revision",
+      canonical_text: [
+        "Confirmed semantic summary for runtime retrieval.",
+        "primary endpoint",
+        "confirmed semantic",
+        "Prefer this record when endpoint wording is ambiguous.",
+        "endpoint_matrix",
+        "Endpoint matrix from a table.",
+        "Flow diagram confirming cohort eligibility.",
+      ].join("\n"),
+      summary: "Confirmed semantic summary for runtime retrieval.",
+      knowledge_kind: "rule",
+      status: "approved",
+      routing: {
+        module_scope: "screening",
+        manuscript_types: ["clinical_study"],
+      },
+    });
+  });
+});
+
 test("postgres knowledge review action repository can filter history by revision id", async () => {
   await withMigratedKnowledgeClient(async (client) => {
     const knowledgeRepository = new PostgresKnowledgeRepository({ client });

@@ -14,7 +14,10 @@ import type {
   KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
-import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
+import {
+  projectRuntimeKnowledgeRecord,
+  selectRuntimeApprovedKnowledgeRevision,
+} from "./knowledge-runtime-projection.ts";
 import { mapLegacyKnowledgeRecordToDuplicateCandidate } from "./knowledge-duplicate-detection.ts";
 
 type QueryableClient = {
@@ -1164,7 +1167,9 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       revisions[0];
 
     return selectedRevision
-      ? this.projectKnowledgeRecordFromRevision(selectedRevision)
+      ? this.projectKnowledgeRecordFromRevision(selectedRevision, {
+          includeConfirmedSemantics: false,
+        })
       : undefined;
   }
 
@@ -1175,56 +1180,29 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     const revision = selectRuntimeApprovedKnowledgeRevision(revisions, {
       preferredRevisionId: asset.current_approved_revision_id,
     });
-    return revision ? this.projectKnowledgeRecordFromRevision(revision) : undefined;
+    return revision
+      ? this.projectKnowledgeRecordFromRevision(revision, {
+          includeConfirmedSemantics: true,
+        })
+      : undefined;
   }
 
   private async projectKnowledgeRecordFromRevision(
     revision: KnowledgeRevisionRecord,
+    options: {
+      includeConfirmedSemantics: boolean;
+    },
   ): Promise<KnowledgeRecord> {
     const bindings = await this.listBindingsByRevisionId(revision.id);
-    const routing: KnowledgeRecord["routing"] = {
-      module_scope: revision.routing.module_scope,
-      manuscript_types:
-        revision.routing.manuscript_types === "any"
-          ? "any"
-          : [...revision.routing.manuscript_types],
-      ...(revision.routing.sections ? { sections: [...revision.routing.sections] } : {}),
-      ...(revision.routing.risk_tags ? { risk_tags: [...revision.routing.risk_tags] } : {}),
-      ...(revision.routing.discipline_tags
-        ? { discipline_tags: [...revision.routing.discipline_tags] }
-        : {}),
-    };
+    const semanticLayer = options.includeConfirmedSemantics
+      ? await this.findSemanticLayerByRevisionId(revision.id)
+      : undefined;
 
-    return {
-      id: revision.asset_id,
-      title: revision.title,
-      canonical_text: revision.canonical_text,
-      knowledge_kind: revision.knowledge_kind,
-      status: revision.status,
-      routing,
-      ...(revision.summary != null ? { summary: revision.summary } : {}),
-      ...(revision.evidence_level != null
-        ? { evidence_level: revision.evidence_level }
-        : {}),
-      ...(revision.source_type != null ? { source_type: revision.source_type } : {}),
-      ...(revision.source_link != null ? { source_link: revision.source_link } : {}),
-      ...(revision.aliases ? { aliases: [...revision.aliases] } : {}),
-      ...(bindings.length > 0
-        ? {
-            template_bindings: bindings.map((binding) => binding.binding_target_id),
-          }
-        : {}),
-      ...(revision.source_learning_candidate_id != null
-        ? { source_learning_candidate_id: revision.source_learning_candidate_id }
-        : {}),
-      ...(revision.projection_source != null
-        ? {
-            projection_source: JSON.parse(
-              JSON.stringify(revision.projection_source),
-            ) as NonNullable<KnowledgeRecord["projection_source"]>,
-          }
-        : {}),
-    };
+    return projectRuntimeKnowledgeRecord({
+      revision,
+      bindings,
+      semanticLayer,
+    });
   }
 }
 

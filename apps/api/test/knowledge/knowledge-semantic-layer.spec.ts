@@ -203,3 +203,91 @@ test("replacing revision content blocks marks a confirmed semantic layer stale",
   assert.equal(detail.selected_revision.content_blocks.length, 3);
   assert.equal(detail.selected_revision.content_blocks[1]?.block_type, "table_block");
 });
+
+test("approved runtime projections prefer confirmed semantic retrieval text", async () => {
+  const { repository, service } = createKnowledgeSemanticHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Confirmed semantic runtime rule",
+    canonicalText: "Fallback canonical text should no longer be the runtime source.",
+    summary: "Fallback summary",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.regenerateSemanticLayer(created.selected_revision.id, {
+    pageSummary: "Confirmed semantic summary for runtime retrieval.",
+    retrievalTerms: ["primary endpoint", "confirmed semantic"],
+    retrievalSnippets: ["Prefer this record when endpoint wording is ambiguous."],
+    tableSemantics: {
+      tables: [{ role: "endpoint_matrix", summary: "Endpoint matrix from a table." }],
+    },
+    imageUnderstanding: {
+      images: [{ summary: "Flow diagram confirming cohort eligibility." }],
+    },
+  });
+  await service.confirmSemanticLayer(created.selected_revision.id);
+  await service.submitRevisionForReview(created.selected_revision.id);
+  await service.approveRevision(created.selected_revision.id, "knowledge_reviewer");
+
+  const runtimeProjection = await repository.findApprovedById(created.asset.id);
+  const approvedList = await repository.listApproved();
+
+  assert.equal(
+    runtimeProjection?.summary,
+    "Confirmed semantic summary for runtime retrieval.",
+  );
+  assert.equal(
+    runtimeProjection?.canonical_text,
+    [
+      "Confirmed semantic summary for runtime retrieval.",
+      "primary endpoint",
+      "confirmed semantic",
+      "Prefer this record when endpoint wording is ambiguous.",
+      "endpoint_matrix",
+      "Endpoint matrix from a table.",
+      "Flow diagram confirming cohort eligibility.",
+    ].join("\n"),
+  );
+  assert.equal(
+    approvedList.find((record) => record.id === created.asset.id)?.canonical_text,
+    runtimeProjection?.canonical_text,
+  );
+});
+
+test("legacy revision detail backfills an implicit text block and not-generated semantic status", async () => {
+  const { service } = createKnowledgeSemanticHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Legacy-compatible rich-space rule",
+    canonicalText: "Legacy canonical text should appear as an implicit text block.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    created.selected_revision.id,
+  );
+
+  assert.equal(detail.selected_revision.content_blocks.length, 1);
+  assert.deepEqual(detail.selected_revision.content_blocks[0], {
+    id: `${created.selected_revision.id}-implicit-text-block-1`,
+    revision_id: created.selected_revision.id,
+    block_type: "text_block",
+    order_no: 0,
+    status: "active",
+    content_payload: {
+      text: "Legacy canonical text should appear as an implicit text block.",
+    },
+    created_at: "2026-04-11T09:00:00.000Z",
+    updated_at: "2026-04-11T09:00:00.000Z",
+  });
+  assert.equal(detail.selected_revision.semantic_layer?.status, "not_generated");
+  assert.equal(
+    detail.selected_revision.semantic_layer?.page_summary,
+    undefined,
+  );
+});

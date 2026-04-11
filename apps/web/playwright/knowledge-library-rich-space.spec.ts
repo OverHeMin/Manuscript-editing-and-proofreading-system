@@ -7,8 +7,9 @@ test("knowledge library rich-space flow supports block editing and semantic conf
   page,
   request,
 }) => {
+  const seededTitle = `knowledge-rich-space-${Date.now()} draft`;
   const seededDraft = await seedKnowledgeLibraryDraft(request, {
-    label: `knowledge-rich-space-${Date.now()}`,
+    title: seededTitle,
   });
   await loginBrowserSession(page, request, "dev.admin");
 
@@ -26,7 +27,11 @@ test("knowledge library rich-space flow supports block editing and semantic conf
   await expect(page.getByRole("button", { name: "Semantic Search" })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Text Block" }).click();
-  await page.getByLabel("Text Content").fill(
+  await page
+    .locator(".knowledge-library-rich-block")
+    .last()
+    .getByLabel("Text Content")
+    .fill(
     "Operator curated rich-space text block for endpoint screening guidance.",
   );
   await page.getByRole("button", { name: "Save Rich Content" }).click();
@@ -50,11 +55,16 @@ test("knowledge library rich-space flow supports block editing and semantic conf
   await expect(page.locator(".knowledge-library-semantic-status.is-confirmed")).toHaveText(
     "Confirmed",
   );
+  await expect(
+    page.getByRole("row", {
+      name: new RegExp(`${escapeRegExp(seededTitle)}.*confirmed`, "i"),
+    }),
+  ).toBeVisible();
 });
 
 async function seedKnowledgeLibraryDraft(
   request: APIRequestContext,
-  input: { label: string },
+  input: { title: string },
 ): Promise<{
   assetId: string;
   revisionId: string;
@@ -66,9 +76,9 @@ async function seedKnowledgeLibraryDraft(
       "Content-Type": "application/json",
     },
     data: {
-      title: `${input.label} draft`,
+      title: input.title,
       canonicalText: "Clinical studies must define the primary endpoint before review sign-off.",
-      summary: `${input.label} summary`,
+      summary: `${input.title} summary`,
       knowledgeKind: "rule",
       moduleScope: "screening",
       manuscriptTypes: ["clinical_study"],
@@ -124,4 +134,8 @@ async function loginBrowserSession(
       url: `${apiBaseUrl}/`,
     },
   ]);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -1372,18 +1372,24 @@ export class KnowledgeService {
     repository: KnowledgeRepository = this.repository,
   ): Promise<KnowledgeRevisionDetailRecord> {
     const bindings = await repository.listBindingsByRevisionId(revision.id);
-    const contentBlocks = repository.listContentBlocksByRevisionId
+    const persistedContentBlocks = repository.listContentBlocksByRevisionId
       ? await repository.listContentBlocksByRevisionId(revision.id)
       : [];
-    const semanticLayer = repository.findSemanticLayerByRevisionId
+    const persistedSemanticLayer = repository.findSemanticLayerByRevisionId
       ? await repository.findSemanticLayerByRevisionId(revision.id)
       : undefined;
+    const contentBlocks =
+      persistedContentBlocks.length > 0
+        ? persistedContentBlocks
+        : [buildImplicitTextContentBlock(revision)];
+    const semanticLayer =
+      persistedSemanticLayer ?? buildNotGeneratedSemanticLayer(revision);
 
     return {
       ...revision,
       bindings,
       content_blocks: contentBlocks,
-      ...(semanticLayer ? { semantic_layer: semanticLayer } : {}),
+      semantic_layer: semanticLayer,
     };
   }
 
@@ -1741,6 +1747,34 @@ function createBindingId(revisionId: string, bindingNo: number): string {
 
 function createContentBlockId(revisionId: string, blockNo: number): string {
   return `${revisionId}-content-block-${blockNo}`;
+}
+
+function buildImplicitTextContentBlock(
+  revision: KnowledgeRevisionRecord,
+): KnowledgeContentBlockRecord {
+  return {
+    id: `${revision.id}-implicit-text-block-1`,
+    revision_id: revision.id,
+    block_type: "text_block",
+    order_no: 0,
+    status: "active",
+    content_payload: {
+      text: revision.canonical_text,
+    },
+    created_at: revision.created_at,
+    updated_at: revision.updated_at,
+  };
+}
+
+function buildNotGeneratedSemanticLayer(
+  revision: KnowledgeRevisionRecord,
+): KnowledgeSemanticLayerRecord {
+  return {
+    revision_id: revision.id,
+    status: "not_generated",
+    created_at: revision.created_at,
+    updated_at: revision.updated_at,
+  };
 }
 
 function mapTemplateBindingsToBindingInputs(

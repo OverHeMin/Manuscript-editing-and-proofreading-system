@@ -16,7 +16,10 @@ import type {
   KnowledgeRepository,
   KnowledgeReviewActionRepository,
 } from "./knowledge-repository.ts";
-import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
+import {
+  projectRuntimeKnowledgeRecord,
+  selectRuntimeApprovedKnowledgeRevision,
+} from "./knowledge-runtime-projection.ts";
 
 interface KnowledgeRepositorySnapshot {
   legacyRecords: Map<string, KnowledgeRecord>;
@@ -197,9 +200,13 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
   }
 
   async listApproved(): Promise<KnowledgeRecord[]> {
-    const projected = [...this.assets.keys()]
-      .map((assetId) => this.projectApprovedKnowledgeRecord(assetId))
-      .filter((record): record is KnowledgeRecord => record != null);
+    const projected = (
+      await Promise.all(
+        [...this.assets.keys()].map((assetId) =>
+          this.projectApprovedKnowledgeRecord(assetId),
+        ),
+      )
+    ).filter((record): record is KnowledgeRecord => record != null);
     const shadowedIds = new Set(this.assets.keys());
     const legacy = [...this.legacyRecords.entries()]
       .filter(
@@ -442,9 +449,9 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
       : undefined;
   }
 
-  private projectApprovedKnowledgeRecord(
+  private async projectApprovedKnowledgeRecord(
     assetId: string,
-  ): KnowledgeRecord | undefined {
+  ): Promise<KnowledgeRecord | undefined> {
     const asset = this.assets.get(assetId);
     if (!asset) {
       return undefined;
@@ -454,7 +461,18 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     const revision = selectRuntimeApprovedKnowledgeRevision(revisions, {
       preferredRevisionId: asset.current_approved_revision_id,
     });
-    return revision ? this.projectKnowledgeRecordFromRevision(revision) : undefined;
+    if (!revision) {
+      return undefined;
+    }
+
+    const bindings = this.bindingsByRevisionId.get(revision.id) ?? [];
+    const semanticLayer = this.semanticLayersByRevisionId.get(revision.id);
+
+    return projectRuntimeKnowledgeRecord({
+      revision,
+      bindings,
+      semanticLayer,
+    });
   }
 
   private projectKnowledgeRecordFromRevision(
