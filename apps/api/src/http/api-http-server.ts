@@ -2218,6 +2218,8 @@ function seedDemoWorkbenchData(input: {
     routing: {
       module_scope: "editing",
       manuscript_types: ["clinical_study"],
+      sections: ["discussion"],
+      risk_tags: ["grounding"],
     },
     template_bindings: ["template-editing-1"],
   });
