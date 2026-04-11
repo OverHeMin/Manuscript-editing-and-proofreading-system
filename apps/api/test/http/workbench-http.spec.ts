@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   createApiHttpServer,
+  createInMemoryApiRuntime,
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
 import {
@@ -873,6 +874,44 @@ test("workbench http rich-space routes support search, uploads, and semantic con
     assert.equal(semanticList.items[0]?.semantic_status, "confirmed");
   } finally {
     await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("in-memory api runtime wires knowledge uploads for rich-space authoring", async () => {
+  const uploadRootDir = await mkdtemp(
+    path.join(os.tmpdir(), "medsys-knowledge-runtime-upload-"),
+  );
+
+  try {
+    const runtime = createInMemoryApiRuntime({
+      appEnv: "local",
+      seedDemoData: false,
+      uploadRootDir,
+    });
+
+    const response = await runtime.knowledgeApi.uploadImage({
+      input: {
+        fileName: "runtime-knowledge-figure.png",
+        mimeType: "image/png",
+        fileContentBase64: Buffer.from("runtime-rich-space-image").toString("base64"),
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.upload_id, "knowledge-upload-1");
+    assert.equal(response.body.file_name, "runtime-knowledge-figure.png");
+    assert.equal(response.body.mime_type, "image/png");
+    assert.ok(response.body.storage_key.length > 0);
+
+    const storedUpload = await stat(
+      path.join(uploadRootDir, ...response.body.storage_key.split("/")),
+    );
+    assert.ok(
+      storedUpload.isFile(),
+      "Expected in-memory runtime uploads to be materialized on disk.",
+    );
+  } finally {
     await rm(uploadRootDir, { recursive: true, force: true });
   }
 });

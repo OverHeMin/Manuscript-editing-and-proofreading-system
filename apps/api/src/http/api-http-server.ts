@@ -1241,6 +1241,12 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const auditService = new InMemoryAuditService();
   const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
+  const counters = new Map<string, number>();
+  const nextId = (prefix: string) => {
+    const nextValue = (counters.get(prefix) ?? 0) + 1;
+    counters.set(prefix, nextValue);
+    return `${prefix}-${nextValue}`;
+  };
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
