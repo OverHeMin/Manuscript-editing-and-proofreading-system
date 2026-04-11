@@ -1,8 +1,10 @@
 import type {
   KnowledgeAssetRecord,
+  KnowledgeContentBlockRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
+  KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 import {
@@ -21,6 +23,14 @@ interface KnowledgeRepositorySnapshot {
   assets: Map<string, KnowledgeAssetRecord>;
   revisions: Map<string, KnowledgeRevisionRecord>;
   bindingsByRevisionId: Map<string, KnowledgeRevisionBindingRecord[]>;
+  contentBlocksByRevisionId: Map<string, KnowledgeContentBlockRecord[]>;
+  semanticLayersByRevisionId: Map<string, KnowledgeSemanticLayerRecord>;
+}
+
+function cloneJsonRecord(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return value ? JSON.parse(JSON.stringify(value)) : undefined;
 }
 
 function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
@@ -80,6 +90,41 @@ function cloneBindingRecord(
   return { ...record };
 }
 
+function cloneContentBlockRecord(
+  record: KnowledgeContentBlockRecord,
+): KnowledgeContentBlockRecord {
+  return {
+    ...record,
+    content_payload: JSON.parse(JSON.stringify(record.content_payload)),
+    ...(record.table_semantics
+      ? { table_semantics: cloneJsonRecord(record.table_semantics) }
+      : {}),
+    ...(record.image_understanding
+      ? { image_understanding: cloneJsonRecord(record.image_understanding) }
+      : {}),
+  };
+}
+
+function cloneSemanticLayerRecord(
+  record: KnowledgeSemanticLayerRecord,
+): KnowledgeSemanticLayerRecord {
+  return {
+    ...record,
+    ...(record.retrieval_terms
+      ? { retrieval_terms: [...record.retrieval_terms] }
+      : {}),
+    ...(record.retrieval_snippets
+      ? { retrieval_snippets: [...record.retrieval_snippets] }
+      : {}),
+    ...(record.table_semantics
+      ? { table_semantics: cloneJsonRecord(record.table_semantics) }
+      : {}),
+    ...(record.image_understanding
+      ? { image_understanding: cloneJsonRecord(record.image_understanding) }
+      : {}),
+  };
+}
+
 function cloneReviewActionRecord(
   record: KnowledgeReviewActionRecord,
 ): KnowledgeReviewActionRecord {
@@ -104,6 +149,14 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
   private readonly assets = new Map<string, KnowledgeAssetRecord>();
   private readonly revisions = new Map<string, KnowledgeRevisionRecord>();
   private readonly bindingsByRevisionId = new Map<string, KnowledgeRevisionBindingRecord[]>();
+  private readonly contentBlocksByRevisionId = new Map<
+    string,
+    KnowledgeContentBlockRecord[]
+  >();
+  private readonly semanticLayersByRevisionId = new Map<
+    string,
+    KnowledgeSemanticLayerRecord
+  >();
 
   async save(record: KnowledgeRecord): Promise<void> {
     this.legacyRecords.set(record.id, cloneKnowledgeRecord(record));
@@ -215,6 +268,39 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     return (this.bindingsByRevisionId.get(revisionId) ?? []).map(cloneBindingRecord);
   }
 
+  async replaceRevisionContentBlocks(
+    revisionId: string,
+    records: readonly KnowledgeContentBlockRecord[],
+  ): Promise<void> {
+    this.contentBlocksByRevisionId.set(
+      revisionId,
+      records.map(cloneContentBlockRecord),
+    );
+  }
+
+  async listContentBlocksByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeContentBlockRecord[]> {
+    return (this.contentBlocksByRevisionId.get(revisionId) ?? [])
+      .slice()
+      .sort(compareContentBlockRecordsAsc)
+      .map(cloneContentBlockRecord);
+  }
+
+  async saveSemanticLayer(record: KnowledgeSemanticLayerRecord): Promise<void> {
+    this.semanticLayersByRevisionId.set(
+      record.revision_id,
+      cloneSemanticLayerRecord(record),
+    );
+  }
+
+  async findSemanticLayerByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeSemanticLayerRecord | undefined> {
+    const record = this.semanticLayersByRevisionId.get(revisionId);
+    return record ? cloneSemanticLayerRecord(record) : undefined;
+  }
+
   async listDuplicateCheckCandidatesByAsset(): Promise<
     KnowledgeDuplicateCandidateGroupRecord[]
   > {
@@ -280,6 +366,18 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
           records.map(cloneBindingRecord),
         ]),
       ),
+      contentBlocksByRevisionId: new Map(
+        [...this.contentBlocksByRevisionId.entries()].map(([revisionId, records]) => [
+          revisionId,
+          records.map(cloneContentBlockRecord),
+        ]),
+      ),
+      semanticLayersByRevisionId: new Map(
+        [...this.semanticLayersByRevisionId.entries()].map(([revisionId, record]) => [
+          revisionId,
+          cloneSemanticLayerRecord(record),
+        ]),
+      ),
     };
   }
 
@@ -288,6 +386,8 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     this.assets.clear();
     this.revisions.clear();
     this.bindingsByRevisionId.clear();
+    this.contentBlocksByRevisionId.clear();
+    this.semanticLayersByRevisionId.clear();
 
     for (const [id, record] of snapshot.legacyRecords.entries()) {
       this.legacyRecords.set(id, cloneKnowledgeRecord(record));
@@ -302,6 +402,18 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
       this.bindingsByRevisionId.set(
         revisionId,
         records.map(cloneBindingRecord),
+      );
+    }
+    for (const [revisionId, records] of snapshot.contentBlocksByRevisionId.entries()) {
+      this.contentBlocksByRevisionId.set(
+        revisionId,
+        records.map(cloneContentBlockRecord),
+      );
+    }
+    for (const [revisionId, record] of snapshot.semanticLayersByRevisionId.entries()) {
+      this.semanticLayersByRevisionId.set(
+        revisionId,
+        cloneSemanticLayerRecord(record),
       );
     }
   }
@@ -475,4 +587,11 @@ function compareReviewActionRecordsAsc(
     left.created_at.localeCompare(right.created_at) ||
     left.id.localeCompare(right.id)
   );
+}
+
+function compareContentBlockRecordsAsc(
+  left: KnowledgeContentBlockRecord,
+  right: KnowledgeContentBlockRecord,
+): number {
+  return left.order_no - right.order_no || left.id.localeCompare(right.id);
 }

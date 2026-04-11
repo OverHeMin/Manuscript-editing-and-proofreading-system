@@ -165,6 +165,169 @@ test("postgres knowledge review action repository returns note-aware history in 
   });
 });
 
+test("postgres knowledge repository round-trips rich content blocks and semantic layer payloads", async () => {
+  await withMigratedKnowledgeClient(async (client) => {
+    const repository = new PostgresKnowledgeRepository({ client });
+    const revisionId = "asset-rich-1-revision-1";
+
+    await repository.saveAsset({
+      id: "asset-rich-1",
+      status: "active",
+      current_revision_id: revisionId,
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:00:00.000Z",
+    });
+    await repository.saveRevision({
+      id: revisionId,
+      asset_id: "asset-rich-1",
+      revision_no: 1,
+      status: "draft",
+      title: "Rich payload target",
+      canonical_text: "Round-trip content blocks and semantic layer payloads.",
+      knowledge_kind: "reference",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["review"],
+      },
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:00:00.000Z",
+    });
+
+    await repository.replaceRevisionContentBlocks(revisionId, [
+      {
+        id: `${revisionId}-content-block-1`,
+        revision_id: revisionId,
+        block_type: "text_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          text: "Narrative rich-space content.",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+      {
+        id: `${revisionId}-content-block-2`,
+        revision_id: revisionId,
+        block_type: "table_block",
+        order_no: 2,
+        status: "active",
+        content_payload: {
+          rows: [
+            ["Check", "Result"],
+            ["Primary endpoint", "Present"],
+          ],
+        },
+        table_semantics: {
+          tableId: "table-1",
+          meaning: "screening_matrix",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+      {
+        id: `${revisionId}-content-block-3`,
+        revision_id: revisionId,
+        block_type: "image_block",
+        order_no: 3,
+        status: "active",
+        content_payload: {
+          imageAssetId: "knowledge-image-1",
+        },
+        image_understanding: {
+          imageId: "knowledge-image-1",
+          summary: "Enrollment flowchart",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+    ]);
+    await repository.saveSemanticLayer({
+      revision_id: revisionId,
+      status: "confirmed",
+      page_summary: "Operator confirmed semantic payload.",
+      retrieval_terms: ["primary endpoint", "flowchart"],
+      retrieval_snippets: ["Use this revision during editing."],
+      table_semantics: {
+        tables: [{ tableId: "table-1", meaning: "screening_matrix" }],
+      },
+      image_understanding: {
+        images: [{ imageId: "knowledge-image-1", summary: "Enrollment flowchart" }],
+      },
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:05:00.000Z",
+    });
+
+    const blocks = await repository.listContentBlocksByRevisionId(revisionId);
+    const semanticLayer = await repository.findSemanticLayerByRevisionId(revisionId);
+
+    assert.deepEqual(blocks, [
+      {
+        id: `${revisionId}-content-block-1`,
+        revision_id: revisionId,
+        block_type: "text_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          text: "Narrative rich-space content.",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+      {
+        id: `${revisionId}-content-block-2`,
+        revision_id: revisionId,
+        block_type: "table_block",
+        order_no: 2,
+        status: "active",
+        content_payload: {
+          rows: [
+            ["Check", "Result"],
+            ["Primary endpoint", "Present"],
+          ],
+        },
+        table_semantics: {
+          tableId: "table-1",
+          meaning: "screening_matrix",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+      {
+        id: `${revisionId}-content-block-3`,
+        revision_id: revisionId,
+        block_type: "image_block",
+        order_no: 3,
+        status: "active",
+        content_payload: {
+          imageAssetId: "knowledge-image-1",
+        },
+        image_understanding: {
+          imageId: "knowledge-image-1",
+          summary: "Enrollment flowchart",
+        },
+        created_at: "2026-04-11T09:00:00.000Z",
+        updated_at: "2026-04-11T09:00:00.000Z",
+      },
+    ]);
+    assert.deepEqual(semanticLayer, {
+      revision_id: revisionId,
+      status: "confirmed",
+      page_summary: "Operator confirmed semantic payload.",
+      retrieval_terms: ["primary endpoint", "flowchart"],
+      retrieval_snippets: ["Use this revision during editing."],
+      table_semantics: {
+        tables: [{ tableId: "table-1", meaning: "screening_matrix" }],
+      },
+      image_understanding: {
+        images: [{ imageId: "knowledge-image-1", summary: "Enrollment flowchart" }],
+      },
+      created_at: "2026-04-11T09:00:00.000Z",
+      updated_at: "2026-04-11T09:05:00.000Z",
+    });
+  });
+});
+
 test("postgres knowledge service rolls back status changes when review action persistence fails", async () => {
   await withMigratedKnowledgeClient(async (client) => {
     const repository = new PostgresKnowledgeRepository({ client });

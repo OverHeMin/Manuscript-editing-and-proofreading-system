@@ -6,10 +6,12 @@ import type {
 } from "./knowledge-repository.ts";
 import type {
   KnowledgeAssetRecord,
+  KnowledgeContentBlockRecord,
   KnowledgeDuplicateSeverity,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
+  KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
 } from "./knowledge-record.ts";
 import { selectRuntimeApprovedKnowledgeRevision } from "./knowledge-runtime-projection.ts";
@@ -87,6 +89,31 @@ interface KnowledgeRevisionBindingRow {
   binding_target_id: string;
   binding_target_label: string;
   created_at: Date;
+}
+
+interface KnowledgeContentBlockRow {
+  id: string;
+  revision_id: string;
+  block_type: KnowledgeContentBlockRecord["block_type"];
+  order_no: number;
+  status: KnowledgeContentBlockRecord["status"];
+  content_payload: Record<string, unknown> | string;
+  table_semantics: Record<string, unknown> | string | null;
+  image_understanding: Record<string, unknown> | string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface KnowledgeSemanticLayerRow {
+  revision_id: string;
+  status: KnowledgeSemanticLayerRecord["status"];
+  page_summary: string | null;
+  retrieval_terms: string[] | string;
+  retrieval_snippets: string[] | string;
+  table_semantics: Record<string, unknown> | string | null;
+  image_understanding: Record<string, unknown> | string | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 interface KnowledgeReviewActionRow {
@@ -684,6 +711,164 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     return result.rows.map(mapKnowledgeRevisionBindingRow);
   }
 
+  async replaceRevisionContentBlocks(
+    revisionId: string,
+    records: readonly KnowledgeContentBlockRecord[],
+  ): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        delete from knowledge_revision_content_blocks
+        where revision_id = $1
+      `,
+      [revisionId],
+    );
+
+    for (const record of records) {
+      await this.dependencies.client.query(
+        `
+          insert into knowledge_revision_content_blocks (
+            id,
+            revision_id,
+            block_type,
+            order_no,
+            status,
+            content_payload,
+            table_semantics,
+            image_understanding,
+            created_at,
+            updated_at
+          )
+          values (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6::jsonb,
+            $7::jsonb,
+            $8::jsonb,
+            $9::timestamptz,
+            $10::timestamptz
+          )
+        `,
+        [
+          record.id,
+          record.revision_id,
+          record.block_type,
+          record.order_no,
+          record.status,
+          JSON.stringify(record.content_payload),
+          record.table_semantics ? JSON.stringify(record.table_semantics) : null,
+          record.image_understanding ? JSON.stringify(record.image_understanding) : null,
+          record.created_at,
+          record.updated_at,
+        ],
+      );
+    }
+  }
+
+  async listContentBlocksByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeContentBlockRecord[]> {
+    const result = await this.dependencies.client.query<KnowledgeContentBlockRow>(
+      `
+        select
+          id,
+          revision_id,
+          block_type,
+          order_no,
+          status,
+          content_payload,
+          table_semantics,
+          image_understanding,
+          created_at,
+          updated_at
+        from knowledge_revision_content_blocks
+        where revision_id = $1
+        order by order_no asc, id asc
+      `,
+      [revisionId],
+    );
+
+    return result.rows.map(mapKnowledgeContentBlockRow);
+  }
+
+  async saveSemanticLayer(record: KnowledgeSemanticLayerRecord): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        insert into knowledge_semantic_layers (
+          revision_id,
+          status,
+          page_summary,
+          retrieval_terms,
+          retrieval_snippets,
+          table_semantics,
+          image_understanding,
+          created_at,
+          updated_at
+        )
+        values (
+          $1,
+          $2,
+          $3,
+          $4::text[],
+          $5::text[],
+          $6::jsonb,
+          $7::jsonb,
+          $8::timestamptz,
+          $9::timestamptz
+        )
+        on conflict (revision_id) do update
+        set
+          status = excluded.status,
+          page_summary = excluded.page_summary,
+          retrieval_terms = excluded.retrieval_terms,
+          retrieval_snippets = excluded.retrieval_snippets,
+          table_semantics = excluded.table_semantics,
+          image_understanding = excluded.image_understanding,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at
+      `,
+      [
+        record.revision_id,
+        record.status,
+        record.page_summary ?? null,
+        record.retrieval_terms ?? [],
+        record.retrieval_snippets ?? [],
+        record.table_semantics ? JSON.stringify(record.table_semantics) : null,
+        record.image_understanding
+          ? JSON.stringify(record.image_understanding)
+          : null,
+        record.created_at,
+        record.updated_at,
+      ],
+    );
+  }
+
+  async findSemanticLayerByRevisionId(
+    revisionId: string,
+  ): Promise<KnowledgeSemanticLayerRecord | undefined> {
+    const result = await this.dependencies.client.query<KnowledgeSemanticLayerRow>(
+      `
+        select
+          revision_id,
+          status,
+          page_summary,
+          retrieval_terms,
+          retrieval_snippets,
+          table_semantics,
+          image_understanding,
+          created_at,
+          updated_at
+        from knowledge_semantic_layers
+        where revision_id = $1
+      `,
+      [revisionId],
+    );
+
+    return result.rows[0] ? mapKnowledgeSemanticLayerRow(result.rows[0]) : undefined;
+  }
+
   async saveDuplicateAcknowledgement(
     record: KnowledgeDuplicateAcknowledgementAuditRecord,
   ): Promise<void> {
@@ -1255,6 +1440,68 @@ function mapKnowledgeRevisionBindingRow(
     binding_target_id: row.binding_target_id,
     binding_target_label: row.binding_target_label,
     created_at: row.created_at.toISOString(),
+  };
+}
+
+function mapKnowledgeContentBlockRow(
+  row: KnowledgeContentBlockRow,
+): KnowledgeContentBlockRecord {
+  return {
+    id: row.id,
+    revision_id: row.revision_id,
+    block_type: row.block_type,
+    order_no: row.order_no,
+    status: row.status,
+    content_payload: parseJsonObject<Record<string, unknown>>(row.content_payload),
+    ...(row.table_semantics != null
+      ? {
+          table_semantics: parseJsonObject<Record<string, unknown>>(
+            row.table_semantics,
+          ),
+        }
+      : {}),
+    ...(row.image_understanding != null
+      ? {
+          image_understanding: parseJsonObject<Record<string, unknown>>(
+            row.image_understanding,
+          ),
+        }
+      : {}),
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  };
+}
+
+function mapKnowledgeSemanticLayerRow(
+  row: KnowledgeSemanticLayerRow,
+): KnowledgeSemanticLayerRecord {
+  const retrievalTerms = decodeTextArray(row.retrieval_terms);
+  const retrievalSnippets = decodeTextArray(row.retrieval_snippets);
+
+  return {
+    revision_id: row.revision_id,
+    status: row.status,
+    ...(row.page_summary != null ? { page_summary: row.page_summary } : {}),
+    ...(retrievalTerms.length > 0 ? { retrieval_terms: retrievalTerms } : {}),
+    ...(retrievalSnippets.length > 0
+      ? { retrieval_snippets: retrievalSnippets }
+      : {}),
+    ...(row.table_semantics != null
+      ? {
+          table_semantics: parseJsonObject<Record<string, unknown>>(
+            row.table_semantics,
+          ),
+        }
+      : {}),
+    ...(row.image_understanding != null
+      ? {
+          image_understanding: parseJsonObject<Record<string, unknown>>(
+            row.image_understanding,
+          ),
+        }
+      : {}),
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
   };
 }
 
