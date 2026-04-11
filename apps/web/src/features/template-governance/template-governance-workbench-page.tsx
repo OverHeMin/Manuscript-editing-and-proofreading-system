@@ -297,6 +297,8 @@ export function TemplateGovernanceWorkbenchPage({
     useState<BrowserUploadFile | null>(null);
   const [rulePackageRestoreMessage, setRulePackageRestoreMessage] =
     useState<string | null>(null);
+  const [isStandaloneAdvancedEditorVisible, setIsStandaloneAdvancedEditorVisible] =
+    useState(false);
   const [rulePackageWorkspaceState, setRulePackageWorkspaceState] = useState(() =>
     initialRulePackageWorkspace
       ? createRulePackageAuthoringWorkspaceState(initialRulePackageWorkspace)
@@ -507,9 +509,14 @@ export function TemplateGovernanceWorkbenchPage({
   }
 
   function handleToggleRulePackageAdvancedEditor() {
-    setRulePackageWorkspaceState((current) =>
-      current ? toggleRulePackageAdvancedEditor(current) : current,
-    );
+    if (rulePackageWorkspaceState) {
+      setRulePackageWorkspaceState((current) =>
+        current ? toggleRulePackageAdvancedEditor(current) : current,
+      );
+      return;
+    }
+
+    setIsStandaloneAdvancedEditorVisible((current) => !current);
   }
 
   function handleUpdateSelectedRulePackageDraft(
@@ -664,6 +671,7 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setWorkbenchMode("authoring");
+    setIsStandaloneAdvancedEditorVisible(false);
     setRulePackageWorkspaceState((current) =>
       current ? { ...current, isAdvancedEditorVisible: false } : current,
     );
@@ -682,6 +690,7 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setWorkbenchMode("authoring");
+    setIsStandaloneAdvancedEditorVisible(true);
     setRulePackageWorkspaceState((current) =>
       current ? { ...current, isAdvancedEditorVisible: true } : current,
     );
@@ -700,6 +709,7 @@ export function TemplateGovernanceWorkbenchPage({
     }
 
     setWorkbenchMode("authoring");
+    setIsStandaloneAdvancedEditorVisible(true);
     setRulePackageWorkspaceState((current) =>
       current ? { ...current, isAdvancedEditorVisible: true } : current,
     );
@@ -1130,6 +1140,7 @@ export function TemplateGovernanceWorkbenchPage({
 
     setPendingRuleLearningHandoff(prefill);
     setWorkbenchMode("authoring");
+    setIsStandaloneAdvancedEditorVisible(true);
     setRuleSetForm({ module: prefill.module });
     setSelectedRuleObject(prefill.ruleDraft.ruleObject);
     setRuleAuthoringDraft({
@@ -1631,6 +1642,8 @@ export function TemplateGovernanceWorkbenchPage({
       </div>
     </div>
   );
+  const isAdvancedRuleEditorVisible =
+    rulePackageWorkspaceState?.isAdvancedEditorVisible ?? isStandaloneAdvancedEditorVisible;
 
   return (
     <section className="template-governance-workbench">
@@ -1908,6 +1921,7 @@ export function TemplateGovernanceWorkbenchPage({
               <RulePackageAuthoringShell
                 workspaceState={rulePackageWorkspaceState}
                 targetModule={overview?.selectedRuleSet?.module ?? "editing"}
+                isAdvancedEditorVisible={isAdvancedRuleEditorVisible}
                 isLoading={rulePackageLoadStatus === "loading"}
                 isPreviewRefreshing={isRulePackagePreviewBusy}
                 isCompilePreviewBusy={isRulePackageCompilePreviewBusy}
@@ -3222,13 +3236,18 @@ function isSameRulePackageSource(
   left: RulePackageWorkspaceSourceInputViewModel,
   right: RulePackageWorkspaceSourceInputViewModel,
 ): boolean {
-  if (left.sourceKind !== right.sourceKind) {
-    return false;
-  }
+  return (
+    left.sourceKind === right.sourceKind &&
+    readRulePackageSourceIdentity(left) === readRulePackageSourceIdentity(right)
+  );
+}
 
-  return left.sourceKind === "reviewed_case"
-    ? left.reviewedCaseSnapshotId === right.reviewedCaseSnapshotId
-    : left.exampleSourceSessionId === right.exampleSourceSessionId;
+function readRulePackageSourceIdentity(
+  source: RulePackageWorkspaceSourceInputViewModel,
+): string {
+  return source.sourceKind === "reviewed_case"
+    ? source.reviewedCaseSnapshotId
+    : source.exampleSourceSessionId;
 }
 
 function splitCommaSeparatedValues(value: string): string[] | undefined {

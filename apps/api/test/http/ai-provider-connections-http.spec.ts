@@ -11,6 +11,15 @@ import type { AiProviderConnectivityProbeResult } from "../../src/modules/ai-pro
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { startHttpTestServer, stopHttpTestServer } from "./support/http-test-server.ts";
 
+interface AiProviderConnectionResponseBody {
+  id: string;
+  name: string;
+}
+
+interface ErrorResponseBody {
+  error: string;
+}
+
 test("GET /api/v1/system-settings/ai-providers is available to admins", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migration = runMigrateProcess(databaseUrl);
@@ -36,7 +45,7 @@ test("GET /api/v1/system-settings/ai-providers is available to admins", async ()
           },
         );
 
-        const body = (await response.json()) as Array<unknown>;
+        const body = await readJson<unknown[]>(response);
         assert.equal(response.status, 200);
         assert.ok(Array.isArray(body));
       } finally {
@@ -82,10 +91,7 @@ test("POST /api/v1/system-settings/ai-providers lets admins create connections",
           },
         );
 
-        const created = (await createResponse.json()) as {
-          id: string;
-          name: string;
-        };
+        const created = await readJson<AiProviderConnectionResponseBody>(createResponse);
         assert.equal(createResponse.status, 201);
         assert.equal(created.name, "Edge Bridge");
       } finally {
@@ -131,10 +137,7 @@ test("POST /api/v1/system-settings/ai-providers/:id updates an existing connecti
         );
 
         assert.equal(createResponse.status, 201);
-        const created = (await createResponse.json()) as {
-          id: string;
-          name: string;
-        };
+        const created = await readJson<AiProviderConnectionResponseBody>(createResponse);
 
         const updateResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}`,
@@ -150,10 +153,7 @@ test("POST /api/v1/system-settings/ai-providers/:id updates an existing connecti
           },
         );
 
-        const updated = (await updateResponse.json()) as {
-          id: string;
-          name: string;
-        };
+        const updated = await readJson<AiProviderConnectionResponseBody>(updateResponse);
         assert.equal(updateResponse.status, 200);
         assert.equal(updated.name, "Edge Bridge Updated");
       } finally {
@@ -197,9 +197,7 @@ test("POST /api/v1/system-settings/ai-providers/:id/rotate-credential rotates a 
             }),
           },
         );
-        const created = (await createResponse.json()) as {
-          id: string;
-        };
+        const created = await readJson<AiProviderConnectionResponseBody>(createResponse);
 
         const rotateResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}/rotate-credential`,
@@ -257,9 +255,7 @@ test("POST /api/v1/system-settings/ai-providers/:id/test runs connectivity asser
             }),
           },
         );
-        const created = (await createResponse.json()) as {
-          id: string;
-        };
+        const created = await readJson<AiProviderConnectionResponseBody>(createResponse);
 
         const testResponse = await fetch(
           `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${created.id}/test`,
@@ -310,7 +306,7 @@ test("non-admin access to ai-provider routes is forbidden", async () => {
           },
         );
 
-        const body = (await response.json()) as { error: string };
+        const body = await readJson<ErrorResponseBody>(response);
         assert.equal(response.status, 403);
         assert.equal(body.error, "forbidden");
       } finally {
@@ -323,6 +319,10 @@ test("non-admin access to ai-provider routes is forbidden", async () => {
 });
 
 const stopServer = stopHttpTestServer;
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
 
 async function seedPersistentSystemSettingsUsers(pool: Pool): Promise<void> {
   const userRepository = new PostgresUserRepository({ client: pool });

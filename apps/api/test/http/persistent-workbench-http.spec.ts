@@ -86,6 +86,7 @@ const seededIds: PersistentWorkbenchSeededIds = {
   screeningModelId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
   proofreadingModelId: "ffffffff-dddd-4ddd-8ddd-dddddddddddd",
 };
+const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
 
 test("persistent workbench upload routes keep manuscripts, assets, jobs, and exports across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
@@ -2999,7 +3000,7 @@ async function startPersistentWorkbenchServer(
       authRuntime,
       uploadRootDir: input.uploadRootDir,
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
-        AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+        AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
       }),
     }),
     uploadRootDir: input.uploadRootDir,

@@ -113,6 +113,8 @@ test("template governance supports journal-scoped abstract and table rule author
   const createdFamilyButton = page.getByRole("button", { name: new RegExp(familyName) });
   await expect(createdFamilyButton).toBeVisible();
   await createdFamilyButton.click();
+  await page.getByRole("button", { name: "Open Advanced Rule Editor" }).click();
+  await expect(page.getByRole("heading", { name: "Rule Authoring Navigator" })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Journal Name" }).fill(journalName);
   await page.getByRole("textbox", { name: "Journal Key" }).fill(journalKey);

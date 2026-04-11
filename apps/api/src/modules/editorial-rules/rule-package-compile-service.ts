@@ -25,7 +25,13 @@ import type {
   CompileRulePackagesToDraftInput,
   CompileRulePackagesToDraftResult,
 } from "./editorial-rule-package-types.ts";
-import type { EditorialRuleRecord, EditorialRuleSetRecord } from "./editorial-rule-record.ts";
+import type {
+  EditorialRuleAction,
+  EditorialRuleRecord,
+  EditorialRuleScope,
+  EditorialRuleSetRecord,
+  EditorialRuleTrigger,
+} from "./editorial-rule-record.ts";
 
 const COMPILER_VERSION = "v2c-preview-1";
 const PROJECTION_RELEVANT_FIELDS = [
@@ -39,6 +45,13 @@ const DEFAULT_PROJECTION_KINDS = [
   "checklist",
   "prompt_snippet",
 ] as const satisfies RulePackageCompileProjectionReadiness["projected_kinds"];
+type CompiledRuleSeedDraft = Omit<
+  CompiledEditorialRuleSeed,
+  "coverage_key" | "trigger" | "action"
+> & {
+  trigger: EditorialRuleTrigger;
+  action: EditorialRuleAction;
+};
 
 export interface RulePackageCompileServiceOptions {
   repository: EditorialRuleRepository;
@@ -128,6 +141,7 @@ export class RulePackageCompileService {
       });
 
       for (const seed of previewEntry.draft_rule_seeds) {
+        const materializedSeed = materializeCompiledRuleSeed(seed);
         const matchingExistingRule = existingRules.find(
           (rule) =>
             isRulePackageOwnedRule(rule, seed.package_id) &&
@@ -140,11 +154,11 @@ export class RulePackageCompileService {
             rule_object: seed.rule_object,
             rule_type: seed.rule_type,
             execution_mode: seed.execution_mode,
-            scope: structuredClone(seed.scope),
-            selector: structuredClone(seed.selector),
-            trigger: structuredClone(seed.trigger),
-            action: structuredClone(seed.action),
-            authoring_payload: structuredClone(seed.authoring_payload),
+            scope: materializedSeed.scope,
+            selector: materializedSeed.selector,
+            trigger: materializedSeed.trigger,
+            action: materializedSeed.action,
+            authoring_payload: materializedSeed.authoring_payload,
             confidence_policy: seed.confidence_policy,
             severity: seed.severity,
             enabled: true,
@@ -189,11 +203,11 @@ export class RulePackageCompileService {
           ruleObject: seed.rule_object,
           ruleType: seed.rule_type,
           executionMode: seed.execution_mode,
-          scope: seed.scope,
-          selector: seed.selector,
-          trigger: seed.trigger,
-          action: seed.action,
-          authoringPayload: seed.authoring_payload,
+          scope: materializedSeed.scope,
+          selector: materializedSeed.selector,
+          trigger: materializedSeed.trigger,
+          action: materializedSeed.action,
+          authoringPayload: materializedSeed.authoring_payload,
           explanationPayload: compiledMetadata.explanationPayload,
           linkagePayload: compiledMetadata.linkagePayload,
           projectionPayload: compiledMetadata.projectionPayload,
@@ -378,7 +392,7 @@ function buildAuthorLineSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "author_line",
     rule_type: "format",
@@ -424,7 +438,7 @@ function buildAbstractSeed(
 ): CompiledEditorialRuleSeed {
   const exampleBefore = firstBeforeExample(packageDraft);
   const exampleAfter = firstAfterExample(packageDraft);
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "abstract",
     rule_type: "format",
@@ -469,7 +483,7 @@ function buildKeywordSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "keyword",
     rule_type: "format",
@@ -513,7 +527,7 @@ function buildHeadingHierarchySeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "heading_hierarchy",
     rule_type: "format",
@@ -554,7 +568,7 @@ function buildStatisticalExpressionSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "statistical_expression",
     rule_type: "format",
@@ -597,7 +611,7 @@ function buildTableSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "table",
     rule_type: "format",
@@ -639,7 +653,7 @@ function buildReferenceSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
-  const seed: Omit<CompiledEditorialRuleSeed, "coverage_key"> = {
+  const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "reference",
     rule_type: "format",
@@ -1108,9 +1122,10 @@ function classifyEvidenceLevel(input: {
 }
 
 function uniqueStrings(values: string[]): string[] | undefined {
-  const uniqueValues = Array.from(
-    new Set(values.map((value) => normalizeText(value)).filter(Boolean)),
-  );
+  const normalizedValues = values
+    .map((value) => normalizeText(value))
+    .filter((value): value is string => Boolean(value));
+  const uniqueValues = Array.from(new Set(normalizedValues));
   return uniqueValues.length > 0 ? uniqueValues : undefined;
 }
 
@@ -1121,4 +1136,50 @@ function normalizeText(value: string | undefined): string | undefined {
 
   const normalizedValue = value.trim();
   return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
+function materializeCompiledRuleSeed(seed: CompiledEditorialRuleSeed): {
+  scope: EditorialRuleScope;
+  selector: Record<string, unknown>;
+  trigger: EditorialRuleTrigger;
+  action: EditorialRuleAction;
+  authoring_payload: Record<string, unknown>;
+} {
+  return {
+    scope: structuredClone(seed.scope) as EditorialRuleScope,
+    selector: structuredClone(seed.selector),
+    trigger: coerceEditorialRuleTrigger(seed.trigger, seed.coverage_key),
+    action: coerceEditorialRuleAction(seed.action, seed.coverage_key),
+    authoring_payload: structuredClone(seed.authoring_payload),
+  };
+}
+
+function coerceEditorialRuleTrigger(
+  value: Record<string, unknown>,
+  coverageKey: string,
+): EditorialRuleTrigger {
+  const kind = normalizeText(typeof value.kind === "string" ? value.kind : undefined);
+  if (!kind) {
+    throw new Error(`Compiled rule seed "${coverageKey}" is missing trigger.kind.`);
+  }
+
+  return structuredClone({
+    ...value,
+    kind,
+  }) as EditorialRuleTrigger;
+}
+
+function coerceEditorialRuleAction(
+  value: Record<string, unknown>,
+  coverageKey: string,
+): EditorialRuleAction {
+  const kind = normalizeText(typeof value.kind === "string" ? value.kind : undefined);
+  if (!kind) {
+    throw new Error(`Compiled rule seed "${coverageKey}" is missing action.kind.`);
+  }
+
+  return structuredClone({
+    ...value,
+    kind,
+  }) as EditorialRuleAction;
 }
