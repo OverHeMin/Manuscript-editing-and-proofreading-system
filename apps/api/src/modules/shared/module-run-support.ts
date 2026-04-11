@@ -5,6 +5,7 @@ import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptRecord } from "../manuscripts/manuscript-record.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { RetrievalPresetRecord } from "../retrieval-presets/retrieval-preset-record.ts";
 import type {
   ModuleTemplateRecord,
   TemplateModule,
@@ -37,6 +38,7 @@ export interface DynamicKnowledgeSelection {
   matchSource: "template_binding" | "dynamic_routing";
   matchSourceId?: string;
   matchReasons: string[];
+  retrievalScore?: number;
 }
 
 export interface ModuleExecutionResult<TJob, TAsset> {
@@ -107,9 +109,10 @@ export function selectApprovedDynamicKnowledge(
     module: TemplateModule;
     template: ModuleTemplateRecord;
     knowledgeItems: KnowledgeRecord[];
+    retrievalPreset?: RetrievalPresetRecord;
   },
 ): DynamicKnowledgeSelection[] {
-  return input.knowledgeItems
+  const candidates = input.knowledgeItems
     .filter((record) => record.status === "approved")
     .filter(
       (record) =>
@@ -127,17 +130,28 @@ export function selectApprovedDynamicKnowledge(
         record.template_bindings.length === 0 ||
         record.template_bindings.includes(input.template.id),
     )
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((knowledgeItem) => {
+    .reduce<DynamicKnowledgeSelection[]>((result, knowledgeItem) => {
       const usesTemplateBinding =
         !!knowledgeItem.template_bindings &&
         knowledgeItem.template_bindings.length > 0 &&
         knowledgeItem.template_bindings.includes(input.template.id);
+      const retrievalScore = input.retrievalPreset
+        ? scoreKnowledgeForPreset({
+            knowledgeItem,
+            retrievalPreset: input.retrievalPreset,
+            usesTemplateBinding,
+          })
+        : undefined;
+      if (input.retrievalPreset && retrievalScore === undefined) {
+        return result;
+      }
 
-      return {
+      result.push({
         knowledgeItem,
         matchSource: usesTemplateBinding ? "template_binding" : "dynamic_routing",
-        matchSourceId: usesTemplateBinding ? `template:${input.template.id}` : undefined,
+        ...(usesTemplateBinding
+          ? { matchSourceId: `template:${input.template.id}` }
+          : {}),
         matchReasons: [
           ...(knowledgeItem.routing.module_scope === input.module ? ["module"] : []),
           ...(
@@ -150,8 +164,25 @@ export function selectApprovedDynamicKnowledge(
           ),
           ...(usesTemplateBinding ? ["template_binding"] : ["dynamic_routing"]),
         ],
-      };
-    });
+        ...(retrievalScore !== undefined ? { retrievalScore } : {}),
+      });
+
+      return result;
+    }, []);
+
+  if (!input.retrievalPreset) {
+    return candidates.sort((left, right) =>
+      left.knowledgeItem.id.localeCompare(right.knowledgeItem.id),
+    );
+  }
+
+  return candidates
+    .sort(
+      (left, right) =>
+        (right.retrievalScore ?? 0) - (left.retrievalScore ?? 0) ||
+        left.knowledgeItem.id.localeCompare(right.knowledgeItem.id),
+    )
+    .slice(0, input.retrievalPreset.top_k);
 }
 
 export async function prepareModuleExecution(
@@ -205,6 +236,56 @@ export async function prepareModuleExecution(
     knowledgeItems,
     modelSelection,
   };
+}
+
+function scoreKnowledgeForPreset(input: {
+  knowledgeItem: KnowledgeRecord;
+  retrievalPreset?: RetrievalPresetRecord;
+  usesTemplateBinding: boolean;
+}): number | undefined {
+  if (!input.retrievalPreset) {
+    return undefined;
+  }
+
+  const sectionFilters = normalizeFilters(input.retrievalPreset.section_filters);
+  const riskTagFilters = normalizeFilters(input.retrievalPreset.risk_tag_filters);
+  const itemSections = normalizeFilters(input.knowledgeItem.routing.sections);
+  const itemRiskTags = normalizeFilters(input.knowledgeItem.routing.risk_tags);
+
+  if (sectionFilters.length > 0 && !hasAnyOverlap(itemSections, sectionFilters)) {
+    return undefined;
+  }
+  if (riskTagFilters.length > 0 && !hasAnyOverlap(itemRiskTags, riskTagFilters)) {
+    return undefined;
+  }
+
+  let score = input.usesTemplateBinding ? 0.55 : 0.5;
+  if (sectionFilters.length > 0) {
+    score += 0.2;
+  }
+  if (riskTagFilters.length > 0) {
+    score += 0.2;
+  }
+  if (input.usesTemplateBinding) {
+    score += 0.1;
+  }
+
+  if (
+    input.retrievalPreset.min_retrieval_score !== undefined &&
+    score < input.retrievalPreset.min_retrieval_score
+  ) {
+    return undefined;
+  }
+
+  return Number(score.toFixed(3));
+}
+
+function normalizeFilters(values: readonly string[] | undefined): string[] {
+  return values?.filter((value): value is string => typeof value === "string") ?? [];
+}
+
+function hasAnyOverlap(left: readonly string[], right: readonly string[]): boolean {
+  return left.some((value) => right.includes(value));
 }
 
 export async function seedGovernedRunsForModuleExecution(input: {

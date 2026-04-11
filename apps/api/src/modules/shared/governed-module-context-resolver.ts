@@ -14,8 +14,16 @@ import {
 } from "../execution-governance/execution-governance-service.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
-import type { ManuscriptRecord } from "../manuscripts/manuscript-record.ts";
+import type {
+  ManuscriptRecord,
+  ManuscriptType,
+} from "../manuscripts/manuscript-record.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import {
+  ActiveManualReviewPolicyNotFoundError,
+} from "../manual-review-policies/manual-review-policy-service.ts";
+import type { ManualReviewPolicyRecord } from "../manual-review-policies/manual-review-policy-record.ts";
+import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type {
   PromptSkillRegistryRepository,
 } from "../prompt-skill-registry/prompt-skill-repository.ts";
@@ -23,6 +31,11 @@ import type {
   PromptTemplateRecord,
   SkillPackageRecord,
 } from "../prompt-skill-registry/prompt-skill-record.ts";
+import {
+  ActiveRetrievalPresetNotFoundError,
+} from "../retrieval-presets/retrieval-preset-service.ts";
+import type { RetrievalPresetRecord } from "../retrieval-presets/retrieval-preset-record.ts";
+import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import {
   ModuleManuscriptNotFoundError,
   ModuleTemplateFamilyNotConfiguredError,
@@ -37,6 +50,7 @@ export interface GovernedKnowledgeSelection {
   matchSourceId?: string;
   bindingRuleId?: string;
   matchReasons: string[];
+  retrievalScore?: number;
 }
 
 export interface GovernedModuleContext {
@@ -52,6 +66,8 @@ export interface GovernedModuleContext {
   skillPackages: SkillPackageRecord[];
   knowledgeSelections: GovernedKnowledgeSelection[];
   modelSelection: ResolvedModelSelection;
+  retrievalPreset?: RetrievalPresetRecord;
+  manualReviewPolicy?: ManualReviewPolicyRecord;
 }
 
 export interface ResolveGovernedModuleContextInput {
@@ -66,6 +82,11 @@ export interface ResolveGovernedModuleContextInput {
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
   aiGatewayService: AiGatewayService;
+  retrievalPresetService?: Pick<RetrievalPresetService, "getActivePresetForScope">;
+  manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope"
+  >;
 }
 
 export class GovernedPromptTemplateNotFoundError extends Error {
@@ -152,6 +173,17 @@ export async function resolveGovernedModuleContext(
       },
     );
 
+  const retrievalPreset = await resolveActiveRetrievalPreset(input, {
+    module: input.module,
+    manuscriptType: manuscript.manuscript_type,
+    templateFamilyId: manuscript.current_template_family_id,
+  });
+  const manualReviewPolicy = await resolveActiveManualReviewPolicy(input, {
+    module: input.module,
+    manuscriptType: manuscript.manuscript_type,
+    templateFamilyId: manuscript.current_template_family_id,
+  });
+
   const knowledgeSelectionsById = new Map<string, GovernedKnowledgeSelection>();
   const bindingRules =
     await input.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
@@ -193,6 +225,7 @@ export async function resolveGovernedModuleContext(
       module: input.module,
       template: moduleTemplate,
       knowledgeItems: await input.knowledgeRepository.listApproved(),
+      retrievalPreset,
     });
 
     for (const selection of dynamicSelections) {
@@ -224,7 +257,55 @@ export async function resolveGovernedModuleContext(
     skillPackages,
     knowledgeSelections: [...knowledgeSelectionsById.values()],
     modelSelection,
+    ...(retrievalPreset ? { retrievalPreset } : {}),
+    ...(manualReviewPolicy ? { manualReviewPolicy } : {}),
   };
 }
 
 export { ActiveExecutionProfileNotFoundError };
+
+async function resolveActiveRetrievalPreset(
+  input: ResolveGovernedModuleContextInput,
+  scope: {
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  },
+): Promise<RetrievalPresetRecord | undefined> {
+  if (!input.retrievalPresetService) {
+    return undefined;
+  }
+
+  try {
+    return await input.retrievalPresetService.getActivePresetForScope(scope);
+  } catch (error) {
+    if (error instanceof ActiveRetrievalPresetNotFoundError) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function resolveActiveManualReviewPolicy(
+  input: ResolveGovernedModuleContextInput,
+  scope: {
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  },
+): Promise<ManualReviewPolicyRecord | undefined> {
+  if (!input.manualReviewPolicyService) {
+    return undefined;
+  }
+
+  try {
+    return await input.manualReviewPolicyService.getActivePolicyForScope(scope);
+  } catch (error) {
+    if (error instanceof ActiveManualReviewPolicyNotFoundError) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}

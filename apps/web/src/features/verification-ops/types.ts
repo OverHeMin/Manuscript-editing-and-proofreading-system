@@ -51,6 +51,11 @@ export interface EvaluationSampleSetSourcePolicyViewModel {
 
 export interface FrozenExperimentBindingViewModel {
   lane: FrozenExperimentLane;
+  execution_profile_id?: string;
+  runtime_binding_id?: string;
+  model_routing_policy_version_id?: string;
+  retrieval_preset_id?: string;
+  manual_review_policy_id?: string;
   model_id: string;
   runtime_id: string;
   prompt_template_id: string;
@@ -273,6 +278,11 @@ export interface PublishEvaluationSampleSetInput {
 
 export interface FrozenExperimentBindingInput {
   lane: FrozenExperimentLane;
+  executionProfileId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  retrievalPresetId?: string;
+  manualReviewPolicyId?: string;
   modelId: string;
   runtimeId: string;
   promptTemplateId: string;

@@ -333,7 +333,19 @@ export class ModelRoutingGovernanceService {
     this.permissionGuard.assert(actorRole, "permissions.manage");
 
     const version = await this.requireVersion(versionId);
-    if (version.status !== "approved") {
+    if (version.status === "active") {
+      return {
+        policy_id: version.policy_scope_id,
+        scope: await this.requireScope(version.policy_scope_id),
+        version,
+      };
+    }
+
+    if (
+      version.status !== "approved" &&
+      version.status !== "superseded" &&
+      version.status !== "rolled_back"
+    ) {
       throw new ModelRoutingGovernanceStatusTransitionError(
         versionId,
         version.status,

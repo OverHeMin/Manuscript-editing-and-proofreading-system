@@ -32,7 +32,9 @@ import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
@@ -84,6 +86,11 @@ export interface ProofreadingServiceOptions {
   moduleTemplateRepository: ModuleTemplateRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
+  retrievalPresetService?: Pick<RetrievalPresetService, "getActivePresetForScope">;
+  manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope"
+  >;
   executionGovernanceService: ExecutionGovernanceService;
   executionTrackingService: ExecutionTrackingService;
   jobRepository: JobRepository;
@@ -154,6 +161,14 @@ export class ProofreadingService {
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
+  private readonly retrievalPresetService?: Pick<
+    RetrievalPresetService,
+    "getActivePresetForScope"
+  >;
+  private readonly manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope"
+  >;
   private readonly executionGovernanceService: ExecutionGovernanceService;
   private readonly executionTrackingService: ExecutionTrackingService;
   private readonly documentAssetService: DocumentAssetService;
@@ -191,6 +206,8 @@ export class ProofreadingService {
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
+    this.retrievalPresetService = options.retrievalPresetService;
+    this.manualReviewPolicyService = options.manualReviewPolicyService;
     this.executionGovernanceService = options.executionGovernanceService;
     this.executionTrackingService = options.executionTrackingService;
     this.documentAssetService = options.documentAssetService;
@@ -594,6 +611,8 @@ export class ProofreadingService {
       promptSkillRegistryRepository: this.promptSkillRegistryRepository,
       knowledgeRepository: this.knowledgeRepository,
       aiGatewayService: this.aiGatewayService,
+      retrievalPresetService: this.retrievalPresetService,
+      manualReviewPolicyService: this.manualReviewPolicyService,
       sandboxProfileService: this.sandboxProfileService,
       agentProfileService: this.agentProfileService,
       agentRuntimeService: this.agentRuntimeService,
@@ -615,6 +634,7 @@ export class ProofreadingService {
       skillPackageVersions: moduleContext.skillPackages.map(
         (record) => record.version,
       ),
+      manualReviewPolicy: moduleContext.manualReviewPolicy,
       ruleSetId: moduleContext.ruleSet.id,
       rules: moduleContext.rules.map((rule) => ({
         ...rule,
@@ -757,6 +777,7 @@ export class ProofreadingService {
       rules: input.resolvedContext.rules ?? [],
       resolvedRules: input.resolvedContext.resolvedRules,
       tableSnapshots: documentStructureSnapshot?.tables ?? [],
+      manualReviewPolicy: input.resolvedContext.manualReviewPolicy,
     });
   }
 }
@@ -773,6 +794,7 @@ interface ResolvedProofreadingGovernedContext {
   skillPackageIds: string[];
   skillPackageVersions: string[];
   knowledgeHits: RecordKnowledgeHitInput[];
+  manualReviewPolicy?: Parameters<typeof inspectProofreadingRules>[0]["manualReviewPolicy"];
   modelId: string;
   modelVersion?: string;
   routingPolicyVersionId?: string;

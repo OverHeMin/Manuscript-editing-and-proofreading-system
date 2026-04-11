@@ -740,3 +740,101 @@ test("verification ops roll back governed execution run seeding when a later sui
     [],
   );
 });
+
+test("verification ops freeze the full harness candidate environment on evaluation runs", async () => {
+  const { verificationOpsApi, verificationOpsService } = createVerificationOpsHarness();
+
+  const suite = await verificationOpsApi.createEvaluationSuite({
+    actorRole: "admin",
+    input: {
+      name: "Harness candidate suite",
+      suiteType: "regression",
+      verificationCheckProfileIds: [],
+      moduleScope: ["editing"],
+      supportsAbComparison: true,
+      hardGatePolicy: {
+        mustUseDeidentifiedSamples: true,
+        requiresParsableOutput: false,
+      },
+    },
+  });
+  const activeSuite = await verificationOpsApi.activateEvaluationSuite({
+    actorRole: "admin",
+    suiteId: suite.body.id,
+  });
+
+  const createdRun = await verificationOpsApi.createEvaluationRun({
+    actorRole: "admin",
+    input: {
+      suiteId: activeSuite.body.id,
+      baselineBinding: {
+        lane: "baseline",
+        executionProfileId: "profile-active-1",
+        runtimeBindingId: "binding-active-1",
+        modelRoutingPolicyVersionId: "routing-version-active-1",
+        retrievalPresetId: "retrieval-active-1",
+        manualReviewPolicyId: "manual-review-active-1",
+        modelId: "model-active-1",
+        runtimeId: "runtime-active-1",
+        promptTemplateId: "prompt-active-1",
+        skillPackageIds: ["skill-active-1"],
+        moduleTemplateId: "template-active-1",
+      },
+      candidateBinding: {
+        lane: "candidate",
+        executionProfileId: "profile-draft-2",
+        runtimeBindingId: "binding-draft-2",
+        modelRoutingPolicyVersionId: "routing-version-draft-2",
+        retrievalPresetId: "retrieval-draft-2",
+        manualReviewPolicyId: "manual-review-draft-2",
+        modelId: "model-draft-2",
+        runtimeId: "runtime-draft-2",
+        promptTemplateId: "prompt-draft-2",
+        skillPackageIds: ["skill-draft-2"],
+        moduleTemplateId: "template-draft-2",
+      },
+    },
+  });
+
+  assert.equal(
+    createdRun.body.baseline_binding?.execution_profile_id,
+    "profile-active-1",
+  );
+  assert.equal(
+    createdRun.body.candidate_binding?.execution_profile_id,
+    "profile-draft-2",
+  );
+  assert.equal(
+    createdRun.body.candidate_binding?.runtime_binding_id,
+    "binding-draft-2",
+  );
+  assert.equal(
+    createdRun.body.candidate_binding?.model_routing_policy_version_id,
+    "routing-version-draft-2",
+  );
+  assert.equal(
+    createdRun.body.candidate_binding?.retrieval_preset_id,
+    "retrieval-draft-2",
+  );
+  assert.equal(
+    createdRun.body.candidate_binding?.manual_review_policy_id,
+    "manual-review-draft-2",
+  );
+
+  const persistedRuns = await verificationOpsService.listEvaluationRunsBySuiteId(
+    activeSuite.body.id,
+  );
+
+  assert.equal(
+    persistedRuns[0]?.candidate_binding?.runtime_binding_id,
+    "binding-draft-2",
+  );
+  assert.equal(
+    persistedRuns[0]?.candidate_binding?.retrieval_preset_id,
+    "retrieval-draft-2",
+  );
+  assert.equal(
+    persistedRuns[0]?.candidate_binding?.manual_review_policy_id,
+    "manual-review-draft-2",
+  );
+});

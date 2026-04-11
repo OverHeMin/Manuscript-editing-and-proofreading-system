@@ -133,6 +133,11 @@ export function resolveExecutionBundlePreview(
       module: input.module,
       manuscriptType: input.manuscriptType,
       templateFamilyId: input.templateFamilyId,
+      executionProfileId: input.executionProfileId,
+      runtimeBindingId: input.runtimeBindingId,
+      modelRoutingPolicyVersionId: input.modelRoutingPolicyVersionId,
+      retrievalPresetId: input.retrievalPresetId,
+      manualReviewPolicyId: input.manualReviewPolicyId,
     },
   });
 }

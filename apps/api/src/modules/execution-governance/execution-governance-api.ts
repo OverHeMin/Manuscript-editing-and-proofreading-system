@@ -50,6 +50,19 @@ export function createExecutionGovernanceApi(
       };
     },
 
+    async activateProfile({
+      actorRole,
+      profileId,
+    }: {
+      actorRole: RoleKey;
+      profileId: string;
+    }): Promise<RouteResponse<ModuleExecutionProfileRecord>> {
+      return {
+        status: 200,
+        body: await executionGovernanceService.activateProfile(profileId, actorRole),
+      };
+    },
+
     async archiveProfile({
       actorRole,
       profileId,
@@ -67,6 +80,17 @@ export function createExecutionGovernanceApi(
       return {
         status: 200,
         body: await executionGovernanceService.listProfiles(),
+      };
+    },
+
+    async getProfile({
+      profileId,
+    }: {
+      profileId: string;
+    }): Promise<RouteResponse<ModuleExecutionProfileRecord>> {
+      return {
+        status: 200,
+        body: await executionGovernanceService.getProfile(profileId),
       };
     },
 

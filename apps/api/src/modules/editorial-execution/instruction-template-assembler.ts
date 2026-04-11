@@ -1,4 +1,5 @@
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
+import type { ManualReviewPolicyRecord } from "../manual-review-policies/manual-review-policy-record.ts";
 import type {
   AssembleInstructionTemplateInput,
   ContentRuleCandidate,
@@ -9,10 +10,13 @@ export function assembleInstructionTemplate(
   input: AssembleInstructionTemplateInput,
 ): InstructionTemplatePayload {
   const contentRuleCandidates = buildContentRuleCandidates(input.rules);
-  const manualReviewItems = contentRuleCandidates.map((candidate) => ({
-    ruleId: candidate.ruleId,
-    reason: candidate.reason,
-  }));
+  const manualReviewItems = input.rules
+    .filter((rule) => shouldStageManualReviewRule(rule, input.manualReviewPolicy))
+    .sort((left, right) => left.order_no - right.order_no)
+    .map((rule) => ({
+      ruleId: rule.id,
+      reason: deriveManualReviewReason(rule),
+    }));
 
   return {
     templateId: input.promptTemplate.id,
@@ -94,7 +98,7 @@ function buildContentRuleCandidates(
   rules: readonly EditorialRuleRecord[],
 ): ContentRuleCandidate[] {
   return rules
-    .filter((rule) => shouldStageManualReview(rule))
+    .filter((rule) => isManualReviewCandidate(rule))
     .sort((left, right) => left.order_no - right.order_no)
     .map((rule) => ({
       ruleId: rule.id,
@@ -104,13 +108,51 @@ function buildContentRuleCandidates(
     }));
 }
 
-function shouldStageManualReview(rule: EditorialRuleRecord): boolean {
+function isManualReviewCandidate(rule: EditorialRuleRecord): boolean {
   return (
     rule.enabled &&
     rule.rule_type === "content" &&
     rule.execution_mode !== "inspect" &&
     rule.confidence_policy !== "always_auto"
   );
+}
+
+export function shouldStageManualReviewRule(
+  rule: EditorialRuleRecord,
+  manualReviewPolicy?: ManualReviewPolicyRecord,
+): boolean {
+  if (!isManualReviewCandidate(rule)) {
+    return false;
+  }
+
+  if (manualReviewPolicy?.module_blocklist_rules?.some((entry) => matchesBlocklistRule(rule, entry))) {
+    return true;
+  }
+
+  if (rule.confidence_policy === "manual_only") {
+    return true;
+  }
+
+  const derivedReason = deriveManualReviewReason(rule);
+  if (manualReviewPolicy?.high_risk_force_review && rule.severity === "error") {
+    return true;
+  }
+  if (manualReviewPolicy?.conflict_force_review && derivedReason.includes("conflict")) {
+    return true;
+  }
+  if (
+    manualReviewPolicy?.insufficient_knowledge_force_review &&
+    derivedReason.includes("insufficient_knowledge")
+  ) {
+    return true;
+  }
+
+  const threshold = manualReviewPolicy?.min_confidence_threshold;
+  if (threshold === undefined) {
+    return true;
+  }
+
+  return resolveRuleConfidenceScore(rule) < threshold;
 }
 
 function deriveManualReviewReason(rule: EditorialRuleRecord): string {
@@ -157,3 +199,27 @@ function readScopeSection(rule: EditorialRuleRecord): string | undefined {
 }
 
 export { deriveManualReviewReason };
+
+function matchesBlocklistRule(
+  rule: EditorialRuleRecord,
+  candidate: string,
+): boolean {
+  return (
+    candidate === rule.id ||
+    candidate === rule.action.kind ||
+    candidate === deriveManualReviewReason(rule)
+  );
+}
+
+function resolveRuleConfidenceScore(rule: EditorialRuleRecord): number {
+  switch (rule.confidence_policy) {
+    case "always_auto":
+      return 1;
+    case "high_confidence_only":
+      return 0.7;
+    case "manual_only":
+      return 0;
+    default:
+      return 0;
+  }
+}

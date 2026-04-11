@@ -962,6 +962,7 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0031_knowledge_duplicate_detection_acknowledgements.sql",
       "0032_ai_provider_control_plane.sql",
       "0033_knowledge_library_rich_space.sql",
+      "0034_harness_control_plane_p0.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1528,7 +1529,8 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
             '0030_knowledge_library_v1_revision_governance.sql',
             '0031_knowledge_duplicate_detection_acknowledgements.sql',
             '0032_ai_provider_control_plane.sql',
-            '0033_knowledge_library_rich_space.sql'
+            '0033_knowledge_library_rich_space.sql',
+            '0034_harness_control_plane_p0.sql'
           )
           order by version
         `,
@@ -1559,6 +1561,10 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
         {
           version: "0033_knowledge_library_rich_space.sql",
           checksum: getMigrationChecksum("0033_knowledge_library_rich_space.sql"),
+        },
+        {
+          version: "0034_harness_control_plane_p0.sql",
+          checksum: getMigrationChecksum("0034_harness_control_plane_p0.sql"),
         },
       ]);
     } finally {

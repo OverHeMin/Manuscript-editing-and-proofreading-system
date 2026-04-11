@@ -5,6 +5,11 @@ import type {
 
 export interface FrozenExperimentBindingInput {
   lane: FrozenExperimentBindingRecord["lane"];
+  executionProfileId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  retrievalPresetId?: string;
+  manualReviewPolicyId?: string;
   modelId: string;
   runtimeId: string;
   promptTemplateId: string;
@@ -37,9 +42,9 @@ export function freezeExperimentBindings(input: {
   const candidateBinding = freezeBinding(input.candidateBinding, "candidate");
   const diffCount = countPrimaryDiffs(baselineBinding, candidateBinding);
 
-  if (input.suite.supports_ab_comparison && diffCount !== 1) {
+  if (input.suite.supports_ab_comparison && diffCount === 0) {
     throw new EvaluationExperimentBindingError(
-      `Evaluation suite ${input.suite.id} requires exactly one primary A/B difference, received ${diffCount}.`,
+      `Evaluation suite ${input.suite.id} requires at least one primary A/B difference.`,
     );
   }
 
@@ -67,6 +72,13 @@ function freezeBinding(
 
   return {
     lane: input.lane,
+    execution_profile_id: optionalValue(input.executionProfileId),
+    runtime_binding_id: optionalValue(input.runtimeBindingId),
+    model_routing_policy_version_id: optionalValue(
+      input.modelRoutingPolicyVersionId,
+    ),
+    retrieval_preset_id: optionalValue(input.retrievalPresetId),
+    manual_review_policy_id: optionalValue(input.manualReviewPolicyId),
     model_id: requireValue(input.modelId, `${expectedLane}.modelId`),
     runtime_id: requireValue(input.runtimeId, `${expectedLane}.runtimeId`),
     prompt_template_id: requireValue(
@@ -93,6 +105,10 @@ function requireValue(value: string, label: string): string {
   }
 
   return value;
+}
+
+function optionalValue(value: string | undefined): string | undefined {
+  return value?.trim().length ? value.trim() : undefined;
 }
 
 function countPrimaryDiffs(

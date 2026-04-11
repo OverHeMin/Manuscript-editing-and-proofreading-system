@@ -280,6 +280,50 @@ export class ExecutionGovernanceService {
     });
   }
 
+  async activateProfile(
+    profileId: string,
+    actorRole: RoleKey,
+  ): Promise<ModuleExecutionProfileRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const profile = await repository.findProfileById(profileId);
+      if (!profile) {
+        throw new ModuleExecutionProfileNotFoundError(profileId);
+      }
+
+      if (profile.status === "active") {
+        await this.assertProfileReferencesArePublishable(profile);
+        return profile;
+      }
+
+      await this.assertProfileReferencesArePublishable(profile);
+
+      const profiles = await repository.listProfiles();
+      for (const existing of profiles) {
+        if (
+          existing.id !== profile.id &&
+          existing.status === "active" &&
+          existing.module === profile.module &&
+          existing.manuscript_type === profile.manuscript_type &&
+          existing.template_family_id === profile.template_family_id
+        ) {
+          await repository.saveProfile({
+            ...existing,
+            status: "archived",
+          });
+        }
+      }
+
+      const activeProfile: ModuleExecutionProfileRecord = {
+        ...profile,
+        status: "active",
+      };
+      await repository.saveProfile(activeProfile);
+      return activeProfile;
+    });
+  }
+
   async archiveProfile(
     profileId: string,
     actorRole: RoleKey,
@@ -302,6 +346,10 @@ export class ExecutionGovernanceService {
 
   listProfiles(): Promise<ModuleExecutionProfileRecord[]> {
     return this.repository.listProfiles();
+  }
+
+  async getProfile(profileId: string): Promise<ModuleExecutionProfileRecord> {
+    return this.requireProfile(profileId);
   }
 
   async resolveActiveProfile(

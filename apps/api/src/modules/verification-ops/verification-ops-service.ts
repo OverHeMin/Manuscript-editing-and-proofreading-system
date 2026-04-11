@@ -709,14 +709,7 @@ export class VerificationOpsService {
     let runItemCount = 0;
     let sampleItems: EvaluationSampleSetItemRecord[] = [];
 
-    if (input.sampleSetId) {
-      const sampleSet = await this.requireEvaluationSampleSet(input.sampleSetId);
-      sampleSetId = sampleSet.id;
-      sampleItems = await this.repository.listEvaluationSampleSetItemsBySampleSetId(
-        sampleSet.id,
-      );
-      runItemCount = sampleItems.length;
-
+    if (input.baselineBinding || input.candidateBinding) {
       const frozenBindings = freezeExperimentBindings({
         suite,
         baselineBinding: input.baselineBinding,
@@ -724,6 +717,15 @@ export class VerificationOpsService {
       });
       baselineBinding = frozenBindings.baselineBinding;
       candidateBinding = frozenBindings.candidateBinding;
+    }
+
+    if (input.sampleSetId) {
+      const sampleSet = await this.requireEvaluationSampleSet(input.sampleSetId);
+      sampleSetId = sampleSet.id;
+      sampleItems = await this.repository.listEvaluationSampleSetItemsBySampleSetId(
+        sampleSet.id,
+      );
+      runItemCount = sampleItems.length;
     }
 
     const record: EvaluationRunRecord = {

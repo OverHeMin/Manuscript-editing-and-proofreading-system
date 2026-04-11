@@ -145,10 +145,18 @@ export function WorkbenchHost({
     };
   }, []);
 
-  const activeEntry =
+  const rawActiveEntry =
     visibleEntries.find((entry) => entry.id === activeNavigationWorkbenchId) ??
     visibleEntries.find((entry) => entry.id === activeWorkbenchId) ??
     null;
+  const activeEntry =
+    rawActiveEntry?.id === "admin-console"
+      ? {
+          ...rawActiveEntry,
+          label: "Harness Control Plane",
+          navLabel: "Harness Control Plane",
+        }
+      : rawActiveEntry;
   const navigationGroups = buildWorkbenchNavigationGroups(visibleEntries);
   const activeNavigationGroup =
     navigationGroups.find((group) =>
