@@ -1,4 +1,4 @@
-# 医学稿件处理系统 V1
+﻿# 医学稿件处理系统 V1
 
 这是医学稿件处理系统的 V1 基础仓库。当前仓库已经具备可运行的本地 API / Web / Worker 基线，以及一条受控的 PostgreSQL 持久化 HTTP runtime。
 
@@ -183,6 +183,10 @@
   运行、迁移、备份/回滚、远程维护、密钥安全与升级流程
 - `docs/operations/release-manifest-template.md`
   staging / production 发布记录模板，覆盖 manifest 字段校验、schema/storage backup gate、migration doctor 证据、发布后验证与回滚决策
+- `docs/operations/manuscript-quality-v2-smoke-checklist.md`
+  Manuscript Quality V2 的治理验收、候选 run、激活与回滚清单
+- `docs/operations/manuscript-quality-governance-workspace.md`
+  通用风格包与医学分析包的后台维护说明，以及它们和 runtime binding、Harness 的配合流程
 - `docs/CODE_QUALITY.md`
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`
@@ -328,3 +332,4 @@
 - After activation, new governed manuscript work for that scope resolves against the promoted environment. This includes live retrieval behavior and live manual-review staging.
 - Rollback restores the previous approved scope environment and affects only new work created after the rollback.
 - `Evaluation Workbench` remains an evidence-first comparison surface. It does not activate policy, switch runtime, or mutate the live governed environment by itself.
+

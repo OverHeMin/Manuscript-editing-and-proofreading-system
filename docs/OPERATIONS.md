@@ -1,4 +1,4 @@
-# 运维与交付基线
+﻿# 运维与交付基线
 
 ## 1. 适用范围
 
@@ -565,3 +565,20 @@ Operational rules:
 - Operator-summary output may point back to history replay or repair-handoff follow-up, but it does not execute repair, cleanup, routing, or release behavior.
 - Missing `Presidio`, `OCRmyPDF`, `PaddleOCR`, or `GROBID` adapters return degraded advisory evidence instead of blocking worker startup or manuscript execution.
 - The JSON output is an operator aid only. It does not replace human de-identification review and does not auto-launch OCR or academic-structure extraction.
+
+## 14. Manuscript Quality V2 运维入口
+
+如需对 Manuscript Quality V2 做后台验收、版本维护、候选验证、激活或回滚，优先使用以下两份文档：
+
+- `docs/operations/manuscript-quality-v2-smoke-checklist.md`
+  用于按步骤验证质量包治理、runtime binding 装配、Harness 候选 run、激活与回滚是否真实生效。
+- `docs/operations/manuscript-quality-governance-workspace.md`
+  用于日常维护通用风格包和医学分析包，明确哪些内容可以后台改，哪些仍然必须走代码变更。
+
+执行原则：
+
+- 质量包与知识库、规则库保持边界分离。
+- Runtime Binding 只绑定已发布质量包版本。
+- Harness 负责预览、激活、回滚，不负责编写 analyzer 逻辑。
+- 若需排查质量包不生效，先检查 runtime binding readiness，再核对 execution snapshot 中的 `quality_packages` 与 `quality_findings_summary`。
+
