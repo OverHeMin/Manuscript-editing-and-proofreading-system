@@ -231,6 +231,7 @@ function createOverview(
     promptTemplates: [],
     skillPackages: [],
     executionProfiles: [],
+    qualityPackages: [],
     modelRegistryEntries: [],
     modelRoutingPolicy: {
       system_default_model_id: null,
@@ -248,7 +249,11 @@ function createOverview(
     releaseCheckProfiles: [],
     evaluationSuites: [],
     runtimeBindings: [],
+    harnessAdapters: [],
+    harnessAdapterHealth: [],
+    latestJudgeCalibrationBatchOutcome: null,
     agentExecutionLogs: [],
+    aiProviderConnections: [],
     ...overrides,
   };
 }
