@@ -14,44 +14,35 @@ test("admin can create a template family and module draft from the governance co
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  const familyName = `Phase 8AE family ${Date.now()}`;
-  const draftPrompt = `${familyName} proofreading prompt`;
-
   await page.goto("/#admin-console", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Harness Control Plane" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "管理总览" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("AI 接入");
+  await expect(page.locator("body")).toContainText("账号与权限");
+  await expect(page.locator("body")).toContainText("Harness 控制");
+  await expect(page.locator("body")).toContainText("规则中心");
 
-  const createFamilyPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Create Template Family" }) });
-  await createFamilyPanel.getByLabel("Manuscript Type").selectOption("clinical_study");
-  await createFamilyPanel.getByLabel("Family Name").fill(familyName);
-  await createFamilyPanel.getByRole("button", { name: "Create Family" }).click();
-
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    `Created template family: ${familyName}`,
+  await expect(page.getByRole("link", { name: "进入 AI 接入" })).toHaveAttribute(
+    "href",
+    /#system-settings\?settingsSection=ai-access/,
+  );
+  await expect(page.getByRole("link", { name: "进入账号与权限" })).toHaveAttribute(
+    "href",
+    /#system-settings\?settingsSection=accounts/,
+  );
+  await expect(page.getByRole("link", { name: "进入 Harness 控制" })).toHaveAttribute(
+    "href",
+    /#evaluation-workbench\?harnessSection=overview/,
+  );
+  await expect(page.getByRole("link", { name: "打开规则中心" })).toHaveAttribute(
+    "href",
+    /#template-governance\?ruleCenterMode=authoring/,
   );
 
-  const familiesPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Template Families" }) });
-  await expect(familiesPanel).toContainText(familyName);
-  await familiesPanel.getByRole("button", { name: new RegExp(familyName) }).click();
-
-  const moduleDraftPanel = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Module Template Drafts" }) });
-  await moduleDraftPanel.getByLabel("Module").selectOption("proofreading");
-  await moduleDraftPanel.getByLabel("Prompt").fill(draftPrompt);
-  await moduleDraftPanel.getByRole("button", { name: "Create Module Draft" }).click();
-
-  await expect(page.locator(".admin-governance-status")).toContainText(
-    /Created module template draft v\d+\./,
-  );
-  await expect(moduleDraftPanel).toContainText(draftPrompt);
-  await expect(moduleDraftPanel).toContainText("draft");
+  await page.getByRole("link", { name: "进入 Harness 控制" }).click();
+  await expect(page).toHaveURL(/#evaluation-workbench\?harnessSection=overview/);
 });
 
 test("admin can preview, verify, activate, and roll back the seeded harness environment from the control plane", async ({
@@ -59,329 +50,26 @@ test("admin can preview, verify, activate, and roll back the seeded harness envi
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
-  const harnessRouting = await ensureHarnessRoutingPolicy(request);
-  const suiteId = await prepareHarnessEditingSuite(request, {
-    label: `Harness editing suite ${Date.now()}`,
-  });
 
   await page.goto("/#admin-console", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Harness Control Plane" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 接入快照" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Harness 运行体征" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "治理资产快照" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "当前提醒" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("查看治理资产明细");
+  await expect(page.locator("body")).not.toContainText("Harness Control Plane");
+  await expect(page.locator("body")).not.toContainText("Environment Editor");
+  await expect(page.locator("body")).not.toContainText("Quality Lab");
+  await expect(page.locator("body")).not.toContainText("Activation Gate");
 
-  const statusMessage = page.locator(".admin-governance-status");
-  const environmentEditor = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Environment Editor" }) });
-  const qualityLab = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Quality Lab" }) });
-  const activationGate = page
-    .locator("article.admin-governance-panel")
-    .filter({ has: page.getByRole("heading", { name: "Activation Gate" }) });
-
-  const activeEnvironmentCard = environmentEditor.locator(".admin-governance-asset-row").nth(0);
-  const candidatePreviewCard = environmentEditor.locator(".admin-governance-asset-row").nth(1);
-  const diffCard = environmentEditor.locator(".admin-governance-asset-row").nth(2);
-
-  await expect(environmentEditor).toContainText("Tune the real governed environment");
-  await expect(qualityLab).toContainText("Launch a candidate-bound verification run");
-  await expect(activationGate).toContainText("Promotion and rollback stay here");
-  await expect(
-    environmentEditor.getByLabel("Routing Version").locator("option"),
-  ).toContainText([harnessRouting.activeVersionId, harnessRouting.candidateVersionId]);
-  await expect(
-    environmentEditor.getByLabel("Retrieval Preset").locator("option"),
-  ).toContainText(["retrieval-editing-1", "retrieval-editing-preview-2"]);
-  await expect(
-    environmentEditor.getByLabel("Manual Review Policy").locator("option"),
-  ).toContainText(["manual-review-editing-1", "manual-review-editing-preview-2"]);
-  await expect(
-    environmentEditor.getByRole("button", { name: "Preview Candidate Environment" }),
-  ).toBeEnabled();
-  await expect(activeEnvironmentCard).toContainText("Execution Profile profile-editing-1");
-  await expect(activeEnvironmentCard).toContainText("Runtime Binding binding-editing-1");
-  await expect(activeEnvironmentCard).toContainText(`Routing ${harnessRouting.activeVersionId}`);
-  await expect(activeEnvironmentCard).toContainText("Retrieval retrieval-editing-1");
-  await expect(activeEnvironmentCard).toContainText("Manual Review manual-review-editing-1");
-
-  await environmentEditor.getByLabel("Retrieval Preset").selectOption(
-    "retrieval-editing-preview-2",
-  );
-  await environmentEditor
-    .getByRole("button", { name: "Preview Candidate Environment" })
-    .click();
-
-  await expect(statusMessage).toContainText("Previewed harness candidate environment.");
-  await expect(candidatePreviewCard).toContainText(
-    "Execution Profile profile-editing-1",
-  );
-  await expect(candidatePreviewCard).toContainText(
-    "Runtime Binding binding-editing-1",
-  );
-  await expect(candidatePreviewCard).toContainText(
-    `Routing ${harnessRouting.activeVersionId}`,
-  );
-  await expect(candidatePreviewCard).toContainText(
-    "Retrieval retrieval-editing-preview-2",
-  );
-  await expect(candidatePreviewCard).toContainText(
-    "Manual Review manual-review-editing-1",
-  );
-  await expect(diffCard).toContainText("retrieval_preset");
-
-  await qualityLab.getByLabel("Evaluation Suite").selectOption(suiteId);
-  await qualityLab.getByRole("button", { name: "Launch Candidate Run" }).click();
-
-  await expect(statusMessage).toContainText(/Launched candidate harness run .*?\./);
-  await expect(qualityLab).toContainText("Latest Candidate Run");
-  await expect(qualityLab).toContainText("queued");
-
-  await activationGate
-    .getByLabel("Operator Reason")
-    .fill("Promote the preview editing environment after harness verification.");
-  await activationGate
-    .getByRole("button", { name: "Activate Candidate Environment" })
-    .click();
-
-  await expect(statusMessage).toContainText("Activated the candidate harness environment.");
-  await expect(activeEnvironmentCard).toContainText(
-    "Execution Profile profile-editing-1",
-  );
-  await expect(activeEnvironmentCard).toContainText(
-    "Runtime Binding binding-editing-1",
-  );
-  await expect(activeEnvironmentCard).toContainText(
-    `Routing ${harnessRouting.activeVersionId}`,
-  );
-  await expect(activeEnvironmentCard).toContainText(
-    "Retrieval retrieval-editing-preview-2",
-  );
-  await expect(activeEnvironmentCard).toContainText(
-    "Manual Review manual-review-editing-1",
-  );
-  await expect(candidatePreviewCard).toContainText(
-    "Choose governed objects and preview the candidate bundle.",
-  );
-
-  await activationGate.getByRole("button", { name: "Roll Back Scope" }).click();
-
-  await expect(statusMessage).toContainText(
-    "Rolled the scope back to the previous harness environment.",
-  );
-  await expect(activeEnvironmentCard).toContainText("Execution Profile profile-editing-1");
-  await expect(activeEnvironmentCard).toContainText("Runtime Binding binding-editing-1");
-  await expect(activeEnvironmentCard).toContainText(`Routing ${harnessRouting.activeVersionId}`);
-  await expect(activeEnvironmentCard).toContainText("Retrieval retrieval-editing-1");
-  await expect(activeEnvironmentCard).toContainText("Manual Review manual-review-editing-1");
+  await page.getByText("查看治理资产明细").click();
+  await expect(page.getByRole("heading", { name: "模板与执行明细" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 路由摘要" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "最近运行摘要" })).toBeVisible();
 });
-
-async function ensureHarnessRoutingPolicy(
-  request: APIRequestContext,
-) : Promise<{
-  activeVersionId: string;
-  candidateVersionId: string;
-}> {
-  const alternateModelResponse = await request.post(`${apiBaseUrl}/api/v1/model-registry`, {
-    data: {
-      actorRole: "admin",
-      provider: "openai",
-      modelName: `harness-editing-preview-${Date.now()}`,
-      modelVersion: "2026-04-11",
-      allowedModules: ["editing"],
-      isProdAllowed: true,
-    },
-  });
-  expect(alternateModelResponse.ok()).toBeTruthy();
-  const alternateModel = (await alternateModelResponse.json()) as { id: string };
-
-  const createPolicyResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/policies`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          scopeKind: "template_family",
-          scopeValue: seededFamilyId,
-          primaryModelId: "model-editing-1",
-          fallbackModelIds: [],
-          evidenceLinks: [
-            {
-              kind: "evaluation_run",
-              id: `harness-routing-evidence-${Date.now()}`,
-            },
-          ],
-          notes: "Enable the Harness control-plane smoke route for the seeded editing family.",
-        },
-      },
-    },
-  );
-  expect(createPolicyResponse.ok()).toBeTruthy();
-  const createdPolicy = (await createPolicyResponse.json()) as {
-    policy_id: string;
-    version: { id: string };
-  };
-
-  const submitResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/submit`,
-    {
-      data: {
-        actorRole: "admin",
-        reason: "Submit the seeded Harness routing draft.",
-      },
-    },
-  );
-  expect(submitResponse.ok()).toBeTruthy();
-
-  const approveResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/approve`,
-    {
-      data: {
-        actorRole: "admin",
-        reason: "Approve the seeded Harness routing draft.",
-      },
-    },
-  );
-  expect(approveResponse.ok()).toBeTruthy();
-
-  const activateResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${createdPolicy.version.id}/activate`,
-    {
-      data: {
-        actorRole: "admin",
-        reason: "Activate the seeded Harness routing version.",
-      },
-    },
-  );
-  expect(activateResponse.ok()).toBeTruthy();
-
-  const createDraftVersionResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/policies/${createdPolicy.policy_id}/versions`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          primaryModelId: alternateModel.id,
-          fallbackModelIds: [],
-          evidenceLinks: [
-            {
-              kind: "evaluation_run",
-              id: `harness-routing-preview-${Date.now()}`,
-            },
-          ],
-          notes: "Prepare a candidate routing version for the Harness control-plane smoke flow.",
-        },
-      },
-    },
-  );
-  expect(createDraftVersionResponse.ok()).toBeTruthy();
-  const candidateDraft = (await createDraftVersionResponse.json()) as {
-    version: { id: string };
-  };
-
-  const submitCandidateResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${candidateDraft.version.id}/submit`,
-    {
-      data: {
-        actorRole: "admin",
-        reason: "Submit the Harness candidate routing version.",
-      },
-    },
-  );
-  expect(submitCandidateResponse.ok()).toBeTruthy();
-
-  const approveCandidateResponse = await request.post(
-    `${apiBaseUrl}/api/v1/model-routing-governance/versions/${candidateDraft.version.id}/approve`,
-    {
-      data: {
-        actorRole: "admin",
-        reason: "Approve the Harness candidate routing version.",
-      },
-    },
-  );
-  expect(approveCandidateResponse.ok()).toBeTruthy();
-
-  return {
-    activeVersionId: createdPolicy.version.id,
-    candidateVersionId: candidateDraft.version.id,
-  };
-}
-
-async function prepareHarnessEditingSuite(
-  request: APIRequestContext,
-  input: {
-    label: string;
-  },
-): Promise<string> {
-  const checkProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/check-profiles`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          name: `${input.label} Browser QA`,
-          checkType: "browser_qa",
-        },
-      },
-    },
-  );
-  expect(checkProfileResponse.ok()).toBeTruthy();
-  const checkProfile = (await checkProfileResponse.json()) as { id: string };
-
-  const publishCheckProfileResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/check-profiles/${checkProfile.id}/publish`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(publishCheckProfileResponse.ok()).toBeTruthy();
-
-  const suiteResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites`,
-    {
-      data: {
-        actorRole: "admin",
-        input: {
-          name: `${input.label} Regression`,
-          suiteType: "regression",
-          verificationCheckProfileIds: [checkProfile.id],
-          moduleScope: ["editing"],
-          requiresProductionBaseline: true,
-          supportsAbComparison: true,
-          hardGatePolicy: {
-            mustUseDeidentifiedSamples: true,
-            requiresParsableOutput: true,
-          },
-          scoreWeights: {
-            structure: 25,
-            terminology: 20,
-            knowledgeCoverage: 20,
-            riskDetection: 20,
-            humanEditBurden: 10,
-            costAndLatency: 5,
-          },
-        },
-      },
-    },
-  );
-  expect(suiteResponse.ok()).toBeTruthy();
-  const suite = (await suiteResponse.json()) as { id: string };
-
-  const activateSuiteResponse = await request.post(
-    `${apiBaseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/activate`,
-    {
-      data: {
-        actorRole: "admin",
-      },
-    },
-  );
-  expect(activateSuiteResponse.ok()).toBeTruthy();
-
-  return suite.id;
-}
 
 test("template governance supports journal-scoped abstract and table rule authoring", async ({
   page,
@@ -399,82 +87,82 @@ test("template governance supports journal-scoped abstract and table rule author
 
   await expect(page.getByRole("heading", { name: "规则中心" })).toBeVisible();
 
-  await page.getByRole("combobox", { name: "Manuscript Type", exact: true }).selectOption(
+  await page.getByRole("combobox", { name: "稿件类型", exact: true }).selectOption(
     "case_report",
   );
-  await page.getByRole("textbox", { name: "Family Name", exact: true }).fill(familyName);
-  await page.getByRole("button", { name: "Create Family Draft" }).click();
+  await page.getByRole("textbox", { name: "族名称", exact: true }).fill(familyName);
+  await page.getByRole("button", { name: "新建模板族草稿" }).click();
 
   await expect(page.locator(".template-governance-status")).toContainText(
-    "Template family created.",
+    "模板族草稿已创建。",
   );
   const createdFamilyButton = page.getByRole("button", { name: new RegExp(familyName) });
   await expect(createdFamilyButton).toBeVisible();
   await createdFamilyButton.click();
-  await page.getByRole("button", { name: "Open Advanced Rule Editor" }).click();
-  await expect(page.getByRole("heading", { name: "Rule Authoring Navigator" })).toBeVisible();
+  await page.getByRole("button", { name: "展开高级规则编辑器" }).click();
+  await expect(page.getByRole("heading", { name: "规则导航" })).toBeVisible();
 
-  await page.getByRole("textbox", { name: "Journal Name" }).fill(journalName);
-  await page.getByRole("textbox", { name: "Journal Key" }).fill(journalKey);
-  await page.getByRole("button", { name: "Create Journal Template" }).click();
+  await page.getByRole("textbox", { name: "期刊名称" }).fill(journalName);
+  await page.getByRole("textbox", { name: "期刊标识" }).fill(journalKey);
+  await page.getByRole("button", { name: "新建期刊模板" }).click();
 
   await expect(page.locator(".template-governance-status")).toContainText(
-    "Journal template profile created.",
+    "期刊模板画像已创建。",
   );
 
   const journalCard = page
-    .getByRole("button", { name: "Activate" })
+    .getByRole("button", { name: "启用" })
     .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
     .first();
   await expect(journalCard).toContainText(journalName);
-  await expect(journalCard).toContainText("draft");
-  await journalCard.getByRole("button", { name: "Activate" }).click();
+  await expect(journalCard).toContainText("草稿");
+  await journalCard.getByRole("button", { name: "启用" }).click();
 
   await expect(page.locator(".template-governance-status")).toContainText(
-    "Journal template profile activated.",
+    "期刊模板画像已启用。",
   );
-  await expect(page.getByText(`${journalKey} | active`)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Selected Scope" })).toBeVisible();
+  await expect(page.getByText(`${journalKey} | 启用中`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "当前范围" })).toBeVisible();
 
   const navigatorCard = page
-    .getByRole("heading", { name: "Rule Authoring Navigator" })
+    .getByRole("heading", { name: "规则导航" })
     .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
     .first();
   const previewPanel = page
-    .getByRole("heading", { name: "Rule Authoring Preview" })
+    .getByRole("heading", { name: "规则预览" })
     .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
     .first();
 
-  await navigatorCard.getByRole("combobox", { name: "Module" }).selectOption("editing");
-  await navigatorCard.getByRole("button", { name: "Create Rule Set Draft" }).click();
+  await navigatorCard.getByRole("combobox", { name: "模块" }).selectOption("editing");
+  await navigatorCard.getByRole("button", { name: "新建规则集草稿" }).click();
 
   await expect(page.locator(".template-governance-status")).toContainText(
-    "Rule set draft created.",
+    "规则集草稿已创建。",
   );
-  await expect(previewPanel).toContainText("Journal override:");
+  await expect(previewPanel).toContainText("期刊加层：");
   await expect(previewPanel).toContainText(
     `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
   );
 
-  await page.getByRole("button", { name: "Create Rule Draft" }).click();
+  await page.getByRole("button", { name: "新建规则草稿" }).click();
 
-  await expect(page.locator(".template-governance-status")).toContainText("Rule draft created.");
+  await expect(page.locator(".template-governance-status")).toContainText("规则草稿已创建。");
   await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
     `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
   );
 
-  await page.getByRole("button", { name: "Table" }).click();
-  await page.getByLabel("Semantic Target").selectOption("header_cell");
-  await page.getByLabel("Header Path Includes").fill("Treatment group > n (%)");
-  await page.getByLabel("Column Key").fill("Treatment group > n (%)");
-  await expect(previewPanel).toContainText("Inspect only");
+  await page.getByRole("button", { name: "表格" }).click();
+  await page.getByLabel("语义目标").selectOption("header_cell");
+  await page.getByLabel("表头路径").fill("Treatment group > n (%)");
+  await page.getByLabel("列标识").fill("Treatment group > n (%)");
+  await expect(previewPanel).toContainText("仅检查");
   await expect(previewPanel).toContainText("semantic_target=header_cell");
   await expect(previewPanel).toContainText("header_path=Treatment group > n (%)");
   await expect(previewPanel).toContainText("table_id=runtime-resolved");
-  await expect(previewPanel).toContainText("Journal override");
-  await page.getByRole("button", { name: "Create Rule Draft" }).click();
+  await expect(previewPanel).toContainText("期刊加层");
+  await page.getByRole("button", { name: "新建规则草稿" }).click();
 
-  await expect(page.locator(".template-governance-status")).toContainText("Rule draft created.");
+  await expect(page.locator(".template-governance-status")).toContainText("规则草稿已创建。");
   await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
     "header_cell",
   );

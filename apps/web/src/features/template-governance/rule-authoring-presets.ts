@@ -24,9 +24,8 @@ const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff0
 
 const ABSTRACT_PRESET: RuleAuthoringPreset<"abstract"> = {
   object: "abstract",
-  objectLabel: "Abstract",
-  description:
-    "Normalize structured abstract labels and preserve exact punctuation and full-width spacing.",
+  objectLabel: "摘要",
+  description: "统一结构式摘要标签，保留准确标点和全角间距。",
   automationRisk: "safe_auto",
   createDraft(): AbstractRuleAuthoringDraft {
     return {
@@ -51,8 +50,8 @@ const ABSTRACT_PRESET: RuleAuthoringPreset<"abstract"> = {
 
 const HEADING_HIERARCHY_PRESET: RuleAuthoringPreset<"heading_hierarchy"> = {
   object: "heading_hierarchy",
-  objectLabel: "Heading Hierarchy",
-  description: "Keep manuscript heading levels and numbering consistent for medical sections.",
+  objectLabel: "标题层级",
+  description: "保持医学稿件各级标题与编号的一致性。",
   automationRisk: "guarded_auto",
   createDraft(): HeadingHierarchyRuleAuthoringDraft {
     return {
@@ -75,8 +74,8 @@ const HEADING_HIERARCHY_PRESET: RuleAuthoringPreset<"heading_hierarchy"> = {
 
 const NUMERIC_UNIT_PRESET: RuleAuthoringPreset<"numeric_unit"> = {
   object: "numeric_unit",
-  objectLabel: "Numeric / Unit",
-  description: "Normalize numeric precision and unit presentation in results and methods.",
+  objectLabel: "数值与单位",
+  description: "统一结果与方法部分的数值精度和单位写法。",
   automationRisk: "guarded_auto",
   createDraft(): NumericUnitRuleAuthoringDraft {
     return {
@@ -99,8 +98,8 @@ const NUMERIC_UNIT_PRESET: RuleAuthoringPreset<"numeric_unit"> = {
 
 const STATISTICAL_EXPRESSION_PRESET: RuleAuthoringPreset<"statistical_expression"> = {
   object: "statistical_expression",
-  objectLabel: "Statistical Expression",
-  description: "Standardize P values, confidence intervals, and test-statistic notation.",
+  objectLabel: "统计表达",
+  description: "规范 P 值、置信区间和统计量记法。",
   automationRisk: "guarded_auto",
   createDraft(): StatisticalExpressionRuleAuthoringDraft {
     return {
@@ -123,9 +122,8 @@ const STATISTICAL_EXPRESSION_PRESET: RuleAuthoringPreset<"statistical_expression
 
 const TABLE_PRESET: RuleAuthoringPreset<"table"> = {
   object: "table",
-  objectLabel: "Table",
-  description:
-    "Author stable semantic table selectors so rules can hit headers, data cells, stub columns, and footnotes without depending on fragile raw coordinates.",
+  objectLabel: "表格",
+  description: "用稳定的语义选择器描述表格，避免依赖脆弱的原始坐标。",
   automationRisk: "inspect_only",
   createDraft(): TableRuleAuthoringDraft {
     return {
@@ -158,8 +156,8 @@ const TABLE_PRESET: RuleAuthoringPreset<"table"> = {
 
 const REFERENCE_PRESET: RuleAuthoringPreset<"reference"> = {
   object: "reference",
-  objectLabel: "Reference",
-  description: "Capture reference list numbering, punctuation, and DOI requirements.",
+  objectLabel: "参考文献",
+  description: "记录参考文献的编号、标点和 DOI 要求。",
   automationRisk: "guarded_auto",
   createDraft(): ReferenceRuleAuthoringDraft {
     return {
@@ -182,9 +180,8 @@ const REFERENCE_PRESET: RuleAuthoringPreset<"reference"> = {
 
 const DECLARATION_PRESET: RuleAuthoringPreset<"declaration"> = {
   object: "declaration",
-  objectLabel: "Declaration",
-  description:
-    "Legacy declaration rule for older drafts that still store ethics or funding checks under declaration.",
+  objectLabel: "声明",
+  description: "兼容旧稿里仍以 declaration 保存伦理或基金检查的规则。",
   automationRisk: "inspect_only",
   createDraft(): DeclarationRuleAuthoringDraft {
     return {
@@ -207,8 +204,8 @@ const DECLARATION_PRESET: RuleAuthoringPreset<"declaration"> = {
 
 const STATEMENT_PRESET: RuleAuthoringPreset<"statement"> = {
   object: "statement",
-  objectLabel: "Statement",
-  description: "Manage ethics, funding, registration, and author-contribution statements.",
+  objectLabel: "规范声明",
+  description: "管理伦理、基金、注册和作者贡献等声明要求。",
   automationRisk: "inspect_only",
   createDraft(): StatementRuleAuthoringDraft {
     return {
@@ -231,8 +228,8 @@ const STATEMENT_PRESET: RuleAuthoringPreset<"statement"> = {
 
 const TITLE_PRESET: RuleAuthoringPreset<"title"> = {
   object: "title",
-  objectLabel: "Title",
-  description: "Normalize manuscript title punctuation, casing, and subtitle handling.",
+  objectLabel: "题名",
+  description: "统一题名标点、大小写和副标题处理方式。",
   automationRisk: "guarded_auto",
   createDraft(): TitleRuleAuthoringDraft {
     return {
@@ -255,8 +252,8 @@ const TITLE_PRESET: RuleAuthoringPreset<"title"> = {
 
 const AUTHOR_LINE_PRESET: RuleAuthoringPreset<"author_line"> = {
   object: "author_line",
-  objectLabel: "Author Line",
-  description: "Keep author order, affiliation markers, and corresponding-author notes consistent.",
+  objectLabel: "作者行",
+  description: "保持作者顺序、单位标记和通信作者说明的一致性。",
   automationRisk: "inspect_only",
   createDraft(): AuthorLineRuleAuthoringDraft {
     return {
@@ -280,8 +277,8 @@ const AUTHOR_LINE_PRESET: RuleAuthoringPreset<"author_line"> = {
 
 const KEYWORD_PRESET: RuleAuthoringPreset<"keyword"> = {
   object: "keyword",
-  objectLabel: "Keyword",
-  description: "Control keyword count, separators, and controlled-vocabulary expectations.",
+  objectLabel: "关键词",
+  description: "控制关键词数量、分隔符和受控词表要求。",
   automationRisk: "guarded_auto",
   createDraft(): KeywordRuleAuthoringDraft {
     return {
@@ -304,8 +301,8 @@ const KEYWORD_PRESET: RuleAuthoringPreset<"keyword"> = {
 
 const TERMINOLOGY_PRESET: RuleAuthoringPreset<"terminology"> = {
   object: "terminology",
-  objectLabel: "Terminology",
-  description: "Normalize core medical terms and block disallowed variant usage.",
+  objectLabel: "术语",
+  description: "统一核心医学术语并拦截不允许的变体写法。",
   automationRisk: "guarded_auto",
   createDraft(): TerminologyRuleAuthoringDraft {
     return {
@@ -328,8 +325,8 @@ const TERMINOLOGY_PRESET: RuleAuthoringPreset<"terminology"> = {
 
 const FIGURE_PRESET: RuleAuthoringPreset<"figure"> = {
   object: "figure",
-  objectLabel: "Figure",
-  description: "Inspect figure captions, numbering, and source-file requirements.",
+  objectLabel: "图片",
+  description: "检查图题、编号和源文件要求。",
   automationRisk: "inspect_only",
   createDraft(): FigureRuleAuthoringDraft {
     return {
@@ -352,8 +349,8 @@ const FIGURE_PRESET: RuleAuthoringPreset<"figure"> = {
 
 const MANUSCRIPT_STRUCTURE_PRESET: RuleAuthoringPreset<"manuscript_structure"> = {
   object: "manuscript_structure",
-  objectLabel: "Manuscript Structure",
-  description: "Check whether the manuscript section set and order match the article type.",
+  objectLabel: "稿件结构",
+  description: "检查稿件章节集合与顺序是否符合稿件类型要求。",
   automationRisk: "inspect_only",
   createDraft(): ManuscriptStructureRuleAuthoringDraft {
     return {
@@ -376,8 +373,8 @@ const MANUSCRIPT_STRUCTURE_PRESET: RuleAuthoringPreset<"manuscript_structure"> =
 
 const JOURNAL_COLUMN_PRESET: RuleAuthoringPreset<"journal_column"> = {
   object: "journal_column",
-  objectLabel: "Journal Column",
-  description: "Capture journal-specific small-template requirements and column metadata.",
+  objectLabel: "期刊栏目",
+  description: "记录期刊特有的小模板要求和栏目元数据。",
   automationRisk: "inspect_only",
   createDraft(): JournalColumnRuleAuthoringDraft {
     return {

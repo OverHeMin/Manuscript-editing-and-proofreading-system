@@ -32,6 +32,7 @@ export interface KnowledgeAssetViewModel {
   status: "active" | "archived";
   current_revision_id?: string;
   current_approved_revision_id?: string;
+  contributor_label?: string;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +63,7 @@ export interface KnowledgeRevisionViewModel {
   content_blocks: KnowledgeContentBlockViewModel[];
   semantic_layer?: KnowledgeSemanticLayerViewModel;
   bindings: KnowledgeRevisionBindingViewModel[];
+  contributor_label?: string;
   created_at: string;
   updated_at: string;
 }
@@ -138,6 +140,7 @@ export interface KnowledgeLibrarySummaryViewModel {
   selected_revision_id?: string;
   semantic_status?: KnowledgeSemanticStatus;
   content_block_count: number;
+  contributor_label?: string;
   updated_at?: string;
 }
 

@@ -27,22 +27,22 @@ test("knowledge library semantic panel renders editable AI understanding fields 
     />,
   );
 
-  assert.match(markup, /AI Understanding/);
-  assert.match(markup, /Pending Confirmation/);
-  assert.match(markup, /Page Summary/);
-  assert.match(markup, /Retrieval Terms/);
-  assert.match(markup, /Retrieval Snippets/);
-  assert.match(markup, /Regenerate Semantics/);
-  assert.match(markup, /Confirm Semantic Layer/);
+  assert.match(markup, /语义层/);
+  assert.match(markup, /待确认/);
+  assert.match(markup, /页面摘要/);
+  assert.match(markup, /检索词/);
+  assert.match(markup, /检索片段/);
+  assert.match(markup, /重算语义层/);
+  assert.match(markup, /确认语义层/);
   assert.match(markup, /Prefer this rule when endpoint reporting requirements are unclear\./);
   assert.match(markup, /primary endpoint, screening/);
 });
 
 test("knowledge library semantic status labels cover stale, pending, and confirmed states", () => {
-  assert.equal(formatKnowledgeSemanticStatusLabel("stale"), "Stale");
+  assert.equal(formatKnowledgeSemanticStatusLabel("stale"), "待刷新");
   assert.equal(
     formatKnowledgeSemanticStatusLabel("pending_confirmation"),
-    "Pending Confirmation",
+    "待确认",
   );
-  assert.equal(formatKnowledgeSemanticStatusLabel("confirmed"), "Confirmed");
+  assert.equal(formatKnowledgeSemanticStatusLabel("confirmed"), "已确认");
 });

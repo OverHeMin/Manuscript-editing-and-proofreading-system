@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -324,69 +324,125 @@ test("evaluation workbench page renders an explicit loading state for server-sid
     />,
   );
 
-  assert.match(markup, /Evaluation Workbench/);
-  assert.match(markup, /Loading suites, runs, and verification assets\.\.\./);
+  assert.match(markup, /Harness 控制概览/u);
+  assert.match(markup, /默认聚焦总体评测状态与风险分布。/u);
+  assert.match(markup, /正在加载评测套件、运行记录与核验证据\.\.\./);
+});
+
+test("evaluation workbench loading placeholder follows section-specific first-view emphasis", () => {
+  const overviewLoadingMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      section="overview"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+  const runsLoadingMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      section="runs"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(overviewLoadingMarkup, /Harness 控制概览/u);
+  assert.match(overviewLoadingMarkup, /默认聚焦总体评测状态与风险分布。/u);
+  assert.match(runsLoadingMarkup, /Harness 运行记录/u);
+  assert.match(runsLoadingMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
 });
 
 test("evaluation workbench loaded page renders a read-only release-gate summary card", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
-  assert.match(markup, /Release Gate Summary/);
-  assert.match(markup, /Candidate run: run-12/);
-  assert.match(markup, /Baseline run: run-11/);
-  assert.match(markup, /Baseline vs candidate: run-11 vs run-12/);
-  assert.match(markup, /Recommendation status: recommended/);
-  assert.match(markup, /Regression summary: No regression failures were recorded\./);
-  assert.match(markup, /Failure summary: No failure annotations were recorded\./);
-  assert.match(markup, /Manifest-ready summary/);
+  assert.match(markup, /发布门摘要/);
+  assert.match(markup, /当前运行：run-12/);
+  assert.match(markup, /基线运行：run-11/);
+  assert.match(markup, /当前与基线：run-11 对 run-12/);
+  assert.match(markup, /建议状态：可推荐/);
+  assert.match(markup, /回归摘要： 未发现回归失败。/);
+  assert.match(markup, /失败摘要： 未记录失败标注。/);
+  assert.match(markup, /发布就绪摘要/);
   assert.match(
     markup,
-    /Candidate run run-12 compared against baseline run run-11 is recommended\./,
+    /当前运行 run-12 相对基线 run-11 的结论为 可推荐。回归摘要：未发现回归失败。 失败摘要：未记录失败标注。/,
   );
+});
+
+test("evaluation workbench page lands on different first-view emphasis for overview vs runs sections", () => {
+  const overview = createOperationsOverviewFixture();
+  const controller = {
+    loadOverview: async () => overview,
+  } as React.ComponentProps<typeof EvaluationWorkbenchPage>["controller"];
+
+  const overviewMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={controller}
+      section="overview"
+      initialOverview={overview}
+    />,
+  );
+  const runsMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={controller}
+      section="runs"
+      initialOverview={overview}
+    />,
+  );
+
+  assert.match(overviewMarkup, /Harness 控制概览/u);
+  assert.match(overviewMarkup, /默认聚焦总体评测状态与风险分布。/u);
+  assert.match(runsMarkup, /Harness 运行记录/u);
+  assert.match(runsMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
 });
 
 test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
-  assert.match(markup, /Read-Only Operations Desk/);
+  assert.match(markup, /Harness 控制/);
   assert.match(markup, /管理区/);
   assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /Delta Summary/);
-  assert.match(markup, /Classification: better/i);
+  assert.match(markup, /运行总览/);
+  assert.match(markup, /变化分类：改善/i);
   assert.match(
     markup,
-    /Chosen because the latest finalized recommendation improved from needs_review to recommended\./,
+    /本次变化判定为改善，因为最新已定稿建议从待复核提升为可推荐。/,
   );
-  assert.match(markup, /Next operator cue:/);
-  assert.match(markup, /Latest-versus-previous finalized comparison/);
-  assert.match(markup, /Default comparison: run-12 vs run-11\./);
-  assert.match(markup, /Latest 10/);
-  assert.match(markup, /Last 7 Days/);
-  assert.match(markup, /Last 30 Days/);
-  assert.match(markup, /All Suite History/);
-  assert.match(markup, /All/);
-  assert.match(markup, /Recommended/);
-  assert.match(markup, /Needs Review/);
-  assert.match(markup, /Rejected/);
-  assert.match(markup, /Newest First/);
-  assert.match(markup, /Failures First/);
-  assert.match(markup, /Visible history window: 10 of 12 finalized runs are in scope\./);
+  assert.match(markup, /建议动作：可推进候选版本/);
+  assert.match(markup, /最新结果与基线对照/);
+  assert.match(markup, /默认对照：run-12 对 run-11/);
+  assert.match(markup, /最近 10 次/);
+  assert.match(markup, /最近 7 天/);
+  assert.match(markup, /最近 30 天/);
+  assert.match(markup, /全部套件历史/);
+  assert.match(markup, /全部/);
+  assert.match(markup, /可推荐/);
+  assert.match(markup, /待复核/);
+  assert.match(markup, /已拒绝/);
+  assert.match(markup, /最新优先/);
+  assert.match(markup, /失败优先/);
+  assert.match(markup, /当前时间窗口展示 10 \/ 12 条已定稿运行。/);
   assert.match(markup, /run-12/);
   assert.match(markup, /run-03/);
   assert.doesNotMatch(markup, /run-02/);
-  assert.match(markup, /Default latest run/);
-  assert.match(markup, /Default baseline/);
-  assert.match(markup, /Selected inspection run: run-01/);
-  assert.match(markup, /Selected run run-01 is outside the visible history window\./);
-  assert.match(markup, /Recommendation Distribution/);
-  assert.match(markup, /6 recommended \/ 3 needs review \/ 1 rejected/);
-  assert.match(markup, /Evidence Pack Outcomes/);
-  assert.match(markup, /Recurrence Signals/);
-  assert.match(markup, /3 regression mentions \/ 4 failure mentions \/ 4 runs flagged/);
+  assert.match(markup, /默认最新运行/);
+  assert.match(markup, /默认基线/);
+  assert.match(markup, /当前查看运行：run-01/);
+  assert.match(markup, /当前查看运行 run-01 不在当前历史窗口内。/);
+  assert.match(markup, /建议分布/);
+  assert.match(markup, /6 可推荐 \/ 3 待复核 \/ 1 已拒绝/);
+  assert.match(markup, /证据包结果/);
+  assert.match(markup, /复发信号/);
+  assert.match(markup, /3 次回归提及 \/ 4 次失败提及 \/ 4 次运行被标记/);
   assert.doesNotMatch(markup, /Activate/);
   assert.doesNotMatch(markup, /Run Launch/);
-  assert.doesNotMatch(markup, /Complete And Finalize Run/);
-  assert.doesNotMatch(markup, /Finalize Recommendation/);
+  assert.doesNotMatch(markup, /完成运行并定稿/);
+  assert.doesNotMatch(markup, /完成建议定稿/);
 });
 
 test("evaluation workbench release-gate summary falls back to an honest empty state when finalized evidence is missing", () => {
@@ -405,10 +461,10 @@ test("evaluation workbench release-gate summary falls back to an honest empty st
   };
   const insufficientComparisonMarkup = renderLoadedPage(insufficientComparisonOverview);
 
-  assert.match(insufficientComparisonMarkup, /Release Gate Summary/);
+  assert.match(insufficientComparisonMarkup, /发布门摘要/);
   assert.match(
     insufficientComparisonMarkup,
-    /Release gate summary is unavailable until at least two finalized runs are visible in the current history window\./,
+    /当前历史窗口至少需要展示 2 条已定稿运行后，才能生成发布门摘要。/,
   );
 
   const selectedRunNotFinalizedOverview = createOperationsOverviewFixture();
@@ -425,10 +481,10 @@ test("evaluation workbench release-gate summary falls back to an honest empty st
   selectedRunNotFinalizedOverview.selectedRunFinalization = null;
   const selectedRunNotFinalizedMarkup = renderLoadedPage(selectedRunNotFinalizedOverview);
 
-  assert.match(selectedRunNotFinalizedMarkup, /Release Gate Summary/);
+  assert.match(selectedRunNotFinalizedMarkup, /发布门摘要/);
   assert.match(
     selectedRunNotFinalizedMarkup,
-    /Release gate summary is unavailable until the selected run has a finalized recommendation and evidence pack\./,
+    /所选运行需要先生成已定稿建议与证据包后，才能查看发布门摘要。/,
   );
 });
 
@@ -444,11 +500,11 @@ test("evaluation workbench loaded page keeps selected inspection finalization ou
 
   const markup = renderLoadedPage(overview);
 
-  assert.match(markup, /Selected inspection run: run-01/);
-  assert.match(markup, /Recommendation: rejected/);
-  assert.match(markup, /Evidence Pack: pack-run-01/);
+  assert.match(markup, /当前查看运行：run-01/);
+  assert.match(markup, /建议结论：已拒绝/);
+  assert.match(markup, /证据包：pack-run-01/);
   assert.match(markup, /Selected inspection run regressed and was rejected\./);
-  assert.match(markup, /This run is outside the finalized history slice that powers the default delta summary\./);
+  assert.match(markup, /该运行不在默认摘要使用的历史窗口内。/);
 });
 
 test("evaluation workbench loaded page renders honest degradation when fewer than two finalized runs are visible", () => {
@@ -485,14 +541,14 @@ test("evaluation workbench loaded page renders honest degradation when fewer tha
 
   const markup = renderLoadedPage(overview);
 
-  assert.match(markup, /Delta Summary/);
+  assert.match(markup, /运行总览/);
   assert.match(
     markup,
-    /Honest degradation: fewer than two finalized runs are visible in the Latest 10 window, so no default delta can be claimed yet\./,
+    /当前最近 10 次内可见的已定稿运行不足 2 条，暂时无法形成默认变化结论。/,
   );
   assert.match(
     markup,
-    /Finalize one more run in the visible window before treating the suite as improved, worse, or flat\./,
+    /请先在当前窗口内再完成 1 条运行定稿后，再判断套件是改善、回落还是持平。/,
   );
 });
 
@@ -551,17 +607,17 @@ test("evaluation workbench run-item detail card renders linked sample context an
     />,
   );
 
-  assert.match(markup, /Selected Sample Detail/);
+  assert.match(markup, /当前样本详情/);
   assert.match(markup, /sample-item-1/);
-  assert.match(markup, /clinical_study/);
-  assert.match(markup, /structure, terminology/);
+  assert.match(markup, /clinical study/);
+  assert.match(markup, /structure，terminology/);
   assert.match(markup, /snapshot-asset-1/);
   assert.match(markup, /reviewed-case-snapshot-1/);
   assert.match(markup, /baseline-model-1/);
   assert.match(markup, /candidate-model-1/);
-  assert.match(markup, /skill-prod-1, skill-prod-2/);
+  assert.match(markup, /skill-prod-1，skill-prod-2/);
   assert.match(markup, /skill-candidate-1/);
-  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /打开编辑工作台/);
   assert.match(
     markup,
     /#editing\?manuscriptId=manuscript-1&amp;reviewedCaseSnapshotId=reviewed-case-snapshot-1&amp;sampleSetItemId=sample-item-1/,
@@ -591,16 +647,16 @@ test("evaluation workbench governed-source detail card renders execution trace a
     />,
   );
 
-  assert.match(markup, /Governed Source Detail/);
-  assert.match(markup, /Source Module: editing/);
-  assert.match(markup, /Manuscript: manuscript-1/);
-  assert.match(markup, /Execution Snapshot: execution-snapshot-1/);
-  assert.match(markup, /Agent Execution Log: execution-log-1/);
-  assert.match(markup, /Output Asset: output-asset-1/);
-  assert.match(markup, /Release Check Profile: release-1/);
-  assert.match(markup, /Download Governed Output Asset/);
+  assert.match(markup, /治理来源详情/);
+  assert.match(markup, /来源模块：编辑/);
+  assert.match(markup, /稿件：manuscript-1/);
+  assert.match(markup, /执行快照：execution-snapshot-1/);
+  assert.match(markup, /Agent 执行日志：execution-log-1/);
+  assert.match(markup, /输出制品：output-asset-1/);
+  assert.match(markup, /发布核查配置：release-1/);
+  assert.match(markup, /下载治理输出制品/);
   assert.match(markup, /\/api\/v1\/document-assets\/output-asset-1\/download/);
-  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /打开编辑工作台/);
   assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
   assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
   assert.doesNotMatch(markup, /sampleSetItemId=/);
@@ -609,9 +665,9 @@ test("evaluation workbench governed-source detail card renders execution trace a
 test("evaluation workbench comparison card renders binding deltas between finalized runs", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchRunComparisonCard
-      comparisonScopeLabel="Broader suite history"
-      selectedOriginLabel="Current manuscript"
-      previousOriginLabel="Broader suite"
+      comparisonScopeLabel="更广范围套件历史"
+      selectedOriginLabel="当前稿件"
+      previousOriginLabel="更广范围套件"
       selectedEvidence={[
         {
           id: "evidence-2",
@@ -625,7 +681,7 @@ test("evaluation workbench comparison card renders binding deltas between finali
         {
           id: "evidence-1",
           kind: "url",
-          label: "Rejected browser QA",
+          label: "已拒绝 browser QA",
           uri: "https://example.test/evidence/rejected-browser-qa",
           created_at: "2026-04-01T07:19:00.000Z",
         },
@@ -745,36 +801,36 @@ test("evaluation workbench comparison card renders binding deltas between finali
 
   assert.match(
     markup,
-    /Operator summary: Improved over broader suite history by 6\.0 weighted points while holding recommended\./,
+    /操作摘要：相较于更广范围套件历史，在维持可推荐的同时提升了 6\.0 分。/,
   );
   assert.match(
     markup,
-    /Baseline policy: Chronological previous finalized run within broader suite history\./,
+    /基线策略：按时间顺序选择更广范围套件历史中的上一条已定稿运行。/,
   );
-  assert.match(markup, /Suggested action: Promote candidate/);
-  assert.match(markup, /Comparison scope: Broader suite history/);
-  assert.match(markup, /Selected origin: Current manuscript/);
-  assert.match(markup, /Previous origin: Broader suite/);
-  assert.match(markup, /Selected summary: Finished 2026-04-01T08:20:00.000Z/);
-  assert.match(markup, /Previous summary: Finished 2026-04-01T07:20:00.000Z/);
-  assert.match(markup, /Binding Changes/);
-  assert.match(markup, /Evidence Pack Changes/);
-  assert.match(markup, /Recommendation shift: unchanged at recommended/);
-  assert.match(markup, /Evidence count: 1 \(was 1\)/);
-  assert.match(markup, /Baseline model changed: baseline-model-2 \(was baseline-model-1\)/);
-  assert.match(markup, /Candidate model changed: candidate-model-2 \(was candidate-model-1\)/);
-  assert.match(markup, /Candidate prompt changed: prompt-2 \(was prompt-1\)/);
-  assert.match(markup, /Candidate skills changed: skill-1, skill-2 \(was skill-1\)/);
+  assert.match(markup, /建议动作：可推进候选版本/);
+  assert.match(markup, /对照范围：更广范围套件历史/);
+  assert.match(markup, /当前来源：当前稿件/);
+  assert.match(markup, /基线来源：更广范围套件/);
+  assert.match(markup, /当前摘要：完成于 2026-04-01T08:20:00.000Z/);
+  assert.match(markup, /基线摘要：完成于 2026-04-01T07:20:00.000Z/);
+  assert.match(markup, /绑定变化/);
+  assert.match(markup, /证据包变化/);
+  assert.match(markup, /建议变化：维持 可推荐/);
+  assert.match(markup, /证据数量：1（原为 1）/);
+  assert.match(markup, /基线模型：baseline-model-2（原为 baseline-model-1）/);
+  assert.match(markup, /候选模型：candidate-model-2（原为 candidate-model-1）/);
+  assert.match(markup, /候选提示模版：prompt-2（原为 prompt-1）/);
+  assert.match(markup, /候选技能包：skill-1，skill-2（原为 skill-1）/);
   assert.match(
     markup,
-    /Score summary changed: Average weighted score 97\.0 across 1 item\(s\)\. \(was Average weighted score 91\.0 across 1 item\(s\)\.\)/,
+    /评分摘要：平均加权得分 97.0（共 1 条）（原为 平均加权得分 91.0（共 1 条））/,
   );
-  assert.match(markup, /Selected evidence: Latest browser QA/);
-  assert.match(markup, /Previous evidence: Rejected browser QA/);
-  assert.match(markup, /Selected evidence pack/);
-  assert.match(markup, /Previous evidence pack/);
-  assert.match(markup, /Average weighted score 97.0 across 1 item\(s\)\./);
-  assert.match(markup, /Average weighted score 91.0 across 1 item\(s\)\./);
+  assert.match(markup, /当前证据：Latest browser QA/);
+  assert.match(markup, /基线证据：已拒绝 browser QA/);
+  assert.match(markup, /当前证据包/);
+  assert.match(markup, /基线证据包/);
+  assert.match(markup, /平均加权得分 97.0（共 1 条）/);
+  assert.match(markup, /平均加权得分 91.0（共 1 条）/);
 });
 
 test("evaluation workbench evidence list renders actionable links for url and artifact evidence", () => {
@@ -800,10 +856,10 @@ test("evaluation workbench evidence list renders actionable links for url and ar
   );
 
   assert.match(markup, /Browser QA evidence/);
-  assert.match(markup, /Open evidence link/);
+  assert.match(markup, /打开证据链接/);
   assert.match(markup, /https:\/\/example\.test\/evidence\/browser-qa/);
   assert.match(markup, /Proof artifact evidence/);
-  assert.match(markup, /Download evidence artifact/);
+  assert.match(markup, /下载证据制品/);
   assert.match(markup, /\/api\/v1\/document-assets\/asset-proof-1\/download/);
 });
 
@@ -861,11 +917,11 @@ test("evaluation workbench finalize panel shows finalize-only guidance for machi
 
   assert.match(
     markup,
-    /Automatic governed checks completed\. Review machine evidence before finalizing\./,
+    /自动治理检查已完成，请先核对机器证据，再执行最终定稿。/,
   );
-  assert.match(markup, /Finalize Recommendation/);
+  assert.match(markup, /完成建议定稿/);
   assert.match(markup, /Automatic governed browser QA passed for Editing Output Check/);
-  assert.doesNotMatch(markup, /Complete And Finalize Run/);
+  assert.doesNotMatch(markup, /完成运行并定稿/);
 });
 
 test("evaluation workbench finalize panel keeps the legacy completion path for queued sample-backed runs", () => {
@@ -908,12 +964,12 @@ test("evaluation workbench finalize panel keeps the legacy completion path for q
     />,
   );
 
-  assert.match(markup, /Run Status/);
-  assert.match(markup, /Evidence Label/);
-  assert.match(markup, /Complete And Finalize Run/);
+  assert.match(markup, /运行状态/);
+  assert.match(markup, /证据标签/);
+  assert.match(markup, /完成运行并定稿/);
   assert.doesNotMatch(
     markup,
-    /Automatic governed checks completed\. Review machine evidence before finalizing\./,
+    /自动治理检查已完成，请先核对机器证据，再执行最终定稿。/,
   );
 });
 
@@ -934,16 +990,16 @@ test("evaluation workbench evidence pack summary renders labeled outcome fields"
     />,
   );
 
-  assert.match(markup, /Summary Status/);
-  assert.match(markup, /recommended/);
-  assert.match(markup, /Score Summary/);
-  assert.match(markup, /Average weighted score 94.0 across 1 item\(s\)\./);
-  assert.match(markup, /Regression Summary/);
-  assert.match(markup, /No regression failures were recorded\./);
-  assert.match(markup, /Failure Summary/);
-  assert.match(markup, /No failure annotations were recorded\./);
-  assert.match(markup, /Cost Summary/);
-  assert.match(markup, /Latency Summary/);
+  assert.match(markup, /摘要状态/);
+  assert.match(markup, /可推荐/);
+  assert.match(markup, /评分摘要/);
+  assert.match(markup, /平均加权得分 94.0（共 1 条）/);
+  assert.match(markup, /回归摘要/);
+  assert.match(markup, /未发现回归失败。/);
+  assert.match(markup, /失败摘要/);
+  assert.match(markup, /未记录失败标注。/);
+  assert.match(markup, /成本摘要/);
+  assert.match(markup, /时延摘要/);
 });
 
 test("evaluation workbench history entry signals render structured list summaries", () => {
@@ -967,12 +1023,12 @@ test("evaluation workbench history entry signals render structured list summarie
     />,
   );
 
-  assert.match(markup, /Score:/);
-  assert.match(markup, /Average weighted score 52.0 across 1 item\(s\)\./);
-  assert.match(markup, /Regression:/);
-  assert.match(markup, /1 regression-failed item\(s\) detected\./);
-  assert.match(markup, /Failure:/);
-  assert.match(markup, /Structure regression triggered the hard gate\./);
+  assert.match(markup, /评分:/);
+  assert.match(markup, /平均加权得分 52.0（共 1 条）/);
+  assert.match(markup, /回归:/);
+  assert.match(markup, /检测到 1 条回归失败项。/);
+  assert.match(markup, /失败:/);
+  assert.match(markup, /结构回归触发了硬门限。/);
 });
 
 test("evaluation workbench linked sample context list renders run-item sample mappings", () => {
@@ -1008,22 +1064,22 @@ test("evaluation workbench linked sample context list renders run-item sample ma
     />,
   );
 
-  assert.match(markup, /Linked Sample Context/);
-  assert.match(markup, /Run Item: run-item-1/);
-  assert.match(markup, /candidate/);
-  assert.match(markup, /Sample Item: sample-item-1/);
+  assert.match(markup, /关联样本上下文/);
+  assert.match(markup, /运行条目：run-item-1/);
+  assert.match(markup, /候选/);
+  assert.match(markup, /样本条目：sample-item-1/);
   assert.match(markup, /structure/);
-  assert.match(markup, /clinical_study/);
+  assert.match(markup, /clinical study/);
   assert.match(markup, /reviewed-case-snapshot-1/);
-  assert.match(markup, /Weighted Score: 91/);
+  assert.match(markup, /加权得分：91/);
   assert.match(markup, /Structure regression triggered the hard gate\./);
-  assert.match(markup, /Focused/);
-  assert.match(markup, /Focus Run Item run-item-1/);
-  assert.match(markup, /Download Result Asset/);
+  assert.match(markup, /当前聚焦/);
+  assert.match(markup, /查看运行条目 run-item-1/);
+  assert.match(markup, /下载结果制品/);
   assert.match(markup, /\/api\/v1\/document-assets\/result-asset-1\/download/);
-  assert.match(markup, /Download Sample Snapshot/);
+  assert.match(markup, /下载样本快照/);
   assert.match(markup, /\/api\/v1\/document-assets\/snapshot-asset-1\/download/);
-  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /打开编辑工作台/);
   assert.match(
     markup,
     /#editing\?manuscriptId=manuscript-1&amp;reviewedCaseSnapshotId=reviewed-case-snapshot-1&amp;sampleSetItemId=sample-item-1/,
@@ -1058,7 +1114,7 @@ test("evaluation workbench linked sample context falls back to manuscript-only h
     />,
   );
 
-  assert.match(markup, /Open Editing Workbench/);
+  assert.match(markup, /打开编辑工作台/);
   assert.match(markup, /#editing\?manuscriptId=manuscript-1/);
   assert.doesNotMatch(markup, /reviewedCaseSnapshotId=/);
   assert.doesNotMatch(markup, /sampleSetItemId=/);
@@ -1071,7 +1127,7 @@ test("describeGovernedLearningHandoffGuidance explains why learning handoff is u
       hasLinkedSampleContext: false,
       hasGovernedSource: true,
     }),
-    "Learning handoff is unavailable for governed-source runs until a reviewed snapshot is linked.",
+    "治理来源运行在关联复核快照前，暂不能进入学习回流。",
   );
 
   assert.equal(
@@ -1094,7 +1150,7 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,
     }),
-    "Current run run-2 is still running. Complete and finalize it to compare against history.",
+    "当前运行 run-2 状态仍为 运行中，请先完成运行并定稿后再进行历史对照。",
   );
 
   assert.equal(
@@ -1114,7 +1170,7 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,
     }),
-    "Current run run-governed-2 already completed automatic governed checks. Finalize the recommendation to compare against history.",
+    "当前运行 run-governed-2 已完成自动治理检查，请先完成建议定稿后再进行历史对照。",
   );
 
   assert.equal(
@@ -1130,7 +1186,7 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       } as never,
       previousRunHistoryEntry: null,
     }),
-    "Finalize one more run in this suite to compare the current result against history.",
+    "请先在该套件内再完成 1 条运行定稿，才能与历史进行对照。",
   );
 
   assert.equal(
@@ -1149,7 +1205,7 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       totalFinalizedCount: 3,
       scopedCount: 1,
     }),
-    "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.",
+    "当前稿件仅有 1 条已定稿运行，可切换到全部套件历史查看更广范围的对照。",
   );
 
   assert.equal(
@@ -1158,7 +1214,7 @@ test("describeHistoryComparisonGuidance explains why history compare is unavaila
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,
     }),
-    "Select a finalized run from the suite to compare it against prior history.",
+    "请先选择一条已定稿运行，用于与套件历史对照。",
   );
 
   assert.equal(
@@ -1192,7 +1248,7 @@ test("describeHistoryComparisonGuidanceSummary explains the next compare recover
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,
     }),
-    "Comparison unlocks after this run reaches a finalized recommendation with persisted evidence.",
+    "当该运行生成已定稿建议并保存证据后，才可开启结果对照。",
   );
 
   assert.equal(
@@ -1211,7 +1267,7 @@ test("describeHistoryComparisonGuidanceSummary explains the next compare recover
       totalFinalizedCount: 3,
       scopedCount: 1,
     }),
-    "Broader suite history already has 2 additional finalized runs available for comparison.",
+    "更广范围的套件历史中已有 2 条额外已定稿运行可用于对照。",
   );
 
   assert.equal(
@@ -1230,7 +1286,7 @@ test("describeHistoryComparisonGuidanceSummary explains the next compare recover
       totalFinalizedCount: 1,
       scopedCount: 1,
     }),
-    "Current suite history only contains this finalized run, so there is no earlier baseline yet.",
+    "当前套件历史中仅有这 1 条已定稿运行，暂时没有更早的基线。",
   );
 });
 
@@ -1241,7 +1297,7 @@ test("describeHistoryComparisonRoleLabels marks selected and baseline history ru
       selectedRunId: "run-2",
       previousRunId: "run-1",
     }),
-    ["Selected run"],
+    ["当前运行"],
   );
 
   assert.deepEqual(
@@ -1250,7 +1306,7 @@ test("describeHistoryComparisonRoleLabels marks selected and baseline history ru
       selectedRunId: "run-2",
       previousRunId: "run-1",
     }),
-    ["Compare baseline"],
+    ["对照基线"],
   );
 
   assert.deepEqual(
@@ -1266,7 +1322,7 @@ test("describeHistoryComparisonRoleLabels marks selected and baseline history ru
 test("describeHistoryStatusPair formats recommendation and summary status with a readable separator", () => {
   assert.equal(
     describeHistoryStatusPair("recommended", "needs_review"),
-    "recommended / needs_review",
+    "可推荐 / 待复核",
   );
 });
 
@@ -1282,7 +1338,7 @@ test("summarizeFinalizedEntry joins fields with a readable separator", () => {
         },
       },
     } as never),
-    "Accepted output | Finished 2026-04-01T07:20:00.000Z",
+    "Accepted output | 完成于 2026-04-01T07:20:00.000Z",
   );
 });
 
@@ -1294,7 +1350,7 @@ test("describeHistoryEntryOriginLabel distinguishes current manuscript from broa
       hasManuscriptContext: true,
       scope: "suite",
     }),
-    "Current manuscript",
+    "当前稿件",
   );
 
   assert.equal(
@@ -1304,7 +1360,7 @@ test("describeHistoryEntryOriginLabel distinguishes current manuscript from broa
       hasManuscriptContext: true,
       scope: "suite",
     }),
-    "Broader suite",
+    "更广范围套件",
   );
 
   assert.equal(
@@ -1314,7 +1370,7 @@ test("describeHistoryEntryOriginLabel distinguishes current manuscript from broa
       hasManuscriptContext: true,
       scope: "manuscript",
     }),
-    "Matched manuscript",
+    "命中稿件",
   );
 
   assert.equal(
@@ -1336,7 +1392,7 @@ test("describeHistoryOriginSummary counts manuscript and broader-suite runs", ()
       hasManuscriptContext: true,
       scope: "suite",
     }),
-    "Current manuscript runs: 2 | Broader suite references: 1",
+    "当前稿件运行：2 | 更广范围套件参考：1",
   );
 
   assert.equal(
@@ -1346,7 +1402,7 @@ test("describeHistoryOriginSummary counts manuscript and broader-suite runs", ()
       hasManuscriptContext: true,
       scope: "manuscript",
     }),
-    "Matched manuscript runs: 2",
+    "命中稿件运行：2",
   );
 
   assert.equal(
@@ -1363,35 +1419,35 @@ test("describeHistoryOriginSummary counts manuscript and broader-suite runs", ()
 test("describeComparisonOperatorSummary summarizes compare outcomes for operators", () => {
   assert.equal(
     describeComparisonOperatorSummary({
-      comparisonScopeLabel: "Broader suite history",
+      comparisonScopeLabel: "更广范围套件历史",
       selectedStatus: "recommended",
       previousStatus: "recommended",
       selectedScoreSummary: "Average weighted score 97.0 across 1 item(s).",
       previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
     }),
-    "Operator summary: Improved over broader suite history by 6.0 weighted points while holding recommended.",
+    "操作摘要：相较于更广范围套件历史，在维持可推荐的同时提升了 6.0 分。",
   );
 
   assert.equal(
     describeComparisonOperatorSummary({
-      comparisonScopeLabel: "Entire suite history",
+      comparisonScopeLabel: "全部套件历史",
       selectedStatus: "rejected",
       previousStatus: "recommended",
       selectedScoreSummary: "Average weighted score 52.0 across 1 item(s).",
       previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
     }),
-    "Operator summary: Regressed against entire suite history (recommended -> rejected) and dropped 39.0 weighted points.",
+    "操作摘要：相较于全部套件历史，结果从可推荐变为已拒绝，并下降 39.0 分。",
   );
 
   assert.equal(
     describeComparisonOperatorSummary({
-      comparisonScopeLabel: "Matched manuscript history",
+      comparisonScopeLabel: "命中稿件历史",
       selectedStatus: "recommended",
       previousStatus: "recommended",
       selectedScoreSummary: "Average weighted score 91.0 across 1 item(s).",
       previousScoreSummary: "Average weighted score 91.0 across 1 item(s).",
     }),
-    "Operator summary: Held steady against matched manuscript history at recommended.",
+    "操作摘要：相较于命中稿件历史，当前结果保持在可推荐。",
   );
 });
 
@@ -1402,7 +1458,7 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       previousStatus: "recommended",
       scoreDelta: 6,
     }),
-    "Suggested action: Promote candidate",
+    "建议动作：可推进候选版本",
   );
 
   assert.equal(
@@ -1411,7 +1467,7 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       previousStatus: "recommended",
       scoreDelta: 0,
     }),
-    "Suggested action: Monitor before promote",
+    "建议动作：继续观察后再推进",
   );
 
   assert.equal(
@@ -1420,7 +1476,7 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       previousStatus: "recommended",
       scoreDelta: -8,
     }),
-    "Suggested action: Review manually",
+    "建议动作：转人工复核",
   );
 
   assert.equal(
@@ -1429,24 +1485,24 @@ test("describeComparisonTriageHint recommends next operator action", () => {
       previousStatus: "recommended",
       scoreDelta: -39,
     }),
-    "Suggested action: Investigate regression",
+    "建议动作：排查回归原因",
   );
 });
 
 test("describeComparisonBaselinePolicy explains how the compare baseline is chosen", () => {
   assert.equal(
-    describeComparisonBaselinePolicy("Entire suite history"),
-    "Baseline policy: Chronological previous finalized run within entire suite history.",
+    describeComparisonBaselinePolicy("全部套件历史"),
+    "基线策略：按时间顺序选择全部套件历史中的上一条已定稿运行。",
   );
 
   assert.equal(
-    describeComparisonBaselinePolicy("Broader suite history"),
-    "Baseline policy: Chronological previous finalized run within broader suite history.",
+    describeComparisonBaselinePolicy("更广范围套件历史"),
+    "基线策略：按时间顺序选择更广范围套件历史中的上一条已定稿运行。",
   );
 
   assert.equal(
-    describeComparisonBaselinePolicy("Matched manuscript history"),
-    "Baseline policy: Chronological previous finalized run within matched manuscript history.",
+    describeComparisonBaselinePolicy("命中稿件历史"),
+    "基线策略：按时间顺序选择命中稿件历史中的上一条已定稿运行。",
   );
 });
 
@@ -1471,12 +1527,12 @@ test("summarizeEvidencePackChanges lists only changed evidence-pack fields", () 
       } as never,
     ),
     [
-      "Summary status changed: needs_review (was recommended)",
-      "Score summary changed: Average weighted score 84.0 across 1 item(s). (was Average weighted score 91.0 across 1 item(s).)",
-      "Regression summary changed: Regression drift detected in terminology consistency. (was No regression failures were recorded.)",
-      "Failure summary changed: One hard gate warning remains open. (was No failure annotations were recorded.)",
-      "Cost summary changed: Average cost $0.18 per item. (was Average cost $0.12 per item.)",
-      "Latency summary changed: Average latency 7.2 seconds. (was Average latency 5.1 seconds.)",
+      "摘要状态：待复核（原为 可推荐）",
+      "评分摘要：平均加权得分 84.0（共 1 条）（原为 平均加权得分 91.0（共 1 条））",
+      "回归摘要：检测到 terminology consistency 的回归漂移。（原为 未发现回归失败。）",
+      "失败摘要：仍有 1 项硬门限告警待处理。（原为 未记录失败标注。）",
+      "成本摘要：Average cost $0.18 per item.（原为 Average cost $0.12 per item.）",
+      "时延摘要：Average latency 7.2 seconds.（原为 Average latency 5.1 seconds.）",
     ],
   );
 });
@@ -1532,24 +1588,24 @@ test("summarizeBindingChanges normalizes optional harness binding ids when they 
       } as never,
     ),
     [
-      "Baseline model changed: baseline-model-2 (was baseline-model-1)",
-      "Baseline runtime changed: baseline-runtime-2 (was baseline-runtime-1)",
-      "Baseline execution profile changed: None recorded (was profile-baseline-1)",
-      "Baseline runtime binding changed: None recorded (was binding-baseline-1)",
-      "Baseline routing version changed: None recorded (was routing-baseline-1)",
-      "Baseline retrieval preset changed: None recorded (was retrieval-baseline-1)",
-      "Baseline manual review policy changed: None recorded (was manual-review-baseline-1)",
-      "Baseline prompt changed: baseline-prompt-2 (was baseline-prompt-1)",
-      "Baseline module template changed: baseline-template-2 (was baseline-template-1)",
-      "Candidate model changed: candidate-model-2 (was candidate-model-1)",
-      "Candidate runtime changed: candidate-runtime-2 (was candidate-runtime-1)",
-      "Candidate execution profile changed: None recorded (was profile-candidate-1)",
-      "Candidate runtime binding changed: None recorded (was binding-candidate-1)",
-      "Candidate routing version changed: None recorded (was routing-candidate-1)",
-      "Candidate retrieval preset changed: None recorded (was retrieval-candidate-1)",
-      "Candidate manual review policy changed: None recorded (was manual-review-candidate-1)",
-      "Candidate prompt changed: candidate-prompt-2 (was candidate-prompt-1)",
-      "Candidate module template changed: candidate-template-2 (was candidate-template-1)",
+      "基线模型：baseline-model-2（原为 baseline-model-1）",
+      "基线运行时：baseline-runtime-2（原为 baseline-runtime-1）",
+      "基线执行配置：未记录（原为 profile-baseline-1）",
+      "基线运行时绑定：未记录（原为 binding-baseline-1）",
+      "基线路由版本：未记录（原为 routing-baseline-1）",
+      "基线检索预设：未记录（原为 retrieval-baseline-1）",
+      "基线人工复核策略：未记录（原为 manual-review-baseline-1）",
+      "基线提示模版：baseline-prompt-2（原为 baseline-prompt-1）",
+      "基线模块模版：baseline-template-2（原为 baseline-template-1）",
+      "候选模型：candidate-model-2（原为 candidate-model-1）",
+      "候选运行时：candidate-runtime-2（原为 candidate-runtime-1）",
+      "候选执行配置：未记录（原为 profile-candidate-1）",
+      "候选运行时绑定：未记录（原为 binding-candidate-1）",
+      "候选路由版本：未记录（原为 routing-candidate-1）",
+      "候选检索预设：未记录（原为 retrieval-candidate-1）",
+      "候选人工复核策略：未记录（原为 manual-review-candidate-1）",
+      "候选提示模版：candidate-prompt-2（原为 candidate-prompt-1）",
+      "候选模块模版：candidate-template-2（原为 candidate-template-1）",
     ],
   );
 });
@@ -1566,7 +1622,7 @@ test("describeHistoryVisibilitySummary explains how current controls narrow hist
       selectedRunId: "run-2",
       selectedRunHidden: true,
     }),
-    'Visibility summary: 1 of 2 finalized runs visible in suite-scoped history. Active controls: search "run-1". Selected run run-2 is outside the current result set.',
+    '可见性摘要：1 / 2 条已定稿运行处于套件范围内。 当前条件：搜索“run-1”。 当前运行 run-2 不在当前结果集中。',
   );
 
   assert.equal(
@@ -1580,7 +1636,7 @@ test("describeHistoryVisibilitySummary explains how current controls narrow hist
       selectedRunId: null,
       selectedRunHidden: false,
     }),
-    'Visibility summary: 0 of 3 finalized runs visible in manuscript-scoped history. Active controls: filter rejected, search "delta", sort failures first.',
+    '可见性摘要：0 / 3 条已定稿运行处于稿件范围内。 当前条件：筛选 已拒绝，搜索“delta”，排序 失败优先。',
   );
 });
 
@@ -1593,10 +1649,10 @@ test("describeHistoryControlSummaryLines formats readable labels for history con
       sortMode: "newest",
     }),
     [
-      "Scope: Entire suite history",
-      "Filter: All finalized runs",
-      "Search: None",
-      "Sort: Newest first",
+      "范围：全部套件历史",
+      "筛选：全部已定稿运行",
+      "搜索：无",
+      "排序：最新优先",
     ],
   );
 
@@ -1608,10 +1664,10 @@ test("describeHistoryControlSummaryLines formats readable labels for history con
       sortMode: "failures_first",
     }),
     [
-      "Scope: Matched manuscript runs",
-      "Filter: Rejected only",
-      "Search: delta",
-      "Sort: Failures first",
+      "范围：命中稿件运行",
+      "筛选：仅已拒绝",
+      "搜索：delta",
+      "排序：失败优先",
     ],
   );
 });
@@ -1624,18 +1680,18 @@ test("describeHistoryCompareStatusSummary explains whether compare remains avail
       historyComparisonGuidance: null,
       historyComparisonGuidanceSummary: null,
     } as never),
-    "Compare status: Current compare summary remains available for the selected run and compare baseline.",
+    "对照状态：当前运行与对照基线的结果摘要可用。",
   );
 
   assert.equal(
     describeHistoryCompareStatusSummary({
       selectedRunHistoryEntry: null,
       previousRunHistoryEntry: null,
-      historyComparisonGuidance: "Select a finalized run from the suite to compare it against prior history.",
+      historyComparisonGuidance: "请先选择一条已定稿运行，用于与套件历史对照。",
       historyComparisonGuidanceSummary:
-        "Visible suite history currently has 2 finalized runs ready for compare selection.",
+        "当前可见的套件历史中已有 2 条已定稿运行可用于选择对照。",
     } as never),
-    "Compare status: Visible suite history currently has 2 finalized runs ready for compare selection.",
+    "对照状态：当前可见的套件历史中已有 2 条已定稿运行可用于选择对照。",
   );
 });
 
@@ -1827,12 +1883,13 @@ test("evaluation workbench selected run detail surfaces governed harness binding
     />,
   );
 
-  assert.match(markup, /Execution Profile/i);
-  assert.match(markup, /Retrieval Preset/i);
-  assert.match(markup, /Manual Review Policy/i);
+  assert.match(markup, /执行配置/i);
+  assert.match(markup, /检索预设/i);
+  assert.match(markup, /人工复核策略/i);
   assert.match(markup, /profile-preview-2/);
   assert.match(markup, /retrieval-preview-2/);
   assert.match(markup, /manual-review-preview-2/);
   assert.doesNotMatch(markup, /Activate/i);
   assert.doesNotMatch(markup, /Rollback/i);
 });
+

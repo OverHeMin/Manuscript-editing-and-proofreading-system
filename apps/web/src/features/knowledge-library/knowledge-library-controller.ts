@@ -285,6 +285,7 @@ function mapKnowledgeLibraryListItem(
     selected_revision_id: item.selected_revision_id,
     semantic_status: item.semantic_status,
     content_block_count: item.content_block_count,
+    contributor_label: item.contributor_label,
     updated_at: item.updated_at,
   };
 }

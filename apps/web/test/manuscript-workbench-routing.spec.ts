@@ -89,3 +89,27 @@ test("workbench routing formats and resolves knowledge review revision hashes", 
     revisionId: "knowledge-42-revision-2",
   });
 });
+
+test("workbench routing formats and resolves system settings section hashes", () => {
+  const hash = formatWorkbenchHash("system-settings", {
+    settingsSection: "ai-access",
+  });
+
+  assert.equal(hash, "#system-settings?settingsSection=ai-access");
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "system-settings",
+    settingsSection: "ai-access",
+  });
+});
+
+test("workbench routing formats and resolves harness section hashes", () => {
+  const hash = formatWorkbenchHash("evaluation-workbench", {
+    harnessSection: "runs",
+  });
+
+  assert.equal(hash, "#evaluation-workbench?harnessSection=runs");
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "evaluation-workbench",
+    harnessSection: "runs",
+  });
+});

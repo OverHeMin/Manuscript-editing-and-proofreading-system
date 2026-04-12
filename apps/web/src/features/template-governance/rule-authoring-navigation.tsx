@@ -5,6 +5,10 @@ import type {
 } from "./template-governance-controller.ts";
 import { listRuleAuthoringPresets } from "./rule-authoring-presets.ts";
 import type { RuleAuthoringObject } from "./rule-authoring-types.ts";
+import {
+  formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceModuleLabel,
+} from "./template-governance-display.ts";
 
 export interface RuleAuthoringNavigationProps {
   overview: TemplateGovernanceWorkbenchOverview | null;
@@ -55,10 +59,9 @@ export function RuleAuthoringNavigation({
       <article className="template-governance-card">
         <div className="template-governance-panel-header">
           <div>
-            <h3>Rule Authoring Navigator</h3>
+            <h3>规则导航</h3>
             <p>
-              Choose family scope, module, and rule object before editing the structured rule
-              form.
+              先选规则范围、模块和规则对象，再进入结构化规则编辑。
             </p>
           </div>
         </div>
@@ -66,7 +69,7 @@ export function RuleAuthoringNavigation({
         {overview?.selectedTemplateFamily ? (
           <div className="template-governance-form-grid">
             <label className="template-governance-field">
-              <span>Rule Scope</span>
+              <span>规则范围</span>
               <select
                 value={selectedJournalScopeValue}
                 onChange={(event) =>
@@ -75,7 +78,7 @@ export function RuleAuthoringNavigation({
                   )
                 }
               >
-                <option value="__base__">Base Family Rules</option>
+                <option value="__base__">模板族基础规则</option>
                 {overview.journalTemplateProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
                     {profile.journal_name}
@@ -84,7 +87,7 @@ export function RuleAuthoringNavigation({
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Module</span>
+              <span>模块</span>
               <select
                 value={selectedModule}
                 onChange={(event) =>
@@ -93,28 +96,28 @@ export function RuleAuthoringNavigation({
                   )
                 }
               >
-                <option value="screening">screening</option>
-                <option value="editing">editing</option>
-                <option value="proofreading">proofreading</option>
+                <option value="screening">初筛</option>
+                <option value="editing">编辑</option>
+                <option value="proofreading">校对</option>
               </select>
             </label>
             <div className="template-governance-actions template-governance-actions-full">
               <form onSubmit={onCreateRuleSet}>
                 <button type="submit" disabled={isBusy}>
-                  {isBusy ? "Saving..." : "Create Rule Set Draft"}
+                  {isBusy ? "保存中..." : "新建规则集草稿"}
                 </button>
               </form>
             </div>
           </div>
         ) : (
           <p className="template-governance-empty">
-            Select a template family before navigating rule authoring.
+            先选择模板族，再使用规则导航。
           </p>
         )}
       </article>
 
       <article className="template-governance-card">
-        <h4>Rule Objects</h4>
+        <h4>规则对象</h4>
         <div className="template-governance-rule-object-list">
           {presets.map((preset) => {
             const isActive = preset.object === selectedRuleObject;
@@ -136,9 +139,9 @@ export function RuleAuthoringNavigation({
       <article className="template-governance-card">
         <div className="template-governance-panel-header">
           <div>
-            <h4>Journal Template Profiles</h4>
+            <h4>期刊模板画像</h4>
             <p>
-              Manage journal-level overlays that refine the base medical manuscript family.
+              管理期刊层加层规则，用于细化模板族基础要求。
             </p>
           </div>
         </div>
@@ -146,7 +149,7 @@ export function RuleAuthoringNavigation({
           <>
             <form className="template-governance-form-grid" onSubmit={onCreateJournalTemplate}>
               <label className="template-governance-field">
-                <span>Journal Name</span>
+                <span>期刊名称</span>
                 <input
                   value={journalTemplateForm.journalName}
                   onChange={(event) =>
@@ -159,7 +162,7 @@ export function RuleAuthoringNavigation({
                 />
               </label>
               <label className="template-governance-field">
-                <span>Journal Key</span>
+                <span>期刊标识</span>
                 <input
                   value={journalTemplateForm.journalKey}
                   onChange={(event) =>
@@ -173,7 +176,7 @@ export function RuleAuthoringNavigation({
               </label>
               <div className="template-governance-actions template-governance-actions-full">
                 <button type="submit" disabled={isBusy}>
-                  {isBusy ? "Saving..." : "Create Journal Template"}
+                  {isBusy ? "保存中..." : "新建期刊模板"}
                 </button>
               </div>
             </form>
@@ -194,13 +197,13 @@ export function RuleAuthoringNavigation({
               </div>
             ) : (
               <p className="template-governance-empty">
-                No journal template profiles exist for this family yet.
+                当前模板族还没有期刊模板画像。
               </p>
             )}
           </>
         ) : (
           <p className="template-governance-empty">
-            Select a template family before creating journal template profiles.
+            先选择模板族，再创建期刊模板画像。
           </p>
         )}
       </article>
@@ -208,10 +211,9 @@ export function RuleAuthoringNavigation({
       <article className="template-governance-card">
         <div className="template-governance-panel-header">
           <div>
-            <h4>Rule Sets</h4>
+            <h4>规则集</h4>
             <p>
-              Work from the draft or published rule-set version that belongs to the selected
-              family scope and module.
+              只在当前模板范围和模块对应的规则集版本上工作，避免串改别的治理范围。
             </p>
           </div>
         </div>
@@ -230,7 +232,7 @@ export function RuleAuthoringNavigation({
           </div>
         ) : (
           <p className="template-governance-empty">
-            No rule sets exist for the current family scope and module yet.
+            当前模板范围和模块下还没有规则集。
           </p>
         )}
       </article>
@@ -257,11 +259,11 @@ function JournalTemplateProfileCard({
     <article className="template-governance-card">
       <strong>{profile.journal_name}</strong>
       <small>
-        {profile.journal_key} | {profile.status}
+        {profile.journal_key} | {formatTemplateGovernanceGovernedAssetStatusLabel(profile.status)}
       </small>
       <div className="template-governance-actions">
         <button type="button" disabled={isBusy} onClick={() => onSelectRuleScope(profile.id)}>
-          {isSelected ? "Selected Scope" : "Use As Scope"}
+          {isSelected ? "当前范围" : "设为当前范围"}
         </button>
         {profile.status !== "active" ? (
           <button
@@ -269,7 +271,7 @@ function JournalTemplateProfileCard({
             disabled={isBusy}
             onClick={() => onActivateJournalTemplate(profile.id)}
           >
-            Activate
+            启用
           </button>
         ) : (
           <button
@@ -277,7 +279,7 @@ function JournalTemplateProfileCard({
             disabled={isBusy}
             onClick={() => onArchiveJournalTemplate(profile.id)}
           >
-            Archive
+            归档
           </button>
         )}
       </div>
@@ -301,19 +303,21 @@ function RuleSetCard({
   return (
     <article className="template-governance-card">
       <strong>
-        {ruleSet.module} rule set v{ruleSet.version_no}
+        {formatTemplateGovernanceModuleLabel(ruleSet.module)} 规则集 v{ruleSet.version_no}
       </strong>
       <small>
-        {ruleSet.status}
-        {ruleSet.journal_template_id ? ` | journal:${ruleSet.journal_template_id}` : " | base"}
+        {formatTemplateGovernanceGovernedAssetStatusLabel(ruleSet.status)}
+        {ruleSet.journal_template_id
+          ? ` | 期刊:${ruleSet.journal_template_id}`
+          : " | 模板族基础"}
       </small>
       <div className="template-governance-actions">
         <button type="button" disabled={isBusy} onClick={() => onSelectRuleSet(ruleSet.id)}>
-          {isSelected ? "Active Rule Set" : "Open Rule Set"}
+          {isSelected ? "当前规则集" : "打开规则集"}
         </button>
         {ruleSet.status === "draft" ? (
           <button type="button" disabled={isBusy} onClick={() => onPublishRuleSet(ruleSet.id)}>
-            Publish Rule Set
+            发布规则集
           </button>
         ) : null}
       </div>

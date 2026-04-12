@@ -47,7 +47,7 @@ function buildRulePackageWorkspaceFixture() {
           },
           exclusions: {
             not_applicable_when: ["原稿元数据缺失"],
-            human_review_required_when: ["新增通信作者"],
+            human_review_required_when: ["新增通信作者时人工复核"],
             risk_posture: "guarded_auto",
           },
         },
@@ -103,14 +103,14 @@ test("template governance authoring mode renders package list, five semantic car
   );
 
   assert.match(markup, /示例驱动录入/);
-  assert.match(markup, /Rule Packages/);
+  assert.match(markup, /规则包/);
   assert.match(markup, /规则是什么/);
-  assert.match(markup, /AI怎么理解它/);
+  assert.match(markup, /AI 怎么理解它/);
   assert.match(markup, /适用于哪里/);
   assert.match(markup, /前后示例/);
   assert.match(markup, /什么时候不要用/);
-  assert.match(markup, /Preview/);
-  assert.match(markup, /Refresh Preview/);
+  assert.match(markup, /命中预览/);
+  assert.match(markup, /刷新预览/);
   assert.doesNotMatch(markup, /Publish Rule Package/);
   assert.doesNotMatch(markup, /Compile to editorial_rule/);
 });

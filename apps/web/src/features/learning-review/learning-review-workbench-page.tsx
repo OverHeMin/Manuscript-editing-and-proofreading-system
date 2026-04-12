@@ -36,7 +36,10 @@ import type {
   LearningCandidateViewModel,
   ReviewedCaseSnapshotViewModel,
 } from "./types.ts";
-import "./learning-review-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./learning-review-workbench.css");
+}
 
 export interface LearningReviewWorkbenchPageProps {
   actorRole?: AuthRole;
@@ -173,6 +176,13 @@ export function LearningReviewWorkbenchPage({
         : submittedKnowledgeItemId.length > 0
           ? formatWorkbenchHash("knowledge-library")
           : null;
+  const ruleCenterHandoffHash = formatWorkbenchHash("template-governance", {
+    manuscriptId:
+      normalizedPrefilledManuscriptId.length > 0
+        ? normalizedPrefilledManuscriptId
+        : undefined,
+    ruleCenterMode: approvalCandidate ? "authoring" : "learning",
+  });
 
   useEffect(() => {
     void loadCandidateQueue();
@@ -550,12 +560,10 @@ export function LearningReviewWorkbenchPage({
     <section className="learning-review-workbench">
       <header className="learning-review-hero">
         <div className="learning-review-hero-copy">
-          <p className="learning-review-eyebrow">Learning Review</p>
-          <h2>Knowledge Handoff Bridge</h2>
+          <p className="learning-review-eyebrow">质量优化</p>
+          <h2>质量优化</h2>
           <p>
-            The primary path stays review-first: select a pending governed candidate,
-            approve it, and then bridge the approved result into a governed knowledge
-            writeback draft.
+            把 AI 不确定点、人工修正与回流动作集中到同一张工作台里，常用去向是送入知识库或送入规则中心。
           </p>
           <WorkbenchCoreStrip
             variant="supporting"
@@ -564,27 +572,27 @@ export function LearningReviewWorkbenchPage({
             description="让复核、批准与知识回写保持在同一条辅助链路中，但不遮住四个核心工作台。"
           />
           {prefillState === "loading" ? (
-            <p>This review desk is loading manuscript handoff context.</p>
+            <p>正在加载稿件回流上下文。</p>
           ) : null}
           {prefillState === "ready" ? (
-            <p>This review desk was prefilled from the manuscript workbench handoff.</p>
+            <p>已根据稿件链路自动带入本次质量优化的预填信息。</p>
           ) : null}
           {prefillState === "error" ? (
-            <p>Manuscript handoff prefill could not be loaded automatically.</p>
+            <p>稿件回流预填失败，请在下方辅助工具中手动补齐。</p>
           ) : null}
         </div>
         <dl className="learning-review-meta">
           <div>
-            <dt>Role</dt>
-            <dd>{actorRole}</dd>
+            <dt>当前角色</dt>
+            <dd>{formatActorRoleLabel(actorRole)}</dd>
           </div>
           <div>
-            <dt>Approval target</dt>
-            <dd>{approvalCandidate?.id ?? "Select from queue"}</dd>
+            <dt>待批案例</dt>
+            <dd>{approvalCandidate?.id ?? "从队列选择"}</dd>
           </div>
           <div>
-            <dt>Writeback handoff</dt>
-            <dd>{writebackCandidate?.id ?? "Approve a candidate first"}</dd>
+            <dt>当前回流</dt>
+            <dd>{writebackCandidate?.id ?? "先批准案例"}</dd>
           </div>
         </dl>
       </header>
@@ -598,23 +606,23 @@ export function LearningReviewWorkbenchPage({
         </section>
       )}
 
-      <div className="learning-review-grid">
+      <div className="learning-review-grid learning-review-grid--main">
         <article className="learning-review-card learning-review-card--queue">
           <div className="learning-review-section-heading">
             <div>
-              <h3>Pending Review Queue</h3>
-              <p>Current governed candidates waiting for reviewer approval.</p>
+              <h3>待处理队列</h3>
+              <p>优先处理 AI 不确定点和高价值回流，保持复核动作短路径完成。</p>
             </div>
             <button type="button" onClick={() => void loadCandidateQueue()} disabled={isBusy}>
-              Refresh queue
+              刷新队列
             </button>
           </div>
           {queueStatus === "loading" && candidateQueue.length === 0 ? (
-            <p className="learning-review-empty">Loading learning candidates...</p>
+            <p className="learning-review-empty">正在加载待处理案例。</p>
           ) : queueStatus === "error" ? (
-            <p className="learning-review-empty">Candidate queue failed to load.</p>
+            <p className="learning-review-empty">待处理队列加载失败。</p>
           ) : candidateQueue.length === 0 ? (
-            <p className="learning-review-empty">No pending learning candidates right now.</p>
+            <p className="learning-review-empty">当前没有待处理案例。</p>
           ) : (
             <ul className="learning-review-candidate-list">
               {candidateQueue.map((candidate) => (
@@ -628,8 +636,9 @@ export function LearningReviewWorkbenchPage({
                     disabled={isBusy}
                   >
                     <strong>{candidate.title ?? candidate.id}</strong>
-                    <span>{candidate.type}</span>
-                    <span>{candidate.module}</span>
+                    <span>{formatLearningCandidateTypeLabel(candidate.type)}</span>
+                    <span>{formatModuleLabel(candidate.module)}</span>
+                    <span>{formatLearningCandidateStatusLabel(candidate.status)}</span>
                   </button>
                 </li>
               ))}
@@ -638,136 +647,145 @@ export function LearningReviewWorkbenchPage({
         </article>
 
         <article className="learning-review-card">
-          <h3>Selected Candidate</h3>
+          <h3>案例详情</h3>
           {selectedCandidate ? (
-            <div className="learning-review-detail-grid">
-              <div>
-                <span className="learning-review-detail-label">ID</span>
-                <code>{selectedCandidate.id}</code>
-              </div>
-              <div>
-                <span className="learning-review-detail-label">Status</span>
-                <span>{selectedCandidate.status}</span>
-              </div>
-              <div>
-                <span className="learning-review-detail-label">Type</span>
-                <span>{selectedCandidate.type}</span>
-              </div>
-              <div>
-                <span className="learning-review-detail-label">Module</span>
-                <span>{selectedCandidate.module}</span>
-              </div>
-              <div>
-                <span className="learning-review-detail-label">Manuscript Type</span>
-                <span>{selectedCandidate.manuscript_type}</span>
-              </div>
-              <div>
-                <span className="learning-review-detail-label">Provenance</span>
-                <span>{selectedCandidate.governed_provenance_kind ?? "not linked"}</span>
-              </div>
-              <div className="learning-review-detail-block">
-                <span className="learning-review-detail-label">Title</span>
-                <strong>{selectedCandidate.title ?? "Untitled candidate"}</strong>
-              </div>
-              <div className="learning-review-detail-block">
-                <span className="learning-review-detail-label">Proposal</span>
-                <p>{selectedCandidate.proposal_text ?? "No proposal text provided."}</p>
-              </div>
-              {selectedCandidate.writeback_summaries?.length ? (
-                <div className="learning-review-detail-block">
-                  <span className="learning-review-detail-label">Writeback summaries</span>
-                  <ul className="learning-review-inline-list">
-                    {selectedCandidate.writeback_summaries.map((record) => (
-                      <li key={record.id}>
-                        <strong>{record.id}</strong>
-                        <span>{record.status}</span>
-                      </li>
-                    ))}
-                  </ul>
+            <>
+              <div className="learning-review-inline-list">
+                <div className="learning-review-result">
+                  <strong>AI 不确定点</strong>
+                  <p>{selectedCandidate.proposal_text ?? "等待从案例中补充 AI 不确定点。"}</p>
                 </div>
-              ) : null}
-            </div>
+                <div className="learning-review-result">
+                  <strong>人工修正</strong>
+                  <p>
+                    {approvedCandidate?.id === selectedCandidate.id
+                      ? "该案例已完成人工确认，可继续沉淀为知识或规则。"
+                      : "先完成人工确认，再决定是否沉淀到知识库或规则中心。"}
+                  </p>
+                </div>
+              </div>
+              <div className="learning-review-detail-grid">
+                <div>
+                  <span className="learning-review-detail-label">案例编号</span>
+                  <code>{selectedCandidate.id}</code>
+                </div>
+                <div>
+                  <span className="learning-review-detail-label">当前状态</span>
+                  <span>{formatLearningCandidateStatusLabel(selectedCandidate.status)}</span>
+                </div>
+                <div>
+                  <span className="learning-review-detail-label">候选类型</span>
+                  <span>{formatLearningCandidateTypeLabel(selectedCandidate.type)}</span>
+                </div>
+                <div>
+                  <span className="learning-review-detail-label">来源模块</span>
+                  <span>{formatModuleLabel(selectedCandidate.module)}</span>
+                </div>
+                <div>
+                  <span className="learning-review-detail-label">稿件类型</span>
+                  <span>{formatManuscriptTypeLabel(selectedCandidate.manuscript_type)}</span>
+                </div>
+                <div>
+                  <span className="learning-review-detail-label">来源链路</span>
+                  <span>{selectedCandidate.governed_provenance_kind ?? "未关联"}</span>
+                </div>
+                <div className="learning-review-detail-block">
+                  <span className="learning-review-detail-label">案例标题</span>
+                  <strong>{selectedCandidate.title ?? "未命名案例"}</strong>
+                </div>
+                <div className="learning-review-detail-block">
+                  <span className="learning-review-detail-label">问题描述</span>
+                  <p>{selectedCandidate.proposal_text ?? "当前案例没有补充说明。"}</p>
+                </div>
+                {selectedCandidate.writeback_summaries?.length ? (
+                  <div className="learning-review-detail-block">
+                    <span className="learning-review-detail-label">已生成回流记录</span>
+                    <ul className="learning-review-inline-list">
+                      {selectedCandidate.writeback_summaries.map((record) => (
+                        <li key={record.id}>
+                          <strong>{record.id}</strong>
+                          <span>{formatLearningCandidateStatusLabel(record.status)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </>
           ) : (
-            <p className="learning-review-empty">
-              Select a pending candidate to inspect the governed review context.
-            </p>
+            <p className="learning-review-empty">先从左侧队列选择一个案例，再查看详情。</p>
           )}
         </article>
 
         <article className="learning-review-card">
-          <h3>Review Decision</h3>
-          <p>The approval action always uses the candidate currently selected in the queue.</p>
+          <h3>优化动作</h3>
+          <p>审批、回流和跳转都收敛在这里，首屏只保留最常用的操作。</p>
           {approvalCandidate ? (
-            <ResultBlock title="Approval target">
+            <ResultBlock title="当前待批案例">
               <code>{approvalCandidate.id}</code>
-              <span>{approvalCandidate.type}</span>
-              <span>{approvalCandidate.module}</span>
+              <span>{formatLearningCandidateTypeLabel(approvalCandidate.type)}</span>
+              <span>{formatModuleLabel(approvalCandidate.module)}</span>
             </ResultBlock>
           ) : (
-            <p className="learning-review-empty">
-              Select a pending candidate from the queue before approval.
-            </p>
+            <p className="learning-review-empty">先在待处理队列中选择案例后再执行优化动作。</p>
           )}
           <button type="button" onClick={handleApproveCandidate} disabled={isBusy || !approvalCandidate}>
-            Approve selected candidate
+            批准当前案例
           </button>
           {approvedCandidate && (
-            <ResultBlock title="Latest approved handoff">
+            <ResultBlock title="最新人工确认">
               <code>{approvedCandidate.id}</code>
-              <span>{approvedCandidate.status}</span>
+              <span>{formatLearningCandidateStatusLabel(approvedCandidate.status)}</span>
             </ResultBlock>
           )}
         </article>
 
         <article className="learning-review-card">
-          <h3>Writeback Handoff</h3>
+          <h3>回流交接</h3>
           <p>
-            Knowledge writeback actions attach to the approved handoff candidate from this review
-            session.
+            知识回流动作会挂在当前已批准案例之下，方便继续送入知识库或送审。
           </p>
           {writebackCandidate ? (
-            <ResultBlock title="Active handoff candidate">
+            <ResultBlock title="当前回流案例">
               <code>{writebackCandidate.id}</code>
               <span>knowledge_item</span>
-              <span>{writebackCandidate.status}</span>
+              <span>{formatLearningCandidateStatusLabel(writebackCandidate.status)}</span>
             </ResultBlock>
           ) : (
-            <p className="learning-review-empty">
-              Approve a candidate first, then load or create a writeback draft.
-            </p>
+            <p className="learning-review-empty">先批准一个案例，再加载或新建回流草稿。</p>
           )}
           <div className="learning-review-button-row">
             <button type="button" onClick={handleListWritebacks} disabled={isBusy || !writebackCandidate}>
-              Load writebacks
+              加载回流草稿
             </button>
             <button
               type="button"
               onClick={handleCreateWriteback}
               disabled={isBusy || actorRole !== "admin" || !writebackCandidate}
             >
-              Create writeback
+              新建回流草稿
             </button>
           </div>
           {activeDraftWritebackId ? (
-            <ResultBlock title="Active draft writeback">
+            <ResultBlock title="当前回流草稿">
               <code>{activeDraftWritebackId}</code>
-              <span>Ready for apply</span>
+              <span>可继续送入知识库</span>
             </ResultBlock>
           ) : null}
           {latestKnowledgeDraftId ? (
-            <ResultBlock title="Knowledge draft handoff">
+            <ResultBlock title="知识稿状态">
               <code>{latestKnowledgeDraftId}</code>
               <span>
                 {submittedKnowledgeRevisionId.length > 0
-                  ? "Pending review in governed queue"
+                  ? "已进入知识审核"
                   : submittedKnowledgeItemId.length > 0
-                    ? "Submitted; continue in Knowledge Library"
-                    : "Draft ready for review submission"}
+                    ? "已提交，可继续在知识库跟进"
+                    : "草稿已生成，待送审"}
               </span>
             </ResultBlock>
           ) : null}
           <label>
-            Knowledge Title
+            知识标题
             <input
               value={knowledgeWritebackForm.title}
               onChange={(event) =>
@@ -779,7 +797,7 @@ export function LearningReviewWorkbenchPage({
             />
           </label>
           <label>
-            Canonical Text
+            规范文本
             <textarea
               value={knowledgeWritebackForm.canonicalText}
               onChange={(event) =>
@@ -795,7 +813,7 @@ export function LearningReviewWorkbenchPage({
             onClick={handleApplyWriteback}
             disabled={isBusy || actorRole !== "admin" || !activeDraftWritebackId}
           >
-            Apply writeback
+            送入知识库
           </button>
           <div className="learning-review-button-row">
             <button
@@ -808,15 +826,18 @@ export function LearningReviewWorkbenchPage({
                 submittedKnowledgeItemId.length > 0
               }
             >
-              Submit Knowledge Draft For Review
+              提交知识稿送审
             </button>
             {knowledgeReviewHandoffHash ? (
-              <a href={knowledgeReviewHandoffHash}>
+              <a className="learning-review-link-button" href={knowledgeReviewHandoffHash}>
                 {submittedKnowledgeRevisionId.length > 0
-                  ? "Open Knowledge Review"
-                  : "Open Knowledge Library"}
+                  ? "打开知识审核"
+                  : "打开知识库"}
               </a>
             ) : null}
+            <a className="learning-review-link-button" href={ruleCenterHandoffHash}>
+              送入规则中心
+            </a>
           </div>
         </article>
       </div>
@@ -829,15 +850,15 @@ export function LearningReviewWorkbenchPage({
         }
       >
         <summary>
-          <span className="learning-review-utility-eyebrow">Secondary Admin Zone</span>
-          <strong>Admin utilities and candidate generation</strong>
+          <span className="learning-review-utility-eyebrow">高级入口</span>
+          <strong>辅助工具与候选生成</strong>
         </summary>
         <div className="learning-review-grid learning-review-grid--utilities">
           <article className="learning-review-card">
-            <h3>1. Reviewed Case Snapshot</h3>
-            <p>Start from the reviewed human-final manuscript asset.</p>
+            <h3>1. 复核案例快照</h3>
+            <p>从已复核的人工作品中抽取案例快照，为后续质量优化保留证据链。</p>
             <label>
-              Manuscript ID
+              稿件 ID
               <input
                 value={snapshotForm.manuscriptId}
                 onChange={(event) =>
@@ -849,7 +870,7 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <label>
-              Module
+              所属模块
               <select
                 value={snapshotForm.module}
                 onChange={(event) =>
@@ -861,13 +882,13 @@ export function LearningReviewWorkbenchPage({
               >
                 {manuscriptModules.map((module) => (
                   <option key={module} value={module}>
-                    {module}
+                    {formatModuleLabel(module)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Manuscript Type
+              稿件类型
               <select
                 value={snapshotForm.manuscriptType}
                 onChange={(event) =>
@@ -879,13 +900,13 @@ export function LearningReviewWorkbenchPage({
               >
                 {manuscriptTypes.map((type) => (
                   <option key={type} value={type}>
-                    {type}
+                    {formatManuscriptTypeLabel(type)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Human Final Asset ID
+              人工终稿资产 ID
               <input
                 value={snapshotForm.humanFinalAssetId}
                 onChange={(event) =>
@@ -897,10 +918,10 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <button type="button" onClick={handleCreateSnapshot} disabled={isBusy}>
-              Create snapshot
+              创建快照
             </button>
             {snapshotResult && (
-              <ResultBlock title="Latest snapshot">
+              <ResultBlock title="最新快照">
                 <code>{snapshotResult.id}</code>
                 <span>{snapshotResult.snapshot_asset_id}</span>
               </ResultBlock>
@@ -908,10 +929,10 @@ export function LearningReviewWorkbenchPage({
           </article>
 
           <article className="learning-review-card">
-            <h3>2. Governed Learning Candidate</h3>
-            <p>Create a candidate that already carries governed provenance.</p>
+            <h3>2. 生成质量候选</h3>
+            <p>生成可回流的规则候选或案例候选，供质量优化页面持续复用。</p>
             <label>
-              Snapshot ID
+              快照 ID
               <input
                 value={candidateForm.snapshotId}
                 onChange={(event) =>
@@ -923,7 +944,7 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <label>
-              Candidate Type
+              候选类型
               <select
                 value={candidateForm.type}
                 onChange={(event) =>
@@ -935,13 +956,13 @@ export function LearningReviewWorkbenchPage({
               >
                 {candidateTypes.map((type) => (
                   <option key={type} value={type}>
-                    {type}
+                    {formatLearningCandidateTypeLabel(type)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Title
+              候选标题
               <input
                 value={candidateForm.title ?? ""}
                 onChange={(event) =>
@@ -953,7 +974,7 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <label>
-              Proposal
+              问题描述
               <textarea
                 value={candidateForm.proposalText ?? ""}
                 onChange={(event) =>
@@ -965,7 +986,7 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <label>
-              Evaluation Run ID
+              评测运行 ID
               <input
                 value={candidateForm.governedSource.evaluationRunId}
                 onChange={(event) =>
@@ -980,12 +1001,12 @@ export function LearningReviewWorkbenchPage({
               />
             </label>
             <button type="button" onClick={handleCreateGovernedCandidate} disabled={isBusy}>
-              Create governed candidate
+              生成候选
             </button>
             {candidateResult && (
-              <ResultBlock title="Latest candidate">
+              <ResultBlock title="最新候选">
                 <code>{candidateResult.id}</code>
-                <span>{candidateResult.status}</span>
+                <span>{formatLearningCandidateStatusLabel(candidateResult.status)}</span>
               </ResultBlock>
             )}
           </article>
@@ -993,12 +1014,12 @@ export function LearningReviewWorkbenchPage({
       </details>
 
       <article className="learning-review-card">
-        <h3>Writeback Timeline</h3>
+        <h3>回流时间线</h3>
         {writebacks.length === 0 ? (
           <p className="learning-review-empty">
             {writebackCandidate
-              ? "No writeback records loaded yet. Create or load one for the approved handoff."
-              : "Approve a candidate to start the writeback timeline."}
+              ? "当前还没有加载回流记录，可先新建或读取一份回流草稿。"
+              : "先批准一个案例，回流时间线才会开始记录。"}
           </p>
         ) : (
           <ul className="learning-review-writeback-list">
@@ -1006,8 +1027,8 @@ export function LearningReviewWorkbenchPage({
               <li key={record.id}>
                 <strong>{record.id}</strong>
                 <span>{record.target_type}</span>
-                <span>{record.status}</span>
-                <span>{record.created_draft_asset_id ?? "draft pending"}</span>
+                <span>{formatLearningCandidateStatusLabel(record.status)}</span>
+                <span>{record.created_draft_asset_id ?? "草稿待生成"}</span>
               </li>
             ))}
           </ul>
@@ -1050,4 +1071,106 @@ function resolveLatestKnowledgeDraftId(
   }
 
   return null;
+}
+
+function formatActorRoleLabel(role: AuthRole): string {
+  switch (role) {
+    case "admin":
+      return "管理员";
+    case "screener":
+      return "初筛员";
+    case "editor":
+      return "编辑";
+    case "proofreader":
+      return "校对员";
+    case "knowledge_reviewer":
+      return "知识审核员";
+    case "user":
+    default:
+      return "普通用户";
+  }
+}
+
+function formatModuleLabel(module: ManuscriptModule | string): string {
+  switch (module) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    default:
+      return module;
+  }
+}
+
+function formatLearningCandidateTypeLabel(type: LearningCandidateType | string): string {
+  switch (type) {
+    case "rule_candidate":
+      return "规则候选";
+    case "case_pattern_candidate":
+      return "案例模式候选";
+    case "template_update_candidate":
+      return "模板更新候选";
+    case "prompt_optimization_candidate":
+      return "提示词优化候选";
+    case "checklist_update_candidate":
+      return "检查清单候选";
+    case "skill_update_candidate":
+      return "技能更新候选";
+    default:
+      return type;
+  }
+}
+
+function formatLearningCandidateStatusLabel(status: string): string {
+  switch (status) {
+    case "pending_review":
+      return "待复核";
+    case "approved":
+      return "已批准";
+    case "rejected":
+      return "已驳回";
+    case "draft":
+      return "草稿";
+    case "submitted":
+      return "已提交";
+    case "active":
+      return "生效中";
+    default:
+      return status;
+  }
+}
+
+function formatManuscriptTypeLabel(type: ManuscriptType | string): string {
+  switch (type) {
+    case "clinical_study":
+      return "临床研究";
+    case "review":
+      return "综述";
+    case "systematic_review":
+      return "系统综述";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "case_report":
+      return "病例报告";
+    case "guideline_interpretation":
+      return "指南解读";
+    case "expert_consensus":
+      return "专家共识";
+    case "diagnostic_study":
+      return "诊断研究";
+    case "basic_research":
+      return "基础研究";
+    case "nursing_study":
+      return "护理研究";
+    case "methodology_paper":
+      return "方法学论文";
+    case "brief_report":
+      return "简报";
+    case "other":
+      return "其他";
+    default:
+      return type;
+  }
 }

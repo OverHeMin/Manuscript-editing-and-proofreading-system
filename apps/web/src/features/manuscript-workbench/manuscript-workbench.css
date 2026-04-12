@@ -157,6 +157,10 @@
   gap: 16px;
 }
 
+.manuscript-workbench-controls--drawer {
+  gap: 14px;
+}
+
 .manuscript-workbench-controls-intro,
 .manuscript-workbench-summary-hero {
   display: grid;
@@ -172,6 +176,14 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     0 16px 32px rgba(41, 31, 13, 0.07);
+}
+
+.manuscript-workbench-controls--drawer .manuscript-workbench-controls-intro {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .manuscript-workbench-controls-copy,
@@ -317,10 +329,293 @@
   word-break: break-word;
 }
 
+.manuscript-workbench-mainline-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(280px, 340px);
+  gap: 18px;
+  align-items: start;
+}
+
+.manuscript-workbench-queue-pane,
+.manuscript-workbench-focus-panel,
+.manuscript-workbench-batch-drawer {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(126, 101, 51, 0.14);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(var(--manuscript-accent-rgb), 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 241, 230, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 36px rgba(41, 31, 13, 0.08);
+}
+
+.manuscript-workbench-queue-pane-header h3,
+.manuscript-workbench-focus-panel-header h3,
+.manuscript-workbench-batch-drawer-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.18rem;
+  color: #2b2215;
+}
+
+.manuscript-workbench-queue-pane-header p,
+.manuscript-workbench-focus-panel-header p,
+.manuscript-workbench-batch-drawer-header p {
+  margin: 8px 0 0;
+  color: #625648;
+  line-height: 1.6;
+}
+
+.manuscript-workbench-queue-search {
+  display: grid;
+  gap: 10px;
+}
+
+.manuscript-workbench-queue-field {
+  display: grid;
+  gap: 6px;
+}
+
+.manuscript-workbench-queue-field span {
+  font-size: 0.77rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #74624a;
+}
+
+.manuscript-workbench-queue-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 101, 51, 0.18);
+  border-radius: 12px;
+  font: inherit;
+  color: #251d12;
+  background: rgba(255, 252, 246, 0.96);
+}
+
+.manuscript-workbench-queue-field.is-invalid span {
+  color: #b91c1c;
+}
+
+.manuscript-workbench-queue-pane button,
+.manuscript-workbench-batch-drawer-trigger button {
+  padding: 10px 14px;
+  border: 1px solid rgba(105, 80, 31, 0.82);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1b1712 0%, #181510 100%);
+  color: #f5e7c3;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 12px 22px rgba(28, 21, 7, 0.16);
+}
+
+.manuscript-workbench-queue-pane button:disabled,
+.manuscript-workbench-batch-drawer-trigger button:disabled {
+  cursor: not-allowed;
+  background: rgba(216, 190, 132, 0.2);
+  border-color: rgba(216, 190, 132, 0.18);
+  color: rgba(69, 52, 17, 0.72);
+  box-shadow: none;
+}
+
+.manuscript-workbench-queue-list {
+  display: grid;
+  gap: 12px;
+}
+
+.manuscript-workbench-queue-item {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(var(--manuscript-accent-rgb), 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 242, 0.96), rgba(248, 242, 230, 0.98));
+}
+
+.manuscript-workbench-queue-item.is-active {
+  border-color: rgba(var(--manuscript-accent-rgb), 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.manuscript-workbench-queue-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manuscript-workbench-queue-item-header h4 {
+  margin: 4px 0 0;
+  color: #241d13;
+  font-size: 1rem;
+}
+
+.manuscript-workbench-queue-item-kicker,
+.manuscript-workbench-queue-item-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--manuscript-accent-text);
+}
+
+.manuscript-workbench-queue-item-badge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(var(--manuscript-accent-rgb), 0.12);
+}
+
+.manuscript-workbench-queue-item-meta {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.manuscript-workbench-queue-item-meta dt {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a6a54;
+}
+
+.manuscript-workbench-queue-item-meta dd {
+  margin: 4px 0 0;
+  color: #241d13;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.manuscript-workbench-queue-tip {
+  padding: 14px;
+  border: 1px dashed rgba(var(--manuscript-accent-rgb), 0.28);
+  border-radius: 16px;
+  background: rgba(var(--manuscript-accent-rgb), 0.06);
+}
+
+.manuscript-workbench-queue-tip strong,
+.manuscript-workbench-queue-tip p {
+  margin: 0;
+}
+
+.manuscript-workbench-queue-tip p {
+  margin-top: 8px;
+  color: #625648;
+  line-height: 1.6;
+}
+
+.manuscript-workbench-focus-panel {
+  min-height: 100%;
+  align-content: start;
+}
+
+.manuscript-workbench-focus-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 16px;
+  align-items: start;
+}
+
+.manuscript-workbench-focus-panel-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.manuscript-workbench-focus-type-card,
+.manuscript-workbench-focus-context-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(126, 101, 51, 0.14);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(33, 27, 20, 0.96), rgba(20, 18, 15, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 12px 24px rgba(0, 0, 0, 0.18);
+}
+
+.manuscript-workbench-focus-type-card span,
+.manuscript-workbench-focus-context-card span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(var(--manuscript-accent-rgb), 0.82);
+}
+
+.manuscript-workbench-focus-type-card strong,
+.manuscript-workbench-focus-context-card strong {
+  color: #f8f1e1;
+  font-size: 1rem;
+}
+
+.manuscript-workbench-focus-type-card small,
+.manuscript-workbench-focus-context-card p {
+  color: rgba(248, 241, 225, 0.78);
+  line-height: 1.6;
+}
+
+.manuscript-workbench-focus-type-card small,
+.manuscript-workbench-focus-context-card p {
+  margin: 0;
+}
+
+.manuscript-workbench-focus-empty {
+  padding: 20px;
+  border: 1px dashed rgba(var(--manuscript-accent-rgb), 0.28);
+  border-radius: 18px;
+  background: rgba(var(--manuscript-accent-rgb), 0.06);
+}
+
+.manuscript-workbench-focus-empty h3,
+.manuscript-workbench-focus-empty p {
+  margin: 0;
+}
+
+.manuscript-workbench-focus-empty p {
+  margin-top: 10px;
+  color: #625648;
+  line-height: 1.7;
+}
+
+.manuscript-workbench-batch-drawer {
+  position: sticky;
+  top: 24px;
+}
+
+.manuscript-workbench-batch-drawer-trigger {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(var(--manuscript-accent-rgb), 0.2);
+  border-radius: 16px;
+  background: rgba(var(--manuscript-accent-rgb), 0.08);
+}
+
+.manuscript-workbench-batch-drawer-trigger span {
+  color: #625648;
+  line-height: 1.6;
+}
+
+.manuscript-workbench-batch-drawer-body {
+  display: grid;
+}
+
 .manuscript-workbench-controls-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.manuscript-workbench-controls-grid--drawer {
+  grid-template-columns: 1fr;
 }
 
 .manuscript-workbench-panel {
@@ -499,6 +794,12 @@
 
 .manuscript-workbench-summary {
   display: grid;
+  gap: 16px;
+}
+
+.manuscript-workbench-focus-context {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -781,12 +1082,19 @@
 }
 
 @media (max-width: 1024px) {
+  .manuscript-workbench-mainline-layout,
   .manuscript-workbench-hero,
+  .manuscript-workbench-focus-panel-header,
+  .manuscript-workbench-focus-context,
   .manuscript-workbench-controls-intro,
   .manuscript-workbench-summary-hero,
   .manuscript-workbench-controls-grid,
   .manuscript-workbench-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .manuscript-workbench-batch-drawer {
+    position: static;
   }
 }
 

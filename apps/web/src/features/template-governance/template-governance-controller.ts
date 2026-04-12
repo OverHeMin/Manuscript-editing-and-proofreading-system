@@ -907,7 +907,7 @@ async function loadTemplateFamilyRetrievalInsights(
       latestRun: null,
       latestSnapshot: null,
       signals: [],
-      message: "Select a template family to inspect retrieval quality evidence.",
+      message: "请选择模板族后查看检索质量证据。",
     };
   }
 
@@ -926,7 +926,7 @@ async function loadTemplateFamilyRetrievalInsights(
         latestSnapshot: null,
         signals,
         message:
-          "A retrieval-quality run exists, but it does not expose a linked retrieval snapshot summary yet.",
+          "已有检索质量运行记录，但暂未关联可查看的检索快照摘要。",
       };
     }
 
@@ -942,8 +942,8 @@ async function loadTemplateFamilyRetrievalInsights(
         signals,
         message:
           signals.length === 0
-            ? "Latest retrieval-quality evidence is within the current operator thresholds."
-            : `${signals.length} retrieval-quality signal(s) need operator review.`,
+            ? "最近一次检索质量证据处于当前运营阈值内。"
+            : `有 ${signals.length} 条检索质量信号需要复核。`,
       };
     } catch {
       const signals = createRetrievalSignals(latestRun, null);
@@ -954,7 +954,7 @@ async function loadTemplateFamilyRetrievalInsights(
         latestSnapshot: null,
         signals,
         message:
-          "Latest retrieval snapshot evidence is unavailable, but the rest of template governance remains usable.",
+          "最近一次检索快照证据暂不可用，但其他规则治理功能仍可正常使用。",
       };
     }
   } catch (error) {
@@ -964,8 +964,7 @@ async function loadTemplateFamilyRetrievalInsights(
         latestRun: null,
         latestSnapshot: null,
         signals: [],
-        message:
-          "No retrieval-quality run has been recorded for this template family yet.",
+        message: "当前模板族还没有检索质量运行记录。",
       };
     }
 
@@ -974,8 +973,7 @@ async function loadTemplateFamilyRetrievalInsights(
       latestRun: null,
       latestSnapshot: null,
       signals: [],
-      message:
-        "Retrieval-quality read models are unavailable right now. Core template governance actions remain available.",
+      message: "检索质量只读模型暂不可用，但核心规则治理操作仍可继续。",
     };
   }
 }
@@ -1013,9 +1011,8 @@ function createRetrievalSignals(
     signals.push({
       kind: "retrieval_drift",
       severity: "warning",
-      title: "Retrieval drift signal",
-      body:
-        "Latest answer relevancy or context precision has dropped below the current operator threshold.",
+      title: "检索漂移信号",
+      body: "最近一次答案相关性或上下文精确率已低于当前运营阈值。",
       evidence: {
         retrieval_run_id: latestRun.id,
         retrieval_snapshot_id: latestSnapshot?.id,
@@ -1030,9 +1027,8 @@ function createRetrievalSignals(
     signals.push({
       kind: "missing_knowledge",
       severity: "warning",
-      title: "Missing knowledge signal",
-      body:
-        "Recall is weak or the latest retrieval snapshot returned no grounded knowledge items for review.",
+      title: "知识缺口信号",
+      body: "召回偏弱，或最近一次检索快照没有返回可供复核的知识条目。",
       evidence: {
         retrieval_run_id: latestRun.id,
         retrieval_snapshot_id: latestSnapshot?.id,

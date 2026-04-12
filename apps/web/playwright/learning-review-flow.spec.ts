@@ -189,10 +189,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   await learningReviewLink.click();
   await expect(page.getByRole("heading", { name: ruleCenterHeading })).toBeVisible();
   await expect(page.locator("body")).toContainText(
-    `This rule-learning desk was opened from manuscript handoff ${manuscriptId}.`,
+    `当前学习回流来自稿件交接：${manuscriptId}`,
   );
   await expect(page.locator("body")).toContainText(manuscriptId);
-  await expect(page.locator("body")).toContainText("Rule Candidate Review");
+  await expect(page.locator("body")).toContainText("规则候选队列");
+  await expect(page.locator("body")).toContainText("规则候选复核");
 
   await page
     .getByRole("button", { name: new RegExp(escapeRegExp(candidateListLabel)) })
@@ -202,16 +203,16 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
   await expect(page.locator("body")).toContainText("family-seeded-1");
 
-  await expect(page.getByRole("button", { name: "Approve Candidate" })).toBeEnabled();
-  await page.getByRole("button", { name: "Approve Candidate" }).click();
+  await expect(page.getByRole("button", { name: "批准候选" })).toBeEnabled();
+  await page.getByRole("button", { name: "批准候选" }).click();
   await expect(page.locator("body")).toContainText(
-    `Learning candidate approved: ${extractedCandidate.id}`,
+    `已批准候选：${extractedCandidate.id}`,
   );
-  await expect(page.getByRole("button", { name: "Convert To Rule Draft" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Convert To Rule Draft" }).click();
+  await page.getByRole("button", { name: "转成规则草稿" }).click();
   await expect(page.locator("body")).toContainText(
-    `Rule draft prefilled from learning candidate ${extractedCandidate.id}.`,
+    `已从学习候选项 ${extractedCandidate.id} 预填规则草稿。`,
   );
   await expect(page.locator("body")).toContainText(
     `${prefilledDraftNotePrefix}${extractedCandidate.id}`,
@@ -220,11 +221,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
 
-  await page.getByRole("button", { name: "Create Rule Set Draft" }).click();
-  await expect(page.locator("body")).toContainText("Rule set draft created.");
-  await expect(page.getByRole("button", { name: "Create Rule Draft" })).toBeEnabled();
-  await page.getByRole("button", { name: "Create Rule Draft" }).click();
-  await expect(page.locator("body")).toContainText("Rule draft created.");
+  await page.getByRole("button", { name: "新建规则集草稿" }).click();
+  await expect(page.locator("body")).toContainText("规则集草稿已创建。");
+  await expect(page.getByRole("button", { name: "新建规则草稿" })).toBeEnabled();
+  await page.getByRole("button", { name: "新建规则草稿" }).click();
+  await expect(page.locator("body")).toContainText("规则草稿已创建。");
   await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
     abstractObjectiveSource,
   );

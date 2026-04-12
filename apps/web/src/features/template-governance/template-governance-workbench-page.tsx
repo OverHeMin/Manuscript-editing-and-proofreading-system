@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useRef,
   useState,
@@ -67,6 +67,7 @@ import {
   type RulePackageWorkspaceViewModel,
 } from "./rule-package-authoring-state.ts";
 import { RuleLearningPane } from "./rule-learning-pane.tsx";
+import { TemplateGovernanceProofreadingStrategyPane } from "./template-governance-proofreading-strategy-pane.tsx";
 import {
   loadRulePackageDraft,
   saveRulePackageDraft,
@@ -84,6 +85,18 @@ import {
   type TemplateGovernanceWorkbenchFilters,
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
+import {
+  formatTemplateGovernanceConfidencePolicyLabel,
+  formatTemplateGovernanceExecutionModeLabel,
+  formatTemplateGovernanceFamilyStatusLabel,
+  formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceKnowledgeKindLabel,
+  formatTemplateGovernanceManuscriptTypeLabel,
+  formatTemplateGovernanceModuleLabel,
+  formatTemplateGovernancePromptTemplateKindLabel,
+  formatTemplateGovernanceRuleTypeLabel,
+  formatTemplateGovernanceSeverityLabel,
+} from "./template-governance-display.ts";
 
 if (typeof document !== "undefined") {
   void import("./template-governance-workbench.css");
@@ -443,7 +456,7 @@ export function TemplateGovernanceWorkbenchPage({
 
         setRulePackageLoadStatus("error");
         setRulePackageErrorMessage(
-          toErrorMessage(error, "Rule-package workspace load failed"),
+          toErrorMessage(error, "规则包工作台加载失败"),
         );
       });
 
@@ -493,7 +506,7 @@ export function TemplateGovernanceWorkbenchPage({
       synchronizeForms(nextOverview);
     } catch (error) {
       setLoadStatus("error");
-      setErrorMessage(toErrorMessage(error, "Template governance load failed"));
+      setErrorMessage(toErrorMessage(error, "规则中心加载失败"));
     }
   }
 
@@ -552,7 +565,7 @@ export function TemplateGovernanceWorkbenchPage({
           : current,
       );
     } catch (error) {
-      setRulePackageErrorMessage(toErrorMessage(error, "Rule-package preview failed"));
+      setRulePackageErrorMessage(toErrorMessage(error, "规则包预览失败"));
     } finally {
       setIsRulePackagePreviewBusy(false);
     }
@@ -566,7 +579,7 @@ export function TemplateGovernanceWorkbenchPage({
     const compileContext = resolveRulePackageCompileContext(overview);
     if (!compileContext.templateFamilyId) {
       setRulePackageErrorMessage(
-        "Select a template family before running compile preview.",
+        "请先选择模板族，再运行编译预览。",
       );
       return;
     }
@@ -600,7 +613,7 @@ export function TemplateGovernanceWorkbenchPage({
       );
     } catch (error) {
       setRulePackageErrorMessage(
-        toErrorMessage(error, "Rule-package compile preview failed"),
+        toErrorMessage(error, "规则包编译预览失败"),
       );
     } finally {
       setIsRulePackageCompilePreviewBusy(false);
@@ -615,7 +628,7 @@ export function TemplateGovernanceWorkbenchPage({
     const compileContext = resolveRulePackageCompileContext(overview);
     if (!compileContext.templateFamilyId) {
       setRulePackageErrorMessage(
-        "Select a template family before compiling to a draft rule set.",
+        "请先选择模板族，再把规则包编译成规则集草稿。",
       );
       return;
     }
@@ -648,7 +661,7 @@ export function TemplateGovernanceWorkbenchPage({
       setRulePackageWorkspaceState((current) =>
         current ? setRulePackageCompileResult(current, compileResult) : current,
       );
-      setStatusMessage(`Draft rule set ready: ${compileResult.rule_set_id}`);
+      setStatusMessage(`规则集草稿已就绪：${compileResult.rule_set_id}`);
 
       await loadOverview({
         selectedTemplateFamilyId: compileContext.templateFamilyId,
@@ -657,7 +670,7 @@ export function TemplateGovernanceWorkbenchPage({
       });
     } catch (error) {
       setRulePackageErrorMessage(
-        toErrorMessage(error, "Rule-package compile-to-draft failed"),
+        toErrorMessage(error, "规则包编译为草稿失败"),
       );
     } finally {
       setIsRulePackageCompileBusy(false);
@@ -680,7 +693,7 @@ export function TemplateGovernanceWorkbenchPage({
         selectedRuleSetId: compileResult.rule_set_id,
       }),
     );
-    setStatusMessage(`Draft rule set selected: ${compileResult.rule_set_id}`);
+      setStatusMessage(`已切换到规则集草稿：${compileResult.rule_set_id}`);
   }
 
   async function handleOpenCompiledDraftAdvancedEditor() {
@@ -718,9 +731,9 @@ export function TemplateGovernanceWorkbenchPage({
         selectedRuleSetId: compileResult.rule_set_id,
       }),
     );
-    setStatusMessage(
-      `Publish area ready for ${compileResult.rule_set_id}. Use Publish Rule Set when review is complete.`,
-    );
+        setStatusMessage(
+          `规则集 ${compileResult.rule_set_id} 已准备就绪，复核完成后即可发布。`,
+        );
   }
 
   function handleSelectRulePackageOriginalFile(file: BrowserUploadFile | null) {
@@ -757,7 +770,7 @@ export function TemplateGovernanceWorkbenchPage({
     } catch (error) {
       setRulePackageLoadStatus("error");
       setRulePackageErrorMessage(
-        toErrorMessage(error, "Rule-package example upload failed"),
+        toErrorMessage(error, "规则包示例上传失败"),
       );
     }
   }
@@ -883,7 +896,7 @@ export function TemplateGovernanceWorkbenchPage({
       setStatusMessage(successMessage);
       synchronizeForms(nextOverview);
     } catch (error) {
-      setErrorMessage(toErrorMessage(error, "Template governance action failed"));
+      setErrorMessage(toErrorMessage(error, "规则中心操作失败"));
     } finally {
       setIsBusy(false);
     }
@@ -892,7 +905,7 @@ export function TemplateGovernanceWorkbenchPage({
   async function handleCreateTemplateFamily(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (familyForm.name.trim().length === 0) {
-      setErrorMessage("Template family name is required.");
+      setErrorMessage("请填写模板族名称。");
       return;
     }
 
@@ -906,7 +919,7 @@ export function TemplateGovernanceWorkbenchPage({
         name: "",
       });
       return result.overview;
-    }, "Template family created.");
+    }, "模板族草稿已创建。");
   }
 
   async function handleUpdateSelectedTemplateFamily(
@@ -915,12 +928,12 @@ export function TemplateGovernanceWorkbenchPage({
     event.preventDefault();
     const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
     if (!selectedTemplateFamilyId || !overview) {
-      setErrorMessage("Select a template family before updating it.");
+      setErrorMessage("请先选择模板族，再更新当前模板族。");
       return;
     }
 
     if (selectedFamilyForm.name.trim().length === 0) {
-      setErrorMessage("Selected template family name is required.");
+      setErrorMessage("请填写当前模板族名称。");
       return;
     }
 
@@ -936,19 +949,19 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Template family updated.");
+    }, "模板族已更新。");
   }
 
   async function handleSubmitModuleTemplateDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
     if (!selectedTemplateFamilyId) {
-      setErrorMessage("Select a template family before creating a module draft.");
+      setErrorMessage("请先选择模板族，再创建模块模板草稿。");
       return;
     }
 
     if (moduleForm.prompt.trim().length === 0) {
-      setErrorMessage("Module prompt is required.");
+      setErrorMessage("请填写模块说明。");
       return;
     }
 
@@ -997,7 +1010,7 @@ export function TemplateGovernanceWorkbenchPage({
         sectionRequirements: "",
       }));
       return result.overview;
-    }, isEditingModuleTemplate ? "Module template draft updated." : "Module template draft created.");
+    }, isEditingModuleTemplate ? "模块模板草稿已更新。" : "模块模板草稿已创建。");
   }
 
   async function handlePublishModuleTemplate(moduleTemplateId: string) {
@@ -1015,7 +1028,7 @@ export function TemplateGovernanceWorkbenchPage({
         ...currentReloadContext(),
       });
       return result.overview;
-    }, "Module template published.");
+    }, "模块模板已发布。");
   }
 
   function handleEditModuleTemplate(moduleTemplateId: string) {
@@ -1042,7 +1055,7 @@ export function TemplateGovernanceWorkbenchPage({
       checklist: "",
       sectionRequirements: "",
     }));
-    setStatusMessage("Module template editor reset for a new draft.");
+    setStatusMessage("模块模板编辑器已重置，可继续新建草稿。");
   }
 
   function handleRuleSetSelection(ruleSetId: string) {
@@ -1133,7 +1146,7 @@ export function TemplateGovernanceWorkbenchPage({
         synchronizeForms(nextOverview);
       } catch (error) {
         setLoadStatus("error");
-        setErrorMessage(toErrorMessage(error, "Template governance load failed"));
+        setErrorMessage(toErrorMessage(error, "规则中心加载失败"));
         return;
       }
     }
@@ -1147,16 +1160,14 @@ export function TemplateGovernanceWorkbenchPage({
       ...prefill.ruleDraft,
       journalTemplateId: targetJournalTemplateId,
     });
-    setStatusMessage(
-      `Rule draft prefilled from learning candidate ${prefill.sourceLearningCandidateId}.`,
-    );
+    setStatusMessage(`已从学习候选项 ${prefill.sourceLearningCandidateId} 预填规则草稿。`);
   }
 
   async function handleCreateJournalTemplate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selectedTemplateFamily = overview?.selectedTemplateFamily;
     if (!selectedTemplateFamily) {
-      setErrorMessage("Select a template family before creating a journal template.");
+      setErrorMessage("请先选择模板族，再创建期刊模板。");
       return;
     }
 
@@ -1164,7 +1175,7 @@ export function TemplateGovernanceWorkbenchPage({
       journalTemplateForm.journalName.trim().length === 0 ||
       journalTemplateForm.journalKey.trim().length === 0
     ) {
-      setErrorMessage("Journal name and journal key are required.");
+      setErrorMessage("请同时填写期刊名称和期刊标识。");
       return;
     }
 
@@ -1184,7 +1195,7 @@ export function TemplateGovernanceWorkbenchPage({
         journalName: "",
       });
       return result.overview;
-    }, "Journal template profile created.");
+      }, "期刊模板画像已创建。");
   }
 
   async function handleActivateJournalTemplate(journalTemplateProfileId: string) {
@@ -1202,7 +1213,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Journal template profile activated.");
+      }, "期刊模板画像已启用。");
   }
 
   async function handleArchiveJournalTemplate(journalTemplateProfileId: string) {
@@ -1223,14 +1234,14 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Journal template profile archived.");
+      }, "期刊模板画像已归档。");
   }
 
   async function handleCreateRuleSet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selectedTemplateFamilyId = overview?.selectedTemplateFamilyId;
     if (!selectedTemplateFamilyId) {
-      setErrorMessage("Select a template family before creating a rule set.");
+      setErrorMessage("请先选择模板族，再创建规则集。");
       return;
     }
 
@@ -1245,14 +1256,14 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Rule set draft created.");
+      }, "规则集草稿已创建。");
   }
 
   async function handleSubmitRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selectedRuleSetId = overview?.selectedRuleSetId;
     if (!overview?.selectedTemplateFamilyId || !selectedRuleSetId) {
-      setErrorMessage("Create or select a rule set before adding rules.");
+      setErrorMessage("请先创建或选择规则集，再添加规则。");
       return;
     }
     const serializedDraft = serializeRuleAuthoringDraft({
@@ -1299,7 +1310,7 @@ export function TemplateGovernanceWorkbenchPage({
       });
       setPendingRuleLearningHandoff(null);
       return result.overview;
-    }, "Rule draft created.");
+    }, "规则草稿已创建。");
   }
 
   async function handlePublishRuleSet(ruleSetId: string) {
@@ -1316,7 +1327,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Rule set published.");
+      }, "规则集已发布。");
   }
 
   function handleInstructionTemplateSelection(promptTemplateId: string) {
@@ -1336,7 +1347,7 @@ export function TemplateGovernanceWorkbenchPage({
     event.preventDefault();
     const selectedTemplateFamily = overview?.selectedTemplateFamily;
     if (!selectedTemplateFamily) {
-      setErrorMessage("Select a template family before creating an AI instruction template.");
+      setErrorMessage("请先选择模板族，再创建 AI 指令模板。");
       return;
     }
 
@@ -1348,7 +1359,7 @@ export function TemplateGovernanceWorkbenchPage({
       instructionTemplateForm.outputContract.trim().length === 0
     ) {
       setErrorMessage(
-        "Instruction name, system instructions, task frame, manual review policy, and output contract are required.",
+        "请完整填写指令名称、系统指令、任务框架、人工复核策略和输出约束。",
       );
       return;
     }
@@ -1375,7 +1386,7 @@ export function TemplateGovernanceWorkbenchPage({
       });
       setInstructionTemplateForm(createInstructionTemplateFormState());
       return result.overview;
-    }, "AI instruction template draft created.");
+    }, "AI 指令模板草稿已创建。");
   }
 
   async function handlePublishInstructionTemplate(promptTemplateId: string) {
@@ -1392,7 +1403,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "AI instruction template published.");
+    }, "AI 指令模板已发布。");
   }
 
   async function handleSubmitKnowledgeDraft(event: FormEvent<HTMLFormElement>) {
@@ -1407,7 +1418,7 @@ export function TemplateGovernanceWorkbenchPage({
       knowledgeForm.title.trim().length === 0 ||
       knowledgeForm.canonicalText.trim().length === 0
     ) {
-      setErrorMessage("Knowledge title and canonical text are required.");
+      setErrorMessage("请填写知识标题和规范文本。");
       return;
     }
 
@@ -1445,7 +1456,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, isEditingDraft ? "Knowledge draft updated." : "Knowledge draft created.");
+    }, isEditingDraft ? "知识草稿已更新。" : "知识草稿已创建。");
   }
 
   async function handleSubmitForReview() {
@@ -1462,7 +1473,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Knowledge draft submitted for review.");
+    }, "知识草稿已提交审核。");
   }
 
   async function handleArchiveKnowledgeItem() {
@@ -1479,7 +1490,7 @@ export function TemplateGovernanceWorkbenchPage({
         }),
       });
       return result.overview;
-    }, "Knowledge item archived.");
+    }, "知识条目已归档。");
   }
 
   function handleTemplateFamilySelection(templateFamilyId: string) {
@@ -1549,7 +1560,7 @@ export function TemplateGovernanceWorkbenchPage({
         templateBindings: overview?.moduleTemplates.map((template) => template.id),
       }),
     );
-    setStatusMessage("Draft editor reset for a new knowledge item.");
+    setStatusMessage("知识草稿编辑器已重置，可继续新建条目。");
   }
 
   const selectedModuleTemplate = resolveSelectedModuleTemplate(
@@ -1599,8 +1610,8 @@ export function TemplateGovernanceWorkbenchPage({
     <div className="template-governance-advanced-shell">
       <div className="template-governance-panel-header">
         <div>
-          <h4>Advanced Rule Editor</h4>
-          <p>Keep the legacy low-level rule workbench available when operators need to inspect or repair the underlying rule details.</p>
+          <h4>高级规则编辑器</h4>
+          <p>当需要检查或修补底层规则细节时，仍可打开这块低层编辑工作台。</p>
         </div>
       </div>
       <div className="template-governance-rule-layout">
@@ -1644,16 +1655,22 @@ export function TemplateGovernanceWorkbenchPage({
   );
   const isAdvancedRuleEditorVisible =
     rulePackageWorkspaceState?.isAdvancedEditorVisible ?? isStandaloneAdvancedEditorVisible;
+  const proofreadingRuleSetCount =
+    overview?.ruleSets.filter((ruleSet) => ruleSet.module === "proofreading").length ?? 0;
+  const proofreadingTemplateCount =
+    overview?.moduleTemplates.filter((template) => template.module === "proofreading").length ?? 0;
+  const proofreadingInstructionCount =
+    overview?.instructionTemplates.filter((template) => template.module === "proofreading").length ??
+    0;
 
   return (
     <section className="template-governance-workbench">
       <header className="template-governance-hero">
         <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">Rule Center</p>
+          <p className="template-governance-eyebrow">规则中心</p>
           <h2>规则中心</h2>
           <p>
-            Keep rule authoring and rule learning inside one explainable admin surface while still
-            preserving the template family, journal, and knowledge context that execution depends on.
+            把规则创建、模板套用、校对策略和学习回流放进同一块可解释的治理工作台，但把高频入口做得更清楚、更好上手。
           </p>
           <WorkbenchCoreStrip variant="secondary" />
         </div>
@@ -1670,24 +1687,24 @@ export function TemplateGovernanceWorkbenchPage({
         </p>
       ) : null}
 
-      <nav className="template-governance-mode-switch" aria-label="Rule center modes">
+      <nav className="template-governance-mode-switch" aria-label="规则中心模式">
         <a
           href={authoringModeHash}
           className={`template-governance-mode-tab${workbenchMode === "authoring" ? " is-active" : ""}`}
         >
-          规则录入工作台
+          规则录入
         </a>
         <a
           href={learningModeHash}
           className={`template-governance-mode-tab${workbenchMode === "learning" ? " is-active" : ""}`}
         >
-          规则学习工作台
+          学习回流
         </a>
       </nav>
 
       {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
         <p className="template-governance-context-note">
-          已保留学习上下文：reviewed snapshot {normalizedPrefilledReviewedCaseSnapshotId}
+          已保留学习上下文：复核快照 {normalizedPrefilledReviewedCaseSnapshotId}
         </p>
       ) : null}
 
@@ -1695,7 +1712,7 @@ export function TemplateGovernanceWorkbenchPage({
         <p className="template-governance-context-note">
           已从学习候选预填规则草稿：{pendingRuleLearningHandoff.sourceLearningCandidateId}
           {pendingRuleLearningHandoff.reviewedCaseSnapshotId
-            ? ` · reviewed snapshot ${pendingRuleLearningHandoff.reviewedCaseSnapshotId}`
+            ? ` · 复核快照 ${pendingRuleLearningHandoff.reviewedCaseSnapshotId}`
             : ""}
         </p>
       ) : null}
@@ -1721,33 +1738,65 @@ export function TemplateGovernanceWorkbenchPage({
         <>
       <section className="template-governance-summary">
         <article className="template-governance-summary-card">
-          <span>Template Families</span>
+          <span>模板族</span>
           <strong>{overview?.templateFamilies.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Module Templates</span>
+          <span>模块模板</span>
           <strong>{overview?.moduleTemplates.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Visible Knowledge</span>
+          <span>可见知识</span>
           <strong>{overview?.visibleKnowledgeItems.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Rule Sets</span>
+          <span>规则集</span>
           <strong>{overview?.ruleSets.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Instruction Templates</span>
+          <span>AI 指令模板</span>
           <strong>{overview?.instructionTemplates.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Bound Knowledge</span>
+          <span>绑定知识</span>
           <strong>{overview?.boundKnowledgeItems.length ?? 0}</strong>
         </article>
         <article className="template-governance-summary-card">
-          <span>Retrieval Signals</span>
+          <span>检索信号</span>
           <strong>{retrievalInsights?.signals.length ?? 0}</strong>
           <small>{formatRetrievalInsightStatus(retrievalInsights?.status ?? "idle")}</small>
+        </article>
+      </section>
+
+      <section className="template-governance-capability-grid">
+        <article className="template-governance-card">
+          <strong>规则创建</strong>
+          <p>从示例、规则包或高级编辑器进入规则录入，先把高频动作沉淀清楚。</p>
+        </article>
+        <article className="template-governance-card">
+          <strong>模板套用</strong>
+          <p>模块模板承接不同稿件族的执行框架，减少前台重复配置。</p>
+        </article>
+        <article className="template-governance-card">
+          <strong>校对策略</strong>
+          <p>把通用校对与医学专业校对分开说明，避免前台误解成单纯套模板。</p>
+        </article>
+        <article className="template-governance-card">
+          <strong>AI 指令模板</strong>
+          <p>把系统提示、任务框架和人工复核边界拆开管理，便于不同模块复用。</p>
+        </article>
+        <article className="template-governance-card">
+          <strong>知识库</strong>
+          <p>知识录入在独立页面完成，这里只保留绑定关系与回流入口。</p>
+        </article>
+        <article className="template-governance-card">
+          <strong>打开知识库</strong>
+          <p>需要补充知识说明、修订草稿或查看语义资产时，直接跳转独立知识库。</p>
+          <div className="template-governance-actions">
+            <a className="template-governance-link-button" href={knowledgeLibraryHash}>
+              打开知识库
+            </a>
+          </div>
         </article>
       </section>
 
@@ -1755,14 +1804,14 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-panel">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Template Families</h3>
-              <p>Create and switch the family that downstream module drafts and knowledge bindings will target.</p>
+              <h3>模板族</h3>
+              <p>先选定稿件族，再承接模块模板、规则包和知识绑定，避免后台参数散落在不同位置。</p>
             </div>
           </div>
 
           <form className="template-governance-form-grid" onSubmit={handleCreateTemplateFamily}>
             <label className="template-governance-field">
-              <span>Manuscript Type</span>
+              <span>稿件类型</span>
               <select
                 value={familyForm.manuscriptType}
                 onChange={(event) =>
@@ -1774,30 +1823,30 @@ export function TemplateGovernanceWorkbenchPage({
               >
                 {manuscriptTypes.map((manuscriptType) => (
                   <option key={manuscriptType} value={manuscriptType}>
-                    {manuscriptType}
+                    {formatTemplateGovernanceManuscriptTypeLabel(manuscriptType)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Family Name</span>
+              <span>族名称</span>
               <input
                 value={familyForm.name}
                 onChange={(event) =>
                   setFamilyForm((current) => ({ ...current, name: event.target.value }))
                 }
-                placeholder="Clinical Study Core"
+                placeholder="临床研究核心族"
               />
             </label>
             <div className="template-governance-actions template-governance-actions-full">
               <button type="submit" disabled={isBusy}>
-                {isBusy ? "Saving..." : "Create Family Draft"}
+                {isBusy ? "保存中..." : "新建模板族草稿"}
               </button>
             </div>
           </form>
 
           {loadStatus === "loading" && !overview ? (
-            <p className="template-governance-empty">Loading template families...</p>
+            <p className="template-governance-empty">正在加载模板族...</p>
           ) : null}
 
           {overview?.templateFamilies.length ? (
@@ -1813,7 +1862,8 @@ export function TemplateGovernanceWorkbenchPage({
                     >
                       <span>{family.name}</span>
                       <small>
-                        {family.manuscript_type} · {family.status}
+                        {formatTemplateGovernanceManuscriptTypeLabel(family.manuscript_type)} ·{" "}
+                        {formatTemplateGovernanceFamilyStatusLabel(family.status)}
                       </small>
                     </button>
                   </li>
@@ -1822,7 +1872,7 @@ export function TemplateGovernanceWorkbenchPage({
             </ul>
           ) : (
             <p className="template-governance-empty">
-              No template families exist yet. Start by creating the family you want to govern.
+              还没有模板族，先建立一个治理范围，再继续配置规则与模板。
             </p>
           )}
 
@@ -1832,10 +1882,10 @@ export function TemplateGovernanceWorkbenchPage({
               onSubmit={handleUpdateSelectedTemplateFamily}
             >
               <p className="template-governance-selected-note">
-                Editing selected family: <strong>{overview.selectedTemplateFamily.name}</strong>
+                当前编辑模板族：<strong>{overview.selectedTemplateFamily.name}</strong>
               </p>
               <label className="template-governance-field">
-                <span>Selected Family Name</span>
+                <span>当前族名称</span>
                 <input
                   value={selectedFamilyForm.name}
                   onChange={(event) =>
@@ -1844,11 +1894,11 @@ export function TemplateGovernanceWorkbenchPage({
                       name: event.target.value,
                     }))
                   }
-                  placeholder="Selected family name"
+                  placeholder="当前模板族名称"
                 />
               </label>
               <label className="template-governance-field">
-                <span>Status</span>
+                <span>状态</span>
                 <select
                   value={selectedFamilyForm.status}
                   onChange={(event) =>
@@ -1860,14 +1910,14 @@ export function TemplateGovernanceWorkbenchPage({
                 >
                   {templateFamilyStatuses.map((status) => (
                     <option key={status} value={status}>
-                      {status}
+                      {formatTemplateGovernanceFamilyStatusLabel(status)}
                     </option>
                   ))}
                 </select>
               </label>
               <div className="template-governance-actions template-governance-actions-full">
                 <button type="submit" disabled={isBusy}>
-                  {isBusy ? "Saving..." : "Save Selected Family"}
+                  {isBusy ? "保存中..." : "保存当前模板族"}
                 </button>
                 <button
                   type="button"
@@ -1879,7 +1929,7 @@ export function TemplateGovernanceWorkbenchPage({
                     })
                   }
                 >
-                  Reset Selected Family
+                  重置当前模板族
                 </button>
               </div>
             </form>
@@ -1889,11 +1939,11 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-panel template-governance-panel-wide">
           <div className="template-governance-panel-header">
             <div>
-              <h3>{shouldUseRulePackageWorkbench ? "Rule Packages" : "Rule Workbench"}</h3>
+              <h3>规则创建</h3>
               <p>
                 {shouldUseRulePackageWorkbench
-                  ? "Start from grouped example-driven candidates, confirm the AI-readable semantics, and only open the legacy editor when deeper repair work is needed."
-                  : "Author structured medical editorial rules with family-level defaults and journal-level overrides from one governed surface."}
+                  ? "先从示例驱动的规则包进入，再确认 AI 可读语义；只有需要深修时再打开高级规则编辑器。"
+                  : "在同一块治理工作台内维护结构化规则，并保留期刊层与稿件族层的差异。"}
               </p>
             </div>
           </div>
@@ -1982,10 +2032,9 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-panel">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Module Templates</h3>
+              <h3>模板套用</h3>
               <p>
-                Create governed module drafts inside the selected family, then publish the ones ready
-                for release.
+                先在当前稿件族中创建模块模板草稿，再发布已经准备好的版本，不把模板细节堆到业务页面。
               </p>
             </div>
           </div>
@@ -1993,18 +2042,22 @@ export function TemplateGovernanceWorkbenchPage({
           {overview?.selectedTemplateFamily ? (
             <>
               <p className="template-governance-selected-note">
-                Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
-                {overview.selectedTemplateFamily.manuscript_type})
+                当前模板族： <strong>{overview.selectedTemplateFamily.name}</strong> (
+                {formatTemplateGovernanceManuscriptTypeLabel(
+                  overview.selectedTemplateFamily.manuscript_type,
+                )}
+                )
               </p>
               {isEditingModuleTemplate ? (
                 <p className="template-governance-selected-note">
-                  Editing draft: <strong>{selectedModuleTemplate.module}</strong> v
+                  当前正在编辑：{" "}
+                  <strong>{formatTemplateGovernanceModuleLabel(selectedModuleTemplate.module)}</strong> v
                   {selectedModuleTemplate.version_no}
                 </p>
               ) : null}
               <form className="template-governance-form-grid" onSubmit={handleSubmitModuleTemplateDraft}>
                 <label className="template-governance-field">
-                  <span>Module</span>
+                  <span>模块</span>
                   <select
                     value={moduleForm.module}
                     disabled={isEditingModuleTemplate}
@@ -2017,34 +2070,34 @@ export function TemplateGovernanceWorkbenchPage({
                   >
                     {templateModules.map((module) => (
                       <option key={module} value={module}>
-                        {module}
+                        {formatTemplateGovernanceModuleLabel(module)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="template-governance-field template-governance-field-full">
-                  <span>Prompt</span>
+                  <span>模块说明</span>
                   <textarea
                     rows={5}
                     value={moduleForm.prompt}
                     onChange={(event) =>
                       setModuleForm((current) => ({ ...current, prompt: event.target.value }))
                     }
-                    placeholder="Describe the governed module behavior for this manuscript family."
+                    placeholder="说明该稿件族在当前模块下的执行目标与约束。"
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Checklist</span>
+                  <span>检查清单</span>
                   <input
                     value={moduleForm.checklist}
                     onChange={(event) =>
                       setModuleForm((current) => ({ ...current, checklist: event.target.value }))
                     }
-                    placeholder="comma-separated"
+                    placeholder="用逗号分隔"
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Section Requirements</span>
+                  <span>章节要求</span>
                   <input
                     value={moduleForm.sectionRequirements}
                     onChange={(event) =>
@@ -2053,19 +2106,19 @@ export function TemplateGovernanceWorkbenchPage({
                         sectionRequirements: event.target.value,
                       }))
                     }
-                    placeholder="comma-separated"
+                    placeholder="用逗号分隔"
                   />
                 </label>
                 <div className="template-governance-actions template-governance-actions-full">
                   <button type="submit" disabled={isBusy}>
                     {isBusy
-                      ? "Saving..."
+                      ? "保存中..."
                       : isEditingModuleTemplate
-                        ? "Save Draft Changes"
-                        : "Create Module Draft"}
+                        ? "保存草稿修改"
+                        : "新建模块模板草稿"}
                   </button>
                   <button type="button" disabled={isBusy} onClick={handleResetModuleTemplateForm}>
-                    {isEditingModuleTemplate ? "Cancel Editing" : "Reset Draft Form"}
+                    {isEditingModuleTemplate ? "取消编辑" : "重置草稿表单"}
                   </button>
                 </div>
               </form>
@@ -2076,10 +2129,17 @@ export function TemplateGovernanceWorkbenchPage({
                     <li key={moduleTemplate.id} className="template-governance-card">
                       <div>
                         <strong>
-                          {moduleTemplate.module} · v{moduleTemplate.version_no}
+                          {formatTemplateGovernanceModuleLabel(moduleTemplate.module)} · v
+                          {moduleTemplate.version_no}
                         </strong>
                         <small>
-                          {moduleTemplate.status} · {moduleTemplate.manuscript_type}
+                          {formatTemplateGovernanceGovernedAssetStatusLabel(
+                            moduleTemplate.status,
+                          )}{" "}
+                          ·{" "}
+                          {formatTemplateGovernanceManuscriptTypeLabel(
+                            moduleTemplate.manuscript_type,
+                          )}
                         </small>
                       </div>
                       <p>{moduleTemplate.prompt}</p>
@@ -2106,15 +2166,15 @@ export function TemplateGovernanceWorkbenchPage({
                             onClick={() => handleEditModuleTemplate(moduleTemplate.id)}
                           >
                             {selectedModuleTemplateId === moduleTemplate.id
-                              ? "Editing Draft"
-                              : "Edit Draft"}
+                              ? "正在编辑"
+                              : "编辑草稿"}
                           </button>
                           <button
                             type="button"
                             disabled={isBusy}
                             onClick={() => handlePublishModuleTemplate(moduleTemplate.id)}
                           >
-                            Publish Draft
+                            发布草稿
                           </button>
                         </div>
                       ) : null}
@@ -2123,52 +2183,58 @@ export function TemplateGovernanceWorkbenchPage({
                 </ul>
               ) : (
                 <p className="template-governance-empty">
-                  This family has no module templates yet.
+                  当前模板族还没有模块模板。
                 </p>
               )}
             </>
           ) : (
             <p className="template-governance-empty">
-              Select or create a template family to manage module templates.
+              先选择或创建模板族，再管理模板套用。
             </p>
           )}
         </article>
 
+        <TemplateGovernanceProofreadingStrategyPane
+          proofreadingRuleSetCount={proofreadingRuleSetCount}
+          proofreadingTemplateCount={proofreadingTemplateCount}
+          proofreadingInstructionCount={proofreadingInstructionCount}
+        />
+
         <article className="template-governance-panel">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Retrieval Quality</h3>
+              <h3>检索质量</h3>
               <p>
-                Inspect the latest retrieval-quality evidence for the selected family without
-                changing routing or publication behavior.
+                在不改变发布流程的前提下，查看当前稿件族最近一次检索质量证据与观察信号。
               </p>
             </div>
           </div>
 
           <p className="template-governance-selected-note">
             {retrievalInsights?.message ??
-              "Retrieval-quality evidence will appear here once a template family is selected."}
+              "选定模板族后，这里会显示最近一次检索质量证据。"}
           </p>
 
           {retrievalInsights?.latestRun ? (
             <article className="template-governance-card">
-              <strong>Latest Run</strong>
+              <strong>最近一次运行</strong>
               <small>
-                {retrievalInsights.latestRun.module} 路 {retrievalInsights.latestRun.created_at}
+                {formatTemplateGovernanceModuleLabel(retrievalInsights.latestRun.module)} 路{" "}
+                {retrievalInsights.latestRun.created_at}
               </small>
               <p>
-                Gold set {retrievalInsights.latestRun.gold_set_version_id} 路 snapshots{" "}
+                标注集版本 {retrievalInsights.latestRun.gold_set_version_id} 路 快照数{" "}
                 {retrievalInsights.latestRun.retrieval_snapshot_ids.length}
               </p>
               <div className="template-governance-chip-row">
                 <span className="template-governance-chip">
-                  answer relevancy {formatRetrievalMetric(
+                  答案相关性 {formatRetrievalMetric(
                     retrievalInsights.latestRun.metric_summary.answer_relevancy,
                   )}
                 </span>
                 {retrievalInsights.latestRun.metric_summary.context_precision != null ? (
                   <span className="template-governance-chip">
-                    context precision{" "}
+                    上下文精确率{" "}
                     {formatRetrievalMetric(
                       retrievalInsights.latestRun.metric_summary.context_precision,
                     )}
@@ -2176,7 +2242,7 @@ export function TemplateGovernanceWorkbenchPage({
                 ) : null}
                 {retrievalInsights.latestRun.metric_summary.context_recall != null ? (
                   <span className="template-governance-chip">
-                    context recall{" "}
+                    上下文召回率{" "}
                     {formatRetrievalMetric(
                       retrievalInsights.latestRun.metric_summary.context_recall,
                     )}
@@ -2186,21 +2252,21 @@ export function TemplateGovernanceWorkbenchPage({
             </article>
           ) : (
             <p className="template-governance-empty">
-              No retrieval-quality run is currently available for this family.
+              当前稿件族还没有可查看的检索质量运行记录。
             </p>
           )}
 
           {retrievalInsights?.latestSnapshot ? (
             <article className="template-governance-card">
-              <strong>Latest Snapshot Summary</strong>
+              <strong>最近一次快照摘要</strong>
               <small>{retrievalInsights.latestSnapshot.created_at}</small>
               <p>{retrievalInsights.latestSnapshot.query_text}</p>
               <div className="template-governance-chip-row">
                 <span className="template-governance-chip">
-                  retrieved {retrievalInsights.latestSnapshot.retrieved_count}
+                  已召回 {retrievalInsights.latestSnapshot.retrieved_count}
                 </span>
                 <span className="template-governance-chip">
-                  reranked {retrievalInsights.latestSnapshot.reranked_count}
+                  已重排 {retrievalInsights.latestSnapshot.reranked_count}
                 </span>
                 {(retrievalInsights.latestSnapshot.top_knowledge_item_ids ?? []).map((itemId) => (
                   <span
@@ -2216,7 +2282,7 @@ export function TemplateGovernanceWorkbenchPage({
 
           {retrievalInsights && retrievalInsights.signals.length > 0 ? (
             <div className="template-governance-card">
-              <strong>Operator Signals</strong>
+              <strong>运营信号</strong>
               <div className="template-governance-chip-row">
                 {retrievalInsights.signals.map((signal) => (
                   <span key={`${signal.kind}-${signal.title}`} className="template-governance-chip">
@@ -2231,8 +2297,8 @@ export function TemplateGovernanceWorkbenchPage({
                     <small>{signal.kind}</small>
                     <p>{signal.body}</p>
                     <small>
-                      Evidence 路 run {signal.evidence.retrieval_run_id ?? "n/a"} 路 snapshot{" "}
-                      {signal.evidence.retrieval_snapshot_id ?? "n/a"}
+                      证据 路 run {signal.evidence.retrieval_run_id ?? "未记录"} 路 snapshot{" "}
+                      {signal.evidence.retrieval_snapshot_id ?? "未记录"}
                     </small>
                   </article>
                 ))}
@@ -2244,24 +2310,22 @@ export function TemplateGovernanceWorkbenchPage({
         <article className="template-governance-panel template-governance-panel-wide">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Knowledge Library</h3>
+              <h3>知识库</h3>
               <p>
-                Knowledge authoring has moved to the standalone Knowledge Library workbench. Rule
-                Center now keeps a summary and handoff instead of hosting draft CRUD.
+                知识录入已经迁移到独立知识库页面，规则中心这里只保留摘要、绑定关系与跳转入口。
               </p>
             </div>
           </div>
 
           <div className="template-governance-toolbar">
             <article className="template-governance-card">
-              <strong>Open Knowledge Library for authoring</strong>
+              <strong>打开知识库</strong>
               <p>
-                Create new assets, derive revision drafts, manage bindings, and submit revisions
-                into review from the dedicated workbench.
+                需要新增资产、派生修订草稿、管理绑定或提交送审时，直接进入独立知识库页面。
               </p>
               <div className="template-governance-actions">
                 <a className="template-governance-link-button" href={knowledgeLibraryHash}>
-                  Open Knowledge Library
+                  打开知识库
                 </a>
               </div>
             </article>
@@ -2271,30 +2335,29 @@ export function TemplateGovernanceWorkbenchPage({
             <div className="template-governance-knowledge-list">
               <h4>Coverage Summary</h4>
               <article className="template-governance-card">
-                <strong>Knowledge authoring has moved out of Rule Center.</strong>
+                <strong>知识录入已迁移到独立知识库。</strong>
                 <p>
-                  Use Knowledge Library to create or revise governed knowledge, then return here to
-                  verify family bindings and downstream rule coverage.
+                  在知识库中完成新增或修订后，再回到规则中心查看稿件族绑定关系与下游规则覆盖情况。
                 </p>
                 <div className="template-governance-detail-grid">
                   <div>
-                    <span>Selected Family</span>
-                    <p>{overview?.selectedTemplateFamily?.name ?? "No family selected"}</p>
+                    <span>当前稿件族</span>
+                    <p>{overview?.selectedTemplateFamily?.name ?? "尚未选择"}</p>
                   </div>
                   <div>
-                    <span>Visible Knowledge Items</span>
+                    <span>可见知识项</span>
                     <p>{overview?.visibleKnowledgeItems.length ?? 0}</p>
                   </div>
                   <div>
-                    <span>Bound To Current Family</span>
+                    <span>已绑定当前稿件族</span>
                     <p>{overview?.boundKnowledgeItems.length ?? 0}</p>
                   </div>
                   <div>
-                    <span>Draft Selected In Rule Center</span>
+                    <span>当前是否已有草稿</span>
                     <p>
                       {isEditingDraft
-                        ? "Yes, continue editing it in Knowledge Library."
-                        : "No active draft selected."}
+                        ? "有，继续在知识库中处理。"
+                        : "当前没有激活草稿。"}
                     </p>
                   </div>
                 </div>
@@ -2302,22 +2365,25 @@ export function TemplateGovernanceWorkbenchPage({
             </div>
 
             <div className="template-governance-knowledge-detail">
-              <h4>Current Selection</h4>
+              <h4>当前选中知识</h4>
               {selectedKnowledgeItem ? (
                 <article className="template-governance-card">
                   <strong>{selectedKnowledgeItem.title}</strong>
                   <small>
-                    {selectedKnowledgeItem.status} · {selectedKnowledgeItem.knowledge_kind}
+                    {formatTemplateGovernanceGovernedAssetStatusLabel(
+                      selectedKnowledgeItem.status,
+                    )}{" "}
+                    · {formatTemplateGovernanceKnowledgeKindLabel(selectedKnowledgeItem.knowledge_kind)}
                   </small>
                   <p>{selectedKnowledgeItem.summary ?? selectedKnowledgeItem.canonical_text}</p>
                   <div className="template-governance-detail-grid">
                     <div>
-                      <span>Asset</span>
-                      <p>{selectedKnowledgeItem.asset_id ?? "legacy-only item"}</p>
+                      <span>资产</span>
+                      <p>{selectedKnowledgeItem.asset_id ?? "仅旧版条目"}</p>
                     </div>
                     <div>
-                      <span>Revision</span>
-                      <p>{selectedKnowledgeItem.revision_id ?? "n/a"}</p>
+                      <span>版本</span>
+                      <p>{selectedKnowledgeItem.revision_id ?? "未记录"}</p>
                     </div>
                   </div>
                   <div className="template-governance-chip-row">
@@ -2330,14 +2396,13 @@ export function TemplateGovernanceWorkbenchPage({
                 </article>
               ) : (
                 <p className="template-governance-empty">
-                  Rule Center no longer edits knowledge drafts here. Open Knowledge Library to
-                  inspect or revise a governed knowledge asset.
+                  当前页不再直接编辑知识草稿，需要时请打开知识库查看或修订知识资产。
                 </p>
               )}
 
               <div className="template-governance-actions">
                 <a className="template-governance-link-button" href={knowledgeLibraryHash}>
-                  Continue In Knowledge Library
+                  打开知识库
                 </a>
               </div>
             </div>
@@ -2381,9 +2446,9 @@ function TemplateGovernanceRulesPanel({
     <article className="template-governance-panel">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rules</h3>
+          <h3>规则集</h3>
           <p>
-            Author the exact rule source that editing applies and proofreading inspects.
+            这里维护真正执行的规则来源，确保编辑与校对都围绕同一套受控规则运行。
           </p>
         </div>
       </div>
@@ -2391,12 +2456,15 @@ function TemplateGovernanceRulesPanel({
       {overview?.selectedTemplateFamily ? (
         <>
           <p className="template-governance-selected-note">
-            Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
-            {overview.selectedTemplateFamily.manuscript_type})
+            当前模板族： <strong>{overview.selectedTemplateFamily.name}</strong> (
+            {formatTemplateGovernanceManuscriptTypeLabel(
+              overview.selectedTemplateFamily.manuscript_type,
+            )}
+            )
           </p>
           <form className="template-governance-form-grid" onSubmit={onCreateRuleSet}>
             <label className="template-governance-field">
-              <span>Rule Set Module</span>
+              <span>规则集模块</span>
               <select
                 value={ruleSetForm.module}
                 onChange={(event) =>
@@ -2408,14 +2476,14 @@ function TemplateGovernanceRulesPanel({
               >
                 {templateModules.map((module) => (
                   <option key={module} value={module}>
-                    {module}
+                    {formatTemplateGovernanceModuleLabel(module)}
                   </option>
                 ))}
               </select>
             </label>
             <div className="template-governance-actions template-governance-actions-full">
               <button type="submit" disabled={isBusy}>
-                {isBusy ? "Saving..." : "Create Rule Set Draft"}
+                {isBusy ? "保存中..." : "新建规则集草稿"}
               </button>
             </div>
           </form>
@@ -2432,9 +2500,12 @@ function TemplateGovernanceRulesPanel({
                       onClick={() => onSelectRuleSet(ruleSet.id)}
                     >
                       <span>
-                        {ruleSet.module} rule set v{ruleSet.version_no}
+                        {formatTemplateGovernanceModuleLabel(ruleSet.module)} 规则集 v
+                        {ruleSet.version_no}
                       </span>
-                      <small>{ruleSet.status}</small>
+                      <small>
+                        {formatTemplateGovernanceGovernedAssetStatusLabel(ruleSet.status)}
+                      </small>
                     </button>
                   </li>
                 );
@@ -2442,7 +2513,7 @@ function TemplateGovernanceRulesPanel({
             </ul>
           ) : (
             <p className="template-governance-empty">
-              No rule sets exist for this family yet.
+              当前模板族还没有规则集。
             </p>
           )}
 
@@ -2450,12 +2521,14 @@ function TemplateGovernanceRulesPanel({
             <>
               <article className="template-governance-card">
                 <strong>
-                  Active Rule Set: {selectedRuleSet.module} v{selectedRuleSet.version_no}
+                  当前规则集：{formatTemplateGovernanceModuleLabel(selectedRuleSet.module)} v
+                  {selectedRuleSet.version_no}
                 </strong>
-                <small>{selectedRuleSet.status}</small>
+                <small>
+                  {formatTemplateGovernanceGovernedAssetStatusLabel(selectedRuleSet.status)}
+                </small>
                 <p>
-                  Rules stay structured here so the knowledge projection can remain a readable copy,
-                  not the only source of truth.
+                  规则在这里保持结构化管理，知识投影只是便于阅读和复用的副本，不是唯一事实来源。
                 </p>
                 {selectedRuleSet.status === "draft" ? (
                   <div className="template-governance-actions">
@@ -2464,7 +2537,7 @@ function TemplateGovernanceRulesPanel({
                       disabled={isBusy}
                       onClick={() => void onPublishRuleSet(selectedRuleSet.id)}
                     >
-                      Publish Rule Set
+                      发布规则集
                     </button>
                   </div>
                 ) : null}
@@ -2472,7 +2545,7 @@ function TemplateGovernanceRulesPanel({
 
               <form className="template-governance-form-grid" onSubmit={onSubmitRule}>
                 <label className="template-governance-field">
-                  <span>Order</span>
+                  <span>顺序</span>
                   <input
                     value={ruleForm.orderNo}
                     onChange={(event) =>
@@ -2485,7 +2558,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Rule Type</span>
+                  <span>规则类型</span>
                   <select
                     value={ruleForm.ruleType}
                     onChange={(event) =>
@@ -2497,13 +2570,13 @@ function TemplateGovernanceRulesPanel({
                   >
                     {editorialRuleTypes.map((ruleType) => (
                       <option key={ruleType} value={ruleType}>
-                        {ruleType}
+                        {formatTemplateGovernanceRuleTypeLabel(ruleType)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="template-governance-field">
-                  <span>Execution Mode</span>
+                  <span>执行方式</span>
                   <select
                     value={ruleForm.executionMode}
                     onChange={(event) =>
@@ -2515,13 +2588,13 @@ function TemplateGovernanceRulesPanel({
                   >
                     {editorialRuleExecutionModes.map((executionMode) => (
                       <option key={executionMode} value={executionMode}>
-                        {executionMode}
+                        {formatTemplateGovernanceExecutionModeLabel(executionMode)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="template-governance-field">
-                  <span>Confidence Policy</span>
+                  <span>置信策略</span>
                   <select
                     value={ruleForm.confidencePolicy}
                     onChange={(event) =>
@@ -2534,13 +2607,13 @@ function TemplateGovernanceRulesPanel({
                   >
                     {editorialRuleConfidencePolicies.map((policy) => (
                       <option key={policy} value={policy}>
-                        {policy}
+                        {formatTemplateGovernanceConfidencePolicyLabel(policy)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="template-governance-field">
-                  <span>Severity</span>
+                  <span>严重级别</span>
                   <select
                     value={ruleForm.severity}
                     onChange={(event) =>
@@ -2552,13 +2625,13 @@ function TemplateGovernanceRulesPanel({
                   >
                     {editorialRuleSeverities.map((severity) => (
                       <option key={severity} value={severity}>
-                        {severity}
+                        {formatTemplateGovernanceSeverityLabel(severity)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="template-governance-field">
-                  <span>Scope Sections</span>
+                  <span>作用章节</span>
                   <input
                     value={ruleForm.scopeSections}
                     onChange={(event) =>
@@ -2571,7 +2644,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Scope Block Kind</span>
+                  <span>作用块类型</span>
                   <input
                     value={ruleForm.scopeBlockKind}
                     onChange={(event) =>
@@ -2584,7 +2657,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Trigger Kind</span>
+                  <span>触发条件类型</span>
                   <input
                     value={ruleForm.triggerKind}
                     onChange={(event) =>
@@ -2597,7 +2670,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Trigger Text</span>
+                  <span>触发文本</span>
                   <input
                     value={ruleForm.triggerText}
                     onChange={(event) =>
@@ -2610,7 +2683,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Action Kind</span>
+                  <span>动作类型</span>
                   <input
                     value={ruleForm.actionKind}
                     onChange={(event) =>
@@ -2623,7 +2696,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Action Target</span>
+                  <span>动作目标</span>
                   <input
                     value={ruleForm.actionTarget}
                     onChange={(event) =>
@@ -2636,7 +2709,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Example Before</span>
+                  <span>处理前示例</span>
                   <input
                     value={ruleForm.exampleBefore}
                     onChange={(event) =>
@@ -2649,7 +2722,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field">
-                  <span>Example After</span>
+                  <span>处理后示例</span>
                   <input
                     value={ruleForm.exampleAfter}
                     onChange={(event) =>
@@ -2662,7 +2735,7 @@ function TemplateGovernanceRulesPanel({
                   />
                 </label>
                 <label className="template-governance-field template-governance-field-full">
-                  <span>Manual Review Reason</span>
+                  <span>人工复核原因</span>
                   <input
                     value={ruleForm.manualReviewReasonTemplate}
                     onChange={(event) =>
@@ -2676,7 +2749,7 @@ function TemplateGovernanceRulesPanel({
                 </label>
                 <div className="template-governance-actions template-governance-actions-full">
                   <button type="submit" disabled={isBusy || selectedRuleSet.status !== "draft"}>
-                    {isBusy ? "Saving..." : "Create Rule Draft"}
+                    {isBusy ? "保存中..." : "新建规则草稿"}
                   </button>
                 </div>
               </form>
@@ -2686,31 +2759,36 @@ function TemplateGovernanceRulesPanel({
                   {overview.rules.map((rule) => (
                     <article key={rule.id} className="template-governance-card">
                       <strong>
-                        {rule.action.kind} · {rule.execution_mode}
+                        {rule.action.kind} ·{" "}
+                        {formatTemplateGovernanceExecutionModeLabel(rule.execution_mode)}
                       </strong>
                       <small>
-                        {rule.rule_type} · {rule.severity} · {rule.confidence_policy}
+                        {formatTemplateGovernanceRuleTypeLabel(rule.rule_type)} ·{" "}
+                        {formatTemplateGovernanceSeverityLabel(rule.severity)} ·{" "}
+                        {formatTemplateGovernanceConfidencePolicyLabel(
+                          rule.confidence_policy,
+                        )}
                       </small>
                       <div className="template-governance-detail-grid">
                         <div>
-                          <span>Trigger</span>
+                          <span>触发条件</span>
                           <code className="template-governance-code">
                             {JSON.stringify(rule.trigger)}
                           </code>
                         </div>
                         <div>
-                          <span>Action</span>
+                          <span>执行动作</span>
                           <code className="template-governance-code">
                             {JSON.stringify(rule.action)}
                           </code>
                         </div>
                         <div>
-                          <span>Example Before</span>
-                          <p>{rule.example_before ?? "n/a"}</p>
+                          <span>处理前示例</span>
+                          <p>{rule.example_before ?? "未填写"}</p>
                         </div>
                         <div>
-                          <span>Example After</span>
-                          <p>{rule.example_after ?? "n/a"}</p>
+                          <span>处理后示例</span>
+                          <p>{rule.example_after ?? "未填写"}</p>
                         </div>
                       </div>
                     </article>
@@ -2718,7 +2796,7 @@ function TemplateGovernanceRulesPanel({
                 </div>
               ) : (
                 <p className="template-governance-empty">
-                  No rules exist inside the selected rule set yet.
+                  当前规则集里还没有规则。
                 </p>
               )}
             </>
@@ -2726,7 +2804,7 @@ function TemplateGovernanceRulesPanel({
         </>
       ) : (
         <p className="template-governance-empty">
-          Select a template family before authoring rule sets and rules.
+          先选择模板族，再开始录入规则集与规则。
         </p>
       )}
     </article>
@@ -2758,10 +2836,9 @@ function TemplateGovernanceInstructionPanel({
     <article className="template-governance-panel">
       <div className="template-governance-panel-header">
         <div>
-          <h3>AI Instruction Template</h3>
+          <h3>AI 指令模板</h3>
           <p>
-            Store bounded AI-readable instructions as fixed sections instead of one uncontrolled
-            paragraph.
+            把系统提示、任务框架和人工复核边界拆开维护，避免只剩下一段不可控的大提示词。
           </p>
         </div>
       </div>
@@ -2769,15 +2846,18 @@ function TemplateGovernanceInstructionPanel({
       {overview?.selectedTemplateFamily ? (
         <>
           <p className="template-governance-selected-note">
-            Selected family: <strong>{overview.selectedTemplateFamily.name}</strong> (
-            {overview.selectedTemplateFamily.manuscript_type})
+            当前模板族： <strong>{overview.selectedTemplateFamily.name}</strong> (
+            {formatTemplateGovernanceManuscriptTypeLabel(
+              overview.selectedTemplateFamily.manuscript_type,
+            )}
+            )
           </p>
           <form
             className="template-governance-form-grid"
             onSubmit={onCreateInstructionTemplate}
           >
             <label className="template-governance-field">
-              <span>Name</span>
+              <span>模板名称</span>
               <input
                 value={instructionTemplateForm.name}
                 onChange={(event) =>
@@ -2790,7 +2870,7 @@ function TemplateGovernanceInstructionPanel({
               />
             </label>
             <label className="template-governance-field">
-              <span>Version</span>
+              <span>版本号</span>
               <input
                 value={instructionTemplateForm.version}
                 onChange={(event) =>
@@ -2803,7 +2883,7 @@ function TemplateGovernanceInstructionPanel({
               />
             </label>
             <label className="template-governance-field">
-              <span>Module</span>
+              <span>适用模块</span>
               <select
                 value={instructionTemplateForm.module}
                 onChange={(event) =>
@@ -2819,13 +2899,13 @@ function TemplateGovernanceInstructionPanel({
               >
                 {editorialInstructionModules.map((module) => (
                   <option key={module} value={module}>
-                    {module}
+                    {formatTemplateGovernanceModuleLabel(module)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Template Kind</span>
+              <span>模板类型</span>
               <select
                 value={instructionTemplateForm.templateKind}
                 onChange={(event) =>
@@ -2837,13 +2917,13 @@ function TemplateGovernanceInstructionPanel({
               >
                 {promptTemplateKinds.map((templateKind) => (
                   <option key={templateKind} value={templateKind}>
-                    {templateKind}
+                    {formatTemplateGovernancePromptTemplateKindLabel(templateKind)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>System Instructions</span>
+              <span>系统提示</span>
               <textarea
                 rows={4}
                 value={instructionTemplateForm.systemInstructions}
@@ -2853,11 +2933,11 @@ function TemplateGovernanceInstructionPanel({
                     systemInstructions: event.target.value,
                   }))
                 }
-                placeholder="Apply hard editorial rules before any content rewrite."
+                placeholder="在任何内容改写前先执行已批准规则。"
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>Task Frame</span>
+              <span>任务框架</span>
               <textarea
                 rows={3}
                 value={instructionTemplateForm.taskFrame}
@@ -2867,11 +2947,11 @@ function TemplateGovernanceInstructionPanel({
                     taskFrame: event.target.value,
                   }))
                 }
-                placeholder="Normalize the manuscript while preserving medical meaning."
+                placeholder="在不改变医学含义的前提下完成规范化处理。"
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>Hard Rule Summary</span>
+              <span>硬规则摘要</span>
               <textarea
                 rows={3}
                 value={instructionTemplateForm.hardRuleSummary}
@@ -2885,7 +2965,7 @@ function TemplateGovernanceInstructionPanel({
               />
             </label>
             <label className="template-governance-field">
-              <span>Allowed Content Operations</span>
+              <span>允许操作</span>
               <input
                 value={instructionTemplateForm.allowedContentOperations}
                 onChange={(event) =>
@@ -2898,7 +2978,7 @@ function TemplateGovernanceInstructionPanel({
               />
             </label>
             <label className="template-governance-field">
-              <span>Forbidden Operations</span>
+              <span>禁止操作</span>
               <input
                 value={instructionTemplateForm.forbiddenOperations}
                 onChange={(event) =>
@@ -2911,7 +2991,7 @@ function TemplateGovernanceInstructionPanel({
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>Manual Review Policy</span>
+              <span>人工复核策略</span>
               <textarea
                 rows={3}
                 value={instructionTemplateForm.manualReviewPolicy}
@@ -2921,11 +3001,11 @@ function TemplateGovernanceInstructionPanel({
                     manualReviewPolicy: event.target.value,
                   }))
                 }
-                placeholder="Escalate uncertain content changes to manual review."
+                placeholder="当内容改动存在医学风险时，必须转人工复核。"
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>Output Contract</span>
+              <span>输出约束</span>
               <textarea
                 rows={3}
                 value={instructionTemplateForm.outputContract}
@@ -2935,11 +3015,11 @@ function TemplateGovernanceInstructionPanel({
                     outputContract: event.target.value,
                   }))
                 }
-                placeholder="Return a bounded editing or proofreading payload."
+                placeholder="返回受控的编辑或校对结果载荷。"
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
-              <span>Report Style</span>
+              <span>报告风格</span>
               <input
                 value={instructionTemplateForm.reportStyle}
                 onChange={(event) =>
@@ -2953,7 +3033,7 @@ function TemplateGovernanceInstructionPanel({
             </label>
             <div className="template-governance-actions template-governance-actions-full">
               <button type="submit" disabled={isBusy}>
-                {isBusy ? "Saving..." : "Create AI Instruction Draft"}
+                {isBusy ? "保存中..." : "新建 AI 指令草稿"}
               </button>
             </div>
           </form>
@@ -2971,7 +3051,10 @@ function TemplateGovernanceInstructionPanel({
                     >
                       <span>{template.name}</span>
                       <small>
-                        {template.status} · {template.template_kind ?? "legacy_prompt"}
+                        {formatTemplateGovernanceGovernedAssetStatusLabel(template.status)} ·{" "}
+                        {formatTemplateGovernancePromptTemplateKindLabel(
+                          template.template_kind ?? "legacy_prompt",
+                        )}
                       </small>
                     </button>
                   </li>
@@ -2980,7 +3063,7 @@ function TemplateGovernanceInstructionPanel({
             </ul>
           ) : (
             <p className="template-governance-empty">
-              No AI instruction templates match this family yet.
+              当前稿件族还没有匹配的 AI 指令模板。
             </p>
           )}
 
@@ -2988,42 +3071,47 @@ function TemplateGovernanceInstructionPanel({
             <article className="template-governance-card">
               <strong>{selectedInstructionTemplate.name}</strong>
               <small>
-                {selectedInstructionTemplate.status} ·{" "}
-                {selectedInstructionTemplate.template_kind ?? "legacy_prompt"}
+                {formatTemplateGovernanceGovernedAssetStatusLabel(
+                  selectedInstructionTemplate.status,
+                )}{" "}
+                ·{" "}
+                {formatTemplateGovernancePromptTemplateKindLabel(
+                  selectedInstructionTemplate.template_kind ?? "legacy_prompt",
+                )}
               </small>
               <div className="template-governance-detail-grid">
                 <div>
-                  <span>System Instructions</span>
-                  <p>{selectedInstructionTemplate.system_instructions ?? "n/a"}</p>
+                  <span>系统提示</span>
+                  <p>{selectedInstructionTemplate.system_instructions ?? "未填写"}</p>
                 </div>
                 <div>
-                  <span>Task Frame</span>
-                  <p>{selectedInstructionTemplate.task_frame ?? "n/a"}</p>
+                  <span>任务框架</span>
+                  <p>{selectedInstructionTemplate.task_frame ?? "未填写"}</p>
                 </div>
                 <div>
-                  <span>Hard Rule Summary</span>
-                  <p>{selectedInstructionTemplate.hard_rule_summary ?? "n/a"}</p>
+                  <span>硬规则摘要</span>
+                  <p>{selectedInstructionTemplate.hard_rule_summary ?? "未填写"}</p>
                 </div>
                 <div>
-                  <span>Allowed Content Operations</span>
+                  <span>允许操作</span>
                   <p>
                     {selectedInstructionTemplate.allowed_content_operations?.join(", ") ??
-                      "n/a"}
+                      "未填写"}
                   </p>
                 </div>
                 <div>
-                  <span>Forbidden Operations</span>
+                  <span>禁止操作</span>
                   <p>
-                    {selectedInstructionTemplate.forbidden_operations?.join(", ") ?? "n/a"}
+                    {selectedInstructionTemplate.forbidden_operations?.join(", ") ?? "未填写"}
                   </p>
                 </div>
                 <div>
-                  <span>Manual Review Policy</span>
-                  <p>{selectedInstructionTemplate.manual_review_policy ?? "n/a"}</p>
+                  <span>人工复核策略</span>
+                  <p>{selectedInstructionTemplate.manual_review_policy ?? "未填写"}</p>
                 </div>
                 <div className="template-governance-field-full">
-                  <span>Output Contract</span>
-                  <p>{selectedInstructionTemplate.output_contract ?? "n/a"}</p>
+                  <span>输出约束</span>
+                  <p>{selectedInstructionTemplate.output_contract ?? "未填写"}</p>
                 </div>
               </div>
               {selectedInstructionTemplate.status === "draft" ? (
@@ -3033,7 +3121,7 @@ function TemplateGovernanceInstructionPanel({
                     disabled={isBusy}
                     onClick={() => void onPublishInstructionTemplate(selectedInstructionTemplate.id)}
                   >
-                    Publish AI Instruction Template
+                    发布 AI 指令模板
                   </button>
                 </div>
               ) : null}
@@ -3042,7 +3130,7 @@ function TemplateGovernanceInstructionPanel({
         </>
       ) : (
         <p className="template-governance-empty">
-          Select a template family before authoring AI instruction templates.
+          先选择模板族，再开始维护 AI 指令模板。
         </p>
       )}
     </article>
@@ -3285,16 +3373,16 @@ function isEditableModuleScope(
 function formatRetrievalInsightStatus(status: NonNullable<TemplateGovernanceWorkbenchOverview["retrievalInsights"]>["status"]): string {
   switch (status) {
     case "available":
-      return "evidence ready";
+      return "证据已就绪";
     case "partial":
-      return "partial evidence";
+      return "证据不完整";
     case "not_started":
-      return "not started";
+      return "尚未开始";
     case "unavailable":
-      return "fail-open";
+      return "暂不可用";
     case "idle":
     default:
-      return "idle";
+      return "空闲";
   }
 }
 

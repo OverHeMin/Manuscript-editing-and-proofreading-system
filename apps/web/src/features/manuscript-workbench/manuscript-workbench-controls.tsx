@@ -74,6 +74,8 @@ export interface ManuscriptWorkbenchUtilitiesPanelProps {
 export interface ManuscriptWorkbenchControlsProps {
   mode: ManuscriptWorkbenchMode;
   busy: boolean;
+  layout?: "full" | "drawer";
+  showLookupPanel?: boolean;
   intake?: ManuscriptWorkbenchIntakePanelProps;
   lookup: ManuscriptWorkbenchLookupPanelProps;
   templateSelection?: ManuscriptWorkbenchTemplateSelectionPanelProps;
@@ -85,6 +87,8 @@ export interface ManuscriptWorkbenchControlsProps {
 export function ManuscriptWorkbenchControls({
   mode,
   busy,
+  layout = "full",
+  showLookupPanel = true,
   intake,
   lookup,
   templateSelection,
@@ -109,23 +113,45 @@ export function ManuscriptWorkbenchControls({
   const selectedJournalTemplateOption = templateSelection?.options.find(
     (option) => option.value === templateSelection.selectedJournalTemplateId,
   );
+  const introTitle =
+    layout === "drawer" ? "批量处理与辅助动作" : "在同一桌面完成接入、检索与治理动作。";
+  const introDescription =
+    layout === "drawer"
+      ? "低频能力按需展开，单稿判断始终保持在中央工作区。"
+      : "让稿件接入、当前工作线执行与辅助工具保持在同一轻量工作面。";
+  const introEyebrow = layout === "drawer" ? "辅助抽屉" : "操作台";
+  const sectionClassName =
+    layout === "drawer"
+      ? "manuscript-workbench-controls manuscript-workbench-controls--drawer"
+      : "manuscript-workbench-controls";
+  const gridClassName =
+    layout === "drawer"
+      ? "manuscript-workbench-controls-grid manuscript-workbench-controls-grid--drawer"
+      : "manuscript-workbench-controls-grid";
+  const ariaLabel = layout === "drawer" ? "批量处理与辅助动作" : "工作台操作区";
 
   return (
-    <section className="manuscript-workbench-controls" aria-label="工作台操作区">
+    <section className={sectionClassName} aria-label={ariaLabel}>
       <header className="manuscript-workbench-controls-intro">
         <div className="manuscript-workbench-controls-copy">
-          <span className="manuscript-workbench-section-eyebrow">操作台</span>
-          <h3>在同一桌面完成接入、检索与治理动作。</h3>
-          <p>
-            让稿件接入、当前工作线执行与辅助工具保持在同一轻量工作面。
-          </p>
+          <span className="manuscript-workbench-section-eyebrow">{introEyebrow}</span>
+          <h3>{introTitle}</h3>
+          <p>{introDescription}</p>
         </div>
         <div className="manuscript-workbench-desk-stat">
           <span>当前工作线</span>
           <strong>{describeMode(mode)}</strong>
         </div>
       </header>
-      <div className="manuscript-workbench-controls-grid">
+      {layout === "drawer" ? (
+        <div className="manuscript-workbench-batch-drawer-trigger">
+          <button type="button" aria-expanded="true">
+            批量处理
+          </button>
+          <span>低频能力按需展开，单稿判断始终保持在中央工作区。</span>
+        </div>
+      ) : null}
+      <div className={gridClassName}>
         {intake ? (
           <article className="manuscript-workbench-panel">
             <div className="manuscript-workbench-panel-heading">
@@ -207,39 +233,41 @@ export function ManuscriptWorkbenchControls({
           </article>
         ) : null}
 
-        <article className="manuscript-workbench-panel">
-          <div className="manuscript-workbench-panel-heading">
-            <div>
-              <h3>工作区检索</h3>
-              <p>
-                按稿件 ID 加载工作区，再继续 {describeMode(mode)} 的相关操作。
-              </p>
+        {showLookupPanel ? (
+          <article className="manuscript-workbench-panel">
+            <div className="manuscript-workbench-panel-heading">
+              <div>
+                <h3>工作区检索</h3>
+                <p>
+                  按稿件 ID 加载工作区，再继续 {describeMode(mode)} 的相关操作。
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="manuscript-workbench-panel-body">
-            <label className={resolveFieldClassName(!canLoadWorkspace)}>
-              <span>稿件 ID</span>
-              <input
-                value={lookup.manuscriptId}
-                onChange={(event) => lookup.onChange(event.target.value)}
-              />
-            </label>
-            {!canLoadWorkspace ? (
-              <p className="manuscript-workbench-help is-warning">
-                请先输入稿件 ID 再加载工作区。
-              </p>
-            ) : null}
-            <div className="manuscript-workbench-button-row">
-              <button
-                type="button"
-                disabled={busy || !canLoadWorkspace}
-                onClick={() => lookup.onLoad()}
-              >
-                加载工作区
-              </button>
+            <div className="manuscript-workbench-panel-body">
+              <label className={resolveFieldClassName(!canLoadWorkspace)}>
+                <span>稿件 ID</span>
+                <input
+                  value={lookup.manuscriptId}
+                  onChange={(event) => lookup.onChange(event.target.value)}
+                />
+              </label>
+              {!canLoadWorkspace ? (
+                <p className="manuscript-workbench-help is-warning">
+                  请先输入稿件 ID 再加载工作区。
+                </p>
+              ) : null}
+              <div className="manuscript-workbench-button-row">
+                <button
+                  type="button"
+                  disabled={busy || !canLoadWorkspace}
+                  onClick={() => lookup.onLoad()}
+                >
+                  加载工作区
+                </button>
+              </div>
             </div>
-          </div>
-        </article>
+          </article>
+        ) : null}
 
         {templateSelection ? (
           <article className="manuscript-workbench-panel">

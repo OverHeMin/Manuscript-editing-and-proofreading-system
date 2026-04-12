@@ -146,6 +146,8 @@ test("manuscript workbench summary renders operator-facing overview cards and th
 
   assert.match(markup, /实时稿件台账/);
   assert.match(markup, /稿件总控台/);
+  assert.match(markup, /单稿判断工作区/);
+  assert.match(markup, /AI 识别稿件类型/);
   assert.match(markup, /稿件概览/);
   assert.match(markup, /最近操作结果/);
   assert.match(markup, /发起编辑执行/);

@@ -22,8 +22,8 @@ export function RuleLearningDiffCard({ candidate }: RuleLearningDiffCardProps) {
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Candidate Review</h3>
-          <p>Inspect the extracted evidence before deciding whether it should become a governed rule.</p>
+          <h3>规则候选复核</h3>
+          <p>先看清候选证据、前后差异和建议选择器，再决定是否沉淀为规则。</p>
         </div>
       </div>
 
@@ -31,64 +31,64 @@ export function RuleLearningDiffCard({ candidate }: RuleLearningDiffCardProps) {
         <div className="template-governance-stack">
           <div className="template-governance-detail-grid">
             <div>
-              <span>Candidate</span>
+              <span>候选标题</span>
               <strong>{candidate.title ?? candidate.id}</strong>
             </div>
             <div>
-              <span>Status</span>
+              <span>状态</span>
               <strong>{candidate.status}</strong>
             </div>
             <div>
-              <span>Module</span>
+              <span>所属模块</span>
               <strong>{candidate.module}</strong>
             </div>
             <div>
-              <span>Rule Object</span>
+              <span>规则对象</span>
               <strong>{candidate.suggested_rule_object ?? "manual_review"}</strong>
             </div>
           </div>
 
           <div className="template-governance-detail-grid">
             <div>
-              <span>Template Family</span>
-              <p>{candidate.suggested_template_family_id ?? "not proposed"}</p>
+              <span>模板族</span>
+              <p>{candidate.suggested_template_family_id ?? "未建议"}</p>
             </div>
             <div>
-              <span>Journal Template</span>
-              <p>{candidate.suggested_journal_template_id ?? "base family scope"}</p>
+              <span>期刊模板</span>
+              <p>{candidate.suggested_journal_template_id ?? "模板族默认范围"}</p>
             </div>
           </div>
 
           <div className="template-governance-detail-grid">
             <div>
-              <span>Extraction Rationale</span>
-              <p>{extractionRationale ?? "No extraction rationale provided."}</p>
+              <span>提取依据</span>
+              <p>{extractionRationale ?? "暂无提取依据。"}</p>
             </div>
             <div>
-              <span>Evidence Summary</span>
-              <p>{evidenceSummary ?? "No evidence summary provided."}</p>
+              <span>证据摘要</span>
+              <p>{evidenceSummary ?? "暂无证据摘要。"}</p>
             </div>
           </div>
 
           <div className="template-governance-learning-diff-grid">
             <div className="template-governance-learning-fragment">
-              <span>Before Fragment</span>
-              <pre>{beforeFragment ?? "No before fragment."}</pre>
+              <span>修改前</span>
+              <pre>{beforeFragment ?? "暂无修改前片段。"}</pre>
             </div>
             <div className="template-governance-learning-fragment">
-              <span>After Fragment</span>
-              <pre>{afterFragment ?? "No after fragment."}</pre>
+              <span>修改后</span>
+              <pre>{afterFragment ?? "暂无修改后片段。"}</pre>
             </div>
           </div>
 
           <div className="template-governance-learning-fragment">
-            <span>Proposed Selector</span>
+            <span>建议选择器</span>
             <pre>{selectorSummary}</pre>
           </div>
         </div>
       ) : (
         <p className="template-governance-empty">
-          Select a pending rule candidate to inspect its evidence and suggested context.
+          先从队列中选择一个规则候选，再查看它的证据与建议上下文。
         </p>
       )}
     </article>
