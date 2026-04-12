@@ -1558,5 +1558,8 @@ function normalizeFrozenExperimentBinding(
   return {
     ...record,
     skill_package_ids: [...record.skill_package_ids],
+    quality_package_version_ids: record.quality_package_version_ids
+      ? [...record.quality_package_version_ids]
+      : undefined,
   };
 }

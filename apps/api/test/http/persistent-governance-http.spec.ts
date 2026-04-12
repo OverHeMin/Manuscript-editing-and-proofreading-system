@@ -11,7 +11,11 @@ import {
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
 import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
+import { PostgresAgentProfileRepository } from "../../src/modules/agent-profiles/index.ts";
+import { PostgresAgentRuntimeRepository } from "../../src/modules/agent-runtime/index.ts";
 import { PostgresDocumentAssetRepository } from "../../src/modules/assets/index.ts";
+import { PostgresEditorialRuleRepository } from "../../src/modules/editorial-rules/index.ts";
+import { PostgresExecutionGovernanceRepository } from "../../src/modules/execution-governance/index.ts";
 import { PostgresHarnessDatasetRepository } from "../../src/modules/harness-datasets/index.ts";
 import { PostgresHarnessIntegrationRepository } from "../../src/modules/harness-integrations/index.ts";
 import { PostgresKnowledgeRetrievalRepository } from "../../src/modules/knowledge-retrieval/index.ts";
@@ -21,6 +25,24 @@ import {
 } from "../../src/modules/knowledge/index.ts";
 import { PostgresReviewedCaseSnapshotRepository } from "../../src/modules/learning/index.ts";
 import { PostgresManuscriptRepository } from "../../src/modules/manuscripts/index.ts";
+import { PostgresManualReviewPolicyRepository } from "../../src/modules/manual-review-policies/index.ts";
+import {
+  PostgresModelRegistryRepository,
+} from "../../src/modules/model-registry/index.ts";
+import {
+  PostgresModelRoutingGovernanceRepository,
+} from "../../src/modules/model-routing-governance/index.ts";
+import { PostgresPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/index.ts";
+import { PostgresRetrievalPresetRepository } from "../../src/modules/retrieval-presets/index.ts";
+import { PostgresRuntimeBindingRepository } from "../../src/modules/runtime-bindings/index.ts";
+import { PostgresSandboxProfileRepository } from "../../src/modules/sandbox-profiles/index.ts";
+import {
+  PostgresModuleTemplateRepository,
+  PostgresTemplateFamilyRepository,
+} from "../../src/modules/templates/index.ts";
+import {
+  PostgresToolPermissionPolicyRepository,
+} from "../../src/modules/tool-permission-policies/index.ts";
 import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
@@ -2572,6 +2594,274 @@ test("persistent governance runtime keeps agent-tooling governance records acros
   });
 });
 
+test("persistent governance runtime persists manuscript quality package create, publish, and list flows across restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const createResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/manuscript-quality-packages`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                packageName: "Medical Research Style",
+                packageKind: "general_style_package",
+                targetScopes: ["general_proofreading"],
+                manifest: {
+                  punctuation_profile: "medical_research_cn_v1",
+                },
+              },
+            }),
+          },
+        );
+        const created = (await createResponse.json()) as {
+          id: string;
+          status: string;
+        };
+
+        assert.equal(createResponse.status, 201);
+        assert.equal(created.status, "draft");
+
+        const publishResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/manuscript-quality-packages/${created.id}/publish`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "user",
+            }),
+          },
+        );
+        const published = (await publishResponse.json()) as {
+          id: string;
+          status: string;
+        };
+
+        assert.equal(publishResponse.status, 200);
+        assert.equal(published.id, created.id);
+        assert.equal(published.status, "published");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const listResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscript-quality-packages?packageKind=general_style_package&targetScope=general_proofreading&status=published`,
+            {
+              headers: {
+                Cookie: cookie,
+              },
+            },
+          );
+          const listed = (await listResponse.json()) as Array<{
+            id: string;
+            package_name: string;
+            package_kind: string;
+            target_scopes: string[];
+            version: number;
+            status: string;
+            manifest: Record<string, unknown>;
+          }>;
+
+          assert.equal(listResponse.status, 200);
+          assert.deepEqual(listed, [
+            {
+              id: created.id,
+              package_name: "Medical Research Style",
+              package_kind: "general_style_package",
+              target_scopes: ["general_proofreading"],
+              version: 1,
+              status: "published",
+              manifest: {
+                punctuation_profile: "medical_research_cn_v1",
+              },
+            },
+          ]);
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime lists persisted retrieval presets and manual review policies by scope", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const retrievalPresetRepository = new PostgresRetrievalPresetRepository({
+        client: seedPool,
+      });
+      const manualReviewPolicyRepository =
+        new PostgresManualReviewPolicyRepository({
+          client: seedPool,
+        });
+
+      await retrievalPresetRepository.save({
+        id: "persistent-retrieval-editing-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing retrieval",
+        top_k: 6,
+        section_filters: ["discussion"],
+        risk_tag_filters: ["grounding"],
+        rerank_enabled: true,
+        citation_required: true,
+        min_retrieval_score: 0.55,
+        status: "active",
+        version: 1,
+      });
+      await retrievalPresetRepository.save({
+        id: "persistent-retrieval-editing-2",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing retrieval preview",
+        top_k: 10,
+        section_filters: ["methods"],
+        risk_tag_filters: ["coverage"],
+        rerank_enabled: false,
+        citation_required: false,
+        min_retrieval_score: 0.4,
+        status: "draft",
+        version: 2,
+      });
+
+      await manualReviewPolicyRepository.save({
+        id: "persistent-manual-review-editing-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing review policy",
+        min_confidence_threshold: 0.8,
+        high_risk_force_review: true,
+        conflict_force_review: true,
+        insufficient_knowledge_force_review: true,
+        module_blocklist_rules: ["unsafe-claim"],
+        status: "active",
+        version: 1,
+      });
+      await manualReviewPolicyRepository.save({
+        id: "persistent-manual-review-editing-2",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "persistent-family-1",
+        name: "Persistent editing review preview",
+        min_confidence_threshold: 0.7,
+        high_risk_force_review: false,
+        conflict_force_review: true,
+        insufficient_knowledge_force_review: false,
+        module_blocklist_rules: ["statistical-overreach"],
+        status: "draft",
+        version: 2,
+      });
+
+      const serverHandle = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const retrievalResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/retrieval-presets/by-scope/editing/clinical_study/persistent-family-1`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const retrievalPresets = (await retrievalResponse.json()) as Array<{
+          id: string;
+          status: string;
+        }>;
+
+        const manualReviewResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/manual-review-policies/by-scope/editing/clinical_study/persistent-family-1`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const manualReviewPolicies = (await manualReviewResponse.json()) as Array<{
+          id: string;
+          status: string;
+        }>;
+
+        assert.equal(retrievalResponse.status, 200);
+        assert.deepEqual(
+          retrievalPresets.map((preset) => ({
+            id: preset.id,
+            status: preset.status,
+          })),
+          [
+            {
+              id: "persistent-retrieval-editing-1",
+              status: "active",
+            },
+            {
+              id: "persistent-retrieval-editing-2",
+              status: "draft",
+            },
+          ],
+        );
+        assert.equal(manualReviewResponse.status, 200);
+        assert.deepEqual(
+          manualReviewPolicies.map((policy) => ({
+            id: policy.id,
+            status: policy.status,
+          })),
+          [
+            {
+              id: "persistent-manual-review-editing-1",
+              status: "active",
+            },
+            {
+              id: "persistent-manual-review-editing-2",
+              status: "draft",
+            },
+          ],
+        );
+      } finally {
+        await stopServer(serverHandle.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime extracts reviewed snapshot diffs into pending rule candidates", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -3975,6 +4265,463 @@ async function seedPersistentGovernanceData(pool: Pool): Promise<void> {
   });
 }
 
+const persistentHarnessControlPlaneFixtureIds = {
+  templateFamilyId: "70000000-0000-4000-8000-000000000001",
+  templateActiveId: "70000000-0000-4000-8000-000000000011",
+  templateDraftId: "70000000-0000-4000-8000-000000000012",
+  promptActiveId: "70000000-0000-4000-8000-000000000021",
+  promptDraftId: "70000000-0000-4000-8000-000000000022",
+  skillActiveId: "70000000-0000-4000-8000-000000000031",
+  skillDraftId: "70000000-0000-4000-8000-000000000032",
+  ruleSetId: "70000000-0000-4000-8000-000000000041",
+  profileActiveId: "70000000-0000-4000-8000-000000000051",
+  profileDraftId: "70000000-0000-4000-8000-000000000052",
+  checkProfileId: "70000000-0000-4000-8000-000000000061",
+  releaseProfileId: "70000000-0000-4000-8000-000000000062",
+  suiteId: "70000000-0000-4000-8000-000000000063",
+  sandboxActiveId: "70000000-0000-4000-8000-000000000071",
+  sandboxDraftId: "70000000-0000-4000-8000-000000000072",
+  runtimeActiveId: "70000000-0000-4000-8000-000000000081",
+  runtimeDraftId: "70000000-0000-4000-8000-000000000082",
+  agentActiveId: "70000000-0000-4000-8000-000000000091",
+  agentDraftId: "70000000-0000-4000-8000-000000000092",
+  toolPolicyActiveId: "70000000-0000-4000-8000-000000000101",
+  toolPolicyDraftId: "70000000-0000-4000-8000-000000000102",
+  bindingActiveId: "70000000-0000-4000-8000-000000000111",
+  bindingDraftId: "70000000-0000-4000-8000-000000000112",
+  modelActiveId: "70000000-0000-4000-8000-000000000121",
+  modelDraftId: "70000000-0000-4000-8000-000000000122",
+  routingPolicyId: "70000000-0000-4000-8000-000000000131",
+  routingVersionActiveId: "70000000-0000-4000-8000-000000000132",
+  routingVersionDraftId: "70000000-0000-4000-8000-000000000133",
+  retrievalActiveId: "70000000-0000-4000-8000-000000000141",
+  retrievalDraftId: "70000000-0000-4000-8000-000000000142",
+  manualReviewActiveId: "70000000-0000-4000-8000-000000000151",
+  manualReviewDraftId: "70000000-0000-4000-8000-000000000152",
+} as const;
+
+async function seedPersistentHarnessControlPlaneData(pool: Pool): Promise<void> {
+  const ids = persistentHarnessControlPlaneFixtureIds;
+  const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+    client: pool,
+  });
+  const moduleTemplateRepository = new PostgresModuleTemplateRepository({
+    client: pool,
+  });
+  const promptSkillRegistryRepository = new PostgresPromptSkillRegistryRepository({
+    client: pool,
+  });
+  const editorialRuleRepository = new PostgresEditorialRuleRepository({
+    client: pool,
+  });
+  const executionGovernanceRepository = new PostgresExecutionGovernanceRepository({
+    client: pool,
+  });
+  const verificationOpsRepository = new PostgresVerificationOpsRepository({
+    client: pool,
+  });
+  const sandboxProfileRepository = new PostgresSandboxProfileRepository({
+    client: pool,
+  });
+  const agentRuntimeRepository = new PostgresAgentRuntimeRepository({
+    client: pool,
+  });
+  const agentProfileRepository = new PostgresAgentProfileRepository({
+    client: pool,
+  });
+  const toolPermissionPolicyRepository =
+    new PostgresToolPermissionPolicyRepository({
+      client: pool,
+    });
+  const runtimeBindingRepository = new PostgresRuntimeBindingRepository({
+    client: pool,
+  });
+  const modelRegistryRepository = new PostgresModelRegistryRepository({
+    client: pool,
+  });
+  const modelRoutingGovernanceRepository =
+    new PostgresModelRoutingGovernanceRepository({
+      client: pool,
+    });
+  const retrievalPresetRepository = new PostgresRetrievalPresetRepository({
+    client: pool,
+  });
+  const manualReviewPolicyRepository = new PostgresManualReviewPolicyRepository({
+    client: pool,
+  });
+
+  await templateFamilyRepository.save({
+    id: ids.templateFamilyId,
+    manuscript_type: "clinical_study",
+    name: "Persistent Harness Editing Family",
+    status: "active",
+  });
+  await moduleTemplateRepository.save({
+    id: ids.templateActiveId,
+    template_family_id: ids.templateFamilyId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Persistent harness editing prompt",
+  });
+  await moduleTemplateRepository.save({
+    id: ids.templateDraftId,
+    template_family_id: ids.templateFamilyId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 2,
+    status: "published",
+    prompt: "Persistent harness editing preview prompt",
+  });
+
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: ids.promptActiveId,
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: ids.promptDraftId,
+    name: "editing_preview",
+    version: "2.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: ids.skillActiveId,
+    name: "editing_skills",
+    version: "1.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
+  });
+  await promptSkillRegistryRepository.saveSkillPackage({
+    id: ids.skillDraftId,
+    name: "editing_preview_skills",
+    version: "2.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
+  });
+
+  await editorialRuleRepository.saveRuleSet({
+    id: ids.ruleSetId,
+    template_family_id: ids.templateFamilyId,
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+
+  await executionGovernanceRepository.saveProfile({
+    id: ids.profileActiveId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    module_template_id: ids.templateActiveId,
+    rule_set_id: ids.ruleSetId,
+    prompt_template_id: ids.promptActiveId,
+    skill_package_ids: [ids.skillActiveId],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
+  await executionGovernanceRepository.saveProfile({
+    id: ids.profileDraftId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    module_template_id: ids.templateDraftId,
+    rule_set_id: ids.ruleSetId,
+    prompt_template_id: ids.promptDraftId,
+    skill_package_ids: [ids.skillDraftId],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "draft",
+    version: 2,
+  });
+
+  await verificationOpsRepository.saveVerificationCheckProfile({
+    id: ids.checkProfileId,
+    name: "Editing Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveReleaseCheckProfile({
+    id: ids.releaseProfileId,
+    name: "Editing Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: [ids.checkProfileId],
+    admin_only: true,
+  });
+  await verificationOpsRepository.saveEvaluationSuite({
+    id: ids.suiteId,
+    name: "Editing Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: [ids.checkProfileId],
+    module_scope: ["editing"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+
+  await sandboxProfileRepository.save({
+    id: ids.sandboxActiveId,
+    name: "Editing Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+  await sandboxProfileRepository.save({
+    id: ids.sandboxDraftId,
+    name: "Editing Preview Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+
+  await agentRuntimeRepository.save({
+    id: ids.runtimeActiveId,
+    name: "Editing Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: ids.sandboxActiveId,
+    allowed_modules: ["editing"],
+    runtime_slot: "editing",
+    admin_only: true,
+  });
+  await agentRuntimeRepository.save({
+    id: ids.runtimeDraftId,
+    name: "Editing Preview Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: ids.sandboxDraftId,
+    allowed_modules: ["editing"],
+    runtime_slot: "editing",
+    admin_only: true,
+  });
+
+  await agentProfileRepository.save({
+    id: ids.agentActiveId,
+    name: "Editing Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["editing"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+  await agentProfileRepository.save({
+    id: ids.agentDraftId,
+    name: "Editing Preview Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["editing"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+
+  await toolPermissionPolicyRepository.save({
+    id: ids.toolPolicyActiveId,
+    name: "Editing Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+  await toolPermissionPolicyRepository.save({
+    id: ids.toolPolicyDraftId,
+    name: "Editing Preview Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
+
+  await runtimeBindingRepository.save({
+    id: ids.bindingActiveId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    runtime_id: ids.runtimeActiveId,
+    sandbox_profile_id: ids.sandboxActiveId,
+    agent_profile_id: ids.agentActiveId,
+    tool_permission_policy_id: ids.toolPolicyActiveId,
+    prompt_template_id: ids.promptActiveId,
+    skill_package_ids: [ids.skillActiveId],
+    execution_profile_id: ids.profileActiveId,
+    verification_check_profile_ids: [ids.checkProfileId],
+    evaluation_suite_ids: [ids.suiteId],
+    release_check_profile_id: ids.releaseProfileId,
+    status: "active",
+    version: 1,
+  });
+  await runtimeBindingRepository.save({
+    id: ids.bindingDraftId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    runtime_id: ids.runtimeDraftId,
+    sandbox_profile_id: ids.sandboxDraftId,
+    agent_profile_id: ids.agentDraftId,
+    tool_permission_policy_id: ids.toolPolicyDraftId,
+    prompt_template_id: ids.promptDraftId,
+    skill_package_ids: [ids.skillDraftId],
+    execution_profile_id: ids.profileDraftId,
+    verification_check_profile_ids: [ids.checkProfileId],
+    evaluation_suite_ids: [ids.suiteId],
+    release_check_profile_id: ids.releaseProfileId,
+    status: "draft",
+    version: 2,
+  });
+
+  await modelRegistryRepository.save({
+    id: ids.modelActiveId,
+    provider: "openai",
+    model_name: "editing-model",
+    model_version: "2026-03-31",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+  await modelRegistryRepository.save({
+    id: ids.modelDraftId,
+    provider: "openai",
+    model_name: "editing-preview-model",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+
+  await modelRoutingGovernanceRepository.saveScope({
+    id: ids.routingPolicyId,
+    scope_kind: "module",
+    scope_value: "editing",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  await modelRoutingGovernanceRepository.saveVersion({
+    id: ids.routingVersionActiveId,
+    policy_scope_id: ids.routingPolicyId,
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 1,
+    primary_model_id: ids.modelActiveId,
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-1" }],
+    status: "active",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  await modelRoutingGovernanceRepository.saveVersion({
+    id: ids.routingVersionDraftId,
+    policy_scope_id: ids.routingPolicyId,
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 2,
+    primary_model_id: ids.modelDraftId,
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-2" }],
+    status: "approved",
+    created_at: "2026-03-31T08:10:00.000Z",
+    updated_at: "2026-03-31T08:10:00.000Z",
+  });
+  await modelRoutingGovernanceRepository.saveScope({
+    id: ids.routingPolicyId,
+    scope_kind: "module",
+    scope_value: "editing",
+    active_version_id: ids.routingVersionActiveId,
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T08:10:00.000Z",
+  });
+
+  await retrievalPresetRepository.save({
+    id: ids.retrievalActiveId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    name: "Editing retrieval",
+    top_k: 6,
+    section_filters: ["discussion"],
+    risk_tag_filters: ["grounding"],
+    rerank_enabled: true,
+    citation_required: true,
+    min_retrieval_score: 0.55,
+    status: "active",
+    version: 1,
+  });
+  await retrievalPresetRepository.save({
+    id: ids.retrievalDraftId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    name: "Editing retrieval preview",
+    top_k: 10,
+    section_filters: ["methods"],
+    risk_tag_filters: ["coverage"],
+    rerank_enabled: false,
+    citation_required: false,
+    min_retrieval_score: 0.4,
+    status: "draft",
+    version: 2,
+  });
+
+  await manualReviewPolicyRepository.save({
+    id: ids.manualReviewActiveId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    name: "Editing review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["unsafe-claim"],
+    status: "active",
+    version: 1,
+  });
+  await manualReviewPolicyRepository.save({
+    id: ids.manualReviewDraftId,
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: ids.templateFamilyId,
+    name: "Editing review preview",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: false,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["statistical-overreach"],
+    status: "draft",
+    version: 2,
+  });
+}
+
 async function seedPersistentHarnessDatasetHandoffData(pool: Pool): Promise<void> {
   const manuscriptRepository = new PostgresManuscriptRepository({ client: pool });
   const assetRepository = new PostgresDocumentAssetRepository({ client: pool });
@@ -4267,6 +5014,7 @@ async function createPersistentHarnessEvaluationSuite(input: {
           suiteType: "regression",
           verificationCheckProfileIds: [],
           moduleScope: ["editing"],
+          supportsAbComparison: true,
           hardGatePolicy: {
             mustUseDeidentifiedSamples: true,
             requiresParsableOutput: false,
@@ -5026,6 +5774,286 @@ async function createPersistentRetrievalQualityFixture(input: {
     moduleTemplateId: moduleTemplate.id,
   };
 }
+
+test("persistent governance runtime preserves full harness candidate bindings across evaluation run reloads", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const ids = persistentHarnessControlPlaneFixtureIds;
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(migrate.status, 0, migrate.stderr || migrate.stdout);
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessControlPlaneData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const suite = await createPersistentHarnessEvaluationSuite({
+          baseUrl: firstServer.baseUrl,
+          cookie,
+          name: "Persistent harness candidate suite",
+        });
+
+        const createRunResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/verification-ops/evaluation-runs`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                suiteId: suite.id,
+                baselineBinding: {
+                  lane: "baseline",
+                  executionProfileId: ids.profileActiveId,
+                  runtimeBindingId: ids.bindingActiveId,
+                  modelRoutingPolicyVersionId: ids.routingVersionActiveId,
+                  retrievalPresetId: ids.retrievalActiveId,
+                  manualReviewPolicyId: ids.manualReviewActiveId,
+                  modelId: ids.modelActiveId,
+                  runtimeId: ids.runtimeActiveId,
+                  promptTemplateId: ids.promptActiveId,
+                  skillPackageIds: [ids.skillActiveId],
+                  moduleTemplateId: ids.templateActiveId,
+                },
+                candidateBinding: {
+                  lane: "candidate",
+                  executionProfileId: ids.profileActiveId,
+                  runtimeBindingId: ids.bindingActiveId,
+                  modelRoutingPolicyVersionId: ids.routingVersionActiveId,
+                  retrievalPresetId: ids.retrievalDraftId,
+                  manualReviewPolicyId: ids.manualReviewActiveId,
+                  modelId: ids.modelActiveId,
+                  runtimeId: ids.runtimeActiveId,
+                  promptTemplateId: ids.promptActiveId,
+                  skillPackageIds: [ids.skillActiveId],
+                  moduleTemplateId: ids.templateActiveId,
+                },
+              },
+            }),
+          },
+        );
+        const createdRun = (await createRunResponse.json()) as {
+          id: string;
+          baseline_binding?: {
+            execution_profile_id?: string;
+          };
+          candidate_binding?: {
+            execution_profile_id?: string;
+            runtime_binding_id?: string;
+            model_routing_policy_version_id?: string;
+            retrieval_preset_id?: string;
+            manual_review_policy_id?: string;
+          };
+        };
+
+        assert.equal(createRunResponse.status, 201);
+        assert.equal(
+          createdRun.baseline_binding?.execution_profile_id,
+          ids.profileActiveId,
+        );
+        assert.equal(
+          createdRun.candidate_binding?.execution_profile_id,
+          ids.profileActiveId,
+        );
+        assert.equal(
+          createdRun.candidate_binding?.runtime_binding_id,
+          ids.bindingActiveId,
+        );
+        assert.equal(
+          createdRun.candidate_binding?.model_routing_policy_version_id,
+          ids.routingVersionActiveId,
+        );
+        assert.equal(
+          createdRun.candidate_binding?.retrieval_preset_id,
+          ids.retrievalDraftId,
+        );
+        assert.equal(
+          createdRun.candidate_binding?.manual_review_policy_id,
+          ids.manualReviewActiveId,
+        );
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const listRunsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${suite.id}/runs`,
+            {
+              headers: {
+                Cookie: secondCookie,
+              },
+            },
+          );
+          const runs = (await listRunsResponse.json()) as Array<{
+            id: string;
+            candidate_binding?: {
+              execution_profile_id?: string;
+              runtime_binding_id?: string;
+              model_routing_policy_version_id?: string;
+              retrieval_preset_id?: string;
+              manual_review_policy_id?: string;
+            };
+          }>;
+
+          assert.equal(listRunsResponse.status, 200);
+          assert.equal(runs[0]?.id, createdRun.id);
+          assert.equal(
+            runs[0]?.candidate_binding?.execution_profile_id,
+            ids.profileActiveId,
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.runtime_binding_id,
+            ids.bindingActiveId,
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.model_routing_policy_version_id,
+            ids.routingVersionActiveId,
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.retrieval_preset_id,
+            ids.retrievalDraftId,
+          );
+          assert.equal(
+            runs[0]?.candidate_binding?.manual_review_policy_id,
+            ids.manualReviewActiveId,
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
+test("persistent governance runtime preserves harness rollback history across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const ids = persistentHarnessControlPlaneFixtureIds;
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(migrate.status, 0, migrate.stderr || migrate.stdout);
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+      await seedPersistentHarnessControlPlaneData(seedPool);
+
+      const firstServer = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(firstServer.baseUrl);
+        const activateResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/harness-control-plane/activate`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              input: {
+                module: "editing",
+                manuscriptType: "clinical_study",
+                templateFamilyId: ids.templateFamilyId,
+                executionProfileId: ids.profileDraftId,
+                runtimeBindingId: ids.bindingDraftId,
+                modelRoutingPolicyVersionId: ids.routingVersionDraftId,
+                retrievalPresetId: ids.retrievalDraftId,
+                manualReviewPolicyId: ids.manualReviewDraftId,
+                reason: "Persist rollback baseline before restart.",
+              },
+            }),
+          },
+        );
+        const activated = (await activateResponse.json()) as {
+          execution_profile: { id: string };
+          runtime_binding: { id: string };
+          model_routing_policy_version: { id: string };
+          retrieval_preset?: { id: string };
+          manual_review_policy?: { id: string };
+        };
+
+        if (activateResponse.status !== 200) {
+          throw new Error(
+            `Expected activation before restart to succeed, received ${activateResponse.status}: ${JSON.stringify(activated)}`,
+          );
+        }
+        assert.equal(activated.execution_profile.id, ids.profileDraftId);
+        assert.equal(activated.runtime_binding.id, ids.bindingDraftId);
+        assert.equal(
+          activated.model_routing_policy_version.id,
+          ids.routingVersionDraftId,
+        );
+        assert.equal(activated.retrieval_preset?.id, ids.retrievalDraftId);
+        assert.equal(
+          activated.manual_review_policy?.id,
+          ids.manualReviewDraftId,
+        );
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentGovernanceServer(databaseUrl);
+        try {
+          const secondCookie = await loginAsPersistentAdmin(secondServer.baseUrl);
+          const rollbackResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/harness-control-plane/rollback`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: secondCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                input: {
+                  module: "editing",
+                  manuscriptType: "clinical_study",
+                  templateFamilyId: ids.templateFamilyId,
+                  reason: "Rollback after restart should still see prior snapshot.",
+                },
+              }),
+            },
+          );
+          const rolledBack = (await rollbackResponse.json()) as {
+            execution_profile: { id: string };
+            runtime_binding: { id: string };
+            model_routing_policy_version: { id: string };
+            retrieval_preset?: { id: string };
+            manual_review_policy?: { id: string };
+          };
+
+          if (rollbackResponse.status !== 200) {
+            throw new Error(
+              `Expected rollback after restart to succeed, received ${rollbackResponse.status}: ${JSON.stringify(rolledBack)}`,
+            );
+          }
+          assert.equal(rolledBack.execution_profile.id, ids.profileActiveId);
+          assert.equal(rolledBack.runtime_binding.id, ids.bindingActiveId);
+          assert.equal(
+            rolledBack.model_routing_policy_version.id,
+            ids.routingVersionActiveId,
+          );
+          assert.equal(rolledBack.retrieval_preset?.id, ids.retrievalActiveId);
+          assert.equal(
+            rolledBack.manual_review_policy?.id,
+            ids.manualReviewActiveId,
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
 
 async function loginAsPersistentAdmin(baseUrl: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {

@@ -1,5 +1,9 @@
 import type { TemplateModule } from "../templates/template-record.ts";
 import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
+import type {
   AgentExecutionCompletionSummaryRecord,
   AgentExecutionLogRecord,
   AgentExecutionRecoverySummaryRecord,
@@ -26,10 +30,12 @@ export interface ModuleExecutionSnapshotRecord {
   skill_package_versions: string[];
   model_id: string;
   model_version?: string;
+  quality_packages?: ManuscriptQualityPackageVersionRef[];
   knowledge_item_ids: string[];
   created_asset_ids: string[];
   agent_execution_log_id?: string;
   draft_snapshot_id?: string;
+  quality_findings_summary?: ManuscriptQualityFindingSummary;
   created_at: string;
 }
 

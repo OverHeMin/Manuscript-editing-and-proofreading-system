@@ -114,6 +114,42 @@ export interface ResolveExecutionBundlePreviewInput {
   module: TemplateModule;
   manuscriptType: ManuscriptType;
   templateFamilyId: string;
+  executionProfileId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  retrievalPresetId?: string;
+  manualReviewPolicyId?: string;
+}
+
+export interface RetrievalPresetViewModel {
+  id: string;
+  module: TemplateModule;
+  manuscript_type: ManuscriptType;
+  template_family_id: string;
+  name: string;
+  top_k: number;
+  section_filters?: string[];
+  risk_tag_filters?: string[];
+  rerank_enabled: boolean;
+  citation_required: boolean;
+  min_retrieval_score?: number;
+  status: "draft" | "active" | "archived";
+  version: number;
+}
+
+export interface ManualReviewPolicyViewModel {
+  id: string;
+  module: TemplateModule;
+  manuscript_type: ManuscriptType;
+  template_family_id: string;
+  name: string;
+  min_confidence_threshold: number;
+  high_risk_force_review: boolean;
+  conflict_force_review: boolean;
+  insufficient_knowledge_force_review: boolean;
+  module_blocklist_rules?: string[];
+  status: "draft" | "active" | "archived";
+  version: number;
 }
 
 export interface ResolvedAiProviderConnectionSummaryViewModel {
@@ -150,6 +186,41 @@ export interface ResolvedExecutionBundleViewModel {
   skill_packages: SkillPackageViewModel[];
   resolved_model: ModelRegistryEntryViewModel;
   model_source: ExecutionResolutionModelSource;
+  runtime_binding?: {
+    id: string;
+    runtime_id: string;
+    sandbox_profile_id: string;
+    agent_profile_id: string;
+    tool_permission_policy_id: string;
+    prompt_template_id: string;
+    skill_package_ids: string[];
+    execution_profile_id?: string;
+    evaluation_suite_ids: string[];
+    release_check_profile_id?: string;
+    status: "draft" | "active" | "archived";
+    version: number;
+  };
+  model_routing_policy_version?: {
+    id: string;
+    policy_scope_id: string;
+    scope_kind: "module" | "template_family";
+    scope_value: string;
+    version_no: number;
+    primary_model_id: string;
+    fallback_model_ids: string[];
+    status:
+      | "draft"
+      | "pending_review"
+      | "approved"
+      | "active"
+      | "rejected"
+      | "rolled_back"
+      | "superseded";
+    created_at: string;
+    updated_at: string;
+  };
+  retrieval_preset?: RetrievalPresetViewModel;
+  manual_review_policy?: ManualReviewPolicyViewModel;
   resolved_connection?: ResolvedAiProviderConnectionSummaryViewModel;
   provider_readiness: ProviderReadinessViewModel;
   fallback_chain: ModelRegistryEntryViewModel[];

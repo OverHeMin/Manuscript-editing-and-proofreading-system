@@ -22,6 +22,7 @@ import type {
   AdminGovernanceWorkbenchController,
 } from "./admin-governance-controller.ts";
 import { AgentExecutionEvidenceView } from "./agent-execution-evidence-view.tsx";
+import { RuntimeBindingQualityPackageEditor } from "./runtime-binding-quality-package-editor.tsx";
 
 const templateModules: TemplateModule[] = ["screening", "editing", "proofreading"];
 const manuscriptTypes: ManuscriptType[] = [
@@ -118,6 +119,7 @@ export function AgentToolingGovernanceSection({
     toolPermissionPolicyId: "",
     promptTemplateId: "",
     skillPackageIds: [] as string[],
+    qualityPackageVersionIds: [] as string[],
     executionProfileId: "",
     verificationCheckProfileIds: [] as string[],
     evaluationSuiteIds: [] as string[],
@@ -261,6 +263,7 @@ export function AgentToolingGovernanceSection({
   useEffect(() => {
     const eligiblePromptTemplates = getEligiblePromptTemplates(overview, bindingForm.module, bindingForm.templateFamilyId);
     const eligibleSkillPackages = getEligibleSkillPackages(overview, bindingForm.module);
+    const eligibleQualityPackages = getEligibleQualityPackages(overview);
     const eligibleExecutionProfiles = getEligibleExecutionProfiles(overview, bindingForm.module, bindingForm.templateFamilyId);
     const eligibleVerificationCheckProfiles = getEligibleVerificationCheckProfiles(overview);
     const eligibleEvaluationSuites = getEligibleEvaluationSuites(overview, bindingForm.module);
@@ -278,6 +281,10 @@ export function AgentToolingGovernanceSection({
       const skillPackageIds = syncMultiSelection(
         current.skillPackageIds,
         eligibleSkillPackages,
+      );
+      const qualityPackageVersionIds = syncMultiSelection(
+        current.qualityPackageVersionIds,
+        eligibleQualityPackages,
       );
       const executionProfileId = syncSingleSelection(
         current.executionProfileId,
@@ -300,6 +307,7 @@ export function AgentToolingGovernanceSection({
       if (
         promptTemplateId === current.promptTemplateId &&
         skillPackageIds === current.skillPackageIds &&
+        qualityPackageVersionIds === current.qualityPackageVersionIds &&
         executionProfileId === current.executionProfileId &&
         verificationCheckProfileIds === current.verificationCheckProfileIds &&
         evaluationSuiteIds === current.evaluationSuiteIds &&
@@ -312,6 +320,7 @@ export function AgentToolingGovernanceSection({
         ...current,
         promptTemplateId,
         skillPackageIds,
+        qualityPackageVersionIds,
         executionProfileId,
         verificationCheckProfileIds,
         evaluationSuiteIds,
@@ -325,6 +334,7 @@ export function AgentToolingGovernanceSection({
     overview.evaluationSuites,
     overview.executionProfiles,
     overview.promptTemplates,
+    overview.qualityPackages,
     overview.releaseCheckProfiles,
     overview.skillPackages,
     overview.templateFamilies,
@@ -517,6 +527,7 @@ export function AgentToolingGovernanceSection({
         toolPermissionPolicyId: bindingForm.toolPermissionPolicyId,
         promptTemplateId: bindingForm.promptTemplateId,
         skillPackageIds: bindingForm.skillPackageIds,
+        qualityPackageVersionIds: bindingForm.qualityPackageVersionIds,
         executionProfileId: normalizeOptionalText(bindingForm.executionProfileId),
         verificationCheckProfileIds: bindingForm.verificationCheckProfileIds,
         evaluationSuiteIds: bindingForm.evaluationSuiteIds,
@@ -1944,6 +1955,19 @@ export function AgentToolingGovernanceSection({
             ))}
           </div>
         </fieldset>
+        <RuntimeBindingQualityPackageEditor
+          availablePackages={getEligibleQualityPackages(overview)}
+          selectedVersionIds={bindingForm.qualityPackageVersionIds}
+          onChange={(qualityPackageVersionIds) =>
+            setBindingForm((current) => ({
+              ...current,
+              qualityPackageVersionIds,
+            }))
+          }
+          isMutating={isMutating}
+          legend="Quality Packages"
+          emptyMessage="Publish a quality package to bind it into a runtime."
+        />
         <fieldset className="admin-governance-module-selector">
           <legend>Verification Check Profiles</legend>
           <div className="admin-governance-module-options">
@@ -2044,6 +2068,15 @@ export function AgentToolingGovernanceSection({
                       binding.release_check_profile_id,
                       overview.releaseCheckProfiles,
                     ) ?? "none"}
+                  </p>
+                  <p>
+                    quality packages{" "}
+                    {formatIdList(
+                      resolveQualityPackageVersionLabels(
+                        binding.quality_package_version_ids ?? [],
+                        overview.qualityPackages,
+                      ),
+                    )}
                   </p>
                 </div>
                 <div className="admin-governance-template-actions">
@@ -2218,6 +2251,10 @@ function getEligibleSkillPackages(overview: AdminGovernanceOverview, module: Tem
   return overview.skillPackages.filter((skillPackage) =>
     skillPackage.applies_to_modules.includes(module),
   );
+}
+
+function getEligibleQualityPackages(overview: AdminGovernanceOverview) {
+  return overview.qualityPackages.filter((record) => record.status === "published");
 }
 
 function getEligibleVerificationCheckProfiles(overview: AdminGovernanceOverview) {
@@ -2435,6 +2472,16 @@ function resolveNamedItem<TRecord extends { id: string; name: string }>(
 
 function formatIdList(values: readonly string[]) {
   return values.length > 0 ? values.join(", ") : "none";
+}
+
+function resolveQualityPackageVersionLabels(
+  ids: readonly string[],
+  records: readonly AdminGovernanceOverview["qualityPackages"][number][],
+) {
+  return ids.map((id) => {
+    const record = records.find((candidate) => candidate.id === id);
+    return record ? `${record.package_name} v${record.version}` : id;
+  });
 }
 
 function formatExecutionStatusFilterLabel(

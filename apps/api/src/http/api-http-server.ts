@@ -78,6 +78,10 @@ import {
   ExecutionResolutionService,
 } from "../modules/execution-resolution/index.ts";
 import {
+  createHarnessControlPlaneApi,
+  HarnessControlPlaneService,
+} from "../modules/harness-control-plane/index.ts";
+import {
   createExecutionTrackingApi,
   ExecutionTrackingService,
   ExecutionTrackingSkillPackageVersionMismatchError,
@@ -213,6 +217,11 @@ import {
   LearningWritebackTargetMismatchError,
 } from "../modules/learning-governance/index.ts";
 import {
+  createManualReviewPolicyApi,
+  InMemoryManualReviewPolicyRepository,
+  ManualReviewPolicyService,
+} from "../modules/manual-review-policies/index.ts";
+import {
   InMemoryJobRepository,
   type JobRecord,
 } from "../modules/jobs/index.ts";
@@ -247,6 +256,13 @@ import {
   ModelRoutingPolicyVersionNotFoundError,
 } from "../modules/model-routing-governance/index.ts";
 import {
+  createManuscriptQualityPackageApi,
+  InMemoryManuscriptQualityPackageRepository,
+  ManuscriptQualityPackageNotFoundError,
+  ManuscriptQualityPackageService,
+  ManuscriptQualityPackageStatusTransitionError,
+} from "../modules/manuscript-quality-packages/index.ts";
+import {
   createPromptSkillRegistryApi,
   InMemoryPromptSkillRegistryRepository,
   PromptTemplateNotFoundError,
@@ -261,6 +277,11 @@ import {
   ProofreadingFinalAssetRequiredError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
+import {
+  createRetrievalPresetApi,
+  InMemoryRetrievalPresetRepository,
+  RetrievalPresetService,
+} from "../modules/retrieval-presets/index.ts";
 import {
   createRuntimeBindingApi,
   InMemoryRuntimeBindingRepository,
@@ -466,6 +487,21 @@ type HttpRouteMatch =
       adapterId: string;
     }
   | {
+      route: "harness-control-plane-get-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+    }
+  | {
+      route: "harness-control-plane-preview";
+    }
+  | {
+      route: "harness-control-plane-activate";
+    }
+  | {
+      route: "harness-control-plane-rollback";
+    }
+  | {
       route: "modules-screening-run";
     }
   | {
@@ -565,6 +601,20 @@ type HttpRouteMatch =
     }
   | {
       route: "runtime-binding-list-by-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "retrieval-preset-list-by-scope";
+      module: string;
+      manuscriptType: string;
+      templateFamilyId: string;
+      activeOnly: boolean;
+    }
+  | {
+      route: "manual-review-policy-list-by-scope";
       module: string;
       manuscriptType: string;
       templateFamilyId: string;
@@ -765,6 +815,16 @@ type HttpRouteMatch =
     }
   | {
       route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case";
+    }
+  | {
+      route: "manuscript-quality-package-create";
+    }
+  | {
+      route: "manuscript-quality-package-list";
+    }
+  | {
+      route: "manuscript-quality-package-publish";
+      packageVersionId: string;
     }
   | {
       route: "prompt-skill-create-skill-package";
@@ -1106,6 +1166,7 @@ export interface ApiServerRuntime {
   executionGovernanceApi: ReturnType<typeof createExecutionGovernanceApi>;
   executionResolutionApi: ReturnType<typeof createExecutionResolutionApi>;
   executionTrackingApi: ReturnType<typeof createExecutionTrackingApi>;
+  harnessControlPlaneApi: ReturnType<typeof createHarnessControlPlaneApi>;
   harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
@@ -1115,6 +1176,9 @@ export interface ApiServerRuntime {
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   modelRoutingGovernanceApi: ReturnType<typeof createModelRoutingGovernanceApi>;
+  manuscriptQualityPackageApi: ReturnType<typeof createManuscriptQualityPackageApi>;
+  retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
+  manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
   runtimeBindingApi: ReturnType<typeof createRuntimeBindingApi>;
   sandboxProfileApi: ReturnType<typeof createSandboxProfileApi>;
@@ -1231,16 +1295,26 @@ export function createInMemoryApiRuntime(input: {
   const modelRoutingGovernanceRepository =
     new InMemoryModelRoutingGovernanceRepository();
   const runtimeBindingRepository = new InMemoryRuntimeBindingRepository();
+  const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
+  const manualReviewPolicyRepository = new InMemoryManualReviewPolicyRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
   const toolGatewayRepository = new InMemoryToolGatewayRepository();
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const manuscriptQualityPackageRepository =
+    new InMemoryManuscriptQualityPackageRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const auditService = new InMemoryAuditService();
   const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
+  const counters = new Map<string, number>();
+  const nextId = (prefix: string) => {
+    const nextValue = (counters.get(prefix) ?? 0) + 1;
+    counters.set(prefix, nextValue);
+    return `${prefix}-${nextValue}`;
+  };
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -1333,6 +1407,13 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
+  });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
   });
   const runtimeBindingReadinessService = new RuntimeBindingReadinessService({
     runtimeBindingService,
@@ -1343,6 +1424,7 @@ export function createInMemoryApiRuntime(input: {
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
@@ -1404,7 +1486,17 @@ export function createInMemoryApiRuntime(input: {
     modelRoutingPolicyRepository,
     aiProviderConnectionRepository,
     modelRoutingGovernanceService,
+    runtimeBindingService,
+    retrievalPresetService,
+    manualReviewPolicyService,
     runtimeBindingReadinessService,
+  });
+  const harnessControlPlaneService = new HarnessControlPlaneService({
+    executionGovernanceService,
+    runtimeBindingService,
+    modelRoutingGovernanceService,
+    retrievalPresetService,
+    manualReviewPolicyService,
   });
   const aiProviderConnectionService = createAiProviderConnectionService({
     repository: aiProviderConnectionRepository,
@@ -1416,6 +1508,9 @@ export function createInMemoryApiRuntime(input: {
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
+  });
+  const manuscriptQualityPackageService = new ManuscriptQualityPackageService({
+    repository: manuscriptQualityPackageRepository,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -1479,9 +1574,12 @@ export function createInMemoryApiRuntime(input: {
       agentProfileRepository,
       agentRuntimeRepository,
       runtimeBindingRepository,
+      retrievalPresetRepository,
+      manualReviewPolicyRepository,
       toolPermissionPolicyRepository,
       modelRegistryRepository,
       modelRoutingPolicyRepository,
+      modelRoutingGovernanceRepository,
     });
   }
 
@@ -1504,6 +1602,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -1631,6 +1730,9 @@ export function createInMemoryApiRuntime(input: {
       runtimeBindingReadinessService,
       agentExecutionService,
     }),
+    harnessControlPlaneApi: createHarnessControlPlaneApi({
+      harnessControlPlaneService,
+    }),
     harnessDatasetApi: createHarnessDatasetApi({
       harnessDatasetService,
     }),
@@ -1656,6 +1758,15 @@ export function createInMemoryApiRuntime(input: {
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
       modelRoutingGovernanceService,
+    }),
+    manuscriptQualityPackageApi: createManuscriptQualityPackageApi({
+      manuscriptQualityPackageService,
+    }),
+    retrievalPresetApi: createRetrievalPresetApi({
+      retrievalPresetService,
+    }),
+    manualReviewPolicyApi: createManualReviewPolicyApi({
+      manualReviewPolicyService,
     }),
     promptSkillRegistryApi: createPromptSkillRegistryApi({
       promptSkillRegistryService,
@@ -1993,9 +2104,12 @@ function seedDemoWorkbenchData(input: {
   agentProfileRepository: InMemoryAgentProfileRepository;
   agentRuntimeRepository: InMemoryAgentRuntimeRepository;
   runtimeBindingRepository: InMemoryRuntimeBindingRepository;
+  retrievalPresetRepository: InMemoryRetrievalPresetRepository;
+  manualReviewPolicyRepository: InMemoryManualReviewPolicyRepository;
   toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
   modelRegistryRepository: InMemoryModelRegistryRepository;
   modelRoutingPolicyRepository: InMemoryModelRoutingPolicyRepository;
+  modelRoutingGovernanceRepository: InMemoryModelRoutingGovernanceRepository;
 }): void {
   void input.manuscriptRepository.save({
     id: "manuscript-seeded-1",
@@ -2133,6 +2247,8 @@ function seedDemoWorkbenchData(input: {
     routing: {
       module_scope: "editing",
       manuscript_types: ["clinical_study"],
+      sections: ["discussion"],
+      risk_tags: ["grounding"],
     },
     template_bindings: ["template-editing-1"],
   });
@@ -2472,6 +2588,124 @@ function seedDemoWorkbenchData(input: {
       proofreading: "model-proofreading-1",
     },
     template_overrides: {},
+  });
+
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Screening retrieval",
+    top_k: 4,
+    section_filters: ["abstract"],
+    risk_tag_filters: ["triage"],
+    rerank_enabled: true,
+    citation_required: false,
+    min_retrieval_score: 0.5,
+    status: "active",
+    version: 1,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval",
+    top_k: 6,
+    section_filters: ["discussion"],
+    risk_tag_filters: ["grounding"],
+    rerank_enabled: true,
+    citation_required: true,
+    min_retrieval_score: 0.55,
+    status: "active",
+    version: 1,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing retrieval preview",
+    top_k: 10,
+    section_filters: ["methods"],
+    risk_tag_filters: ["coverage"],
+    rerank_enabled: false,
+    citation_required: false,
+    min_retrieval_score: 0.4,
+    status: "draft",
+    version: 2,
+  });
+  void input.retrievalPresetRepository.save({
+    id: "retrieval-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Proofreading retrieval",
+    top_k: 5,
+    section_filters: ["results"],
+    risk_tag_filters: ["consistency"],
+    rerank_enabled: true,
+    citation_required: false,
+    min_retrieval_score: 0.45,
+    status: "active",
+    version: 1,
+  });
+
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Screening review policy",
+    min_confidence_threshold: 0.75,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["safety-escalation"],
+    status: "active",
+    version: 1,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    module_blocklist_rules: ["unsafe-claim"],
+    status: "active",
+    version: 1,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Editing review preview",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: false,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["statistical-overreach"],
+    status: "draft",
+    version: 2,
+  });
+  void input.manualReviewPolicyRepository.save({
+    id: "manual-review-proofreading-1",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    name: "Proofreading review policy",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    module_blocklist_rules: ["meaning-change"],
+    status: "active",
+    version: 1,
   });
 }
 
@@ -2884,6 +3118,51 @@ async function handleRoute(
       return runtime.harnessIntegrationApi.listExecutionAuditsByAdapterId({
         adapterId: routeMatch.adapterId,
       });
+    case "harness-control-plane-get-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessControlPlaneApi.getScopeEnvironment({
+        input: {
+          module: routeMatch.module as Parameters<
+            typeof runtime.harnessControlPlaneApi.getScopeEnvironment
+          >[0]["input"]["module"],
+          manuscriptType: routeMatch.manuscriptType as Parameters<
+            typeof runtime.harnessControlPlaneApi.getScopeEnvironment
+          >[0]["input"]["manuscriptType"],
+          templateFamilyId: routeMatch.templateFamilyId,
+        },
+      });
+    case "harness-control-plane-preview": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.previewEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.previewEnvironment({
+        input: body.input,
+      });
+    }
+    case "harness-control-plane-activate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.activateEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.activateEnvironment({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "harness-control-plane-rollback": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<typeof runtime.harnessControlPlaneApi.rollbackEnvironment>[0]["input"];
+      };
+
+      return runtime.harnessControlPlaneApi.rollbackEnvironment({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
     case "modules-screening-run": {
       const session = await requirePermission(req, runtime, "workbench.screening");
       const body = (await readJsonBody(req)) as Parameters<
@@ -3121,6 +3400,30 @@ async function handleRoute(
         templateFamilyId: routeMatch.templateFamilyId,
         activeOnly: routeMatch.activeOnly,
       });
+    case "retrieval-preset-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.retrievalPresetApi.listPresetsForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.retrievalPresetApi.listPresetsForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.retrievalPresetApi.listPresetsForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+        activeOnly: routeMatch.activeOnly,
+      });
+    case "manual-review-policy-list-by-scope":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.manualReviewPolicyApi.listPoliciesForScope({
+        module: routeMatch.module as Parameters<
+          typeof runtime.manualReviewPolicyApi.listPoliciesForScope
+        >[0]["module"],
+        manuscriptType: routeMatch.manuscriptType as Parameters<
+          typeof runtime.manualReviewPolicyApi.listPoliciesForScope
+        >[0]["manuscriptType"],
+        templateFamilyId: routeMatch.templateFamilyId,
+        activeOnly: routeMatch.activeOnly,
+      });
     case "runtime-binding-get":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.runtimeBindingApi.getBinding({
@@ -3154,6 +3457,61 @@ async function handleRoute(
       return runtime.runtimeBindingApi.archiveBinding({
         actorRole: session.user.role,
         bindingId: routeMatch.bindingId,
+      });
+    }
+    case "manuscript-quality-package-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.manuscriptQualityPackageApi.createDraftVersion
+        >[0]["input"];
+      };
+
+      return runtime.manuscriptQualityPackageApi.createDraftVersion({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "manuscript-quality-package-list": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const requestUrl = new URL(req.url ?? "/", "http://localhost");
+      const input: NonNullable<
+        Parameters<typeof runtime.manuscriptQualityPackageApi.listPackageVersions>[0]
+      > = {};
+      const packageKind = coalesceOptionalString(
+        requestUrl.searchParams.get("packageKind") ?? undefined,
+      );
+      const packageName = coalesceOptionalString(
+        requestUrl.searchParams.get("packageName") ?? undefined,
+      );
+      const targetScope = coalesceOptionalString(
+        requestUrl.searchParams.get("targetScope") ?? undefined,
+      );
+      const status = coalesceOptionalString(
+        requestUrl.searchParams.get("status") ?? undefined,
+      );
+
+      if (packageKind) {
+        input.packageKind = packageKind as typeof input.packageKind;
+      }
+      if (packageName) {
+        input.packageName = packageName;
+      }
+      if (targetScope) {
+        input.targetScope = targetScope as typeof input.targetScope;
+      }
+      if (status) {
+        input.status = status as typeof input.status;
+      }
+
+      return runtime.manuscriptQualityPackageApi.listPackageVersions(input);
+    }
+    case "manuscript-quality-package-publish": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.manuscriptQualityPackageApi.publishVersion({
+        actorRole: session.user.role,
+        packageVersionId: routeMatch.packageVersionId,
       });
     }
     case "tool-permission-policy-create": {
@@ -4690,6 +5048,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "runtime-binding-list" };
   }
 
+  if (method === "POST" && path === "/api/v1/manuscript-quality-packages") {
+    return { route: "manuscript-quality-package-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/manuscript-quality-packages") {
+    return { route: "manuscript-quality-package-list" };
+  }
+
   if (method === "POST" && path === "/api/v1/tool-permission-policies") {
     return { route: "tool-permission-policy-create" };
   }
@@ -5000,6 +5366,32 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const retrievalPresetByScopeMatch = path.match(
+    /^\/api\/v1\/retrieval-presets\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && retrievalPresetByScopeMatch) {
+    return {
+      route: "retrieval-preset-list-by-scope",
+      module: retrievalPresetByScopeMatch[1],
+      manuscriptType: retrievalPresetByScopeMatch[2],
+      templateFamilyId: retrievalPresetByScopeMatch[3],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
+  }
+
+  const manualReviewPolicyByScopeMatch = path.match(
+    /^\/api\/v1\/manual-review-policies\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && manualReviewPolicyByScopeMatch) {
+    return {
+      route: "manual-review-policy-list-by-scope",
+      module: manualReviewPolicyByScopeMatch[1],
+      manuscriptType: manualReviewPolicyByScopeMatch[2],
+      templateFamilyId: manualReviewPolicyByScopeMatch[3],
+      activeOnly: url.searchParams.get("activeOnly") === "true",
+    };
+  }
+
   const runtimeBindingActiveReadinessByScopeMatch = path.match(
     /^\/api\/v1\/runtime-bindings\/by-scope\/([^/]+)\/([^/]+)\/([^/]+)\/active-readiness$/,
   );
@@ -5010,6 +5402,30 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
       manuscriptType: runtimeBindingActiveReadinessByScopeMatch[2],
       templateFamilyId: runtimeBindingActiveReadinessByScopeMatch[3],
     };
+  }
+
+  const harnessControlPlaneScopeMatch = path.match(
+    /^\/api\/v1\/harness-control-plane\/scopes\/([^/]+)\/([^/]+)\/([^/]+)$/,
+  );
+  if (method === "GET" && harnessControlPlaneScopeMatch) {
+    return {
+      route: "harness-control-plane-get-scope",
+      module: harnessControlPlaneScopeMatch[1],
+      manuscriptType: harnessControlPlaneScopeMatch[2],
+      templateFamilyId: harnessControlPlaneScopeMatch[3],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/preview") {
+    return { route: "harness-control-plane-preview" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/activate") {
+    return { route: "harness-control-plane-activate" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-control-plane/rollback") {
+    return { route: "harness-control-plane-rollback" };
   }
 
   const templateFamilyUpdateMatch = path.match(/^\/api\/v1\/templates\/families\/([^/]+)$/);
@@ -5107,6 +5523,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "prompt-skill-publish-skill-package",
       skillPackageId: publishSkillPackageMatch[1],
+    };
+  }
+
+  const publishManuscriptQualityPackageMatch = path.match(
+    /^\/api\/v1\/manuscript-quality-packages\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishManuscriptQualityPackageMatch) {
+    return {
+      route: "manuscript-quality-package-publish",
+      packageVersionId: publishManuscriptQualityPackageMatch[1],
     };
   }
 
@@ -6020,6 +6446,7 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof ModelRoutingPolicyNotFoundError ||
     error instanceof ModelRoutingPolicyVersionNotFoundError ||
+    error instanceof ManuscriptQualityPackageNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError ||
     error instanceof EditorialRuleSetNotFoundError ||
@@ -6068,6 +6495,7 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingPolicyScopeConflictError ||
     error instanceof ModelRoutingGovernanceDraftNotEditableError ||
     error instanceof ModelRoutingGovernanceStatusTransitionError ||
+    error instanceof ManuscriptQualityPackageStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
     error instanceof EditorialRuleSetStatusTransitionError ||
     error instanceof EditorialRuleSetNotEditableError ||

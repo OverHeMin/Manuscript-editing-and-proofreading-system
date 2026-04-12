@@ -5,6 +5,7 @@ function cloneRecord(record: RuntimeBindingRecord): RuntimeBindingRecord {
   return {
     ...record,
     skill_package_ids: [...record.skill_package_ids],
+    quality_package_version_ids: [...(record.quality_package_version_ids ?? [])],
     verification_check_profile_ids: [...record.verification_check_profile_ids],
     evaluation_suite_ids: [...record.evaluation_suite_ids],
   };

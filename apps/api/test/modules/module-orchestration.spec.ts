@@ -26,7 +26,10 @@ import { ExecutionTrackingService } from "../../src/modules/execution-tracking/e
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
+import { HarnessControlPlaneService } from "../../src/modules/harness-control-plane/harness-control-plane-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { InMemoryManualReviewPolicyRepository } from "../../src/modules/manual-review-policies/in-memory-manual-review-policy-repository.ts";
+import { ManualReviewPolicyService } from "../../src/modules/manual-review-policies/manual-review-policy-service.ts";
 import {
   InMemoryModelRoutingGovernanceRepository,
 } from "../../src/modules/model-routing-governance/in-memory-model-routing-governance-repository.ts";
@@ -37,6 +40,8 @@ import {
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
 import { ModelRegistryService } from "../../src/modules/model-registry/model-registry-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
+import { InMemoryRetrievalPresetRepository } from "../../src/modules/retrieval-presets/in-memory-retrieval-preset-repository.ts";
+import { RetrievalPresetService } from "../../src/modules/retrieval-presets/retrieval-preset-service.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
@@ -66,6 +71,9 @@ function createModuleHarness(input?: {
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
+  const manualReviewPolicyRepository =
+    new InMemoryManualReviewPolicyRepository();
   const sandboxProfileRepository = new InMemorySandboxProfileRepository();
   const agentProfileRepository = new InMemoryAgentProfileRepository();
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
@@ -88,21 +96,30 @@ function createModuleHarness(input?: {
     "asset-4",
     "asset-5",
     "asset-6",
+    "asset-7",
+    "asset-8",
   ];
   const modelIds = ["model-1", "model-2", "model-3", "model-4", "model-5"];
-  const screeningJobIds = ["job-screening-1"];
-  const editingJobIds = ["job-editing-1"];
-  const proofreadingJobIds = ["job-proofreading-1", "job-proofreading-2"];
+  const screeningJobIds = ["job-screening-1", "job-screening-2"];
+  const editingJobIds = ["job-editing-1", "job-editing-2", "job-editing-3"];
+  const proofreadingJobIds = [
+    "job-proofreading-1",
+    "job-proofreading-2",
+    "job-proofreading-3",
+  ];
   const evaluationRunIds = [
     "evaluation-run-1",
     "evaluation-run-2",
     "evaluation-run-3",
+    "evaluation-run-4",
     "verification-evidence-1",
     "verification-evidence-2",
     "verification-evidence-3",
     "verification-evidence-4",
     "verification-evidence-5",
     "verification-evidence-6",
+    "verification-evidence-7",
+    "verification-evidence-8",
   ];
   const sandboxIds = [
     "sandbox-screening-1",
@@ -130,7 +147,12 @@ function createModuleHarness(input?: {
     "binding-editing-1",
     "binding-proofreading-1",
   ];
-  const agentExecutionIds = ["execution-log-1", "execution-log-2"];
+  const agentExecutionIds = [
+    "execution-log-1",
+    "execution-log-2",
+    "execution-log-3",
+    "execution-log-4",
+  ];
   const trackingIds = [
     "snapshot-1",
     "hit-1",
@@ -140,6 +162,9 @@ function createModuleHarness(input?: {
     "hit-3",
     "snapshot-4",
     "hit-4",
+    "snapshot-5",
+    "hit-5",
+    "hit-6",
   ];
   const nextValue = (bucket: string[], label: string) => {
     const value = bucket.shift();
@@ -228,6 +253,12 @@ function createModuleHarness(input?: {
     verificationOpsRepository,
     createId: () => nextValue(runtimeBindingIds, "runtime binding"),
   });
+  const retrievalPresetService = new RetrievalPresetService({
+    repository: retrievalPresetRepository,
+  });
+  const manualReviewPolicyService = new ManualReviewPolicyService({
+    repository: manualReviewPolicyRepository,
+  });
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
     createId: () => nextValue(agentExecutionIds, "agent execution"),
@@ -260,6 +291,13 @@ function createModuleHarness(input?: {
       verificationOpsService,
       now: () => new Date("2026-03-27T09:05:00.000Z"),
     });
+  const harnessControlPlaneService = new HarnessControlPlaneService({
+    executionGovernanceService,
+    runtimeBindingService,
+    modelRoutingGovernanceService,
+    retrievalPresetService,
+    manualReviewPolicyService,
+  });
 
   const screeningApi = createScreeningApi({
     screeningService: new ScreeningService({
@@ -268,6 +306,8 @@ function createModuleHarness(input?: {
       moduleTemplateRepository,
       promptSkillRegistryRepository,
       knowledgeRepository,
+      retrievalPresetService,
+      manualReviewPolicyService,
       executionGovernanceService,
       executionTrackingService,
       jobRepository,
@@ -291,6 +331,8 @@ function createModuleHarness(input?: {
       moduleTemplateRepository,
       promptSkillRegistryRepository,
       knowledgeRepository,
+      retrievalPresetService,
+      manualReviewPolicyService,
       executionGovernanceService,
       executionTrackingService,
       jobRepository,
@@ -314,6 +356,8 @@ function createModuleHarness(input?: {
       moduleTemplateRepository,
       promptSkillRegistryRepository,
       knowledgeRepository,
+      retrievalPresetService,
+      manualReviewPolicyService,
       executionGovernanceService,
       executionTrackingService,
       jobRepository,
@@ -349,6 +393,9 @@ function createModuleHarness(input?: {
     toolGatewayService,
     toolPermissionPolicyService,
     runtimeBindingService,
+    retrievalPresetService,
+    manualReviewPolicyService,
+    harnessControlPlaneService,
     agentExecutionRepository,
     modelRoutingGovernanceRepository,
     documentAssetService,
@@ -1034,6 +1081,64 @@ async function seedWorkflowContext(input?: {
     "admin",
   );
 
+  const editingBaselineRetrievalPreset =
+    await harness.retrievalPresetService.createPreset("admin", {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      name: "Editing baseline retrieval",
+      topK: 1,
+      sectionFilters: ["discussion"],
+      riskTagFilters: ["grounding"],
+      rerankEnabled: true,
+      citationRequired: true,
+      minRetrievalScore: 0.6,
+    });
+  await harness.retrievalPresetService.activatePreset(
+    editingBaselineRetrievalPreset.id,
+    "admin",
+  );
+  const editingCandidateRetrievalPreset =
+    await harness.retrievalPresetService.createPreset("admin", {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      name: "Editing methods retrieval",
+      topK: 1,
+      sectionFilters: ["methods"],
+      riskTagFilters: ["coverage"],
+      rerankEnabled: false,
+      citationRequired: false,
+      minRetrievalScore: 0.6,
+    });
+
+  const editingBaselineManualReviewPolicy =
+    await harness.manualReviewPolicyService.createPolicy("admin", {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      name: "Editing conservative review",
+      minConfidenceThreshold: 0.8,
+      highRiskForceReview: true,
+      conflictForceReview: true,
+      insufficientKnowledgeForceReview: true,
+    });
+  await harness.manualReviewPolicyService.activatePolicy(
+    editingBaselineManualReviewPolicy.id,
+    "admin",
+  );
+  const editingCandidateManualReviewPolicy =
+    await harness.manualReviewPolicyService.createPolicy("admin", {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      name: "Editing relaxed review",
+      minConfidenceThreshold: 0.7,
+      highRiskForceReview: false,
+      conflictForceReview: false,
+      insufficientKnowledgeForceReview: false,
+    });
+
   const originalAsset = await harness.documentAssetService.createAsset({
     manuscriptId: "manuscript-1",
     assetType: "original",
@@ -1047,6 +1152,12 @@ async function seedWorkflowContext(input?: {
 
   return {
     ...harness,
+    governedEditingFixtures: {
+      baselineRetrievalPreset: editingBaselineRetrievalPreset,
+      candidateRetrievalPreset: editingCandidateRetrievalPreset,
+      baselineManualReviewPolicy: editingBaselineManualReviewPolicy,
+      candidateManualReviewPolicy: editingCandidateManualReviewPolicy,
+    },
     originalAsset,
   };
 }
@@ -1545,3 +1656,186 @@ test("proofreading produces a draft first and only advances the final pointer af
     [],
   );
 });
+
+test("harness activation changes new editing runs for the target scope and rollback restores the prior environment", async () => {
+  const {
+    editingApi,
+    screeningApi,
+    knowledgeRepository,
+    editorialRuleRepository,
+    retrievalPresetService,
+    manualReviewPolicyService,
+    harnessControlPlaneService,
+    governedEditingFixtures,
+    originalAsset,
+  } = await seedWorkflowContext();
+
+  await knowledgeRepository.save({
+    id: "knowledge-editing-methods-2",
+    title: "Methods coverage guidance",
+    canonical_text: "Expand methods coverage when trial workflow steps are underspecified.",
+    knowledge_kind: "checklist",
+    status: "approved",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["methods"],
+      risk_tags: ["coverage"],
+    },
+  });
+  await editorialRuleRepository.saveRule({
+    id: "rule-editing-manual-review-1",
+    rule_set_id: "rule-set-editing-1",
+    order_no: 10,
+    rule_object: "generic",
+    rule_type: "content",
+    execution_mode: "apply",
+    scope: {
+      sections: ["discussion"],
+      block_kind: "paragraph",
+    },
+    selector: {},
+    trigger: {
+      kind: "semantic_pattern",
+      tag: "needs_clarity",
+    },
+    action: {
+      kind: "rewrite_content",
+    },
+    authoring_payload: {},
+    confidence_policy: "high_confidence_only",
+    severity: "warning",
+    enabled: true,
+  });
+
+  const scope = {
+    module: "editing" as const,
+    manuscriptType: "clinical_study" as const,
+    templateFamilyId: "family-1",
+  };
+  const baselineResponse = await editingApi.runEditing({
+    manuscriptId: "manuscript-1",
+    parentAssetId: originalAsset.id,
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    storageKey: "runs/manuscript-1/editing/harness-baseline.docx",
+    fileName: "editing-baseline.docx",
+  });
+
+  assert.equal(
+    (await retrievalPresetService.getActivePresetForScope(scope)).id,
+    governedEditingFixtures.baselineRetrievalPreset.id,
+  );
+  assert.equal(
+    (await manualReviewPolicyService.getActivePolicyForScope(scope)).id,
+    governedEditingFixtures.baselineManualReviewPolicy.id,
+  );
+  assert.deepEqual(baselineResponse.body.knowledge_item_ids, ["knowledge-editing-1"]);
+  assert.deepEqual(readManualReviewItems(baselineResponse.body.job), [
+    {
+      ruleId: "rule-editing-manual-review-1",
+      reason: "medical_meaning_risk",
+    },
+  ]);
+
+  await harnessControlPlaneService.activateEnvironment("admin", {
+    ...scope,
+    retrievalPresetId: governedEditingFixtures.candidateRetrievalPreset.id,
+    manualReviewPolicyId:
+      governedEditingFixtures.candidateManualReviewPolicy.id,
+    reason: "Harness candidate improved editing quality.",
+  });
+
+  const activatedResponse = await editingApi.runEditing({
+    manuscriptId: "manuscript-1",
+    parentAssetId: originalAsset.id,
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    storageKey: "runs/manuscript-1/editing/harness-activated.docx",
+    fileName: "editing-activated.docx",
+  });
+
+  assert.equal(
+    (await retrievalPresetService.getActivePresetForScope(scope)).id,
+    governedEditingFixtures.candidateRetrievalPreset.id,
+  );
+  assert.equal(
+    (await manualReviewPolicyService.getActivePolicyForScope(scope)).id,
+    governedEditingFixtures.candidateManualReviewPolicy.id,
+  );
+  assert.deepEqual(activatedResponse.body.knowledge_item_ids, [
+    "knowledge-editing-1",
+    "knowledge-editing-methods-2",
+  ]);
+  assert.deepEqual(readManualReviewItems(activatedResponse.body.job), []);
+
+  const screeningResponse = await screeningApi.runScreening({
+    manuscriptId: "manuscript-1",
+    parentAssetId: originalAsset.id,
+    requestedBy: "screener-1",
+    actorRole: "screener",
+    storageKey: "runs/manuscript-1/screening/harness-isolated.md",
+    fileName: "screening-isolated.md",
+  });
+  assert.deepEqual(screeningResponse.body.knowledge_item_ids, [
+    "knowledge-screening-1",
+  ]);
+
+  await harnessControlPlaneService.rollbackEnvironment("admin", {
+    ...scope,
+    reason: "Harness rollback restored the prior editing environment.",
+  });
+
+  const rolledBackResponse = await editingApi.runEditing({
+    manuscriptId: "manuscript-1",
+    parentAssetId: originalAsset.id,
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    storageKey: "runs/manuscript-1/editing/harness-rolled-back.docx",
+    fileName: "editing-rolled-back.docx",
+  });
+
+  assert.equal(
+    (await retrievalPresetService.getActivePresetForScope(scope)).id,
+    governedEditingFixtures.baselineRetrievalPreset.id,
+  );
+  assert.equal(
+    (await manualReviewPolicyService.getActivePolicyForScope(scope)).id,
+    governedEditingFixtures.baselineManualReviewPolicy.id,
+  );
+  assert.deepEqual(rolledBackResponse.body.knowledge_item_ids, [
+    "knowledge-editing-1",
+  ]);
+  assert.deepEqual(readManualReviewItems(rolledBackResponse.body.job), [
+    {
+      ruleId: "rule-editing-manual-review-1",
+      reason: "medical_meaning_risk",
+    },
+  ]);
+});
+
+function readManualReviewItems(job: { payload?: Record<string, unknown> }): Array<{
+  ruleId: string;
+  reason: string;
+}> {
+  const value = job.payload?.manualReviewItems;
+  return Array.isArray(value)
+    ? value
+        .filter(
+          (
+            item,
+          ): item is {
+            ruleId: string;
+            reason: string;
+          } =>
+            typeof item === "object" &&
+            item !== null &&
+            typeof (item as { ruleId?: unknown }).ruleId === "string" &&
+            typeof (item as { reason?: unknown }).reason === "string",
+        )
+        .map((item) => ({
+          ruleId: item.ruleId,
+          reason: item.reason,
+        }))
+    : [];
+}

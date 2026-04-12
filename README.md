@@ -1,4 +1,4 @@
-# 医学稿件处理系统 V1
+﻿# 医学稿件处理系统 V1
 
 这是医学稿件处理系统的 V1 基础仓库。当前仓库已经具备可运行的本地 API / Web / Worker 基线，以及一条受控的 PostgreSQL 持久化 HTTP runtime。
 
@@ -183,6 +183,10 @@
   运行、迁移、备份/回滚、远程维护、密钥安全与升级流程
 - `docs/operations/release-manifest-template.md`
   staging / production 发布记录模板，覆盖 manifest 字段校验、schema/storage backup gate、migration doctor 证据、发布后验证与回滚决策
+- `docs/operations/manuscript-quality-v2-smoke-checklist.md`
+  Manuscript Quality V2 的治理验收、候选 run、激活与回滚清单
+- `docs/operations/manuscript-quality-governance-workspace.md`
+  通用风格包与医学分析包的后台维护说明，以及它们和 runtime binding、Harness 的配合流程
 - `docs/CODE_QUALITY.md`
   代码质量与注释约束
 - `docs/REVIEW_CHECKLIST.md`
@@ -314,3 +318,18 @@
 - Use `GET /api/v1/runtime-bindings/:bindingId/readiness` to inspect one specific binding, or `GET /api/v1/runtime-bindings/by-scope/:module/:manuscriptType/:templateFamilyId/active-readiness` to inspect the binding that governed mainline execution would use for that scope right now.
 - The report is additive and fail-open. It explains missing, inactive, or incompatible runtime/prompt/skill/policy/check/suite references plus execution-profile drift, but it does not activate, archive, route, repair, or auto-switch anything.
 - This slice serves execution safety for `screening`, `editing`, and `proofreading` without reopening `Phase 10`, adding a new workbench, or turning runtime readiness into a startup or execution hard gate.
+
+## Harness Control Plane P0
+
+- `Harness Control Plane` is now the operator surface for changing the live governed AI environment of one scope. It is not a decorative parameter dashboard.
+- The control plane works on the full five-part environment for one scope:
+  - execution profile
+  - runtime binding
+  - model routing policy version
+  - retrieval preset
+  - manual review policy
+- Candidate selections stay non-production until an operator previews them, launches candidate-bound verification, and explicitly activates them.
+- After activation, new governed manuscript work for that scope resolves against the promoted environment. This includes live retrieval behavior and live manual-review staging.
+- Rollback restores the previous approved scope environment and affects only new work created after the rollback.
+- `Evaluation Workbench` remains an evidence-first comparison surface. It does not activate policy, switch runtime, or mutate the live governed environment by itself.
+

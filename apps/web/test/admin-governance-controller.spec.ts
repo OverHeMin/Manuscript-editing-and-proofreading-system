@@ -3081,6 +3081,394 @@ test("admin governance controller updates existing model bindings and reloads co
   );
 });
 
+test("admin governance controller drives harness control plane scope load preview activation rollback and candidate-bound runs", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/harness-control-plane/scopes/editing/clinical_study/family-1"
+      ) {
+        return {
+          status: 200,
+          body: {
+            active_environment: {
+              execution_profile: { id: "profile-active-1" },
+              runtime_binding: { id: "binding-active-1" },
+              model_routing_policy_version: { id: "routing-active-1" },
+              retrieval_preset: { id: "retrieval-active-1" },
+              manual_review_policy: { id: "manual-review-active-1" },
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/retrieval-presets/by-scope/editing/clinical_study/family-1"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "retrieval-active-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              name: "Editing retrieval active",
+              top_k: 8,
+              rerank_enabled: true,
+              citation_required: true,
+              status: "active",
+              version: 1,
+            },
+            {
+              id: "retrieval-preview-2",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              name: "Editing retrieval preview",
+              top_k: 12,
+              rerank_enabled: true,
+              citation_required: true,
+              status: "draft",
+              version: 2,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manual-review-policies/by-scope/editing/clinical_study/family-1"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "manual-review-active-1",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              name: "Editing review active",
+              min_confidence_threshold: 0.82,
+              high_risk_force_review: true,
+              conflict_force_review: true,
+              insufficient_knowledge_force_review: true,
+              status: "active",
+              version: 1,
+            },
+            {
+              id: "manual-review-preview-2",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              template_family_id: "family-1",
+              name: "Editing review preview",
+              min_confidence_threshold: 0.9,
+              high_risk_force_review: true,
+              conflict_force_review: true,
+              insufficient_knowledge_force_review: true,
+              status: "draft",
+              version: 2,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/harness-control-plane/preview"
+      ) {
+        return {
+          status: 200,
+          body: {
+            active_environment: {
+              execution_profile: { id: "profile-active-1" },
+              runtime_binding: { id: "binding-active-1" },
+              model_routing_policy_version: { id: "routing-active-1" },
+              retrieval_preset: { id: "retrieval-active-1" },
+              manual_review_policy: { id: "manual-review-active-1" },
+            },
+            candidate_environment: {
+              execution_profile: { id: "profile-preview-2" },
+              runtime_binding: { id: "binding-preview-2" },
+              model_routing_policy_version: { id: "routing-preview-2" },
+              retrieval_preset: { id: "retrieval-preview-2" },
+              manual_review_policy: { id: "manual-review-preview-2" },
+            },
+            diff: {
+              changed_components: [
+                "execution_profile",
+                "runtime_binding",
+                "model_routing_policy_version",
+                "retrieval_preset",
+                "manual_review_policy",
+              ],
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/harness-control-plane/activate"
+      ) {
+        return {
+          status: 200,
+          body: {
+            execution_profile: { id: "profile-preview-2" },
+            runtime_binding: { id: "binding-preview-2" },
+            model_routing_policy_version: { id: "routing-preview-2" },
+            retrieval_preset: { id: "retrieval-preview-2" },
+            manual_review_policy: { id: "manual-review-preview-2" },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/harness-control-plane/rollback"
+      ) {
+        return {
+          status: 200,
+          body: {
+            execution_profile: { id: "profile-active-1" },
+            runtime_binding: { id: "binding-active-1" },
+            model_routing_policy_version: { id: "routing-active-1" },
+            retrieval_preset: { id: "retrieval-active-1" },
+            manual_review_policy: { id: "manual-review-active-1" },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/verification-ops/evaluation-runs"
+      ) {
+        return {
+          status: 201,
+          body: {
+            id: "run-harness-1",
+            suite_id: "suite-1",
+            sample_set_id: "sample-set-1",
+            candidate_binding: {
+              lane: "candidate",
+              execution_profile_id: "profile-preview-2",
+              runtime_binding_id: "binding-preview-2",
+              model_routing_policy_version_id: "routing-preview-2",
+              retrieval_preset_id: "retrieval-preview-2",
+              manual_review_policy_id: "manual-review-preview-2",
+              model_id: "model-preview-2",
+              runtime_id: "runtime-preview-2",
+              prompt_template_id: "prompt-preview-2",
+              skill_package_ids: ["skill-preview-2"],
+              module_template_id: "template-preview-2",
+            },
+            status: "queued",
+            evidence_ids: [],
+            started_at: "2026-04-10T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const harnessController = controller as typeof controller & {
+    loadHarnessScope: (input: {
+      module: "editing";
+      manuscriptType: "clinical_study";
+      templateFamilyId: "family-1";
+    }) => Promise<{
+      activeEnvironment: {
+        execution_profile: { id: string };
+        retrieval_preset: { id: string };
+        manual_review_policy: { id: string };
+      };
+      retrievalPresets: Array<{ id: string }>;
+      manualReviewPolicies: Array<{ id: string }>;
+    }>;
+    previewHarnessEnvironment: (input: {
+      module: "editing";
+      manuscriptType: "clinical_study";
+      templateFamilyId: "family-1";
+      executionProfileId: "profile-preview-2";
+      runtimeBindingId: "binding-preview-2";
+      modelRoutingPolicyVersionId: "routing-preview-2";
+      retrievalPresetId: "retrieval-preview-2";
+      manualReviewPolicyId: "manual-review-preview-2";
+    }) => Promise<{
+      candidate_environment: {
+        execution_profile: { id: string };
+        retrieval_preset: { id: string };
+        manual_review_policy: { id: string };
+      };
+      diff: {
+        changed_components: string[];
+      };
+    }>;
+    activateHarnessEnvironment: (input: {
+      actorRole: "admin";
+      module: "editing";
+      manuscriptType: "clinical_study";
+      templateFamilyId: "family-1";
+      executionProfileId: "profile-preview-2";
+      runtimeBindingId: "binding-preview-2";
+      modelRoutingPolicyVersionId: "routing-preview-2";
+      retrievalPresetId: "retrieval-preview-2";
+      manualReviewPolicyId: "manual-review-preview-2";
+      reason: "Promote better editing environment";
+    }) => Promise<{
+      execution_profile: { id: string };
+    }>;
+    rollbackHarnessEnvironment: (input: {
+      actorRole: "admin";
+      module: "editing";
+      manuscriptType: "clinical_study";
+      templateFamilyId: "family-1";
+      reason: "Undo regression";
+    }) => Promise<{
+      execution_profile: { id: string };
+    }>;
+    createHarnessRun: (input: {
+      actorRole: "admin";
+      suiteId: "suite-1";
+      sampleSetId: "sample-set-1";
+      candidateBinding: {
+        lane: "candidate";
+        executionProfileId: "profile-preview-2";
+        runtimeBindingId: "binding-preview-2";
+        modelRoutingPolicyVersionId: "routing-preview-2";
+        retrievalPresetId: "retrieval-preview-2";
+        manualReviewPolicyId: "manual-review-preview-2";
+        modelId: "model-preview-2";
+        runtimeId: "runtime-preview-2";
+        promptTemplateId: "prompt-preview-2";
+        skillPackageIds: ["skill-preview-2"];
+        moduleTemplateId: "template-preview-2";
+      };
+    }) => Promise<{
+      id: string;
+      candidate_binding?: {
+        retrieval_preset_id?: string;
+        manual_review_policy_id?: string;
+      };
+    }>;
+  };
+
+  const scope = await harnessController.loadHarnessScope({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+  });
+  const preview = await harnessController.previewHarnessEnvironment({
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    executionProfileId: "profile-preview-2",
+    runtimeBindingId: "binding-preview-2",
+    modelRoutingPolicyVersionId: "routing-preview-2",
+    retrievalPresetId: "retrieval-preview-2",
+    manualReviewPolicyId: "manual-review-preview-2",
+  });
+  const activated = await harnessController.activateHarnessEnvironment({
+    actorRole: "admin",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    executionProfileId: "profile-preview-2",
+    runtimeBindingId: "binding-preview-2",
+    modelRoutingPolicyVersionId: "routing-preview-2",
+    retrievalPresetId: "retrieval-preview-2",
+    manualReviewPolicyId: "manual-review-preview-2",
+    reason: "Promote better editing environment",
+  });
+  const rolledBack = await harnessController.rollbackHarnessEnvironment({
+    actorRole: "admin",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    reason: "Undo regression",
+  });
+  const run = await harnessController.createHarnessRun({
+    actorRole: "admin",
+    suiteId: "suite-1",
+    sampleSetId: "sample-set-1",
+    candidateBinding: {
+      lane: "candidate",
+      executionProfileId: "profile-preview-2",
+      runtimeBindingId: "binding-preview-2",
+      modelRoutingPolicyVersionId: "routing-preview-2",
+      retrievalPresetId: "retrieval-preview-2",
+      manualReviewPolicyId: "manual-review-preview-2",
+      modelId: "model-preview-2",
+      runtimeId: "runtime-preview-2",
+      promptTemplateId: "prompt-preview-2",
+      skillPackageIds: ["skill-preview-2"],
+      moduleTemplateId: "template-preview-2",
+    },
+  });
+
+  assert.equal(scope.activeEnvironment.execution_profile.id, "profile-active-1");
+  assert.equal(scope.retrievalPresets[1]?.id, "retrieval-preview-2");
+  assert.equal(scope.manualReviewPolicies[1]?.id, "manual-review-preview-2");
+  assert.equal(preview.candidate_environment.execution_profile.id, "profile-preview-2");
+  assert.deepEqual(preview.diff.changed_components, [
+    "execution_profile",
+    "runtime_binding",
+    "model_routing_policy_version",
+    "retrieval_preset",
+    "manual_review_policy",
+  ]);
+  assert.equal(activated.execution_profile.id, "profile-preview-2");
+  assert.equal(rolledBack.execution_profile.id, "profile-active-1");
+  assert.equal(run.id, "run-harness-1");
+  assert.equal(run.candidate_binding?.retrieval_preset_id, "retrieval-preview-2");
+  assert.equal(
+    run.candidate_binding?.manual_review_policy_id,
+    "manual-review-preview-2",
+  );
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "/api/v1/harness-control-plane/scopes/editing/clinical_study/family-1",
+      "/api/v1/retrieval-presets/by-scope/editing/clinical_study/family-1",
+      "/api/v1/manual-review-policies/by-scope/editing/clinical_study/family-1",
+      "/api/v1/harness-control-plane/preview",
+      "/api/v1/harness-control-plane/activate",
+      "/api/v1/harness-control-plane/rollback",
+      "/api/v1/verification-ops/evaluation-runs",
+    ],
+  );
+  assert.deepEqual(requests[6]?.body, {
+    actorRole: "admin",
+    input: {
+      suiteId: "suite-1",
+      sampleSetId: "sample-set-1",
+      candidateBinding: {
+        lane: "candidate",
+        executionProfileId: "profile-preview-2",
+        runtimeBindingId: "binding-preview-2",
+        modelRoutingPolicyVersionId: "routing-preview-2",
+        retrievalPresetId: "retrieval-preview-2",
+        manualReviewPolicyId: "manual-review-preview-2",
+        modelId: "model-preview-2",
+        runtimeId: "runtime-preview-2",
+        promptTemplateId: "prompt-preview-2",
+        skillPackageIds: ["skill-preview-2"],
+        moduleTemplateId: "template-preview-2",
+      },
+    },
+  });
+});
+
 function createEmptyAgentToolingListResponse<TResponse>(url: string) {
   if (url === routingGovernanceOverviewUrl) {
     return {

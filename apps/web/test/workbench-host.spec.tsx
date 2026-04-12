@@ -245,6 +245,22 @@ test("navigation menu renders a simplified user work area", async () => {
   assert.doesNotMatch(html, /\u89c4\u5219\u4e2d\u5fc3/u);
 });
 
+test("admin navigation labels the admin console entry as Harness Control Plane while keeping the route id stable", async () => {
+  const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
+    () => null,
+  );
+
+  assert.ok(navigationModule, "expected workbench-navigation module to exist");
+
+  const groups = navigationModule.buildWorkbenchNavigationGroups(
+    buildSession("admin").availableWorkbenchEntries,
+  );
+  const harnessEntry = groups[2]?.items.find((item: { id: string }) => item.id === "admin-console");
+
+  assert.equal(harnessEntry?.id, "admin-console");
+  assert.equal(harnessEntry?.label, "Harness Control Plane");
+});
+
 test("workbench shell header renders the product brand and active desk summary", async () => {
   const headerModule = await import("../src/app/workbench-shell-header.tsx").catch(
     () => null,

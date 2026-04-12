@@ -7,6 +7,10 @@ import type { AiProviderConnectionRecord } from "../ai-provider-connections/ai-p
 import type { AiProviderConnectionRepository } from "../ai-provider-connections/ai-provider-connection-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
+import {
+  ActiveManualReviewPolicyNotFoundError,
+} from "../manual-review-policies/manual-review-policy-service.ts";
+import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type { ModelRoutingGovernanceService } from "../model-routing-governance/model-routing-governance-service.ts";
 import type {
   ModelRegistryRepository,
@@ -15,6 +19,11 @@ import type {
 import type { ModelRegistryRecord } from "../model-registry/model-record.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
 import type { SkillPackageRecord } from "../prompt-skill-registry/prompt-skill-record.ts";
+import {
+  ActiveRetrievalPresetNotFoundError,
+} from "../retrieval-presets/retrieval-preset-service.ts";
+import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
+import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
@@ -31,6 +40,11 @@ export interface ResolveExecutionBundleInput {
   module: TemplateModule;
   manuscriptType: ManuscriptType;
   templateFamilyId: string;
+  executionProfileId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  retrievalPresetId?: string;
+  manualReviewPolicyId?: string;
 }
 
 export interface ExecutionResolutionServiceOptions {
@@ -42,6 +56,18 @@ export interface ExecutionResolutionServiceOptions {
   modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
   aiProviderConnectionRepository?: AiProviderConnectionRepository;
   modelRoutingGovernanceService?: ModelRoutingGovernanceService;
+  runtimeBindingService?: Pick<
+    RuntimeBindingService,
+    "getActiveBindingForScope" | "getBinding"
+  >;
+  retrievalPresetService?: Pick<
+    RetrievalPresetService,
+    "getActivePresetForScope" | "getPreset"
+  >;
+  manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope" | "getPolicy"
+  >;
   runtimeBindingReadinessService?: Pick<
     RuntimeBindingReadinessService,
     "getActiveBindingReadinessForScope"
@@ -78,6 +104,15 @@ export class ExecutionResolutionKnowledgeItemNotFoundError extends Error {
   }
 }
 
+export class ExecutionResolutionScopeMismatchError extends Error {
+  constructor(assetKind: string, assetId: string, input: ResolveExecutionBundleInput) {
+    super(
+      `Resolved execution asset ${assetKind} ${assetId} does not belong to scope ${formatResolutionScope(input)}.`,
+    );
+    this.name = "ExecutionResolutionScopeMismatchError";
+  }
+}
+
 export class ExecutionResolutionService {
   private readonly executionGovernanceService: ExecutionGovernanceService;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
@@ -87,6 +122,18 @@ export class ExecutionResolutionService {
   private readonly modelRoutingPolicyRepository: ModelRoutingPolicyRepository;
   private readonly aiProviderConnectionRepository?: AiProviderConnectionRepository;
   private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
+  private readonly runtimeBindingService?: Pick<
+    RuntimeBindingService,
+    "getActiveBindingForScope" | "getBinding"
+  >;
+  private readonly retrievalPresetService?: Pick<
+    RetrievalPresetService,
+    "getActivePresetForScope" | "getPreset"
+  >;
+  private readonly manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope" | "getPolicy"
+  >;
   private readonly runtimeBindingReadinessService?: Pick<
     RuntimeBindingReadinessService,
     "getActiveBindingReadinessForScope"
@@ -101,17 +148,30 @@ export class ExecutionResolutionService {
     this.modelRoutingPolicyRepository = options.modelRoutingPolicyRepository;
     this.aiProviderConnectionRepository = options.aiProviderConnectionRepository;
     this.modelRoutingGovernanceService = options.modelRoutingGovernanceService;
+    this.runtimeBindingService = options.runtimeBindingService;
+    this.retrievalPresetService = options.retrievalPresetService;
+    this.manualReviewPolicyService = options.manualReviewPolicyService;
     this.runtimeBindingReadinessService = options.runtimeBindingReadinessService;
   }
 
   async resolveExecutionBundle(
     input: ResolveExecutionBundleInput,
   ): Promise<ResolvedExecutionBundleRecord> {
-    const profile = await this.executionGovernanceService.resolveActiveProfile({
-      module: input.module,
-      manuscriptType: input.manuscriptType,
-      templateFamilyId: input.templateFamilyId,
-    });
+    const profile = input.executionProfileId
+      ? this.assertExecutionProfileScope(
+          await this.executionGovernanceService.getProfile(input.executionProfileId),
+          input,
+        )
+      : await this.executionGovernanceService.resolveActiveProfile({
+          module: input.module,
+          manuscriptType: input.manuscriptType,
+          templateFamilyId: input.templateFamilyId,
+        });
+
+    const runtimeBinding = await this.resolveRuntimeBinding(input);
+    const modelRoutingPolicyVersion = await this.resolveModelRoutingPolicyVersion(input);
+    const retrievalPreset = await this.resolveRetrievalPreset(input);
+    const manualReviewPolicy = await this.resolveManualReviewPolicy(input);
 
     const moduleTemplate = await this.moduleTemplateRepository.findById(
       profile.module_template_id,
@@ -151,7 +211,10 @@ export class ExecutionResolutionService {
     const { ruleSet, rules } =
       await this.executionGovernanceService.resolvePublishedRuleSource(profile);
 
-    const { model, source, fallbackChain } = await this.resolveModel(profile);
+    const { model, source, fallbackChain } = await this.resolveModel(
+      profile,
+      modelRoutingPolicyVersion,
+    );
     const {
       resolvedConnection,
       warnings,
@@ -187,6 +250,12 @@ export class ExecutionResolutionService {
 
     return {
       profile,
+      ...(runtimeBinding ? { runtime_binding: runtimeBinding } : {}),
+      ...(modelRoutingPolicyVersion
+        ? { model_routing_policy_version: modelRoutingPolicyVersion }
+        : {}),
+      ...(retrievalPreset ? { retrieval_preset: retrievalPreset } : {}),
+      ...(manualReviewPolicy ? { manual_review_policy: manualReviewPolicy } : {}),
       module_template: moduleTemplate,
       rule_set: ruleSet,
       rules,
@@ -238,11 +307,30 @@ export class ExecutionResolutionService {
     module: TemplateModule;
     module_template_id: string;
     template_family_id: string;
+  }, overridePolicyVersion?: {
+    id: string;
+    primary_model_id: string;
+    fallback_model_ids: string[];
   }): Promise<{
     model: ModelRegistryRecord;
     source: ExecutionResolutionModelSource;
     fallbackChain: ModelRegistryRecord[];
   }> {
+    if (overridePolicyVersion) {
+      const { model, fallbackChain } = await this.requireGovernedPolicyModel(
+        overridePolicyVersion.primary_model_id,
+        profile.module,
+        profile.template_family_id,
+        overridePolicyVersion.fallback_model_ids,
+      );
+
+      return {
+        model,
+        source: "template_family_policy",
+        fallbackChain,
+      };
+    }
+
     if (this.modelRoutingGovernanceService) {
       const templateFamilyPolicy =
         await this.modelRoutingGovernanceService.findActivePolicy(
@@ -470,6 +558,250 @@ export class ExecutionResolutionService {
       providerReadiness: buildProviderReadiness(connection),
     };
   }
+
+  private async resolveRuntimeBinding(
+    input: ResolveExecutionBundleInput,
+  ): Promise<ResolvedExecutionBundleRecord["runtime_binding"]> {
+    if (!this.runtimeBindingService) {
+      if (input.runtimeBindingId) {
+        throw new ExecutionResolutionProfileAssetNotFoundError(
+          "runtime_binding_service",
+          "unavailable",
+        );
+      }
+
+      return undefined;
+    }
+
+    if (input.runtimeBindingId) {
+      return this.assertRuntimeBindingScope(
+        await this.runtimeBindingService.getBinding(input.runtimeBindingId),
+        input,
+      );
+    }
+
+    return this.runtimeBindingService.getActiveBindingForScope({
+          module: input.module,
+          manuscriptType: input.manuscriptType,
+          templateFamilyId: input.templateFamilyId,
+        });
+  }
+
+  private async resolveModelRoutingPolicyVersion(
+    input: ResolveExecutionBundleInput,
+  ): Promise<ResolvedExecutionBundleRecord["model_routing_policy_version"]> {
+    if (!this.modelRoutingGovernanceService) {
+      if (input.modelRoutingPolicyVersionId) {
+        throw new ExecutionResolutionProfileAssetNotFoundError(
+          "model_routing_policy_version_service",
+          "unavailable",
+        );
+      }
+
+      return undefined;
+    }
+
+    if (input.modelRoutingPolicyVersionId) {
+      const policies = await this.modelRoutingGovernanceService.listPolicies();
+      const version = policies
+        .flatMap((policy) => policy.versions)
+        .find((record) => record.id === input.modelRoutingPolicyVersionId);
+      if (!version) {
+        throw new ExecutionResolutionProfileAssetNotFoundError(
+          "model_routing_policy_version",
+          input.modelRoutingPolicyVersionId,
+        );
+      }
+
+      return this.assertModelRoutingPolicyVersionScope(version, input);
+    }
+
+    const templateFamilyPolicy =
+      await this.modelRoutingGovernanceService.findActivePolicy(
+        "template_family",
+        input.templateFamilyId,
+      );
+    if (templateFamilyPolicy?.active_version) {
+      return templateFamilyPolicy.active_version;
+    }
+
+    const modulePolicy = await this.modelRoutingGovernanceService.findActivePolicy(
+      "module",
+      input.module,
+    );
+    if (modulePolicy?.active_version) {
+      return modulePolicy.active_version;
+    }
+
+    return undefined;
+  }
+
+  private async resolveRetrievalPreset(
+    input: ResolveExecutionBundleInput,
+  ): Promise<ResolvedExecutionBundleRecord["retrieval_preset"]> {
+    if (!this.retrievalPresetService) {
+      if (input.retrievalPresetId) {
+        throw new ExecutionResolutionProfileAssetNotFoundError(
+          "retrieval_preset_service",
+          "unavailable",
+        );
+      }
+
+      return undefined;
+    }
+
+    if (input.retrievalPresetId) {
+      return this.assertRetrievalPresetScope(
+        await this.retrievalPresetService.getPreset(input.retrievalPresetId),
+        input,
+      );
+    }
+
+    try {
+      return await this.retrievalPresetService.getActivePresetForScope({
+          module: input.module,
+          manuscriptType: input.manuscriptType,
+          templateFamilyId: input.templateFamilyId,
+        });
+    } catch (error) {
+      if (error instanceof ActiveRetrievalPresetNotFoundError) {
+        return undefined;
+      }
+
+      throw error;
+    }
+  }
+
+  private async resolveManualReviewPolicy(
+    input: ResolveExecutionBundleInput,
+  ): Promise<ResolvedExecutionBundleRecord["manual_review_policy"]> {
+    if (!this.manualReviewPolicyService) {
+      if (input.manualReviewPolicyId) {
+        throw new ExecutionResolutionProfileAssetNotFoundError(
+          "manual_review_policy_service",
+          "unavailable",
+        );
+      }
+
+      return undefined;
+    }
+
+    if (input.manualReviewPolicyId) {
+      return this.assertManualReviewPolicyScope(
+        await this.manualReviewPolicyService.getPolicy(input.manualReviewPolicyId),
+        input,
+      );
+    }
+
+    try {
+      return await this.manualReviewPolicyService.getActivePolicyForScope({
+          module: input.module,
+          manuscriptType: input.manuscriptType,
+          templateFamilyId: input.templateFamilyId,
+        });
+    } catch (error) {
+      if (error instanceof ActiveManualReviewPolicyNotFoundError) {
+        return undefined;
+      }
+
+      throw error;
+    }
+  }
+
+  private assertExecutionProfileScope(
+    profile: Awaited<ReturnType<ExecutionGovernanceService["getProfile"]>>,
+    input: ResolveExecutionBundleInput,
+  ): Awaited<ReturnType<ExecutionGovernanceService["getProfile"]>> {
+    if (
+      profile.module !== input.module ||
+      profile.manuscript_type !== input.manuscriptType ||
+      profile.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "execution_profile",
+        profile.id,
+        input,
+      );
+    }
+
+    return profile;
+  }
+
+  private assertRuntimeBindingScope(
+    binding: NonNullable<ResolvedExecutionBundleRecord["runtime_binding"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["runtime_binding"]> {
+    if (
+      binding.module !== input.module ||
+      binding.manuscript_type !== input.manuscriptType ||
+      binding.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "runtime_binding",
+        binding.id,
+        input,
+      );
+    }
+
+    return binding;
+  }
+
+  private assertModelRoutingPolicyVersionScope(
+    version: NonNullable<ResolvedExecutionBundleRecord["model_routing_policy_version"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["model_routing_policy_version"]> {
+    const isCompatible =
+      (version.scope_kind === "template_family" &&
+        version.scope_value === input.templateFamilyId) ||
+      (version.scope_kind === "module" && version.scope_value === input.module);
+    if (!isCompatible) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "model_routing_policy_version",
+        version.id,
+        input,
+      );
+    }
+
+    return version;
+  }
+
+  private assertRetrievalPresetScope(
+    preset: NonNullable<ResolvedExecutionBundleRecord["retrieval_preset"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["retrieval_preset"]> {
+    if (
+      preset.module !== input.module ||
+      preset.manuscript_type !== input.manuscriptType ||
+      preset.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "retrieval_preset",
+        preset.id,
+        input,
+      );
+    }
+
+    return preset;
+  }
+
+  private assertManualReviewPolicyScope(
+    policy: NonNullable<ResolvedExecutionBundleRecord["manual_review_policy"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["manual_review_policy"]> {
+    if (
+      policy.module !== input.module ||
+      policy.manuscript_type !== input.manuscriptType ||
+      policy.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "manual_review_policy",
+        policy.id,
+        input,
+      );
+    }
+
+    return policy;
+  }
 }
 
 function summarizeConnection(
@@ -563,6 +895,10 @@ function createWarning(
         message: label,
       };
   }
+}
+
+function formatResolutionScope(input: ResolveExecutionBundleInput): string {
+  return `${input.module}/${input.manuscriptType}/${input.templateFamilyId}`;
 }
 
 function createProviderIssue(

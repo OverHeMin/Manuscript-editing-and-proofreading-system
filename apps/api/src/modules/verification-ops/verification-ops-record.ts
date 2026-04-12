@@ -102,10 +102,16 @@ export interface EvaluationSuiteRecord {
 
 export interface FrozenExperimentBindingRecord {
   lane: FrozenExperimentLane;
+  execution_profile_id?: string;
+  runtime_binding_id?: string;
+  model_routing_policy_version_id?: string;
+  retrieval_preset_id?: string;
+  manual_review_policy_id?: string;
   model_id: string;
   runtime_id: string;
   prompt_template_id: string;
   skill_package_ids: string[];
+  quality_package_version_ids?: string[];
   module_template_id: string;
 }
 

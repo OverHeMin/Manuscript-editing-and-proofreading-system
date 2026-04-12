@@ -5,10 +5,16 @@ import type {
 
 export interface FrozenExperimentBindingInput {
   lane: FrozenExperimentBindingRecord["lane"];
+  executionProfileId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  retrievalPresetId?: string;
+  manualReviewPolicyId?: string;
   modelId: string;
   runtimeId: string;
   promptTemplateId: string;
   skillPackageIds: string[];
+  qualityPackageVersionIds?: string[];
   moduleTemplateId: string;
 }
 
@@ -39,7 +45,7 @@ export function freezeExperimentBindings(input: {
 
   if (input.suite.supports_ab_comparison && diffCount !== 1) {
     throw new EvaluationExperimentBindingError(
-      `Evaluation suite ${input.suite.id} requires exactly one primary A/B difference, received ${diffCount}.`,
+      `Evaluation suite ${input.suite.id} requires exactly one primary A/B difference.`,
     );
   }
 
@@ -67,6 +73,26 @@ function freezeBinding(
 
   return {
     lane: input.lane,
+    ...withOptionalField(
+      "execution_profile_id",
+      optionalValue(input.executionProfileId),
+    ),
+    ...withOptionalField(
+      "runtime_binding_id",
+      optionalValue(input.runtimeBindingId),
+    ),
+    ...withOptionalField(
+      "model_routing_policy_version_id",
+      optionalValue(input.modelRoutingPolicyVersionId),
+    ),
+    ...withOptionalField(
+      "retrieval_preset_id",
+      optionalValue(input.retrievalPresetId),
+    ),
+    ...withOptionalField(
+      "manual_review_policy_id",
+      optionalValue(input.manualReviewPolicyId),
+    ),
     model_id: requireValue(input.modelId, `${expectedLane}.modelId`),
     runtime_id: requireValue(input.runtimeId, `${expectedLane}.runtimeId`),
     prompt_template_id: requireValue(
@@ -76,6 +102,13 @@ function freezeBinding(
     skill_package_ids: dedupePreserveOrder(
       input.skillPackageIds.map((value) =>
         requireValue(value, `${expectedLane}.skillPackageIds[]`),
+      ),
+    ),
+    ...withOptionalField(
+      "quality_package_version_ids",
+      optionalOrderedValues(
+        input.qualityPackageVersionIds,
+        `${expectedLane}.qualityPackageVersionIds[]`,
       ),
     ),
     module_template_id: requireValue(
@@ -95,12 +128,52 @@ function requireValue(value: string, label: string): string {
   return value;
 }
 
+function optionalValue(value: string | undefined): string | undefined {
+  return value?.trim().length ? value.trim() : undefined;
+}
+
+function optionalOrderedValues(
+  values: string[] | undefined,
+  label: string,
+): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  return dedupePreserveOrder(values.map((value) => requireValue(value, label)));
+}
+
 function countPrimaryDiffs(
   baselineBinding: FrozenExperimentBindingRecord,
   candidateBinding: FrozenExperimentBindingRecord,
 ): number {
   let diffCount = 0;
 
+  if (
+    baselineBinding.execution_profile_id !== candidateBinding.execution_profile_id
+  ) {
+    diffCount += 1;
+  }
+  if (baselineBinding.runtime_binding_id !== candidateBinding.runtime_binding_id) {
+    diffCount += 1;
+  }
+  if (
+    baselineBinding.model_routing_policy_version_id !==
+    candidateBinding.model_routing_policy_version_id
+  ) {
+    diffCount += 1;
+  }
+  if (
+    baselineBinding.retrieval_preset_id !== candidateBinding.retrieval_preset_id
+  ) {
+    diffCount += 1;
+  }
+  if (
+    baselineBinding.manual_review_policy_id !==
+    candidateBinding.manual_review_policy_id
+  ) {
+    diffCount += 1;
+  }
   if (baselineBinding.model_id !== candidateBinding.model_id) {
     diffCount += 1;
   }
@@ -121,12 +194,27 @@ function countPrimaryDiffs(
     diffCount += 1;
   }
   if (
+    !sameOrderedIds(
+      baselineBinding.quality_package_version_ids ?? [],
+      candidateBinding.quality_package_version_ids ?? [],
+    )
+  ) {
+    diffCount += 1;
+  }
+  if (
     baselineBinding.module_template_id !== candidateBinding.module_template_id
   ) {
     diffCount += 1;
   }
 
   return diffCount;
+}
+
+function withOptionalField<TKey extends keyof FrozenExperimentBindingRecord>(
+  key: TKey,
+  value: FrozenExperimentBindingRecord[TKey] | undefined,
+): Partial<FrozenExperimentBindingRecord> {
+  return value === undefined ? {} : { [key]: value };
 }
 
 function sameOrderedIds(left: string[], right: string[]): boolean {

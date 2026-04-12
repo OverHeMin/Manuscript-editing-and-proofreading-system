@@ -13,7 +13,9 @@ import type { KnowledgeRetrievalRepository } from "../knowledge-retrieval/knowle
 import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { LearningCandidateRepository } from "../learning/learning-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
+import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
@@ -194,6 +196,11 @@ export interface GovernedRetrievalResolverDependencies {
   executionGovernanceService: ExecutionGovernanceService;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   aiGatewayService: AiGatewayService;
+  retrievalPresetService?: Pick<RetrievalPresetService, "getActivePresetForScope">;
+  manualReviewPolicyService?: Pick<
+    ManualReviewPolicyService,
+    "getActivePolicyForScope"
+  >;
   sandboxProfileService: SandboxProfileService;
   agentProfileService: AgentProfileService;
   agentRuntimeService: AgentRuntimeService;
@@ -1229,6 +1236,10 @@ export class KnowledgeService {
       knowledgeRepository: this.repository,
       aiGatewayService:
         this.governedRetrievalResolverDependencies.aiGatewayService,
+      retrievalPresetService:
+        this.governedRetrievalResolverDependencies.retrievalPresetService,
+      manualReviewPolicyService:
+        this.governedRetrievalResolverDependencies.manualReviewPolicyService,
       sandboxProfileService:
         this.governedRetrievalResolverDependencies.sandboxProfileService,
       agentProfileService:

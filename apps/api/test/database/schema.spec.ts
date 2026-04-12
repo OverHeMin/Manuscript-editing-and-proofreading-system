@@ -341,6 +341,14 @@ const expectedTableColumns: Record<string, string[]> = {
     "result_summary",
     "created_at",
   ],
+  harness_environment_rollbacks: [
+    "id",
+    "module",
+    "manuscript_type",
+    "template_family_id",
+    "snapshot",
+    "created_at",
+  ],
   prompt_templates: [
     "id",
     "name",
@@ -442,9 +450,11 @@ const expectedTableColumns: Record<string, string[]> = {
     "skill_package_versions",
     "model_id",
     "model_version",
+    "quality_packages",
     "knowledge_item_ids",
     "created_asset_ids",
     "agent_execution_log_id",
+    "quality_findings_summary",
     "draft_snapshot_id",
     "created_at",
   ],
@@ -554,6 +564,7 @@ const expectedTableColumns: Record<string, string[]> = {
     "tool_permission_policy_id",
     "prompt_template_id",
     "skill_package_ids",
+    "quality_package_version_ids",
     "execution_profile_id",
     "verification_check_profile_ids",
     "evaluation_suite_ids",
@@ -669,6 +680,7 @@ const expectedIndexes = [
   "harness_integration_feature_flag_changes_flag_key_created_at_id",
   "harness_execution_audits_adapter_created_at_idx",
   "harness_execution_audits_dataset_created_at_idx",
+  "harness_environment_rollbacks_scope_created_at_idx",
 ];
 
 const expectedRoleKeys = [
@@ -962,6 +974,11 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0031_knowledge_duplicate_detection_acknowledgements.sql",
       "0032_ai_provider_control_plane.sql",
       "0033_knowledge_library_rich_space.sql",
+      "0034_harness_control_plane_p0.sql",
+      "0035_harness_control_plane_rollback_history.sql",
+      "0036_execution_snapshot_quality_findings_summary.sql",
+      "0037_manuscript_quality_package_governance.sql",
+      "0038_manuscript_quality_runtime_refs.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1528,7 +1545,12 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
             '0030_knowledge_library_v1_revision_governance.sql',
             '0031_knowledge_duplicate_detection_acknowledgements.sql',
             '0032_ai_provider_control_plane.sql',
-            '0033_knowledge_library_rich_space.sql'
+            '0033_knowledge_library_rich_space.sql',
+            '0034_harness_control_plane_p0.sql',
+            '0035_harness_control_plane_rollback_history.sql',
+            '0036_execution_snapshot_quality_findings_summary.sql',
+            '0037_manuscript_quality_package_governance.sql',
+            '0038_manuscript_quality_runtime_refs.sql'
           )
           order by version
         `,
@@ -1559,6 +1581,34 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
         {
           version: "0033_knowledge_library_rich_space.sql",
           checksum: getMigrationChecksum("0033_knowledge_library_rich_space.sql"),
+        },
+        {
+          version: "0034_harness_control_plane_p0.sql",
+          checksum: getMigrationChecksum("0034_harness_control_plane_p0.sql"),
+        },
+        {
+          version: "0035_harness_control_plane_rollback_history.sql",
+          checksum: getMigrationChecksum(
+            "0035_harness_control_plane_rollback_history.sql",
+          ),
+        },
+        {
+          version: "0036_execution_snapshot_quality_findings_summary.sql",
+          checksum: getMigrationChecksum(
+            "0036_execution_snapshot_quality_findings_summary.sql",
+          ),
+        },
+        {
+          version: "0037_manuscript_quality_package_governance.sql",
+          checksum: getMigrationChecksum(
+            "0037_manuscript_quality_package_governance.sql",
+          ),
+        },
+        {
+          version: "0038_manuscript_quality_runtime_refs.sql",
+          checksum: getMigrationChecksum(
+            "0038_manuscript_quality_runtime_refs.sql",
+          ),
         },
       ]);
     } finally {

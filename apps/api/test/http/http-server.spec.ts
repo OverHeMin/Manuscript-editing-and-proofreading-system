@@ -8,6 +8,11 @@ import {
   startHttpTestServer,
   stopHttpTestServer,
 } from "./support/http-test-server.ts";
+import {
+  startWorkbenchServer,
+  stopServer as stopWorkbenchServer,
+  loginAsDemoUser as loginWorkbenchDemoUser,
+} from "./support/workbench-runtime.ts";
 
 async function startServer(): Promise<{
   server: ApiHttpServer;
@@ -267,6 +272,326 @@ test("http server auto-assigns the seeded template family on upload so admins ca
     assert.equal(screening.job?.module, "screening");
   } finally {
     await stopServer(server);
+  }
+});
+
+test("http server exposes harness control plane scope preview activate and rollback routes", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginWorkbenchDemoUser(baseUrl, "dev.admin");
+
+    const scopeResponse = await fetch(
+      `${baseUrl}/api/v1/harness-control-plane/scopes/editing/clinical_study/family-seeded-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const scopeBody = (await scopeResponse.json()) as {
+      active_environment: {
+        execution_profile: { id: string };
+        runtime_binding: { id: string };
+        model_routing_policy_version: { id: string };
+        retrieval_preset?: { id: string };
+        manual_review_policy?: { id: string };
+      };
+    };
+
+    assert.equal(scopeResponse.status, 200);
+    assert.equal(scopeBody.active_environment.execution_profile.id, "profile-editing-1");
+    assert.equal(scopeBody.active_environment.runtime_binding.id, "binding-editing-1");
+    assert.equal(
+      scopeBody.active_environment.model_routing_policy_version.id,
+      "routing-version-editing-1",
+    );
+    assert.equal(
+      scopeBody.active_environment.retrieval_preset?.id,
+      "retrieval-editing-1",
+    );
+    assert.equal(
+      scopeBody.active_environment.manual_review_policy?.id,
+      "manual-review-editing-1",
+    );
+
+    const previewResponse = await fetch(
+      `${baseUrl}/api/v1/harness-control-plane/preview`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: "family-seeded-1",
+            executionProfileId: "profile-editing-preview-2",
+            runtimeBindingId: "binding-editing-preview-2",
+            modelRoutingPolicyVersionId: "routing-version-editing-preview-2",
+            retrievalPresetId: "retrieval-editing-preview-2",
+            manualReviewPolicyId: "manual-review-editing-preview-2",
+          },
+        }),
+      },
+    );
+    const preview = (await previewResponse.json()) as {
+      candidate_environment: {
+        execution_profile: { id: string };
+        runtime_binding: { id: string };
+        model_routing_policy_version: { id: string };
+        retrieval_preset?: { id: string };
+        manual_review_policy?: { id: string };
+      };
+    };
+
+    assert.equal(previewResponse.status, 200);
+    assert.equal(preview.candidate_environment.execution_profile.id, "profile-editing-preview-2");
+    assert.equal(preview.candidate_environment.runtime_binding.id, "binding-editing-preview-2");
+    assert.equal(
+      preview.candidate_environment.model_routing_policy_version.id,
+      "routing-version-editing-preview-2",
+    );
+    assert.equal(
+      preview.candidate_environment.retrieval_preset?.id,
+      "retrieval-editing-preview-2",
+    );
+    assert.equal(
+      preview.candidate_environment.manual_review_policy?.id,
+      "manual-review-editing-preview-2",
+    );
+
+    const activateResponse = await fetch(
+      `${baseUrl}/api/v1/harness-control-plane/activate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: "family-seeded-1",
+            executionProfileId: "profile-editing-preview-2",
+            runtimeBindingId: "binding-editing-preview-2",
+            modelRoutingPolicyVersionId: "routing-version-editing-preview-2",
+            retrievalPresetId: "retrieval-editing-preview-2",
+            manualReviewPolicyId: "manual-review-editing-preview-2",
+            reason: "Harness activation test",
+          },
+        }),
+      },
+    );
+    const activated = (await activateResponse.json()) as {
+      execution_profile: { id: string };
+      runtime_binding: { id: string };
+      retrieval_preset?: { id: string };
+      manual_review_policy?: { id: string };
+    };
+
+    assert.equal(activateResponse.status, 200);
+    assert.equal(activated.execution_profile.id, "profile-editing-preview-2");
+    assert.equal(activated.runtime_binding.id, "binding-editing-preview-2");
+    assert.equal(activated.retrieval_preset?.id, "retrieval-editing-preview-2");
+    assert.equal(
+      activated.manual_review_policy?.id,
+      "manual-review-editing-preview-2",
+    );
+
+    const rollbackResponse = await fetch(
+      `${baseUrl}/api/v1/harness-control-plane/rollback`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            module: "editing",
+            manuscriptType: "clinical_study",
+            templateFamilyId: "family-seeded-1",
+            reason: "Harness rollback test",
+          },
+        }),
+      },
+    );
+    const rolledBack = (await rollbackResponse.json()) as {
+      execution_profile: { id: string };
+      runtime_binding: { id: string };
+      retrieval_preset?: { id: string };
+      manual_review_policy?: { id: string };
+    };
+
+    assert.equal(rollbackResponse.status, 200);
+    assert.equal(rolledBack.execution_profile.id, "profile-editing-1");
+    assert.equal(rolledBack.runtime_binding.id, "binding-editing-1");
+    assert.equal(rolledBack.retrieval_preset?.id, "retrieval-editing-1");
+    assert.equal(rolledBack.manual_review_policy?.id, "manual-review-editing-1");
+  } finally {
+    await stopWorkbenchServer(server);
+  }
+});
+
+test("http server lists retrieval presets and manual review policies by scope for harness control plane", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginWorkbenchDemoUser(baseUrl, "dev.admin");
+
+    const retrievalResponse = await fetch(
+      `${baseUrl}/api/v1/retrieval-presets/by-scope/editing/clinical_study/family-seeded-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const retrievalPresets = (await retrievalResponse.json()) as Array<{
+      id: string;
+      status: string;
+    }>;
+
+    const manualReviewResponse = await fetch(
+      `${baseUrl}/api/v1/manual-review-policies/by-scope/editing/clinical_study/family-seeded-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const manualReviewPolicies = (await manualReviewResponse.json()) as Array<{
+      id: string;
+      status: string;
+    }>;
+
+    assert.equal(retrievalResponse.status, 200);
+    assert.deepEqual(
+      retrievalPresets.map((preset) => ({
+        id: preset.id,
+        status: preset.status,
+      })),
+      [
+        {
+          id: "retrieval-editing-1",
+          status: "active",
+        },
+        {
+          id: "retrieval-editing-preview-2",
+          status: "draft",
+        },
+      ],
+    );
+    assert.equal(manualReviewResponse.status, 200);
+    assert.deepEqual(
+      manualReviewPolicies.map((policy) => ({
+        id: policy.id,
+        status: policy.status,
+      })),
+      [
+        {
+          id: "manual-review-editing-1",
+          status: "active",
+        },
+        {
+          id: "manual-review-editing-preview-2",
+          status: "draft",
+        },
+      ],
+    );
+  } finally {
+    await stopWorkbenchServer(server);
+  }
+});
+
+test("http server preserves full harness candidate bindings on evaluation run creation", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginWorkbenchDemoUser(baseUrl, "dev.admin");
+
+    const response = await fetch(`${baseUrl}/api/v1/verification-ops/evaluation-runs`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: {
+          suiteId: "suite-editing-1",
+          baselineBinding: {
+            lane: "baseline",
+            executionProfileId: "profile-editing-1",
+            runtimeBindingId: "binding-editing-1",
+            modelRoutingPolicyVersionId: "routing-version-editing-1",
+            retrievalPresetId: "retrieval-editing-1",
+            manualReviewPolicyId: "manual-review-editing-1",
+            modelId: "model-editing-1",
+            runtimeId: "runtime-editing-1",
+            promptTemplateId: "prompt-editing-1",
+            skillPackageIds: ["skill-editing-1"],
+            moduleTemplateId: "template-editing-1",
+          },
+          candidateBinding: {
+            lane: "candidate",
+            executionProfileId: "profile-editing-1",
+            runtimeBindingId: "binding-editing-1",
+            modelRoutingPolicyVersionId: "routing-version-editing-1",
+            retrievalPresetId: "retrieval-editing-preview-2",
+            manualReviewPolicyId: "manual-review-editing-1",
+            modelId: "model-editing-1",
+            runtimeId: "runtime-editing-1",
+            promptTemplateId: "prompt-editing-1",
+            skillPackageIds: ["skill-editing-1"],
+            moduleTemplateId: "template-editing-1",
+          },
+        },
+      }),
+    });
+    const createdRun = (await response.json()) as {
+      baseline_binding?: {
+        execution_profile_id?: string;
+      };
+      candidate_binding?: {
+        execution_profile_id?: string;
+        runtime_binding_id?: string;
+        model_routing_policy_version_id?: string;
+        retrieval_preset_id?: string;
+        manual_review_policy_id?: string;
+      };
+    };
+
+    assert.equal(response.status, 201);
+    assert.equal(
+      createdRun.baseline_binding?.execution_profile_id,
+      "profile-editing-1",
+    );
+    assert.equal(
+      createdRun.candidate_binding?.execution_profile_id,
+      "profile-editing-1",
+    );
+    assert.equal(
+      createdRun.candidate_binding?.runtime_binding_id,
+      "binding-editing-1",
+    );
+    assert.equal(
+      createdRun.candidate_binding?.model_routing_policy_version_id,
+      "routing-version-editing-1",
+    );
+    assert.equal(
+      createdRun.candidate_binding?.retrieval_preset_id,
+      "retrieval-editing-preview-2",
+    );
+    assert.equal(
+      createdRun.candidate_binding?.manual_review_policy_id,
+      "manual-review-editing-1",
+    );
+  } finally {
+    await stopWorkbenchServer(server);
   }
 });
 

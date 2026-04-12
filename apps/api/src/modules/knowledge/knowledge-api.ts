@@ -46,7 +46,7 @@ export interface KnowledgeLibraryListItemRecord {
   title: string;
   summary?: string;
   knowledge_kind: KnowledgeRecord["knowledge_kind"];
-  status: string;
+  status: KnowledgeRecord["status"] | KnowledgeRevisionDetailRecord["status"];
   module_scope: KnowledgeRecord["routing"]["module_scope"];
   manuscript_types: KnowledgeRecord["routing"]["manuscript_types"];
   selected_revision_id?: string;

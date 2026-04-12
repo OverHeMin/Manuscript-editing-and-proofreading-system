@@ -1,4 +1,9 @@
 import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityIssue,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
+import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
   EditorialRuleSeverity,
@@ -6,6 +11,7 @@ import type {
 import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
+import type { ManualReviewPolicyRecord } from "../manual-review-policies/manual-review-policy-record.ts";
 import type {
   PromptTemplateKind,
   PromptTemplateRecord,
@@ -53,6 +59,7 @@ export interface GovernedKnowledgeSelectionInput {
   matchSourceId?: string;
   bindingRuleId?: string;
   matchReasons: string[];
+  retrievalScore?: number;
 }
 
 export interface ManualReviewItem {
@@ -88,6 +95,7 @@ export interface AssembleInstructionTemplateInput {
   ruleSet: EditorialRuleSetRecord;
   rules: readonly EditorialRuleRecord[];
   knowledgeSelections: readonly GovernedKnowledgeSelectionInput[];
+  manualReviewPolicy?: ManualReviewPolicyRecord;
 }
 
 export interface ProofreadingCheckResult {
@@ -112,6 +120,9 @@ export interface ProofreadingInspectionResult {
   riskItems: ProofreadingRiskItem[];
   manualReviewItems: ManualReviewItem[];
   appliedChanges: AppliedDeterministicRuleChange[];
+  qualityFindings?: ManuscriptQualityIssue[];
+  qualityFindingSummary?: ManuscriptQualityFindingSummary;
+  resolvedQualityPackages?: ManuscriptQualityPackageVersionRef[];
 }
 
 export interface TableSemanticHitEvidence {
@@ -128,6 +139,13 @@ export interface TableRuleInspectionFinding {
   ruleId: string;
   reason: string;
   semantic_hit: TableSemanticHitEvidence;
+}
+
+export interface EditorialSourceBlockResolver {
+  resolveBlocks(input: {
+    manuscriptId: string;
+    assetId: string;
+  }): Promise<EditorialTextBlock[]>;
 }
 
 export interface ProofreadingSourceBlockResolver {

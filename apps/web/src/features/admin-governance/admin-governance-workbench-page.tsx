@@ -6,6 +6,7 @@ import type {
 } from "../execution-governance/index.ts";
 import { formatExecutionResolutionModelSourceLabel } from "../execution-governance/index.ts";
 import type { ManuscriptType } from "../manuscripts/index.ts";
+import type { EvaluationRunViewModel } from "../verification-ops/index.ts";
 import type {
   CreateModelRegistryEntryInput,
   ModelRegistryEntryViewModel,
@@ -18,10 +19,16 @@ import type {
 } from "../templates/index.ts";
 import {
   createAdminGovernanceWorkbenchController,
+  type AdminHarnessScopeViewModel,
   type AdminGovernanceWorkbenchController,
   type AdminGovernanceOverview,
+  type HarnessEnvironmentPreviewViewModel,
 } from "./admin-governance-controller.ts";
 import { AgentToolingGovernanceSection } from "./agent-tooling-governance-section.tsx";
+import { HarnessActivationGate } from "./harness-activation-gate.tsx";
+import { HarnessEnvironmentEditor } from "./harness-environment-editor.tsx";
+import { HarnessQualityLab } from "./harness-quality-lab.tsx";
+import { ManuscriptQualityPackagesSection } from "./manuscript-quality-packages-section.tsx";
 
 if (typeof document !== "undefined") {
   void import("./admin-governance-workbench.css");
@@ -120,6 +127,37 @@ export function AdminGovernanceWorkbenchPage({
       initialOverview?.aiProviderConnections[0]?.id ?? "",
     ),
   );
+  const [harnessScope, setHarnessScope] = useState<{
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  }>({
+    module: "editing",
+    manuscriptType:
+      initialOverview?.templateFamilies.find(
+        (family) => family.id === initialOverview.selectedTemplateFamilyId,
+      )?.manuscript_type ?? "review",
+    templateFamilyId: initialOverview?.selectedTemplateFamilyId ?? "",
+  });
+  const [harnessScopeState, setHarnessScopeState] =
+    useState<AdminHarnessScopeViewModel | null>(null);
+  const [harnessPreview, setHarnessPreview] =
+    useState<HarnessEnvironmentPreviewViewModel | null>(null);
+  const [harnessReason, setHarnessReason] = useState(
+    "Promote the candidate environment after harness verification.",
+  );
+  const [selectedHarnessSuiteId, setSelectedHarnessSuiteId] = useState(
+    initialOverview?.evaluationSuites[0]?.id ?? "",
+  );
+  const [latestHarnessRun, setLatestHarnessRun] =
+    useState<EvaluationRunViewModel | null>(null);
+  const [harnessSelection, setHarnessSelection] = useState({
+    executionProfileId: "",
+    runtimeBindingId: "",
+    modelRoutingPolicyVersionId: "",
+    retrievalPresetId: "",
+    manualReviewPolicyId: "",
+  });
 
   useEffect(() => {
     if (initialOverview) {
@@ -154,6 +192,11 @@ export function AdminGovernanceWorkbenchPage({
     ) {
       setExecutionPreview(null);
     }
+    setHarnessScope((current) => ({
+      ...current,
+      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
+      templateFamilyId: overview.selectedTemplateFamilyId ?? "",
+    }));
   }, [executionPreview?.profile.template_family_id, overview?.selectedTemplateFamilyId, overview?.templateFamilies]);
 
   useEffect(() => {
@@ -189,8 +232,77 @@ export function AdminGovernanceWorkbenchPage({
     );
   }, [overview, selectedModelId]);
 
+  useEffect(() => {
+    if (
+      typeof controller.loadHarnessScope !== "function" ||
+      harnessScope.templateFamilyId.trim().length === 0
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void controller
+      .loadHarnessScope(harnessScope)
+      .then((nextScope) => {
+        if (isCancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setHarnessScopeState(nextScope);
+          setHarnessPreview(null);
+          setHarnessSelection({
+            executionProfileId: nextScope.activeEnvironment.execution_profile.id,
+            runtimeBindingId: nextScope.activeEnvironment.runtime_binding.id,
+            modelRoutingPolicyVersionId:
+              nextScope.activeEnvironment.model_routing_policy_version.id,
+            retrievalPresetId: nextScope.activeEnvironment.retrieval_preset.id,
+            manualReviewPolicyId: nextScope.activeEnvironment.manual_review_policy.id,
+          });
+          setSelectedHarnessSuiteId((current) =>
+            current.trim().length > 0
+              ? current
+              : nextScope.activeEnvironment.runtime_binding.evaluation_suite_ids[0] ??
+                overview?.evaluationSuites[0]?.id ??
+                "",
+          );
+        });
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setErrorMessage(toErrorMessage(error));
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller, harnessScope, overview?.evaluationSuites]);
+
   const selectedModel =
     overview?.modelRegistryEntries.find((model) => model.id === selectedModelId) ?? null;
+  const harnessExecutionProfiles = (overview?.executionProfiles ?? []).filter(
+    (profile) =>
+      profile.module === harnessScope.module &&
+      profile.manuscript_type === harnessScope.manuscriptType &&
+      profile.template_family_id === harnessScope.templateFamilyId,
+  );
+  const harnessRuntimeBindings = (overview?.runtimeBindings ?? []).filter(
+    (binding) =>
+      binding.module === harnessScope.module &&
+      binding.manuscript_type === harnessScope.manuscriptType &&
+      binding.template_family_id === harnessScope.templateFamilyId,
+  );
+  const harnessRoutingVersions = collectHarnessRoutingVersions(
+    overview?.routingPolicies ?? [],
+    harnessScope.module,
+    harnessScope.templateFamilyId,
+  );
 
   async function loadOverview(input?: { selectedTemplateFamilyId?: string | null }) {
     setLoadStatus("loading");
@@ -360,6 +472,136 @@ export function AdminGovernanceWorkbenchPage({
     });
   }
 
+  async function handlePreviewHarnessEnvironment() {
+    if (typeof controller.previewHarnessEnvironment !== "function") {
+      return;
+    }
+
+    await runMutation(async () => {
+      const preview = await controller.previewHarnessEnvironment({
+        module: harnessScope.module,
+        manuscriptType: harnessScope.manuscriptType,
+        templateFamilyId: harnessScope.templateFamilyId,
+        executionProfileId: harnessSelection.executionProfileId,
+        runtimeBindingId: harnessSelection.runtimeBindingId,
+        modelRoutingPolicyVersionId: harnessSelection.modelRoutingPolicyVersionId,
+        retrievalPresetId: harnessSelection.retrievalPresetId,
+        manualReviewPolicyId: harnessSelection.manualReviewPolicyId,
+      });
+
+      startTransition(() => {
+        setHarnessPreview(preview);
+        setStatusMessage("Previewed harness candidate environment.");
+      });
+    });
+  }
+
+  async function handleLaunchHarnessRun() {
+    if (
+      typeof controller.createHarnessRun !== "function" ||
+      harnessPreview == null ||
+      selectedHarnessSuiteId.trim().length === 0
+    ) {
+      return;
+    }
+
+    await runMutation(async () => {
+      const run = await controller.createHarnessRun({
+        actorRole,
+        suiteId: selectedHarnessSuiteId,
+        baselineBinding: buildFrozenBindingInput(
+          "baseline",
+          harnessPreview.active_environment,
+        ),
+        candidateBinding: buildFrozenBindingInput(
+          "candidate",
+          harnessPreview.candidate_environment,
+        ),
+      });
+
+      startTransition(() => {
+        setLatestHarnessRun(run);
+        setStatusMessage(`Launched candidate harness run ${run.id}.`);
+      });
+    });
+  }
+
+  async function handleActivateHarnessEnvironment() {
+    if (
+      typeof controller.activateHarnessEnvironment !== "function" ||
+      harnessPreview == null
+    ) {
+      return;
+    }
+
+    await runMutation(async () => {
+      await controller.activateHarnessEnvironment({
+        actorRole,
+        module: harnessScope.module,
+        manuscriptType: harnessScope.manuscriptType,
+        templateFamilyId: harnessScope.templateFamilyId,
+        executionProfileId: harnessSelection.executionProfileId,
+        runtimeBindingId: harnessSelection.runtimeBindingId,
+        modelRoutingPolicyVersionId: harnessSelection.modelRoutingPolicyVersionId,
+        retrievalPresetId: harnessSelection.retrievalPresetId,
+        manualReviewPolicyId: harnessSelection.manualReviewPolicyId,
+        reason: normalizeOptionalText(harnessReason),
+      });
+
+      await Promise.all([
+        loadOverview({
+          selectedTemplateFamilyId: harnessScope.templateFamilyId,
+        }),
+        typeof controller.loadHarnessScope === "function"
+          ? controller.loadHarnessScope(harnessScope).then((nextScope) => {
+              startTransition(() => {
+                setHarnessScopeState(nextScope);
+                setHarnessPreview(null);
+              });
+            })
+          : Promise.resolve(),
+      ]);
+
+      startTransition(() => {
+        setStatusMessage("Activated the candidate harness environment.");
+      });
+    });
+  }
+
+  async function handleRollbackHarnessEnvironment() {
+    if (typeof controller.rollbackHarnessEnvironment !== "function") {
+      return;
+    }
+
+    await runMutation(async () => {
+      await controller.rollbackHarnessEnvironment({
+        actorRole,
+        module: harnessScope.module,
+        manuscriptType: harnessScope.manuscriptType,
+        templateFamilyId: harnessScope.templateFamilyId,
+        reason: normalizeOptionalText(harnessReason),
+      });
+
+      await Promise.all([
+        loadOverview({
+          selectedTemplateFamilyId: harnessScope.templateFamilyId,
+        }),
+        typeof controller.loadHarnessScope === "function"
+          ? controller.loadHarnessScope(harnessScope).then((nextScope) => {
+              startTransition(() => {
+                setHarnessScopeState(nextScope);
+                setHarnessPreview(null);
+              });
+            })
+          : Promise.resolve(),
+      ]);
+
+      startTransition(() => {
+        setStatusMessage("Rolled the scope back to the previous harness environment.");
+      });
+    });
+  }
+
   if (loadStatus === "loading" && overview == null) {
     return (
       <article className="workbench-placeholder" role="status">
@@ -383,10 +625,11 @@ export function AdminGovernanceWorkbenchPage({
       <header className="admin-governance-hero">
         <div className="admin-governance-hero-copy">
           <p className="admin-governance-eyebrow">Management Zone</p>
-          <h2>Admin Governance Console</h2>
+          <h2>Harness Control Plane</h2>
           <p>
-            Manage template governance, model routing, and the agent-tooling runtime registry that
-            powers governed manuscript execution.
+            Change the live AI working environment by tuning governed execution profiles, runtime
+            bindings, routing versions, retrieval presets, and manual review policy from one
+            control surface.
           </p>
           {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
         </div>
@@ -398,6 +641,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Module Templates" value={overview?.moduleTemplates.length ?? 0} />
         <SummaryCard label="Prompt Templates" value={overview?.promptTemplates.length ?? 0} />
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
+        <SummaryCard label="Quality Packages" value={overview?.qualityPackages.length ?? 0} />
         <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
         <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
         <SummaryCard label="Routing Policies" value={overview?.routingPolicies.length ?? 0} />
@@ -410,6 +654,87 @@ export function AdminGovernanceWorkbenchPage({
       </section>
 
       <section className="admin-governance-grid">
+        <HarnessEnvironmentEditor
+          module={harnessScope.module}
+          manuscriptType={harnessScope.manuscriptType}
+          activeScope={harnessScopeState}
+          preview={harnessPreview}
+          qualityPackages={overview?.qualityPackages ?? []}
+          executionProfiles={harnessExecutionProfiles}
+          runtimeBindings={harnessRuntimeBindings}
+          routingVersions={harnessRoutingVersions}
+          selection={harnessSelection}
+          onModuleChange={(module) => {
+            setHarnessScope((current) => ({
+              ...current,
+              module,
+            }));
+          }}
+          onSelectionChange={(patch) => {
+            setHarnessSelection((current) => ({
+              ...current,
+              ...patch,
+            }));
+            setHarnessPreview(null);
+            setLatestHarnessRun(null);
+          }}
+          onPreview={() => void handlePreviewHarnessEnvironment()}
+          isMutating={isMutating}
+        />
+
+        <ManuscriptQualityPackagesSection
+          packages={overview?.qualityPackages ?? []}
+          isMutating={isMutating}
+          onCreateDraft={async (input) => {
+            await runMutation(async () => {
+              const result = await controller.createQualityPackageDraftAndReload({
+                actorRole,
+                ...input,
+              });
+
+              startTransition(() => {
+                setOverview(result.overview);
+                setStatusMessage(
+                  `Created quality package draft: ${result.createdPackage.package_name} v${result.createdPackage.version}`,
+                );
+              });
+            });
+          }}
+          onPublishVersion={async (packageVersionId) => {
+            await runMutation(async () => {
+              const nextOverview = await controller.publishQualityPackageVersionAndReload({
+                actorRole,
+                packageVersionId,
+                selectedTemplateFamilyId: overview?.selectedTemplateFamilyId ?? null,
+              });
+
+              startTransition(() => {
+                setOverview(nextOverview);
+                setStatusMessage(`Published quality package version: ${packageVersionId}`);
+              });
+            });
+          }}
+        />
+
+        <HarnessQualityLab
+          evaluationSuites={overview?.evaluationSuites ?? []}
+          selectedSuiteId={selectedHarnessSuiteId}
+          preview={harnessPreview}
+          latestRun={latestHarnessRun}
+          onSuiteChange={setSelectedHarnessSuiteId}
+          onLaunch={() => void handleLaunchHarnessRun()}
+          isMutating={isMutating}
+        />
+
+        <HarnessActivationGate
+          preview={harnessPreview}
+          reason={harnessReason}
+          onReasonChange={setHarnessReason}
+          onActivate={() => void handleActivateHarnessEnvironment()}
+          onRollback={() => void handleRollbackHarnessEnvironment()}
+          isMutating={isMutating}
+        />
+
         <article className="admin-governance-panel">
           <h3>Create Template Family</h3>
           <label className="admin-governance-field">
@@ -1214,8 +1539,9 @@ export function AdminGovernanceWorkbenchPage({
         <article className="admin-governance-panel admin-governance-panel-wide">
           <h3>Harness Integrations</h3>
           <p className="admin-governance-empty">
-            Read-only visibility for local harness adapters. This surface does not change routing,
-            publish state, or production control-plane policy.
+            Adapter health remains supporting evidence for the control plane. Operators still
+            change the live environment through preview, evaluation, activation, and rollback
+            above.
           </p>
 
           {(overview?.harnessAdapterHealth.length ?? 0) > 0 ? (
@@ -1334,6 +1660,42 @@ function normalizeCommaSeparatedList(input: string | string[] | undefined): stri
 
 function renderCommaSeparatedList(values: string[] | undefined): string {
   return values?.join(", ") ?? "";
+}
+
+function collectHarnessRoutingVersions(
+  routingPolicies: AdminGovernanceOverview["routingPolicies"],
+  module: TemplateModule,
+  templateFamilyId: string,
+) {
+  return routingPolicies
+    .filter(
+      (policy) =>
+        (policy.scope_kind === "template_family" &&
+          policy.scope_value === templateFamilyId) ||
+        (policy.scope_kind === "module" && policy.scope_value === module),
+    )
+    .flatMap((policy) => policy.versions);
+}
+
+function buildFrozenBindingInput(
+  lane: "baseline" | "candidate",
+  environment: NonNullable<HarnessEnvironmentPreviewViewModel["active_environment"]>,
+) {
+  return {
+    lane,
+    executionProfileId: environment.execution_profile.id,
+    runtimeBindingId: environment.runtime_binding.id,
+    modelRoutingPolicyVersionId: environment.model_routing_policy_version.id,
+    retrievalPresetId: environment.retrieval_preset.id,
+    manualReviewPolicyId: environment.manual_review_policy.id,
+    modelId: environment.model_routing_policy_version.primary_model_id,
+    runtimeId: environment.runtime_binding.runtime_id,
+    promptTemplateId: environment.execution_profile.prompt_template_id,
+    skillPackageIds: environment.execution_profile.skill_package_ids,
+    qualityPackageVersionIds:
+      environment.runtime_binding.quality_package_version_ids ?? [],
+    moduleTemplateId: environment.execution_profile.module_template_id,
+  };
 }
 
 function normalizeOptionalText(value: string): string | undefined {

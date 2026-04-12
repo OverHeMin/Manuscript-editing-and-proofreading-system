@@ -211,3 +211,27 @@ test("admin governance workbench page renders connection-aware model authoring c
   assert.match(markup, /Save Model Changes/);
   assert.match(markup, /openai \/ qwen-max \(model-qwen-1\)/);
 });
+
+test("admin governance workbench page renders harness control plane sections instead of a decorative read-only harness panel", () => {
+  const markup = renderToStaticMarkup(
+    <AdminGovernanceWorkbenchPage
+      actorRole="admin"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      } as never}
+      initialOverview={buildOverview() as never}
+      initialExecutionPreview={buildExecutionPreview() as never}
+    />,
+  );
+
+  assert.match(markup, /Harness Control Plane/);
+  assert.match(markup, /Environment Editor/);
+  assert.match(markup, /Quality Lab/);
+  assert.match(markup, /Activation Gate/);
+  assert.doesNotMatch(
+    markup,
+    /Read-only visibility for local harness adapters/i,
+  );
+});

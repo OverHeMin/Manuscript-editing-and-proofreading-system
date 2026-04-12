@@ -18,6 +18,7 @@ import {
   describeHistoryCompareStatusSummary,
   summarizeEvidencePackChanges,
   summarizeFinalizedEntry,
+  summarizeBindingChanges,
   EvaluationWorkbenchEvidenceList,
   EvaluationWorkbenchEvidencePackSummary,
   EvaluationWorkbenchFinalizePanel,
@@ -1480,6 +1481,79 @@ test("summarizeEvidencePackChanges lists only changed evidence-pack fields", () 
   );
 });
 
+test("summarizeBindingChanges normalizes optional harness binding ids when they are absent", () => {
+  assert.deepEqual(
+    summarizeBindingChanges(
+      {
+        baseline_binding: {
+          lane: "baseline",
+          model_id: "baseline-model-2",
+          runtime_id: "baseline-runtime-2",
+          prompt_template_id: "baseline-prompt-2",
+          skill_package_ids: ["baseline-skill-1"],
+          module_template_id: "baseline-template-2",
+        },
+        candidate_binding: {
+          lane: "candidate",
+          model_id: "candidate-model-2",
+          runtime_id: "candidate-runtime-2",
+          prompt_template_id: "candidate-prompt-2",
+          skill_package_ids: ["candidate-skill-1"],
+          module_template_id: "candidate-template-2",
+        },
+      } as never,
+      {
+        baseline_binding: {
+          lane: "baseline",
+          execution_profile_id: "profile-baseline-1",
+          runtime_binding_id: "binding-baseline-1",
+          model_routing_policy_version_id: "routing-baseline-1",
+          retrieval_preset_id: "retrieval-baseline-1",
+          manual_review_policy_id: "manual-review-baseline-1",
+          model_id: "baseline-model-1",
+          runtime_id: "baseline-runtime-1",
+          prompt_template_id: "baseline-prompt-1",
+          skill_package_ids: ["baseline-skill-1"],
+          module_template_id: "baseline-template-1",
+        },
+        candidate_binding: {
+          lane: "candidate",
+          execution_profile_id: "profile-candidate-1",
+          runtime_binding_id: "binding-candidate-1",
+          model_routing_policy_version_id: "routing-candidate-1",
+          retrieval_preset_id: "retrieval-candidate-1",
+          manual_review_policy_id: "manual-review-candidate-1",
+          model_id: "candidate-model-1",
+          runtime_id: "candidate-runtime-1",
+          prompt_template_id: "candidate-prompt-1",
+          skill_package_ids: ["candidate-skill-1"],
+          module_template_id: "candidate-template-1",
+        },
+      } as never,
+    ),
+    [
+      "Baseline model changed: baseline-model-2 (was baseline-model-1)",
+      "Baseline runtime changed: baseline-runtime-2 (was baseline-runtime-1)",
+      "Baseline execution profile changed: None recorded (was profile-baseline-1)",
+      "Baseline runtime binding changed: None recorded (was binding-baseline-1)",
+      "Baseline routing version changed: None recorded (was routing-baseline-1)",
+      "Baseline retrieval preset changed: None recorded (was retrieval-baseline-1)",
+      "Baseline manual review policy changed: None recorded (was manual-review-baseline-1)",
+      "Baseline prompt changed: baseline-prompt-2 (was baseline-prompt-1)",
+      "Baseline module template changed: baseline-template-2 (was baseline-template-1)",
+      "Candidate model changed: candidate-model-2 (was candidate-model-1)",
+      "Candidate runtime changed: candidate-runtime-2 (was candidate-runtime-1)",
+      "Candidate execution profile changed: None recorded (was profile-candidate-1)",
+      "Candidate runtime binding changed: None recorded (was binding-candidate-1)",
+      "Candidate routing version changed: None recorded (was routing-candidate-1)",
+      "Candidate retrieval preset changed: None recorded (was retrieval-candidate-1)",
+      "Candidate manual review policy changed: None recorded (was manual-review-candidate-1)",
+      "Candidate prompt changed: candidate-prompt-2 (was candidate-prompt-1)",
+      "Candidate module template changed: candidate-template-2 (was candidate-template-1)",
+    ],
+  );
+});
+
 test("describeHistoryVisibilitySummary explains how current controls narrow history", () => {
   assert.equal(
     describeHistoryVisibilitySummary({
@@ -1698,4 +1772,67 @@ test("sortFinalizedRunHistory can prioritize failures ahead of recommendations",
     sortFinalizedRunHistory(entries as never, "failures_first").map((entry) => entry.run.id),
     ["run-rejected", "run-needs-review", "run-recommended"],
   );
+});
+
+test("evaluation workbench selected run detail surfaces governed harness binding ids without exposing activation controls", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchSelectedRunItemDetailCard
+      selectedRun={{
+        id: "run-1",
+        suite_id: "suite-1",
+        sample_set_id: "sample-set-1",
+        baseline_binding: {
+          lane: "baseline",
+          execution_profile_id: "profile-active-1",
+          runtime_binding_id: "binding-active-1",
+          model_routing_policy_version_id: "routing-active-1",
+          retrieval_preset_id: "retrieval-active-1",
+          manual_review_policy_id: "manual-review-active-1",
+          model_id: "model-active-1",
+          runtime_id: "runtime-active-1",
+          prompt_template_id: "prompt-active-1",
+          skill_package_ids: ["skill-active-1"],
+          module_template_id: "template-active-1",
+        },
+        candidate_binding: {
+          lane: "candidate",
+          execution_profile_id: "profile-preview-2",
+          runtime_binding_id: "binding-preview-2",
+          model_routing_policy_version_id: "routing-preview-2",
+          retrieval_preset_id: "retrieval-preview-2",
+          manual_review_policy_id: "manual-review-preview-2",
+          model_id: "model-preview-2",
+          runtime_id: "runtime-preview-2",
+          prompt_template_id: "prompt-preview-2",
+          skill_package_ids: ["skill-preview-2"],
+          module_template_id: "template-preview-2",
+        },
+        release_check_profile_id: "release-1",
+        run_item_count: 1,
+        status: "passed",
+        evidence_ids: [],
+        started_at: "2026-04-01T08:00:00.000Z",
+      } as never}
+      selectedRunItem={{
+        id: "run-item-1",
+        evaluation_run_id: "run-1",
+        sample_set_item_id: "sample-item-1",
+        lane: "candidate",
+        result_asset_id: "asset-1",
+        hard_gate_passed: true,
+        weighted_score: 94,
+        requires_human_review: false,
+      }}
+      linkedSampleSetItem={null}
+    />,
+  );
+
+  assert.match(markup, /Execution Profile/i);
+  assert.match(markup, /Retrieval Preset/i);
+  assert.match(markup, /Manual Review Policy/i);
+  assert.match(markup, /profile-preview-2/);
+  assert.match(markup, /retrieval-preview-2/);
+  assert.match(markup, /manual-review-preview-2/);
+  assert.doesNotMatch(markup, /Activate/i);
+  assert.doesNotMatch(markup, /Rollback/i);
 });

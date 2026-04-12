@@ -36,6 +36,7 @@ export function createRuntimeBinding(
         toolPermissionPolicyId: input.toolPermissionPolicyId,
         promptTemplateId: input.promptTemplateId,
         skillPackageIds: input.skillPackageIds,
+        qualityPackageVersionIds: input.qualityPackageVersionIds,
         executionProfileId: input.executionProfileId,
         verificationCheckProfileIds: input.verificationCheckProfileIds,
         evaluationSuiteIds: input.evaluationSuiteIds,

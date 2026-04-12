@@ -9,6 +9,7 @@ import {
   createApiHttpServer,
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
+import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { runPersistentStartupPreflight } from "../../src/ops/persistent-startup-preflight.ts";
@@ -20,6 +21,8 @@ import {
   startHttpTestServer,
   stopHttpTestServer,
 } from "./support/http-test-server.ts";
+
+const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
 
 test("non-local api runtime requires an explicit persistent auth runtime", () => {
   assert.throws(
@@ -441,6 +444,9 @@ async function startPersistentGovernanceServer(databaseUrl: string): Promise<{
     runtime: createPersistentGovernanceRuntime({
       client: pool,
       authRuntime,
+      aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
+        AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
+      }),
     }),
   });
 

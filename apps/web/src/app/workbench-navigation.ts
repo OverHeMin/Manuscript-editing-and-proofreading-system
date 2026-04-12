@@ -253,6 +253,10 @@ function resolveNavigationItemLabel(entry: WorkbenchEntry): string {
     return "规则中心";
   }
 
+  if (entry.id === "admin-console") {
+    return "Harness Control Plane";
+  }
+
   return entry.navLabel;
 }
 
