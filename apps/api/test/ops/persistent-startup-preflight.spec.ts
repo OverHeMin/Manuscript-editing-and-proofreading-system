@@ -10,6 +10,8 @@ import {
   resolvePersistentRuntimeContract,
 } from "../../src/ops/persistent-runtime-contract.ts";
 
+const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
+
 test("persistent startup preflight returns ready when required checks pass", async () => {
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "development",
@@ -38,6 +40,7 @@ test("persistent startup preflight creates a missing upload root", async () => {
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "production",
     DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
     ONLYOFFICE_JWT_SECRET: "real-secret",
     UPLOAD_ROOT_DIR: uploadRootDir,
   });
@@ -66,6 +69,7 @@ test("persistent startup preflight reports database failures as not ready", asyn
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "staging",
     DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
     ONLYOFFICE_JWT_SECRET: "real-secret",
   });
 

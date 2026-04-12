@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
 import {
   createDirectWriteTransactionManager,
   createScopedWriteTransactionManager,
@@ -38,9 +42,11 @@ export interface RecordExecutionSnapshotInput {
   skillPackageVersions: string[];
   modelId: string;
   modelVersion?: string;
+  qualityPackages?: ManuscriptQualityPackageVersionRef[];
   createdAssetIds?: string[];
   agentExecutionLogId?: string;
   draftSnapshotId?: string;
+  qualityFindingsSummary?: ManuscriptQualityFindingSummary;
   knowledgeHits: RecordKnowledgeHitInput[];
 }
 
@@ -106,10 +112,22 @@ export class ExecutionTrackingService {
         skill_package_versions: [...input.skillPackageVersions],
         model_id: input.modelId,
         model_version: input.modelVersion,
+        quality_packages: input.qualityPackages
+          ? input.qualityPackages.map((entry) => ({
+              package_id: entry.package_id,
+              package_name: entry.package_name,
+              package_kind: entry.package_kind,
+              target_scopes: [...entry.target_scopes],
+              version: entry.version,
+            }))
+          : undefined,
         knowledge_item_ids: knowledgeItemIds,
         created_asset_ids: input.createdAssetIds ? [...input.createdAssetIds] : [],
         agent_execution_log_id: input.agentExecutionLogId,
         draft_snapshot_id: input.draftSnapshotId,
+        quality_findings_summary: input.qualityFindingsSummary
+          ? structuredClone(input.qualityFindingsSummary)
+          : undefined,
         created_at: timestamp,
       };
 

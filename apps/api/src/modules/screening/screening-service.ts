@@ -9,11 +9,17 @@ import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provide
 import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import type {
+  DocumentStructureService,
+  DocumentStructureTableSnapshot,
+} from "../document-pipeline/document-structure-service.ts";
+import type { EditorialSourceBlockResolver } from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
+import type { ManuscriptQualityService } from "../manuscript-quality/manuscript-quality-service.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
@@ -74,6 +80,12 @@ export interface ScreeningServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  manuscriptQualitySourceBlockResolver?: Pick<
+    EditorialSourceBlockResolver,
+    "resolveBlocks"
+  >;
+  manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
+  documentStructureService?: Pick<DocumentStructureService, "extract">;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -119,6 +131,15 @@ export class ScreeningService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly manuscriptQualitySourceBlockResolver: Pick<
+    EditorialSourceBlockResolver,
+    "resolveBlocks"
+  >;
+  private readonly manuscriptQualityService?: Pick<
+    ManuscriptQualityService,
+    "runChecks"
+  >;
+  private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -148,6 +169,14 @@ export class ScreeningService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.manuscriptQualitySourceBlockResolver =
+      options.manuscriptQualitySourceBlockResolver ?? {
+        async resolveBlocks() {
+          return [];
+        },
+      };
+    this.manuscriptQualityService = options.manuscriptQualityService;
+    this.documentStructureService = options.documentStructureService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -255,6 +284,23 @@ export class ScreeningService {
         updated_at: timestamp,
       };
       await jobRepository.save(queuedJob);
+      const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
+      const documentStructureSnapshot = this.documentStructureService
+        ? await this.documentStructureService.extract({
+            manuscriptId: input.manuscriptId,
+            assetId: input.parentAssetId,
+            fileName:
+              sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+          })
+        : undefined;
+      const qualityRun = await this.runManuscriptQualityChecks({
+        manuscriptId: input.manuscriptId,
+        assetId: input.parentAssetId,
+        tableSnapshots: documentStructureSnapshot?.tables ?? [],
+        qualityPackageVersionIds:
+          governedContext.runtimeBinding.quality_package_version_ids,
+      });
+      const medicalReviewSignals = buildMedicalReviewSignals(qualityRun?.issues);
 
       const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
@@ -282,8 +328,12 @@ export class ScreeningService {
         ),
         modelId: moduleContext.modelSelection.model.id,
         modelVersion: moduleContext.modelSelection.model.model_version,
+        qualityPackages: qualityRun?.resolved_quality_packages,
         createdAssetIds: [asset.id],
         agentExecutionLogId: executionLog.id,
+        qualityFindingsSummary: qualityRun
+          ? structuredClone(qualityRun.quality_findings_summary)
+          : undefined,
         knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
           knowledgeItemId: selection.knowledgeItem.id,
           matchSourceId: selection.matchSourceId,
@@ -305,6 +355,23 @@ export class ScreeningService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "screening_report",
+          ...(qualityRun
+            ? {
+                qualityFindings: qualityRun.issues.map((issue) =>
+                  structuredClone(issue),
+                ),
+                qualityFindingSummary: structuredClone(
+                  qualityRun.quality_findings_summary,
+                ),
+                ...(medicalReviewSignals.length > 0
+                  ? {
+                      medicalReviewSignals: medicalReviewSignals.map((signal) => ({
+                        ...signal,
+                      })),
+                    }
+                  : {}),
+              }
+            : {}),
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -341,4 +408,60 @@ export class ScreeningService {
 
     return committed.response;
   }
+
+  private async runManuscriptQualityChecks(input: {
+    manuscriptId: string;
+    assetId: string;
+    tableSnapshots?: DocumentStructureTableSnapshot[];
+    qualityPackageVersionIds?: string[];
+  }) {
+    if (!this.manuscriptQualityService) {
+      return undefined;
+    }
+
+    const blocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+      manuscriptId: input.manuscriptId,
+      assetId: input.assetId,
+    });
+
+    return this.manuscriptQualityService.runChecks({
+      blocks: blocks.map((block) => ({
+        text: block.text,
+        style: block.block_kind,
+      })),
+      requestedScopes: ["general_proofreading", "medical_specialized"],
+      targetModule: "screening",
+      tableSnapshots: input.tableSnapshots,
+      qualityPackageVersionIds: input.qualityPackageVersionIds,
+    });
+  }
+}
+
+function buildMedicalReviewSignals(
+  issues: Array<{
+    issue_id: string;
+    module_scope: string;
+    issue_type: string;
+    action: string;
+    severity: string;
+    explanation: string;
+  }> | undefined,
+) {
+  if (!issues) {
+    return [];
+  }
+
+  return issues
+    .filter(
+      (issue) =>
+        issue.module_scope === "medical_specialized" &&
+        issue.action !== "suggest_fix",
+    )
+    .map((issue) => ({
+      issueId: issue.issue_id,
+      issueType: issue.issue_type,
+      action: issue.action,
+      severity: issue.severity,
+      explanation: issue.explanation,
+    }));
 }

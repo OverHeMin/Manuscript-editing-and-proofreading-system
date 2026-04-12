@@ -28,6 +28,7 @@ import { AgentToolingGovernanceSection } from "./agent-tooling-governance-sectio
 import { HarnessActivationGate } from "./harness-activation-gate.tsx";
 import { HarnessEnvironmentEditor } from "./harness-environment-editor.tsx";
 import { HarnessQualityLab } from "./harness-quality-lab.tsx";
+import { ManuscriptQualityPackagesSection } from "./manuscript-quality-packages-section.tsx";
 
 if (typeof document !== "undefined") {
   void import("./admin-governance-workbench.css");
@@ -640,6 +641,7 @@ export function AdminGovernanceWorkbenchPage({
         <SummaryCard label="Module Templates" value={overview?.moduleTemplates.length ?? 0} />
         <SummaryCard label="Prompt Templates" value={overview?.promptTemplates.length ?? 0} />
         <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
+        <SummaryCard label="Quality Packages" value={overview?.qualityPackages.length ?? 0} />
         <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
         <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
         <SummaryCard label="Routing Policies" value={overview?.routingPolicies.length ?? 0} />
@@ -657,6 +659,7 @@ export function AdminGovernanceWorkbenchPage({
           manuscriptType={harnessScope.manuscriptType}
           activeScope={harnessScopeState}
           preview={harnessPreview}
+          qualityPackages={overview?.qualityPackages ?? []}
           executionProfiles={harnessExecutionProfiles}
           runtimeBindings={harnessRuntimeBindings}
           routingVersions={harnessRoutingVersions}
@@ -677,6 +680,40 @@ export function AdminGovernanceWorkbenchPage({
           }}
           onPreview={() => void handlePreviewHarnessEnvironment()}
           isMutating={isMutating}
+        />
+
+        <ManuscriptQualityPackagesSection
+          packages={overview?.qualityPackages ?? []}
+          isMutating={isMutating}
+          onCreateDraft={async (input) => {
+            await runMutation(async () => {
+              const result = await controller.createQualityPackageDraftAndReload({
+                actorRole,
+                ...input,
+              });
+
+              startTransition(() => {
+                setOverview(result.overview);
+                setStatusMessage(
+                  `Created quality package draft: ${result.createdPackage.package_name} v${result.createdPackage.version}`,
+                );
+              });
+            });
+          }}
+          onPublishVersion={async (packageVersionId) => {
+            await runMutation(async () => {
+              const nextOverview = await controller.publishQualityPackageVersionAndReload({
+                actorRole,
+                packageVersionId,
+                selectedTemplateFamilyId: overview?.selectedTemplateFamilyId ?? null,
+              });
+
+              startTransition(() => {
+                setOverview(nextOverview);
+                setStatusMessage(`Published quality package version: ${packageVersionId}`);
+              });
+            });
+          }}
         />
 
         <HarnessQualityLab
@@ -1655,6 +1692,8 @@ function buildFrozenBindingInput(
     runtimeId: environment.runtime_binding.runtime_id,
     promptTemplateId: environment.execution_profile.prompt_template_id,
     skillPackageIds: environment.execution_profile.skill_package_ids,
+    qualityPackageVersionIds:
+      environment.runtime_binding.quality_package_version_ids ?? [],
     moduleTemplateId: environment.execution_profile.module_template_id,
   };
 }

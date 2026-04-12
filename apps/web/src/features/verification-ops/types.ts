@@ -287,6 +287,7 @@ export interface FrozenExperimentBindingInput {
   runtimeId: string;
   promptTemplateId: string;
   skillPackageIds: string[];
+  qualityPackageVersionIds?: string[];
   moduleTemplateId: string;
 }
 

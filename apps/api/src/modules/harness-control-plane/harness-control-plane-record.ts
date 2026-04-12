@@ -16,8 +16,8 @@ export interface HarnessEnvironmentRecord {
   execution_profile: ModuleExecutionProfileRecord;
   runtime_binding: RuntimeBindingRecord;
   model_routing_policy_version: ModelRoutingPolicyVersionRecord;
-  retrieval_preset: RetrievalPresetRecord;
-  manual_review_policy: ManualReviewPolicyRecord;
+  retrieval_preset?: RetrievalPresetRecord;
+  manual_review_policy?: ManualReviewPolicyRecord;
 }
 
 export type HarnessEnvironmentComponent =

@@ -5,6 +5,8 @@ import {
   resolvePersistentRuntimeContract,
 } from "../../src/ops/persistent-runtime-contract.ts";
 
+const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
+
 test("persistent runtime contract rejects demo-only local app env", () => {
   assert.throws(
     () =>
@@ -29,6 +31,7 @@ test("persistent runtime contract resolves the required persistent defaults", ()
     databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
     uploadRootDir: path.resolve(process.cwd(), ".local-data", "uploads", "development"),
     uploadRootSource: "default",
+    aiProviderRuntimeCutoverEnabled: false,
     dependencies: {
       database: {
         mode: "required",
@@ -56,6 +59,7 @@ test("persistent runtime contract records explicit upload root overrides", () =>
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "production",
     DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
     UPLOAD_ROOT_DIR: "  /srv/medical/uploads  ",
   });
 
@@ -69,6 +73,7 @@ test("persistent runtime contract rejects staging and production placeholder onl
       resolvePersistentRuntimeContract({
         APP_ENV: "production",
         DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+        AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
         ONLYOFFICE_JWT_SECRET: "change-me-in-prod",
       }),
     /onlyoffice_jwt_secret/i,
@@ -79,6 +84,7 @@ test("persistent runtime contract normalizes configured dependency urls", () => 
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "staging",
     DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
     API_ALLOWED_ORIGINS: "https://ops.example.com/, https://review.example.com",
     ONLYOFFICE_URL: "https://onlyoffice.internal/docs/",
     REDIS_URL: "redis://127.0.0.1:6379/0",
@@ -105,6 +111,7 @@ test("persistent runtime contract rejects staging and production placeholder obj
       resolvePersistentRuntimeContract({
         APP_ENV: "staging",
         DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+        AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
         ONLYOFFICE_JWT_SECRET: "real-secret",
         OBJECT_STORAGE_ACCESS_KEY: "minioadmin",
       }),
@@ -118,6 +125,7 @@ test("persistent runtime contract rejects staging and production placeholder obj
       resolvePersistentRuntimeContract({
         APP_ENV: "production",
         DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+        AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
         ONLYOFFICE_JWT_SECRET: "real-secret",
         OBJECT_STORAGE_SECRET_KEY: "minioadmin123",
       }),
@@ -141,6 +149,7 @@ test("persistent runtime contract accepts explicit non-placeholder object storag
   const contract = resolvePersistentRuntimeContract({
     APP_ENV: "production",
     DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+    AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
     ONLYOFFICE_JWT_SECRET: "real-secret",
     OBJECT_STORAGE_ACCESS_KEY: "prod-storage-user",
     OBJECT_STORAGE_SECRET_KEY: "prod-storage-secret",

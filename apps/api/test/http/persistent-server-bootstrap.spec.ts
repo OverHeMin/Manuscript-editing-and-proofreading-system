@@ -4,6 +4,8 @@ import {
   startPersistentServer,
 } from "../../src/http/persistent-server-bootstrap.ts";
 
+const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
+
 test("persistent server bootstrap runs preflight before runtime creation and listen", async () => {
   const callLog: string[] = [];
   const fakePool = {
@@ -101,6 +103,7 @@ test("persistent server bootstrap rejects when preflight is not ready and never 
         env: {
           APP_ENV: "production",
           DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/medical_api",
+          AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
           ONLYOFFICE_JWT_SECRET: "real-secret",
         },
         loadEnvDefaults: () => {

@@ -1,4 +1,9 @@
 import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityIssue,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
+import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
   EditorialRuleSeverity,
@@ -115,6 +120,9 @@ export interface ProofreadingInspectionResult {
   riskItems: ProofreadingRiskItem[];
   manualReviewItems: ManualReviewItem[];
   appliedChanges: AppliedDeterministicRuleChange[];
+  qualityFindings?: ManuscriptQualityIssue[];
+  qualityFindingSummary?: ManuscriptQualityFindingSummary;
+  resolvedQualityPackages?: ManuscriptQualityPackageVersionRef[];
 }
 
 export interface TableSemanticHitEvidence {
@@ -131,6 +139,13 @@ export interface TableRuleInspectionFinding {
   ruleId: string;
   reason: string;
   semantic_hit: TableSemanticHitEvidence;
+}
+
+export interface EditorialSourceBlockResolver {
+  resolveBlocks(input: {
+    manuscriptId: string;
+    assetId: string;
+  }): Promise<EditorialTextBlock[]>;
 }
 
 export interface ProofreadingSourceBlockResolver {

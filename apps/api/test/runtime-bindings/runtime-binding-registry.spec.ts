@@ -15,6 +15,9 @@ import { InMemoryExecutionGovernanceRepository } from "../../src/modules/executi
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
+import { createManuscriptQualityPackageApi } from "../../src/modules/manuscript-quality-packages/manuscript-quality-package-api.ts";
+import { InMemoryManuscriptQualityPackageRepository } from "../../src/modules/manuscript-quality-packages/in-memory-manuscript-quality-package-repository.ts";
+import { ManuscriptQualityPackageService } from "../../src/modules/manuscript-quality-packages/manuscript-quality-package-service.ts";
 import { createRuntimeBindingApi } from "../../src/modules/runtime-bindings/runtime-binding-api.ts";
 import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bindings/in-memory-runtime-binding-repository.ts";
 import { RuntimeBindingReadinessService } from "../../src/modules/runtime-bindings/runtime-binding-readiness-service.ts";
@@ -43,6 +46,12 @@ function createRuntimeBindingHarness() {
     tool: ["tool-1", "tool-2"],
     promptSkill: ["skill-1", "prompt-1", "skill-2", "prompt-2"],
     executionGovernance: ["execution-profile-1", "execution-profile-2"],
+    qualityPackageVersion: [
+      "quality-package-version-1",
+      "quality-package-version-2",
+      "quality-package-version-3",
+      "quality-package-version-4",
+    ],
     verificationOps: [
       "check-profile-1",
       "release-profile-1",
@@ -66,6 +75,8 @@ function createRuntimeBindingHarness() {
   const executionGovernanceRepository =
     new InMemoryExecutionGovernanceRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
+  const manuscriptQualityPackageRepository =
+    new InMemoryManuscriptQualityPackageRepository();
 
   const runtimeBindingService = new RuntimeBindingService({
     repository: new InMemoryRuntimeBindingRepository(),
@@ -75,6 +86,7 @@ function createRuntimeBindingHarness() {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
     createId: () => {
       const value = ids.runtimeBinding.shift();
       assert.ok(value, "Expected a runtime binding id to be available.");
@@ -104,6 +116,7 @@ function createRuntimeBindingHarness() {
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
 
   return {
@@ -179,6 +192,19 @@ function createRuntimeBindingHarness() {
         createId: () => {
           const value = ids.verificationOps.shift();
           assert.ok(value, "Expected a verification-ops id to be available.");
+          return value;
+        },
+      }),
+    }),
+    manuscriptQualityPackageApi: createManuscriptQualityPackageApi({
+      manuscriptQualityPackageService: new ManuscriptQualityPackageService({
+        repository: manuscriptQualityPackageRepository,
+        createId: () => {
+          const value = ids.qualityPackageVersion.shift();
+          assert.ok(
+            value,
+            "Expected a manuscript quality package version id to be available.",
+          );
           return value;
         },
       }),
@@ -357,6 +383,24 @@ async function seedPublishableBindingDependencies() {
     suiteId: suite.body.id,
   });
 
+  const qualityPackage = await harness.manuscriptQualityPackageApi.createDraftVersion(
+    {
+      actorRole: "admin",
+      input: {
+        packageName: "Medical Research Style",
+        packageKind: "general_style_package",
+        targetScopes: ["general_proofreading"],
+        manifest: {
+          style_family: "medical_research_article",
+        },
+      },
+    },
+  );
+  await harness.manuscriptQualityPackageApi.publishVersion({
+    actorRole: "admin",
+    packageVersionId: qualityPackage.body.id,
+  });
+
   return {
     ...harness,
     runtimeId: runtime.body.id,
@@ -366,6 +410,7 @@ async function seedPublishableBindingDependencies() {
     promptTemplateId: promptTemplate.body.id,
     skillPackageId: skillPackage.body.id,
     executionProfileId: executionProfile.body.id,
+    qualityPackageVersionId: qualityPackage.body.id,
     verificationCheckProfileId: checkProfile.body.id,
     evaluationSuiteId: suite.body.id,
     releaseCheckProfileId: releaseProfile.body.id,
@@ -591,6 +636,154 @@ test("runtime bindings reject draft dependencies and require active or published
         },
       }),
     /active|published/i,
+  );
+});
+
+test("runtime bindings persist published quality package refs and expose them through readiness", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const created = await harness.runtimeBindingApi.createBinding({
+    actorRole: "admin",
+    input: {
+      module: "editing",
+      manuscriptType: "clinical_study",
+      templateFamilyId: "family-1",
+      runtimeId: harness.runtimeId,
+      sandboxProfileId: harness.sandboxProfileId,
+      agentProfileId: harness.agentProfileId,
+      toolPermissionPolicyId: harness.toolPermissionPolicyId,
+      promptTemplateId: harness.promptTemplateId,
+      skillPackageIds: [harness.skillPackageId],
+      executionProfileId: harness.executionProfileId,
+      qualityPackageVersionIds: [harness.qualityPackageVersionId],
+      verificationCheckProfileIds: [harness.verificationCheckProfileId],
+      evaluationSuiteIds: [harness.evaluationSuiteId],
+      releaseCheckProfileId: harness.releaseCheckProfileId,
+    },
+  });
+
+  assert.deepEqual(created.body.quality_package_version_ids, [
+    harness.qualityPackageVersionId,
+  ]);
+
+  await harness.runtimeBindingApi.activateBinding({
+    actorRole: "admin",
+    bindingId: created.body.id,
+  });
+
+  const readiness = await harness.readinessService.getBindingReadiness(
+    created.body.id,
+  );
+
+  assert.equal(readiness.status, "ready");
+  assert.deepEqual(readiness.binding?.quality_package_version_ids, [
+    harness.qualityPackageVersionId,
+  ]);
+});
+
+test("runtime bindings reject missing, draft, and scope-mismatched quality package refs", async () => {
+  const harness = await seedPublishableBindingDependencies();
+
+  const draftQualityPackage =
+    await harness.manuscriptQualityPackageApi.createDraftVersion({
+      actorRole: "admin",
+      input: {
+        packageName: "Draft Style Package",
+        packageKind: "general_style_package",
+        targetScopes: ["general_proofreading"],
+        manifest: {
+          style_family: "draft",
+        },
+      },
+    });
+
+  const scopeMismatchedPackage =
+    await harness.manuscriptQualityPackageApi.createDraftVersion({
+      actorRole: "admin",
+      input: {
+        packageName: "Scope Mismatched Style Package",
+        packageKind: "general_style_package",
+        targetScopes: ["medical_specialized"],
+        manifest: {
+          style_family: "mismatched",
+        },
+      },
+    });
+  await harness.manuscriptQualityPackageApi.publishVersion({
+    actorRole: "admin",
+    packageVersionId: scopeMismatchedPackage.body.id,
+  });
+
+  await assert.rejects(
+    () =>
+      harness.runtimeBindingApi.createBinding({
+        actorRole: "admin",
+        input: {
+          module: "editing",
+          manuscriptType: "clinical_study",
+          templateFamilyId: "family-1",
+          runtimeId: harness.runtimeId,
+          sandboxProfileId: harness.sandboxProfileId,
+          agentProfileId: harness.agentProfileId,
+          toolPermissionPolicyId: harness.toolPermissionPolicyId,
+          promptTemplateId: harness.promptTemplateId,
+          skillPackageIds: [harness.skillPackageId],
+          executionProfileId: harness.executionProfileId,
+          qualityPackageVersionIds: ["quality-package-version-missing"],
+          verificationCheckProfileIds: [harness.verificationCheckProfileId],
+          evaluationSuiteIds: [harness.evaluationSuiteId],
+          releaseCheckProfileId: harness.releaseCheckProfileId,
+        },
+      }),
+    /quality package/i,
+  );
+
+  await assert.rejects(
+    () =>
+      harness.runtimeBindingApi.createBinding({
+        actorRole: "admin",
+        input: {
+          module: "editing",
+          manuscriptType: "clinical_study",
+          templateFamilyId: "family-1",
+          runtimeId: harness.runtimeId,
+          sandboxProfileId: harness.sandboxProfileId,
+          agentProfileId: harness.agentProfileId,
+          toolPermissionPolicyId: harness.toolPermissionPolicyId,
+          promptTemplateId: harness.promptTemplateId,
+          skillPackageIds: [harness.skillPackageId],
+          executionProfileId: harness.executionProfileId,
+          qualityPackageVersionIds: [draftQualityPackage.body.id],
+          verificationCheckProfileIds: [harness.verificationCheckProfileId],
+          evaluationSuiteIds: [harness.evaluationSuiteId],
+          releaseCheckProfileId: harness.releaseCheckProfileId,
+        },
+      }),
+    /published/i,
+  );
+
+  await assert.rejects(
+    () =>
+      harness.runtimeBindingApi.createBinding({
+        actorRole: "admin",
+        input: {
+          module: "editing",
+          manuscriptType: "clinical_study",
+          templateFamilyId: "family-1",
+          runtimeId: harness.runtimeId,
+          sandboxProfileId: harness.sandboxProfileId,
+          agentProfileId: harness.agentProfileId,
+          toolPermissionPolicyId: harness.toolPermissionPolicyId,
+          promptTemplateId: harness.promptTemplateId,
+          skillPackageIds: [harness.skillPackageId],
+          executionProfileId: harness.executionProfileId,
+          qualityPackageVersionIds: [scopeMismatchedPackage.body.id],
+          verificationCheckProfileIds: [harness.verificationCheckProfileId],
+          evaluationSuiteIds: [harness.evaluationSuiteId],
+          releaseCheckProfileId: harness.releaseCheckProfileId,
+        },
+      }),
+    /scope|compatible/i,
   );
 });
 

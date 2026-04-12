@@ -1,4 +1,8 @@
 import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
+import type {
   KnowledgeHitLogRecord,
   ModuleExecutionSnapshotRecord,
 } from "./execution-tracking-record.ts";
@@ -25,9 +29,11 @@ interface ExecutionSnapshotRow {
   skill_package_versions: string[] | string;
   model_id: string;
   model_version: string | null;
+  quality_packages: ManuscriptQualityPackageVersionRef[] | null;
   knowledge_item_ids: string[] | string;
   created_asset_ids: string[] | string;
   agent_execution_log_id: string | null;
+  quality_findings_summary: ManuscriptQualityFindingSummary | null;
   draft_snapshot_id: string | null;
   created_at: Date | string;
 }
@@ -67,9 +73,11 @@ export class PostgresExecutionTrackingRepository
           skill_package_versions,
           model_id,
           model_version,
+          quality_packages,
           knowledge_item_ids,
           created_asset_ids,
           agent_execution_log_id,
+          quality_findings_summary,
           draft_snapshot_id,
           created_at
         )
@@ -87,11 +95,13 @@ export class PostgresExecutionTrackingRepository
           $11::text[],
           $12,
           $13,
-          $14::text[],
+          $14::jsonb,
           $15::text[],
-          $16,
+          $16::text[],
           $17,
-          $18
+          $18::jsonb,
+          $19,
+          $20
         )
         on conflict (id) do update
         set
@@ -107,9 +117,11 @@ export class PostgresExecutionTrackingRepository
           skill_package_versions = excluded.skill_package_versions,
           model_id = excluded.model_id,
           model_version = excluded.model_version,
+          quality_packages = excluded.quality_packages,
           knowledge_item_ids = excluded.knowledge_item_ids,
           created_asset_ids = excluded.created_asset_ids,
           agent_execution_log_id = excluded.agent_execution_log_id,
+          quality_findings_summary = excluded.quality_findings_summary,
           draft_snapshot_id = excluded.draft_snapshot_id,
           created_at = excluded.created_at
       `,
@@ -127,9 +139,11 @@ export class PostgresExecutionTrackingRepository
         record.skill_package_versions,
         record.model_id,
         record.model_version ?? null,
+        record.quality_packages ? JSON.stringify(record.quality_packages) : null,
         record.knowledge_item_ids,
         record.created_asset_ids,
         record.agent_execution_log_id ?? null,
+        record.quality_findings_summary ?? null,
         record.draft_snapshot_id ?? null,
         record.created_at,
       ],
@@ -155,9 +169,11 @@ export class PostgresExecutionTrackingRepository
           skill_package_versions,
           model_id,
           model_version,
+          quality_packages,
           knowledge_item_ids,
           created_asset_ids,
           agent_execution_log_id,
+          quality_findings_summary,
           draft_snapshot_id,
           created_at
         from execution_snapshots
@@ -186,9 +202,11 @@ export class PostgresExecutionTrackingRepository
           skill_package_versions,
           model_id,
           model_version,
+          quality_packages,
           knowledge_item_ids,
           created_asset_ids,
           agent_execution_log_id,
+          quality_findings_summary,
           draft_snapshot_id,
           created_at
         from execution_snapshots
@@ -218,9 +236,11 @@ export class PostgresExecutionTrackingRepository
           skill_package_versions,
           model_id,
           model_version,
+          quality_packages,
           knowledge_item_ids,
           created_asset_ids,
           agent_execution_log_id,
+          quality_findings_summary,
           draft_snapshot_id,
           created_at
         from execution_snapshots
@@ -336,10 +356,28 @@ function mapExecutionSnapshotRow(
     skill_package_versions: decodeTextArray(row.skill_package_versions),
     model_id: row.model_id,
     ...(row.model_version ? { model_version: row.model_version } : {}),
+    ...(row.quality_packages
+      ? {
+          quality_packages: row.quality_packages.map((entry) => ({
+            package_id: entry.package_id,
+            package_name: entry.package_name,
+            package_kind: entry.package_kind,
+            target_scopes: [...entry.target_scopes],
+            version: entry.version,
+          })),
+        }
+      : {}),
     knowledge_item_ids: decodeTextArray(row.knowledge_item_ids),
     created_asset_ids: decodeTextArray(row.created_asset_ids),
     ...(row.agent_execution_log_id
       ? { agent_execution_log_id: row.agent_execution_log_id }
+      : {}),
+    ...(row.quality_findings_summary
+      ? {
+          quality_findings_summary: structuredClone(
+            row.quality_findings_summary,
+          ),
+        }
       : {}),
     ...(row.draft_snapshot_id ? { draft_snapshot_id: row.draft_snapshot_id } : {}),
     created_at: createdAt,

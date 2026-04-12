@@ -256,6 +256,13 @@ import {
   ModelRoutingPolicyVersionNotFoundError,
 } from "../modules/model-routing-governance/index.ts";
 import {
+  createManuscriptQualityPackageApi,
+  InMemoryManuscriptQualityPackageRepository,
+  ManuscriptQualityPackageNotFoundError,
+  ManuscriptQualityPackageService,
+  ManuscriptQualityPackageStatusTransitionError,
+} from "../modules/manuscript-quality-packages/index.ts";
+import {
   createPromptSkillRegistryApi,
   InMemoryPromptSkillRegistryRepository,
   PromptTemplateNotFoundError,
@@ -810,6 +817,16 @@ type HttpRouteMatch =
       route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case";
     }
   | {
+      route: "manuscript-quality-package-create";
+    }
+  | {
+      route: "manuscript-quality-package-list";
+    }
+  | {
+      route: "manuscript-quality-package-publish";
+      packageVersionId: string;
+    }
+  | {
       route: "prompt-skill-create-skill-package";
     }
   | {
@@ -1159,6 +1176,7 @@ export interface ApiServerRuntime {
   templateApi: ReturnType<typeof createTemplateApi>;
   modelRegistryApi: ReturnType<typeof createModelRegistryApi>;
   modelRoutingGovernanceApi: ReturnType<typeof createModelRoutingGovernanceApi>;
+  manuscriptQualityPackageApi: ReturnType<typeof createManuscriptQualityPackageApi>;
   retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
   manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   promptSkillRegistryApi: ReturnType<typeof createPromptSkillRegistryApi>;
@@ -1285,6 +1303,8 @@ export function createInMemoryApiRuntime(input: {
     new InMemoryToolPermissionPolicyRepository();
   const promptSkillRegistryRepository =
     new InMemoryPromptSkillRegistryRepository();
+  const manuscriptQualityPackageRepository =
+    new InMemoryManuscriptQualityPackageRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const auditService = new InMemoryAuditService();
@@ -1387,6 +1407,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
   const retrievalPresetService = new RetrievalPresetService({
     repository: retrievalPresetRepository,
@@ -1403,6 +1424,7 @@ export function createInMemoryApiRuntime(input: {
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
@@ -1486,6 +1508,9 @@ export function createInMemoryApiRuntime(input: {
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
+  });
+  const manuscriptQualityPackageService = new ManuscriptQualityPackageService({
+    repository: manuscriptQualityPackageRepository,
   });
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
@@ -1577,6 +1602,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -1732,6 +1758,9 @@ export function createInMemoryApiRuntime(input: {
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
       modelRoutingGovernanceService,
+    }),
+    manuscriptQualityPackageApi: createManuscriptQualityPackageApi({
+      manuscriptQualityPackageService,
     }),
     retrievalPresetApi: createRetrievalPresetApi({
       retrievalPresetService,
@@ -3430,6 +3459,61 @@ async function handleRoute(
         bindingId: routeMatch.bindingId,
       });
     }
+    case "manuscript-quality-package-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        input: Parameters<
+          typeof runtime.manuscriptQualityPackageApi.createDraftVersion
+        >[0]["input"];
+      };
+
+      return runtime.manuscriptQualityPackageApi.createDraftVersion({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "manuscript-quality-package-list": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const requestUrl = new URL(req.url ?? "/", "http://localhost");
+      const input: NonNullable<
+        Parameters<typeof runtime.manuscriptQualityPackageApi.listPackageVersions>[0]
+      > = {};
+      const packageKind = coalesceOptionalString(
+        requestUrl.searchParams.get("packageKind") ?? undefined,
+      );
+      const packageName = coalesceOptionalString(
+        requestUrl.searchParams.get("packageName") ?? undefined,
+      );
+      const targetScope = coalesceOptionalString(
+        requestUrl.searchParams.get("targetScope") ?? undefined,
+      );
+      const status = coalesceOptionalString(
+        requestUrl.searchParams.get("status") ?? undefined,
+      );
+
+      if (packageKind) {
+        input.packageKind = packageKind as typeof input.packageKind;
+      }
+      if (packageName) {
+        input.packageName = packageName;
+      }
+      if (targetScope) {
+        input.targetScope = targetScope as typeof input.targetScope;
+      }
+      if (status) {
+        input.status = status as typeof input.status;
+      }
+
+      return runtime.manuscriptQualityPackageApi.listPackageVersions(input);
+    }
+    case "manuscript-quality-package-publish": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.manuscriptQualityPackageApi.publishVersion({
+        actorRole: session.user.role,
+        packageVersionId: routeMatch.packageVersionId,
+      });
+    }
     case "tool-permission-policy-create": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -4964,6 +5048,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "runtime-binding-list" };
   }
 
+  if (method === "POST" && path === "/api/v1/manuscript-quality-packages") {
+    return { route: "manuscript-quality-package-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/manuscript-quality-packages") {
+    return { route: "manuscript-quality-package-list" };
+  }
+
   if (method === "POST" && path === "/api/v1/tool-permission-policies") {
     return { route: "tool-permission-policy-create" };
   }
@@ -5431,6 +5523,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "prompt-skill-publish-skill-package",
       skillPackageId: publishSkillPackageMatch[1],
+    };
+  }
+
+  const publishManuscriptQualityPackageMatch = path.match(
+    /^\/api\/v1\/manuscript-quality-packages\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishManuscriptQualityPackageMatch) {
+    return {
+      route: "manuscript-quality-package-publish",
+      packageVersionId: publishManuscriptQualityPackageMatch[1],
     };
   }
 
@@ -6344,6 +6446,7 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingReferenceNotFoundError ||
     error instanceof ModelRoutingPolicyNotFoundError ||
     error instanceof ModelRoutingPolicyVersionNotFoundError ||
+    error instanceof ManuscriptQualityPackageNotFoundError ||
     error instanceof SkillPackageNotFoundError ||
     error instanceof PromptTemplateNotFoundError ||
     error instanceof EditorialRuleSetNotFoundError ||
@@ -6392,6 +6495,7 @@ function mapErrorToHttpResponse(
     error instanceof ModelRoutingPolicyScopeConflictError ||
     error instanceof ModelRoutingGovernanceDraftNotEditableError ||
     error instanceof ModelRoutingGovernanceStatusTransitionError ||
+    error instanceof ManuscriptQualityPackageStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
     error instanceof EditorialRuleSetStatusTransitionError ||
     error instanceof EditorialRuleSetNotEditableError ||

@@ -1420,9 +1420,9 @@ test("execution resolution includes governed runtime retrieval and manual review
     resolvedActive.model_routing_policy_version.id,
     "policy-version-active-1",
   );
-  assert.equal(resolvedActive.retrieval_preset.id, "retrieval-active-1");
+  assert.equal(resolvedActive.retrieval_preset?.id, "retrieval-active-1");
   assert.equal(
-    resolvedActive.manual_review_policy.id,
+    resolvedActive.manual_review_policy?.id,
     "manual-review-active-1",
   );
 
@@ -1445,8 +1445,8 @@ test("execution resolution includes governed runtime retrieval and manual review
     preview.model_routing_policy_version.id,
     "policy-version-preview-2",
   );
-  assert.equal(preview.retrieval_preset.id, "retrieval-preview-2");
-  assert.equal(preview.manual_review_policy.id, "manual-review-preview-2");
+  assert.equal(preview.retrieval_preset?.id, "retrieval-preview-2");
+  assert.equal(preview.manual_review_policy?.id, "manual-review-preview-2");
 
   const stillActive = await executionResolutionService.resolveExecutionBundle({
     module: "editing",
@@ -1458,9 +1458,243 @@ test("execution resolution includes governed runtime retrieval and manual review
   assert.ok(stillActive.retrieval_preset);
   assert.ok(stillActive.manual_review_policy);
   assert.equal(stillActive.runtime_binding.id, "binding-active-1");
-  assert.equal(stillActive.retrieval_preset.id, "retrieval-active-1");
+  assert.equal(stillActive.retrieval_preset?.id, "retrieval-active-1");
   assert.equal(
-    stillActive.manual_review_policy.id,
+    stillActive.manual_review_policy?.id,
     "manual-review-active-1",
   );
+});
+
+test("execution resolution rejects override ids from another governed scope", async () => {
+  const {
+    executionGovernanceService,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+    runtimeBindingRepository,
+    retrievalPresetRepository,
+    manualReviewPolicyRepository,
+    executionResolutionService,
+  } = createExecutionResolutionHarness();
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await moduleTemplateRepository.save({
+    id: "template-editing-foreign-1",
+    template_family_id: "family-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Foreign editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-foreign-1",
+    name: "editing_foreign",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-foreign-1",
+    template_family_id: "family-2",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-active-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-foreign-1",
+    provider: "openai",
+    model_name: "gpt-5.4-foreign",
+    model_version: "2026-04-02",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-active-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-1",
+    versionId: "policy-version-active-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-active-1",
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-foreign-1",
+    versionId: "policy-version-foreign-1",
+    scopeKind: "template_family",
+    scopeValue: "family-2",
+    primaryModelId: "model-editing-foreign-1",
+  });
+
+  const activeProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(activeProfile.id, "admin");
+  const foreignProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-2",
+    moduleTemplateId: "template-editing-foreign-1",
+    ruleSetId: "rule-set-editing-foreign-1",
+    promptTemplateId: "prompt-editing-foreign-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+
+  await runtimeBindingRepository.save({
+    id: "binding-active-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    runtime_id: "runtime-active-1",
+    sandbox_profile_id: "sandbox-active-1",
+    agent_profile_id: "agent-active-1",
+    tool_permission_policy_id: "tool-policy-active-1",
+    prompt_template_id: "prompt-editing-1",
+    skill_package_ids: [],
+    execution_profile_id: activeProfile.id,
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
+    status: "active",
+    version: 1,
+  });
+  await runtimeBindingRepository.save({
+    id: "binding-foreign-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-2",
+    runtime_id: "runtime-foreign-1",
+    sandbox_profile_id: "sandbox-foreign-1",
+    agent_profile_id: "agent-foreign-1",
+    tool_permission_policy_id: "tool-policy-foreign-1",
+    prompt_template_id: "prompt-editing-foreign-1",
+    skill_package_ids: [],
+    execution_profile_id: foreignProfile.id,
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
+    status: "draft",
+    version: 1,
+  });
+  await retrievalPresetRepository.save({
+    id: "retrieval-active-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    name: "Active retrieval",
+    top_k: 6,
+    rerank_enabled: true,
+    citation_required: true,
+    status: "active",
+    version: 1,
+  });
+  await retrievalPresetRepository.save({
+    id: "retrieval-foreign-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-2",
+    name: "Foreign retrieval",
+    top_k: 10,
+    rerank_enabled: false,
+    citation_required: false,
+    status: "draft",
+    version: 1,
+  });
+  await manualReviewPolicyRepository.save({
+    id: "manual-review-active-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    name: "Active review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    status: "active",
+    version: 1,
+  });
+  await manualReviewPolicyRepository.save({
+    id: "manual-review-foreign-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-2",
+    name: "Foreign review policy",
+    min_confidence_threshold: 0.7,
+    high_risk_force_review: false,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: false,
+    status: "draft",
+    version: 1,
+  });
+
+  const baseScope = {
+    module: "editing" as const,
+    manuscriptType: "clinical_study" as const,
+    templateFamilyId: "family-1",
+  };
+  const cases = [
+    { executionProfileId: foreignProfile.id },
+    { runtimeBindingId: "binding-foreign-1" },
+    { modelRoutingPolicyVersionId: "policy-version-foreign-1" },
+    { retrievalPresetId: "retrieval-foreign-1" },
+    { manualReviewPolicyId: "manual-review-foreign-1" },
+  ];
+
+  for (const input of cases) {
+    await assert.rejects(
+      () =>
+        executionResolutionService.resolveExecutionBundle({
+          ...baseScope,
+          ...input,
+        }),
+      /scope/i,
+    );
+  }
 });

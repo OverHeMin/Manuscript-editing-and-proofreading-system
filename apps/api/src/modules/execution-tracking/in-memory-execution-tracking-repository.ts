@@ -14,8 +14,26 @@ function cloneSnapshotRecord(
     ...record,
     skill_package_ids: [...record.skill_package_ids],
     skill_package_versions: [...record.skill_package_versions],
+    ...(record.quality_packages
+      ? {
+          quality_packages: record.quality_packages.map((entry) => ({
+            package_id: entry.package_id,
+            package_name: entry.package_name,
+            package_kind: entry.package_kind,
+            target_scopes: [...entry.target_scopes],
+            version: entry.version,
+          })),
+        }
+      : {}),
     knowledge_item_ids: [...record.knowledge_item_ids],
     created_asset_ids: [...record.created_asset_ids],
+    ...(record.quality_findings_summary
+      ? {
+          quality_findings_summary: structuredClone(
+            record.quality_findings_summary,
+          ),
+        }
+      : {}),
   };
 }
 

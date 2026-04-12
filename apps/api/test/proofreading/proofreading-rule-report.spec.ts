@@ -8,6 +8,7 @@ import { InMemoryAgentRuntimeRepository } from "../../src/modules/agent-runtime/
 import { AgentRuntimeService } from "../../src/modules/agent-runtime/agent-runtime-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { EditingService } from "../../src/modules/editing/editing-service.ts";
+import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
@@ -155,8 +156,162 @@ test("editing service persists bounded instruction payloads and manual-review it
   ]);
 });
 
+test("editing service attaches suggestion-focused general quality findings as advisory evidence", async () => {
+  const harness = await seedHarness();
+  let recordedQualitySummary: Record<string, unknown> | undefined;
+
+  const editingService = new EditingService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: {
+      async recordSnapshot(input: Record<string, unknown>) {
+        recordedQualitySummary = input.qualityFindingsSummary as
+          | Record<string, unknown>
+          | undefined;
+        return {
+          id: "snapshot-editing-quality-1",
+        };
+      },
+    } as never,
+    jobRepository: harness.jobRepository,
+    documentAssetService: {
+      createScoped() {
+        return {
+          async createAsset(input: Record<string, unknown>) {
+            return {
+              id: "asset-edited-quality-1",
+              manuscript_id: input.manuscriptId,
+              asset_type: input.assetType,
+              status: "active",
+              storage_key: input.storageKey,
+              mime_type: input.mimeType,
+              parent_asset_id: input.parentAssetId,
+              source_module: input.sourceModule,
+              source_job_id: input.sourceJobId,
+              created_by: input.createdBy,
+              version_no: 1,
+              is_current: true,
+              file_name: input.fileName,
+              created_at: "2026-04-07T10:00:00.000Z",
+              updated_at: "2026-04-07T10:00:00.000Z",
+            };
+          },
+        };
+      },
+    } as never,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: {
+      async createLog() {
+        return { id: "execution-log-editing-quality-1" };
+      },
+      async completeLog() {
+        return { id: "execution-log-editing-quality-1" };
+      },
+    } as never,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    editorialDocxTransformService: {
+      async applyDeterministicRules() {
+        return {
+          appliedRuleIds: [],
+          appliedChanges: [],
+        };
+      },
+    } as never,
+    manuscriptQualitySourceBlockResolver: {
+      async resolveBlocks() {
+        return [
+          {
+            section: "discussion",
+            block_kind: "paragraph",
+            text: "患者的的症状明显缓解。",
+          },
+        ];
+      },
+    } as never,
+    manuscriptQualityService: {
+      async runChecks() {
+        return {
+          requested_scopes: ["general_proofreading"],
+          completed_scopes: ["general_proofreading"],
+          issues: [
+            {
+              issue_id: "editing-quality-1",
+              module_scope: "general_proofreading",
+              issue_type: "lexical.duplicated_particle",
+              category: "typo_redundancy_and_omission",
+              severity: "medium",
+              action: "suggest_fix",
+              confidence: 0.78,
+              paragraph_index: 0,
+              sentence_index: 0,
+              source_kind: "deterministic_rule",
+              source_id: "lexical/duplicated-particle",
+              text_excerpt: "患者的的症状明显缓解。",
+              suggested_replacement: "患者的症状明显缓解。",
+              explanation: "Detected a duplicated function word candidate: 的的.",
+            },
+          ],
+          quality_findings_summary: {
+            total_issue_count: 1,
+            issue_count_by_scope: {
+              general_proofreading: 1,
+            },
+            issue_count_by_action: {
+              suggest_fix: 1,
+            },
+            issue_count_by_severity: {
+              medium: 1,
+            },
+            highest_action: "suggest_fix",
+            representative_issue_ids: ["editing-quality-1"],
+          },
+        };
+      },
+    } as never,
+    now: () => new Date("2026-04-07T10:00:00.000Z"),
+    createId: () => "job-editing-quality-1",
+  } as never);
+
+  const result = await editingService.run({
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    storageKey: "edited/manuscript-1/output-quality.docx",
+    fileName: "output-quality.docx",
+  });
+
+  assert.equal(
+    (
+      result.job.payload?.qualityFindings as Array<{ action: string }>
+    )?.[0]?.action,
+    "suggest_fix",
+  );
+  assert.equal(
+    (
+      result.job.payload?.qualityFindingSummary as { total_issue_count: number }
+    )?.total_issue_count,
+    1,
+  );
+  assert.equal(recordedQualitySummary?.total_issue_count, 1);
+});
+
 test("proofreading draft reports failed checks from the same rule source and never reports applied changes", async () => {
   const harness = await seedHarness();
+  let recordedQualitySummary: Record<string, unknown> | undefined;
 
   const proofreadingService = new ProofreadingService({
     manuscriptRepository: harness.manuscriptRepository,
@@ -166,7 +321,10 @@ test("proofreading draft reports failed checks from the same rule source and nev
     knowledgeRepository: harness.knowledgeRepository,
     executionGovernanceService: harness.executionGovernanceService,
     executionTrackingService: {
-      async recordSnapshot() {
+      async recordSnapshot(input: Record<string, unknown>) {
+        recordedQualitySummary = input.qualityFindingsSummary as
+          | Record<string, unknown>
+          | undefined;
         return {
           id: "snapshot-proofreading-1",
         };
@@ -234,6 +392,46 @@ test("proofreading draft reports failed checks from the same rule source and nev
         ];
       },
     } as never,
+    manuscriptQualityService: {
+      async runChecks() {
+        return {
+          requested_scopes: ["general_proofreading"],
+          completed_scopes: ["general_proofreading"],
+          issues: [
+            {
+              issue_id: "quality-issue-1",
+              module_scope: "general_proofreading",
+              issue_type: "punctuation.repeated_mark",
+              category: "punctuation_and_pairs",
+              severity: "low",
+              action: "auto_fix",
+              confidence: 0.99,
+              paragraph_index: 0,
+              sentence_index: 0,
+              source_kind: "deterministic_rule",
+              source_id: "punctuation/repeated-mark",
+              text_excerpt: "，，",
+              suggested_replacement: "，",
+              explanation: "Repeated punctuation marks are a low-risk mechanical issue.",
+            },
+          ],
+          quality_findings_summary: {
+            total_issue_count: 1,
+            issue_count_by_scope: {
+              general_proofreading: 1,
+            },
+            issue_count_by_action: {
+              auto_fix: 1,
+            },
+            issue_count_by_severity: {
+              low: 1,
+            },
+            highest_action: "auto_fix",
+            representative_issue_ids: ["quality-issue-1"],
+          },
+        };
+      },
+    } as never,
     now: () => new Date("2026-04-07T10:00:00.000Z"),
     createId: () => "job-proofreading-1",
   } as never);
@@ -263,10 +461,31 @@ test("proofreading draft reports failed checks from the same rule source and nev
     ).appliedChanges?.length ?? 0,
     0,
   );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        qualityFindings?: Array<{ issue_type: string }>;
+      }
+    ).qualityFindings?.[0]?.issue_type,
+    "punctuation.repeated_mark",
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        qualityFindingSummary?: { total_issue_count: number };
+      }
+    ).qualityFindingSummary?.total_issue_count,
+    1,
+  );
+  assert.match(
+    String(result.job.payload?.reportMarkdown),
+    /## Quality Findings/,
+  );
   assert.match(
     String(result.job.payload?.reportMarkdown),
     /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/,
   );
+  assert.equal(recordedQualitySummary?.total_issue_count, 1);
 });
 
 test("proofreading draft report includes shared table semantic coordinates for matched table rules", async () => {
@@ -443,6 +662,151 @@ test("proofreading draft report includes shared table semantic coordinates for m
   );
 });
 
+test("screening service persists compliance quality findings without blocking governed completion", async () => {
+  const harness = await seedHarness();
+  let recordedQualitySummary: Record<string, unknown> | undefined;
+
+  const screeningService = new ScreeningService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: {
+      async recordSnapshot(input: Record<string, unknown>) {
+        recordedQualitySummary = input.qualityFindingsSummary as
+          | Record<string, unknown>
+          | undefined;
+        return {
+          id: "snapshot-screening-quality-1",
+        };
+      },
+    } as never,
+    jobRepository: harness.jobRepository,
+    documentAssetService: {
+      createScoped() {
+        return {
+          async createAsset(input: Record<string, unknown>) {
+            return {
+              id: "asset-screening-quality-1",
+              manuscript_id: input.manuscriptId,
+              asset_type: input.assetType,
+              status: "active",
+              storage_key: input.storageKey,
+              mime_type: input.mimeType,
+              parent_asset_id: input.parentAssetId,
+              source_module: input.sourceModule,
+              source_job_id: input.sourceJobId,
+              created_by: input.createdBy,
+              version_no: 1,
+              is_current: true,
+              file_name: input.fileName,
+              created_at: "2026-04-07T10:00:00.000Z",
+              updated_at: "2026-04-07T10:00:00.000Z",
+            };
+          },
+        };
+      },
+    } as never,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: {
+      async createLog() {
+        return { id: "execution-log-screening-quality-1" };
+      },
+      async completeLog() {
+        return { id: "execution-log-screening-quality-1" };
+      },
+    } as never,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    manuscriptQualitySourceBlockResolver: {
+      async resolveBlocks() {
+        return [
+          {
+            section: "abstract",
+            block_kind: "paragraph",
+            text: "结论：该方案绝对安全，可保证治愈。",
+          },
+        ];
+      },
+    } as never,
+    manuscriptQualityService: {
+      async runChecks() {
+        return {
+          requested_scopes: ["general_proofreading"],
+          completed_scopes: ["general_proofreading"],
+          issues: [
+            {
+              issue_id: "screening-quality-1",
+              module_scope: "general_proofreading",
+              issue_type: "compliance.risky_claim",
+              category: "sensitive_and_compliance",
+              severity: "high",
+              action: "block",
+              confidence: 0.94,
+              paragraph_index: 0,
+              sentence_index: 0,
+              source_kind: "lexicon",
+              source_id: "compliance/保证治愈",
+              text_excerpt: "结论：该方案绝对安全，可保证治愈。",
+              explanation: "Detected a risky absolute or promotional claim.",
+            },
+          ],
+          quality_findings_summary: {
+            total_issue_count: 1,
+            issue_count_by_scope: {
+              general_proofreading: 1,
+            },
+            issue_count_by_action: {
+              block: 1,
+            },
+            issue_count_by_severity: {
+              high: 1,
+            },
+            highest_action: "block",
+            representative_issue_ids: ["screening-quality-1"],
+          },
+        };
+      },
+    } as never,
+    now: () => new Date("2026-04-07T10:00:00.000Z"),
+    createId: () => "job-screening-quality-1",
+  } as never);
+
+  const result = await screeningService.run({
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "screener-1",
+    actorRole: "screener",
+    storageKey: "screening/manuscript-1/quality-report.md",
+    fileName: "quality-report.md",
+  });
+
+  assert.equal(
+    (
+      result.job.payload?.qualityFindings as Array<{ action: string }>
+    )?.[0]?.action,
+    "block",
+  );
+  assert.equal(
+    (
+      result.job.payload?.qualityFindingSummary as { highest_action: string }
+    )?.highest_action,
+    "block",
+  );
+  assert.equal(recordedQualitySummary?.highest_action, "block");
+  assert.equal(result.job.status, "completed");
+});
+
 async function seedHarness() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
@@ -484,7 +848,11 @@ async function seedHarness() {
   const sandboxProfileService = new SandboxProfileService({
     repository: sandboxProfileRepository,
     createId: (() => {
-      const ids = ["sandbox-editing-1", "sandbox-proofreading-1"];
+      const ids = [
+        "sandbox-screening-1",
+        "sandbox-editing-1",
+        "sandbox-proofreading-1",
+      ];
       return () => {
         const value = ids.shift();
         assert.ok(value);
@@ -495,7 +863,11 @@ async function seedHarness() {
   const agentProfileService = new AgentProfileService({
     repository: agentProfileRepository,
     createId: (() => {
-      const ids = ["agent-profile-editing-1", "agent-profile-proofreading-1"];
+      const ids = [
+        "agent-profile-screening-1",
+        "agent-profile-editing-1",
+        "agent-profile-proofreading-1",
+      ];
       return () => {
         const value = ids.shift();
         assert.ok(value);
@@ -506,7 +878,11 @@ async function seedHarness() {
   const agentRuntimeService = new AgentRuntimeService({
     repository: agentRuntimeRepository,
     createId: (() => {
-      const ids = ["runtime-editing-1", "runtime-proofreading-1"];
+      const ids = [
+        "runtime-screening-1",
+        "runtime-editing-1",
+        "runtime-proofreading-1",
+      ];
       return () => {
         const value = ids.shift();
         assert.ok(value);
@@ -532,7 +908,11 @@ async function seedHarness() {
     promptSkillRegistryRepository,
     verificationOpsRepository,
     createId: (() => {
-      const ids = ["binding-editing-1", "binding-proofreading-1"];
+      const ids = [
+        "binding-screening-1",
+        "binding-editing-1",
+        "binding-proofreading-1",
+      ];
       return () => {
         const value = ids.shift();
         assert.ok(value);
@@ -551,6 +931,7 @@ async function seedHarness() {
   await modelRegistryService.updateRoutingPolicy("admin", {
     systemDefaultModelId: "model-1",
     moduleDefaults: {
+      screening: "model-1",
       editing: "model-1",
       proofreading: "model-1",
     },
@@ -587,6 +968,15 @@ async function seedHarness() {
   });
 
   await moduleTemplateRepository.save({
+    id: "template-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Screening template",
+  });
+  await moduleTemplateRepository.save({
     id: "template-editing-1",
     template_family_id: "family-1",
     module: "editing",
@@ -605,6 +995,14 @@ async function seedHarness() {
     prompt: "Proofreading template",
   });
 
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-screening-1",
+    name: "screening_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "screening",
+    manuscript_types: ["clinical_study"],
+  });
   await promptSkillRegistryRepository.savePromptTemplate({
     id: "prompt-editing-1",
     name: "editing_mainline",
@@ -659,6 +1057,13 @@ async function seedHarness() {
     },
   });
 
+  await editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
   await editorialRuleRepository.saveRuleSet({
     id: "rule-set-editing-1",
     template_family_id: "family-1",
@@ -754,6 +1159,19 @@ async function seedHarness() {
   });
 
   await executionGovernanceRepository.saveProfile({
+    id: "profile-screening-1",
+    module: "screening",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    module_template_id: "template-screening-1",
+    rule_set_id: "rule-set-screening-1",
+    prompt_template_id: "prompt-screening-1",
+    skill_package_ids: [],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "active",
+    version: 1,
+  });
+  await executionGovernanceRepository.saveProfile({
     id: "profile-editing-1",
     module: "editing",
     manuscript_type: "clinical_study",
@@ -791,6 +1209,14 @@ async function seedHarness() {
   });
   await toolPermissionPolicyService.activatePolicy(policy.id, "admin");
 
+  const screeningSandbox = await sandboxProfileService.createProfile("admin", {
+    name: "Screening Sandbox",
+    sandboxMode: "workspace_write",
+    networkAccess: false,
+    approvalRequired: true,
+    allowedToolIds: [tool.id],
+  });
+  await sandboxProfileService.activateProfile(screeningSandbox.id, "admin");
   const editingSandbox = await sandboxProfileService.createProfile("admin", {
     name: "Editing Sandbox",
     sandboxMode: "workspace_write",
@@ -808,6 +1234,14 @@ async function seedHarness() {
   });
   await sandboxProfileService.activateProfile(proofreadingSandbox.id, "admin");
 
+  const screeningRuntime = await agentRuntimeService.createRuntime("admin", {
+    name: "Screening Runtime",
+    adapter: "deepagents",
+    sandboxProfileId: screeningSandbox.id,
+    allowedModules: ["screening"],
+    runtimeSlot: "screening",
+  });
+  await agentRuntimeService.publishRuntime(screeningRuntime.id, "admin");
   const editingRuntime = await agentRuntimeService.createRuntime("admin", {
     name: "Editing Runtime",
     adapter: "deepagents",
@@ -825,6 +1259,13 @@ async function seedHarness() {
   });
   await agentRuntimeService.publishRuntime(proofreadingRuntime.id, "admin");
 
+  const screeningAgentProfile = await agentProfileService.createProfile("admin", {
+    name: "Screening Executor",
+    roleKey: "subagent",
+    moduleScope: ["screening"],
+    manuscriptTypes: ["clinical_study"],
+  });
+  await agentProfileService.publishProfile(screeningAgentProfile.id, "admin");
   const editingAgentProfile = await agentProfileService.createProfile("admin", {
     name: "Editing Executor",
     roleKey: "subagent",
@@ -840,6 +1281,19 @@ async function seedHarness() {
   });
   await agentProfileService.publishProfile(proofreadingAgentProfile.id, "admin");
 
+  const screeningBinding = await runtimeBindingService.createBinding("admin", {
+    module: "screening",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    runtimeId: screeningRuntime.id,
+    sandboxProfileId: screeningSandbox.id,
+    agentProfileId: screeningAgentProfile.id,
+    toolPermissionPolicyId: policy.id,
+    promptTemplateId: "prompt-screening-1",
+    skillPackageIds: [],
+    executionProfileId: "profile-screening-1",
+  });
+  await runtimeBindingService.activateBinding(screeningBinding.id, "admin");
   const editingBinding = await runtimeBindingService.createBinding("admin", {
     module: "editing",
     manuscriptType: "clinical_study",

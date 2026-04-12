@@ -32,6 +32,7 @@ test("postgres runtime binding repository persists scoped versions and active fi
         tool_permission_policy_id: "policy-1",
         prompt_template_id: "prompt-1",
         skill_package_ids: ["skill-1"],
+        quality_package_version_ids: ["quality-package-version-1"],
         execution_profile_id: "profile-1",
         verification_check_profile_ids: ["check-profile-1"],
         evaluation_suite_ids: ["suite-1"],
@@ -58,6 +59,9 @@ test("postgres runtime binding repository persists scoped versions and active fi
       assert.deepEqual(active.map((record) => record.id), ["binding-1"]);
       assert.equal(loaded?.version, 1);
       assert.deepEqual(loaded?.skill_package_ids, ["skill-1"]);
+      assert.deepEqual(loaded?.quality_package_version_ids, [
+        "quality-package-version-1",
+      ]);
       assert.deepEqual(loaded?.verification_check_profile_ids, [
         "check-profile-1",
       ]);

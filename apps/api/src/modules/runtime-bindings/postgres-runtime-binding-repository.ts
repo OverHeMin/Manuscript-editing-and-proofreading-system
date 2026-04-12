@@ -19,6 +19,7 @@ interface RuntimeBindingRow {
   tool_permission_policy_id: string;
   prompt_template_id: string;
   skill_package_ids: string[] | string;
+  quality_package_version_ids: string[] | string;
   execution_profile_id: string | null;
   verification_check_profile_ids: string[] | string;
   evaluation_suite_ids: string[] | string;
@@ -44,6 +45,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           tool_permission_policy_id,
           prompt_template_id,
           skill_package_ids,
+          quality_package_version_ids,
           execution_profile_id,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -62,12 +64,13 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           $8,
           $9,
           $10::text[],
-          $11,
-          $12::text[],
+          $11::text[],
+          $12,
           $13::text[],
-          $14,
+          $14::text[],
           $15,
-          $16
+          $16,
+          $17
         )
         on conflict (id) do update
         set
@@ -80,6 +83,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           tool_permission_policy_id = excluded.tool_permission_policy_id,
           prompt_template_id = excluded.prompt_template_id,
           skill_package_ids = excluded.skill_package_ids,
+          quality_package_version_ids = excluded.quality_package_version_ids,
           execution_profile_id = excluded.execution_profile_id,
           verification_check_profile_ids = excluded.verification_check_profile_ids,
           evaluation_suite_ids = excluded.evaluation_suite_ids,
@@ -99,6 +103,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
         record.tool_permission_policy_id,
         record.prompt_template_id,
         record.skill_package_ids,
+        record.quality_package_version_ids ?? [],
         record.execution_profile_id ?? null,
         record.verification_check_profile_ids,
         record.evaluation_suite_ids,
@@ -123,6 +128,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           tool_permission_policy_id,
           prompt_template_id,
           skill_package_ids,
+          quality_package_version_ids,
           execution_profile_id,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -152,6 +158,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           tool_permission_policy_id,
           prompt_template_id,
           skill_package_ids,
+          quality_package_version_ids,
           execution_profile_id,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -185,6 +192,7 @@ export class PostgresRuntimeBindingRepository implements RuntimeBindingRepositor
           tool_permission_policy_id,
           prompt_template_id,
           skill_package_ids,
+          quality_package_version_ids,
           execution_profile_id,
           verification_check_profile_ids,
           evaluation_suite_ids,
@@ -243,6 +251,9 @@ function mapRuntimeBindingRow(row: RuntimeBindingRow): RuntimeBindingRecord {
     tool_permission_policy_id: row.tool_permission_policy_id,
     prompt_template_id: row.prompt_template_id,
     skill_package_ids: decodeTextArray(row.skill_package_ids),
+    quality_package_version_ids: decodeTextArray(
+      row.quality_package_version_ids,
+    ),
     execution_profile_id: row.execution_profile_id ?? undefined,
     verification_check_profile_ids: decodeTextArray(
       row.verification_check_profile_ids,

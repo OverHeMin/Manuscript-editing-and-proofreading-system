@@ -9,6 +9,7 @@ import type { TemplateModule } from "../templates/template-record.ts";
 import type { ToolPermissionPolicyRepository } from "../tool-permission-policies/tool-permission-policy-repository.ts";
 import type { VerificationOpsRepository } from "../verification-ops/verification-ops-repository.ts";
 import type { AgentRuntimeRepository } from "../agent-runtime/agent-runtime-repository.ts";
+import type { ManuscriptQualityPackageRepository } from "../manuscript-quality-packages/manuscript-quality-package-repository.ts";
 import type { RuntimeBindingRecord } from "./runtime-binding-record.ts";
 import type { RuntimeBindingRepository } from "./runtime-binding-repository.ts";
 
@@ -22,6 +23,7 @@ export interface CreateRuntimeBindingInput {
   toolPermissionPolicyId: string;
   promptTemplateId: string;
   skillPackageIds: string[];
+  qualityPackageVersionIds?: string[];
   executionProfileId?: string;
   verificationCheckProfileIds?: string[];
   evaluationSuiteIds?: string[];
@@ -36,6 +38,7 @@ export interface RuntimeBindingServiceOptions {
   toolPermissionPolicyRepository: ToolPermissionPolicyRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   verificationOpsRepository: VerificationOpsRepository;
+  manuscriptQualityPackageRepository?: ManuscriptQualityPackageRepository;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -69,6 +72,7 @@ export class RuntimeBindingService {
   private readonly toolPermissionPolicyRepository: ToolPermissionPolicyRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly verificationOpsRepository: VerificationOpsRepository;
+  private readonly manuscriptQualityPackageRepository?: ManuscriptQualityPackageRepository;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
@@ -80,6 +84,8 @@ export class RuntimeBindingService {
     this.toolPermissionPolicyRepository = options.toolPermissionPolicyRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.verificationOpsRepository = options.verificationOpsRepository;
+    this.manuscriptQualityPackageRepository =
+      options.manuscriptQualityPackageRepository;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -109,6 +115,9 @@ export class RuntimeBindingService {
       tool_permission_policy_id: input.toolPermissionPolicyId,
       prompt_template_id: input.promptTemplateId,
       skill_package_ids: [...new Set(input.skillPackageIds)],
+      quality_package_version_ids: dedupePreserveOrder(
+        input.qualityPackageVersionIds ?? [],
+      ),
       execution_profile_id: input.executionProfileId,
       verification_check_profile_ids: dedupePreserveOrder(
         input.verificationCheckProfileIds ?? [],
@@ -181,6 +190,7 @@ export class RuntimeBindingService {
       toolPermissionPolicyId: binding.tool_permission_policy_id,
       promptTemplateId: binding.prompt_template_id,
       skillPackageIds: binding.skill_package_ids,
+      qualityPackageVersionIds: binding.quality_package_version_ids ?? [],
       executionProfileId: binding.execution_profile_id,
       verificationCheckProfileIds: binding.verification_check_profile_ids,
       evaluationSuiteIds: binding.evaluation_suite_ids,
@@ -199,6 +209,9 @@ export class RuntimeBindingService {
           ...existing,
           status: "archived",
           skill_package_ids: [...existing.skill_package_ids],
+          quality_package_version_ids: [
+            ...(existing.quality_package_version_ids ?? []),
+          ],
         });
       }
     }
@@ -207,6 +220,7 @@ export class RuntimeBindingService {
       ...binding,
       status: "active",
       skill_package_ids: [...binding.skill_package_ids],
+      quality_package_version_ids: [...(binding.quality_package_version_ids ?? [])],
     };
     await this.repository.save(activeBinding);
     return activeBinding;
@@ -227,6 +241,7 @@ export class RuntimeBindingService {
       ...binding,
       status: "archived",
       skill_package_ids: [...binding.skill_package_ids],
+      quality_package_version_ids: [...(binding.quality_package_version_ids ?? [])],
     };
     await this.repository.save(archived);
     return archived;
@@ -340,6 +355,32 @@ export class RuntimeBindingService {
       }
     }
 
+    if ((input.qualityPackageVersionIds?.length ?? 0) > 0) {
+      if (!this.manuscriptQualityPackageRepository) {
+        throw new RuntimeBindingDependencyStateError(
+          "Runtime binding requires a manuscript quality package repository when quality package refs are configured.",
+        );
+      }
+
+      for (const qualityPackageVersionId of input.qualityPackageVersionIds ?? []) {
+        const qualityPackage =
+          await this.manuscriptQualityPackageRepository.findById(
+            qualityPackageVersionId,
+          );
+        if (!qualityPackage || qualityPackage.status !== "published") {
+          throw new RuntimeBindingDependencyStateError(
+            `Runtime binding requires published quality package ${qualityPackageVersionId}.`,
+          );
+        }
+
+        if (!isCompatibleQualityPackageRecord(qualityPackage)) {
+          throw new RuntimeBindingCompatibilityError(
+            `Quality package ${qualityPackage.id} is incompatible with runtime binding quality scopes.`,
+          );
+        }
+      }
+    }
+
     for (const verificationCheckProfileId of input.verificationCheckProfileIds ?? []) {
       const checkProfile =
         await this.verificationOpsRepository.findVerificationCheckProfileById(
@@ -407,4 +448,20 @@ function dedupePreserveOrder(values: string[]): string[] {
   }
 
   return result;
+}
+
+function isCompatibleQualityPackageRecord(input: {
+  package_kind: "general_style_package" | "medical_analyzer_package";
+  target_scopes: string[];
+}): boolean {
+  const allowedScopesByKind = {
+    general_style_package: ["general_proofreading"],
+    medical_analyzer_package: ["medical_specialized"],
+  } as const;
+  const allowedScopes = allowedScopesByKind[input.package_kind];
+
+  return (
+    input.target_scopes.length > 0 &&
+    input.target_scopes.every((scope) => allowedScopes.includes(scope as never))
+  );
 }

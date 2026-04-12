@@ -294,8 +294,8 @@ test("http server exposes harness control plane scope preview activate and rollb
         execution_profile: { id: string };
         runtime_binding: { id: string };
         model_routing_policy_version: { id: string };
-        retrieval_preset: { id: string };
-        manual_review_policy: { id: string };
+        retrieval_preset?: { id: string };
+        manual_review_policy?: { id: string };
       };
     };
 
@@ -307,11 +307,11 @@ test("http server exposes harness control plane scope preview activate and rollb
       "routing-version-editing-1",
     );
     assert.equal(
-      scopeBody.active_environment.retrieval_preset.id,
+      scopeBody.active_environment.retrieval_preset?.id,
       "retrieval-editing-1",
     );
     assert.equal(
-      scopeBody.active_environment.manual_review_policy.id,
+      scopeBody.active_environment.manual_review_policy?.id,
       "manual-review-editing-1",
     );
 
@@ -342,8 +342,8 @@ test("http server exposes harness control plane scope preview activate and rollb
         execution_profile: { id: string };
         runtime_binding: { id: string };
         model_routing_policy_version: { id: string };
-        retrieval_preset: { id: string };
-        manual_review_policy: { id: string };
+        retrieval_preset?: { id: string };
+        manual_review_policy?: { id: string };
       };
     };
 
@@ -355,11 +355,11 @@ test("http server exposes harness control plane scope preview activate and rollb
       "routing-version-editing-preview-2",
     );
     assert.equal(
-      preview.candidate_environment.retrieval_preset.id,
+      preview.candidate_environment.retrieval_preset?.id,
       "retrieval-editing-preview-2",
     );
     assert.equal(
-      preview.candidate_environment.manual_review_policy.id,
+      preview.candidate_environment.manual_review_policy?.id,
       "manual-review-editing-preview-2",
     );
 
@@ -389,15 +389,18 @@ test("http server exposes harness control plane scope preview activate and rollb
     const activated = (await activateResponse.json()) as {
       execution_profile: { id: string };
       runtime_binding: { id: string };
-      retrieval_preset: { id: string };
-      manual_review_policy: { id: string };
+      retrieval_preset?: { id: string };
+      manual_review_policy?: { id: string };
     };
 
     assert.equal(activateResponse.status, 200);
     assert.equal(activated.execution_profile.id, "profile-editing-preview-2");
     assert.equal(activated.runtime_binding.id, "binding-editing-preview-2");
-    assert.equal(activated.retrieval_preset.id, "retrieval-editing-preview-2");
-    assert.equal(activated.manual_review_policy.id, "manual-review-editing-preview-2");
+    assert.equal(activated.retrieval_preset?.id, "retrieval-editing-preview-2");
+    assert.equal(
+      activated.manual_review_policy?.id,
+      "manual-review-editing-preview-2",
+    );
 
     const rollbackResponse = await fetch(
       `${baseUrl}/api/v1/harness-control-plane/rollback`,
@@ -420,15 +423,15 @@ test("http server exposes harness control plane scope preview activate and rollb
     const rolledBack = (await rollbackResponse.json()) as {
       execution_profile: { id: string };
       runtime_binding: { id: string };
-      retrieval_preset: { id: string };
-      manual_review_policy: { id: string };
+      retrieval_preset?: { id: string };
+      manual_review_policy?: { id: string };
     };
 
     assert.equal(rollbackResponse.status, 200);
     assert.equal(rolledBack.execution_profile.id, "profile-editing-1");
     assert.equal(rolledBack.runtime_binding.id, "binding-editing-1");
-    assert.equal(rolledBack.retrieval_preset.id, "retrieval-editing-1");
-    assert.equal(rolledBack.manual_review_policy.id, "manual-review-editing-1");
+    assert.equal(rolledBack.retrieval_preset?.id, "retrieval-editing-1");
+    assert.equal(rolledBack.manual_review_policy?.id, "manual-review-editing-1");
   } finally {
     await stopWorkbenchServer(server);
   }
@@ -535,16 +538,16 @@ test("http server preserves full harness candidate bindings on evaluation run cr
           },
           candidateBinding: {
             lane: "candidate",
-            executionProfileId: "profile-editing-preview-2",
-            runtimeBindingId: "binding-editing-preview-2",
-            modelRoutingPolicyVersionId: "routing-version-editing-preview-2",
+            executionProfileId: "profile-editing-1",
+            runtimeBindingId: "binding-editing-1",
+            modelRoutingPolicyVersionId: "routing-version-editing-1",
             retrievalPresetId: "retrieval-editing-preview-2",
-            manualReviewPolicyId: "manual-review-editing-preview-2",
-            modelId: "model-editing-preview-2",
-            runtimeId: "runtime-editing-preview-2",
-            promptTemplateId: "prompt-editing-preview-2",
-            skillPackageIds: ["skill-editing-preview-2"],
-            moduleTemplateId: "template-editing-preview-2",
+            manualReviewPolicyId: "manual-review-editing-1",
+            modelId: "model-editing-1",
+            runtimeId: "runtime-editing-1",
+            promptTemplateId: "prompt-editing-1",
+            skillPackageIds: ["skill-editing-1"],
+            moduleTemplateId: "template-editing-1",
           },
         },
       }),
@@ -569,15 +572,15 @@ test("http server preserves full harness candidate bindings on evaluation run cr
     );
     assert.equal(
       createdRun.candidate_binding?.execution_profile_id,
-      "profile-editing-preview-2",
+      "profile-editing-1",
     );
     assert.equal(
       createdRun.candidate_binding?.runtime_binding_id,
-      "binding-editing-preview-2",
+      "binding-editing-1",
     );
     assert.equal(
       createdRun.candidate_binding?.model_routing_policy_version_id,
-      "routing-version-editing-preview-2",
+      "routing-version-editing-1",
     );
     assert.equal(
       createdRun.candidate_binding?.retrieval_preset_id,
@@ -585,7 +588,7 @@ test("http server preserves full harness candidate bindings on evaluation run cr
     );
     assert.equal(
       createdRun.candidate_binding?.manual_review_policy_id,
-      "manual-review-editing-preview-2",
+      "manual-review-editing-1",
     );
   } finally {
     await stopWorkbenchServer(server);

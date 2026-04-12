@@ -380,6 +380,116 @@ test("experiment runs freeze baseline and candidate bindings with a single prima
   assert.equal(updatedItem.body.weighted_score, 91);
 });
 
+test("experiment runs treat governed binding ids as primary A/B variables", async () => {
+  const { verificationOpsApi, sampleSet, suite } =
+    await seedPublishedSuiteAndSampleSet();
+
+  const created = await verificationOpsApi.createEvaluationRun({
+    actorRole: "admin",
+    input: {
+      suiteId: suite.body.id,
+      sampleSetId: sampleSet.body.id,
+      baselineBinding: {
+        lane: "baseline",
+        executionProfileId: "profile-prod-1",
+        retrievalPresetId: "retrieval-prod-1",
+        modelId: "model-prod-1",
+        runtimeId: "runtime-prod-1",
+        promptTemplateId: "prompt-prod-1",
+        skillPackageIds: ["skill-prod-1"],
+        moduleTemplateId: "template-prod-1",
+      },
+      candidateBinding: {
+        lane: "candidate",
+        executionProfileId: "profile-prod-1",
+        retrievalPresetId: "retrieval-preview-2",
+        modelId: "model-prod-1",
+        runtimeId: "runtime-prod-1",
+        promptTemplateId: "prompt-prod-1",
+        skillPackageIds: ["skill-prod-1"],
+        moduleTemplateId: "template-prod-1",
+      },
+    },
+  });
+
+  assert.equal(created.body.status, "queued");
+  assert.deepEqual(created.body.baseline_binding, {
+    lane: "baseline",
+    execution_profile_id: "profile-prod-1",
+    retrieval_preset_id: "retrieval-prod-1",
+    model_id: "model-prod-1",
+    runtime_id: "runtime-prod-1",
+    prompt_template_id: "prompt-prod-1",
+    skill_package_ids: ["skill-prod-1"],
+    module_template_id: "template-prod-1",
+  });
+  assert.deepEqual(created.body.candidate_binding, {
+    lane: "candidate",
+    execution_profile_id: "profile-prod-1",
+    retrieval_preset_id: "retrieval-preview-2",
+    model_id: "model-prod-1",
+    runtime_id: "runtime-prod-1",
+    prompt_template_id: "prompt-prod-1",
+    skill_package_ids: ["skill-prod-1"],
+    module_template_id: "template-prod-1",
+  });
+});
+
+test("experiment runs freeze quality package refs as a primary A/B variable", async () => {
+  const { verificationOpsApi, sampleSet, suite } =
+    await seedPublishedSuiteAndSampleSet();
+
+  const created = await verificationOpsApi.createEvaluationRun({
+    actorRole: "admin",
+    input: {
+      suiteId: suite.body.id,
+      sampleSetId: sampleSet.body.id,
+      baselineBinding: {
+        lane: "baseline",
+        runtimeBindingId: "binding-prod-shared-1",
+        modelId: "model-prod-1",
+        runtimeId: "runtime-prod-1",
+        promptTemplateId: "prompt-prod-1",
+        skillPackageIds: ["skill-prod-1"],
+        moduleTemplateId: "template-prod-1",
+        qualityPackageVersionIds: ["quality-package-version-1"],
+      } as never,
+      candidateBinding: {
+        lane: "candidate",
+        runtimeBindingId: "binding-prod-shared-1",
+        modelId: "model-prod-1",
+        runtimeId: "runtime-prod-1",
+        promptTemplateId: "prompt-prod-1",
+        skillPackageIds: ["skill-prod-1"],
+        moduleTemplateId: "template-prod-1",
+        qualityPackageVersionIds: ["quality-package-version-2"],
+      } as never,
+    },
+  });
+
+  assert.equal(created.body.status, "queued");
+  assert.deepEqual(created.body.baseline_binding, {
+    lane: "baseline",
+    runtime_binding_id: "binding-prod-shared-1",
+    model_id: "model-prod-1",
+    runtime_id: "runtime-prod-1",
+    prompt_template_id: "prompt-prod-1",
+    skill_package_ids: ["skill-prod-1"],
+    quality_package_version_ids: ["quality-package-version-1"],
+    module_template_id: "template-prod-1",
+  });
+  assert.deepEqual(created.body.candidate_binding, {
+    lane: "candidate",
+    runtime_binding_id: "binding-prod-shared-1",
+    model_id: "model-prod-1",
+    runtime_id: "runtime-prod-1",
+    prompt_template_id: "prompt-prod-1",
+    skill_package_ids: ["skill-prod-1"],
+    quality_package_version_ids: ["quality-package-version-2"],
+    module_template_id: "template-prod-1",
+  });
+});
+
 test("experiment runs reject multi-variable diffs and persist per-item failure summaries", async () => {
   const { verificationOpsApi, sampleSet, suite } =
     await seedPublishedSuiteAndSampleSet();
