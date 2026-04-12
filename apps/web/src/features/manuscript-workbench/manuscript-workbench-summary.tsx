@@ -604,6 +604,18 @@ export function ManuscriptWorkbenchSummary({
           </div>
         </div>
       </header>
+      <section className="manuscript-workbench-focus-context">
+        <article className="manuscript-workbench-focus-context-card">
+          <span>单稿判断工作区</span>
+          <strong>{resolveSummaryFocusLabel(mode)}</strong>
+          <p>围绕当前稿件完成判断、确认与交接，批量动作留在右侧抽屉。</p>
+        </article>
+        <article className="manuscript-workbench-focus-context-card">
+          <span>AI 识别稿件类型</span>
+          <strong>{formatManuscriptTypeLabel(workspace.manuscript.manuscript_type)}</strong>
+          <p>作为辅助分类输入，可结合规则、知识与人工复核持续修正。</p>
+        </article>
+      </section>
       <div className="manuscript-workbench-summary-grid">
         <SummaryCard title="最近操作结果">
           {latestActionResult ? (
@@ -2868,6 +2880,22 @@ function formatWorkbenchModeLabel(targetMode: ManuscriptWorkbenchMode): string {
   }
 
   return "校对";
+}
+
+function resolveSummaryFocusLabel(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "screening") {
+    return "初筛判断、风险确认与移交建议";
+  }
+
+  if (mode === "editing") {
+    return "编辑修订、结构确认与校对前收口";
+  }
+
+  if (mode === "proofreading") {
+    return "校对问题收束、终稿确认与交付准备";
+  }
+
+  return "稿件接入与批量上传";
 }
 
 function formatManuscriptTypeLabel(manuscriptType: string): string {

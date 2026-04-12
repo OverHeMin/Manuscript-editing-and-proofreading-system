@@ -9,6 +9,8 @@ test("manuscript workbench controls render structured operator panels for upload
     <ManuscriptWorkbenchControls
       mode="proofreading"
       busy={false}
+      layout="drawer"
+      showLookupPanel={false}
       intake={{
         uploadForm: {
           title: "Neurology case review",
@@ -66,10 +68,11 @@ test("manuscript workbench controls render structured operator panels for upload
     />,
   );
 
-  assert.match(markup, /工作台操作区/);
-  assert.match(markup, /在同一桌面完成接入、检索与治理动作。/);
+  assert.match(markup, /批量处理与辅助动作/);
+  assert.match(markup, /低频能力按需展开/);
+  assert.match(markup, /manuscript-workbench-batch-drawer-trigger/);
+  assert.match(markup, /批量处理/);
   assert.match(markup, /稿件接入/);
-  assert.match(markup, /工作区检索/);
   assert.match(markup, /校对草稿生成/);
   assert.match(markup, /校对定稿/);
   assert.match(markup, /工作区工具/);

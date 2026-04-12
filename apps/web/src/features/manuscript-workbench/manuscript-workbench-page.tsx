@@ -13,7 +13,10 @@ import type {
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
+  type ManuscriptWorkbenchLookupPanelProps,
 } from "./manuscript-workbench-controls.tsx";
+import { ManuscriptWorkbenchQueuePane } from "./manuscript-workbench-queue-pane.tsx";
+import { ManuscriptWorkbenchBatchDrawer } from "./manuscript-workbench-batch-drawer.tsx";
 import {
   ManuscriptWorkbenchNotice,
   type ManuscriptWorkbenchNoticeProps,
@@ -529,6 +532,396 @@ export function ManuscriptWorkbenchPage({
     return result.workspace;
   }
 
+  const lookupPanel: ManuscriptWorkbenchLookupPanelProps = {
+    manuscriptId: lookupId,
+    onChange: setLookupId,
+    onLoad: () =>
+      void run("Load Workspace", async () => {
+        const result = await loadPrefilledWorkbenchWorkspace(controller, lookupId.trim());
+        setWorkspace(result.workspace);
+        setLatestJob(result.latestJob);
+        setStatus(`Loaded manuscript ${result.workspace.manuscript.id}`);
+        return {
+          ...result.latestActionResult,
+          message: `Loaded manuscript ${result.workspace.manuscript.id}`,
+        };
+      }),
+  };
+
+  const intakePanel = canUpload
+    ? {
+        uploadForm,
+        attachedFileCount: attachedUploadFiles.length,
+        attachedFileNames: attachedUploadFiles.map((file) => file.fileName),
+        canSubmit: canSubmitUpload,
+        onTitleChange: (value: string) =>
+          setUploadForm((current) => ({
+            ...current,
+            title: value,
+          })),
+        onManuscriptTypeChange: (value: UploadManuscriptInput["manuscriptType"]) =>
+          setUploadForm((current) => ({
+            ...current,
+            manuscriptType: value,
+          })),
+        onStorageKeyChange: (value: string) =>
+          setUploadForm((current) => ({
+            ...current,
+            storageKey: normalizeOptionalText(value),
+          })),
+        onFilesSelect: (files: File[]) => {
+          void attachUploadFiles(files);
+        },
+        onSubmit: () =>
+          void run("Upload Manuscript", async () => {
+            if (attachedUploadFiles.length > 1) {
+              if (!controller.uploadManuscriptBatchAndLoad) {
+                throw new Error("Batch uploads are unavailable in the current workbench controller.");
+              }
+
+              const result = await controller.uploadManuscriptBatchAndLoad({
+                createdBy: uploadForm.createdBy,
+                items: attachedUploadFiles.map((file) => ({
+                  title: deriveBatchUploadTitle(file.fileName, uploadForm.title),
+                  manuscriptType: uploadForm.manuscriptType,
+                  fileName: file.fileName,
+                  mimeType: file.mimeType,
+                  fileContentBase64: file.fileContentBase64,
+                })),
+              });
+              setWorkspace(result.workspace);
+              setLatestJob(result.upload.batch_job);
+              setStatus(`Uploaded batch ${result.upload.batch_job.id}`);
+              return {
+                tone: "success" as const,
+                actionLabel: "Upload Manuscript",
+                message: `Uploaded batch ${result.upload.batch_job.id}`,
+                details: buildWorkbenchJobActionResultDetails(
+                  [
+                    {
+                      label: "Batch Job",
+                      value: result.upload.batch_job.id,
+                    },
+                    {
+                      label: "Batch Items",
+                      value: String(result.upload.items.length),
+                    },
+                  ],
+                  result.upload.batch_job,
+                  result.workspace.manuscript.module_execution_overview,
+                ),
+              };
+            }
+
+            const result = await controller.uploadManuscriptAndLoad(uploadForm);
+            setWorkspace(result.workspace);
+            setLatestJob(result.upload.job);
+            setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
+            return {
+              tone: "success" as const,
+              actionLabel: "Upload Manuscript",
+              message: `Uploaded manuscript ${result.upload.manuscript.id}`,
+              details: buildWorkbenchJobActionResultDetails(
+                [
+                  {
+                    label: "Manuscript",
+                    value: result.upload.manuscript.id,
+                  },
+                  {
+                    label: "Job",
+                    value: result.upload.job.id,
+                  },
+                ],
+                result.upload.job,
+                result.workspace.manuscript.module_execution_overview,
+              ),
+            };
+          }),
+      }
+    : undefined;
+
+  const templateSelectionPanel =
+    workspace &&
+    (mode === "editing" || mode === "proofreading") &&
+    workspace.templateFamily
+      ? {
+          title: "Journal Template",
+          baseTemplateLabel: workspace.templateFamily.name,
+          selectedJournalTemplateId,
+          currentAppliedLabel:
+            workspace.selectedJournalTemplateProfile?.journal_name ??
+            "Base family only",
+          hasPendingChange:
+            (workspace.manuscript.current_journal_template_id ?? "") !==
+            selectedJournalTemplateId,
+          options: (workspace.journalTemplateProfiles ?? []).map((profile) => ({
+            value: profile.id,
+            label: profile.journal_name,
+          })),
+          onSelect: setSelectedJournalTemplateId,
+          onApply: () =>
+            void run("Save Template Context", async () => {
+              const updatedWorkspace = await persistTemplateSelection(workspace, {
+                emitActionResult: true,
+              });
+              return {
+                tone: "success" as const,
+                actionLabel: "Save Template Context",
+                message: `Updated template context for ${updatedWorkspace.manuscript.id}`,
+                details: [
+                  {
+                    label: "Base Template Family",
+                    value:
+                      updatedWorkspace.templateFamily?.name ??
+                      updatedWorkspace.manuscript.current_template_family_id ??
+                      "Not bound",
+                  },
+                  {
+                    label: "Journal Template",
+                    value:
+                      updatedWorkspace.selectedJournalTemplateProfile?.journal_name ??
+                      "Base family only",
+                  },
+                  {
+                    label: "Journal Overrides",
+                    value:
+                      updatedWorkspace.selectedJournalTemplateProfile != null
+                        ? "Active"
+                        : "Base only",
+                  },
+                ],
+              };
+            }),
+        }
+      : undefined;
+
+  const moduleActionPanel =
+    workspace && mode !== "submission"
+      ? {
+          title: resolveActionPanelTitle(mode),
+          selectedAssetId: parentAssetId,
+          emptyLabel: "Select asset",
+          actionLabel: resolveActionLabel(mode),
+          options: workspace.assets
+            .filter((asset) => isSelectableParentAsset(asset))
+            .map((asset) => ({
+              value: asset.id,
+              label: formatAssetOptionLabel(asset),
+            })),
+          selectedContextLabel: "Selected Parent Asset",
+          onSelect: setParentAssetId,
+          onRun: () =>
+            void run(resolveActionLabel(mode), async () => {
+              const synchronizedWorkspace = await persistTemplateSelection(workspace);
+              const result = await controller.runModuleAndLoad({
+                mode,
+                manuscriptId: synchronizedWorkspace.manuscript.id,
+                parentAssetId,
+                actorRole,
+                storageKey: `runs/${synchronizedWorkspace.manuscript.id}/${mode}/output`,
+                fileName: `${mode}-output`,
+              });
+              setWorkspace(result.workspace);
+              setLatestJob(result.runResult.job);
+              setStatus(`Created asset ${result.runResult.asset.id}`);
+              return {
+                tone: "success" as const,
+                actionLabel: resolveActionLabel(mode),
+                message: `Created asset ${result.runResult.asset.id}`,
+                details: buildWorkbenchJobActionResultDetails(
+                  [
+                    {
+                      label: "Asset",
+                      value: result.runResult.asset.id,
+                    },
+                    {
+                      label: "Job",
+                      value: result.runResult.job.id,
+                    },
+                  ],
+                  result.runResult.job,
+                  result.workspace.manuscript.module_execution_overview,
+                ),
+              };
+            }),
+        }
+      : undefined;
+
+  const finalizeActionPanel =
+    workspace && mode === "proofreading"
+      ? {
+          title: "Proofreading Final",
+          selectedAssetId: draftAssetId,
+          emptyLabel: "Select draft",
+          actionLabel: "Finalize Proofreading",
+          options: workspace.assets
+            .filter((asset) => asset.asset_type === "proofreading_draft_report")
+            .map((asset) => ({
+              value: asset.id,
+              label: formatAssetOptionLabel(asset),
+            })),
+          selectedContextLabel: "Selected Draft Asset",
+          onSelect: setDraftAssetId,
+          onRun: () =>
+            void run("Finalize Proofreading", async () => {
+              const result = await controller.finalizeProofreadingAndLoad({
+                manuscriptId: workspace.manuscript.id,
+                draftAssetId,
+                actorRole,
+                storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
+                fileName: "proofreading-final.docx",
+              });
+              setWorkspace(result.workspace);
+              setLatestJob(result.runResult.job);
+              setStatus(`Finalized asset ${result.runResult.asset.id}`);
+              return {
+                tone: "success" as const,
+                actionLabel: "Finalize Proofreading",
+                message: `Finalized asset ${result.runResult.asset.id}`,
+                details: buildWorkbenchJobActionResultDetails(
+                  [
+                    {
+                      label: "Asset",
+                      value: result.runResult.asset.id,
+                    },
+                    {
+                      label: "Job",
+                      value: result.runResult.job.id,
+                    },
+                  ],
+                  result.runResult.job,
+                  result.workspace.manuscript.module_execution_overview,
+                ),
+              };
+            }),
+        }
+      : undefined;
+
+  const utilitiesPanel = workspace
+    ? {
+        canExport: true,
+        canRefreshLatestJob: Boolean(latestJob?.id),
+        onExport: () =>
+          void run("Export Current Asset", async () => {
+            const exported = await controller.exportCurrentAsset({
+              manuscriptId: workspace.manuscript.id,
+            });
+            setLatestExport(exported);
+            setStatus(`Prepared export ${exported.asset.id}`);
+            return {
+              tone: "success" as const,
+              actionLabel: "Export Current Asset",
+              message: `Prepared export ${exported.asset.id}`,
+              details: [
+                {
+                  label: "Asset",
+                  value: exported.asset.id,
+                },
+                {
+                  label: "Export File Name",
+                  value: exported.download.file_name ?? exported.asset.file_name ?? "Not provided",
+                },
+                {
+                  label: "Download MIME Type",
+                  value: exported.download.mime_type,
+                },
+                {
+                  label: "Storage Key",
+                  value: exported.download.storage_key,
+                },
+              ],
+            };
+          }),
+        canPublishHumanFinal:
+          mode === "proofreading" &&
+          workspace.currentAsset?.asset_type === "final_proof_annotated_docx",
+        onPublishHumanFinal: () =>
+          void run("Publish Human Final", async () => {
+            if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
+              throw new Error(
+                "A finalized proofreading asset is required before publishing the human-final manuscript.",
+              );
+            }
+
+            const result = await controller.publishHumanFinalAndLoad({
+              manuscriptId: workspace.manuscript.id,
+              finalAssetId: workspace.currentAsset.id,
+              actorRole,
+              storageKey: `runs/${workspace.manuscript.id}/proofreading/human-final`,
+              fileName: "human-final.docx",
+            });
+            setWorkspace(result.workspace);
+            setLatestJob(result.runResult.job);
+            setLatestExport(null);
+            setStatus(`Published human-final asset ${result.runResult.asset.id}`);
+            return {
+              tone: "success" as const,
+              actionLabel: "Publish Human Final",
+              message: `Published human-final asset ${result.runResult.asset.id}`,
+              details: buildWorkbenchJobActionResultDetails(
+                [
+                  {
+                    label: "Asset",
+                    value: result.runResult.asset.id,
+                  },
+                  {
+                    label: "Job",
+                    value: result.runResult.job.id,
+                  },
+                ],
+                result.runResult.job,
+                result.workspace.manuscript.module_execution_overview,
+              ),
+            };
+          }),
+        onRefreshLatestJob: () => {
+          if (!latestJob?.id) {
+            return;
+          }
+
+          void run("Refresh Latest Job", async () => {
+            const result = await refreshLatestWorkbenchJobContext(controller, {
+              manuscriptId: workspace.manuscript.id,
+              latestJobId: latestJob.id,
+            });
+            setLatestJob(result.latestJob);
+            if (result.workspace) {
+              setWorkspace(result.workspace);
+            }
+            setStatus(result.status);
+            return result.latestActionResult;
+          });
+        },
+      }
+    : undefined;
+
+  const shouldUseMainlineLayout = mode !== "submission";
+  const detectedManuscriptTypeLabel = workspace
+    ? formatWorkbenchManuscriptTypeLabel(workspace.manuscript.manuscript_type)
+    : "待 AI 识别";
+  const auxiliarySectionCount = [
+    Boolean(intakePanel),
+    Boolean(templateSelectionPanel),
+    Boolean(moduleActionPanel),
+    Boolean(finalizeActionPanel),
+    Boolean(utilitiesPanel),
+  ].filter(Boolean).length;
+  const summaryElement = workspace ? (
+    <ManuscriptWorkbenchSummary
+      mode={mode}
+      accessibleHandoffModes={accessibleHandoffModes}
+      canOpenLearningReview={canOpenLearningReview}
+      canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+      prefilledManuscriptId={normalizedPrefilledManuscriptId}
+      prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
+      prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
+      workspace={workspace}
+      latestJob={latestJob}
+      latestExport={latestExport}
+      latestActionResult={latestActionResult}
+    />
+  ) : null;
+
   return (
     <article
       className={`workbench-placeholder manuscript-workbench-shell manuscript-workbench-shell--${mode}`}
@@ -612,389 +1005,67 @@ export function ManuscriptWorkbenchPage({
           </div>
         </section>
       ) : null}
-      <ManuscriptWorkbenchControls
-        mode={mode}
-        busy={workbenchBusy}
-        intake={
-          canUpload
-            ? {
-                uploadForm,
-                attachedFileCount: attachedUploadFiles.length,
-                attachedFileNames: attachedUploadFiles.map((file) => file.fileName),
-                canSubmit: canSubmitUpload,
-                onTitleChange: (value) =>
-                  setUploadForm((current) => ({
-                    ...current,
-                    title: value,
-                  })),
-                onManuscriptTypeChange: (value) =>
-                  setUploadForm((current) => ({
-                    ...current,
-                    manuscriptType: value,
-                  })),
-                onStorageKeyChange: (value) =>
-                  setUploadForm((current) => ({
-                    ...current,
-                    storageKey: normalizeOptionalText(value),
-                  })),
-                onFilesSelect: (files) => {
-                  void attachUploadFiles(files);
-                },
-                onSubmit: () =>
-                  void run("Upload Manuscript", async () => {
-                    if (attachedUploadFiles.length > 1) {
-                      if (!controller.uploadManuscriptBatchAndLoad) {
-                        throw new Error("Batch uploads are unavailable in the current workbench controller.");
-                      }
-
-                      const result = await controller.uploadManuscriptBatchAndLoad({
-                        createdBy: uploadForm.createdBy,
-                        items: attachedUploadFiles.map((file) => ({
-                          title: deriveBatchUploadTitle(file.fileName, uploadForm.title),
-                          manuscriptType: uploadForm.manuscriptType,
-                          fileName: file.fileName,
-                          mimeType: file.mimeType,
-                          fileContentBase64: file.fileContentBase64,
-                        })),
-                      });
-                      setWorkspace(result.workspace);
-                      setLatestJob(result.upload.batch_job);
-                      setStatus(`Uploaded batch ${result.upload.batch_job.id}`);
-                      return {
-                        tone: "success",
-                        actionLabel: "Upload Manuscript",
-                        message: `Uploaded batch ${result.upload.batch_job.id}`,
-                        details: buildWorkbenchJobActionResultDetails(
-                          [
-                            {
-                              label: "Batch Job",
-                              value: result.upload.batch_job.id,
-                            },
-                            {
-                              label: "Batch Items",
-                              value: String(result.upload.items.length),
-                            },
-                          ],
-                          result.upload.batch_job,
-                          result.workspace.manuscript.module_execution_overview,
-                        ),
-                      };
-                    }
-
-                    const result = await controller.uploadManuscriptAndLoad(uploadForm);
-                    setWorkspace(result.workspace);
-                    setLatestJob(result.upload.job);
-                    setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Upload Manuscript",
-                      message: `Uploaded manuscript ${result.upload.manuscript.id}`,
-                      details: buildWorkbenchJobActionResultDetails(
-                        [
-                          {
-                            label: "Manuscript",
-                            value: result.upload.manuscript.id,
-                          },
-                          {
-                            label: "Job",
-                            value: result.upload.job.id,
-                          },
-                        ],
-                        result.upload.job,
-                        result.workspace.manuscript.module_execution_overview,
-                      ),
-                    };
-                  }),
-              }
-            : undefined
-        }
-        lookup={{
-          manuscriptId: lookupId,
-          onChange: setLookupId,
-          onLoad: () =>
-            void run("Load Workspace", async () => {
-              const result = await loadPrefilledWorkbenchWorkspace(controller, lookupId.trim());
-              setWorkspace(result.workspace);
-              setLatestJob(result.latestJob);
-              setStatus(`Loaded manuscript ${result.workspace.manuscript.id}`);
-              return {
-                ...result.latestActionResult,
-                message: `Loaded manuscript ${result.workspace.manuscript.id}`,
-              };
-            }),
-        }}
-        templateSelection={
-          workspace &&
-          (mode === "editing" || mode === "proofreading") &&
-          workspace.templateFamily
-            ? {
-                title: "Journal Template",
-                baseTemplateLabel: workspace.templateFamily.name,
-                selectedJournalTemplateId,
-                currentAppliedLabel:
-                  workspace.selectedJournalTemplateProfile?.journal_name ??
-                  "Base family only",
-                hasPendingChange:
-                  (workspace.manuscript.current_journal_template_id ?? "") !==
-                  selectedJournalTemplateId,
-                options: (workspace.journalTemplateProfiles ?? []).map((profile) => ({
-                  value: profile.id,
-                  label: profile.journal_name,
-                })),
-                onSelect: setSelectedJournalTemplateId,
-                onApply: () =>
-                  void run("Save Template Context", async () => {
-                    const updatedWorkspace = await persistTemplateSelection(workspace, {
-                      emitActionResult: true,
-                    });
-                    return {
-                      tone: "success",
-                      actionLabel: "Save Template Context",
-                      message: `Updated template context for ${updatedWorkspace.manuscript.id}`,
-                      details: [
-                        {
-                          label: "Base Template Family",
-                          value:
-                            updatedWorkspace.templateFamily?.name ??
-                            updatedWorkspace.manuscript.current_template_family_id ??
-                            "Not bound",
-                        },
-                        {
-                          label: "Journal Template",
-                          value:
-                            updatedWorkspace.selectedJournalTemplateProfile?.journal_name ??
-                            "Base family only",
-                        },
-                        {
-                          label: "Journal Overrides",
-                          value:
-                            updatedWorkspace.selectedJournalTemplateProfile != null
-                              ? "Active"
-                              : "Base only",
-                        },
-                      ],
-                    };
-                  }),
-              }
-            : undefined
-        }
-        moduleAction={
-          workspace && mode !== "submission"
-            ? {
-                title: resolveActionPanelTitle(mode),
-                selectedAssetId: parentAssetId,
-                emptyLabel: "Select asset",
-                actionLabel: resolveActionLabel(mode),
-                options: workspace.assets
-                  .filter((asset) => isSelectableParentAsset(asset))
-                  .map((asset) => ({
-                    value: asset.id,
-                    label: formatAssetOptionLabel(asset),
-                  })),
-                selectedContextLabel: "Selected Parent Asset",
-                onSelect: setParentAssetId,
-                onRun: () =>
-                  void run(resolveActionLabel(mode), async () => {
-                    const synchronizedWorkspace = await persistTemplateSelection(workspace);
-                    const result = await controller.runModuleAndLoad({
-                      mode,
-                      manuscriptId: synchronizedWorkspace.manuscript.id,
-                      parentAssetId,
-                      actorRole,
-                      storageKey: `runs/${synchronizedWorkspace.manuscript.id}/${mode}/output`,
-                      fileName: `${mode}-output`,
-                    });
-                    setWorkspace(result.workspace);
-                    setLatestJob(result.runResult.job);
-                    setStatus(`Created asset ${result.runResult.asset.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: resolveActionLabel(mode),
-                      message: `Created asset ${result.runResult.asset.id}`,
-                      details: buildWorkbenchJobActionResultDetails(
-                        [
-                          {
-                            label: "Asset",
-                            value: result.runResult.asset.id,
-                          },
-                          {
-                            label: "Job",
-                            value: result.runResult.job.id,
-                          },
-                        ],
-                        result.runResult.job,
-                        result.workspace.manuscript.module_execution_overview,
-                      ),
-                    };
-                  }),
-              }
-            : undefined
-        }
-        finalizeAction={
-          workspace && mode === "proofreading"
-            ? {
-                title: "Proofreading Final",
-                selectedAssetId: draftAssetId,
-                emptyLabel: "Select draft",
-                actionLabel: "Finalize Proofreading",
-                options: workspace.assets
-                  .filter((asset) => asset.asset_type === "proofreading_draft_report")
-                  .map((asset) => ({
-                    value: asset.id,
-                    label: formatAssetOptionLabel(asset),
-                  })),
-                selectedContextLabel: "Selected Draft Asset",
-                onSelect: setDraftAssetId,
-                onRun: () =>
-                  void run("Finalize Proofreading", async () => {
-                    const result = await controller.finalizeProofreadingAndLoad({
-                      manuscriptId: workspace.manuscript.id,
-                      draftAssetId,
-                      actorRole,
-                      storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
-                      fileName: "proofreading-final.docx",
-                    });
-                    setWorkspace(result.workspace);
-                    setLatestJob(result.runResult.job);
-                    setStatus(`Finalized asset ${result.runResult.asset.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Finalize Proofreading",
-                      message: `Finalized asset ${result.runResult.asset.id}`,
-                      details: buildWorkbenchJobActionResultDetails(
-                        [
-                          {
-                            label: "Asset",
-                            value: result.runResult.asset.id,
-                          },
-                          {
-                            label: "Job",
-                            value: result.runResult.job.id,
-                          },
-                        ],
-                        result.runResult.job,
-                        result.workspace.manuscript.module_execution_overview,
-                      ),
-                    };
-                  }),
-              }
-            : undefined
-        }
-        utilities={
-          workspace
-            ? {
-                canExport: true,
-                canRefreshLatestJob: Boolean(latestJob?.id),
-                onExport: () =>
-                  void run("Export Current Asset", async () => {
-                    const exported = await controller.exportCurrentAsset({
-                      manuscriptId: workspace.manuscript.id,
-                    });
-                    setLatestExport(exported);
-                    setStatus(`Prepared export ${exported.asset.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Export Current Asset",
-                      message: `Prepared export ${exported.asset.id}`,
-                      details: [
-                        {
-                          label: "Asset",
-                          value: exported.asset.id,
-                        },
-                        {
-                          label: "Export File Name",
-                          value: exported.download.file_name ?? exported.asset.file_name ?? "Not provided",
-                        },
-                        {
-                          label: "Download MIME Type",
-                          value: exported.download.mime_type,
-                        },
-                        {
-                          label: "Storage Key",
-                          value: exported.download.storage_key,
-                        },
-                      ],
-                    };
-                  }),
-                canPublishHumanFinal:
-                  mode === "proofreading" &&
-                  workspace.currentAsset?.asset_type === "final_proof_annotated_docx",
-                onPublishHumanFinal: () =>
-                  void run("Publish Human Final", async () => {
-                    if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
-                      throw new Error(
-                        "A finalized proofreading asset is required before publishing the human-final manuscript.",
-                      );
-                    }
-
-                    const result = await controller.publishHumanFinalAndLoad({
-                      manuscriptId: workspace.manuscript.id,
-                      finalAssetId: workspace.currentAsset.id,
-                      actorRole,
-                      storageKey: `runs/${workspace.manuscript.id}/proofreading/human-final`,
-                      fileName: "human-final.docx",
-                    });
-                    setWorkspace(result.workspace);
-                    setLatestJob(result.runResult.job);
-                    setLatestExport(null);
-                    setStatus(`Published human-final asset ${result.runResult.asset.id}`);
-                    return {
-                      tone: "success",
-                      actionLabel: "Publish Human Final",
-                      message: `Published human-final asset ${result.runResult.asset.id}`,
-                      details: buildWorkbenchJobActionResultDetails(
-                        [
-                          {
-                            label: "Asset",
-                            value: result.runResult.asset.id,
-                          },
-                          {
-                            label: "Job",
-                            value: result.runResult.job.id,
-                          },
-                        ],
-                        result.runResult.job,
-                        result.workspace.manuscript.module_execution_overview,
-                      ),
-                    };
-                  }),
-                onRefreshLatestJob: () => {
-                  if (!latestJob?.id) {
-                    return;
-                  }
-
-                  void run("Refresh Latest Job", async () => {
-                    const result = await refreshLatestWorkbenchJobContext(controller, {
-                      manuscriptId: workspace.manuscript.id,
-                      latestJobId: latestJob.id,
-                    });
-                    setLatestJob(result.latestJob);
-                    if (result.workspace) {
-                      setWorkspace(result.workspace);
-                    }
-                    setStatus(result.status);
-                    return result.latestActionResult;
-                  });
-                },
-              }
-            : undefined
-        }
-      />
-      {workspace ? (
-        <ManuscriptWorkbenchSummary
-          mode={mode}
-          accessibleHandoffModes={accessibleHandoffModes}
-          canOpenLearningReview={canOpenLearningReview}
-          canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
-          prefilledManuscriptId={normalizedPrefilledManuscriptId}
-          prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
-          prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
-          workspace={workspace}
-          latestJob={latestJob}
-          latestExport={latestExport}
-          latestActionResult={latestActionResult}
-        />
-      ) : null}
+      {shouldUseMainlineLayout ? (
+        <div className="manuscript-workbench-mainline-layout">
+          <ManuscriptWorkbenchQueuePane
+            mode={mode}
+            busy={workbenchBusy}
+            lookup={lookupPanel}
+            workspace={workspace}
+            latestJob={latestJob}
+          />
+          <section className="manuscript-workbench-focus-panel">
+            <header className="manuscript-workbench-focus-panel-header">
+              <div className="manuscript-workbench-focus-panel-copy">
+                <span className="manuscript-workbench-section-eyebrow">单稿判断工作区</span>
+                <h3>{resolveFocusPanelTitle(mode)}</h3>
+                <p>{resolveFocusPanelDescription(mode)}</p>
+              </div>
+              <div className="manuscript-workbench-focus-type-card">
+                <span>AI 识别稿件类型</span>
+                <strong>{detectedManuscriptTypeLabel}</strong>
+                <small>稿件类型作为辅助输入，可由 AI 与人工继续修正。</small>
+              </div>
+            </header>
+            {summaryElement ?? (
+              <section className="manuscript-workbench-focus-empty">
+                <h3>加载当前稿件后开始判断</h3>
+                <p>
+                  左侧队列负责定位当前稿件，右侧抽屉承接批量与辅助动作，中央区域会在稿件进入后展开摘要、风险与交接信息。
+                </p>
+              </section>
+            )}
+          </section>
+          <ManuscriptWorkbenchBatchDrawer mode={mode} sectionCount={auxiliarySectionCount}>
+            <ManuscriptWorkbenchControls
+              mode={mode}
+              busy={workbenchBusy}
+              layout="drawer"
+              showLookupPanel={!workspace}
+              intake={intakePanel}
+              lookup={lookupPanel}
+              templateSelection={templateSelectionPanel}
+              moduleAction={moduleActionPanel}
+              finalizeAction={finalizeActionPanel}
+              utilities={utilitiesPanel}
+            />
+          </ManuscriptWorkbenchBatchDrawer>
+        </div>
+      ) : (
+        <>
+          <ManuscriptWorkbenchControls
+            mode={mode}
+            busy={workbenchBusy}
+            intake={intakePanel}
+            lookup={lookupPanel}
+            templateSelection={templateSelectionPanel}
+            moduleAction={moduleActionPanel}
+            finalizeAction={finalizeActionPanel}
+            utilities={utilitiesPanel}
+          />
+          {summaryElement}
+        </>
+      )}
     </article>
   );
 }
@@ -1020,6 +1091,30 @@ function resolveDescription(mode: ManuscriptWorkbenchMode): string {
   }
 
   return "收束问题清单、终稿确认与发布前检查，完成最后一跳的校对定稿。";
+}
+
+function resolveFocusPanelTitle(mode: Exclude<ManuscriptWorkbenchMode, "submission">): string {
+  if (mode === "screening") {
+    return "当前稿件初筛判断";
+  }
+
+  if (mode === "editing") {
+    return "当前稿件编辑工作区";
+  }
+
+  return "当前稿件校对工作区";
+}
+
+function resolveFocusPanelDescription(mode: Exclude<ManuscriptWorkbenchMode, "submission">): string {
+  if (mode === "screening") {
+    return "在同一工作面确认完整度、风险项与移交建议，避免批量动作打断判断。";
+  }
+
+  if (mode === "editing") {
+    return "围绕当前稿件的结构修订、模板上下文与下游交接持续工作。";
+  }
+
+  return "将问题收束、终稿确认与交付准备集中在中央工作区。";
 }
 
 function resolveHeroEyebrow(mode: ManuscriptWorkbenchMode): string {
@@ -1238,4 +1333,17 @@ function formatAssetOptionLabel(asset: {
   file_name?: string | null;
 }): string {
   return `${asset.file_name ?? asset.asset_type} · ${asset.asset_type} · ${asset.id}`;
+}
+
+function formatWorkbenchManuscriptTypeLabel(manuscriptType: string): string {
+  switch (manuscriptType) {
+    case "review":
+      return "综述";
+    case "clinical_study":
+      return "临床研究";
+    case "case_report":
+      return "病例报告";
+    default:
+      return manuscriptType;
+  }
 }
