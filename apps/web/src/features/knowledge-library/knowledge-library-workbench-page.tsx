@@ -31,7 +31,10 @@ import type {
   KnowledgeRevisionBindingKind,
   UpdateKnowledgeLibraryDraftInput,
 } from "./types.ts";
-import "./knowledge-library-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./knowledge-library-workbench.css");
+}
 
 export type KnowledgeLibraryDuplicateCheckState =
   | "not_checked"

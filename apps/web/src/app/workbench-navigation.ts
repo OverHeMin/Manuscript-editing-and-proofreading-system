@@ -1,22 +1,35 @@
-import type {
-  WorkbenchEntry,
-  WorkbenchId,
-  WorkbenchNavGroup,
+import {
+  WORKBENCH_SHELL_TARGETS,
+  type WorkbenchEntry,
+  type WorkbenchHarnessSection,
+  type WorkbenchId,
+  type WorkbenchSettingsSection,
+  type WorkbenchShellTargetDescriptor,
 } from "../features/auth/index.ts";
 
 export type WorkbenchNavigationGroupId =
-  | WorkbenchNavGroup
+  | "general"
   | "core-workbench"
-  | "supporting-workbench";
+  | "supporting-workbench"
+  | "governance";
 
 export type WorkbenchNavigationItemEmphasis = "core" | "supporting" | "secondary";
 
+export interface WorkbenchNavigationTarget {
+  workbenchId: WorkbenchId;
+  settingsSection?: WorkbenchSettingsSection;
+  harnessSection?: WorkbenchHarnessSection;
+}
+
 export interface WorkbenchNavigationItem {
+  key: string;
   id: WorkbenchId;
   label: string;
   description: string;
   emphasis: WorkbenchNavigationItemEmphasis;
   entry: WorkbenchEntry;
+  target: WorkbenchNavigationTarget;
+  targetKey: string;
 }
 
 export type WorkbenchNavigationProminence = "primary" | "supporting" | "secondary";
@@ -38,56 +51,46 @@ const GROUP_META: Record<
   }
 > = {
   general: {
-    label: "我的工作",
-    description: "个人稿件入口与处理进度",
+    label: "首页",
+    description: "个人工作入口与稿件处理进度",
     prominence: "supporting",
   },
-  mainline: {
-    label: "主工作线",
-    description: "聚焦稿件处理主流程",
-    prominence: "primary",
-  },
-  knowledge: {
-    label: "知识治理",
-    description: "连接知识库、知识审核与学习回收",
-    prominence: "primary",
-  },
   "core-workbench": {
-    label: "核心工作台",
-    description: "突出初筛、编辑、校对与知识库四个核心栏目",
+    label: "核心流程",
+    description: "初筛、编辑、校对与知识库主线协同",
     prominence: "primary",
   },
   "supporting-workbench": {
-    label: "协同与回收",
-    description: "保留知识审核、学习复核等辅助协同入口",
+    label: "协作与回收区",
+    description: "知识审核、质量优化与规则中心协作入口",
     prominence: "supporting",
   },
   governance: {
     label: "管理区",
-    description: "管理员可见的治理与配置面板",
+    description: "面向管理侧的总览、接入与控制入口",
     prominence: "secondary",
   },
 };
 
-const CORE_WORKBENCH_ORDER: readonly WorkbenchId[] = [
-  "screening",
-  "editing",
-  "proofreading",
-  "knowledge-library",
-];
+const GROUP_TARGETS: Record<
+  WorkbenchNavigationGroupId,
+  readonly WorkbenchShellTargetDescriptor[]
+> = {
+  general: WORKBENCH_SHELL_TARGETS.filter((target) => target.group === "home"),
+  "core-workbench": WORKBENCH_SHELL_TARGETS.filter(
+    (target) => target.group === "core-process",
+  ),
+  "supporting-workbench": WORKBENCH_SHELL_TARGETS.filter(
+    (target) => target.group === "collaboration-recovery",
+  ),
+  governance: WORKBENCH_SHELL_TARGETS.filter((target) => target.group === "management"),
+};
 
-const SUPPORTING_WORKBENCH_ORDER: readonly WorkbenchId[] = [
-  "knowledge-review",
-  "learning-review",
-  "submission",
-];
-
-const GOVERNANCE_WORKBENCH_ORDER: readonly WorkbenchId[] = [
-  "admin-console",
-  "template-governance",
-  "evaluation-workbench",
-  "harness-datasets",
-  "system-settings",
+const GROUP_ORDER: readonly WorkbenchNavigationGroupId[] = [
+  "general",
+  "core-workbench",
+  "supporting-workbench",
+  "governance",
 ];
 
 export function buildWorkbenchNavigationGroups(
@@ -97,196 +100,77 @@ export function buildWorkbenchNavigationGroups(
     return [];
   }
 
-  const navigationEntries = filterNavigationEntries(entries);
-  const entryMap = new Map(navigationEntries.map((entry) => [entry.id, entry]));
-  const usedEntryIds = new Set<WorkbenchId>();
+  const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
   const groups: WorkbenchNavigationGroup[] = [];
 
-  if (navigationEntries.every((entry) => entry.id === "submission")) {
-    const generalItems = buildNavigationItems(
-      entryMap,
-      ["submission"],
-      usedEntryIds,
-      "supporting",
-    );
+  for (const groupId of GROUP_ORDER) {
+    const items = GROUP_TARGETS[groupId].flatMap((target) => {
+      const entry = entryMap.get(target.workbenchId);
+      if (!entry) {
+        return [];
+      }
 
-    return generalItems.length > 0
-      ? [
-          {
-            id: "general",
-            label: GROUP_META.general.label,
-            description: GROUP_META.general.description,
-            prominence: GROUP_META.general.prominence,
-            items: generalItems,
-          },
-        ]
-      : [];
-  }
-
-  const coreItems = buildNavigationItems(
-    entryMap,
-    CORE_WORKBENCH_ORDER,
-    usedEntryIds,
-    "core",
-  );
-  if (coreItems.length > 0) {
-    groups.push({
-      id: "core-workbench",
-      label: GROUP_META["core-workbench"].label,
-      description: GROUP_META["core-workbench"].description,
-      prominence: GROUP_META["core-workbench"].prominence,
-      items: coreItems,
+      return [buildNavigationItem(entry, target, resolveGroupEmphasis(groupId))];
     });
-  }
 
-  const supportingItems = buildNavigationItems(
-    entryMap,
-    SUPPORTING_WORKBENCH_ORDER,
-    usedEntryIds,
-    "supporting",
-  );
-  if (supportingItems.length > 0) {
-    groups.push({
-      id: "supporting-workbench",
-      label: GROUP_META["supporting-workbench"].label,
-      description: GROUP_META["supporting-workbench"].description,
-      prominence: GROUP_META["supporting-workbench"].prominence,
-      items: supportingItems,
-    });
-  }
-
-  const governanceItems = buildNavigationItems(
-    entryMap,
-    GOVERNANCE_WORKBENCH_ORDER,
-    usedEntryIds,
-    "secondary",
-  );
-  if (governanceItems.length > 0) {
-    groups.push({
-      id: "governance",
-      label: GROUP_META.governance.label,
-      description: GROUP_META.governance.description,
-      prominence: GROUP_META.governance.prominence,
-      items: governanceItems,
-    });
-  }
-
-  const remainingSupportingItems = navigationEntries
-    .filter((entry) => !usedEntryIds.has(entry.id) && entry.placement !== "admin")
-    .map((entry) => buildNavigationItem(entry, "supporting"));
-  if (remainingSupportingItems.length > 0) {
-    groups.push({
-      id: "supporting-workbench",
-      label: GROUP_META["supporting-workbench"].label,
-      description: GROUP_META["supporting-workbench"].description,
-      prominence: GROUP_META["supporting-workbench"].prominence,
-      items: remainingSupportingItems,
-    });
-  }
-
-  const remainingGovernanceItems = navigationEntries
-    .filter((entry) => !usedEntryIds.has(entry.id) && entry.placement === "admin")
-    .map((entry) => buildNavigationItem(entry, "secondary"));
-  if (remainingGovernanceItems.length > 0) {
-    groups.push({
-      id: "governance",
-      label: GROUP_META.governance.label,
-      description: GROUP_META.governance.description,
-      prominence: GROUP_META.governance.prominence,
-      items: remainingGovernanceItems,
-    });
+    if (items.length > 0) {
+      groups.push({
+        id: groupId,
+        label: GROUP_META[groupId].label,
+        description: GROUP_META[groupId].description,
+        prominence: GROUP_META[groupId].prominence,
+        items,
+      });
+    }
   }
 
   return groups;
 }
 
-function filterNavigationEntries(entries: readonly WorkbenchEntry[]): WorkbenchEntry[] {
-  const shouldHideLearningReview = entries.some(
-    (entry) => entry.id === "template-governance",
-  );
+export function getWorkbenchNavigationTargetKey(
+  target: WorkbenchNavigationTarget,
+): string {
+  const params = new URLSearchParams();
+  if (target.settingsSection) {
+    params.set("settingsSection", target.settingsSection);
+  }
+  if (target.harnessSection) {
+    params.set("harnessSection", target.harnessSection);
+  }
 
-  return shouldHideLearningReview
-    ? entries.filter((entry) => entry.id !== "learning-review")
-    : [...entries];
+  const query = params.toString();
+  return `${target.workbenchId}${query ? `?${query}` : ""}`;
 }
 
-function buildNavigationItems(
-  entryMap: Map<WorkbenchId, WorkbenchEntry>,
-  orderedIds: readonly WorkbenchId[],
-  usedEntryIds: Set<WorkbenchId>,
-  emphasis: WorkbenchNavigationItemEmphasis,
-): WorkbenchNavigationItem[] {
-  return orderedIds.flatMap((workbenchId) => {
-    const entry = entryMap.get(workbenchId);
-    if (!entry) {
-      return [];
-    }
+function resolveGroupEmphasis(
+  groupId: WorkbenchNavigationGroupId,
+): WorkbenchNavigationItemEmphasis {
+  if (groupId === "core-workbench") {
+    return "core";
+  }
 
-    usedEntryIds.add(workbenchId);
-    return [buildNavigationItem(entry, emphasis)];
-  });
+  return groupId === "governance" ? "secondary" : "supporting";
 }
 
 function buildNavigationItem(
   entry: WorkbenchEntry,
+  target: WorkbenchShellTargetDescriptor,
   emphasis: WorkbenchNavigationItemEmphasis,
 ): WorkbenchNavigationItem {
+  const navigationTarget: WorkbenchNavigationTarget = {
+    workbenchId: target.workbenchId,
+    settingsSection: target.settingsSection,
+    harnessSection: target.harnessSection,
+  };
+
   return {
-    id: entry.id,
-    label: resolveNavigationItemLabel(entry),
-    description: describeWorkbenchEntry(entry.id),
+    key: target.key,
+    id: target.workbenchId,
+    label: target.label,
+    description: target.description,
     emphasis,
     entry,
+    target: navigationTarget,
+    targetKey: getWorkbenchNavigationTargetKey(navigationTarget),
   };
-}
-
-function resolveNavigationItemLabel(entry: WorkbenchEntry): string {
-  if (entry.id === "knowledge-library") {
-    return "知识库";
-  }
-
-  if (entry.id === "knowledge-review") {
-    return "知识审核";
-  }
-
-  if (entry.id === "template-governance") {
-    return "规则中心";
-  }
-
-  if (entry.id === "admin-console") {
-    return "Harness Control Plane";
-  }
-
-  return entry.navLabel;
-}
-
-function describeWorkbenchEntry(workbenchId: WorkbenchId): string {
-  switch (workbenchId) {
-    case "submission":
-      return "稿件上传与处理进度跟踪";
-    case "screening":
-      return "来稿接收与质控判断";
-    case "editing":
-      return "正文修订与模板落位";
-    case "proofreading":
-      return "终稿核验与发布前收口";
-    case "knowledge-library":
-      return "知识录入、修订治理与结构化绑定";
-    case "knowledge-review":
-      return "面向 revision 的审核队列与审批动作";
-    case "learning-review":
-      return "候选回收与经验复核";
-    case "admin-console":
-      return "运营概览与全局治理";
-    case "evaluation-workbench":
-      return "评测结果与差异观察";
-    case "harness-datasets":
-      return "金标准数据与版本导出";
-    case "template-governance":
-      return "模板、规则与提示词治理";
-    case "system-settings":
-      return "系统级参数与访问控制";
-    default:
-      return workbenchId;
-  }
 }

@@ -36,7 +36,10 @@ import type {
   LearningCandidateViewModel,
   ReviewedCaseSnapshotViewModel,
 } from "./types.ts";
-import "./learning-review-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./learning-review-workbench.css");
+}
 
 export interface LearningReviewWorkbenchPageProps {
   actorRole?: AuthRole;

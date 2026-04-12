@@ -122,7 +122,7 @@ test("system settings workbench page renders overview cards, user list, create f
   );
 
   assert.match(markup, /\u7cfb\u7edf\u8bbe\u7f6e/);
-  assert.match(markup, /\u8d26\u53f7\u7ba1\u7406/);
+  assert.match(markup, /AI 接入/u);
   assert.match(markup, /\u8d26\u53f7\u603b\u6570/);
   assert.match(markup, /\u542f\u7528\u4e2d/);
   assert.match(markup, /\u5df2\u505c\u7528/);
@@ -150,8 +150,41 @@ test("system settings workbench page renders a demo-mode unsupported notice", ()
     />,
   );
 
-  assert.match(markup, /\u5f53\u524d\u6f14\u793a\u6a21\u5f0f\u4e0d\u63d0\u4f9b\u8d26\u53f7\u7ba1\u7406\u80fd\u529b/);
-  assert.match(markup, /\u8bf7\u8fde\u63a5\u6301\u4e45\u5316\u540e\u7aef\u540e\u518d\u8fdb\u884c\u7ba1\u7406\u5458\u8d26\u53f7\u7ef4\u62a4/);
+  assert.match(markup, /AI 接入/u);
+  assert.match(markup, /当前演示模式不提供 AI 接入能力/u);
+  assert.match(markup, /请连接持久化后端后再进行模型连接与密钥维护/u);
+});
+
+test("system settings demo-mode notice follows active section copy", () => {
+  const aiAccessMarkup = renderToStaticMarkup(
+    <SystemSettingsWorkbenchPage
+      runtimeMode="demo"
+      section="ai-access"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+  const accountsMarkup = renderToStaticMarkup(
+    <SystemSettingsWorkbenchPage
+      runtimeMode="demo"
+      section="accounts"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(aiAccessMarkup, /AI 接入/u);
+  assert.match(aiAccessMarkup, /当前演示模式不提供 AI 接入能力/u);
+  assert.match(aiAccessMarkup, /请连接持久化后端后再进行模型连接与密钥维护/u);
+  assert.match(accountsMarkup, /账号与权限/u);
+  assert.match(accountsMarkup, /当前演示模式不提供账号与权限维护能力/u);
+  assert.match(accountsMarkup, /请连接持久化后端后再进行管理员账号维护/u);
 });
 
 test("system settings workbench page renders request errors", () => {
@@ -195,4 +228,37 @@ test("system settings workbench page renders ai provider controls alongside mask
   assert.match(markup, /\u6d4b\u8bd5\u6a21\u578b/);
   assert.match(markup, /\u542f\u7528\u72b6\u6001/);
   assert.match(markup, /\u8fde\u63a5\u6d4b\u8bd5/);
+});
+
+test("system settings workbench page lands on different first-view emphasis for ai-access vs accounts", () => {
+  const aiAccessMarkup = renderToStaticMarkup(
+    <SystemSettingsWorkbenchPage
+      runtimeMode="persistent"
+      section="ai-access"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={loadedOverview as never}
+    />,
+  );
+
+  const accountsMarkup = renderToStaticMarkup(
+    <SystemSettingsWorkbenchPage
+      runtimeMode="persistent"
+      section="accounts"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={loadedOverview as never}
+    />,
+  );
+
+  assert.match(aiAccessMarkup, /AI 接入/u);
+  assert.match(aiAccessMarkup, /优先关注模型连接状态与密钥健康度/u);
+  assert.match(accountsMarkup, /账号与权限/u);
+  assert.match(accountsMarkup, /优先关注账号状态与角色权限配置/u);
 });

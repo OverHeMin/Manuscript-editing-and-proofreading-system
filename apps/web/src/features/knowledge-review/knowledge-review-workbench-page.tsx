@@ -24,7 +24,10 @@ import {
   type KnowledgeReviewHistoryViewState,
 } from "./knowledge-review-detail-pane.tsx";
 import { KnowledgeReviewQueuePane } from "./knowledge-review-queue-pane.tsx";
-import "./knowledge-review-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./knowledge-review-workbench.css");
+}
 
 export interface KnowledgeReviewWorkbenchPageProps {
   controller?: KnowledgeReviewWorkbenchController;

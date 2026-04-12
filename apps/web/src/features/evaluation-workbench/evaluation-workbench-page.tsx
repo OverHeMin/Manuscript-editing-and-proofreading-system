@@ -3,6 +3,7 @@ import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
+import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
   FinalizeEvaluationRunResultViewModel,
@@ -36,15 +37,18 @@ export type EvaluationWorkbenchHistorySortMode = "newest" | "failures_first";
 export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
   actorRole?: AuthRole;
+  section?: WorkbenchHarnessSection;
   prefilledManuscriptId?: string;
   initialOverview?: EvaluationWorkbenchOverview | null;
 }
 
 export function EvaluationWorkbenchPage({
   controller = defaultController,
+  section = "overview",
   prefilledManuscriptId,
   initialOverview = null,
 }: EvaluationWorkbenchPageProps) {
+  const landingCopy = resolveEvaluationLandingCopy(section);
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
   const activeManuscriptContextId =
     normalizedPrefilledManuscriptId.length > 0 ? normalizedPrefilledManuscriptId : null;
@@ -94,7 +98,8 @@ export function EvaluationWorkbenchPage({
   if (loadStatus === "error" && !overview) {
     return (
       <article className="workbench-placeholder" role="alert">
-        <h2>Evaluation Workbench Unavailable</h2>
+        <h2>{`${landingCopy.title} 暂不可用`}</h2>
+        <p>{landingCopy.summary}</p>
         <p>{errorMessage ?? "Unable to load evaluation governance data."}</p>
       </article>
     );
@@ -103,7 +108,8 @@ export function EvaluationWorkbenchPage({
   if (!overview) {
     return (
       <article className="workbench-placeholder" role="status">
-        <h2>Evaluation Workbench</h2>
+        <h2>{landingCopy.title}</h2>
+        <p>{landingCopy.summary}</p>
         <p>Loading suites, runs, and verification assets...</p>
       </article>
     );
@@ -111,6 +117,8 @@ export function EvaluationWorkbenchPage({
 
   return (
     <EvaluationWorkbenchOperationsView
+      sectionTitle={landingCopy.title}
+      sectionSummary={landingCopy.summary}
       overview={overview}
       prefilledManuscriptId={normalizedPrefilledManuscriptId}
       statusMessage={statusMessage}
@@ -184,6 +192,8 @@ export function EvaluationWorkbenchPage({
 }
 
 function EvaluationWorkbenchOperationsView(props: {
+  sectionTitle: string;
+  sectionSummary: string;
   overview: EvaluationWorkbenchOverview;
   prefilledManuscriptId?: string;
   statusMessage?: string | null;
@@ -234,11 +244,8 @@ function EvaluationWorkbenchOperationsView(props: {
       <header className="evaluation-workbench-hero">
         <div className="evaluation-workbench-hero-copy">
           <p className="evaluation-workbench-eyebrow">Read-Only Operations Desk</p>
-          <h2>Evaluation Workbench</h2>
-          <p>
-            Delta-first operations view for finalized suite movement, bounded history, and
-            read-only inspection.
-          </p>
+          <h2>{props.sectionTitle}</h2>
+          <p>{props.sectionSummary}</p>
           <WorkbenchCoreStrip variant="secondary" />
           {props.errorMessage ? <p className="evaluation-workbench-error">{props.errorMessage}</p> : null}
         </div>
@@ -592,6 +599,30 @@ function EvaluationWorkbenchOperationsView(props: {
       </div>
     </section>
   );
+}
+
+function resolveEvaluationLandingCopy(section: WorkbenchHarnessSection): {
+  title: string;
+  summary: string;
+} {
+  if (section === "runs") {
+    return {
+      title: "Harness 运行记录",
+      summary: "默认聚焦最近运行队列与最终建议变化。",
+    };
+  }
+
+  if (section === "datasets") {
+    return {
+      title: "Harness 数据集视图",
+      summary: "默认聚焦数据集快照与导出链路核对。",
+    };
+  }
+
+  return {
+    title: "Harness 控制概览",
+    summary: "默认聚焦总体评测状态与风险分布。",
+  };
 }
 
 function EvaluationWorkbenchReleaseGateSummaryCard(input: {

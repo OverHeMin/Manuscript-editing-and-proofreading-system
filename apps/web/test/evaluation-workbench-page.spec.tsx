@@ -324,8 +324,37 @@ test("evaluation workbench page renders an explicit loading state for server-sid
     />,
   );
 
-  assert.match(markup, /Evaluation Workbench/);
+  assert.match(markup, /Harness 控制概览/u);
+  assert.match(markup, /默认聚焦总体评测状态与风险分布/u);
   assert.match(markup, /Loading suites, runs, and verification assets\.\.\./);
+});
+
+test("evaluation workbench loading placeholder follows section-specific first-view emphasis", () => {
+  const overviewLoadingMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      section="overview"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+  const runsLoadingMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      section="runs"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+    />,
+  );
+
+  assert.match(overviewLoadingMarkup, /Harness 控制概览/u);
+  assert.match(overviewLoadingMarkup, /默认聚焦总体评测状态与风险分布/u);
+  assert.match(runsLoadingMarkup, /Harness 运行记录/u);
+  assert.match(runsLoadingMarkup, /默认聚焦最近运行队列与最终建议变化/u);
 });
 
 test("evaluation workbench loaded page renders a read-only release-gate summary card", () => {
@@ -343,6 +372,33 @@ test("evaluation workbench loaded page renders a read-only release-gate summary 
     markup,
     /Candidate run run-12 compared against baseline run run-11 is recommended\./,
   );
+});
+
+test("evaluation workbench page lands on different first-view emphasis for overview vs runs sections", () => {
+  const overview = createOperationsOverviewFixture();
+  const controller = {
+    loadOverview: async () => overview,
+  } as React.ComponentProps<typeof EvaluationWorkbenchPage>["controller"];
+
+  const overviewMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={controller}
+      section="overview"
+      initialOverview={overview}
+    />,
+  );
+  const runsMarkup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={controller}
+      section="runs"
+      initialOverview={overview}
+    />,
+  );
+
+  assert.match(overviewMarkup, /Harness 控制概览/u);
+  assert.match(overviewMarkup, /默认聚焦总体评测状态与风险分布/u);
+  assert.match(runsMarkup, /Harness 运行记录/u);
+  assert.match(runsMarkup, /默认聚焦最近运行队列与最终建议变化/u);
 });
 
 test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
