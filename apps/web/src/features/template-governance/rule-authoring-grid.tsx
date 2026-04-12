@@ -2,6 +2,12 @@ import type { EditorialRuleSetViewModel } from "../editorial-rules/index.ts";
 import { buildRuleAuthoringPreview } from "./rule-authoring-serialization.ts";
 import type { RuleAuthoringDraft } from "./rule-authoring-types.ts";
 import type { TemplateGovernanceWorkbenchOverview } from "./template-governance-controller.ts";
+import {
+  formatTemplateGovernanceConfidencePolicyLabel,
+  formatTemplateGovernanceExecutionModeLabel,
+  formatTemplateGovernanceModuleLabel,
+  formatTemplateGovernanceSeverityLabel,
+} from "./template-governance-display.ts";
 
 export interface RuleAuthoringGridProps {
   overview: TemplateGovernanceWorkbenchOverview | null;
@@ -21,10 +27,9 @@ export function RuleAuthoringGrid({
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Ledger</h3>
+          <h3>规则台账</h3>
           <p>
-            Keep guided authoring and batch ledger maintenance in the same place so operators can
-            check scope, execution posture, and examples before publishing.
+            把引导式录入和批量台账放在一起，便于发布前检查范围、执行姿态和前后示例。
           </p>
         </div>
       </div>
@@ -32,21 +37,24 @@ export function RuleAuthoringGrid({
       {selectedRuleSet ? (
         <>
           <p className="template-governance-selected-note">
-            Ledger for {selectedRuleSet.module} rule set v{selectedRuleSet.version_no}
+            当前台账：{formatTemplateGovernanceModuleLabel(selectedRuleSet.module)} 规则集 v
+            {selectedRuleSet.version_no}
           </p>
           <div className="template-governance-stack">
             <article className="template-governance-card">
-              <strong>Draft in progress</strong>
+              <strong>当前草稿</strong>
               <small>
-                {draft.ruleObject} | {draft.executionMode} | {draft.confidencePolicy}
+                {draft.ruleObject} |{" "}
+                {formatTemplateGovernanceExecutionModeLabel(draft.executionMode)} |{" "}
+                {formatTemplateGovernanceConfidencePolicyLabel(draft.confidencePolicy)}
               </small>
               <div className="template-governance-detail-grid">
                 <div>
-                  <span>Selector</span>
+                  <span>选择器摘要</span>
                   <p>{draftPreview.selectorSummary}</p>
                 </div>
                 <div>
-                  <span>Example</span>
+                  <span>标准示例</span>
                   <p>{draftPreview.normalizedExample}</p>
                 </div>
               </div>
@@ -59,34 +67,36 @@ export function RuleAuthoringGrid({
                     #{rule.order_no} {rule.rule_object}
                   </strong>
                   <small>
-                    {rule.execution_mode} | {rule.severity} | {rule.confidence_policy}
+                    {formatTemplateGovernanceExecutionModeLabel(rule.execution_mode)} |{" "}
+                    {formatTemplateGovernanceSeverityLabel(rule.severity)} |{" "}
+                    {formatTemplateGovernanceConfidencePolicyLabel(rule.confidence_policy)}
                   </small>
                   <div className="template-governance-detail-grid">
                     <div>
-                      <span>Example</span>
+                      <span>前后示例</span>
                       <p>
-                        {rule.example_before ?? "n/a"}
+                        {rule.example_before ?? "未填写"}
                         {" -> "}
-                        {rule.example_after ?? "n/a"}
+                        {rule.example_after ?? "未填写"}
                       </p>
                     </div>
                     <div>
-                      <span>Manual Review</span>
-                      <p>{rule.manual_review_reason_template ?? "n/a"}</p>
+                      <span>人工复核</span>
+                      <p>{rule.manual_review_reason_template ?? "未填写"}</p>
                     </div>
                   </div>
                 </article>
               ))
             ) : (
               <p className="template-governance-empty">
-                No rules exist in the selected ledger yet.
+                当前台账里还没有规则。
               </p>
             )}
           </div>
         </>
       ) : (
         <p className="template-governance-empty">
-          Create or select a rule set before opening the rule ledger.
+          先创建或选择规则集，再打开规则台账。
         </p>
       )}
     </article>

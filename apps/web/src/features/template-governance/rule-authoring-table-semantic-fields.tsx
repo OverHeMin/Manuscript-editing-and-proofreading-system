@@ -23,7 +23,7 @@ export function RuleAuthoringTableSemanticFields({
   return (
     <>
       <label className="template-governance-field">
-        <span>Semantic Target</span>
+        <span>语义目标</span>
         <select
           value={payload.semanticTarget}
           onChange={(event) =>
@@ -32,15 +32,15 @@ export function RuleAuthoringTableSemanticFields({
             })
           }
         >
-          <option value="header_cell">header_cell</option>
-          <option value="stub_column">stub_column</option>
-          <option value="data_cell">data_cell</option>
-          <option value="footnote_item">footnote_item</option>
+          <option value="header_cell">表头单元</option>
+          <option value="stub_column">桩列</option>
+          <option value="data_cell">数据单元</option>
+          <option value="footnote_item">脚注项</option>
         </select>
       </label>
 
       <label className="template-governance-field">
-        <span>Expected Table Shape</span>
+        <span>预期表格形态</span>
         <select
           value={payload.tableKind}
           onChange={(event) =>
@@ -49,18 +49,18 @@ export function RuleAuthoringTableSemanticFields({
             })
           }
         >
-          <option value="three_line_table">three_line_table</option>
-          <option value="general_data_table">general_data_table</option>
+          <option value="three_line_table">三线表</option>
+          <option value="general_data_table">通用数据表</option>
           <option value="baseline_characteristics_table">
-            baseline_characteristics_table
+            基线特征表
           </option>
-          <option value="outcome_indicator_table">outcome_indicator_table</option>
+          <option value="outcome_indicator_table">结局指标表</option>
         </select>
       </label>
 
       {showHeaderPath ? (
         <TextField
-          label="Header Path Includes"
+          label="表头路径"
           value={payload.headerPathIncludes.join(" > ")}
           onChange={(value) =>
             updatePayload(draft, onDraftChange, {
@@ -73,7 +73,7 @@ export function RuleAuthoringTableSemanticFields({
 
       {showRowKey ? (
         <TextField
-          label="Row Key"
+          label="行标识"
           value={payload.rowKey}
           onChange={(value) =>
             updatePayload(draft, onDraftChange, {
@@ -85,7 +85,7 @@ export function RuleAuthoringTableSemanticFields({
 
       {showColumnKey ? (
         <TextField
-          label="Column Key"
+          label="列标识"
           value={payload.columnKey}
           onChange={(value) =>
             updatePayload(draft, onDraftChange, {
@@ -98,7 +98,7 @@ export function RuleAuthoringTableSemanticFields({
 
       {showNoteKind ? (
         <label className="template-governance-field">
-          <span>Footnote Kind</span>
+          <span>脚注类型</span>
           <select
             value={payload.noteKind}
             onChange={(event) =>
@@ -107,16 +107,16 @@ export function RuleAuthoringTableSemanticFields({
               })
             }
           >
-            <option value="statistical_significance">statistical_significance</option>
-            <option value="abbreviation">abbreviation</option>
-            <option value="general">general</option>
+            <option value="statistical_significance">统计学显著性</option>
+            <option value="abbreviation">缩略语说明</option>
+            <option value="general">一般说明</option>
           </select>
         </label>
       ) : null}
 
       {showUnitContext ? (
         <label className="template-governance-field">
-          <span>Unit Context</span>
+          <span>单位上下文</span>
           <select
             value={payload.unitContext}
             onChange={(event) =>
@@ -125,15 +125,15 @@ export function RuleAuthoringTableSemanticFields({
               })
             }
           >
-            <option value="header">header</option>
-            <option value="stub">stub</option>
-            <option value="footnote">footnote</option>
+            <option value="header">表头</option>
+            <option value="stub">桩列</option>
+            <option value="footnote">脚注</option>
           </select>
         </label>
       ) : null}
 
       <TextField
-        label="Caption Requirement"
+        label="表题要求"
         value={payload.captionRequirement}
         onChange={(value) =>
           updatePayload(draft, onDraftChange, {
@@ -143,7 +143,7 @@ export function RuleAuthoringTableSemanticFields({
       />
 
       <TextField
-        label="Layout Requirement"
+        label="版式要求"
         value={payload.layoutRequirement}
         onChange={(value) =>
           updatePayload(draft, onDraftChange, {
@@ -153,7 +153,7 @@ export function RuleAuthoringTableSemanticFields({
       />
 
       <TextField
-        label="Manual Review Reason"
+        label="人工复核原因"
         value={payload.manualReviewReasonTemplate}
         onChange={(value) =>
           onDraftChange({

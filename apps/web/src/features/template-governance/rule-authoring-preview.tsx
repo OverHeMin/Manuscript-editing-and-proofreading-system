@@ -1,7 +1,5 @@
 import type { TemplateGovernanceWorkbenchOverview } from "./template-governance-controller.ts";
-import {
-  buildRuleAuthoringPreview,
-} from "./rule-authoring-serialization.ts";
+import { buildRuleAuthoringPreview } from "./rule-authoring-serialization.ts";
 import type { RuleAuthoringDraft } from "./rule-authoring-types.ts";
 
 export interface RuleAuthoringPreviewPanelProps {
@@ -19,41 +17,38 @@ export function RuleAuthoringPreviewPanel({
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Authoring Preview</h3>
-          <p>
-            Check the resolved selector summary, automation posture, and normalized example
-            before publishing.
-          </p>
+          <h3>规则预览</h3>
+          <p>在发布前确认规则范围、选择器摘要、自动化姿态与标准示例。</p>
         </div>
       </div>
 
       <div className="template-governance-detail-grid">
         <div>
-          <span>Template Scope</span>
+          <span>模板范围</span>
           <p>{preview.templateScopeSummary}</p>
         </div>
         <div>
-          <span>Resolved Selector</span>
+          <span>选择器摘要</span>
           <p>{preview.selectorSummary}</p>
         </div>
         <div>
-          <span>Automation Risk Posture</span>
+          <span>自动化姿态</span>
           <p>{preview.automationRiskPosture}</p>
         </div>
         <div>
-          <span>Normalized Example</span>
+          <span>标准化示例</span>
           <p>{preview.normalizedExample}</p>
         </div>
         <div>
-          <span>Semantic Match</span>
+          <span>语义命中</span>
           <p>{preview.semanticHitSummary}</p>
         </div>
         <div>
-          <span>Expected Runtime Evidence</span>
+          <span>预期运行证据</span>
           <p>{preview.expectedEvidenceSummary}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Override Resolution</span>
+          <span>覆盖关系</span>
           <p>{preview.overrideSummary}</p>
         </div>
       </div>
@@ -70,29 +65,29 @@ export function RuleAuthoringPreviewPanel({
               </small>
               <div className="template-governance-detail-grid">
                 <div>
-                  <span>Selector</span>
+                  <span>选择器</span>
                   <code className="template-governance-code">
                     {JSON.stringify(rule.selector ?? {})}
                   </code>
                 </div>
                 <div>
-                  <span>Trigger</span>
+                  <span>触发条件</span>
                   <code className="template-governance-code">
                     {JSON.stringify(rule.trigger)}
                   </code>
                 </div>
                 <div>
-                  <span>Action</span>
+                  <span>执行动作</span>
                   <code className="template-governance-code">
                     {JSON.stringify(rule.action)}
                   </code>
                 </div>
                 <div>
-                  <span>Example</span>
+                  <span>示例</span>
                   <p>
-                    {rule.example_before ?? "n/a"}
+                    {rule.example_before ?? "暂无"}
                     {" -> "}
-                    {rule.example_after ?? "n/a"}
+                    {rule.example_after ?? "暂无"}
                   </p>
                 </div>
               </div>
@@ -100,9 +95,7 @@ export function RuleAuthoringPreviewPanel({
           ))}
         </div>
       ) : (
-        <p className="template-governance-empty">
-          No existing rules are attached to the current rule-set scope yet.
-        </p>
+        <p className="template-governance-empty">当前规则集范围下还没有可对照的既有规则。</p>
       )}
     </article>
   );

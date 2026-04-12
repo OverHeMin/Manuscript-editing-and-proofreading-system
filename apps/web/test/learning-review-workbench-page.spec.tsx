@@ -16,14 +16,16 @@ const {
 test("learning review workbench page keeps the review queue primary and admin utilities secondary", () => {
   const markup = renderToStaticMarkup(<LearningReviewWorkbenchPage actorRole="admin" />);
 
-  const queueIndex = markup.indexOf("Pending Review Queue");
-  const selectedCandidateIndex = markup.indexOf("Selected Candidate");
-  const decisionIndex = markup.indexOf("Review Decision");
-  const utilityIndex = markup.indexOf("Admin utilities and candidate generation");
+  const queueIndex = markup.indexOf("待处理队列");
+  const selectedCandidateIndex = markup.indexOf("案例详情");
+  const decisionIndex = markup.indexOf("优化动作");
+  const utilityIndex = markup.indexOf("辅助工具与候选生成");
 
-  assert.match(markup, /Knowledge Handoff Bridge/);
-  assert.match(markup, /协同与回写/u);
-  assert.match(markup, /让复核、批准与知识回写保持在同一条辅助链路中/u);
+  assert.match(markup, /\u8d28\u91cf\u4f18\u5316/u);
+  assert.match(markup, /AI \u4e0d\u786e\u5b9a\u70b9/);
+  assert.match(markup, /\u4eba\u5de5\u4fee\u6b63/u);
+  assert.match(markup, /\u9001\u5165\u77e5\u8bc6\u5e93/u);
+  assert.match(markup, /\u9001\u5165\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(markup, /workbench-core-strip is-supporting/);
   assert.match(markup, /workbench-core-strip-card is-active/);
   assert.ok(queueIndex >= 0);

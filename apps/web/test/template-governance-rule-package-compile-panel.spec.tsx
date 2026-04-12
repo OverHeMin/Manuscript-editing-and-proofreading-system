@@ -87,15 +87,15 @@ test("rule-package compile panel renders readiness, preview action, and compile 
     />,
   );
 
-  assert.match(markup, /Compile Preview/);
-  assert.match(markup, /Compile To Draft Rule Set/);
-  assert.match(markup, /author_line/);
-  assert.match(markup, /Reused selected draft/);
-  assert.match(markup, /review_before_publish/);
-  assert.match(markup, /Knowledge Projection Preview/);
-  assert.match(markup, /rule, checklist, prompt_snippet/);
-  assert.match(markup, /confirmed semantic fields/i);
-  assert.match(markup, /Go To Publish Area/);
+  assert.match(markup, /编译预览/);
+  assert.match(markup, /编译为规则草稿/);
+  assert.match(markup, /作者行/);
+  assert.match(markup, /复用当前草稿/);
+  assert.match(markup, /发布前复核/);
+  assert.match(markup, /知识投影预览/);
+  assert.match(markup, /规则、检查清单、提示片段/);
+  assert.match(markup, /已确认语义字段/);
+  assert.match(markup, /前往发布区/);
   assert.doesNotMatch(markup, /Publish Knowledge/);
   assert.doesNotMatch(markup, /Publish Rule Package/);
 });

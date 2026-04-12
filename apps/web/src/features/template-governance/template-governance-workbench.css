@@ -73,6 +73,12 @@
   gap: 10px;
 }
 
+.template-governance-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 .template-governance-summary-card,
 .template-governance-panel,
 .template-governance-card {
@@ -243,6 +249,20 @@
   opacity: 0.65;
 }
 
+.template-governance-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(126, 101, 51, 0.18);
+  background: rgba(255, 252, 246, 0.96);
+  color: #5e4722;
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .template-governance-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(240px, 0.9fr);
@@ -316,6 +336,12 @@
 
 .template-governance-learning-shell {
   display: grid;
+  gap: 12px;
+}
+
+.template-governance-strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -446,13 +472,15 @@
 
 @media (max-width: 960px) {
   .template-governance-grid,
+  .template-governance-capability-grid,
   .template-governance-form-grid,
   .template-governance-toolbar,
   .template-governance-rule-layout,
   .template-governance-knowledge-grid,
   .template-governance-learning-diff-grid,
   .rule-package-workbench-columns,
-  .rule-package-definition-grid {
+  .rule-package-definition-grid,
+  .template-governance-strategy-grid {
     grid-template-columns: 1fr;
   }
 }

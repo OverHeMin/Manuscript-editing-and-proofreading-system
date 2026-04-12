@@ -21,6 +21,7 @@ function buildOverview() {
     promptTemplates: [],
     skillPackages: [],
     executionProfiles: [],
+    qualityPackages: [],
     modelRegistryEntries: [
       {
         id: "model-qwen-1",
@@ -182,7 +183,7 @@ function buildExecutionPreview() {
   };
 }
 
-test("admin governance workbench page renders connection-aware model authoring controls and preview warnings", () => {
+test("admin governance workbench page renders management overview routing cards instead of a parameter wall", () => {
   const markup = renderToStaticMarkup(
     <AdminGovernanceWorkbenchPage
       actorRole="admin"
@@ -196,23 +197,23 @@ test("admin governance workbench page renders connection-aware model authoring c
     />,
   );
 
-  assert.match(markup, /Qwen Production/);
-  assert.match(markup, /qwen/);
-  assert.match(markup, /connection-qwen-1/);
-  assert.match(markup, /openai_chat_compatible/);
-  assert.match(markup, /Fallback Model/);
-  assert.match(markup, /openai \/ deepseek-chat \(model-fallback-1\)/);
-  assert.match(markup, /Fallback Model openai \/ deepseek-chat \(model-fallback-1\)/);
-  assert.match(markup, /DeepSeek Production/);
-  assert.match(markup, /legacy_unbound/);
-  assert.match(markup, /connection_test_unknown/);
-  assert.match(markup, /Provider Connection/);
-  assert.match(markup, /Selected Model/);
-  assert.match(markup, /Save Model Changes/);
-  assert.match(markup, /openai \/ qwen-max \(model-qwen-1\)/);
+  assert.match(markup, /管理总览/);
+  assert.match(markup, /AI 接入/);
+  assert.match(markup, /账号与权限/);
+  assert.match(markup, /Harness 控制/);
+  assert.match(markup, /规则中心/);
+  assert.match(markup, /#system-settings\?settingsSection=ai-access/);
+  assert.match(markup, /#system-settings\?settingsSection=accounts/);
+  assert.match(markup, /#evaluation-workbench\?harnessSection=overview/);
+  assert.match(markup, /#evaluation-workbench\?harnessSection=runs/);
+  assert.match(markup, /#harness-datasets/);
+  assert.match(markup, /#template-governance\?ruleCenterMode=authoring/);
+  assert.doesNotMatch(markup, /Harness Control Plane/);
+  assert.doesNotMatch(markup, /Create Template Family/);
+  assert.doesNotMatch(markup, /Environment Editor/);
 });
 
-test("admin governance workbench page renders harness control plane sections instead of a decorative read-only harness panel", () => {
+test("admin governance workbench page renders AI and harness snapshots without exposing old edit-first sections", () => {
   const markup = renderToStaticMarkup(
     <AdminGovernanceWorkbenchPage
       actorRole="admin"
@@ -226,12 +227,20 @@ test("admin governance workbench page renders harness control plane sections ins
     />,
   );
 
-  assert.match(markup, /Harness Control Plane/);
-  assert.match(markup, /Environment Editor/);
-  assert.match(markup, /Quality Lab/);
-  assert.match(markup, /Activation Gate/);
-  assert.doesNotMatch(
-    markup,
-    /Read-only visibility for local harness adapters/i,
-  );
+  assert.match(markup, /AI 接入快照/);
+  assert.match(markup, /Qwen Production/);
+  assert.match(markup, /DeepSeek Production/);
+  assert.match(markup, /当前生效连接/);
+  assert.match(markup, /connection-qwen-1/);
+  assert.match(markup, /openai_chat_compatible/);
+  assert.match(markup, /回退模型/);
+  assert.match(markup, /openai \/ deepseek-chat \(model-fallback-1\)/);
+  assert.match(markup, /预览预警/);
+  assert.match(markup, /legacy_unbound/);
+  assert.match(markup, /连通提醒/);
+  assert.match(markup, /connection_test_unknown/);
+  assert.match(markup, /Harness 运行体征/);
+  assert.match(markup, /查看治理资产明细/);
+  assert.doesNotMatch(markup, /Save Model Changes/);
+  assert.doesNotMatch(markup, /Legacy Fallback Defaults/);
 });

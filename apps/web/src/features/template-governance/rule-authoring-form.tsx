@@ -6,6 +6,12 @@ import {
 import {
   RuleAuthoringTableSemanticFields,
 } from "./rule-authoring-table-semantic-fields.tsx";
+import {
+  formatTemplateGovernanceConfidencePolicyLabel,
+  formatTemplateGovernanceExecutionModeLabel,
+  formatTemplateGovernanceModuleLabel,
+  formatTemplateGovernanceSeverityLabel,
+} from "./template-governance-display.ts";
 import type {
   RuleAuthoringDraft,
 } from "./rule-authoring-types.ts";
@@ -33,9 +39,9 @@ export function RuleAuthoringForm({
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Authoring Form</h3>
+          <h3>高级规则编辑器</h3>
           <p>
-            Fill the object-specific form instead of hand-writing low-level selector JSON.
+            用对象化表单录入规则，不再手写底层选择器 JSON。
           </p>
         </div>
       </div>
@@ -43,16 +49,17 @@ export function RuleAuthoringForm({
       {selectedRuleSet ? (
         <>
           <p className="template-governance-selected-note">
-            Editing {selectedRuleSet.module} rule set v{selectedRuleSet.version_no} (
-            {selectedRuleSet.journal_template_id ? "journal override" : "base family"})
+            当前正在编辑 {formatTemplateGovernanceModuleLabel(selectedRuleSet.module)} 规则集 v
+            {selectedRuleSet.version_no}（
+            {selectedRuleSet.journal_template_id ? "期刊加层" : "模板族基线"}）
           </p>
           <form className="template-governance-form-grid" onSubmit={onSubmit}>
             <label className="template-governance-field">
-              <span>Rule Object</span>
+              <span>规则对象</span>
               <input value={preset?.objectLabel ?? draft.ruleObject} disabled />
             </label>
             <label className="template-governance-field">
-              <span>Order</span>
+              <span>顺序</span>
               <input
                 value={String(draft.orderNo)}
                 onChange={(event) =>
@@ -64,7 +71,7 @@ export function RuleAuthoringForm({
               />
             </label>
             <label className="template-governance-field">
-              <span>Execution Mode</span>
+              <span>执行方式</span>
               <select
                 value={draft.executionMode}
                 onChange={(event) =>
@@ -74,13 +81,19 @@ export function RuleAuthoringForm({
                   })
                 }
               >
-                <option value="apply">apply</option>
-                <option value="inspect">inspect</option>
-                <option value="apply_and_inspect">apply_and_inspect</option>
+                <option value="apply">
+                  {formatTemplateGovernanceExecutionModeLabel("apply")}
+                </option>
+                <option value="inspect">
+                  {formatTemplateGovernanceExecutionModeLabel("inspect")}
+                </option>
+                <option value="apply_and_inspect">
+                  {formatTemplateGovernanceExecutionModeLabel("apply_and_inspect")}
+                </option>
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Confidence Policy</span>
+              <span>置信策略</span>
               <select
                 value={draft.confidencePolicy}
                 onChange={(event) =>
@@ -91,13 +104,19 @@ export function RuleAuthoringForm({
                   })
                 }
               >
-                <option value="always_auto">always_auto</option>
-                <option value="high_confidence_only">high_confidence_only</option>
-                <option value="manual_only">manual_only</option>
+                <option value="always_auto">
+                  {formatTemplateGovernanceConfidencePolicyLabel("always_auto")}
+                </option>
+                <option value="high_confidence_only">
+                  {formatTemplateGovernanceConfidencePolicyLabel("high_confidence_only")}
+                </option>
+                <option value="manual_only">
+                  {formatTemplateGovernanceConfidencePolicyLabel("manual_only")}
+                </option>
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Severity</span>
+              <span>严重级别</span>
               <select
                 value={draft.severity}
                 onChange={(event) =>
@@ -107,13 +126,19 @@ export function RuleAuthoringForm({
                   })
                 }
               >
-                <option value="info">info</option>
-                <option value="warning">warning</option>
-                <option value="error">error</option>
+                <option value="info">
+                  {formatTemplateGovernanceSeverityLabel("info")}
+                </option>
+                <option value="warning">
+                  {formatTemplateGovernanceSeverityLabel("warning")}
+                </option>
+                <option value="error">
+                  {formatTemplateGovernanceSeverityLabel("error")}
+                </option>
               </select>
             </label>
             <label className="template-governance-field">
-              <span>Evidence Level</span>
+              <span>证据级别</span>
               <select
                 value={draft.evidenceLevel}
                 onChange={(event) =>
@@ -124,11 +149,11 @@ export function RuleAuthoringForm({
                   })
                 }
               >
-                <option value="unknown">unknown</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-                <option value="expert_opinion">expert_opinion</option>
+                <option value="unknown">未知</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+                <option value="expert_opinion">专家意见</option>
               </select>
             </label>
 
@@ -136,14 +161,14 @@ export function RuleAuthoringForm({
 
             <div className="template-governance-actions template-governance-actions-full">
               <button type="submit" disabled={isBusy || selectedRuleSet.status !== "draft"}>
-                {isBusy ? "Saving..." : "Create Rule Draft"}
+                {isBusy ? "保存中..." : "新建规则草稿"}
               </button>
             </div>
           </form>
         </>
       ) : (
         <p className="template-governance-empty">
-          Create or select a rule set before entering an object-specific rule.
+          先创建或选择规则集，再录入对象化规则。
         </p>
       )}
     </article>
@@ -162,7 +187,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <label className="template-governance-field">
-            <span>Label Role</span>
+            <span>标签角色</span>
             <select
               value={draft.payload.labelRole}
               onChange={(event) =>
@@ -175,14 +200,14 @@ function ObjectSpecificRuleFields({
                 })
               }
             >
-              <option value="objective">objective</option>
-              <option value="methods">methods</option>
-              <option value="results">results</option>
-              <option value="conclusion">conclusion</option>
+              <option value="objective">目的</option>
+              <option value="methods">方法</option>
+              <option value="results">结果</option>
+              <option value="conclusion">结论</option>
             </select>
           </label>
           <label className="template-governance-field">
-            <span>Source Label Text</span>
+            <span>原始标签文本</span>
             <input
               value={draft.payload.sourceLabelText}
               onChange={(event) =>
@@ -197,7 +222,7 @@ function ObjectSpecificRuleFields({
             />
           </label>
           <label className="template-governance-field template-governance-field-full">
-            <span>Normalized Label Text</span>
+            <span>规范化标签文本</span>
             <input
               value={draft.payload.normalizedLabelText}
               onChange={(event) =>
@@ -217,7 +242,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Target Section"
+            label="目标章节"
             value={draft.payload.targetSection}
             onChange={(value) =>
               onDraftChange({
@@ -230,7 +255,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Expected Sequence"
+            label="预期顺序"
             value={draft.payload.expectedSequence}
             onChange={(value) =>
               onDraftChange({
@@ -243,7 +268,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Heading Pattern"
+            label="标题模式"
             value={draft.payload.headingPattern}
             onChange={(value) =>
               onDraftChange({
@@ -261,7 +286,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Target Section"
+            label="目标章节"
             value={draft.payload.targetSection}
             onChange={(value) =>
               onDraftChange({
@@ -274,7 +299,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Unit Standard"
+            label="单位标准"
             value={draft.payload.unitStandard}
             onChange={(value) =>
               onDraftChange({
@@ -287,7 +312,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Decimal Places"
+            label="保留位数"
             value={draft.payload.decimalPlaces}
             onChange={(value) =>
               onDraftChange({
@@ -305,7 +330,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Target Section"
+            label="目标章节"
             value={draft.payload.targetSection}
             onChange={(value) =>
               onDraftChange({
@@ -318,7 +343,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Expression Pattern"
+            label="表达式模式"
             value={draft.payload.expressionPattern}
             onChange={(value) =>
               onDraftChange({
@@ -331,7 +356,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Reporting Requirement"
+            label="报告要求"
             value={draft.payload.reportingRequirement}
             onChange={(value) =>
               onDraftChange({
@@ -356,7 +381,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Citation Style"
+            label="引文格式"
             value={draft.payload.citationStyle}
             onChange={(value) =>
               onDraftChange({
@@ -369,7 +394,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Numbering Scheme"
+            label="编号方案"
             value={draft.payload.numberingScheme}
             onChange={(value) =>
               onDraftChange({
@@ -382,7 +407,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="DOI Requirement"
+            label="DOI 要求"
             value={draft.payload.doiRequirement}
             onChange={(value) =>
               onDraftChange({
@@ -400,7 +425,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <label className="template-governance-field">
-            <span>Declaration Kind</span>
+            <span>声明类型</span>
             <select
               value={draft.payload.declarationKind}
               onChange={(event) =>
@@ -414,14 +439,14 @@ function ObjectSpecificRuleFields({
                 })
               }
             >
-              <option value="ethics">ethics</option>
-              <option value="trial_registration">trial_registration</option>
-              <option value="funding">funding</option>
-              <option value="conflict_of_interest">conflict_of_interest</option>
+              <option value="ethics">伦理</option>
+              <option value="trial_registration">试验注册</option>
+              <option value="funding">基金</option>
+              <option value="conflict_of_interest">利益冲突</option>
             </select>
           </label>
           <TextField
-            label="Required Statement"
+            label="必填声明"
             value={draft.payload.requiredStatement}
             onChange={(value) =>
               onDraftChange({
@@ -435,7 +460,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Placement"
+            label="出现位置"
             value={draft.payload.placement}
             onChange={(value) =>
               onDraftChange({
@@ -453,7 +478,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <label className="template-governance-field">
-            <span>Statement Kind</span>
+            <span>声明类型</span>
             <select
               value={draft.payload.statementKind}
               onChange={(event) =>
@@ -467,15 +492,15 @@ function ObjectSpecificRuleFields({
                 })
               }
             >
-              <option value="ethics">ethics</option>
-              <option value="trial_registration">trial_registration</option>
-              <option value="funding">funding</option>
-              <option value="conflict_of_interest">conflict_of_interest</option>
-              <option value="author_contribution">author_contribution</option>
+              <option value="ethics">伦理</option>
+              <option value="trial_registration">试验注册</option>
+              <option value="funding">基金</option>
+              <option value="conflict_of_interest">利益冲突</option>
+              <option value="author_contribution">作者贡献</option>
             </select>
           </label>
           <TextField
-            label="Required Statement"
+            label="必填声明"
             value={draft.payload.requiredStatement}
             onChange={(value) =>
               onDraftChange({
@@ -489,7 +514,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Placement"
+            label="出现位置"
             value={draft.payload.placement}
             onChange={(value) =>
               onDraftChange({
@@ -507,7 +532,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Title Pattern"
+            label="题名模式"
             value={draft.payload.titlePattern}
             onChange={(value) =>
               onDraftChange({
@@ -521,7 +546,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Casing Rule"
+            label="大小写规则"
             value={draft.payload.casingRule}
             onChange={(value) =>
               onDraftChange({
@@ -534,7 +559,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Subtitle Handling"
+            label="副标题处理"
             value={draft.payload.subtitleHandling}
             onChange={(value) =>
               onDraftChange({
@@ -552,7 +577,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Separator"
+            label="分隔符"
             value={draft.payload.separator}
             onChange={(value) =>
               onDraftChange({
@@ -565,7 +590,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Affiliation Format"
+            label="单位格式"
             value={draft.payload.affiliationFormat}
             onChange={(value) =>
               onDraftChange({
@@ -579,7 +604,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Corresponding Author Rule"
+            label="通信作者规则"
             value={draft.payload.correspondingAuthorRule}
             onChange={(value) =>
               onDraftChange({
@@ -598,7 +623,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Keyword Count"
+            label="关键词数量"
             value={draft.payload.keywordCount}
             onChange={(value) =>
               onDraftChange({
@@ -611,7 +636,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Separator"
+            label="分隔符"
             value={draft.payload.separator}
             onChange={(value) =>
               onDraftChange({
@@ -624,7 +649,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Vocabulary Requirement"
+            label="词表要求"
             value={draft.payload.vocabularyRequirement}
             onChange={(value) =>
               onDraftChange({
@@ -643,7 +668,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <label className="template-governance-field">
-            <span>Target Section</span>
+            <span>目标章节</span>
             <select
               value={draft.payload.targetSection}
               onChange={(event) =>
@@ -657,14 +682,14 @@ function ObjectSpecificRuleFields({
                 })
               }
             >
-              <option value="title">title</option>
-              <option value="abstract">abstract</option>
-              <option value="body">body</option>
-              <option value="global">global</option>
+              <option value="title">题名</option>
+              <option value="abstract">摘要</option>
+              <option value="body">正文</option>
+              <option value="global">全文</option>
             </select>
           </label>
           <TextField
-            label="Preferred Term"
+            label="首选术语"
             value={draft.payload.preferredTerm}
             onChange={(value) =>
               onDraftChange({
@@ -677,7 +702,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Disallowed Variant"
+            label="禁用变体"
             value={draft.payload.disallowedVariant}
             onChange={(value) =>
               onDraftChange({
@@ -695,7 +720,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <label className="template-governance-field">
-            <span>Figure Kind</span>
+            <span>图片类型</span>
             <select
               value={draft.payload.figureKind}
               onChange={(event) =>
@@ -708,14 +733,14 @@ function ObjectSpecificRuleFields({
                 })
               }
             >
-              <option value="flowchart">flowchart</option>
-              <option value="clinical_image">clinical_image</option>
-              <option value="trend_chart">trend_chart</option>
-              <option value="pathology_image">pathology_image</option>
+              <option value="flowchart">流程图</option>
+              <option value="clinical_image">临床图片</option>
+              <option value="trend_chart">趋势图</option>
+              <option value="pathology_image">病理图片</option>
             </select>
           </label>
           <TextField
-            label="Caption Requirement"
+            label="图题要求"
             value={draft.payload.captionRequirement}
             onChange={(value) =>
               onDraftChange({
@@ -729,7 +754,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="File Requirement"
+            label="文件要求"
             value={draft.payload.fileRequirement}
             onChange={(value) =>
               onDraftChange({
@@ -748,7 +773,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Manuscript Type"
+            label="稿件类型"
             value={draft.payload.manuscriptType}
             onChange={(value) =>
               onDraftChange({
@@ -761,7 +786,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Required Sections"
+            label="必须章节"
             value={draft.payload.requiredSections}
             onChange={(value) =>
               onDraftChange({
@@ -775,7 +800,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Section Order"
+            label="章节顺序"
             value={draft.payload.sectionOrder}
             onChange={(value) =>
               onDraftChange({
@@ -794,7 +819,7 @@ function ObjectSpecificRuleFields({
       return (
         <>
           <TextField
-            label="Column Name"
+            label="栏目名称"
             value={draft.payload.columnName}
             onChange={(value) =>
               onDraftChange({
@@ -807,7 +832,7 @@ function ObjectSpecificRuleFields({
             }
           />
           <TextField
-            label="Requirement"
+            label="栏目要求"
             value={draft.payload.requirement}
             onChange={(value) =>
               onDraftChange({
@@ -821,7 +846,7 @@ function ObjectSpecificRuleFields({
             fullWidth
           />
           <TextField
-            label="Source Section"
+            label="来源位置"
             value={draft.payload.sourceSection}
             onChange={(value) =>
               onDraftChange({

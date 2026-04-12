@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
@@ -22,7 +22,7 @@ const defaultController = createEvaluationWorkbenchController(createBrowserHttpC
 const baseFinalizeForm = {
   status: "passed" as "passed" | "failed",
   evidenceKind: "url" as VerificationEvidenceKind,
-  evidenceLabel: "Browser QA evidence",
+  evidenceLabel: "浏览器 QA 证据",
   evidenceUrl: "https://example.test/evidence/browser-qa",
   artifactAssetId: "",
 };
@@ -100,7 +100,7 @@ export function EvaluationWorkbenchPage({
       <article className="workbench-placeholder" role="alert">
         <h2>{`${landingCopy.title} 暂不可用`}</h2>
         <p>{landingCopy.summary}</p>
-        <p>{errorMessage ?? "Unable to load evaluation governance data."}</p>
+        <p>{errorMessage ?? "暂时无法加载 Harness 控制数据。"}</p>
       </article>
     );
   }
@@ -110,7 +110,7 @@ export function EvaluationWorkbenchPage({
       <article className="workbench-placeholder" role="status">
         <h2>{landingCopy.title}</h2>
         <p>{landingCopy.summary}</p>
-        <p>Loading suites, runs, and verification assets...</p>
+        <p>正在加载评测套件、运行记录与核验证据...</p>
       </article>
     );
   }
@@ -243,7 +243,7 @@ function EvaluationWorkbenchOperationsView(props: {
     <section className="evaluation-workbench">
       <header className="evaluation-workbench-hero">
         <div className="evaluation-workbench-hero-copy">
-          <p className="evaluation-workbench-eyebrow">Read-Only Operations Desk</p>
+          <p className="evaluation-workbench-eyebrow">Harness 控制</p>
           <h2>{props.sectionTitle}</h2>
           <p>{props.sectionSummary}</p>
           <WorkbenchCoreStrip variant="secondary" />
@@ -254,18 +254,18 @@ function EvaluationWorkbenchOperationsView(props: {
 
       {normalizedPrefilledManuscriptId.length > 0 ? (
         <div className="evaluation-workbench-result">
-          <strong>Manuscript Handoff</strong>
+          <strong>稿件联动上下文</strong>
           <div className="evaluation-workbench-history-compare">
-            <span>Context manuscript: {normalizedPrefilledManuscriptId}</span>
+            <span>当前稿件：{normalizedPrefilledManuscriptId}</span>
             <span>
               {props.overview.manuscriptContext?.matchedRunId
-                ? `Matched run: ${props.overview.manuscriptContext.matchedRunId}`
-                : "No matched evaluation run yet"}
+                ? `命中运行：${props.overview.manuscriptContext.matchedRunId}`
+                : "尚未命中对应运行"}
             </span>
             <span>
               {props.overview.manuscriptContext?.matchedSuiteId
-                ? `Matched suite: ${props.overview.manuscriptContext.matchedSuiteId}`
-                : "Showing the default evaluation suite"}
+                ? `命中套件：${props.overview.manuscriptContext.matchedSuiteId}`
+                : "当前显示默认评测套件"}
             </span>
           </div>
         </div>
@@ -273,17 +273,17 @@ function EvaluationWorkbenchOperationsView(props: {
 
       <section className="evaluation-workbench-panel evaluation-workbench-delta-summary">
         <div className="evaluation-workbench-panel-header">
-          <h3>Delta Summary</h3>
+          <h3>运行总览</h3>
           <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
         </div>
         {props.overview.suiteOperations.delta != null && defaultComparison != null ? (
           <>
             <div className="evaluation-workbench-delta-badge-row">
               <span className={`evaluation-workbench-delta-badge is-${props.overview.suiteOperations.delta.classification}`}>
-                Classification: {props.overview.suiteOperations.delta.classification}
+                变化分类：{formatDeltaClassificationLabel(props.overview.suiteOperations.delta.classification)}
               </span>
               <span className="evaluation-workbench-delta-inline-note">
-                Default comparison: {defaultComparison.selected.run.id} vs {defaultComparison.baseline.run.id}.
+                默认对照：{defaultComparison.selected.run.id} 对 {defaultComparison.baseline.run.id}
               </span>
             </div>
             <p className="evaluation-workbench-delta-copy">
@@ -293,16 +293,15 @@ function EvaluationWorkbenchOperationsView(props: {
               })}
             </p>
             <p className="evaluation-workbench-delta-copy">
-              Next operator cue:{" "}
               {describeDeltaNextOperatorCue({
                 selectedEntry: defaultComparison.selected,
                 baselineEntry: defaultComparison.baseline,
               })}
             </p>
             <div className="evaluation-workbench-delta-meta">
-              <span>Latest-versus-previous finalized comparison</span>
+              <span>最新结果与基线对照</span>
               <span>
-                Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+                当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行
               </span>
             </div>
           </>
@@ -323,12 +322,12 @@ function EvaluationWorkbenchOperationsView(props: {
 
       <section className="evaluation-workbench-panel evaluation-workbench-comparison-panel">
         <div className="evaluation-workbench-panel-header">
-          <h3>Run Comparison</h3>
-          <span>Latest-versus-previous finalized comparison</span>
+          <h3>结果对照</h3>
+          <span>最新结果与基线对照</span>
         </div>
         {defaultComparison != null && defaultComparisonDetail != null ? (
           <EvaluationWorkbenchRunComparisonCard
-            comparisonScopeLabel="Latest-versus-previous finalized comparison"
+            comparisonScopeLabel="最新结果与基线对照"
             selectedEntry={defaultComparison.selected}
             previousEntry={defaultComparison.baseline}
             selectedEvidence={[...defaultComparisonDetail.selectedEvidence]}
@@ -336,7 +335,7 @@ function EvaluationWorkbenchOperationsView(props: {
           />
         ) : (
           <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-            <strong>Comparison unavailable</strong>
+            <strong>暂时无法对照</strong>
             <p className="evaluation-workbench-empty">
               {describeHonestDegradationCopy({
                 honestDegradation: props.overview.suiteOperations.honestDegradation,
@@ -356,25 +355,25 @@ function EvaluationWorkbenchOperationsView(props: {
       />
 
       <section className="evaluation-workbench-summary">
-        <SummaryCard label="Check Profiles" value={props.overview.checkProfiles.length} />
-        <SummaryCard label="Release Profiles" value={props.overview.releaseCheckProfiles.length} />
-        <SummaryCard label="Sample Sets" value={props.overview.sampleSets.length} />
-        <SummaryCard label="Suites" value={props.overview.suites.length} />
-        <SummaryCard label="Runs" value={props.overview.runs.length} />
-        <SummaryCard label="Run Items" value={props.overview.runItems.length} />
+        <SummaryCard label="核查配置" value={props.overview.checkProfiles.length} />
+        <SummaryCard label="发布配置" value={props.overview.releaseCheckProfiles.length} />
+        <SummaryCard label="样本集" value={props.overview.sampleSets.length} />
+        <SummaryCard label="评测套件" value={props.overview.suites.length} />
+        <SummaryCard label="运行记录" value={props.overview.runs.length} />
+        <SummaryCard label="样本条目" value={props.overview.runItems.length} />
       </section>
 
       <div className="evaluation-workbench-layout">
         <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
-            <h3>Visible History</h3>
-            <span>{visibleHistory.length} visible / {props.overview.finalizedRunHistory.length} total</span>
+            <h3>历史结果</h3>
+            <span>{visibleHistory.length} 条可见 / {props.overview.finalizedRunHistory.length} 条总计</span>
           </div>
           <p className="evaluation-workbench-empty">
-            Visible history window: {visibleHistory.length} of {props.overview.finalizedRunHistory.length} finalized runs are in scope.
+            当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行。
           </p>
           <div className="evaluation-workbench-control-grid">
-            <Field label="History Window">
+            <Field label="时间窗口">
               <select
                 value={props.overview.suiteOperations.defaultWindow}
                 onChange={(event) =>
@@ -390,7 +389,7 @@ function EvaluationWorkbenchOperationsView(props: {
                 ))}
               </select>
             </Field>
-            <Field label="Recommendation Filter">
+            <Field label="建议筛选">
               <select
                 value={props.historyFilter}
                 onChange={(event) =>
@@ -406,7 +405,7 @@ function EvaluationWorkbenchOperationsView(props: {
                 ))}
               </select>
             </Field>
-            <Field label="Sort Mode">
+            <Field label="排序方式">
               <select
                 value={props.historySortMode}
                 onChange={(event) =>
@@ -425,9 +424,9 @@ function EvaluationWorkbenchOperationsView(props: {
           </div>
           {selectedRunOutsideVisibleWindow && selectedRun ? (
             <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
-              <strong>Selected inspection run: {selectedRun.id}</strong>
+              <strong>当前查看运行：{selectedRun.id}</strong>
               <p className="evaluation-workbench-empty">
-                Selected run {selectedRun.id} is outside the visible history window.
+                当前查看运行 {selectedRun.id} 不在当前历史窗口内。
               </p>
             </div>
           ) : null}
@@ -437,7 +436,7 @@ function EvaluationWorkbenchOperationsView(props: {
                 <li key={entry.run.id}>
                   <button
                     type="button"
-                    aria-label={`History run ${entry.run.id}`}
+                    aria-label={`历史运行 ${entry.run.id}`}
                     className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
                     onClick={() => props.onSelectRun(entry.run.id)}
                   >
@@ -459,19 +458,19 @@ function EvaluationWorkbenchOperationsView(props: {
             </ul>
           ) : (
             <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
-              <strong>No finalized runs match the current history controls.</strong>
+              <strong>当前筛选条件下没有符合的已定稿运行。</strong>
             </div>
           )}
         </section>
 
         <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
-            <h3>Suite Signal Summary</h3>
+            <h3>套件信号摘要</h3>
             <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
           </div>
           <div className="evaluation-workbench-history-summary-grid">
             <article className="evaluation-workbench-history-summary-card">
-              <strong>Recommendation Distribution</strong>
+              <strong>建议分布</strong>
               <span>
                 {formatSignalDistributionSummary(
                   props.overview.suiteOperations.signals.recommendationDistribution,
@@ -479,7 +478,7 @@ function EvaluationWorkbenchOperationsView(props: {
               </span>
             </article>
             <article className="evaluation-workbench-history-summary-card">
-              <strong>Evidence Pack Outcomes</strong>
+              <strong>证据包结果</strong>
               <span>
                 {formatSignalDistributionSummary(
                   props.overview.suiteOperations.signals.evidencePackOutcomeMix,
@@ -487,7 +486,7 @@ function EvaluationWorkbenchOperationsView(props: {
               </span>
             </article>
             <article className="evaluation-workbench-history-summary-card">
-              <strong>Recurrence Signals</strong>
+              <strong>复发信号</strong>
               <span>
                 {formatRecurrenceSignalSummary(props.overview.suiteOperations.signals.recurrence)}
               </span>
@@ -497,11 +496,11 @@ function EvaluationWorkbenchOperationsView(props: {
 
         <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
-            <h3>Suites</h3>
-            <span>{props.overview.suites.length} configured</span>
+            <h3>评测套件</h3>
+            <span>{props.overview.suites.length} 已配置</span>
           </div>
           {props.overview.suites.length === 0 ? (
-            <p className="evaluation-workbench-empty">No evaluation suites are configured yet.</p>
+            <p className="evaluation-workbench-empty">暂无已配置评测套件。</p>
           ) : (
             <ul className="evaluation-workbench-stack">
               {props.overview.suites.map((suite) => (
@@ -512,7 +511,7 @@ function EvaluationWorkbenchOperationsView(props: {
                     onClick={() => props.onSelectSuite(suite.id)}
                   >
                     <strong>{suite.name}</strong>
-                    <span>{suite.suite_type} | {suite.status}</span>
+                    <span>{formatSuiteTypeLabel(suite.suite_type)} | {formatLifecycleStatusLabel(suite.status)}</span>
                   </button>
                 </li>
               ))}
@@ -522,39 +521,39 @@ function EvaluationWorkbenchOperationsView(props: {
 
         <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
-            <h3>Selected Inspection</h3>
-            <span>{selectedRun?.id ?? "Select run first"}</span>
+            <h3>当前查看</h3>
+            <span>{selectedRun?.id ?? "请先选择运行"}</span>
           </div>
           {selectedRun == null ? (
             <p className="evaluation-workbench-empty">
-              Select a run to inspect its finalized evidence and read-only details.
+              请选择一条运行，查看已定稿证据与只读详情。
             </p>
           ) : (
             <>
               <div className="evaluation-workbench-result evaluation-workbench-history-detail">
-                <strong>Selected inspection run: {selectedRun.id}</strong>
+                <strong>当前查看运行：{selectedRun.id}</strong>
                 <div className="evaluation-workbench-history-compare">
-                  <span>Status: {selectedRun.status}</span>
-                  <span>Run items: {selectedRun.run_item_count ?? 0}</span>
+                  <span>运行状态：{formatRunStatusLabel(selectedRun.status)}</span>
+                  <span>样本条目：{selectedRun.run_item_count ?? 0}</span>
                   {selectedInspectionFinalization ? (
                     <>
-                      <span>Recommendation: {selectedInspectionFinalization.recommendation.status}</span>
-                      <span>Evidence Pack: {selectedInspectionFinalization.evidence_pack.id}</span>
+                      <span>建议结论：{formatRecommendationStatusLabel(selectedInspectionFinalization.recommendation.status)}</span>
+                      <span>证据包：{selectedInspectionFinalization.evidence_pack.id}</span>
                       {selectedInspectionFinalization.recommendation.decision_reason ? (
                         <span>{selectedInspectionFinalization.recommendation.decision_reason}</span>
                       ) : null}
                     </>
                   ) : (
-                    <span>No finalized recommendation is available for the selected inspection run yet.</span>
+                    <span>当前运行尚未生成已定稿建议。</span>
                   )}
                   {selectedRunOutsideVisibleWindow ? (
                     <span>
-                      This run is outside the finalized history slice that powers the default delta summary.
+                      该运行不在默认摘要使用的历史窗口内。
                     </span>
                   ) : null}
                   {!selectedRunOutsideVisibleWindow && !selectedInspectionFinalization ? (
                     <span>
-                      This run remains within the visible history window but has not been finalized yet.
+                      该运行仍在当前窗口中，但尚未完成定稿。
                     </span>
                   ) : null}
                 </div>
@@ -586,12 +585,12 @@ function EvaluationWorkbenchOperationsView(props: {
                 </>
               ) : (
                 <p className="evaluation-workbench-empty">
-                  This inspection lane stays read-only and no sample-backed run items are available for the selected run.
+                  当前查看区域保持只读，所选运行暂无样本关联条目。
                 </p>
               )}
               <EvaluationWorkbenchEvidenceList
                 evidence={props.overview.selectedRunEvidence}
-                emptyMessage="No persisted verification evidence is attached to this run."
+                emptyMessage="该运行暂无已保存的核验证据。"
               />
             </>
           )}
@@ -638,11 +637,11 @@ function EvaluationWorkbenchReleaseGateSummaryCard(input: {
     return (
       <section className="evaluation-workbench-panel evaluation-workbench-release-gate-panel">
         <div className="evaluation-workbench-panel-header">
-          <h3>Release Gate Summary</h3>
-          <span>Manifest-ready</span>
+          <h3>发布门摘要</h3>
+          <span>发布就绪</span>
         </div>
         <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-          <strong>Release gate summary unavailable</strong>
+          <strong>发布门摘要暂不可用</strong>
           <p className="evaluation-workbench-empty">{unavailableCopy}</p>
         </div>
       </section>
@@ -661,37 +660,37 @@ function EvaluationWorkbenchReleaseGateSummaryCard(input: {
   return (
     <section className="evaluation-workbench-panel evaluation-workbench-release-gate-panel">
       <div className="evaluation-workbench-panel-header">
-        <h3>Release Gate Summary</h3>
-        <span>Manifest-ready</span>
+        <h3>发布门摘要</h3>
+        <span>发布就绪</span>
       </div>
       <div className="evaluation-workbench-result evaluation-workbench-history-detail">
         <strong>
-          Baseline vs candidate: {baselineEntry.run.id} vs {candidateEntry.run.id}
+          当前与基线：{baselineEntry.run.id} 对 {candidateEntry.run.id}
         </strong>
         <div className="evaluation-workbench-history-compare">
-          <span>Candidate run: {candidateEntry.run.id}</span>
-          <span>Baseline run: {baselineEntry.run.id}</span>
+          <span>当前运行：{candidateEntry.run.id}</span>
+          <span>基线运行：{baselineEntry.run.id}</span>
           <span>
-            Recommendation status: {candidateEntry.finalized.recommendation.status}
+            建议状态：{formatRecommendationStatusLabel(candidateEntry.finalized.recommendation.status)}
           </span>
         </div>
       </div>
       <div className="evaluation-workbench-history-summary-grid">
         <article className="evaluation-workbench-history-summary-card">
-          <strong>Candidate evidence pack</strong>
+          <strong>当前证据包</strong>
           <div className="evaluation-workbench-history-compare">
             <span>
-              Regression summary:{" "}
-              {candidateEvidencePack.regression_summary ?? "No regression summary recorded."}
+              回归摘要：{" "}
+              {localizeEvidenceSummaryText(candidateEvidencePack.regression_summary) ?? "未记录回归摘要。"}
             </span>
             <span>
-              Failure summary:{" "}
-              {candidateEvidencePack.failure_summary ?? "No failure summary recorded."}
+              失败摘要：{" "}
+              {localizeEvidenceSummaryText(candidateEvidencePack.failure_summary) ?? "未记录失败摘要。"}
             </span>
           </div>
         </article>
         <article className="evaluation-workbench-history-summary-card">
-          <strong>Manifest-ready summary</strong>
+          <strong>发布就绪摘要</strong>
           <p className="evaluation-workbench-empty">{manifestReadySummary}</p>
         </article>
       </div>
@@ -705,10 +704,10 @@ function describeDefaultComparisonRoleLabel(
 ) {
   if (defaultComparison == null) return [];
   if (entryRunId === defaultComparison.selected.run.id) {
-    return ["Default latest run"];
+    return ["默认最新运行"];
   }
   if (entryRunId === defaultComparison.baseline.run.id) {
-    return ["Default baseline"];
+    return ["默认基线"];
   }
   return [];
 }
@@ -722,13 +721,13 @@ function describeReleaseGateUnavailableCopy(input: {
 }) {
   if (input.defaultComparison == null) {
     if (input.honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
-      return "Release gate summary is unavailable until at least two finalized runs are visible in the current history window.";
+      return "当前历史窗口至少需要展示 2 条已定稿运行后，才能生成发布门摘要。";
     }
-    return `Release gate summary is unavailable until the ${describeHistoryWindowPresetLabel(input.historyWindowPreset)} view exposes a stable baseline and candidate pair.`;
+    return `需要在${describeHistoryWindowPresetLabel(input.historyWindowPreset)}中形成稳定的基线与当前运行后，才能生成发布门摘要。`;
   }
 
   if (input.selectedRunId != null && input.selectedInspectionFinalization == null) {
-    return "Release gate summary is unavailable until the selected run has a finalized recommendation and evidence pack.";
+    return "所选运行需要先生成已定稿建议与证据包后，才能查看发布门摘要。";
   }
 
   return null;
@@ -739,7 +738,7 @@ function buildReleaseGateManifestReadySummary(input: {
   baselineEntry: EvaluationWorkbenchFinalizedRunHistoryEntry;
 }) {
   const candidateEvidencePack = input.candidateEntry.finalized.evidence_pack;
-  return `Candidate run ${input.candidateEntry.run.id} compared against baseline run ${input.baselineEntry.run.id} is ${input.candidateEntry.finalized.recommendation.status}. Regression summary: ${candidateEvidencePack.regression_summary ?? "No regression summary recorded."} Failure summary: ${candidateEvidencePack.failure_summary ?? "No failure summary recorded."}`;
+  return `当前运行 ${input.candidateEntry.run.id} 相对基线 ${input.baselineEntry.run.id} 的结论为 ${formatRecommendationStatusLabel(input.candidateEntry.finalized.recommendation.status)}。回归摘要：${localizeEvidenceSummaryText(candidateEvidencePack.regression_summary) ?? "未记录回归摘要。"} 失败摘要：${localizeEvidenceSummaryText(candidateEvidencePack.failure_summary) ?? "未记录失败摘要。"}`;
 }
 
 function describeDeltaReasonCopy(input: {
@@ -752,18 +751,18 @@ function describeDeltaReasonCopy(input: {
   const baselineStatus = input.defaultComparison.baseline.run.status;
 
   if (input.delta.reason === "recommendation_improved") {
-    return `Chosen because the latest finalized recommendation improved from ${baselineRecommendation} to ${selectedRecommendation}.`;
+    return `本次变化判定为改善，因为最新已定稿建议从${formatRecommendationStatusLabel(baselineRecommendation)}提升为${formatRecommendationStatusLabel(selectedRecommendation)}。`;
   }
   if (input.delta.reason === "recommendation_regressed") {
-    return `Chosen because the latest finalized recommendation regressed from ${baselineRecommendation} to ${selectedRecommendation}.`;
+    return `本次变化判定为回落，因为最新已定稿建议从${formatRecommendationStatusLabel(baselineRecommendation)}变为${formatRecommendationStatusLabel(selectedRecommendation)}。`;
   }
   if (input.delta.reason === "finalized_status_improved") {
-    return `Chosen because the latest finalized run status improved from ${baselineStatus} to ${selectedStatus}.`;
+    return `本次变化判定为改善，因为最新运行状态从${formatRunStatusLabel(baselineStatus)}提升为${formatRunStatusLabel(selectedStatus)}。`;
   }
   if (input.delta.reason === "finalized_status_regressed") {
-    return `Chosen because the latest finalized run status regressed from ${baselineStatus} to ${selectedStatus}.`;
+    return `本次变化判定为回落，因为最新运行状态从${formatRunStatusLabel(baselineStatus)}变为${formatRunStatusLabel(selectedStatus)}。`;
   }
-  return `Chosen because the latest finalized comparison showed no material change between ${input.defaultComparison.selected.run.id} and ${input.defaultComparison.baseline.run.id}.`;
+  return `本次变化判定为持平，因为 ${input.defaultComparison.selected.run.id} 与 ${input.defaultComparison.baseline.run.id} 之间没有出现显著差异。`;
 }
 
 function describeDeltaNextOperatorCue(input: {
@@ -785,54 +784,54 @@ function describeHonestDegradationCopy(input: {
   windowPreset: EvaluationWorkbenchHistoryWindowPreset;
 }) {
   if (input.honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
-    return `Honest degradation: fewer than two finalized runs are visible in the ${describeHistoryWindowPresetLabel(input.windowPreset)} window, so no default delta can be claimed yet.`;
+    return `当前${describeHistoryWindowPresetLabel(input.windowPreset)}内可见的已定稿运行不足 2 条，暂时无法形成默认变化结论。`;
   }
   if (input.honestDegradation?.reason === "insufficient_comparison_data") {
-    return "Honest degradation: the visible finalized runs do not provide enough comparison data to classify the suite as better, worse, or flat.";
+    return "当前可见的已定稿运行缺少足够对照信息，暂时无法判断套件是改善、回落还是持平。";
   }
-  return "Honest degradation: no default comparison is currently available for this suite.";
+  return "当前套件暂无可用的默认对照结果。";
 }
 
 function describeHonestDegradationNextStep(
   honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"],
 ) {
   if (honestDegradation?.reason === "fewer_than_two_visible_finalized_runs") {
-    return "Finalize one more run in the visible window before treating the suite as improved, worse, or flat.";
+    return "请先在当前窗口内再完成 1 条运行定稿后，再判断套件是改善、回落还是持平。";
   }
   if (honestDegradation?.reason === "insufficient_comparison_data") {
-    return "Inspect the latest finalized runs directly until a deterministic comparison pair becomes available.";
+    return "请先直接查看最新已定稿运行，等待形成稳定的对照对后再判断。";
   }
-  return "Inspect the selected run directly until a deterministic comparison pair becomes available.";
+  return "请先直接查看当前运行，等待形成稳定的对照对后再判断。";
 }
 
 function createHistoryWindowOptions() {
   return [
-    { value: "latest_10" as const, label: "Latest 10" },
-    { value: "last_7_days" as const, label: "Last 7 Days" },
-    { value: "last_30_days" as const, label: "Last 30 Days" },
-    { value: "all_suite" as const, label: "All Suite History" },
+    { value: "latest_10" as const, label: "最近 10 次" },
+    { value: "last_7_days" as const, label: "最近 7 天" },
+    { value: "last_30_days" as const, label: "最近 30 天" },
+    { value: "all_suite" as const, label: "全部套件历史" },
   ];
 }
 
 function describeHistoryWindowPresetLabel(preset: EvaluationWorkbenchHistoryWindowPreset) {
   return (
-    createHistoryWindowOptions().find((option) => option.value === preset)?.label ?? "Latest 10"
+    createHistoryWindowOptions().find((option) => option.value === preset)?.label ?? "最近 10 次"
   );
 }
 
 function createHistoryFilterControlOptions() {
   return [
-    { value: "all" as const, label: "All" },
-    { value: "recommended" as const, label: "Recommended" },
-    { value: "needs_review" as const, label: "Needs Review" },
-    { value: "rejected" as const, label: "Rejected" },
+    { value: "all" as const, label: "全部" },
+    { value: "recommended" as const, label: "可推荐" },
+    { value: "needs_review" as const, label: "待复核" },
+    { value: "rejected" as const, label: "已拒绝" },
   ];
 }
 
 function createHistorySortControlOptions() {
   return [
-    { value: "newest" as const, label: "Newest First" },
-    { value: "failures_first" as const, label: "Failures First" },
+    { value: "newest" as const, label: "最新优先" },
+    { value: "failures_first" as const, label: "失败优先" },
   ];
 }
 
@@ -841,7 +840,7 @@ function formatSignalDistributionSummary(input: {
   needs_review: number;
   rejected: number;
 }) {
-  return `${input.recommended} recommended / ${input.needs_review} needs review / ${input.rejected} rejected`;
+  return `${input.recommended} 可推荐 / ${input.needs_review} 待复核 / ${input.rejected} 已拒绝`;
 }
 
 function formatRecurrenceSignalSummary(input: {
@@ -849,7 +848,7 @@ function formatRecurrenceSignalSummary(input: {
   failureMentions: number;
   runsWithRecurrenceSignals: number;
 }) {
-  return `${input.regressionMentions} regression mentions / ${input.failureMentions} failure mentions / ${input.runsWithRecurrenceSignals} runs flagged`;
+  return `${input.regressionMentions} 次回归提及 / ${input.failureMentions} 次失败提及 / ${input.runsWithRecurrenceSignals} 次运行被标记`;
 }
 
 export function EvaluationWorkbenchRunComparisonCard(props: {
@@ -894,52 +893,52 @@ export function EvaluationWorkbenchRunComparisonCard(props: {
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-history-comparison">
-      <strong>Comparing against {props.previousEntry.run.id}</strong>
+      <strong>对照基线：{props.previousEntry.run.id}</strong>
       <div className="evaluation-workbench-history-compare">
         <span>{operatorSummary}</span>
         <span>{baselinePolicy}</span>
         <span>{triageHint}</span>
-        <span>Comparison scope: {props.comparisonScopeLabel}</span>
+        <span>对照范围：{props.comparisonScopeLabel}</span>
         {props.selectedOriginLabel ? (
-          <span>Selected origin: {props.selectedOriginLabel}</span>
+          <span>当前来源：{props.selectedOriginLabel}</span>
         ) : null}
         {props.previousOriginLabel ? (
-          <span>Previous origin: {props.previousOriginLabel}</span>
+          <span>基线来源：{props.previousOriginLabel}</span>
         ) : null}
         <span>{recommendationShift}</span>
         <span>{evidenceCountSummary}</span>
-        <span>Selected recommendation: {props.selectedEntry.finalized.recommendation.status}</span>
-        <span>Previous recommendation: {props.previousEntry.finalized.recommendation.status}</span>
-        <span>Selected summary: {summarizeFinalizedEntry(props.selectedEntry)}</span>
-        <span>Previous summary: {summarizeFinalizedEntry(props.previousEntry)}</span>
+        <span>当前建议：{formatRecommendationStatusLabel(props.selectedEntry.finalized.recommendation.status)}</span>
+        <span>基线建议：{formatRecommendationStatusLabel(props.previousEntry.finalized.recommendation.status)}</span>
+        <span>当前摘要：{summarizeFinalizedEntry(props.selectedEntry)}</span>
+        <span>基线摘要：{summarizeFinalizedEntry(props.previousEntry)}</span>
       </div>
       <div className="evaluation-workbench-history-compare">
-        <strong>Binding Changes</strong>
+        <strong>绑定变化</strong>
         {bindingChanges.length > 0 ? (
           bindingChanges.map((change) => <span key={change}>{change}</span>)
         ) : (
-          <span>Bindings unchanged from the previous finalized run.</span>
+          <span>与基线相比，绑定未发生变化。</span>
         )}
-        <span>Selected evidence: {summarizeEvidenceLabels(props.selectedEvidence)}</span>
-        <span>Previous evidence: {summarizeEvidenceLabels(props.previousEvidence)}</span>
+        <span>当前证据：{summarizeEvidenceLabels(props.selectedEvidence)}</span>
+        <span>基线证据：{summarizeEvidenceLabels(props.previousEvidence)}</span>
       </div>
       <div className="evaluation-workbench-history-compare">
-        <strong>Evidence Pack Changes</strong>
+        <strong>证据包变化</strong>
         {evidencePackChanges.length > 0 ? (
           evidencePackChanges.map((change) => <span key={change}>{change}</span>)
         ) : (
-          <span>Evidence-pack summaries unchanged from the previous finalized run.</span>
+          <span>与基线相比，证据包摘要未发生变化。</span>
         )}
       </div>
       <div className="evaluation-workbench-history-summary-grid">
         <div className="evaluation-workbench-history-summary-card">
-          <strong>Selected evidence pack</strong>
+          <strong>当前证据包</strong>
           <EvaluationWorkbenchEvidencePackSummary
             evidencePack={props.selectedEntry.finalized.evidence_pack}
           />
         </div>
         <div className="evaluation-workbench-history-summary-card">
-          <strong>Previous evidence pack</strong>
+          <strong>基线证据包</strong>
           <EvaluationWorkbenchEvidencePackSummary
             evidencePack={props.previousEntry.finalized.evidence_pack}
           />
@@ -973,7 +972,7 @@ export function EvaluationWorkbenchFinalizePanel(props: {
   if (props.selectedRun == null) {
     return (
       <p className="evaluation-workbench-empty">
-        Choose a run before recording evidence and finalizing it.
+        请先选择一条运行，再补充证据并完成定稿。
       </p>
     );
   }
@@ -982,22 +981,22 @@ export function EvaluationWorkbenchFinalizePanel(props: {
     return (
       <>
         <div className="evaluation-workbench-result">
-          <strong>Machine-Completed Governed Run</strong>
+          <strong>机器已完成的治理运行</strong>
           <div className="evaluation-workbench-history-compare">
-            <span>Run Status: {props.selectedRun.status}</span>
+            <span>运行状态：{formatRunStatusLabel(props.selectedRun.status)}</span>
             {props.selectedRun.governed_source ? (
               <span>
-                Governed Source: {props.selectedRun.governed_source.source_module} /{" "}
+                治理来源：{formatModuleLabel(props.selectedRun.governed_source.source_module)} /{" "}
                 {props.selectedRun.governed_source.manuscript_id}
               </span>
             ) : null}
           </div>
           <p className="evaluation-workbench-empty">
-            Automatic governed checks completed. Review machine evidence before finalizing.
+            自动治理检查已完成，请先核对机器证据，再执行最终定稿。
           </p>
           <EvaluationWorkbenchEvidenceList
             evidence={props.selectedRunEvidence}
-            emptyMessage="No persisted machine evidence is attached to this governed run."
+            emptyMessage="该治理运行暂无已保存的机器证据。"
           />
         </div>
         <button
@@ -1005,7 +1004,7 @@ export function EvaluationWorkbenchFinalizePanel(props: {
           onClick={props.onFinalizeRecommendation}
           disabled={props.isBusy}
         >
-          Finalize Recommendation
+          完成建议定稿
         </button>
       </>
     );
@@ -1014,12 +1013,12 @@ export function EvaluationWorkbenchFinalizePanel(props: {
   if (props.effectiveFinalizedResult) {
     return (
       <div className="evaluation-workbench-result evaluation-workbench-finalized">
-        <strong>Finalized Recommendation</strong>
+        <strong>已定稿建议</strong>
         <div>
-          <span>Run: {props.effectiveFinalizedResult.run.id}</span>
-          <span>Evidence Pack: {props.effectiveFinalizedResult.evidence_pack.id}</span>
-          <span>Summary: {props.effectiveFinalizedResult.evidence_pack.summary_status}</span>
-          <span>Recommendation: {props.effectiveFinalizedResult.recommendation.status}</span>
+          <span>运行：{props.effectiveFinalizedResult.run.id}</span>
+          <span>证据包：{props.effectiveFinalizedResult.evidence_pack.id}</span>
+          <span>摘要状态：{formatRecommendationStatusLabel(props.effectiveFinalizedResult.evidence_pack.summary_status)}</span>
+          <span>建议结论：{formatRecommendationStatusLabel(props.effectiveFinalizedResult.recommendation.status)}</span>
           {props.effectiveFinalizedResult.recommendation.decision_reason ? (
             <span>{props.effectiveFinalizedResult.recommendation.decision_reason}</span>
           ) : null}
@@ -1035,43 +1034,43 @@ export function EvaluationWorkbenchFinalizePanel(props: {
   return (
     <>
       <div className="evaluation-workbench-form-grid">
-        <Field label="Run Status">
+        <Field label="运行状态">
           <select
             value={props.finalizeForm.status}
             onChange={(event) =>
               props.onFinalizeStatusChange(event.target.value as "passed" | "failed")
             }
           >
-            <option value="passed">passed</option>
-            <option value="failed">failed</option>
+            <option value="passed">已通过</option>
+            <option value="failed">已失败</option>
           </select>
         </Field>
-        <Field label="Evidence Type">
+        <Field label="证据类型">
           <select
             value={props.finalizeForm.evidenceKind}
             onChange={(event) =>
               props.onEvidenceKindChange(event.target.value as VerificationEvidenceKind)
             }
           >
-            <option value="url">url</option>
-            <option value="artifact">artifact</option>
+            <option value="url">链接</option>
+            <option value="artifact">制品</option>
           </select>
         </Field>
-        <Field label="Evidence Label">
+        <Field label="证据标签">
           <input
             value={props.finalizeForm.evidenceLabel}
             onChange={(event) => props.onEvidenceLabelChange(event.target.value)}
           />
         </Field>
         {props.finalizeForm.evidenceKind === "url" ? (
-          <Field label="Evidence URL" wide>
+          <Field label="证据链接" wide>
             <input
               value={props.finalizeForm.evidenceUrl}
               onChange={(event) => props.onEvidenceUrlChange(event.target.value)}
             />
           </Field>
         ) : (
-          <Field label="Artifact Asset ID" wide>
+          <Field label="制品资产 ID" wide>
             <input
               value={props.finalizeForm.artifactAssetId}
               onChange={(event) => props.onArtifactAssetIdChange(event.target.value)}
@@ -1084,7 +1083,7 @@ export function EvaluationWorkbenchFinalizePanel(props: {
           <div
             className="evaluation-workbench-inline-list"
             role="group"
-            aria-label="Artifact evidence suggestions"
+            aria-label="制品证据建议"
           >
             {props.finalizeArtifactOptions.map((option) => (
               <button
@@ -1099,16 +1098,15 @@ export function EvaluationWorkbenchFinalizePanel(props: {
           </div>
         ) : (
           <p className="evaluation-workbench-empty">
-            Save a run-item result or load linked sample context to reuse an internal artifact as
-            evidence.
+            请先保存运行条目结果，或加载关联样本上下文后再复用内部制品作为证据。
           </p>
         )
       ) : null}
       <button type="button" onClick={props.onCompleteAndFinalize} disabled={props.isBusy}>
-        Complete And Finalize Run
+        完成运行并定稿
       </button>
       <p className="evaluation-workbench-empty">
-        Finalize the run to produce a governed recommendation.
+        完成定稿后将生成治理建议。
       </p>
     </>
   );
@@ -1118,7 +1116,7 @@ export function EvaluationWorkbenchEvidenceList(props: {
   evidence: VerificationEvidenceViewModel[];
   emptyMessage?: string;
 }) {
-  const { evidence, emptyMessage = "No persisted verification evidence is attached yet." } = props;
+  const { evidence, emptyMessage = "暂无已保存的核验证据。" } = props;
 
   if (evidence.length === 0) {
     return <p className="evaluation-workbench-empty">{emptyMessage}</p>;
@@ -1129,16 +1127,16 @@ export function EvaluationWorkbenchEvidenceList(props: {
       {evidence.map((item) => (
         <li key={item.id}>
           <strong>{item.label}</strong>
-          <span>{item.kind}</span>
+          <span>{formatEvidenceKindLabel(item.kind)}</span>
           <span>{item.uri ?? item.artifact_asset_id ?? item.id}</span>
           {item.kind === "url" && item.uri ? (
             <a href={item.uri} target="_blank" rel="noreferrer">
-              Open evidence link
+              打开证据链接
             </a>
           ) : null}
           {item.kind === "artifact" && item.artifact_asset_id ? (
             <a href={`/api/v1/document-assets/${item.artifact_asset_id}/download`}>
-              Download evidence artifact
+              下载证据制品
             </a>
           ) : null}
         </li>
@@ -1152,18 +1150,18 @@ export function EvaluationWorkbenchEvidencePackSummary(props: {
 }) {
   const { evidencePack } = props;
   const summaryRows = [
-    { label: "Summary Status", value: evidencePack.summary_status },
-    { label: "Score Summary", value: evidencePack.score_summary },
-    { label: "Regression Summary", value: evidencePack.regression_summary },
-    { label: "Failure Summary", value: evidencePack.failure_summary },
-    { label: "Cost Summary", value: evidencePack.cost_summary },
-    { label: "Latency Summary", value: evidencePack.latency_summary },
+    { label: "摘要状态", value: formatRecommendationStatusLabel(evidencePack.summary_status) },
+    { label: "评分摘要", value: localizeEvidenceSummaryText(evidencePack.score_summary) },
+    { label: "回归摘要", value: localizeEvidenceSummaryText(evidencePack.regression_summary) },
+    { label: "失败摘要", value: localizeEvidenceSummaryText(evidencePack.failure_summary) },
+    { label: "成本摘要", value: localizeEvidenceSummaryText(evidencePack.cost_summary) },
+    { label: "时延摘要", value: localizeEvidenceSummaryText(evidencePack.latency_summary) },
   ].filter((row): row is { label: string; value: string } => Boolean(row.value));
 
   if (summaryRows.length === 0) {
     return (
       <p className="evaluation-workbench-empty">
-        No evidence-pack summaries were recorded for this finalized run.
+        当前已定稿运行暂无证据包摘要。
       </p>
     );
   }
@@ -1183,9 +1181,9 @@ export function EvaluationWorkbenchHistoryEntrySignals(props: {
   entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number];
 }) {
   const summaryRows = [
-    { label: "Score", value: props.entry.finalized.evidence_pack.score_summary },
-    { label: "Regression", value: props.entry.finalized.evidence_pack.regression_summary },
-    { label: "Failure", value: props.entry.finalized.evidence_pack.failure_summary },
+    { label: "评分", value: localizeEvidenceSummaryText(props.entry.finalized.evidence_pack.score_summary) },
+    { label: "回归", value: localizeEvidenceSummaryText(props.entry.finalized.evidence_pack.regression_summary) },
+    { label: "失败", value: localizeEvidenceSummaryText(props.entry.finalized.evidence_pack.failure_summary) },
   ].filter((row): row is { label: string; value: string } => Boolean(row.value));
 
   if (summaryRows.length === 0) {
@@ -1213,14 +1211,14 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
   if (props.runItems.length === 0) {
     return (
       <p className="evaluation-workbench-empty">
-        No run-item sample context is available for this history selection.
+        当前历史选择暂无运行条目样本上下文。
       </p>
     );
   }
 
   return (
     <div className="evaluation-workbench-history-compare">
-      <strong>Linked Sample Context</strong>
+      <strong>关联样本上下文</strong>
       <ul className="evaluation-workbench-inline-list evaluation-workbench-linked-sample-list">
         {props.runItems.map((runItem) => {
           const sampleSetItem =
@@ -1238,30 +1236,30 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
           });
           return (
             <li key={runItem.id}>
-              <strong>Run Item: {runItem.id}</strong>
-              {isFocused ? <span>Focused</span> : null}
-              <span>Lane: {runItem.lane}</span>
-              <span>Weighted Score: {runItem.weighted_score ?? "Not scored"}</span>
-              {runItem.failure_reason ? <span>Failure: {runItem.failure_reason}</span> : null}
+              <strong>运行条目：{runItem.id}</strong>
+              {isFocused ? <span>当前聚焦</span> : null}
+              <span>通道：{formatLaneLabel(runItem.lane)}</span>
+              <span>加权得分：{runItem.weighted_score ?? "未评分"}</span>
+              {runItem.failure_reason ? <span>失败：{runItem.failure_reason}</span> : null}
               {sampleSetItem ? (
                 <>
-                  <span>Sample Item: {sampleSetItem.id}</span>
-                  <span>Module: {sampleSetItem.module}</span>
-                  <span>Manuscript Type: {sampleSetItem.manuscript_type}</span>
-                  <span>Reviewed Snapshot: {sampleSetItem.reviewed_case_snapshot_id}</span>
-                  <span>Manuscript: {sampleSetItem.manuscript_id}</span>
+                  <span>样本条目：{sampleSetItem.id}</span>
+                  <span>模块：{formatModuleLabel(sampleSetItem.module)}</span>
+                  <span>稿件类型：{formatManuscriptTypeLabel(sampleSetItem.manuscript_type)}</span>
+                  <span>复核快照：{sampleSetItem.reviewed_case_snapshot_id}</span>
+                  <span>稿件：{sampleSetItem.manuscript_id}</span>
                 </>
               ) : (
-                <span>No linked sample-set item is available for this run item.</span>
+                <span>该运行条目暂无关联样本条目。</span>
               )}
               {runItem.result_asset_id ? (
                 <a href={`/api/v1/document-assets/${runItem.result_asset_id}/download`}>
-                  Download Result Asset
+                  下载结果制品
                 </a>
               ) : null}
               {sampleSetItem?.snapshot_asset_id ? (
                 <a href={`/api/v1/document-assets/${sampleSetItem.snapshot_asset_id}/download`}>
-                  Download Sample Snapshot
+                  下载样本快照
                 </a>
               ) : null}
               {manuscriptWorkbenchHash ? (
@@ -1275,7 +1273,7 @@ export function EvaluationWorkbenchLinkedSampleContextList(props: {
                   className="evaluation-workbench-action"
                   onClick={() => props.onFocusRunItem?.(runItem.id)}
                 >
-                  Focus Run Item {runItem.id}
+                  查看运行条目 {runItem.id}
                 </button>
               ) : null}
             </li>
@@ -1304,27 +1302,27 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-run-item-detail">
-      <strong>Selected Sample Detail</strong>
+      <strong>当前样本详情</strong>
       <div className="evaluation-workbench-history-compare">
-        <span>Run Item: {selectedRunItem.id}</span>
-        <span>Lane: {selectedRunItem.lane}</span>
-        <span>Hard Gate: {describeHardGate(selectedRunItem.hard_gate_passed)}</span>
+        <span>运行条目：{selectedRunItem.id}</span>
+        <span>通道：{formatLaneLabel(selectedRunItem.lane)}</span>
+        <span>硬门限：{describeHardGate(selectedRunItem.hard_gate_passed)}</span>
         <span>
-          Weighted Score: {selectedRunItem.weighted_score == null ? "Pending" : selectedRunItem.weighted_score}
+          加权得分：{selectedRunItem.weighted_score == null ? "待补充" : selectedRunItem.weighted_score}
         </span>
-        <span>Result Asset: {selectedRunItem.result_asset_id ?? "Pending"}</span>
-        <span>Manual Review: {selectedRunItem.requires_human_review ? "Required" : "Not required"}</span>
+        <span>结果制品：{selectedRunItem.result_asset_id ?? "待补充"}</span>
+        <span>人工复核：{selectedRunItem.requires_human_review ? "需要" : "不需要"}</span>
         {selectedRunItem.diff_summary ? <span>{selectedRunItem.diff_summary}</span> : null}
         {selectedRunItem.failure_reason ? <span>{selectedRunItem.failure_reason}</span> : null}
         {linkedSampleSetItem ? (
           <>
-            <span>Sample Item: {linkedSampleSetItem.id}</span>
-            <span>Module: {linkedSampleSetItem.module}</span>
-            <span>Manuscript Type: {linkedSampleSetItem.manuscript_type}</span>
-            <span>Risk Tags: {formatOptionalList(linkedSampleSetItem.risk_tags)}</span>
-            <span>Snapshot Asset: {linkedSampleSetItem.snapshot_asset_id}</span>
-            <span>Reviewed Snapshot: {linkedSampleSetItem.reviewed_case_snapshot_id}</span>
-            <span>Manuscript: {linkedSampleSetItem.manuscript_id}</span>
+            <span>样本条目：{linkedSampleSetItem.id}</span>
+            <span>模块：{formatModuleLabel(linkedSampleSetItem.module)}</span>
+            <span>稿件类型：{formatManuscriptTypeLabel(linkedSampleSetItem.manuscript_type)}</span>
+            <span>风险标签：{formatRiskTagList(linkedSampleSetItem.risk_tags)}</span>
+            <span>快照制品：{linkedSampleSetItem.snapshot_asset_id}</span>
+            <span>复核快照：{linkedSampleSetItem.reviewed_case_snapshot_id}</span>
+            <span>稿件：{linkedSampleSetItem.manuscript_id}</span>
             {manuscriptWorkbenchHash ? (
               <a href={manuscriptWorkbenchHash}>{manuscriptWorkbenchLabel}</a>
             ) : null}
@@ -1332,16 +1330,16 @@ export function EvaluationWorkbenchSelectedRunItemDetailCard(props: {
         ) : selectedRun.governed_source ? (
           <EvaluationWorkbenchGovernedSourceInlineDetails selectedRun={selectedRun} />
         ) : (
-          <span>No linked sample-set item is available for this run item.</span>
+          <span>该运行条目暂无关联样本条目。</span>
         )}
       </div>
       <ul className="evaluation-workbench-inline-list">
         <li>
-          <strong>Baseline Binding</strong>
+          <strong>基线绑定</strong>
           <span>{summarizeBinding(selectedRun.baseline_binding)}</span>
         </li>
         <li>
-          <strong>Candidate Binding</strong>
+          <strong>候选绑定</strong>
           <span>{summarizeBinding(selectedRun.candidate_binding)}</span>
         </li>
       </ul>
@@ -1355,25 +1353,25 @@ export function EvaluationWorkbenchGovernedSourceDetailCard(props: {
   if (!props.selectedRun.governed_source) {
     return (
       <p className="evaluation-workbench-empty">
-        No governed source is attached to this run.
+        该运行暂无治理来源信息。
       </p>
     );
   }
 
   return (
     <div className="evaluation-workbench-result evaluation-workbench-run-item-detail">
-      <strong>Governed Source Detail</strong>
+      <strong>治理来源详情</strong>
       <div className="evaluation-workbench-history-compare">
-        <span>Run: {props.selectedRun.id}</span>
+        <span>运行：{props.selectedRun.id}</span>
         <EvaluationWorkbenchGovernedSourceInlineDetails selectedRun={props.selectedRun} />
       </div>
       <ul className="evaluation-workbench-inline-list">
         <li>
-          <strong>Baseline Binding</strong>
+          <strong>基线绑定</strong>
           <span>{summarizeBinding(props.selectedRun.baseline_binding)}</span>
         </li>
         <li>
-          <strong>Candidate Binding</strong>
+          <strong>候选绑定</strong>
           <span>{summarizeBinding(props.selectedRun.candidate_binding)}</span>
         </li>
       </ul>
@@ -1402,16 +1400,16 @@ function EvaluationWorkbenchGovernedSourceInlineDetails(props: {
 
   return (
     <>
-      <span>Source Module: {governedSource.source_module}</span>
-      <span>Manuscript: {governedSource.manuscript_id}</span>
-      <span>Execution Snapshot: {governedSource.execution_snapshot_id}</span>
-      <span>Agent Execution Log: {governedSource.agent_execution_log_id}</span>
-      <span>Output Asset: {governedSource.output_asset_id}</span>
+      <span>来源模块：{formatModuleLabel(governedSource.source_module)}</span>
+      <span>稿件：{governedSource.manuscript_id}</span>
+      <span>执行快照：{governedSource.execution_snapshot_id}</span>
+      <span>Agent 执行日志：{governedSource.agent_execution_log_id}</span>
+      <span>输出制品：{governedSource.output_asset_id}</span>
       {props.selectedRun.release_check_profile_id ? (
-        <span>Release Check Profile: {props.selectedRun.release_check_profile_id}</span>
+        <span>发布核查配置：{props.selectedRun.release_check_profile_id}</span>
       ) : null}
       {outputAssetDownloadHref ? (
-        <a href={outputAssetDownloadHref}>Download Governed Output Asset</a>
+        <a href={outputAssetDownloadHref}>下载治理输出制品</a>
       ) : null}
       {manuscriptWorkbenchHash ? (
         <a href={manuscriptWorkbenchHash}>
@@ -1430,9 +1428,78 @@ function SummaryCard(props: { label: string; value: number }) {
   return <article className="evaluation-workbench-summary-card"><span>{props.label}</span><strong>{props.value}</strong></article>;
 }
 
+function formatDeltaClassificationLabel(classification: "better" | "worse" | "flat") {
+  if (classification === "better") return "改善";
+  if (classification === "worse") return "回落";
+  return "持平";
+}
+
+function formatRecommendationStatusLabel(status: string) {
+  if (status === "recommended") return "可推荐";
+  if (status === "needs_review") return "待复核";
+  if (status === "rejected") return "已拒绝";
+  return status;
+}
+
+function formatRunStatusLabel(status: string) {
+  if (status === "passed") return "已通过";
+  if (status === "failed") return "已失败";
+  if (status === "running") return "运行中";
+  if (status === "queued") return "排队中";
+  return status;
+}
+
+function formatSuiteTypeLabel(suiteType: string) {
+  if (suiteType === "governed_evaluation") return "治理评测";
+  if (suiteType === "manual_evaluation") return "人工评测";
+  return suiteType;
+}
+
+function formatLifecycleStatusLabel(status: string) {
+  if (status === "active") return "启用中";
+  if (status === "draft") return "草稿";
+  if (status === "published") return "已发布";
+  if (status === "archived") return "已归档";
+  return status;
+}
+
+function formatLaneLabel(lane: string) {
+  if (lane === "baseline") return "基线";
+  if (lane === "candidate") return "候选";
+  return lane;
+}
+
+function formatModuleLabel(module: string | null | undefined) {
+  if (module == null) return "未记录";
+  if (module === "submission") return "投稿";
+  if (module === "screening") return "初筛";
+  if (module === "editing") return "编辑";
+  if (module === "proofreading") return "校对";
+  return module;
+}
+
+function formatManuscriptTypeLabel(manuscriptType: string | null | undefined) {
+  if (!manuscriptType) return "未记录";
+  return manuscriptType.replaceAll("_", " ");
+}
+
+function formatRiskTagList(riskTags: readonly string[] | undefined) {
+  return riskTags != null && riskTags.length > 0 ? riskTags.join("，") : "无";
+}
+
+function formatBindingSideLabel(label: "Baseline" | "Candidate") {
+  return label === "Baseline" ? "基线" : "候选";
+}
+
+function formatEvidenceKindLabel(kind: VerificationEvidenceKind) {
+  if (kind === "url") return "链接";
+  if (kind === "artifact") return "制品";
+  return kind;
+}
+
 function summarizeCoveredModules(overview: EvaluationWorkbenchOverview) {
   const modules = Array.from(new Set(overview.sampleSets.map((item) => item.module)));
-  return modules.length > 0 ? modules.join(", ") : "Not available";
+  return modules.length > 0 ? modules.map((item) => formatModuleLabel(item)).join("，") : "未提供";
 }
 
 function resolveLinkedSampleWorkbenchMode(
@@ -1452,10 +1519,10 @@ function resolveLinkedSampleWorkbenchMode(
 }
 
 function createLinkedSampleWorkbenchLabel(mode: ManuscriptWorkbenchMode): string {
-  if (mode === "submission") return "Open Submission Workbench";
-  if (mode === "screening") return "Open Screening Workbench";
-  if (mode === "editing") return "Open Editing Workbench";
-  return "Open Proofreading Workbench";
+  if (mode === "submission") return "打开投稿工作台";
+  if (mode === "screening") return "打开初筛工作台";
+  if (mode === "editing") return "打开编辑工作台";
+  return "打开校对工作台";
 }
 
 function createLinkedSampleWorkbenchHash(input: {
@@ -1477,9 +1544,9 @@ function createLinkedSampleWorkbenchHash(input: {
 
 function formatRunItemSummary(item: EvaluationWorkbenchOverview["runItems"][number]) {
   return [
-    item.hard_gate_passed == null ? "Hard gate pending" : item.hard_gate_passed ? "Hard gate passed" : "Hard gate failed",
-    item.weighted_score == null ? "Score pending" : `Score ${item.weighted_score}`,
-    item.requires_human_review ? "Needs review" : "No manual review flag",
+    item.hard_gate_passed == null ? "硬门限待判定" : item.hard_gate_passed ? "硬门限已通过" : "硬门限已失败",
+    item.weighted_score == null ? "得分待补充" : `得分 ${item.weighted_score}`,
+    item.requires_human_review ? "待复核" : "未标记人工复核",
   ].join(" | ");
 }
 
@@ -1651,23 +1718,23 @@ export function describeHistoryComparisonGuidance(input: {
       selectedRun.governed_source &&
       (selectedRun.status === "passed" || selectedRun.status === "failed")
     ) {
-      return `Current run ${selectedRun.id} already completed automatic governed checks. Finalize the recommendation to compare against history.`;
+      return `当前运行 ${selectedRun.id} 已完成自动治理检查，请先完成建议定稿后再进行历史对照。`;
     }
-    return `Current run ${selectedRun.id} is still ${selectedRun.status}. Complete and finalize it to compare against history.`;
+    return `当前运行 ${selectedRun.id} 状态仍为 ${formatRunStatusLabel(selectedRun.status)}，请先完成运行并定稿后再进行历史对照。`;
   }
   if (selectedRunHistoryEntry) {
     if (scope === "manuscript" && totalFinalizedCount > scopedCount) {
-      return "This manuscript only has one finalized run. Switch to Entire Suite History to compare it against broader suite history.";
+      return "当前稿件仅有 1 条已定稿运行，可切换到全部套件历史查看更广范围的对照。";
     }
     if (scope === "manuscript") {
-      return "Finalize one more run for this manuscript to compare the current result against manuscript history.";
+      return "请先为该稿件再完成 1 条运行定稿，才能与稿件历史进行对照。";
     }
-    return "Finalize one more run in this suite to compare the current result against history.";
+    return "请先在该套件内再完成 1 条运行定稿，才能与历史进行对照。";
   }
   if (scope === "manuscript") {
-    return "Select a finalized run from this manuscript to compare it against prior manuscript history.";
+    return "请先从当前稿件中选择一条已定稿运行，用于与稿件历史结果对照。";
   }
-  return "Select a finalized run from the suite to compare it against prior history.";
+  return "请先选择一条已定稿运行，用于与套件历史对照。";
 }
 
 export function describeHistoryComparisonGuidanceSummary(input: {
@@ -1685,17 +1752,17 @@ export function describeHistoryComparisonGuidanceSummary(input: {
 
   if (selectedRunHistoryEntry && previousRunHistoryEntry) return null;
   if (selectedRun && !selectedRunHistoryEntry) {
-    return "Comparison unlocks after this run reaches a finalized recommendation with persisted evidence.";
+    return "当该运行生成已定稿建议并保存证据后，才可开启结果对照。";
   }
   if (selectedRunHistoryEntry) {
     if (scope === "manuscript" && totalFinalizedCount > scopedCount) {
       const additionalRunCount = totalFinalizedCount - scopedCount;
-      return `Broader suite history already has ${additionalRunCount} additional finalized run${additionalRunCount === 1 ? "" : "s"} available for comparison.`;
+      return `更广范围的套件历史中已有 ${additionalRunCount} 条额外已定稿运行可用于对照。`;
     }
-    return `Current ${scope} history only contains this finalized run, so there is no earlier baseline yet.`;
+    return `当前${scope === "manuscript" ? "稿件" : "套件"}历史中仅有这 1 条已定稿运行，暂时没有更早的基线。`;
   }
   if (scopedCount > 0) {
-    return `Visible ${scope} history currently has ${scopedCount} finalized run${scopedCount === 1 ? "" : "s"} ready for compare selection.`;
+    return `当前可见的${scope === "manuscript" ? "稿件" : "套件"}历史中已有 ${scopedCount} 条已定稿运行可用于选择对照。`;
   }
   return null;
 }
@@ -1707,10 +1774,10 @@ export function describeHistoryComparisonRoleLabels(input: {
 }) {
   const labels: string[] = [];
   if (input.entryRunId === input.selectedRunId) {
-    labels.push("Selected run");
+    labels.push("当前运行");
   }
   if (input.entryRunId === input.previousRunId) {
-    labels.push("Compare baseline");
+    labels.push("对照基线");
   }
   return labels;
 }
@@ -1719,7 +1786,7 @@ export function describeHistoryStatusPair(
   recommendationStatus: string,
   summaryStatus: string,
 ) {
-  return `${recommendationStatus} / ${summaryStatus}`;
+  return `${formatRecommendationStatusLabel(recommendationStatus)} / ${formatRecommendationStatusLabel(summaryStatus)}`;
 }
 
 function compareHistoryRecency(
@@ -1744,9 +1811,9 @@ function describeRecommendationShift(
   previousStatus: EvaluationWorkbenchOverview["finalizedRunHistory"][number]["finalized"]["recommendation"]["status"],
 ) {
   if (selectedStatus === previousStatus) {
-    return `Recommendation shift: unchanged at ${selectedStatus}`;
+    return `建议变化：维持 ${formatRecommendationStatusLabel(selectedStatus)}`;
   }
-  return `Recommendation shift: ${selectedStatus} (was ${previousStatus})`;
+  return `建议变化：${formatRecommendationStatusLabel(selectedStatus)}（原为 ${formatRecommendationStatusLabel(previousStatus)}）`;
 }
 
 export function describeComparisonOperatorSummary(input: {
@@ -1766,31 +1833,31 @@ export function describeComparisonOperatorSummary(input: {
 
   if (selectedSeverity === previousSeverity) {
     if (scoreDelta != null && scoreDelta > 0.05) {
-      return `Operator summary: Improved over ${scopeLabel} by ${scoreDelta.toFixed(1)} weighted points while holding ${input.selectedStatus}.`;
+      return `操作摘要：相较于${scopeLabel}，在维持${formatRecommendationStatusLabel(input.selectedStatus)}的同时提升了 ${scoreDelta.toFixed(1)} 分。`;
     }
     if (scoreDelta != null && scoreDelta < -0.05) {
-      return `Operator summary: Regressed against ${scopeLabel} and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points while staying ${input.selectedStatus}.`;
+      return `操作摘要：相较于${scopeLabel}，在维持${formatRecommendationStatusLabel(input.selectedStatus)}的同时下降了 ${Math.abs(scoreDelta).toFixed(1)} 分。`;
     }
-    return `Operator summary: Held steady against ${scopeLabel} at ${input.selectedStatus}.`;
+    return `操作摘要：相较于${scopeLabel}，当前结果保持在${formatRecommendationStatusLabel(input.selectedStatus)}。`;
   }
 
   if (selectedSeverity > previousSeverity) {
     const scoreTail =
       scoreDelta != null && Math.abs(scoreDelta) > 0.05
-        ? ` and gained ${scoreDelta.toFixed(1)} weighted points`
+        ? `，并提升 ${scoreDelta.toFixed(1)} 分`
         : "";
-    return `Operator summary: Improved over ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+    return `操作摘要：相较于${scopeLabel}，结果从${formatRecommendationStatusLabel(input.previousStatus)}提升为${formatRecommendationStatusLabel(input.selectedStatus)}${scoreTail}。`;
   }
 
   const scoreTail =
     scoreDelta != null && Math.abs(scoreDelta) > 0.05
-      ? ` and dropped ${Math.abs(scoreDelta).toFixed(1)} weighted points`
+      ? `，并下降 ${Math.abs(scoreDelta).toFixed(1)} 分`
       : "";
-  return `Operator summary: Regressed against ${scopeLabel} (${input.previousStatus} -> ${input.selectedStatus})${scoreTail}.`;
+  return `操作摘要：相较于${scopeLabel}，结果从${formatRecommendationStatusLabel(input.previousStatus)}变为${formatRecommendationStatusLabel(input.selectedStatus)}${scoreTail}。`;
 }
 
 export function describeComparisonBaselinePolicy(comparisonScopeLabel: string) {
-  return `Baseline policy: Chronological previous finalized run within ${comparisonScopeLabel.toLowerCase()}.`;
+  return `基线策略：按时间顺序选择${comparisonScopeLabel.toLowerCase()}中的上一条已定稿运行。`;
 }
 
 export function describeComparisonTriageHint(input: {
@@ -1799,29 +1866,29 @@ export function describeComparisonTriageHint(input: {
   scoreDelta: number | null;
 }) {
   if (input.selectedStatus === "rejected") {
-    return "Suggested action: Investigate regression";
+    return "建议动作：排查回归原因";
   }
 
   if (input.selectedStatus === "needs_review") {
-    return "Suggested action: Review manually";
+    return "建议动作：转人工复核";
   }
 
   if (input.previousStatus !== "recommended") {
-    return "Suggested action: Promote candidate";
+    return "建议动作：可推进候选版本";
   }
 
   if (input.scoreDelta != null && input.scoreDelta > 0.05) {
-    return "Suggested action: Promote candidate";
+    return "建议动作：可推进候选版本";
   }
 
-  return "Suggested action: Monitor before promote";
+  return "建议动作：继续观察后再推进";
 }
 
 function describeEvidenceCountChange(
   selectedEvidence: VerificationEvidenceViewModel[],
   previousEvidence: VerificationEvidenceViewModel[],
 ) {
-  return `Evidence count: ${selectedEvidence.length} (was ${previousEvidence.length})`;
+  return `证据数量：${selectedEvidence.length}（原为 ${previousEvidence.length}）`;
 }
 
 function parseAverageWeightedScore(summary: string | null | undefined) {
@@ -1829,6 +1896,48 @@ function parseAverageWeightedScore(summary: string | null | undefined) {
   const match = /Average weighted score ([0-9]+(?:\.[0-9]+)?)/.exec(summary);
   if (!match) return null;
   return Number(match[1]);
+}
+
+function localizeEvidenceSummaryText(summary: string | null | undefined) {
+  if (!summary) return summary ?? null;
+
+  const averageScoreMatch = /^Average weighted score ([0-9]+(?:\.[0-9]+)?) across ([0-9]+) item\(s\)\.$/.exec(
+    summary,
+  );
+  if (averageScoreMatch) {
+    return `平均加权得分 ${averageScoreMatch[1]}（共 ${averageScoreMatch[2]} 条）`;
+  }
+
+  const regressionFailedMatch = /^([0-9]+) regression-failed item\(s\) detected\.$/.exec(summary);
+  if (regressionFailedMatch) {
+    return `检测到 ${regressionFailedMatch[1]} 条回归失败项。`;
+  }
+
+  const regressionDriftMatch = /^Regression drift detected in (.+)\.$/.exec(summary);
+  if (regressionDriftMatch) {
+    return `检测到 ${regressionDriftMatch[1]} 的回归漂移。`;
+  }
+
+  if (summary === "No regression failures were recorded.") {
+    return "未发现回归失败。";
+  }
+  if (summary === "No failure annotations were recorded.") {
+    return "未记录失败标注。";
+  }
+  if (summary === "One hard gate warning remains open.") {
+    return "仍有 1 项硬门限告警待处理。";
+  }
+  if (summary === "Structure regression triggered the hard gate.") {
+    return "结构回归触发了硬门限。";
+  }
+  if (summary === "Cost tracking is not recorded in Phase 6A v1.") {
+    return "当前版本暂未记录成本跟踪。";
+  }
+  if (summary === "Latency tracking is not recorded in Phase 6A v1.") {
+    return "当前版本暂未记录时延跟踪。";
+  }
+
+  return summary;
 }
 
 function findPreviousFinalizedRunHistoryEntry(
@@ -1845,7 +1954,7 @@ export function summarizeFinalizedEntry(
 ) {
   return [
     entry.finalized.recommendation.decision_reason,
-    entry.run.finished_at ? `Finished ${entry.run.finished_at}` : undefined,
+    entry.run.finished_at ? `完成于 ${entry.run.finished_at}` : undefined,
   ]
     .filter((value) => Boolean(value))
     .join(" | ");
@@ -1856,16 +1965,16 @@ function resolveSelectedId(ids: readonly string[], preferredId: string | null) {
 }
 
 function describeHardGate(hardGatePassed: boolean | undefined) {
-  if (hardGatePassed == null) return "Pending";
-  return hardGatePassed ? "Passed" : "Failed";
+  if (hardGatePassed == null) return "待判定";
+  return hardGatePassed ? "已通过" : "已失败";
 }
 
 function describeComparisonScopeLabel(input: {
   scope: EvaluationWorkbenchHistoryScope;
   hasManuscriptContext: boolean;
 }) {
-  if (input.scope === "manuscript") return "Matched manuscript history";
-  return input.hasManuscriptContext ? "Broader suite history" : "Entire suite history";
+  if (input.scope === "manuscript") return "命中稿件历史";
+  return input.hasManuscriptContext ? "更广范围套件历史" : "全部套件历史";
 }
 
 export function describeHistoryEntryOriginLabel(input: {
@@ -1875,10 +1984,10 @@ export function describeHistoryEntryOriginLabel(input: {
   scope: EvaluationWorkbenchHistoryScope;
 }) {
   if (!input.hasManuscriptContext || input.runId == null) return null;
-  if (input.scope === "manuscript") return "Matched manuscript";
+  if (input.scope === "manuscript") return "命中稿件";
 
   const matchedRunIdSet = new Set(input.matchedRunIds);
-  return matchedRunIdSet.has(input.runId) ? "Current manuscript" : "Broader suite";
+  return matchedRunIdSet.has(input.runId) ? "当前稿件" : "更广范围套件";
 }
 
 export function describeHistoryOriginSummary(input: {
@@ -1890,13 +1999,13 @@ export function describeHistoryOriginSummary(input: {
   if (!input.hasManuscriptContext) return null;
   if (input.runIds.length === 0) return null;
   if (input.scope === "manuscript") {
-    return `Matched manuscript runs: ${input.runIds.length}`;
+    return `命中稿件运行：${input.runIds.length}`;
   }
 
   const matchedRunIdSet = new Set(input.matchedRunIds);
   const manuscriptCount = input.runIds.filter((runId) => matchedRunIdSet.has(runId)).length;
   const broaderSuiteCount = input.runIds.length - manuscriptCount;
-  return `Current manuscript runs: ${manuscriptCount} | Broader suite references: ${broaderSuiteCount}`;
+  return `当前稿件运行：${manuscriptCount} | 更广范围套件参考：${broaderSuiteCount}`;
 }
 
 export function describeHistoryVisibilitySummary(input: {
@@ -1909,26 +2018,26 @@ export function describeHistoryVisibilitySummary(input: {
   selectedRunId: string | null;
   selectedRunHidden: boolean;
 }) {
-  const scopeLabel = input.scope === "manuscript" ? "manuscript-scoped" : "suite-scoped";
+  const scopeLabel = input.scope === "manuscript" ? "稿件范围" : "套件范围";
   const controls: string[] = [];
 
   if (input.filter !== "all") {
-    controls.push(`filter ${describeHistoryFilterLabel(input.filter)}`);
+    controls.push(`筛选 ${describeHistoryFilterLabel(input.filter)}`);
   }
 
   if (input.searchQuery.trim()) {
-    controls.push(`search "${input.searchQuery.trim()}"`);
+    controls.push(`搜索“${input.searchQuery.trim()}”`);
   }
 
   if (input.sortMode !== "newest") {
-    controls.push(`sort ${describeHistorySortModeLabel(input.sortMode)}`);
+    controls.push(`排序 ${describeHistorySortModeLabel(input.sortMode)}`);
   }
 
   return [
-    `Visibility summary: ${input.visibleCount} of ${input.totalCount} finalized runs visible in ${scopeLabel} history.`,
-    controls.length > 0 ? `Active controls: ${controls.join(", ")}.` : null,
+    `可见性摘要：${input.visibleCount} / ${input.totalCount} 条已定稿运行处于${scopeLabel}内。`,
+    controls.length > 0 ? `当前条件：${controls.join("，")}。` : null,
     input.selectedRunHidden && input.selectedRunId
-      ? `Selected run ${input.selectedRunId} is outside the current result set.`
+      ? `当前运行 ${input.selectedRunId} 不在当前结果集中。`
       : null,
   ]
     .filter((value): value is string => Boolean(value))
@@ -1942,10 +2051,10 @@ export function describeHistoryControlSummaryLines(input: {
   sortMode: EvaluationWorkbenchHistorySortMode;
 }) {
   return [
-    `Scope: ${describeHistoryScopeSummaryLabel(input.scope)}`,
-    `Filter: ${describeHistoryFilterSummaryLabel(input.filter)}`,
-    `Search: ${input.searchQuery.trim() || "None"}`,
-    `Sort: ${describeHistorySortModeSummaryLabel(input.sortMode)}`,
+    `范围：${describeHistoryScopeSummaryLabel(input.scope)}`,
+    `筛选：${describeHistoryFilterSummaryLabel(input.filter)}`,
+    `搜索：${input.searchQuery.trim() || "无"}`,
+    `排序：${describeHistorySortModeSummaryLabel(input.sortMode)}`,
   ];
 }
 
@@ -1956,10 +2065,10 @@ export function describeHistoryCompareStatusSummary(input: {
   historyComparisonGuidanceSummary: string | null;
 }) {
   if (input.selectedRunHistoryEntry && input.previousRunHistoryEntry) {
-    return "Compare status: Current compare summary remains available for the selected run and compare baseline.";
+    return "对照状态：当前运行与对照基线的结果摘要可用。";
   }
   const fallback = input.historyComparisonGuidanceSummary ?? input.historyComparisonGuidance;
-  return fallback ? `Compare status: ${fallback}` : null;
+  return fallback ? `对照状态：${fallback}` : null;
 }
 
 export function describeGovernedLearningHandoffGuidance(input: {
@@ -1975,33 +2084,34 @@ export function describeGovernedLearningHandoffGuidance(input: {
     return null;
   }
 
-  return "Learning handoff is unavailable for governed-source runs until a reviewed snapshot is linked.";
+  return "治理来源运行在关联复核快照前，暂不能进入学习回流。";
 }
 
 function describeHistoryScopeSummaryLabel(scope: EvaluationWorkbenchHistoryScope) {
-  if (scope === "manuscript") return "Matched manuscript runs";
-  return "Entire suite history";
+  if (scope === "manuscript") return "命中稿件运行";
+  return "全部套件历史";
 }
 
 function describeHistoryFilterLabel(filter: EvaluationWorkbenchHistoryFilter) {
-  if (filter === "needs_review") return "needs review";
-  return filter;
+  return describeHistoryFilterSummaryLabel(filter).replace(/^仅/, "");
 }
 
 function describeHistorySortModeLabel(sortMode: EvaluationWorkbenchHistorySortMode) {
-  if (sortMode === "failures_first") return "failures first";
-  return "newest first";
+  if (sortMode === "failures_first") return "失败优先";
+  return "最新优先";
 }
 
 function describeHistoryFilterSummaryLabel(filter: EvaluationWorkbenchHistoryFilter) {
-  if (filter === "all") return "All finalized runs";
-  if (filter === "needs_review") return "Needs review only";
-  return `${capitalizeLabel(filter)} only`;
+  if (filter === "all") return "全部已定稿运行";
+  if (filter === "recommended") return "仅可推荐";
+  if (filter === "needs_review") return "仅待复核";
+  if (filter === "rejected") return "仅已拒绝";
+  return filter;
 }
 
 function describeHistorySortModeSummaryLabel(sortMode: EvaluationWorkbenchHistorySortMode) {
-  if (sortMode === "failures_first") return "Failures first";
-  return "Newest first";
+  if (sortMode === "failures_first") return "失败优先";
+  return "最新优先";
 }
 
 function capitalizeLabel(value: string) {
@@ -2010,35 +2120,35 @@ function capitalizeLabel(value: string) {
 }
 
 function formatOptionalList(values: readonly string[] | undefined) {
-  return values != null && values.length > 0 ? values.join(", ") : "None";
+  return values != null && values.length > 0 ? values.join("，") : "无";
 }
 
 function summarizeBinding(
   binding: EvaluationWorkbenchOverview["runs"][number]["baseline_binding"],
 ) {
-  if (!binding) return "Not recorded";
+  if (!binding) return "未记录";
 
   return [
     binding.execution_profile_id
-      ? `Execution Profile ${binding.execution_profile_id}`
+      ? `执行配置 ${binding.execution_profile_id}`
       : null,
     binding.runtime_binding_id
-      ? `Runtime Binding ${binding.runtime_binding_id}`
+      ? `运行时绑定 ${binding.runtime_binding_id}`
       : null,
     binding.model_routing_policy_version_id
-      ? `Routing Version ${binding.model_routing_policy_version_id}`
+      ? `路由版本 ${binding.model_routing_policy_version_id}`
       : null,
     binding.retrieval_preset_id
-      ? `Retrieval Preset ${binding.retrieval_preset_id}`
+      ? `检索预设 ${binding.retrieval_preset_id}`
       : null,
     binding.manual_review_policy_id
-      ? `Manual Review Policy ${binding.manual_review_policy_id}`
+      ? `人工复核策略 ${binding.manual_review_policy_id}`
       : null,
-    `Model ${binding.model_id}`,
-    `Runtime ${binding.runtime_id}`,
-    `Prompt ${binding.prompt_template_id}`,
-    `Skills ${formatOptionalList(binding.skill_package_ids)}`,
-    `Module Template ${binding.module_template_id}`,
+    `模型 ${binding.model_id}`,
+    `运行时 ${binding.runtime_id}`,
+    `提示模版 ${binding.prompt_template_id}`,
+    `技能包 ${formatOptionalList(binding.skill_package_ids)}`,
+    `模块模版 ${binding.module_template_id}`,
   ]
     .filter((value): value is string => value != null)
     .join(" | ");
@@ -2060,26 +2170,41 @@ export function summarizeEvidencePackChanges(
 ) {
   const changes: string[] = [];
 
-  pushOptionalChange(changes, "Summary status", selectedPack.summary_status, previousPack.summary_status);
-  pushOptionalChange(changes, "Score summary", selectedPack.score_summary, previousPack.score_summary);
   pushOptionalChange(
     changes,
-    "Regression summary",
-    selectedPack.regression_summary,
-    previousPack.regression_summary,
+    "摘要状态",
+    formatRecommendationStatusLabel(selectedPack.summary_status),
+    formatRecommendationStatusLabel(previousPack.summary_status),
   );
   pushOptionalChange(
     changes,
-    "Failure summary",
-    selectedPack.failure_summary,
-    previousPack.failure_summary,
+    "评分摘要",
+    localizeEvidenceSummaryText(selectedPack.score_summary),
+    localizeEvidenceSummaryText(previousPack.score_summary),
   );
-  pushOptionalChange(changes, "Cost summary", selectedPack.cost_summary, previousPack.cost_summary);
   pushOptionalChange(
     changes,
-    "Latency summary",
-    selectedPack.latency_summary,
-    previousPack.latency_summary,
+    "回归摘要",
+    localizeEvidenceSummaryText(selectedPack.regression_summary),
+    localizeEvidenceSummaryText(previousPack.regression_summary),
+  );
+  pushOptionalChange(
+    changes,
+    "失败摘要",
+    localizeEvidenceSummaryText(selectedPack.failure_summary),
+    localizeEvidenceSummaryText(previousPack.failure_summary),
+  );
+  pushOptionalChange(
+    changes,
+    "成本摘要",
+    localizeEvidenceSummaryText(selectedPack.cost_summary),
+    localizeEvidenceSummaryText(previousPack.cost_summary),
+  );
+  pushOptionalChange(
+    changes,
+    "时延摘要",
+    localizeEvidenceSummaryText(selectedPack.latency_summary),
+    localizeEvidenceSummaryText(previousPack.latency_summary),
   );
 
   return changes;
@@ -2095,59 +2220,59 @@ function compareBindingFields(
   if (!selectedBinding || !previousBinding) {
     if (selectedBinding?.model_id !== previousBinding?.model_id) {
       changes.push(
-        `${label} binding availability changed: ${summarizeBinding(selectedBinding)} (was ${summarizeBinding(previousBinding)})`,
+        `${formatBindingSideLabel(label)}绑定可用性：${summarizeBinding(selectedBinding)}（原为 ${summarizeBinding(previousBinding)}）`,
       );
     }
     return changes;
   }
 
-  pushBindingChange(changes, `${label} model`, selectedBinding.model_id, previousBinding.model_id);
-  pushBindingChange(changes, `${label} runtime`, selectedBinding.runtime_id, previousBinding.runtime_id);
+  pushBindingChange(changes, `${formatBindingSideLabel(label)}模型`, selectedBinding.model_id, previousBinding.model_id);
+  pushBindingChange(changes, `${formatBindingSideLabel(label)}运行时`, selectedBinding.runtime_id, previousBinding.runtime_id);
   pushBindingChange(
     changes,
-    `${label} execution profile`,
+    `${formatBindingSideLabel(label)}执行配置`,
     selectedBinding.execution_profile_id,
     previousBinding.execution_profile_id,
   );
   pushBindingChange(
     changes,
-    `${label} runtime binding`,
+    `${formatBindingSideLabel(label)}运行时绑定`,
     selectedBinding.runtime_binding_id,
     previousBinding.runtime_binding_id,
   );
   pushBindingChange(
     changes,
-    `${label} routing version`,
+    `${formatBindingSideLabel(label)}路由版本`,
     selectedBinding.model_routing_policy_version_id,
     previousBinding.model_routing_policy_version_id,
   );
   pushBindingChange(
     changes,
-    `${label} retrieval preset`,
+    `${formatBindingSideLabel(label)}检索预设`,
     selectedBinding.retrieval_preset_id,
     previousBinding.retrieval_preset_id,
   );
   pushBindingChange(
     changes,
-    `${label} manual review policy`,
+    `${formatBindingSideLabel(label)}人工复核策略`,
     selectedBinding.manual_review_policy_id,
     previousBinding.manual_review_policy_id,
   );
   pushBindingChange(
     changes,
-    `${label} prompt`,
+    `${formatBindingSideLabel(label)}提示模版`,
     selectedBinding.prompt_template_id,
     previousBinding.prompt_template_id,
   );
   pushBindingChange(
     changes,
-    `${label} skills`,
+    `${formatBindingSideLabel(label)}技能包`,
     formatOptionalList(selectedBinding.skill_package_ids),
     formatOptionalList(previousBinding.skill_package_ids),
   );
   pushBindingChange(
     changes,
-    `${label} module template`,
+    `${formatBindingSideLabel(label)}模块模版`,
     selectedBinding.module_template_id,
     previousBinding.module_template_id,
   );
@@ -2161,28 +2286,26 @@ function pushBindingChange(
   selectedValue: string | undefined,
   previousValue: string | undefined,
 ) {
-  const normalizedSelectedValue = selectedValue ?? "None recorded";
-  const normalizedPreviousValue = previousValue ?? "None recorded";
+  const normalizedSelectedValue = selectedValue ?? "未记录";
+  const normalizedPreviousValue = previousValue ?? "未记录";
   if (normalizedSelectedValue === normalizedPreviousValue) return;
-  changes.push(
-    `${label} changed: ${normalizedSelectedValue} (was ${normalizedPreviousValue})`,
-  );
+  changes.push(`${label}：${normalizedSelectedValue}（原为 ${normalizedPreviousValue}）`);
 }
 
 function pushOptionalChange(
   changes: string[],
   label: string,
-  selectedValue: string | undefined,
-  previousValue: string | undefined,
+  selectedValue: string | null | undefined,
+  previousValue: string | null | undefined,
 ) {
-  const normalizedSelectedValue = selectedValue ?? "None recorded";
-  const normalizedPreviousValue = previousValue ?? "None recorded";
+  const normalizedSelectedValue = selectedValue ?? "未记录";
+  const normalizedPreviousValue = previousValue ?? "未记录";
   if (normalizedSelectedValue === normalizedPreviousValue) return;
-  changes.push(`${label} changed: ${normalizedSelectedValue} (was ${normalizedPreviousValue})`);
+  changes.push(`${label}：${normalizedSelectedValue}（原为 ${normalizedPreviousValue}）`);
 }
 
 function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
-  return evidence.length > 0 ? evidence.map((item) => item.label).join(", ") : "None recorded";
+  return evidence.length > 0 ? evidence.map((item) => item.label).join("，") : "未记录";
 }
 
 function createDocumentAssetDownloadHref(assetId: string | null | undefined) {
@@ -2208,7 +2331,7 @@ function createFinalizeArtifactOptions(
     options.push({
       source: "result_asset",
       assetId: selectedRunItem.result_asset_id,
-      actionLabel: `Use Result Asset (${selectedRunItem.result_asset_id})`,
+      actionLabel: `使用结果制品（${selectedRunItem.result_asset_id}）`,
     });
   }
 
@@ -2219,7 +2342,7 @@ function createFinalizeArtifactOptions(
     options.push({
       source: "sample_snapshot",
       assetId: linkedSampleSetItem.snapshot_asset_id,
-      actionLabel: `Use Sample Snapshot (${linkedSampleSetItem.snapshot_asset_id})`,
+      actionLabel: `使用样本快照（${linkedSampleSetItem.snapshot_asset_id}）`,
     });
   }
 
@@ -2231,7 +2354,7 @@ function createFinalizeArtifactOptions(
     options.push({
       source: "governed_output",
       assetId: governedSource.output_asset_id,
-      actionLabel: `Use Governed Output (${governedSource.output_asset_id})`,
+      actionLabel: `使用治理输出（${governedSource.output_asset_id}）`,
     });
   }
 
@@ -2271,5 +2394,5 @@ function createHistorySearchHaystack(
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) return error.message;
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Unexpected evaluation workbench error.";
+  return "Harness 控制发生了未预期错误。";
 }

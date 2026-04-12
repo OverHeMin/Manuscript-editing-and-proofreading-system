@@ -88,8 +88,8 @@ test("rule center renders authoring and learning modes while keeping reviewed sn
     }),
   );
 
-  assert.match(markup, /\u89c4\u5219\u5f55\u5165\u5de5\u4f5c\u53f0/u);
-  assert.match(markup, /\u89c4\u5219\u5b66\u4e60\u5de5\u4f5c\u53f0/u);
+  assert.match(markup, /\u89c4\u5219\u5f55\u5165/u);
+  assert.match(markup, /\u5b66\u4e60\u56de\u6d41/u);
   assert.match(
     markup,
     /href="#template-governance\?manuscriptId=manuscript-42&amp;reviewedCaseSnapshotId=snapshot-42&amp;ruleCenterMode=authoring"/,
@@ -184,7 +184,7 @@ test("rule center learning mode renders rule candidates with evidence, proposed 
   );
 
   assert.doesNotMatch(markup, /Knowledge Handoff Bridge/);
-  assert.match(markup, /Rule Candidate Review/);
+  assert.match(markup, /\u89c4\u5219\u5019\u9009\u590d\u6838/u);
   assert.match(markup, /Abstract heading normalization/);
   assert.match(markup, /Human-reviewed abstract heading normalization\./);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
@@ -193,10 +193,10 @@ test("rule center learning mode renders rule candidates with evidence, proposed 
   assert.match(markup, /journal-alpha/);
   assert.match(markup, /abstract/);
   assert.match(markup, /section_selector/);
-  assert.match(markup, /Approve Candidate/);
-  assert.match(markup, /Reject Candidate/);
-  assert.match(markup, /Convert To Rule Draft/);
-  assert.match(markup, /Convert To Knowledge Explanation/);
+  assert.match(markup, /\u6279\u51c6\u5019\u9009/u);
+  assert.match(markup, /\u9a73\u56de\u5019\u9009/u);
+  assert.match(markup, /\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
+  assert.match(markup, /\u8f6c\u6210\u77e5\u8bc6\u8bf4\u660e/u);
 });
 
 test("rule candidate handoff builds an authoring prefill with family journal module and provenance context", () => {

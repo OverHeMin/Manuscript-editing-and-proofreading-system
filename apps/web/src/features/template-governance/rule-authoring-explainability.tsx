@@ -16,49 +16,46 @@ export function RuleAuthoringExplainability({
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Explainability</h3>
-          <p>
-            Show what this rule is targeting, why its automation posture is safe or inspect-only,
-            and which exact example will be used for operator review.
-          </p>
+          <h3>规则解释性</h3>
+          <p>说明当前规则面向什么对象、为什么适合自动执行或仅检查，以及人工复核时会看到什么示例。</p>
         </div>
       </div>
 
       <div className="template-governance-detail-grid">
         <div>
-          <span>Object</span>
+          <span>对象</span>
           <p>{preset.objectLabel}</p>
         </div>
         <div>
-          <span>Automation Risk</span>
+          <span>自动化风险</span>
           <p>{preset.automationRisk}</p>
         </div>
         <div>
-          <span>Resolved Scope</span>
+          <span>解析范围</span>
           <p>{preview.templateScopeSummary}</p>
         </div>
         <div>
-          <span>Selector Summary</span>
+          <span>选择器摘要</span>
           <p>{preview.selectorSummary}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Semantic Match</span>
+          <span>语义命中</span>
           <p>{preview.semanticHitSummary}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Expected Evidence</span>
+          <span>预期证据</span>
           <p>{preview.expectedEvidenceSummary}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Operator Note</span>
+          <span>人工说明</span>
           <p>{preset.description}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Override Resolution</span>
+          <span>覆盖关系</span>
           <p>{preview.overrideSummary}</p>
         </div>
         <div className="template-governance-field-full">
-          <span>Exact Preview</span>
+          <span>最终预览</span>
           <p>{preview.normalizedExample}</p>
         </div>
       </div>

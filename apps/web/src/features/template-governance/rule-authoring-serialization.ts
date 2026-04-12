@@ -1136,25 +1136,25 @@ function describeSelector(selector: Record<string, unknown>): string {
     parts.push(`column=${columnName}`);
   }
 
-  return parts.length > 0 ? parts.join(" | ") : "Generic selector";
+  return parts.length > 0 ? parts.join(" | ") : "通用选择器";
 }
 
 function describeAutomationRisk(draft: RuleAuthoringDraft): string {
   if (draft.executionMode === "inspect" || draft.confidencePolicy === "manual_only") {
-    return "Inspect only";
+    return "仅检查";
   }
 
   if (draft.executionMode === "apply_and_inspect") {
-    return "Auto-apply with inspection trace";
+    return "自动应用并保留检查轨迹";
   }
 
-  return "Auto-apply";
+  return "自动应用";
 }
 
 function describeTemplateScope(draft: RuleAuthoringDraft): string {
   return draft.journalTemplateId != null
-    ? `Journal override: ${draft.journalTemplateId}`
-    : "Base family rule";
+    ? `期刊加层：${draft.journalTemplateId}`
+    : "模板族基础规则";
 }
 
 function describeNormalizedExample(
@@ -1169,12 +1169,12 @@ function describeNormalizedExample(
     return `${draft.payload.captionRequirement} | ${draft.payload.layoutRequirement}`;
   }
 
-  return "No exact example configured.";
+  return "尚未配置精确示例。";
 }
 
 function describeSemanticHit(draft: RuleAuthoringDraft): string {
   if (draft.ruleObject !== "table") {
-    return "Text and section selectors determine the governed match path.";
+    return "文本与章节选择器决定规则命中路径。";
   }
 
   const details = [`semantic_target=${draft.payload.semanticTarget}`];
@@ -1194,12 +1194,12 @@ function describeSemanticHit(draft: RuleAuthoringDraft): string {
     details.push(`unit_context=${draft.payload.unitContext}`);
   }
 
-  return `Expected semantic hit: ${details.join(" | ")}`;
+  return `预期语义命中：${details.join(" | ")}`;
 }
 
 function describeExpectedEvidence(draft: RuleAuthoringDraft): string {
   if (draft.ruleObject !== "table") {
-    return "Runtime evidence will be derived from the resolved selector and text transformation path.";
+    return "运行证据会基于解析后的选择器和文本变换路径生成。";
   }
 
   const details = [
@@ -1227,10 +1227,10 @@ function describeExpectedEvidence(draft: RuleAuthoringDraft): string {
 
 function describeOverrideSummary(draft: RuleAuthoringDraft): string {
   if (draft.journalTemplateId != null) {
-    return `Journal override ${draft.journalTemplateId} replaces the base family rule when both target the same semantic coordinates.`;
+    return `当期刊加层 ${draft.journalTemplateId} 与模板族基础规则命中同一语义坐标时，会优先替换基础规则。`;
   }
 
-  return "Base family rule stays active until a journal template publishes the same semantic coordinates as an override.";
+  return "在期刊模板发布同一语义坐标的加层规则前，模板族基础规则会持续生效。";
 }
 
 function shouldResetToAbstractDraft(input: {

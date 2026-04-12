@@ -25,42 +25,42 @@ export function RuleLearningActions({
     <article className="template-governance-card">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Candidate Actions</h3>
-          <p>Approve first, then move the governed candidate into a rule draft or knowledge explanation workflow.</p>
+          <h3>候选动作</h3>
+          <p>先完成批准，再决定把候选送入规则草稿或知识说明流程。</p>
         </div>
       </div>
 
       <div className="template-governance-actions template-governance-actions-column">
         <button type="button" disabled={isBusy || !canApprove} onClick={() => void onApproveCandidate()}>
-          Approve Candidate
+          批准候选
         </button>
         <button
           type="button"
           disabled={isBusy || !canConvertToRuleDraft}
           onClick={onConvertToRuleDraft}
         >
-          Convert To Rule Draft
+          转成规则草稿
         </button>
         <button
           type="button"
           disabled={isBusy || candidate == null || !onRejectCandidate}
           onClick={onRejectCandidate}
         >
-          Reject Candidate
+          驳回候选
         </button>
         <button
           type="button"
           disabled={isBusy || !canConvertToKnowledgeExplanation || !onConvertToKnowledgeExplanation}
           onClick={onConvertToKnowledgeExplanation}
         >
-          Convert To Knowledge Explanation
+          转成知识说明
         </button>
       </div>
 
       <p className="template-governance-context-note template-governance-context-note--compact">
         {candidate?.status === "approved"
-          ? "This candidate is approved and ready to prefill a governed rule draft."
-          : "Approve the candidate first to preserve governed provenance before authoring."}
+          ? "该候选已批准，可以直接预填规则草稿。"
+          : "先批准候选，才能保留完整回流来源并进入规则创建。"}
       </p>
     </article>
   );

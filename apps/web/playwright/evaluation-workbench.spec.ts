@@ -38,116 +38,112 @@ test("admin can inspect the delta-first evaluation operations surface without le
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Evaluation Workbench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Harness 控制概览" })).toBeVisible();
   await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
   await page.getByRole("button", { name: prepared.suiteName }).click();
 
   const workbench = page.locator(".evaluation-workbench");
   const historyPanel = page
     .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "Visible History" }) });
+    .filter({ has: page.getByRole("heading", { name: "历史结果" }) });
   const comparisonPanel = page
     .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "Run Comparison" }) });
+    .filter({ has: page.getByRole("heading", { name: "结果对照" }) });
   const signalPanel = page
     .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "Suite Signal Summary" }) });
+    .filter({ has: page.getByRole("heading", { name: "套件信号摘要" }) });
   const historyButtons = historyPanel.locator(".evaluation-workbench-history-list button");
 
-  await expect(workbench).toContainText("Delta Summary");
-  await expect(workbench).toContainText("Classification: better");
+  await expect(workbench).toContainText("运行总览");
+  await expect(workbench).toContainText("变化分类：改善");
+  await expect(workbench).toContainText("本次变化判定为改善");
   await expect(workbench).toContainText(
-    "Chosen because the latest finalized recommendation improved from needs_review to recommended.",
+    `默认对照：${prepared.latestRunId} 对 ${prepared.needsReviewRunId}`,
   );
-  await expect(workbench).toContainText(
-    `Default comparison: ${prepared.latestRunId} vs ${prepared.needsReviewRunId}.`,
-  );
-  await expect(workbench).toContainText("Visible history window: 3 of 3 finalized runs are in scope.");
+  await expect(workbench).toContainText("当前时间窗口展示 3 / 3 条已定稿运行");
 
-  await expect(comparisonPanel).toContainText("Latest-versus-previous finalized comparison");
-  await expect(comparisonPanel).toContainText(`Comparing against ${prepared.needsReviewRunId}`);
-  await expect(comparisonPanel).toContainText("Average weighted score 97.0 across 1 item(s).");
-  await expect(comparisonPanel).toContainText("No weighted scores were recorded.");
-  await expect(comparisonPanel).toContainText("Selected evidence: Latest browser QA");
-  await expect(comparisonPanel).toContainText("Previous evidence: Needs review browser QA");
+  await expect(comparisonPanel).toContainText(`对照基线：${prepared.needsReviewRunId}`);
+  await expect(comparisonPanel).toContainText("平均加权得分 97.0（共 1 条）");
+  await expect(comparisonPanel).toContainText("当前证据：Latest browser QA");
+  await expect(comparisonPanel).toContainText("基线证据：Needs review browser QA");
 
-  const historyWindow = page.getByLabel("History Window");
+  const historyWindow = page.getByLabel("时间窗口");
   await expect(historyWindow.locator("option")).toContainText([
-    "Latest 10",
-    "Last 7 Days",
-    "Last 30 Days",
-    "All Suite History",
+    "最近 10 次",
+    "最近 7 天",
+    "最近 30 天",
+    "全部套件历史",
   ]);
   await expect(historyWindow).toHaveValue("latest_10");
-  await expect(historyWindow.locator("option:checked")).toHaveText("Latest 10");
+  await expect(historyWindow.locator("option:checked")).toHaveText("最近 10 次");
   await historyWindow.selectOption("last_7_days");
   await expect(historyWindow).toHaveValue("last_7_days");
-  await expect(historyWindow.locator("option:checked")).toHaveText("Last 7 Days");
+  await expect(historyWindow.locator("option:checked")).toHaveText("最近 7 天");
   await historyWindow.selectOption("last_30_days");
   await expect(historyWindow).toHaveValue("last_30_days");
-  await expect(historyWindow.locator("option:checked")).toHaveText("Last 30 Days");
+  await expect(historyWindow.locator("option:checked")).toHaveText("最近 30 天");
   await historyWindow.selectOption("all_suite");
   await expect(historyWindow).toHaveValue("all_suite");
-  await expect(historyWindow.locator("option:checked")).toHaveText("All Suite History");
+  await expect(historyWindow.locator("option:checked")).toHaveText("全部套件历史");
   await historyWindow.selectOption("latest_10");
   await expect(historyWindow).toHaveValue("latest_10");
-  await expect(historyWindow.locator("option:checked")).toHaveText("Latest 10");
+  await expect(historyWindow.locator("option:checked")).toHaveText("最近 10 次");
 
-  await expect(historyPanel).toContainText("Default latest run");
-  await expect(historyPanel).toContainText("Default baseline");
+  await expect(historyPanel).toContainText("默认最新运行");
+  await expect(historyPanel).toContainText("默认基线");
 
-  const recommendationFilter = page.getByLabel("Recommendation Filter");
+  const recommendationFilter = page.getByLabel("建议筛选");
   await expect(recommendationFilter.locator("option")).toContainText([
-    "All",
-    "Recommended",
-    "Needs Review",
-    "Rejected",
+    "全部",
+    "可推荐",
+    "待复核",
+    "已拒绝",
   ]);
-  await expect(recommendationFilter.locator("option:checked")).toHaveText("All");
+  await expect(recommendationFilter.locator("option:checked")).toHaveText("全部");
   await recommendationFilter.selectOption("recommended");
-  await expect(recommendationFilter.locator("option:checked")).toHaveText("Recommended");
+  await expect(recommendationFilter.locator("option:checked")).toHaveText("可推荐");
   await expect(historyPanel).toContainText(prepared.latestRunId);
   await expect(historyPanel).not.toContainText(prepared.needsReviewRunId);
   await expect(historyPanel).not.toContainText(prepared.rejectedRunId);
 
   await recommendationFilter.selectOption("needs_review");
-  await expect(recommendationFilter.locator("option:checked")).toHaveText("Needs Review");
+  await expect(recommendationFilter.locator("option:checked")).toHaveText("待复核");
   await expect(historyPanel).toContainText(prepared.needsReviewRunId);
   await expect(historyPanel).not.toContainText(prepared.latestRunId);
   await expect(historyPanel).not.toContainText(prepared.rejectedRunId);
 
   await recommendationFilter.selectOption("rejected");
-  await expect(recommendationFilter.locator("option:checked")).toHaveText("Rejected");
+  await expect(recommendationFilter.locator("option:checked")).toHaveText("已拒绝");
   await expect(historyPanel).toContainText(prepared.rejectedRunId);
   await expect(historyPanel).not.toContainText(prepared.latestRunId);
   await expect(historyPanel).not.toContainText(prepared.needsReviewRunId);
 
   await recommendationFilter.selectOption("all");
-  await expect(recommendationFilter.locator("option:checked")).toHaveText("All");
+  await expect(recommendationFilter.locator("option:checked")).toHaveText("全部");
   await expect(historyPanel).toContainText(prepared.latestRunId);
   await expect(historyPanel).toContainText(prepared.needsReviewRunId);
   await expect(historyPanel).toContainText(prepared.rejectedRunId);
 
-  const sortMode = page.getByLabel("Sort Mode");
+  const sortMode = page.getByLabel("排序方式");
   await expect(sortMode.locator("option")).toContainText([
-    "Newest First",
-    "Failures First",
+    "最新优先",
+    "失败优先",
   ]);
   await sortMode.selectOption("failures_first");
   await expect(sortMode).toHaveValue("failures_first");
-  await expect(sortMode.locator("option:checked")).toHaveText("Failures First");
+  await expect(sortMode.locator("option:checked")).toHaveText("失败优先");
   await expect(historyButtons.first()).toContainText(prepared.rejectedRunId);
 
   await sortMode.selectOption("newest");
   await expect(sortMode).toHaveValue("newest");
-  await expect(sortMode.locator("option:checked")).toHaveText("Newest First");
+  await expect(sortMode.locator("option:checked")).toHaveText("最新优先");
   await expect(historyButtons.first()).toContainText(prepared.latestRunId);
 
-  await expect(signalPanel).toContainText("Recommendation Distribution");
-  await expect(signalPanel).toContainText("1 recommended / 1 needs review / 1 rejected");
-  await expect(signalPanel).toContainText("Evidence Pack Outcomes");
-  await expect(signalPanel).toContainText("Recurrence Signals");
-  await expect(signalPanel).toContainText("1 regression mentions / 1 failure mentions / 1 runs flagged");
+  await expect(signalPanel).toContainText("建议分布");
+  await expect(signalPanel).toContainText("1 可推荐 / 1 待复核 / 1 已拒绝");
+  await expect(signalPanel).toContainText("证据包结果");
+  await expect(signalPanel).toContainText("复发信号");
+  await expect(signalPanel).toContainText("1 次回归提及 / 1 次失败提及 / 1 次运行被标记");
 
   await expect(page.getByRole("button", { name: "Activate" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Run Launch" })).toHaveCount(0);

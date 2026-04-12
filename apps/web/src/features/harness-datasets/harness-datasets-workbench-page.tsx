@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type ReactNode } from "react";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import {
@@ -49,8 +49,8 @@ export function HarnessDatasetsWorkbenchPage({
   if (loadStatus === "error" && !overview) {
     return (
       <article className="workbench-placeholder" role="alert">
-        <h2>Harness Dataset Workbench Unavailable</h2>
-        <p>{errorMessage ?? "Unable to load harness dataset governance state."}</p>
+        <h2>Harness 控制 / 数据与样本</h2>
+        <p>{errorMessage ?? "暂时无法载入 Harness 数据样本台。"}</p>
       </article>
     );
   }
@@ -58,8 +58,8 @@ export function HarnessDatasetsWorkbenchPage({
   if (!overview) {
     return (
       <article className="workbench-placeholder" role="status">
-        <h2>Harness Dataset Workbench</h2>
-        <p>Loading gold-set drafts, published versions, and rubric links...</p>
+        <h2>Harness 控制 / 数据与样本</h2>
+        <p>正在载入金标准草稿、已发布版本与评分规则关联...</p>
       </article>
     );
   }
@@ -68,11 +68,10 @@ export function HarnessDatasetsWorkbenchPage({
     <section className="harness-datasets-workbench">
       <header className="harness-datasets-hero">
         <div className="harness-datasets-hero-copy">
-          <p className="harness-datasets-eyebrow">Operations Management Zone</p>
-          <h2>Harness Dataset Workbench</h2>
+          <p className="harness-datasets-eyebrow">Harness 控制</p>
+          <h2>Harness 控制 / 数据与样本</h2>
           <p>
-            Bounded admin-only workbench for governed gold-set curation and local
-            export.
+            统一整理高质量样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
           </p>
           <WorkbenchCoreStrip variant="secondary" />
         </div>
@@ -91,21 +90,21 @@ export function HarnessDatasetsWorkbenchPage({
 
       <section className="harness-datasets-summary">
         <article className="harness-datasets-summary-card">
-          <span>Draft Queue</span>
+          <span>待整理版本</span>
           <strong>{overview.draftVersions.length}</strong>
         </article>
         <article className="harness-datasets-summary-card">
-          <span>Published Versions</span>
+          <span>已发布版本</span>
           <strong>{overview.publishedVersions.length}</strong>
         </article>
         <article className="harness-datasets-summary-card">
-          <span>Published Rubrics</span>
+          <span>已发布规则</span>
           <strong>
             {overview.rubrics.filter((rubric) => rubric.status === "published").length}
           </strong>
         </article>
         <article className="harness-datasets-summary-card harness-datasets-summary-card-wide">
-          <span>Local export root</span>
+          <span>本地导出目录</span>
           <strong>{overview.exportRootDir}</strong>
         </article>
       </section>
@@ -113,8 +112,8 @@ export function HarnessDatasetsWorkbenchPage({
       <div className="harness-datasets-layout">
         <article className="harness-datasets-panel">
           <div className="harness-datasets-panel-header">
-            <h3>Draft Queue</h3>
-            <span>{overview.draftVersions.length} draft version(s)</span>
+            <h3>待整理队列</h3>
+            <span>{overview.draftVersions.length} 个草稿版本</span>
           </div>
           {overview.draftVersions.length > 0 ? (
             <div className="harness-datasets-stack">
@@ -124,18 +123,18 @@ export function HarnessDatasetsWorkbenchPage({
             </div>
           ) : (
             <p className="harness-datasets-empty">
-              No draft gold-set versions are waiting in the curation queue.
+              当前没有待整理的样本草稿版本。
             </p>
           )}
         </article>
 
         <article className="harness-datasets-panel">
           <div className="harness-datasets-panel-header">
-            <h3>Published Versions</h3>
-            <span>{overview.publishedVersions.length} published version(s)</span>
+            <h3>已发布版本</h3>
+            <span>{overview.publishedVersions.length} 个已发布版本</span>
           </div>
           <p className="harness-datasets-note">
-            Local export root: {overview.exportRootDir}
+            本地导出目录：{overview.exportRootDir}
           </p>
           {overview.publishedVersions.length > 0 ? (
             <div className="harness-datasets-stack">
@@ -150,14 +149,14 @@ export function HarnessDatasetsWorkbenchPage({
                         disabled={isBusy}
                         onClick={() => void handleExport(version.id, "json")}
                       >
-                        Export JSON
+                        导出 JSON
                       </button>
                       <button
                         type="button"
                         disabled={isBusy}
                         onClick={() => void handleExport(version.id, "jsonl")}
                       >
-                        Export JSONL
+                        导出 JSONL
                       </button>
                     </div>
                   }
@@ -166,7 +165,7 @@ export function HarnessDatasetsWorkbenchPage({
             </div>
           ) : (
             <p className="harness-datasets-empty">
-              No published gold-set versions are available for export yet.
+              当前还没有可导出的已发布样本版本。
             </p>
           )}
         </article>
@@ -204,7 +203,7 @@ export function HarnessDatasetsWorkbenchPage({
       setOverview(result.overview);
       setLoadStatus("ready");
       setStatusMessage(
-        `Local ${format.toUpperCase()} export saved to ${result.exportResult.outputPath}.`,
+        `${format.toUpperCase()} 导出已保存到 ${result.exportResult.outputPath}。`,
       );
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -227,28 +226,28 @@ function HarnessDatasetVersionCard(props: {
         <div>
           <h4>{version.familyName}</h4>
           <p>
-            {version.familyScope.module} · v{version.versionNo} · {version.status}
+            {formatModuleLabel(version.familyScope.module)} · v{version.versionNo} · {formatVersionStatusLabel(version.status)}
           </p>
         </div>
         <div className="harness-datasets-gates">
           <span>
-            De-identification:{" "}
-            {version.deidentificationGatePassed ? "passed" : "pending"}
+            脱敏校验：
+            {version.deidentificationGatePassed ? "已通过" : "待完成"}
           </span>
           <span>
-            Human review: {version.humanReviewGatePassed ? "passed" : "pending"}
+            人工复核：{version.humanReviewGatePassed ? "已通过" : "待完成"}
           </span>
         </div>
       </header>
 
       <p className="harness-datasets-copy">
-        Focus: {version.familyScope.measureFocus} · Manuscript types:{" "}
-        {version.familyScope.manuscriptTypes.join(", ")}
+        关注重点：{formatMeasureFocusLabel(version.familyScope.measureFocus)} · 稿件类型：
+        {version.familyScope.manuscriptTypes.map(formatManuscriptTypeLabel).join("、")}
       </p>
       <p className="harness-datasets-copy">
-        Rubric: {describeRubricAssignment(version)}
+        评分规则：{describeRubricAssignment(version)}
       </p>
-      <p className="harness-datasets-copy">Curated items: {version.itemCount}</p>
+      <p className="harness-datasets-copy">样本条目：{version.itemCount}</p>
       {releaseFreezeStatus != null ? (
         <div className="harness-datasets-provenance">
           <strong>{releaseFreezeStatus.label}</strong>
@@ -257,16 +256,18 @@ function HarnessDatasetVersionCard(props: {
       ) : null}
 
       <div className="harness-datasets-provenance">
-        <strong>Source provenance</strong>
+        <strong>来源追溯</strong>
         <ul className="harness-datasets-list">
           {version.sourceProvenance.map((source) => (
             <li key={`${source.sourceKind}:${source.sourceId}`}>
               <span>
-                {source.sourceKind}: {source.sourceId}
+                {formatSourceKindLabel(source.sourceKind)}: {source.sourceId}
               </span>
               <small>
-                {source.manuscriptType} · {source.manuscriptId}
-                {source.riskTags?.length ? ` · ${source.riskTags.join(", ")}` : ""}
+                {formatManuscriptTypeLabel(source.manuscriptType)} · {source.manuscriptId}
+                {source.riskTags?.length
+                  ? ` · ${source.riskTags.map(formatRiskTagLabel).join("、")}`
+                  : ""}
               </small>
             </li>
           ))}
@@ -275,14 +276,15 @@ function HarnessDatasetVersionCard(props: {
 
       {version.publications.length > 0 ? (
         <div className="harness-datasets-publications">
-          <strong>Publication history</strong>
+          <strong>导出记录</strong>
           <ul className="harness-datasets-list">
             {version.publications.map((publication) => (
               <li key={publication.id}>
                 <span>
-                  {publication.exportFormat} · {publication.status}
+                  {publication.exportFormat.toUpperCase()} ·{" "}
+                  {formatPublicationStatusLabel(publication.status)}
                 </span>
-                <small>{publication.outputUri ?? "No local path recorded"}</small>
+                <small>{publication.outputUri ?? "暂无本地路径记录"}</small>
               </li>
             ))}
           </ul>
@@ -296,12 +298,12 @@ function HarnessDatasetVersionCard(props: {
 
 function describeRubricAssignment(version: HarnessDatasetVersionViewModel) {
   if (version.rubricAssignment.status === "missing") {
-    return "Manual assignment required";
+    return "需要人工指定";
   }
 
-  return `${version.rubricAssignment.rubricName ?? "Assigned rubric"} v${
+  return `${version.rubricAssignment.rubricName ?? "已分配规则"} v${
     version.rubricAssignment.rubricVersionNo ?? "?"
-  } (${version.rubricAssignment.status})`;
+  }（${formatVersionStatusLabel(version.rubricAssignment.status)}）`;
 }
 
 function describeReleaseFreezeStatus(version: HarnessDatasetVersionViewModel) {
@@ -311,41 +313,135 @@ function describeReleaseFreezeStatus(version: HarnessDatasetVersionViewModel) {
 
   if (version.rubricAssignment.status !== "published") {
     return {
-      label: "Release-freeze not ready",
-      copy: "Release-freeze not ready: missing published rubric.",
+      label: "发布冻结未就绪",
+      copy: "发布冻结未就绪：缺少已发布的评分规则。",
     };
   }
 
   if (!version.deidentificationGatePassed) {
     return {
-      label: "Release-freeze not ready",
-      copy: "Release-freeze not ready: de-identification pending.",
+      label: "发布冻结未就绪",
+      copy: "发布冻结未就绪：脱敏校验尚未完成。",
     };
   }
 
   if (!version.humanReviewGatePassed) {
     return {
-      label: "Release-freeze not ready",
-      copy: "Release-freeze not ready: human review pending.",
+      label: "发布冻结未就绪",
+      copy: "发布冻结未就绪：人工复核尚未完成。",
     };
   }
 
   return {
-    label: "Release-freeze ready",
-    copy: "Release-freeze ready for manifest and export citation.",
+    label: "发布冻结已就绪",
+    copy: "发布冻结已就绪，可用于清单记录与导出引用。",
   };
 }
 
+
+function formatModuleLabel(value: string) {
+  switch (value) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    default:
+      return value;
+  }
+}
+
+function formatVersionStatusLabel(value: string) {
+  switch (value) {
+    case "draft":
+      return "草稿";
+    case "published":
+      return "已发布";
+    case "archived":
+      return "已归档";
+    default:
+      return value;
+  }
+}
+
+function formatPublicationStatusLabel(value: string) {
+  switch (value) {
+    case "succeeded":
+      return "成功";
+    case "failed":
+      return "失败";
+    default:
+      return value;
+  }
+}
+
+function formatManuscriptTypeLabel(value: string) {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "review":
+      return "综述";
+    case "case_report":
+      return "病例报告";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "guideline_interpretation":
+      return "指南解读";
+    default:
+      return value;
+  }
+}
+
+function formatMeasureFocusLabel(value: string) {
+  switch (value) {
+    case "issue detection":
+      return "问题识别";
+    case "conformance":
+      return "规范一致性";
+    case "triage":
+      return "分诊判断";
+    case "deidentification":
+      return "脱敏校验";
+    case "human review":
+      return "人工复核";
+    default:
+      return value;
+  }
+}
+
+function formatSourceKindLabel(value: string) {
+  switch (value) {
+    case "reviewed_case_snapshot":
+      return "已复核案例快照";
+    case "human_final_asset":
+      return "人工终稿资产";
+    case "evaluation_evidence_pack":
+      return "评测证据包";
+    default:
+      return value;
+  }
+}
+
+function formatRiskTagLabel(value: string) {
+  switch (value) {
+    case "terminology":
+      return "术语";
+    default:
+      return value;
+  }
+}
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) {
     const body =
       typeof error.responseBody === "string"
         ? error.responseBody
         : JSON.stringify(error.responseBody);
-    return `Harness dataset action failed: HTTP ${error.status} ${body}`;
+    return `Harness 数据操作失败：HTTP ${error.status} ${body}`;
   }
 
   return error instanceof Error && error.message.trim()
     ? error.message
-    : "Unexpected harness dataset workbench error.";
+    : "Harness 数据页发生未知错误。";
 }
+

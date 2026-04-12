@@ -93,8 +93,17 @@
 
 .learning-review-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.learning-review-grid--main {
+  grid-template-columns: minmax(240px, 0.84fr) minmax(0, 1.08fr) minmax(280px, 0.96fr);
+  align-items: start;
+}
+
+.learning-review-grid--utilities {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px;
 }
 
 .learning-review-card {
@@ -195,6 +204,20 @@
   background: rgba(216, 190, 132, 0.2);
   color: rgba(69, 52, 17, 0.72);
   box-shadow: none;
+}
+
+.learning-review-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(126, 101, 51, 0.18);
+  background: rgba(255, 252, 246, 0.96);
+  color: #5e4722;
+  text-decoration: none;
+  font-weight: 600;
 }
 
 .learning-review-button-row {
@@ -404,12 +427,9 @@
   border-bottom: 1px solid rgba(126, 101, 51, 0.12);
 }
 
-.learning-review-grid--utilities {
-  padding: 18px;
-}
-
 @media (max-width: 1100px) {
-  .learning-review-grid {
+  .learning-review-grid--main,
+  .learning-review-grid--utilities {
     grid-template-columns: 1fr;
   }
 

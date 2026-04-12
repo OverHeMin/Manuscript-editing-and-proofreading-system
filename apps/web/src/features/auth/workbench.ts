@@ -49,7 +49,7 @@ export interface WorkbenchShellTargetDescriptor {
 export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   {
     id: "submission",
-    label: "My Manuscripts",
+    label: "我的稿件",
     navLabel: "我的稿件",
     navGroup: "general",
     placement: "primary",
@@ -58,7 +58,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "screening",
-    label: "Screening",
+    label: "初筛",
     navLabel: "初筛",
     navGroup: "mainline",
     placement: "primary",
@@ -67,7 +67,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "editing",
-    label: "Editing",
+    label: "编辑",
     navLabel: "编辑",
     navGroup: "mainline",
     placement: "primary",
@@ -76,7 +76,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "proofreading",
-    label: "Proofreading",
+    label: "校对",
     navLabel: "校对",
     navGroup: "mainline",
     placement: "primary",
@@ -85,7 +85,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "knowledge-library",
-    label: "Knowledge Library",
+    label: "知识库",
     navLabel: "知识库",
     navGroup: "knowledge",
     placement: "primary",
@@ -94,7 +94,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "knowledge-review",
-    label: "Knowledge Review",
+    label: "知识审核",
     navLabel: "知识审核",
     navGroup: "knowledge",
     placement: "secondary",
@@ -103,7 +103,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "learning-review",
-    label: "Learning Review",
+    label: "质量优化",
     navLabel: "质量优化",
     navGroup: "knowledge",
     placement: "secondary",
@@ -112,7 +112,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "admin-console",
-    label: "Admin Console",
+    label: "管理总览",
     navLabel: "管理总览",
     navGroup: "governance",
     placement: "admin",
@@ -121,7 +121,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "evaluation-workbench",
-    label: "Evaluation Workbench",
+    label: "Harness 控制",
     navLabel: "Harness 控制",
     navGroup: "governance",
     placement: "admin",
@@ -130,7 +130,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "harness-datasets",
-    label: "Harness Datasets",
+    label: "Harness 数据集",
     navLabel: "Harness 数据集",
     navGroup: "governance",
     placement: "admin",
@@ -139,7 +139,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "template-governance",
-    label: "Rule Center",
+    label: "规则中心",
     navLabel: "规则中心",
     navGroup: "governance",
     placement: "admin",
@@ -148,7 +148,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "system-settings",
-    label: "System Settings",
+    label: "系统设置",
     navLabel: "系统设置",
     navGroup: "governance",
     placement: "admin",
@@ -197,7 +197,7 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     key: "support-knowledge-review",
     workbenchId: "knowledge-review",
     label: "知识审核",
-    description: "Revision 审核队列与审批动作",
+    description: "知识审核队列与审批动作",
     group: "collaboration-recovery",
   },
   {

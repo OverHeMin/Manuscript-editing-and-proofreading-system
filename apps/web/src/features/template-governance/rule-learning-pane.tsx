@@ -39,9 +39,9 @@ export function RuleLearningPane({
   onConvertToRuleDraft,
 }: RuleLearningPaneProps) {
   const [isBusy, setIsBusy] = useState(false);
-  const [queueStatus, setQueueStatus] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >(initialCandidates.length > 0 ? "ready" : "idle");
+  const [queueStatus, setQueueStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    initialCandidates.length > 0 ? "ready" : "idle",
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [approvedCandidate, setApprovedCandidate] =
@@ -82,20 +82,22 @@ export function RuleLearningPane({
     startTransition(() => {
       setApprovedCandidate(null);
       setWorkbenchState((current) => selectLearningReviewCandidate(current, candidateId));
-      setStatusMessage(`Loaded candidate detail: ${candidateId}`);
+      setStatusMessage(`已载入候选详情：${candidateId}`);
       setErrorMessage(null);
     });
   }
 
   async function handleApproveCandidate() {
     if (!workbenchState.selectedCandidate) {
-      setErrorMessage("Select a pending rule candidate before approval.");
+      setErrorMessage("请先从队列中选择一个待处理规则候选。");
       return;
     }
 
+    const candidateId = workbenchState.selectedCandidate.id;
+
     await runBusyTask(async () => {
       const response = await approveLearningCandidate(defaultClient, {
-        candidateId: workbenchState.selectedCandidate!.id,
+        candidateId,
         actorRole,
       });
 
@@ -104,14 +106,14 @@ export function RuleLearningPane({
         setWorkbenchState((current) =>
           applyLearningReviewApprovalSuccess(current, response.body.id),
         );
-        setStatusMessage(`Learning candidate approved: ${response.body.id}`);
+        setStatusMessage(`已批准候选：${response.body.id}`);
       });
     });
   }
 
   function handleConvertSelectedCandidateToRuleDraft() {
     if (!selectedCandidate || selectedCandidate.status !== "approved") {
-      setErrorMessage("Approve the candidate before opening a governed rule draft handoff.");
+      setErrorMessage("请先批准候选，再转成规则草稿。");
       return;
     }
 
@@ -120,18 +122,16 @@ export function RuleLearningPane({
         reviewedCaseSnapshotId: prefilledReviewedCaseSnapshotId,
       }),
     );
-    setStatusMessage(`Rule draft handoff prepared from ${selectedCandidate.id}.`);
+    setStatusMessage(`已根据 ${selectedCandidate.id} 生成规则草稿预填。`);
     setErrorMessage(null);
   }
 
   function handleRejectCandidate() {
-    setErrorMessage("Governed reject API has not been wired into the rule center yet.");
+    setErrorMessage("当前版本尚未接入候选驳回 API。");
   }
 
   function handleConvertToKnowledgeExplanation() {
-    setErrorMessage(
-      "Knowledge-only conversion still runs through the governed writeback flow.",
-    );
+    setErrorMessage("转成知识说明仍需通过质量回流与知识回写流程完成。");
   }
 
   async function runBusyTask(task: () => Promise<void>) {
@@ -160,7 +160,7 @@ export function RuleLearningPane({
 
       {prefilledManuscriptId ? (
         <p className="template-governance-context-note">
-          This rule-learning desk was opened from manuscript handoff {prefilledManuscriptId}.
+          当前学习回流来自稿件交接：{prefilledManuscriptId}
         </p>
       ) : null}
 
@@ -168,20 +168,20 @@ export function RuleLearningPane({
         <article className="template-governance-card">
           <div className="template-governance-panel-header">
             <div>
-              <h3>Pending Rule Candidates</h3>
-              <p>Review AI-discovered rule candidates before turning them into governed drafts.</p>
+              <h3>规则候选队列</h3>
+              <p>先复核 AI 提炼出的规则候选，再决定是否进入受控规则草稿。</p>
             </div>
             <button type="button" disabled={isBusy} onClick={() => void loadCandidateQueue()}>
-              Refresh Queue
+              刷新队列
             </button>
           </div>
 
           {queueStatus === "loading" && workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">Loading pending rule candidates...</p>
+            <p className="template-governance-empty">正在加载规则候选...</p>
           ) : queueStatus === "error" && workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">Pending rule candidates could not be loaded.</p>
+            <p className="template-governance-empty">规则候选加载失败。</p>
           ) : workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">No pending rule candidates right now.</p>
+            <p className="template-governance-empty">当前没有待处理规则候选。</p>
           ) : (
             <ul className="template-governance-list">
               {workbenchState.queue.map((candidate) => (
@@ -222,5 +222,5 @@ export function RuleLearningPane({
 }
 
 function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown learning workbench error.";
+  return error instanceof Error ? error.message : "规则学习工作台发生未知错误。";
 }
