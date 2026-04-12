@@ -35,6 +35,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
             semantic_status: "confirmed",
             content_block_count: 3,
             updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
           },
         ],
         visibleLibrary: [
@@ -50,6 +51,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
             semantic_status: "confirmed",
             content_block_count: 3,
             updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
           },
         ],
         filters: {
@@ -70,6 +72,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
           semantic_status: "confirmed",
           content_block_count: 3,
           updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
         },
         detail: {
           asset: {
@@ -79,6 +82,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
             current_approved_revision_id: "knowledge-1-revision-1",
             created_at: "2026-04-08T08:00:00.000Z",
             updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
           },
           selected_revision: {
             id: "knowledge-1-revision-2",
@@ -131,6 +135,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
             ],
             created_at: "2026-04-08T08:30:00.000Z",
             updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
           },
           current_approved_revision: {
             id: "knowledge-1-revision-1",
@@ -148,6 +153,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
             bindings: [],
             created_at: "2026-04-08T08:00:00.000Z",
             updated_at: "2026-04-08T08:10:00.000Z",
+            contributor_label: "reviewer.zh",
           },
           revisions: [
             {
@@ -167,6 +173,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
               bindings: [],
               created_at: "2026-04-08T08:30:00.000Z",
               updated_at: "2026-04-08T08:30:00.000Z",
+              contributor_label: "editor.zh",
             },
             {
               id: "knowledge-1-revision-1",
@@ -184,6 +191,7 @@ test("knowledge library workbench page renders the ledger grid shell and record 
               bindings: [],
               created_at: "2026-04-08T08:00:00.000Z",
               updated_at: "2026-04-08T08:10:00.000Z",
+              contributor_label: "reviewer.zh",
             },
           ],
         },
@@ -191,15 +199,16 @@ test("knowledge library workbench page renders the ledger grid shell and record 
     />,
   );
 
-  assert.match(markup, /Knowledge Library/);
-  assert.match(markup, /Knowledge Summary/);
-  assert.match(markup, /Search knowledge/);
-  assert.match(markup, /Keyword Search/);
-  assert.match(markup, /Semantic Search/);
-  assert.match(markup, /AI Semantic Status/);
-  assert.match(markup, /Record Drawer/);
+  assert.match(markup, /知识库/);
+  assert.match(markup, /知识搜索/);
+  assert.match(markup, /多维知识台账/);
+  assert.match(markup, /关键词检索/);
+  assert.match(markup, /语义检索/);
+  assert.match(markup, /贡献账号/);
+  assert.match(markup, /语义层/);
   assert.match(markup, /knowledge-library-grid-table/);
   assert.match(markup, /knowledge-library-record-drawer/);
+  assert.match(markup, /editor\.zh/);
   assert.match(markup, /Primary endpoint rule draft/);
   assert.match(markup, /knowledge-1-revision-2/);
   assert.match(markup, /Screening Template/);

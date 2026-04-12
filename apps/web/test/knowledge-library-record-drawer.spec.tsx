@@ -7,8 +7,121 @@ import { renderToStaticMarkup } from "react-dom/server";
 register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
 
 const {
+  KnowledgeLibraryRecordDrawer,
+} = await import("../src/features/knowledge-library/knowledge-library-record-drawer.tsx");
+
+const {
   KnowledgeLibraryRichContentEditor,
 } = await import("../src/features/knowledge-library/knowledge-library-rich-content-editor.tsx");
+
+test("knowledge library record drawer renders compact Chinese revision and editor framing", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryRecordDrawer
+      detail={{
+        asset: {
+          id: "knowledge-1",
+          status: "active",
+          current_revision_id: "knowledge-1-revision-2",
+          current_approved_revision_id: "knowledge-1-revision-1",
+          created_at: "2026-04-08T08:00:00.000Z",
+          updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        selected_revision: {
+          id: "knowledge-1-revision-2",
+          asset_id: "knowledge-1",
+          revision_no: 2,
+          status: "draft",
+          title: "Primary endpoint rule draft",
+          canonical_text:
+            "Clinical studies must define the primary endpoint before screening sign-off.",
+          knowledge_kind: "rule",
+          content_blocks: [],
+          routing: {
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+          },
+          bindings: [],
+          created_at: "2026-04-08T08:30:00.000Z",
+          updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        current_approved_revision: {
+          id: "knowledge-1-revision-1",
+          asset_id: "knowledge-1",
+          revision_no: 1,
+          status: "approved",
+          title: "Primary endpoint rule",
+          canonical_text: "Clinical studies must define the primary endpoint.",
+          knowledge_kind: "rule",
+          content_blocks: [],
+          routing: {
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+          },
+          bindings: [],
+          created_at: "2026-04-08T08:00:00.000Z",
+          updated_at: "2026-04-08T08:10:00.000Z",
+          contributor_label: "reviewer.zh",
+        },
+        revisions: [
+          {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Primary endpoint rule draft",
+            canonical_text:
+              "Clinical studies must define the primary endpoint before screening sign-off.",
+            knowledge_kind: "rule",
+            content_blocks: [],
+            routing: {
+              module_scope: "screening",
+              manuscript_types: ["clinical_study"],
+            },
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          {
+            id: "knowledge-1-revision-1",
+            asset_id: "knowledge-1",
+            revision_no: 1,
+            status: "approved",
+            title: "Primary endpoint rule",
+            canonical_text: "Clinical studies must define the primary endpoint.",
+            knowledge_kind: "rule",
+            content_blocks: [],
+            routing: {
+              module_scope: "screening",
+              manuscript_types: ["clinical_study"],
+            },
+            bindings: [],
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:10:00.000Z",
+            contributor_label: "reviewer.zh",
+          },
+        ],
+      }}
+      selectedAssetId="knowledge-1"
+      selectedRevisionId="knowledge-1-revision-2"
+      reviewHash="#knowledge-review?revisionId=knowledge-1-revision-2"
+      onSelectRevision={() => undefined}
+    >
+      <section>
+        <h3>记录编辑区</h3>
+      </section>
+    </KnowledgeLibraryRecordDrawer>,
+  );
+
+  assert.match(markup, /记录抽屉/);
+  assert.match(markup, /打开审核台/);
+  assert.match(markup, /贡献账号/);
+  assert.match(markup, /版本时间线/);
+  assert.match(markup, /记录编辑区/);
+  assert.match(markup, /editor\.zh/);
+});
 
 test("knowledge library rich content editor renders text, table, and image blocks with add actions", () => {
   const markup = renderToStaticMarkup(
