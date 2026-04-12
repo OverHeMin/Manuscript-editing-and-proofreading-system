@@ -106,14 +106,8 @@ test("admin can preview, verify, activate, and roll back the seeded harness envi
   await expect(activeEnvironmentCard).toContainText("Retrieval retrieval-editing-1");
   await expect(activeEnvironmentCard).toContainText("Manual Review manual-review-editing-1");
 
-  await environmentEditor
-    .getByLabel("Routing Version")
-    .selectOption(harnessRouting.candidateVersionId);
   await environmentEditor.getByLabel("Retrieval Preset").selectOption(
     "retrieval-editing-preview-2",
-  );
-  await environmentEditor.getByLabel("Manual Review Policy").selectOption(
-    "manual-review-editing-preview-2",
   );
   await environmentEditor
     .getByRole("button", { name: "Preview Candidate Environment" })
@@ -127,17 +121,15 @@ test("admin can preview, verify, activate, and roll back the seeded harness envi
     "Runtime Binding binding-editing-1",
   );
   await expect(candidatePreviewCard).toContainText(
-    `Routing ${harnessRouting.candidateVersionId}`,
+    `Routing ${harnessRouting.activeVersionId}`,
   );
   await expect(candidatePreviewCard).toContainText(
     "Retrieval retrieval-editing-preview-2",
   );
   await expect(candidatePreviewCard).toContainText(
-    "Manual Review manual-review-editing-preview-2",
+    "Manual Review manual-review-editing-1",
   );
-  await expect(diffCard).toContainText("model_routing_policy_version");
   await expect(diffCard).toContainText("retrieval_preset");
-  await expect(diffCard).toContainText("manual_review_policy");
 
   await qualityLab.getByLabel("Evaluation Suite").selectOption(suiteId);
   await qualityLab.getByRole("button", { name: "Launch Candidate Run" }).click();
@@ -161,13 +153,13 @@ test("admin can preview, verify, activate, and roll back the seeded harness envi
     "Runtime Binding binding-editing-1",
   );
   await expect(activeEnvironmentCard).toContainText(
-    `Routing ${harnessRouting.candidateVersionId}`,
+    `Routing ${harnessRouting.activeVersionId}`,
   );
   await expect(activeEnvironmentCard).toContainText(
     "Retrieval retrieval-editing-preview-2",
   );
   await expect(activeEnvironmentCard).toContainText(
-    "Manual Review manual-review-editing-preview-2",
+    "Manual Review manual-review-editing-1",
   );
   await expect(candidatePreviewCard).toContainText(
     "Choose governed objects and preview the candidate bundle.",

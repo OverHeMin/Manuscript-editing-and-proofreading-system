@@ -18,6 +18,19 @@ const agentToolingOverviewUrls = [
   "/api/v1/agent-execution",
 ] as const;
 const routingGovernanceOverviewUrl = "/api/v1/model-routing-governance/policies";
+const qualityPackagesOverviewUrl = "/api/v1/manuscript-quality-packages";
+const baseAdminGovernanceOverviewUrls = [
+  "/api/v1/templates/families",
+  "/api/v1/prompt-skill-registry/prompt-templates",
+  "/api/v1/prompt-skill-registry/skill-packages",
+  "/api/v1/model-registry",
+  "/api/v1/model-registry/routing-policy",
+  routingGovernanceOverviewUrl,
+  "/api/v1/execution-governance/profiles",
+  qualityPackagesOverviewUrl,
+  ...agentToolingOverviewUrls,
+  "/api/v1/system-settings/ai-providers",
+] as const;
 
 test("admin governance controller loads families, prompts, skills, and the selected family module templates", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
@@ -107,15 +120,7 @@ test("admin governance controller loads families, prompts, skills, and the selec
   assert.deepEqual(
     requests.map((request) => request.url),
     [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -272,17 +277,7 @@ test("admin governance controller loads model registry entries and routing polic
   });
   assert.deepEqual(
     requests.map((request) => request.url),
-    [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
-    ],
+    [...baseAdminGovernanceOverviewUrls],
   );
 });
 
@@ -406,17 +401,7 @@ test("admin governance controller loads versioned routing policies alongside reg
   );
   assert.deepEqual(
     requests.map((request) => request.url),
-    [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
-    ],
+    [...baseAdminGovernanceOverviewUrls],
   );
 });
 
@@ -614,15 +599,7 @@ test("admin governance controller loads harness adapter health as a read-only go
   assert.deepEqual(
     requests.map((request) => request.url),
     [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
       "/api/v1/harness-integrations/adapters/adapter-promptfoo-1/executions",
       "/api/v1/harness-integrations/adapters/adapter-langfuse-1/executions",
       "/api/v1/harness-integrations/adapters/adapter-judge-1/executions",
@@ -729,15 +706,7 @@ test("admin governance controller fails open when harness read endpoints are una
   assert.deepEqual(
     requests.map((request) => request.url),
     [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -1127,15 +1096,7 @@ test("admin governance controller creates a model entry and reloads governance o
     requests.map((request) => request.url),
     [
       "/api/v1/model-registry",
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
     ],
   );
 });
@@ -1225,15 +1186,7 @@ test("admin governance controller updates routing policy and reloads governance 
     requests.map((request) => request.url),
     [
       "/api/v1/model-registry/routing-policy",
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
     ],
   );
 });
@@ -1425,15 +1378,7 @@ test("admin governance controller loads execution profiles and resolves executio
   assert.deepEqual(
     requests.map((request) => request.url),
     [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
       "/api/v1/execution-governance/resolve",
     ],
@@ -1681,15 +1626,7 @@ test("admin governance controller loads agent-tooling registries and recent exec
   assert.deepEqual(
     requests.map((request) => request.url),
     [
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
       "/api/v1/templates/families/family-1/module-templates",
     ],
   );
@@ -3068,15 +3005,7 @@ test("admin governance controller updates existing model bindings and reloads co
     requests.map((request) => request.url),
     [
       "/api/v1/model-registry/model-qwen-1",
-      "/api/v1/templates/families",
-      "/api/v1/prompt-skill-registry/prompt-templates",
-      "/api/v1/prompt-skill-registry/skill-packages",
-      "/api/v1/model-registry",
-      "/api/v1/model-registry/routing-policy",
-      routingGovernanceOverviewUrl,
-      "/api/v1/execution-governance/profiles",
-      ...agentToolingOverviewUrls,
-      "/api/v1/system-settings/ai-providers",
+      ...baseAdminGovernanceOverviewUrls,
     ],
   );
 });
@@ -3470,7 +3399,7 @@ test("admin governance controller drives harness control plane scope load previe
 });
 
 function createEmptyAgentToolingListResponse<TResponse>(url: string) {
-  if (url === routingGovernanceOverviewUrl) {
+  if (url === routingGovernanceOverviewUrl || url === qualityPackagesOverviewUrl) {
     return {
       status: 200,
       body: [] as TResponse,
