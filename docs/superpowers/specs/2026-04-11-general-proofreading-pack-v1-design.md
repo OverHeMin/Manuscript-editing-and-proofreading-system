@@ -395,3 +395,17 @@ V1 之后可以继续扩展为：
 ## 12. 一句话定义
 
 通用校对包 V1 不是一个“万能改稿 AI”，而是一层基础文本质量控制系统：先抓机械错、语言错、一致性错、合规错和逻辑疑点，再把问题按风险稳妥分流。
+## Implementation Status (2026-04-12)
+
+- Backend V1 baseline is implemented in the current repository state.
+- Shared contracts, execution snapshot quality summaries, worker normalization, and deterministic general analyzers are landed.
+- API orchestration now feeds advisory general-proofreading findings into `proofreading`, `editing`, and `screening` without changing governance authority.
+- Third-party adapter seams exist behind explicit enablement and remain disabled by default; when enabled in the future, they are normalized to advisory-only actions.
+- This implementation still excludes medical-specialized analyzers, automatic knowledge/rule write-back, and workbench UI expansion.
+
+### Verification
+
+- `python -m pytest ./apps/worker-py/tests/manuscript_quality/test_text_normalization.py ./apps/worker-py/tests/manuscript_quality/test_general_proofreading.py ./apps/worker-py/tests/manuscript_quality/test_adapter_registry.py -q`
+- `pnpm --filter @medical/api exec node --import tsx --test ./test/manuscript-quality/manuscript-quality-service.spec.ts ./test/proofreading/proofreading-rule-report.spec.ts ./test/editing/editing-medical-quality.spec.ts ./test/screening/screening-medical-quality.spec.ts`
+- `pnpm --filter @medical/api typecheck`
+- `pnpm typecheck`

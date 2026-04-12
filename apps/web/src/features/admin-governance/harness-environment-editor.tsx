@@ -7,12 +7,16 @@ import type { ModuleExecutionProfileViewModel } from "../execution-governance/in
 import type { ManuscriptType } from "../manuscripts/index.ts";
 import type { RuntimeBindingViewModel } from "../runtime-bindings/index.ts";
 import type { TemplateModule } from "../templates/index.ts";
+import type {
+  ManuscriptQualityPackageViewModel,
+} from "../manuscript-quality-packages/index.ts";
 
 export interface HarnessEnvironmentEditorProps {
   module: TemplateModule;
   manuscriptType: ManuscriptType;
   activeScope: AdminHarnessScopeViewModel | null;
   preview: HarnessEnvironmentPreviewViewModel | null;
+  qualityPackages: readonly ManuscriptQualityPackageViewModel[];
   executionProfiles: readonly ModuleExecutionProfileViewModel[];
   runtimeBindings: readonly RuntimeBindingViewModel[];
   routingVersions: readonly ModelRoutingPolicyVersionViewModel[];
@@ -189,6 +193,29 @@ export function HarnessEnvironmentEditor(
               : props.preview.diff.changed_components.join(", ") || "No changes"
           }
         />
+        <HarnessEnvironmentCard
+          title="Active Quality Packages"
+          summary={
+            activeEnvironment == null
+              ? "Loading active quality package refs."
+              : formatQualityPackageSummary(
+                  activeEnvironment.runtime_binding.quality_package_version_ids ?? [],
+                  props.qualityPackages,
+                )
+          }
+        />
+        <HarnessEnvironmentCard
+          title="Candidate Quality Packages"
+          summary={
+            props.preview == null
+              ? "Preview a candidate to inspect bound package refs."
+              : formatQualityPackageSummary(
+                  props.preview.candidate_environment.runtime_binding
+                    .quality_package_version_ids ?? [],
+                  props.qualityPackages,
+                )
+          }
+        />
       </div>
     </article>
   );
@@ -216,4 +243,20 @@ function summarizeEnvironment(
     `Retrieval ${environment.retrieval_preset.id}`,
     `Manual Review ${environment.manual_review_policy.id}`,
   ].join(" | ");
+}
+
+function formatQualityPackageSummary(
+  ids: readonly string[],
+  packages: readonly ManuscriptQualityPackageViewModel[],
+) {
+  if (ids.length === 0) {
+    return "none";
+  }
+
+  return ids
+    .map((id) => {
+      const record = packages.find((candidate) => candidate.id === id);
+      return record ? `${record.package_name} v${record.version}` : id;
+    })
+    .join(" | ");
 }

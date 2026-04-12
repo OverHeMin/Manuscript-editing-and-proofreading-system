@@ -20,12 +20,23 @@
 - V1 remains backend-only.
 - No automatic knowledge write-back or rule write-back in this pass.
 
+## Closeout Sync (2026-04-12)
+
+- The V1 medical specialized layer is landed in the current repository state, and the design doc below has been synced with both V1 and the current bounded V1.5 table-aware slices.
+- This checklist has been backfilled against the current workspace state rather than preserved red-green command history.
+- The current implementation goes beyond the original minimum by adding conservative table-text consistency, pure-text count consistency, and comparison-direction slices while still staying advisory-only.
+- Commit checkboxes remain intentionally open because this worktree also contains parallel Harness changes and is not yet isolated into quality-only commits.
+
 ## File Structure
 
 ### New files
 
 - `apps/worker-py/src/manuscript_quality/medical_specialized.py`
 - `apps/worker-py/tests/manuscript_quality/test_medical_specialized.py`
+- `apps/api/test/proofreading/proofreading-medical-quality.spec.ts`
+- `apps/api/test/editing/editing-medical-quality.spec.ts`
+- `apps/api/test/screening/screening-medical-quality.spec.ts`
+- `apps/api/test/shared/medical-quality-fixture.ts`
 
 ### Modified files
 
@@ -64,7 +75,7 @@
 - Modify: `apps/api/src/modules/manuscript-quality/manuscript-quality-types.ts`
 - Modify: `apps/api/test/manuscript-quality/manuscript-quality-service.spec.ts`
 
-- [ ] Write the failing API test for fixed medical issue categories:
+- [x] Cover fixed medical issue categories in the focused manuscript-quality API suite:
 
 ```ts
 const MEDICAL_ISSUE_TYPES = [
@@ -76,10 +87,10 @@ const MEDICAL_ISSUE_TYPES = [
 ] as const;
 ```
 
-- [ ] Add the failing API test that proves screening is at least as conservative as editing for the same medical text.
-- [ ] Run `pnpm --filter @medical/api exec node --import tsx --test ./test/manuscript-quality/manuscript-quality-service.spec.ts` and confirm failure.
-- [ ] Add the minimal local helper enums or constants for medical issue taxonomy.
-- [ ] Re-run the focused API test and confirm the remaining failure is at missing worker behavior.
+- [x] Cover the rule that screening stays at least as conservative as editing for the same medical text.
+- [x] Verify the focused manuscript-quality API suite passes in the current repository state.
+- [x] Add the minimal local helper enums or constants for medical issue taxonomy.
+- [x] Re-run the focused API test and confirm the taxonomy and routing behavior now pass in the current repository state.
 - [ ] Commit with `git commit -m "test: lock medical specialized quality taxonomy"`.
 
 ### Task 2: Add the worker medical specialized analyzers
@@ -89,10 +100,10 @@ const MEDICAL_ISSUE_TYPES = [
 - Modify: `apps/worker-py/src/document_enhancement/privacy.py`
 - Create: `apps/worker-py/tests/manuscript_quality/test_medical_specialized.py`
 
-- [ ] Write the failing worker test for terminology drift and numeric inconsistency.
-- [ ] Write the failing worker test for statistical expression, evidence alignment, and privacy risk.
-- [ ] Run `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_medical_specialized.py -q` and confirm failure.
-- [ ] Implement conservative medical analyzers:
+- [x] Cover terminology drift and numeric inconsistency in focused worker tests.
+- [x] Cover statistical expression, evidence alignment, privacy risk, and the current bounded table-aware slices in focused worker tests.
+- [x] Verify the focused medical worker suite passes in the current repository state.
+- [x] Implement conservative medical analyzers:
 
 ```py
 issues.extend(check_medical_terminology_drift(normalized))
@@ -102,8 +113,8 @@ issues.extend(check_evidence_alignment(normalized))
 issues.extend(check_privacy_ethics(normalized, privacy_advisory=build_privacy_advisory(text)))
 ```
 
-- [ ] Reuse the existing privacy heuristic helper instead of duplicating regex logic.
-- [ ] Re-run the focused worker test and confirm PASS.
+- [x] Reuse the existing privacy heuristic helper instead of duplicating regex logic.
+- [x] Re-run the focused worker test and confirm PASS.
 - [ ] Commit with `git commit -m "feat: add medical specialized worker analyzers"`.
 
 ### Task 3: Extend API orchestration to run mixed general plus medical scopes
@@ -112,16 +123,16 @@ issues.extend(check_privacy_ethics(normalized, privacy_advisory=build_privacy_ad
 - Modify: `apps/api/src/modules/manuscript-quality/manuscript-quality-service.ts`
 - Modify: `apps/api/test/manuscript-quality/manuscript-quality-service.spec.ts`
 
-- [ ] Add the failing API test for mixed-scope orchestration on a medical manuscript.
-- [ ] Run the focused API test again and confirm failure.
-- [ ] Extend the service to request both scopes:
+- [x] Cover mixed-scope orchestration on a medical manuscript in the focused API suite.
+- [x] Verify the focused API suite passes with dual-scope orchestration in the current repository state.
+- [x] Extend the service to request both scopes:
 
 ```ts
 const requestedScopes = ["general_proofreading", "medical_specialized"] as const;
 ```
 
-- [ ] Keep degraded behavior conservative when the medical analyzer fails by returning a `manual_review` system issue.
-- [ ] Re-run the focused API test and confirm PASS.
+- [x] Keep degraded behavior conservative when the medical analyzer fails by returning a `manual_review` system issue.
+- [x] Re-run the focused API test and confirm PASS.
 - [ ] Commit with `git commit -m "feat: extend manuscript quality orchestration for medical scope"`.
 
 ### Task 4: Integrate medical findings into proofreading, editing, and screening
@@ -135,15 +146,15 @@ const requestedScopes = ["general_proofreading", "medical_specialized"] as const
 - Create: `apps/api/test/screening/screening-medical-quality.spec.ts`
 - Modify: `apps/api/test/modules/module-orchestration.spec.ts`
 
-- [ ] Write the failing proofreading integration test for medical findings in draft payloads.
-- [ ] Write the failing editing integration test that keeps terminology and statistics findings advisory.
-- [ ] Write the failing screening integration test for evidence-alignment and privacy escalation.
-- [ ] Run `pnpm --filter @medical/api exec node --import tsx --test ./test/proofreading/proofreading-medical-quality.spec.ts ./test/editing/editing-medical-quality.spec.ts ./test/screening/screening-medical-quality.spec.ts` and confirm failure.
-- [ ] Extend proofreading payloads and reports to include medical findings.
-- [ ] Extend editing payloads to include medical findings without turning them into deterministic rewrites.
-- [ ] Extend screening payloads to include reviewer-facing escalation signals for non-`suggest_fix` medical issues.
-- [ ] Extend the orchestration test to prove governed execution still completes.
-- [ ] Re-run the focused module tests and confirm PASS.
+- [x] Cover medical findings in proofreading draft payloads.
+- [x] Cover the rule that terminology and statistics findings remain advisory in editing.
+- [x] Cover reviewer-facing evidence-alignment and privacy escalation in screening.
+- [x] Verify the focused proofreading, editing, and screening suites pass in the current repository state.
+- [x] Extend proofreading payloads and reports to include medical findings.
+- [x] Extend editing payloads to include medical findings without turning them into deterministic rewrites.
+- [x] Extend screening payloads to include reviewer-facing escalation signals for non-`suggest_fix` medical issues.
+- [x] Extend the orchestration test to prove governed execution still completes.
+- [x] Re-run the focused module tests and confirm PASS.
 - [ ] Commit with `git commit -m "feat: integrate medical specialized quality into module runs"`.
 
 ### Task 5: Run checkpoints and sync the approved design doc
@@ -151,10 +162,10 @@ const requestedScopes = ["general_proofreading", "medical_specialized"] as const
 **Files:**
 - Modify: `docs/superpowers/specs/2026-04-11-medical-specialized-modules-v1-design.md`
 
-- [ ] Run `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_medical_specialized.py -q`.
-- [ ] Run the focused API checkpoint suite.
-- [ ] Run `pnpm --filter @medical/api typecheck` and `pnpm typecheck`.
-- [ ] Update the approved design doc with implementation status notes.
+- [x] Run `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_medical_specialized.py -q`.
+- [x] Run the focused API checkpoint suite.
+- [x] Run `pnpm --filter @medical/api typecheck` and `pnpm typecheck`.
+- [x] Update the approved design doc with implementation status notes.
 - [ ] Commit with `git commit -m "docs: sync medical specialized implementation status"`.
 
 ## Review Notes

@@ -66,6 +66,11 @@ import {
   submitModelRoutingPolicyVersion,
 } from "../model-routing-governance/index.ts";
 import {
+  createManuscriptQualityPackageDraft,
+  listManuscriptQualityPackages,
+  publishManuscriptQualityPackageVersion,
+} from "../manuscript-quality-packages/index.ts";
+import {
   activateRuntimeBinding,
   createRuntimeBinding,
   listRuntimeBindings,
@@ -126,6 +131,10 @@ import type {
   UpdateModelRoutingPolicyInput,
 } from "../model-registry/index.ts";
 import type {
+  CreateManuscriptQualityPackageDraftInput,
+  ManuscriptQualityPackageViewModel,
+} from "../manuscript-quality-packages/index.ts";
+import type {
   CreateModelRoutingPolicyInput,
   CreateModelRoutingPolicyDraftVersionInput,
   ModelRoutingPolicyViewModel as GovernedModelRoutingPolicyViewModel,
@@ -175,6 +184,7 @@ export interface AdminGovernanceOverview {
   promptTemplates: PromptTemplateViewModel[];
   skillPackages: SkillPackageViewModel[];
   executionProfiles: ModuleExecutionProfileViewModel[];
+  qualityPackages: ManuscriptQualityPackageViewModel[];
   modelRegistryEntries: ModelRegistryEntryViewModel[];
   modelRoutingPolicy: ModelRoutingPolicyViewModel;
   routingPolicies: GovernedModelRoutingPolicyViewModel[];
@@ -336,6 +346,17 @@ export interface AdminGovernanceWorkbenchController {
     createdBinding: RuntimeBindingViewModel;
     overview: AdminGovernanceOverview;
   }>;
+  createQualityPackageDraftAndReload(
+    input: CreateManuscriptQualityPackageDraftInput,
+  ): Promise<{
+    createdPackage: ManuscriptQualityPackageViewModel;
+    overview: AdminGovernanceOverview;
+  }>;
+  publishQualityPackageVersionAndReload(input: {
+    actorRole: AuthRole;
+    packageVersionId: string;
+    selectedTemplateFamilyId?: string | null;
+  }): Promise<AdminGovernanceOverview>;
   activateRuntimeBindingAndReload(input: {
     actorRole: AuthRole;
     bindingId: string;
@@ -570,6 +591,24 @@ export function createAdminGovernanceWorkbenchController(
         }),
       };
     },
+    async createQualityPackageDraftAndReload(input) {
+      const createdPackage = (
+        await createManuscriptQualityPackageDraft(client, input)
+      ).body;
+
+      return {
+        createdPackage,
+        overview: await loadAdminGovernanceOverview(client),
+      };
+    },
+    async publishQualityPackageVersionAndReload(input) {
+      await publishManuscriptQualityPackageVersion(client, input.packageVersionId, {
+        actorRole: input.actorRole,
+      });
+      return loadAdminGovernanceOverview(client, {
+        selectedTemplateFamilyId: input.selectedTemplateFamilyId ?? null,
+      });
+    },
     async activateRuntimeBindingAndReload(input) {
       await activateRuntimeBinding(client, input.bindingId, {
         actorRole: input.actorRole,
@@ -670,6 +709,7 @@ export async function loadAdminGovernanceOverview(
     modelRoutingPolicyResponse,
     routingPoliciesResponse,
     executionProfileResponse,
+    qualityPackageResponse,
     toolGatewayResponse,
     sandboxProfileResponse,
     agentProfileResponse,
@@ -690,6 +730,7 @@ export async function loadAdminGovernanceOverview(
     getModelRoutingPolicy(client),
     listModelRoutingPolicies(client),
     listExecutionProfiles(client),
+    listManuscriptQualityPackages(client),
     listToolGatewayTools(client),
     listSandboxProfiles(client),
     listAgentProfiles(client),
@@ -736,6 +777,7 @@ export async function loadAdminGovernanceOverview(
     promptTemplates: promptResponse.body,
     skillPackages: skillResponse.body,
     executionProfiles: executionProfileResponse.body,
+    qualityPackages: qualityPackageResponse.body,
     modelRegistryEntries: modelRegistryResponse.body,
     modelRoutingPolicy: modelRoutingPolicyResponse.body,
     routingPolicies: routingPoliciesResponse.body,

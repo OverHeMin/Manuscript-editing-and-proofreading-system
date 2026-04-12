@@ -20,6 +20,13 @@
 - No automatic knowledge write-back or rule write-back in this pass.
 - No web workbench expansion in this pass.
 
+## Closeout Sync (2026-04-12)
+
+- The V1 general proofreading baseline is landed in the current repository state.
+- This checklist has been backfilled against the current workspace state rather than preserved red-green command history.
+- The originally planned standalone `proofreading-general-quality.spec.ts`, `editing-general-quality.spec.ts`, and `screening-general-quality.spec.ts` were consolidated into existing manuscript-quality and module integration coverage instead of being kept as separate files.
+- Commit checkboxes remain intentionally open because this worktree also contains parallel Harness changes and is not yet isolated into quality-only commits.
+
 ## File Structure
 
 ### New files
@@ -30,9 +37,6 @@
 - `apps/api/src/modules/manuscript-quality/manuscript-quality-service.ts`
 - `apps/api/src/modules/manuscript-quality/index.ts`
 - `apps/api/test/manuscript-quality/manuscript-quality-service.spec.ts`
-- `apps/api/test/proofreading/proofreading-general-quality.spec.ts`
-- `apps/api/test/editing/editing-general-quality.spec.ts`
-- `apps/api/test/screening/screening-general-quality.spec.ts`
 - `apps/worker-py/src/manuscript_quality/contracts.py`
 - `apps/worker-py/src/manuscript_quality/text_normalization.py`
 - `apps/worker-py/src/manuscript_quality/general_proofreading.py`
@@ -45,9 +49,13 @@
 
 ### Modified files
 
+- `packages/contracts/src/governed-execution.ts`
 - `packages/contracts/src/index.ts`
+- `apps/api/src/modules/execution-tracking/execution-tracking-api.ts`
 - `apps/api/src/modules/execution-tracking/execution-tracking-record.ts`
 - `apps/api/src/modules/execution-tracking/execution-tracking-service.ts`
+- `apps/api/src/modules/execution-tracking/in-memory-execution-tracking-repository.ts`
+- `apps/api/src/modules/execution-tracking/postgres-execution-tracking-repository.ts`
 - `apps/api/src/modules/editorial-execution/types.ts`
 - `apps/api/src/modules/proofreading/proofreading-service.ts`
 - `apps/api/src/modules/editing/editing-service.ts`
@@ -60,9 +68,8 @@
 
 - API focused:
   - `pnpm --filter @medical/api exec node --import tsx --test ./test/manuscript-quality/manuscript-quality-service.spec.ts`
-  - `pnpm --filter @medical/api exec node --import tsx --test ./test/proofreading/proofreading-general-quality.spec.ts`
-  - `pnpm --filter @medical/api exec node --import tsx --test ./test/editing/editing-general-quality.spec.ts`
-  - `pnpm --filter @medical/api exec node --import tsx --test ./test/screening/screening-general-quality.spec.ts`
+  - `pnpm --filter @medical/api exec node --import tsx --test ./test/proofreading/proofreading-rule-report.spec.ts`
+  - `pnpm --filter @medical/api exec node --import tsx --test ./test/editing/editing-medical-quality.spec.ts ./test/screening/screening-medical-quality.spec.ts`
 - Worker focused:
   - `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_text_normalization.py ./tests/manuscript_quality/test_general_proofreading.py ./tests/manuscript_quality/test_adapter_registry.py -q`
 - Checkpoints:
@@ -81,17 +88,17 @@
 - Modify: `apps/api/src/modules/execution-tracking/execution-tracking-service.ts`
 - Test: `apps/api/test/manuscript-quality/manuscript-quality-service.spec.ts`
 
-- [ ] Write the failing API test for a unified general-quality issue contract.
-- [ ] Run `pnpm --filter @medical/api exec node --import tsx --test ./test/manuscript-quality/manuscript-quality-service.spec.ts` and confirm it fails.
-- [ ] Add the minimal shared contract surface:
+- [x] Cover the unified general-quality issue contract in `./test/manuscript-quality/manuscript-quality-service.spec.ts`.
+- [x] Verify the focused manuscript-quality contract suite passes in the current repository state.
+- [x] Add the minimal shared contract surface:
 
 ```ts
 export type ManuscriptQualityScope = "general_proofreading" | "medical_specialized";
 export type ManuscriptQualityAction = "auto_fix" | "suggest_fix" | "manual_review" | "block";
 ```
 
-- [ ] Extend execution snapshots with optional finding summaries, not authority-changing decisions.
-- [ ] Re-run the focused test and confirm the remaining failure is at missing worker or orchestration code.
+- [x] Extend execution snapshots with optional finding summaries, not authority-changing decisions.
+- [x] Re-run the focused test and confirm the contract behavior now passes in the current repository state.
 - [ ] Commit with `git commit -m "feat: add general proofreading quality contracts"`.
 
 ### Task 2: Build text normalization and general proofreading analyzers
@@ -104,17 +111,17 @@ export type ManuscriptQualityAction = "auto_fix" | "suggest_fix" | "manual_revie
 - Create: `apps/worker-py/tests/manuscript_quality/test_text_normalization.py`
 - Create: `apps/worker-py/tests/manuscript_quality/test_general_proofreading.py`
 
-- [ ] Write failing tests for sentence and paragraph slicing stability.
-- [ ] Write failing tests for punctuation, consistency, compliance, and logic suspicion findings.
-- [ ] Run `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_text_normalization.py ./tests/manuscript_quality/test_general_proofreading.py -q` and confirm failure.
-- [ ] Implement the minimal normalization seam:
+- [x] Cover sentence and paragraph slicing stability in worker tests.
+- [x] Cover punctuation, consistency, compliance, and logic suspicion findings in worker tests.
+- [x] Verify the focused worker normalization suite passes in the current repository state.
+- [x] Implement the minimal normalization seam:
 
 ```py
 paragraphs = build_paragraph_blocks(blocks)
 sentences = split_sentences(paragraphs)
 ```
 
-- [ ] Implement deterministic general analyzers:
+- [x] Implement deterministic general analyzers:
 
 ```py
 issues.extend(check_punctuation_layout(normalized))
@@ -124,7 +131,7 @@ issues.extend(check_compliance_markers(normalized))
 issues.extend(check_logic_suspicions(normalized))
 ```
 
-- [ ] Re-run the worker tests and confirm PASS.
+- [x] Re-run the worker tests and confirm PASS.
 - [ ] Commit with `git commit -m "feat: add general proofreading worker analyzers"`.
 
 ### Task 3: Add the API worker adapter and general orchestration service
@@ -136,17 +143,17 @@ issues.extend(check_logic_suspicions(normalized))
 - Create: `apps/api/src/modules/manuscript-quality/index.ts`
 - Test: `apps/api/test/manuscript-quality/manuscript-quality-service.spec.ts`
 
-- [ ] Add the failing API test for degraded worker execution.
-- [ ] Run the focused API test again and confirm failure.
-- [ ] Implement the Python worker adapter with the repo’s existing spawn-and-JSON pattern.
-- [ ] Implement general-only orchestration first:
+- [x] Cover degraded worker execution in the manuscript-quality service test suite.
+- [x] Verify the focused API suite passes with degraded worker fallback behavior.
+- [x] Implement the Python worker adapter with the repo’s existing spawn-and-JSON pattern.
+- [x] Implement general-only orchestration first:
 
 ```ts
 const requestedScopes: Array<"general_proofreading"> = ["general_proofreading"];
 ```
 
-- [ ] Normalize worker failure into one conservative `manual_review` system issue.
-- [ ] Re-run the focused API test and confirm PASS.
+- [x] Normalize worker failure into one conservative `manual_review` system issue.
+- [x] Re-run the focused API test and confirm PASS.
 - [ ] Commit with `git commit -m "feat: add general proofreading api orchestration"`.
 
 ### Task 4: Integrate the general layer into proofreading
@@ -155,14 +162,13 @@ const requestedScopes: Array<"general_proofreading"> = ["general_proofreading"];
 - Modify: `apps/api/src/modules/proofreading/proofreading-service.ts`
 - Modify: `apps/api/src/modules/editorial-execution/types.ts`
 - Modify: `apps/api/test/proofreading/proofreading-rule-report.spec.ts`
-- Create: `apps/api/test/proofreading/proofreading-general-quality.spec.ts`
 
-- [ ] Write the failing proofreading integration test for general findings in draft payloads.
-- [ ] Extend the report test to require a `## Quality Findings` section.
-- [ ] Run `pnpm --filter @medical/api exec node --import tsx --test ./test/proofreading/proofreading-general-quality.spec.ts ./test/proofreading/proofreading-rule-report.spec.ts` and confirm failure.
-- [ ] Inject the quality service into proofreading draft generation.
-- [ ] Merge findings into the payload and report rendering without changing final-confirm semantics.
-- [ ] Re-run the proofreading tests and confirm PASS.
+- [x] Cover proofreading draft quality reporting through the shared manuscript-quality suite and `proofreading-rule-report.spec.ts`.
+- [x] Extend the report test to require a `## Quality Findings` section.
+- [x] Verify focused proofreading quality reporting passes in the current repository state.
+- [x] Inject the quality service into proofreading draft generation.
+- [x] Merge findings into the payload and report rendering without changing final-confirm semantics.
+- [x] Re-run the proofreading tests and confirm PASS.
 - [ ] Commit with `git commit -m "feat: integrate general proofreading into proofreading"`.
 
 ### Task 5: Integrate general findings into editing and screening
@@ -170,16 +176,14 @@ const requestedScopes: Array<"general_proofreading"> = ["general_proofreading"];
 **Files:**
 - Modify: `apps/api/src/modules/editing/editing-service.ts`
 - Modify: `apps/api/src/modules/screening/screening-service.ts`
-- Create: `apps/api/test/editing/editing-general-quality.spec.ts`
-- Create: `apps/api/test/screening/screening-general-quality.spec.ts`
 - Modify: `apps/api/test/modules/module-orchestration.spec.ts`
 
-- [ ] Write the failing editing integration test for suggestion-focused general findings.
-- [ ] Write the failing screening integration test for compliance escalation.
-- [ ] Run `pnpm --filter @medical/api exec node --import tsx --test ./test/editing/editing-general-quality.spec.ts ./test/screening/screening-general-quality.spec.ts` and confirm failure.
-- [ ] Inject scoped general findings into editing and screening as advisory evidence.
-- [ ] Extend the orchestration test to prove governed execution still completes.
-- [ ] Re-run the focused module tests and confirm PASS.
+- [x] Cover suggestion-focused editing findings and conservative screening escalation in focused module integration tests.
+- [x] Cover screening compliance escalation in focused module integration tests.
+- [x] Verify focused editing and screening quality coverage passes in the current repository state.
+- [x] Inject scoped general findings into editing and screening as advisory evidence.
+- [x] Extend the orchestration test to prove governed execution still completes.
+- [x] Re-run the focused module tests and confirm PASS.
 - [ ] Commit with `git commit -m "feat: integrate general proofreading into editing and screening"`.
 
 ### Task 6: Add the disabled-by-default third-party adapter seam
@@ -189,12 +193,12 @@ const requestedScopes: Array<"general_proofreading"> = ["general_proofreading"];
 - Create: `apps/worker-py/src/manuscript_quality/run_quality_checks.py`
 - Create: `apps/worker-py/tests/manuscript_quality/test_adapter_registry.py`
 
-- [ ] Write the failing adapter-registry test for disabled-by-default behavior.
-- [ ] Write the failing test that proves external adapters remain advisory-only.
-- [ ] Run `cd apps/worker-py && python -m pytest ./tests/manuscript_quality/test_adapter_registry.py -q` and confirm failure.
-- [ ] Implement the adapter registry so unconfigured tools return metadata only.
-- [ ] Implement the worker CLI entrypoint used by the API adapter.
-- [ ] Re-run the adapter tests and confirm PASS.
+- [x] Cover disabled-by-default adapter behavior in focused worker tests.
+- [x] Cover the advisory-only constraint for external adapters in focused worker tests.
+- [x] Verify the focused adapter-registry suite passes in the current repository state.
+- [x] Implement the adapter registry so unconfigured tools return metadata only.
+- [x] Implement the worker CLI entrypoint used by the API adapter.
+- [x] Re-run the adapter tests and confirm PASS.
 - [ ] Commit with `git commit -m "feat: add general proofreading adapter seam"`.
 
 ### Task 7: Run checkpoints and sync the approved design doc
@@ -202,10 +206,10 @@ const requestedScopes: Array<"general_proofreading"> = ["general_proofreading"];
 **Files:**
 - Modify: `docs/superpowers/specs/2026-04-11-general-proofreading-pack-v1-design.md`
 
-- [ ] Run the worker checkpoint suite.
-- [ ] Run the focused API checkpoint suite.
-- [ ] Run `pnpm --filter @medical/api typecheck` and `pnpm typecheck`.
-- [ ] Update the approved design doc with implementation status notes.
+- [x] Run the worker checkpoint suite.
+- [x] Run the focused API checkpoint suite.
+- [x] Run `pnpm --filter @medical/api typecheck` and `pnpm typecheck`.
+- [x] Update the approved design doc with implementation status notes.
 - [ ] Commit with `git commit -m "docs: sync general proofreading implementation status"`.
 
 ## Review Notes
