@@ -18,7 +18,7 @@ function resolveActiveShellPillar(input: {
   activeWorkbenchLabel: string;
   activeWorkbenchGroupLabel: string;
 }): (typeof shellPillars)[number] | null {
-  if (input.activeWorkbenchGroupLabel !== "核心工作台") {
+  if (input.activeWorkbenchGroupLabel !== "核心流程") {
     return null;
   }
 
@@ -75,7 +75,7 @@ export function WorkbenchShellHeader({
     <header className="workbench-header">
       <div className="workbench-header-topline">
         <div className="workbench-shell-brand">
-          <p className="workbench-shell-brand-eyebrow">Medical Editorial Control Deck</p>
+          <p className="workbench-shell-brand-eyebrow">医学编辑中控台</p>
           <div className="workbench-shell-brand-main">
             <div className="workbench-shell-brand-copy">
               <h1>医学稿件处理系统</h1>

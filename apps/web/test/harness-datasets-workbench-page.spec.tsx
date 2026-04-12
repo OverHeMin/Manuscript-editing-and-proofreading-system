@@ -240,57 +240,59 @@ test("harness datasets workbench page renders a loading state for server-side sh
     />,
   );
 
-  assert.match(markup, /Harness Dataset Workbench/);
-  assert.match(markup, /Loading gold-set drafts, published versions, and rubric links\.\.\./);
+  assert.match(markup, /Harness 控制 \/ 数据与样本/);
+  assert.match(markup, /正在载入金标准草稿、已发布版本与评分规则关联/u);
 });
 
 test("harness datasets workbench page renders curation queue, published exports, and provenance detail", () => {
   const markup = renderLoadedPage();
 
-  assert.match(markup, /Operations Management Zone/);
+  assert.match(markup, /Harness 控制/);
   assert.match(markup, /管理区/);
   assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /Harness Dataset Workbench/);
-  assert.match(markup, /Bounded admin-only workbench for governed gold-set curation and local export\./);
-  assert.match(markup, /Draft Queue/);
-  assert.match(markup, /Published Versions/);
+  assert.match(markup, /Harness 控制 \/ 数据与样本/);
+  assert.match(markup, /统一整理高质量样本、评分规则与本地导出/u);
+  assert.match(markup, /待整理队列/);
+  assert.match(markup, /已发布版本/);
   assert.match(markup, /Proofreading gold set/);
   assert.match(markup, /Editing gold set/);
-  assert.match(markup, /Rubric: Manual assignment required/);
-  assert.match(markup, /Rubric: Editing rubric v2 \(published\)/);
-  assert.match(markup, /reviewed_case_snapshot: snapshot-1/);
-  assert.match(markup, /human_final_asset: asset-2/);
-  assert.match(markup, /evaluation_evidence_pack: pack-2/);
-  assert.match(markup, /Local export root: \.local-data\/harness-exports\/development/);
-  assert.match(markup, /Export JSON/);
-  assert.match(markup, /Export JSONL/);
-  assert.doesNotMatch(markup, /Export JSON<\/button><button[^>]*>Export JSONL<\/button><\/div><\/article><article[^>]*><header[^>]*><div><h4>Proofreading gold set/);
+  assert.match(markup, /评分规则：需要人工指定/);
+  assert.match(markup, /评分规则：Editing rubric v2（已发布）/u);
+  assert.match(markup, /关注重点：问题识别 · 稿件类型：临床研究/u);
+  assert.match(markup, /关注重点：规范一致性 · 稿件类型：综述/u);
+  assert.match(markup, /已复核案例快照: snapshot-1/);
+  assert.match(markup, /人工终稿资产: asset-2/);
+  assert.match(markup, /评测证据包: pack-2/);
+  assert.match(markup, /本地导出目录：\.local-data\/harness-exports\/development/);
+  assert.match(markup, /导出 JSON/);
+  assert.match(markup, /导出 JSONL/);
+  assert.doesNotMatch(markup, /导出 JSON<\/button><button[^>]*>导出 JSONL<\/button><\/div><\/article><article[^>]*><header[^>]*><div><h4>Proofreading gold set/);
 });
 
 test("harness datasets workbench page reports release-freeze readiness and exact blocking reasons for published gold sets", () => {
   const markup = renderLoadedPage();
 
-  assert.match(markup, /Release-freeze ready/);
+  assert.match(markup, /发布冻结已就绪/);
   assert.match(markup, /Editing gold set/);
-  assert.match(markup, /De-identification: passed/);
-  assert.match(markup, /Human review: passed/);
-  assert.match(markup, /Release-freeze ready for manifest and export citation\./);
+  assert.match(markup, /脱敏校验：已通过/);
+  assert.match(markup, /人工复核：已通过/);
+  assert.match(markup, /发布冻结已就绪，可用于清单记录与导出引用。/u);
 
   assert.match(markup, /Screening gold set/);
-  assert.match(markup, /Release-freeze not ready: missing published rubric\./);
+  assert.match(markup, /发布冻结未就绪：缺少已发布的评分规则。/u);
 
   assert.match(markup, /Review gold set/);
-  assert.match(markup, /Release-freeze not ready: de-identification pending\./);
+  assert.match(markup, /发布冻结未就绪：脱敏校验尚未完成。/u);
 
   assert.match(markup, /Proofreading release candidate gold set/);
-  assert.match(markup, /Release-freeze not ready: human review pending\./);
+  assert.match(markup, /发布冻结未就绪：人工复核尚未完成。/u);
 });
 
 test("harness datasets workbench page keeps export behavior local-first after readiness signals are added", () => {
   const markup = renderLoadedPage();
 
-  assert.match(markup, /Export JSON/);
-  assert.match(markup, /Export JSONL/);
+  assert.match(markup, /导出 JSON/);
+  assert.match(markup, /导出 JSONL/);
   assert.match(markup, /\.local-data\/harness-exports\/development\/version-published-2\.json/);
   assert.doesNotMatch(markup, /Activate/);
   assert.doesNotMatch(markup, /Promote/);

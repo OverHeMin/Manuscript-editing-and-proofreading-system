@@ -31,7 +31,10 @@ import type {
   KnowledgeRevisionBindingKind,
   UpdateKnowledgeLibraryDraftInput,
 } from "./types.ts";
-import "./knowledge-library-workbench.css";
+
+if (typeof document !== "undefined") {
+  void import("./knowledge-library-workbench.css");
+}
 
 export type KnowledgeLibraryDuplicateCheckState =
   | "not_checked"
@@ -774,31 +777,30 @@ export function KnowledgeLibraryWorkbenchPage({
     <main className="knowledge-library-workbench">
       <header className="knowledge-library-hero">
         <div className="knowledge-library-hero-copy">
-          <span className="knowledge-library-eyebrow">Knowledge Library</span>
-          <h1>Knowledge Library</h1>
+          <span className="knowledge-library-eyebrow">协作与回收区</span>
+          <h1>知识库</h1>
           <p>
-            Author, revise, bind, and submit governed knowledge assets from a
-            standalone workbench instead of embedding the flow inside rule
-            governance.
+            用一张可搜索、可筛选、可展开抽屉的知识台账来管理规则、案例、图文说明和 AI 语义层，
+            让录入与复用都更像工作台，而不是长表单。
           </p>
           <WorkbenchCoreStrip
             activePillarId="knowledge"
-            heading="Authoring Pipeline"
-            description="Keep draft authoring, structured bindings, and review handoff on the same knowledge track."
+            heading="知识沉淀链路"
+            description="在同一条工作链路里完成搜索、录入、结构绑定和审核交接。"
           />
         </div>
         <dl className="knowledge-library-hero-stats">
           <div>
-            <dt>Role</dt>
+            <dt>当前角色</dt>
             <dd>{formatActorRole(actorRole)}</dd>
           </div>
           <div>
-            <dt>Selected Asset</dt>
-            <dd>{viewModel?.selectedAssetId ?? "New draft"}</dd>
+            <dt>当前条目</dt>
+            <dd>{viewModel?.selectedAssetId ?? "新建草稿"}</dd>
           </div>
           <div>
-            <dt>Selected Revision</dt>
-            <dd>{viewModel?.selectedRevisionId ?? "Not selected"}</dd>
+            <dt>当前版本</dt>
+            <dd>{viewModel?.selectedRevisionId ?? "未选择"}</dd>
           </div>
         </dl>
       </header>
@@ -821,6 +823,7 @@ export function KnowledgeLibraryWorkbenchPage({
             searchText={viewModel?.filters.searchText ?? ""}
             queryMode={viewModel?.filters.queryMode ?? "keyword"}
             resultCount={viewModel?.visibleLibrary.length ?? 0}
+            selectedAssetLabel={viewModel?.selectedSummary?.title ?? null}
             onSearchTextChange={(value) => updateFilters({ searchText: value })}
             onQueryModeChange={(value) => updateFilters({ queryMode: value })}
             onStartNewAsset={handleStartNewAsset}
@@ -828,7 +831,7 @@ export function KnowledgeLibraryWorkbenchPage({
 
           {loadStatus === "loading" && (viewModel?.library.length ?? 0) === 0 ? (
             <section className="knowledge-library-panel">
-              <p className="knowledge-library-empty">Loading knowledge library...</p>
+              <p className="knowledge-library-empty">正在加载知识库...</p>
             </section>
           ) : null}
 
@@ -1693,18 +1696,18 @@ function optionalTrimmedValue(value: string): string | undefined {
 function formatActorRole(role: AuthRole): string {
   switch (role) {
     case "admin":
-      return "Admin";
+      return "管理员";
     case "knowledge_reviewer":
-      return "Knowledge Reviewer";
+      return "知识审核";
     case "editor":
-      return "Editor";
+      return "编辑";
     case "proofreader":
-      return "Proofreader";
+      return "校对";
     case "screener":
-      return "Screener";
+      return "初筛";
     case "user":
     default:
-      return "User";
+      return "普通用户";
   }
 }
 

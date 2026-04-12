@@ -1,4 +1,8 @@
-import type { WorkbenchId } from "../features/auth/index.ts";
+import type {
+  WorkbenchHarnessSection,
+  WorkbenchId,
+  WorkbenchSettingsSection,
+} from "../features/auth/index.ts";
 import type { ManuscriptWorkbenchMode } from "../features/manuscript-workbench/manuscript-workbench-controller.ts";
 
 export type WorkbenchRenderKind =
@@ -14,6 +18,20 @@ export type WorkbenchRenderKind =
   | "placeholder";
 
 export type RuleCenterMode = "authoring" | "learning";
+export type SettingsSection = WorkbenchSettingsSection;
+export type HarnessSection = WorkbenchHarnessSection;
+
+export interface WorkbenchHandoff {
+  manuscriptId?: string;
+  knowledgeItemId?: string;
+  assetId?: string;
+  revisionId?: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+  ruleCenterMode?: RuleCenterMode;
+  settingsSection?: SettingsSection;
+  harnessSection?: HarnessSection;
+}
 
 export interface WorkbenchLocation {
   workbenchId: WorkbenchId | null;
@@ -24,6 +42,8 @@ export interface WorkbenchLocation {
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
+  settingsSection?: SettingsSection;
+  harnessSection?: HarnessSection;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -81,17 +101,7 @@ export function isWorkbenchImplemented(
 
 export function formatWorkbenchHash(
   workbenchId: WorkbenchId,
-  handoff?:
-    | string
-    | {
-        manuscriptId?: string;
-        knowledgeItemId?: string;
-        assetId?: string;
-        revisionId?: string;
-        reviewedCaseSnapshotId?: string;
-        sampleSetItemId?: string;
-        ruleCenterMode?: RuleCenterMode;
-      },
+  handoff?: string | WorkbenchHandoff,
 ): string {
   const params = new URLSearchParams();
   const manuscriptId =
@@ -107,6 +117,10 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.sampleSetItemId;
   const ruleCenterMode =
     typeof handoff === "string" ? undefined : handoff?.ruleCenterMode;
+  const settingsSection =
+    typeof handoff === "string" ? undefined : handoff?.settingsSection;
+  const harnessSection =
+    typeof handoff === "string" ? undefined : handoff?.harnessSection;
 
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
@@ -136,6 +150,14 @@ export function formatWorkbenchHash(
     params.set("ruleCenterMode", ruleCenterMode);
   }
 
+  if (settingsSection) {
+    params.set("settingsSection", settingsSection);
+  }
+
+  if (harnessSection) {
+    params.set("harnessSection", harnessSection);
+  }
+
   const query = params.toString();
   return `#${workbenchId}${query ? `?${query}` : ""}`;
 }
@@ -163,6 +185,8 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
   const sampleSetItemId = params.get("sampleSetItemId")?.trim();
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
+  const settingsSection = normalizeSettingsSection(params.get("settingsSection"));
+  const harnessSection = normalizeHarnessSection(params.get("harnessSection"));
 
   return {
     workbenchId: rawWorkbenchId,
@@ -175,6 +199,8 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
       : {}),
     ...(sampleSetItemId && sampleSetItemId.length > 0 ? { sampleSetItemId } : {}),
     ...(ruleCenterMode ? { ruleCenterMode } : {}),
+    ...(settingsSection ? { settingsSection } : {}),
+    ...(harnessSection ? { harnessSection } : {}),
   };
 }
 
@@ -191,6 +217,22 @@ export function isManuscriptWorkbenchId(
 
 function normalizeRuleCenterMode(value: string | null): RuleCenterMode | undefined {
   if (value === "authoring" || value === "learning") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function normalizeSettingsSection(value: string | null): SettingsSection | undefined {
+  if (value === "ai-access" || value === "accounts") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function normalizeHarnessSection(value: string | null): HarnessSection | undefined {
+  if (value === "overview" || value === "runs" || value === "datasets") {
     return value;
   }
 

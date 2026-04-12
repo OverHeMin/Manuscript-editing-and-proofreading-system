@@ -75,9 +75,7 @@ export function RulePackageAuthoringShell({
       ) : null}
 
       {isLoading && workspaceState == null ? (
-        <p className="template-governance-empty">
-          Loading rule-package workspace...
-        </p>
+        <p className="template-governance-empty">正在加载规则包工作台...</p>
       ) : null}
 
       {workspaceState ? (
@@ -115,15 +113,13 @@ export function RulePackageAuthoringShell({
         </div>
       ) : !isLoading ? (
         <p className="template-governance-empty">
-          Upload an original and edited example pair, or open the workbench from a reviewed-case snapshot.
+          上传原稿与编后稿示例，或从已复核案例快照进入规则包工作台。
         </p>
       ) : null}
 
       <div className="template-governance-actions">
         <button type="button" onClick={onToggleAdvancedEditor}>
-          {isAdvancedEditorVisible
-            ? "Hide Advanced Rule Editor"
-            : "Open Advanced Rule Editor"}
+          {isAdvancedEditorVisible ? "收起高级规则编辑器" : "展开高级规则编辑器"}
         </button>
       </div>
 

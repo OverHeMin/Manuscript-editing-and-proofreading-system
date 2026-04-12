@@ -105,7 +105,7 @@ export function PersistentAuthShell({
 
         setSession(null);
         setBootstrapErrorMessage(
-          toErrorMessage(error, "Unable to restore the current backend session."),
+          toErrorMessage(error, "当前无法恢复后台工作会话，请稍后重试。"),
         );
         setPhase("bootstrap-error");
       });
@@ -135,7 +135,7 @@ export function PersistentAuthShell({
       setNoticeMessage(null);
       setPhase("authenticated");
     } catch (error) {
-      setLoginErrorMessage(toErrorMessage(error, "Sign-in failed."));
+      setLoginErrorMessage(toErrorMessage(error, "登录失败，请检查账号、密码与网络后重试。"));
       setPhase("unauthenticated");
     } finally {
       setIsLoginPending(false);
@@ -158,7 +158,7 @@ export function PersistentAuthShell({
       setSession(null);
       setPhase("unauthenticated");
     } catch (error) {
-      setNoticeMessage(toErrorMessage(error, "Unable to sign out right now."));
+      setNoticeMessage(toErrorMessage(error, "当前无法退出登录，请稍后重试。"));
       setPhase("authenticated");
     } finally {
       setIsLogoutPending(false);
@@ -199,7 +199,7 @@ export function PersistentAuthShell({
       case "bootstrap-error":
         return {
           kind: "bootstrap-error",
-          message: bootstrapErrorMessage ?? "Unable to restore the current backend session.",
+          message: bootstrapErrorMessage ?? "当前无法恢复后台工作会话，请稍后重试。",
         };
       case "authenticated":
         if (session == null) {
@@ -277,61 +277,106 @@ export function PersistentAuthShellView({
       });
     case "unauthenticated":
       return (
-        <main className="app-shell">
-          <section className="auth-card">
-            <header className="auth-card-header">
-              <AuthShellBrand
-                title="编辑部工作台登录"
-                description="登录后进入初筛、编辑、校对与知识库工作区。"
-              />
-            </header>
-
-            <form className="auth-form" onSubmit={onSubmit}>
-              <label className="auth-field">
-                <span>账号</span>
-                <input
-                  className="auth-input"
-                  type="text"
-                  name="username"
-                  autoComplete="username"
-                  value={state.username}
-                  onChange={(event) => onUsernameChange(event.target.value)}
-                  disabled={state.isLoginPending}
-                  required
+        <main className="app-shell app-shell-auth">
+          <div className="auth-shell">
+            <section className="auth-shell-hero" aria-label="系统介绍">
+              <div className="auth-shell-hero-copy">
+                <AuthShellBrand
+                  title="为筛查、编辑、校对与知识入库提供稳定一致的工作入口"
+                  description="面向医学稿件处理场景打造的专业工作台，让高频流程更聚焦，协作与回收更顺畅。"
                 />
-              </label>
-
-              <label className="auth-field">
-                <span>密码</span>
-                <input
-                  className="auth-input"
-                  type="password"
-                  name="password"
-                  autoComplete="current-password"
-                  value={state.password}
-                  onChange={(event) => onPasswordChange(event.target.value)}
-                  disabled={state.isLoginPending}
-                  required
-                />
-              </label>
-
-              {state.loginErrorMessage ? (
-                <p className="auth-error-message" role="alert">
-                  {state.loginErrorMessage}
+                <p className="auth-shell-hero-summary">
+                  登录后进入初筛、编辑、校对与知识库工作区。
                 </p>
-              ) : null}
-
-              <div className="auth-actions">
-                <button
-                  type="submit"
-                  className="auth-primary-action"
-                  disabled={state.isLoginPending}
-                >
-                  {state.isLoginPending ? "登录中..." : "登录"}
-                </button>
+                <div className="auth-shell-hero-metrics" aria-label="系统特点">
+                  <article className="auth-shell-metric">
+                    <span>队列优先</span>
+                    <strong>批量筛查与单稿处理分层协同</strong>
+                  </article>
+                  <article className="auth-shell-metric">
+                    <span>知识回流</span>
+                    <strong>规则中心、知识库与复盘闭环统一归集</strong>
+                  </article>
+                  <article className="auth-shell-metric">
+                    <span>风控可见</span>
+                    <strong>AI 识别、风险提示与人工修订保持同屏</strong>
+                  </article>
+                </div>
               </div>
-            </form>
-          </section>
+              <div className="auth-shell-visual" aria-hidden="true">
+                <div className="auth-shell-visual-ring auth-shell-visual-ring-primary" />
+                <div className="auth-shell-visual-ring auth-shell-visual-ring-secondary" />
+                <div className="auth-shell-visual-grid">
+                  <div className="auth-shell-visual-card">
+                    <span>稿件队列</span>
+                    <strong>初筛 / 编辑 / 校对</strong>
+                  </div>
+                  <div className="auth-shell-visual-card is-highlight">
+                    <span>协作与回收区</span>
+                    <strong>知识库 · 规则中心 · 质量优化</strong>
+                  </div>
+                  <div className="auth-shell-visual-card">
+                    <span>AI 路由</span>
+                    <strong>模型接入与 Harness 控制独立治理</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="auth-card auth-shell-card">
+              <header className="auth-card-header">
+                <p className="auth-card-kicker">安全登录</p>
+                <h1>编辑部工作台登录</h1>
+                <p>使用已授权账号进入当前内测系统。</p>
+              </header>
+
+              <form className="auth-form" onSubmit={onSubmit}>
+                <label className="auth-field">
+                  <span>账号</span>
+                  <input
+                    className="auth-input"
+                    type="text"
+                    name="username"
+                    autoComplete="username"
+                    value={state.username}
+                    onChange={(event) => onUsernameChange(event.target.value)}
+                    disabled={state.isLoginPending}
+                    required
+                  />
+                </label>
+
+                <label className="auth-field">
+                  <span>密码</span>
+                  <input
+                    className="auth-input"
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    value={state.password}
+                    onChange={(event) => onPasswordChange(event.target.value)}
+                    disabled={state.isLoginPending}
+                    required
+                  />
+                </label>
+
+                {state.loginErrorMessage ? (
+                  <p className="auth-error-message" role="alert">
+                    {state.loginErrorMessage}
+                  </p>
+                ) : null}
+
+                <div className="auth-actions">
+                  <button
+                    type="submit"
+                    className="auth-primary-action"
+                    disabled={state.isLoginPending}
+                  >
+                    {state.isLoginPending ? "登录中..." : "登录"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
         </main>
       );
   }

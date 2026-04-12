@@ -1,4 +1,10 @@
 import type { RulePackageCandidateViewModel } from "../editorial-rules/index.ts";
+import {
+  formatRulePackageAutomationPostureLabel,
+  formatRulePackageKindLabel,
+  formatRulePackageSuggestedLayerLabel,
+  formatRulePackageTargetLabel,
+} from "./template-governance-display.ts";
 
 export interface RulePackageCandidateListProps {
   candidates: readonly RulePackageCandidateViewModel[];
@@ -15,8 +21,8 @@ export function RulePackageCandidateList({
     <article className="template-governance-card rule-package-panel">
       <div className="template-governance-panel-header">
         <div>
-          <h3>Rule Packages</h3>
-          <p>Review grouped edit intentions first, then decide which package deserves semantic confirmation.</p>
+          <h3>规则包</h3>
+          <p>先按编辑意图分组复核，再决定哪个规则包值得进入语义确认与编译。</p>
         </div>
       </div>
 
@@ -33,16 +39,16 @@ export function RulePackageCandidateList({
                   onClick={() => onSelectPackage(candidate.package_id)}
                 >
                   <span>{candidate.title}</span>
-                  <small>{formatPackageKind(candidate.package_kind)}</small>
+                  <small>{formatRulePackageKindLabel(candidate.package_kind)}</small>
                   <div className="template-governance-chip-row">
                     <span className="template-governance-chip">
-                      {candidate.rule_object}
+                      {formatRulePackageTargetLabel(candidate.rule_object)}
                     </span>
                     <span className="template-governance-chip template-governance-chip-secondary">
-                      {formatSuggestedLayer(candidate.suggested_layer)}
+                      {formatRulePackageSuggestedLayerLabel(candidate.suggested_layer)}
                     </span>
                     <span className="template-governance-chip template-governance-chip-secondary">
-                      {candidate.automation_posture}
+                      {formatRulePackageAutomationPostureLabel(candidate.automation_posture)}
                     </span>
                   </div>
                 </button>
@@ -51,35 +57,8 @@ export function RulePackageCandidateList({
           })}
         </ul>
       ) : (
-        <p className="template-governance-empty">
-          No rule-package candidates are available for the current reviewed case yet.
-        </p>
+        <p className="template-governance-empty">当前复核案例还没有可用的规则包候选。</p>
       )}
     </article>
   );
-}
-
-function formatPackageKind(packageKind: RulePackageCandidateViewModel["package_kind"]): string {
-  switch (packageKind) {
-    case "front_matter":
-      return "Front matter";
-    case "abstract_keywords":
-      return "Abstract and keywords";
-    case "heading_hierarchy":
-      return "Heading hierarchy";
-    case "numeric_statistics":
-      return "Numeric statistics";
-    case "three_line_table":
-      return "Three-line table";
-    case "reference":
-      return "References";
-    default:
-      return packageKind;
-  }
-}
-
-function formatSuggestedLayer(
-  suggestedLayer: RulePackageCandidateViewModel["suggested_layer"],
-): string {
-  return suggestedLayer === "journal_template" ? "Journal layer" : "Family layer";
 }

@@ -40,7 +40,7 @@ test("admin navigation exposes rule center as the single rule-governance entry",
 
   assert.ok(ruleCenterItem);
   assert.equal(ruleCenterItem?.label, "\u89c4\u5219\u4e2d\u5fc3");
-  assert.equal(allItems.some((item) => item.id === "learning-review"), false);
+  assert.equal(allItems.some((item) => item.id === "learning-review"), true);
 });
 
 test("abstract preset serializes the exact normalized abstract objective example", () => {
@@ -56,7 +56,7 @@ test("abstract preset serializes the exact normalized abstract objective example
 
   const serialized = serializeRuleAuthoringDraft(draft);
 
-  assert.equal(preset.objectLabel, "Abstract");
+  assert.equal(preset.objectLabel, "摘要");
   assert.equal(serialized.ruleObject, "abstract");
   assert.deepEqual(serialized.selector, {
     section_selector: "abstract",
@@ -118,7 +118,7 @@ test("table preset serializes semantic table selectors as inspect-first rules", 
 
   const serialized = serializeRuleAuthoringDraft(draft);
 
-  assert.equal(preset.objectLabel, "Table");
+  assert.equal(preset.objectLabel, "表格");
   assert.equal(serialized.ruleObject, "table");
   assert.equal(serialized.executionMode, "inspect");
   assert.deepEqual(serialized.selector, {
@@ -166,7 +166,8 @@ test("table preview explains semantic target and journal override scope", () => 
   assert.match(preview.semanticHitSummary, /Treatment group > n \(%\)/);
   assert.match(preview.expectedEvidenceSummary, /table_id=runtime-resolved/);
   assert.match(preview.overrideSummary, /journal-alpha/);
-  assert.match(preview.overrideSummary, /override/i);
+  assert.match(preview.overrideSummary, /期刊加层/);
+  assert.equal(preview.automationRiskPosture, "仅检查");
 });
 
 test("empty rule-set synchronization falls back to the abstract onboarding draft", () => {
@@ -210,10 +211,10 @@ test("table authoring form renders semantic selector fields", () => {
     }),
   );
 
-  assert.match(markup, /Semantic Target/);
-  assert.match(markup, /Header Path Includes/);
-  assert.match(markup, /Column Key/);
-  assert.match(markup, /Expected Table Shape/);
+  assert.match(markup, /语义目标/);
+  assert.match(markup, /表头路径/);
+  assert.match(markup, /列标识/);
+  assert.match(markup, /预期表格形态/);
 });
 
 test("statement preset serializes required statement placement as an inspect-first rule", () => {
@@ -227,7 +228,7 @@ test("statement preset serializes required statement placement as an inspect-fir
 
   const serialized = serializeRuleAuthoringDraft(draft);
 
-  assert.equal(preset.objectLabel, "Statement");
+  assert.equal(preset.objectLabel, "规范声明");
   assert.equal(serialized.ruleObject, "statement");
   assert.equal(serialized.executionMode, "inspect");
   assert.deepEqual(serialized.selector, {

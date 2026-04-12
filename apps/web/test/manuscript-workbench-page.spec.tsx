@@ -94,6 +94,28 @@ test("editing workbench renders a distinct localized hero for the current mainli
   assert.match(markup, /编辑工作台/);
   assert.match(markup, /核心工作台/);
   assert.match(markup, /当前焦点/);
+  assert.match(markup, /manuscript-workbench-mainline-layout/);
+  assert.match(markup, /manuscript-workbench-queue-pane/);
+  assert.match(markup, /manuscript-workbench-focus-panel/);
+  assert.match(markup, /AI 识别稿件类型/);
+  assert.match(markup, /批量处理/);
+});
+
+test("screening workbench renders queue, focus, and batch sections before a manuscript is loaded", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="screening"
+      controller={undefined}
+    />,
+  );
+
+  assert.match(markup, /manuscript-workbench-shell--screening/);
+  assert.match(markup, /manuscript-workbench-queue-pane/);
+  assert.match(markup, /manuscript-workbench-focus-panel/);
+  assert.match(markup, /manuscript-workbench-batch-drawer/);
+  assert.match(markup, /初筛队列/);
+  assert.match(markup, /AI 识别稿件类型/);
+  assert.match(markup, /批量处理/);
 });
 
 test("manuscript workbench page prefills lookup state from a workbench handoff", () => {

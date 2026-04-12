@@ -174,10 +174,11 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await learningReviewLink.click();
   await expect(page.getByRole("heading", { name: "规则中心" })).toBeVisible();
   await expect(page.locator("body")).toContainText(
-    "This rule-learning desk was opened from manuscript handoff",
+    `当前学习回流来自稿件交接：${manuscriptId}`,
   );
   await expect(page.locator("body")).toContainText(manuscriptId);
-  await expect(page.locator("body")).toContainText("Rule Candidate Review");
+  await expect(page.locator("body")).toContainText("规则候选队列");
+  await expect(page.locator("body")).toContainText("规则候选复核");
 });
 
 async function waitForCurrentAsset(

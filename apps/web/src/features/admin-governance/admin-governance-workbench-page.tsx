@@ -1,34 +1,14 @@
-import { startTransition, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
-import type {
-  ResolvedExecutionBundleViewModel,
-} from "../execution-governance/index.ts";
+import type { ResolvedExecutionBundleViewModel } from "../execution-governance/index.ts";
 import { formatExecutionResolutionModelSourceLabel } from "../execution-governance/index.ts";
-import type { ManuscriptType } from "../manuscripts/index.ts";
-import type { EvaluationRunViewModel } from "../verification-ops/index.ts";
-import type {
-  CreateModelRegistryEntryInput,
-  ModelRegistryEntryViewModel,
-} from "../model-registry/index.ts";
-import type {
-  CreateModuleTemplateDraftInput,
-  ModuleTemplateViewModel,
-  TemplateFamilyViewModel,
-  TemplateModule,
-} from "../templates/index.ts";
 import {
   createAdminGovernanceWorkbenchController,
-  type AdminHarnessScopeViewModel,
-  type AdminGovernanceWorkbenchController,
   type AdminGovernanceOverview,
-  type HarnessEnvironmentPreviewViewModel,
+  type AdminGovernanceWorkbenchController,
 } from "./admin-governance-controller.ts";
-import { AgentToolingGovernanceSection } from "./agent-tooling-governance-section.tsx";
-import { HarnessActivationGate } from "./harness-activation-gate.tsx";
-import { HarnessEnvironmentEditor } from "./harness-environment-editor.tsx";
-import { HarnessQualityLab } from "./harness-quality-lab.tsx";
-import { ManuscriptQualityPackagesSection } from "./manuscript-quality-packages-section.tsx";
 
 if (typeof document !== "undefined") {
   void import("./admin-governance-workbench.css");
@@ -37,8 +17,6 @@ if (typeof document !== "undefined") {
 const defaultController = createAdminGovernanceWorkbenchController(
   createBrowserHttpClient(),
 );
-
-const templateModules: TemplateModule[] = ["screening", "editing", "proofreading"];
 
 export interface AdminGovernanceWorkbenchPageProps {
   actorRole?: AuthRole;
@@ -49,7 +27,6 @@ export interface AdminGovernanceWorkbenchPageProps {
 }
 
 export function AdminGovernanceWorkbenchPage({
-  actorRole = "admin",
   controller = defaultController,
   initialOverview = null,
   initialExecutionPreview = null,
@@ -60,1582 +37,412 @@ export function AdminGovernanceWorkbenchPage({
     initialErrorMessage ? "error" : initialOverview ? "ready" : "idle",
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(initialErrorMessage);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isMutating, setIsMutating] = useState(false);
-  const [familyForm, setFamilyForm] = useState({
-    manuscriptType: "review" as TemplateFamilyViewModel["manuscript_type"],
-    name: "Review governance family",
-  });
-  const [moduleDraftForm, setModuleDraftForm] = useState<CreateModuleTemplateDraftInput>({
-    templateFamilyId: "",
-    module: "proofreading",
-    manuscriptType: "review",
-    prompt: "Generate proofreading draft first, then wait for confirmation before final output.",
-    checklist: ["Consistency", "Privacy"],
-    sectionRequirements: ["discussion", "references"],
-  });
-  const [modelForm, setModelForm] = useState<{
-    provider: ModelRegistryEntryViewModel["provider"];
-    modelName: string;
-    modelVersion: string;
-    allowedModules: TemplateModule[];
-    isProdAllowed: boolean;
-    connectionId: string;
-    fallbackModelId: string;
-  }>({
-    provider: "openai",
-    modelName: "gpt-5.4",
-    modelVersion: "",
-    allowedModules: [...templateModules],
-    isProdAllowed: true,
-    connectionId: initialOverview?.aiProviderConnections[0]?.id ?? "",
-    fallbackModelId: "",
-  });
-  const [routingPolicyForm, setRoutingPolicyForm] = useState<{
-    systemDefaultModelId: string;
-    moduleDefaults: Record<TemplateModule, string>;
-  }>({
-    systemDefaultModelId: "",
-    moduleDefaults: {
-      screening: "",
-      editing: "",
-      proofreading: "",
-    },
-  });
-  const [executionPreviewForm, setExecutionPreviewForm] = useState<{
-    module: TemplateModule;
-    manuscriptType: ManuscriptType;
-    templateFamilyId: string;
-  }>({
-    module: "editing",
-    manuscriptType: "review",
-    templateFamilyId: "",
-  });
-  const [executionPreview, setExecutionPreview] =
-    useState<ResolvedExecutionBundleViewModel | null>(initialExecutionPreview);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(
-    initialOverview?.modelRegistryEntries[0]?.id ?? null,
-  );
-  const [selectedModelForm, setSelectedModelForm] = useState<{
-    allowedModules: TemplateModule[];
-    isProdAllowed: boolean;
-    connectionId: string;
-    fallbackModelId: string;
-  }>(
-    createSelectedModelForm(
-      initialOverview?.modelRegistryEntries[0] ?? null,
-      initialOverview?.aiProviderConnections[0]?.id ?? "",
-    ),
-  );
-  const [harnessScope, setHarnessScope] = useState<{
-    module: TemplateModule;
-    manuscriptType: ManuscriptType;
-    templateFamilyId: string;
-  }>({
-    module: "editing",
-    manuscriptType:
-      initialOverview?.templateFamilies.find(
-        (family) => family.id === initialOverview.selectedTemplateFamilyId,
-      )?.manuscript_type ?? "review",
-    templateFamilyId: initialOverview?.selectedTemplateFamilyId ?? "",
-  });
-  const [harnessScopeState, setHarnessScopeState] =
-    useState<AdminHarnessScopeViewModel | null>(null);
-  const [harnessPreview, setHarnessPreview] =
-    useState<HarnessEnvironmentPreviewViewModel | null>(null);
-  const [harnessReason, setHarnessReason] = useState(
-    "Promote the candidate environment after harness verification.",
-  );
-  const [selectedHarnessSuiteId, setSelectedHarnessSuiteId] = useState(
-    initialOverview?.evaluationSuites[0]?.id ?? "",
-  );
-  const [latestHarnessRun, setLatestHarnessRun] =
-    useState<EvaluationRunViewModel | null>(null);
-  const [harnessSelection, setHarnessSelection] = useState({
-    executionProfileId: "",
-    runtimeBindingId: "",
-    modelRoutingPolicyVersionId: "",
-    retrievalPresetId: "",
-    manualReviewPolicyId: "",
-  });
 
   useEffect(() => {
-    if (initialOverview) {
+    if (initialOverview != null) {
       return;
     }
 
     void loadOverview();
   }, [controller, initialOverview]);
 
-  useEffect(() => {
-    if (!overview?.selectedTemplateFamilyId) {
-      return;
-    }
-
-    const selectedFamily = overview.templateFamilies.find(
-      (family) => family.id === overview.selectedTemplateFamilyId,
-    );
-
-    setModuleDraftForm((current) => ({
-      ...current,
-      templateFamilyId: overview.selectedTemplateFamilyId ?? "",
-      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
-    }));
-    setExecutionPreviewForm((current) => ({
-      ...current,
-      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
-      templateFamilyId: overview.selectedTemplateFamilyId ?? "",
-    }));
-    if (
-      executionPreview?.profile.template_family_id &&
-      executionPreview.profile.template_family_id !== overview.selectedTemplateFamilyId
-    ) {
-      setExecutionPreview(null);
-    }
-    setHarnessScope((current) => ({
-      ...current,
-      manuscriptType: selectedFamily?.manuscript_type ?? current.manuscriptType,
-      templateFamilyId: overview.selectedTemplateFamilyId ?? "",
-    }));
-  }, [executionPreview?.profile.template_family_id, overview?.selectedTemplateFamilyId, overview?.templateFamilies]);
-
-  useEffect(() => {
-    if (!overview) {
-      return;
-    }
-
-    setRoutingPolicyForm({
-      systemDefaultModelId: overview.modelRoutingPolicy.system_default_model_id ?? "",
-      moduleDefaults: {
-        screening: overview.modelRoutingPolicy.module_defaults.screening ?? "",
-        editing: overview.modelRoutingPolicy.module_defaults.editing ?? "",
-        proofreading: overview.modelRoutingPolicy.module_defaults.proofreading ?? "",
-      },
-    });
-    setModelForm((current) => ({
-      ...current,
-      connectionId:
-        current.connectionId.trim().length > 0
-          ? current.connectionId
-          : (overview.aiProviderConnections[0]?.id ?? ""),
-    }));
-    const nextSelectedModelId = resolveSelectedModelId(
-      overview.modelRegistryEntries,
-      selectedModelId,
-    );
-    setSelectedModelId(nextSelectedModelId);
-    setSelectedModelForm(
-      createSelectedModelForm(
-        overview.modelRegistryEntries.find((model) => model.id === nextSelectedModelId) ?? null,
-        overview.aiProviderConnections[0]?.id ?? "",
-      ),
-    );
-  }, [overview, selectedModelId]);
-
-  useEffect(() => {
-    if (
-      typeof controller.loadHarnessScope !== "function" ||
-      harnessScope.templateFamilyId.trim().length === 0
-    ) {
-      return;
-    }
-
-    let isCancelled = false;
-
-    void controller
-      .loadHarnessScope(harnessScope)
-      .then((nextScope) => {
-        if (isCancelled) {
-          return;
-        }
-
-        startTransition(() => {
-          setHarnessScopeState(nextScope);
-          setHarnessPreview(null);
-          setHarnessSelection({
-            executionProfileId: nextScope.activeEnvironment.execution_profile.id,
-            runtimeBindingId: nextScope.activeEnvironment.runtime_binding.id,
-            modelRoutingPolicyVersionId:
-              nextScope.activeEnvironment.model_routing_policy_version.id,
-            retrievalPresetId: nextScope.activeEnvironment.retrieval_preset.id,
-            manualReviewPolicyId: nextScope.activeEnvironment.manual_review_policy.id,
-          });
-          setSelectedHarnessSuiteId((current) =>
-            current.trim().length > 0
-              ? current
-              : nextScope.activeEnvironment.runtime_binding.evaluation_suite_ids[0] ??
-                overview?.evaluationSuites[0]?.id ??
-                "",
-          );
-        });
-      })
-      .catch((error) => {
-        if (isCancelled) {
-          return;
-        }
-
-        startTransition(() => {
-          setErrorMessage(toErrorMessage(error));
-        });
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [controller, harnessScope, overview?.evaluationSuites]);
-
-  const selectedModel =
-    overview?.modelRegistryEntries.find((model) => model.id === selectedModelId) ?? null;
-  const harnessExecutionProfiles = (overview?.executionProfiles ?? []).filter(
-    (profile) =>
-      profile.module === harnessScope.module &&
-      profile.manuscript_type === harnessScope.manuscriptType &&
-      profile.template_family_id === harnessScope.templateFamilyId,
-  );
-  const harnessRuntimeBindings = (overview?.runtimeBindings ?? []).filter(
-    (binding) =>
-      binding.module === harnessScope.module &&
-      binding.manuscript_type === harnessScope.manuscriptType &&
-      binding.template_family_id === harnessScope.templateFamilyId,
-  );
-  const harnessRoutingVersions = collectHarnessRoutingVersions(
-    overview?.routingPolicies ?? [],
-    harnessScope.module,
-    harnessScope.templateFamilyId,
-  );
-
-  async function loadOverview(input?: { selectedTemplateFamilyId?: string | null }) {
+  async function loadOverview() {
     setLoadStatus("loading");
     setErrorMessage(null);
 
     try {
-      const nextOverview = await controller.loadOverview(input);
-      startTransition(() => {
-        setOverview(nextOverview);
-        setLoadStatus("ready");
-      });
+      const nextOverview = await controller.loadOverview();
+      setOverview(nextOverview);
+      setLoadStatus("ready");
     } catch (error) {
-      startTransition(() => {
-        setLoadStatus("error");
-        setErrorMessage(toErrorMessage(error));
-      });
+      setLoadStatus("error");
+      setErrorMessage(toErrorMessage(error));
     }
   }
 
-  async function handleCreateFamily() {
-    await runMutation(async () => {
-      const result = await controller.createTemplateFamilyAndReload({
-        manuscriptType: familyForm.manuscriptType,
-        name: familyForm.name.trim(),
-      });
-
-      startTransition(() => {
-        setOverview(result.overview);
-        setStatusMessage(`Created template family: ${result.createdFamily.name}`);
-      });
-    });
-  }
-
-  async function handleCreateModuleDraft() {
-    if (!overview?.selectedTemplateFamilyId) {
-      return;
-    }
-    const selectedTemplateFamilyId = overview.selectedTemplateFamilyId;
-
-    await runMutation(async () => {
-      const result = await controller.createModuleTemplateDraftAndReload({
-        selectedTemplateFamilyId,
-        draft: {
-          ...moduleDraftForm,
-          templateFamilyId: selectedTemplateFamilyId,
-          prompt: moduleDraftForm.prompt.trim(),
-          checklist: normalizeCommaSeparatedList(moduleDraftForm.checklist),
-          sectionRequirements: normalizeCommaSeparatedList(
-            moduleDraftForm.sectionRequirements,
-          ),
-        },
-      });
-
-      startTransition(() => {
-        setOverview(result.overview);
-        setStatusMessage(`Created module template draft v${result.createdDraft.version_no}.`);
-      });
-    });
-  }
-
-  async function handlePublishModuleTemplate(moduleTemplateId: string) {
-    if (!overview?.selectedTemplateFamilyId) {
-      return;
-    }
-    const selectedTemplateFamilyId = overview.selectedTemplateFamilyId;
-
-    await runMutation(async () => {
-      const nextOverview = await controller.publishModuleTemplateAndReload({
-        selectedTemplateFamilyId,
-        moduleTemplateId,
-        actorRole,
-      });
-
-      startTransition(() => {
-        setOverview(nextOverview);
-        setStatusMessage(`Published module template: ${moduleTemplateId}`);
-      });
-    });
-  }
-
-  async function handleCreateModelEntry() {
-    await runMutation(async () => {
-      const result = await controller.createModelEntryAndReload({
-        actorRole,
-        provider: modelForm.provider,
-        modelName: modelForm.modelName.trim(),
-        modelVersion: normalizeOptionalText(modelForm.modelVersion),
-        allowedModules: modelForm.allowedModules,
-        isProdAllowed: modelForm.isProdAllowed,
-        connectionId: normalizeOptionalText(modelForm.connectionId),
-        fallbackModelId: normalizeOptionalText(modelForm.fallbackModelId),
-      });
-
-      startTransition(() => {
-        setOverview(result.overview);
-        setSelectedModelId(result.createdModel.id);
-        setStatusMessage(`Created model entry: ${result.createdModel.model_name}`);
-      });
-    });
-  }
-
-  async function handleUpdateSelectedModel() {
-    if (!selectedModel) {
-      return;
-    }
-
-    await runMutation(async () => {
-      const result = await controller.updateModelEntryAndReload({
-        modelId: selectedModel.id,
-        actorRole,
-        allowedModules: selectedModelForm.allowedModules,
-        isProdAllowed: selectedModelForm.isProdAllowed,
-        connectionId: normalizeOptionalSelection(selectedModelForm.connectionId),
-        fallbackModelId: normalizeOptionalSelection(selectedModelForm.fallbackModelId),
-      });
-
-      startTransition(() => {
-        setOverview(result.overview);
-        setSelectedModelId(result.updatedModel.id);
-        setStatusMessage(`Updated model entry: ${result.updatedModel.model_name}`);
-      });
-    });
-  }
-
-  async function handleSaveRoutingPolicy() {
-    await runMutation(async () => {
-      const nextOverview = await controller.updateRoutingPolicyAndReload({
-        actorRole,
-        systemDefaultModelId: normalizeOptionalSelection(
-          routingPolicyForm.systemDefaultModelId,
-        ),
-        moduleDefaults: {
-          screening: normalizeOptionalSelection(
-            routingPolicyForm.moduleDefaults.screening,
-          ),
-          editing: normalizeOptionalSelection(routingPolicyForm.moduleDefaults.editing),
-          proofreading: normalizeOptionalSelection(
-            routingPolicyForm.moduleDefaults.proofreading,
-          ),
-        },
-      });
-
-      startTransition(() => {
-        setOverview(nextOverview);
-        setStatusMessage("Updated legacy fallback defaults.");
-      });
-    });
-  }
-
-  async function handleResolveExecutionPreview() {
-    const templateFamilyId = executionPreviewForm.templateFamilyId.trim();
-    if (templateFamilyId.length === 0) {
-      return;
-    }
-
-    await runMutation(async () => {
-      const preview = await controller.resolveExecutionBundlePreview({
-        module: executionPreviewForm.module,
-        manuscriptType: executionPreviewForm.manuscriptType,
-        templateFamilyId,
-      });
-
-      startTransition(() => {
-        setExecutionPreview(preview);
-        setStatusMessage("Resolved execution bundle preview.");
-      });
-    });
-  }
-
-  async function handlePreviewHarnessEnvironment() {
-    if (typeof controller.previewHarnessEnvironment !== "function") {
-      return;
-    }
-
-    await runMutation(async () => {
-      const preview = await controller.previewHarnessEnvironment({
-        module: harnessScope.module,
-        manuscriptType: harnessScope.manuscriptType,
-        templateFamilyId: harnessScope.templateFamilyId,
-        executionProfileId: harnessSelection.executionProfileId,
-        runtimeBindingId: harnessSelection.runtimeBindingId,
-        modelRoutingPolicyVersionId: harnessSelection.modelRoutingPolicyVersionId,
-        retrievalPresetId: harnessSelection.retrievalPresetId,
-        manualReviewPolicyId: harnessSelection.manualReviewPolicyId,
-      });
-
-      startTransition(() => {
-        setHarnessPreview(preview);
-        setStatusMessage("Previewed harness candidate environment.");
-      });
-    });
-  }
-
-  async function handleLaunchHarnessRun() {
-    if (
-      typeof controller.createHarnessRun !== "function" ||
-      harnessPreview == null ||
-      selectedHarnessSuiteId.trim().length === 0
-    ) {
-      return;
-    }
-
-    await runMutation(async () => {
-      const run = await controller.createHarnessRun({
-        actorRole,
-        suiteId: selectedHarnessSuiteId,
-        baselineBinding: buildFrozenBindingInput(
-          "baseline",
-          harnessPreview.active_environment,
-        ),
-        candidateBinding: buildFrozenBindingInput(
-          "candidate",
-          harnessPreview.candidate_environment,
-        ),
-      });
-
-      startTransition(() => {
-        setLatestHarnessRun(run);
-        setStatusMessage(`Launched candidate harness run ${run.id}.`);
-      });
-    });
-  }
-
-  async function handleActivateHarnessEnvironment() {
-    if (
-      typeof controller.activateHarnessEnvironment !== "function" ||
-      harnessPreview == null
-    ) {
-      return;
-    }
-
-    await runMutation(async () => {
-      await controller.activateHarnessEnvironment({
-        actorRole,
-        module: harnessScope.module,
-        manuscriptType: harnessScope.manuscriptType,
-        templateFamilyId: harnessScope.templateFamilyId,
-        executionProfileId: harnessSelection.executionProfileId,
-        runtimeBindingId: harnessSelection.runtimeBindingId,
-        modelRoutingPolicyVersionId: harnessSelection.modelRoutingPolicyVersionId,
-        retrievalPresetId: harnessSelection.retrievalPresetId,
-        manualReviewPolicyId: harnessSelection.manualReviewPolicyId,
-        reason: normalizeOptionalText(harnessReason),
-      });
-
-      await Promise.all([
-        loadOverview({
-          selectedTemplateFamilyId: harnessScope.templateFamilyId,
-        }),
-        typeof controller.loadHarnessScope === "function"
-          ? controller.loadHarnessScope(harnessScope).then((nextScope) => {
-              startTransition(() => {
-                setHarnessScopeState(nextScope);
-                setHarnessPreview(null);
-              });
-            })
-          : Promise.resolve(),
-      ]);
-
-      startTransition(() => {
-        setStatusMessage("Activated the candidate harness environment.");
-      });
-    });
-  }
-
-  async function handleRollbackHarnessEnvironment() {
-    if (typeof controller.rollbackHarnessEnvironment !== "function") {
-      return;
-    }
-
-    await runMutation(async () => {
-      await controller.rollbackHarnessEnvironment({
-        actorRole,
-        module: harnessScope.module,
-        manuscriptType: harnessScope.manuscriptType,
-        templateFamilyId: harnessScope.templateFamilyId,
-        reason: normalizeOptionalText(harnessReason),
-      });
-
-      await Promise.all([
-        loadOverview({
-          selectedTemplateFamilyId: harnessScope.templateFamilyId,
-        }),
-        typeof controller.loadHarnessScope === "function"
-          ? controller.loadHarnessScope(harnessScope).then((nextScope) => {
-              startTransition(() => {
-                setHarnessScopeState(nextScope);
-                setHarnessPreview(null);
-              });
-            })
-          : Promise.resolve(),
-      ]);
-
-      startTransition(() => {
-        setStatusMessage("Rolled the scope back to the previous harness environment.");
-      });
-    });
-  }
-
-  if (loadStatus === "loading" && overview == null) {
+  if (!overview && loadStatus !== "error") {
     return (
       <article className="workbench-placeholder" role="status">
-        <h2>Loading Governance Console</h2>
-        <p>Fetching template governance and prompt/skill registry state.</p>
+        <h2>正在加载管理总览</h2>
+        <p>正在汇总 AI 接入、Harness 控制与治理资产状态。</p>
       </article>
     );
   }
 
-  if (loadStatus === "error") {
+  if (!overview) {
     return (
       <article className="workbench-placeholder" role="alert">
-        <h2>Governance Console Unavailable</h2>
-        <p>{errorMessage ?? "Unable to load governance data."}</p>
+        <h2>管理总览暂不可用</h2>
+        <p>{errorMessage ?? "暂时无法加载管理区数据。"}</p>
       </article>
     );
   }
+
+  const aiConnections = overview.aiProviderConnections ?? [];
+  const modelEntries = overview.modelRegistryEntries ?? [];
+  const qualityPackages = overview.qualityPackages ?? [];
+  const evaluationSuites = overview.evaluationSuites ?? [];
+  const runtimeBindings = overview.runtimeBindings ?? [];
+  const executionProfiles = overview.executionProfiles ?? [];
+  const templateFamilies = overview.templateFamilies ?? [];
+  const harnessAdapterHealth = overview.harnessAdapterHealth ?? [];
+  const toolGatewayTools = overview.toolGatewayTools ?? [];
+  const agentProfiles = overview.agentProfiles ?? [];
+  const sandboxProfiles = overview.sandboxProfiles ?? [];
+  const agentExecutionLogs = overview.agentExecutionLogs ?? [];
+  const enabledConnections = aiConnections.filter((connection) => connection.enabled).length;
+  const prodReadyModels = modelEntries.filter((model) => model.is_prod_allowed).length;
+  const publishedQualityPackages = qualityPackages.filter(
+    (record) => record.status === "published",
+  ).length;
+  const selectedModel =
+    initialExecutionPreview == null
+      ? null
+      : resolveModelDisplayName(modelEntries, initialExecutionPreview.resolved_model.id);
 
   return (
     <section className="admin-governance-workbench">
       <header className="admin-governance-hero">
         <div className="admin-governance-hero-copy">
-          <p className="admin-governance-eyebrow">Management Zone</p>
-          <h2>Harness Control Plane</h2>
+          <p className="admin-governance-eyebrow">管理区</p>
+          <h2>管理总览</h2>
           <p>
-            Change the live AI working environment by tuning governed execution profiles, runtime
-            bindings, routing versions, retrieval presets, and manual review policy from one
-            control surface.
+            把高频治理入口拿出来，把复杂配置收进专页。AI 接入、账号与权限、Harness
+            控制都从这里快速进入。
+          </p>
+          <p>
+            规则、模板与校对策略已统一收口到规则中心，管理区只保留真正的后台治理入口。
           </p>
           {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
         </div>
-        {statusMessage ? <p className="admin-governance-status">{statusMessage}</p> : null}
       </header>
 
+      <section className="admin-governance-entry-grid">
+        <EntryCard
+          title="AI 接入"
+          description="维护 API Key、模型接入、模块绑定与温度策略，不再和账号管理混放。"
+          href={formatWorkbenchHash("system-settings", {
+            settingsSection: "ai-access",
+          })}
+          actionLabel="进入 AI 接入"
+          chips={[
+            `已接入 ${aiConnections.length} 个连接`,
+            `已启用 ${enabledConnections} 个连接`,
+            `生产可用 ${prodReadyModels} 个模型`,
+          ]}
+        />
+        <EntryCard
+          title="账号与权限"
+          description="集中处理账号、角色与访问范围，避免和 AI 接入参数重复。"
+          href={formatWorkbenchHash("system-settings", {
+            settingsSection: "accounts",
+          })}
+          actionLabel="进入账号与权限"
+          chips={["账号独立子页", "角色治理", "访问范围"]}
+        />
+        <EntryCard
+          title="Harness 控制"
+          description="评测运行、数据样本与结果对照统一收口，避免形成低频孤岛栏目。"
+          href={formatWorkbenchHash("evaluation-workbench", {
+            harnessSection: "overview",
+          })}
+          actionLabel="进入 Harness 控制"
+          chips={[
+            `${evaluationSuites.length} 个评测套件`,
+            `${runtimeBindings.length} 个运行绑定`,
+            `${harnessAdapterHealth.length} 条适配器健康记录`,
+          ]}
+          links={[
+            {
+              label: "评测运行",
+              href: formatWorkbenchHash("evaluation-workbench", {
+                harnessSection: "runs",
+              }),
+            },
+            {
+              label: "数据/样本",
+              href: formatWorkbenchHash("harness-datasets"),
+            },
+          ]}
+        />
+        <EntryCard
+          title="规则中心"
+          description="规则、模板与校对策略已迁入协作与回收区，避免继续堆在管理页。"
+          href={formatWorkbenchHash("template-governance", {
+            ruleCenterMode: "authoring",
+          })}
+          actionLabel="打开规则中心"
+          chips={[
+            `${templateFamilies.length} 个模板族`,
+            `${executionProfiles.length} 条执行画像`,
+            `${publishedQualityPackages} 个已发布质量包`,
+          ]}
+        />
+      </section>
+
       <section className="admin-governance-summary">
-        <SummaryCard label="Template Families" value={overview?.templateFamilies.length ?? 0} />
-        <SummaryCard label="Module Templates" value={overview?.moduleTemplates.length ?? 0} />
-        <SummaryCard label="Prompt Templates" value={overview?.promptTemplates.length ?? 0} />
-        <SummaryCard label="Skill Packages" value={overview?.skillPackages.length ?? 0} />
-        <SummaryCard label="Quality Packages" value={overview?.qualityPackages.length ?? 0} />
-        <SummaryCard label="Execution Profiles" value={overview?.executionProfiles.length ?? 0} />
-        <SummaryCard label="Model Entries" value={overview?.modelRegistryEntries.length ?? 0} />
-        <SummaryCard label="Routing Policies" value={overview?.routingPolicies.length ?? 0} />
-        <SummaryCard label="Tool Gateway" value={overview?.toolGatewayTools.length ?? 0} />
-        <SummaryCard label="Sandbox Profiles" value={overview?.sandboxProfiles.length ?? 0} />
-        <SummaryCard label="Agent Profiles" value={overview?.agentProfiles.length ?? 0} />
-        <SummaryCard label="Agent Runtimes" value={overview?.agentRuntimes.length ?? 0} />
-        <SummaryCard label="Runtime Bindings" value={overview?.runtimeBindings.length ?? 0} />
-        <SummaryCard label="Harness Adapters" value={overview?.harnessAdapters.length ?? 0} />
+        <SummaryCard label="AI 连接" value={aiConnections.length} />
+        <SummaryCard label="模型条目" value={modelEntries.length} />
+        <SummaryCard label="运行绑定" value={runtimeBindings.length} />
+        <SummaryCard label="评测套件" value={evaluationSuites.length} />
+        <SummaryCard label="质量包" value={qualityPackages.length} />
+        <SummaryCard label="Agent 运行" value={agentExecutionLogs.length} />
       </section>
 
-      <section className="admin-governance-grid">
-        <HarnessEnvironmentEditor
-          module={harnessScope.module}
-          manuscriptType={harnessScope.manuscriptType}
-          activeScope={harnessScopeState}
-          preview={harnessPreview}
-          qualityPackages={overview?.qualityPackages ?? []}
-          executionProfiles={harnessExecutionProfiles}
-          runtimeBindings={harnessRuntimeBindings}
-          routingVersions={harnessRoutingVersions}
-          selection={harnessSelection}
-          onModuleChange={(module) => {
-            setHarnessScope((current) => ({
-              ...current,
-              module,
-            }));
-          }}
-          onSelectionChange={(patch) => {
-            setHarnessSelection((current) => ({
-              ...current,
-              ...patch,
-            }));
-            setHarnessPreview(null);
-            setLatestHarnessRun(null);
-          }}
-          onPreview={() => void handlePreviewHarnessEnvironment()}
-          isMutating={isMutating}
-        />
+      <section className="admin-governance-snapshot-grid">
+        <article className="admin-governance-panel">
+          <div className="admin-governance-panel-header">
+            <h3>AI 接入快照</h3>
+            <span>快速判断连接、模型与回退链是否健康</span>
+          </div>
+          <ul className="admin-governance-list admin-governance-list-dense">
+            {aiConnections.slice(0, 4).map((connection) => (
+              <li key={connection.id} className="admin-governance-asset-row">
+                <span>{connection.name}</span>
+                <small>
+                  {connection.provider_kind} · {connection.compatibility_mode} ·{" "}
+                  {formatConnectionTestStatus(connection.last_test_status)}
+                </small>
+              </li>
+            ))}
+          </ul>
+          {aiConnections.length === 0 ? (
+            <p className="admin-governance-empty">尚未配置 AI 连接，请先到 AI 接入页添加。</p>
+          ) : null}
 
-        <ManuscriptQualityPackagesSection
-          packages={overview?.qualityPackages ?? []}
-          isMutating={isMutating}
-          onCreateDraft={async (input) => {
-            await runMutation(async () => {
-              const result = await controller.createQualityPackageDraftAndReload({
-                actorRole,
-                ...input,
-              });
-
-              startTransition(() => {
-                setOverview(result.overview);
-                setStatusMessage(
-                  `Created quality package draft: ${result.createdPackage.package_name} v${result.createdPackage.version}`,
-                );
-              });
-            });
-          }}
-          onPublishVersion={async (packageVersionId) => {
-            await runMutation(async () => {
-              const nextOverview = await controller.publishQualityPackageVersionAndReload({
-                actorRole,
-                packageVersionId,
-                selectedTemplateFamilyId: overview?.selectedTemplateFamilyId ?? null,
-              });
-
-              startTransition(() => {
-                setOverview(nextOverview);
-                setStatusMessage(`Published quality package version: ${packageVersionId}`);
-              });
-            });
-          }}
-        />
-
-        <HarnessQualityLab
-          evaluationSuites={overview?.evaluationSuites ?? []}
-          selectedSuiteId={selectedHarnessSuiteId}
-          preview={harnessPreview}
-          latestRun={latestHarnessRun}
-          onSuiteChange={setSelectedHarnessSuiteId}
-          onLaunch={() => void handleLaunchHarnessRun()}
-          isMutating={isMutating}
-        />
-
-        <HarnessActivationGate
-          preview={harnessPreview}
-          reason={harnessReason}
-          onReasonChange={setHarnessReason}
-          onActivate={() => void handleActivateHarnessEnvironment()}
-          onRollback={() => void handleRollbackHarnessEnvironment()}
-          isMutating={isMutating}
-        />
+          {initialExecutionPreview ? (
+            <div className="admin-governance-snapshot-stack">
+              <SnapshotRow label="当前生效模型" value={selectedModel ?? "未命名模型"} />
+              <SnapshotRow
+                label="当前生效连接"
+                value={initialExecutionPreview.resolved_connection
+                  ? `${initialExecutionPreview.resolved_connection.name} (${initialExecutionPreview.resolved_connection.id})`
+                  : "未分配"}
+              />
+              <SnapshotRow
+                label="来源"
+                value={`${formatExecutionResolutionModelSourceLabel(
+                  initialExecutionPreview.model_source,
+                )} (${initialExecutionPreview.model_source})`}
+              />
+              <SnapshotRow
+                label="回退模型"
+                value={
+                  initialExecutionPreview.fallback_chain
+                    .map((model) => formatModelDisplayName(model))
+                    .join(" -> ") || "无"
+                }
+              />
+              <SnapshotRow
+                label="预览预警"
+                value={
+                  initialExecutionPreview.warnings.map((warning) => warning.code).join(", ") ||
+                  "无"
+                }
+              />
+              <SnapshotRow
+                label="连通提醒"
+                value={
+                  initialExecutionPreview.provider_readiness.issues
+                    .map((issue) => issue.code)
+                    .join(", ") || "无"
+                }
+              />
+            </div>
+          ) : null}
+        </article>
 
         <article className="admin-governance-panel">
-          <h3>Create Template Family</h3>
-          <label className="admin-governance-field">
-            <span>Manuscript Type</span>
-            <select
-              value={familyForm.manuscriptType}
-              onChange={(event) =>
-                setFamilyForm((current) => ({
-                  ...current,
-                  manuscriptType: event.target.value as TemplateFamilyViewModel["manuscript_type"],
-                }))
+          <div className="admin-governance-panel-header">
+            <h3>Harness 运行体征</h3>
+            <span>让高阶控制保持可见，但不抢第一页</span>
+          </div>
+          <div className="admin-governance-snapshot-stack">
+            <SnapshotRow label="评测套件" value={`${evaluationSuites.length} 个`} />
+            <SnapshotRow label="运行绑定" value={`${runtimeBindings.length} 个`} />
+            <SnapshotRow
+              label="适配器健康"
+              value={
+                harnessAdapterHealth.length > 0
+                  ? `${harnessAdapterHealth.length} 条记录`
+                  : "暂无健康记录"
               }
-              disabled={isMutating}
-            >
-              <option value="review">Review</option>
-              <option value="clinical_study">Clinical Study</option>
-              <option value="case_report">Case Report</option>
-              <option value="guideline_interpretation">Guideline Interpretation</option>
-            </select>
-          </label>
-          <label className="admin-governance-field">
-            <span>Family Name</span>
-            <input
-              type="text"
-              value={familyForm.name}
-              onChange={(event) =>
-                setFamilyForm((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-              disabled={isMutating}
             />
-          </label>
-          <button
-            type="button"
-            className="auth-primary-action"
-            onClick={() => void handleCreateFamily()}
-            disabled={isMutating || familyForm.name.trim().length === 0}
-          >
-            Create Family
-          </button>
-        </article>
-
-        <article className="admin-governance-panel">
-          <h3>Template Families</h3>
-          <ul className="admin-governance-list">
-            {(overview?.templateFamilies ?? []).map((family) => {
-              const isSelected = family.id === overview?.selectedTemplateFamilyId;
-              return (
-                <li key={family.id}>
-                  <button
-                    type="button"
-                    className={`admin-governance-list-button${isSelected ? " is-active" : ""}`}
-                    onClick={() => void loadOverview({ selectedTemplateFamilyId: family.id })}
-                  >
-                    <span>{family.name}</span>
-                    <small>
-                      {family.manuscript_type} · {family.status}
-                    </small>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </article>
-
-        <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Module Template Drafts</h3>
-          {overview?.selectedTemplateFamilyId ? (
-            <>
-              <div className="admin-governance-form-grid">
-                <label className="admin-governance-field">
-                  <span>Module</span>
-                  <select
-                    value={moduleDraftForm.module}
-                    onChange={(event) =>
-                      setModuleDraftForm((current) => ({
-                        ...current,
-                        module: event.target.value as TemplateModule,
-                      }))
-                    }
-                    disabled={isMutating}
-                  >
-                    {templateModules.map((module) => (
-                      <option key={module} value={module}>
-                        {module}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="admin-governance-field">
-                  <span>Prompt</span>
-                  <textarea
-                    rows={4}
-                    value={moduleDraftForm.prompt}
-                    onChange={(event) =>
-                      setModuleDraftForm((current) => ({
-                        ...current,
-                        prompt: event.target.value,
-                      }))
-                    }
-                    disabled={isMutating}
-                  />
-                </label>
-                <label className="admin-governance-field">
-                  <span>Checklist</span>
-                  <input
-                    type="text"
-                    value={renderCommaSeparatedList(moduleDraftForm.checklist)}
-                    onChange={(event) =>
-                      setModuleDraftForm((current) => ({
-                        ...current,
-                        checklist: normalizeCommaSeparatedList(event.target.value),
-                      }))
-                    }
-                    disabled={isMutating}
-                  />
-                </label>
-                <label className="admin-governance-field">
-                  <span>Section Requirements</span>
-                  <input
-                    type="text"
-                    value={renderCommaSeparatedList(moduleDraftForm.sectionRequirements)}
-                    onChange={(event) =>
-                      setModuleDraftForm((current) => ({
-                        ...current,
-                        sectionRequirements: normalizeCommaSeparatedList(event.target.value),
-                      }))
-                    }
-                    disabled={isMutating}
-                  />
-                </label>
-              </div>
-
-              <div className="auth-actions">
-                <button
-                  type="button"
-                  className="auth-primary-action"
-                  onClick={() => void handleCreateModuleDraft()}
-                  disabled={isMutating || moduleDraftForm.prompt.trim().length === 0}
-                >
-                  Create Module Draft
-                </button>
-              </div>
-
-              <ul className="admin-governance-list admin-governance-list-spaced">
-                {(overview?.moduleTemplates ?? []).map((template) => (
-                  <li key={template.id} className="admin-governance-template-row">
-                    <div>
-                      <strong>
-                        {template.module} v{template.version_no}
-                      </strong>
-                      <p>{template.prompt}</p>
-                    </div>
-                    <div className="admin-governance-template-actions">
-                      <span className="admin-governance-badge">{template.status}</span>
-                      {template.status === "draft" ? (
-                        <button
-                          type="button"
-                          className="workbench-secondary-action"
-                          onClick={() => void handlePublishModuleTemplate(template.id)}
-                          disabled={isMutating}
-                        >
-                          Publish
-                        </button>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : (
-            <p className="admin-governance-empty">Create or select a template family first.</p>
-          )}
-        </article>
-
-        <article className="admin-governance-panel">
-          <h3>Prompt Templates</h3>
-          <ul className="admin-governance-list">
-            {(overview?.promptTemplates ?? []).map((template) => (
-              <li key={template.id} className="admin-governance-asset-row">
-                <span>
-                  {template.name} {template.version}
-                </span>
-                <small>
-                  {template.module} · {template.status}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="admin-governance-panel">
-          <h3>Skill Packages</h3>
-          <ul className="admin-governance-list">
-            {(overview?.skillPackages ?? []).map((skillPackage) => (
-              <li key={skillPackage.id} className="admin-governance-asset-row">
-                <span>
-                  {skillPackage.name} {skillPackage.version}
-                </span>
-                <small>{skillPackage.status}</small>
-              </li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Model Registry</h3>
-          <div className="admin-governance-form-grid">
-            <label className="admin-governance-field">
-              <span>Provider</span>
-              <select
-                value={modelForm.provider}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    provider: event.target.value as ModelRegistryEntryViewModel["provider"],
-                  }))
-                }
-                disabled={isMutating}
-              >
-                <option value="openai">OpenAI</option>
-                <option value="openai_compatible">OpenAI Compatible</option>
-                <option value="qwen">Qwen</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="google">Google</option>
-                <option value="azure_openai">Azure OpenAI</option>
-                <option value="local">Local</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
-            <label className="admin-governance-field">
-              <span>Model Name</span>
-              <input
-                type="text"
-                value={modelForm.modelName}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    modelName: event.target.value,
-                  }))
-                }
-                disabled={isMutating}
-              />
-            </label>
-            <label className="admin-governance-field">
-              <span>Model Version</span>
-              <input
-                type="text"
-                value={modelForm.modelVersion}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    modelVersion: event.target.value,
-                  }))
-                }
-                disabled={isMutating}
-                placeholder="optional"
-              />
-            </label>
-            <label className="admin-governance-field">
-              <span>Provider Connection</span>
-              <select
-                value={modelForm.connectionId}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    connectionId: event.target.value,
-                  }))
-                }
-                disabled={isMutating}
-              >
-                <option value="">Unassigned</option>
-                {(overview?.aiProviderConnections ?? []).map((connection) => (
-                  <option key={connection.id} value={connection.id}>
-                    {connection.name} · {connection.provider_kind}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="admin-governance-field">
-              <span>Fallback Model</span>
-              <select
-                value={modelForm.fallbackModelId}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    fallbackModelId: event.target.value,
-                  }))
-                }
-                disabled={isMutating}
-              >
-                <option value="">None</option>
-                {filterEligibleFallbackModels(
-                  overview?.modelRegistryEntries ?? [],
-                  modelForm.allowedModules,
-                )
-                  .map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {formatModelDisplayName(model)}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="admin-governance-field">
-              <span>Production Approved</span>
-              <select
-                value={modelForm.isProdAllowed ? "yes" : "no"}
-                onChange={(event) =>
-                  setModelForm((current) => ({
-                    ...current,
-                    isProdAllowed: event.target.value === "yes",
-                  }))
-                }
-                disabled={isMutating}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-          </div>
-
-          <fieldset className="admin-governance-module-selector">
-            <legend>Allowed Modules</legend>
-            <div className="admin-governance-module-options">
-              {templateModules.map((module) => (
-                <label key={module} className="admin-governance-module-option">
-                  <input
-                    type="checkbox"
-                    checked={modelForm.allowedModules.includes(module)}
-                    onChange={() =>
-                      setModelForm((current) => ({
-                        ...current,
-                        allowedModules: toggleModuleSelection(
-                          current.allowedModules,
-                          module,
-                        ),
-                      }))
-                    }
-                    disabled={isMutating}
-                  />
-                  <span>{module}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <div className="auth-actions">
-            <button
-              type="button"
-              className="auth-primary-action"
-              onClick={() => void handleCreateModelEntry()}
-              disabled={
-                isMutating ||
-                modelForm.modelName.trim().length === 0 ||
-                modelForm.allowedModules.length === 0 ||
-                modelForm.connectionId.trim().length === 0
+            <SnapshotRow
+              label="最近 Judge 校准"
+              value={
+                overview.latestJudgeCalibrationBatchOutcome
+                  ? `${overview.latestJudgeCalibrationBatchOutcome.execution_id} · ${overview.latestJudgeCalibrationBatchOutcome.status}`
+                  : "暂无批次"
               }
-            >
-              Create Model Entry
-            </button>
+            />
           </div>
 
-          {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
-            <ul className="admin-governance-list admin-governance-list-spaced">
-              {(overview?.modelRegistryEntries ?? []).map((model) => (
-                <li
-                  key={model.id}
-                  className={`admin-governance-template-row${model.id === selectedModelId ? " is-active" : ""}`}
-                >
-                  <div>
-                    <strong>
-                      {model.provider} / {model.model_name}
-                    </strong>
-                    <p>
-                      Version {model.model_version || "default"} · Modules{" "}
-                      {model.allowed_modules.join(", ")}
-                    </p>
-                    <p>
-                      Provider Connection{" "}
-                      {resolveConnectionDisplayName(overview?.aiProviderConnections ?? [], model.connection_id)}
-                    </p>
-                    <p>
-                      Connection Kind{" "}
-                      {resolveConnectionProviderKind(overview?.aiProviderConnections ?? [], model.connection_id)}
-                    </p>
-                    <p>
-                      Fallback Model{" "}
-                      {resolveModelDisplayName(overview?.modelRegistryEntries ?? [], model.fallback_model_id)}
-                    </p>
-                  </div>
-                  <div className="admin-governance-template-actions">
-                    <span className="admin-governance-badge">
-                      {model.is_prod_allowed ? "prod_allowed" : "review_only"}
-                    </span>
-                    <button
-                      type="button"
-                      className="workbench-secondary-action"
-                      onClick={() => setSelectedModelId(model.id)}
-                      disabled={isMutating}
-                    >
-                      {model.id === selectedModelId ? "Selected" : "Select"}
-                    </button>
-                  </div>
+          {harnessAdapterHealth.length > 0 ? (
+            <ul className="admin-governance-list admin-governance-list-dense">
+              {harnessAdapterHealth.slice(0, 3).map((record) => (
+                <li key={record.adapter.id} className="admin-governance-asset-row">
+                  <span>{record.adapter.display_name}</span>
+                  <small>
+                    {record.adapter.kind} · {record.adapter.execution_mode} · 最近状态{" "}
+                    {record.latest_status}
+                  </small>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="admin-governance-empty">
-              No model entries yet. Add at least one production-approved model before assigning
-              routing defaults.
+              Harness 详情已收口到 Harness 控制页，这里只保留总览快照。
             </p>
           )}
         </article>
 
         <article className="admin-governance-panel">
-          <h3>Selected Model</h3>
-          {selectedModel ? (
-            <>
-              <p className="admin-governance-empty">
-                {formatModelDisplayName(selectedModel)}
-              </p>
-              <div className="admin-governance-form-grid">
-                <label className="admin-governance-field">
-                  <span>Provider Connection</span>
-                  <select
-                    value={selectedModelForm.connectionId}
-                    onChange={(event) =>
-                      setSelectedModelForm((current) => ({
-                        ...current,
-                        connectionId: event.target.value,
-                      }))
-                    }
-                    disabled={isMutating}
-                  >
-                    <option value="">Unassigned</option>
-                    {(overview?.aiProviderConnections ?? []).map((connection) => (
-                      <option key={connection.id} value={connection.id}>
-                        {connection.name} 路 {connection.provider_kind}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="admin-governance-field">
-                  <span>Fallback Model</span>
-                  <select
-                    value={selectedModelForm.fallbackModelId}
-                    onChange={(event) =>
-                      setSelectedModelForm((current) => ({
-                        ...current,
-                        fallbackModelId: event.target.value,
-                      }))
-                    }
-                    disabled={isMutating}
-                  >
-                    <option value="">None</option>
-                    {filterEligibleFallbackModels(
-                      overview?.modelRegistryEntries ?? [],
-                      selectedModelForm.allowedModules,
-                      selectedModel.id,
-                    ).map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {formatModelDisplayName(model)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="admin-governance-field">
-                  <span>Production Approved</span>
-                  <select
-                    value={selectedModelForm.isProdAllowed ? "yes" : "no"}
-                    onChange={(event) =>
-                      setSelectedModelForm((current) => ({
-                        ...current,
-                        isProdAllowed: event.target.value === "yes",
-                      }))
-                    }
-                    disabled={isMutating}
-                  >
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </label>
-              </div>
-
-              <fieldset className="admin-governance-module-selector">
-                <legend>Allowed Modules</legend>
-                <div className="admin-governance-module-options">
-                  {templateModules.map((module) => (
-                    <label key={module} className="admin-governance-module-option">
-                      <input
-                        type="checkbox"
-                        checked={selectedModelForm.allowedModules.includes(module)}
-                        onChange={() =>
-                          setSelectedModelForm((current) => ({
-                            ...current,
-                            allowedModules: toggleModuleSelection(
-                              current.allowedModules,
-                              module,
-                            ),
-                          }))
-                        }
-                        disabled={isMutating}
-                      />
-                      <span>{module}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <div className="auth-actions">
-                <button
-                  type="button"
-                  className="auth-primary-action"
-                  onClick={() => void handleUpdateSelectedModel()}
-                  disabled={
-                    isMutating ||
-                    selectedModelForm.allowedModules.length === 0 ||
-                    selectedModelForm.connectionId.trim().length === 0
-                  }
-                >
-                  Save Model Changes
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="admin-governance-empty">
-              Select a model entry to adjust its provider connection, fallback, and module access.
-            </p>
-          )}
-        </article>
-
-        <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Legacy Fallback Defaults</h3>
-          {(overview?.modelRegistryEntries.length ?? 0) > 0 ? (
-            <>
-              <div className="admin-governance-form-grid">
-                <label className="admin-governance-field">
-                  <span>System Default</span>
-                  <select
-                    value={routingPolicyForm.systemDefaultModelId}
-                    onChange={(event) =>
-                      setRoutingPolicyForm((current) => ({
-                        ...current,
-                        systemDefaultModelId: event.target.value,
-                      }))
-                    }
-                    disabled={isMutating}
-                  >
-                    <option value="">Unassigned</option>
-                    {(overview?.modelRegistryEntries ?? []).map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.provider} / {model.model_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {templateModules.map((module) => (
-                  <label key={module} className="admin-governance-field">
-                    <span>{module} Default</span>
-                    <select
-                      value={routingPolicyForm.moduleDefaults[module]}
-                      onChange={(event) =>
-                        setRoutingPolicyForm((current) => ({
-                          ...current,
-                          moduleDefaults: {
-                            ...current.moduleDefaults,
-                            [module]: event.target.value,
-                          },
-                        }))
-                      }
-                      disabled={isMutating}
-                    >
-                      <option value="">Unassigned</option>
-                      {(overview?.modelRegistryEntries ?? [])
-                        .filter((model) => model.allowed_modules.includes(module))
-                        .map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.provider} / {model.model_name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-
-              <div className="auth-actions">
-                <button
-                  type="button"
-                  className="auth-primary-action"
-                    onClick={() => void handleSaveRoutingPolicy()}
-                    disabled={isMutating}
-                  >
-                  Save Legacy Defaults
-                </button>
-              </div>
-
-              <div className="admin-governance-policy-grid">
-              <article className="admin-governance-asset-row">
-                  <span>Legacy System Default</span>
-                  <small>
-                    {overview?.modelRoutingPolicy.system_default_model_id ?? "Unassigned"}
-                  </small>
-                </article>
-                <article className="admin-governance-asset-row">
-                  <span>Legacy Template Overrides</span>
-                  <small>
-                    {Object.keys(overview?.modelRoutingPolicy.template_overrides ?? {}).length}
-                  </small>
-                </article>
-              </div>
-            </>
-          ) : (
-            <p className="admin-governance-empty">
-              Add a model entry first. Module defaults only allow models that support the selected
-              module.
-            </p>
-          )}
-        </article>
-
-        <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Execution Governance</h3>
-          {(overview?.executionProfiles.length ?? 0) > 0 ? (
-            <ul className="admin-governance-list admin-governance-list-spaced">
-              {(overview?.executionProfiles ?? []).map((profile) => (
-                <li key={profile.id} className="admin-governance-template-row">
-                  <div>
-                    <strong>
-                      {profile.module} / {profile.manuscript_type}
-                    </strong>
-                    <p>
-                      Family {profile.template_family_id} 路 Template {profile.module_template_id}
-                    </p>
-                    <p>
-                      Rule Set {profile.rule_set_id} 路 Prompt {profile.prompt_template_id}
-                    </p>
-                  </div>
-                  <div className="admin-governance-template-actions">
-                    <span className="admin-governance-badge">{profile.status}</span>
-                    <small>v{profile.version}</small>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="admin-governance-empty">
-              No execution profiles yet. Publish at least one governance profile to resolve a live
-              runtime bundle.
-            </p>
-          )}
-
-          <div className="admin-governance-form-grid">
-            <label className="admin-governance-field">
-              <span>Template Family</span>
-              <select
-                value={executionPreviewForm.templateFamilyId}
-                onChange={(event) =>
-                  setExecutionPreviewForm((current) => {
-                    const selectedFamily = overview?.templateFamilies.find(
-                      (family) => family.id === event.target.value,
-                    );
-
-                    return {
-                      ...current,
-                      templateFamilyId: event.target.value,
-                      manuscriptType:
-                        selectedFamily?.manuscript_type ?? current.manuscriptType,
-                    };
-                  })
-                }
-                disabled={isMutating}
-              >
-                <option value="">Select family</option>
-                {(overview?.templateFamilies ?? []).map((family) => (
-                  <option key={family.id} value={family.id}>
-                    {family.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="admin-governance-field">
-              <span>Module</span>
-              <select
-                value={executionPreviewForm.module}
-                onChange={(event) =>
-                  setExecutionPreviewForm((current) => ({
-                    ...current,
-                    module: event.target.value as TemplateModule,
-                  }))
-                }
-                disabled={isMutating}
-              >
-                {templateModules.map((module) => (
-                  <option key={module} value={module}>
-                    {module}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="admin-governance-panel-header">
+            <h3>治理资产快照</h3>
+            <span>模板、执行画像与工具策略只保留摘要</span>
           </div>
-
-          <div className="auth-actions">
-            <button
-              type="button"
-              className="auth-primary-action"
-              onClick={() => void handleResolveExecutionPreview()}
-              disabled={isMutating || executionPreviewForm.templateFamilyId.trim().length === 0}
-            >
-              Preview Execution Bundle
-            </button>
+          <div className="admin-governance-snapshot-stack">
+            <SnapshotRow label="模板族" value={`${templateFamilies.length} 个`} />
+            <SnapshotRow label="执行画像" value={`${executionProfiles.length} 条`} />
+            <SnapshotRow label="质量包" value={`${qualityPackages.length} 个`} />
+            <SnapshotRow label="工具网关" value={`${toolGatewayTools.length} 个`} />
+            <SnapshotRow label="沙箱配置" value={`${sandboxProfiles.length} 个`} />
+            <SnapshotRow label="Agent 档案" value={`${agentProfiles.length} 个`} />
           </div>
-
-          {executionPreview ? (
-            <div className="admin-governance-resolution-grid">
-              <article className="admin-governance-asset-row">
-                <span>Resolved Profile</span>
-                <small>{executionPreview.profile.id}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Resolved Model</span>
-                <small>
-                  {executionPreview.resolved_model.provider} /{" "}
-                  {executionPreview.resolved_model.model_name}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Model Source</span>
-                <small>
-                  {formatExecutionResolutionModelSourceLabel(
-                    executionPreview.model_source,
-                  )}{" "}
-                  ({executionPreview.model_source})
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Knowledge Hits</span>
-                <small>{executionPreview.knowledge_items.length}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Rule Set</span>
-                <small>{executionPreview.rule_set.id}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Rule Count</span>
-                <small>{executionPreview.rules.length}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Prompt Template</span>
-                <small>
-                  {executionPreview.prompt_template.name} /{" "}
-                  {executionPreview.prompt_template.template_kind ?? "unspecified"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Skill Packages</span>
-                <small>{executionPreview.skill_packages.length}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Provider Connection</span>
-                <small>
-                  {executionPreview.resolved_connection
-                    ? `${executionPreview.resolved_connection.name} (${executionPreview.resolved_connection.id})`
-                    : "Unassigned"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Compatibility Mode</span>
-                <small>
-                  {executionPreview.resolved_connection?.compatibility_mode ?? "legacy_unbound"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Provider Readiness</span>
-                <small>
-                  {executionPreview.provider_readiness.status} ·{" "}
-                  {executionPreview.provider_readiness.issues.map((issue) => issue.code).join(", ") || "none"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Fallback Chain</span>
-                <small>
-                  {executionPreview.fallback_chain.map((model) => formatModelDisplayName(model)).join(" -> ") || "none"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Preview Warnings</span>
-                <small>
-                  {executionPreview.warnings.map((warning) => warning.code).join(", ") || "none"}
-                </small>
-              </article>
-            </div>
-          ) : (
-            <p className="admin-governance-empty">
-              Resolve a family/module pair to preview the exact governed runtime bundle the system
-              will execute.
-            </p>
-          )}
-        </article>
-
-        <article className="admin-governance-panel admin-governance-panel-wide">
-          <h3>Harness Integrations</h3>
           <p className="admin-governance-empty">
-            Adapter health remains supporting evidence for the control plane. Operators still
-            change the live environment through preview, evaluation, activation, and rollback
-            above.
+            具体规则、模板与校对策略请前往规则中心，管理页不再承担长编辑链路。
           </p>
+        </article>
 
-          {(overview?.harnessAdapterHealth.length ?? 0) > 0 ? (
-            <ul className="admin-governance-list admin-governance-list-spaced">
-              {(overview?.harnessAdapterHealth ?? []).map((record) => (
-                <li key={record.adapter.id} className="admin-governance-template-row">
-                  <div>
-                    <strong>{record.adapter.display_name}</strong>
-                    <p>
-                      {record.adapter.kind} 路 {record.adapter.execution_mode} 路 latest{" "}
-                      {record.latest_status}
-                    </p>
-                  </div>
-                  <div className="admin-governance-template-actions">
-                    <span className="admin-governance-badge">
-                      trace {record.trace_availability}
-                    </span>
-                    {record.latest_degradation_reason ? (
-                      <small>{record.latest_degradation_reason}</small>
-                    ) : null}
-                  </div>
+        <article className="admin-governance-panel">
+          <div className="admin-governance-panel-header">
+            <h3>当前提醒</h3>
+            <span>先看该拿出来的风险，再决定是否进入细节页</span>
+          </div>
+          <ul className="admin-governance-list admin-governance-list-dense">
+            {buildGovernanceAlerts(overview, initialExecutionPreview).map((alert) => (
+              <li key={alert} className="admin-governance-asset-row">
+                <span>{alert}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </section>
+
+      <details className="admin-governance-detail-shell">
+        <summary>查看治理资产明细</summary>
+        <div className="admin-governance-detail-grid">
+          <article className="admin-governance-panel">
+            <div className="admin-governance-panel-header">
+              <h3>模板与执行明细</h3>
+              <span>只保留摘要，编辑动作已迁往对应专页</span>
+            </div>
+            <ul className="admin-governance-list admin-governance-list-dense">
+              {templateFamilies.slice(0, 5).map((family) => (
+                <li key={family.id} className="admin-governance-asset-row">
+                  <span>{family.name}</span>
+                  <small>
+                    {formatManuscriptTypeLabel(family.manuscript_type)} · {family.status}
+                  </small>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="admin-governance-empty">
-              No harness adapters are registered yet.
-            </p>
-          )}
+            {templateFamilies.length === 0 ? (
+              <p className="admin-governance-empty">当前没有模板族记录。</p>
+            ) : null}
+          </article>
 
-          {overview?.latestJudgeCalibrationBatchOutcome ? (
-            <div className="admin-governance-policy-grid">
-              <article className="admin-governance-asset-row">
-                <span>Latest Judge Batch</span>
-                <small>{overview.latestJudgeCalibrationBatchOutcome.execution_id}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Judge Status</span>
-                <small>{overview.latestJudgeCalibrationBatchOutcome.status}</small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Exact Match Rate</span>
-                <small>
-                  {overview.latestJudgeCalibrationBatchOutcome.exact_match_rate ?? "unknown"}
-                </small>
-              </article>
-              <article className="admin-governance-asset-row">
-                <span>Disagreements</span>
-                <small>
-                  {overview.latestJudgeCalibrationBatchOutcome.disagreement_count ?? "unknown"}
-                </small>
-              </article>
+          <article className="admin-governance-panel">
+            <div className="admin-governance-panel-header">
+              <h3>AI 路由摘要</h3>
+              <span>便于先判断是否需要进入 AI 接入页</span>
             </div>
-          ) : (
-            <p className="admin-governance-empty">
-              No judge calibration outcome has been recorded yet.
-            </p>
-          )}
-        </article>
+            <div className="admin-governance-snapshot-stack">
+              <SnapshotRow
+                label="系统默认模型"
+                value={resolveModelDisplayName(
+                  modelEntries,
+                  overview.modelRoutingPolicy.system_default_model_id,
+                )}
+              />
+              <SnapshotRow
+                label="模块默认数"
+                value={`${countAssignedModuleDefaults(
+                  overview.modelRoutingPolicy.module_defaults,
+                )} 项`}
+              />
+              <SnapshotRow label="路由策略版本" value={`${overview.routingPolicies.length} 组`} />
+              <SnapshotRow
+                label="生产可用模型"
+                value={`${prodReadyModels} 个`}
+              />
+            </div>
+          </article>
 
-        {overview ? (
-          <AgentToolingGovernanceSection
-            actorRole={actorRole}
-            controller={controller}
-            overview={overview}
-            isMutating={isMutating}
-            runMutation={runMutation}
-            onOverviewChange={(
-              nextOverview: AdminGovernanceOverview,
-              nextStatusMessage: string,
-            ) => {
-              startTransition(() => {
-                setOverview(nextOverview);
-                setStatusMessage(nextStatusMessage);
-              });
-            }}
-          />
-        ) : null}
-      </section>
+          <article className="admin-governance-panel">
+            <div className="admin-governance-panel-header">
+              <h3>最近运行摘要</h3>
+              <span>只看队列体征，不在这里展开深度排障</span>
+            </div>
+            <ul className="admin-governance-list admin-governance-list-dense">
+              {agentExecutionLogs.slice(0, 5).map((log) => (
+                <li key={log.id} className="admin-governance-asset-row">
+                  <span>
+                    {formatModuleLabel(log.module)} · 稿件 {log.manuscript_id}
+                  </span>
+                  <small>
+                    {log.status} · 运行时 {log.runtime_id} · 绑定 {log.runtime_binding_id}
+                  </small>
+                </li>
+              ))}
+            </ul>
+            {agentExecutionLogs.length === 0 ? (
+              <p className="admin-governance-empty">最近还没有 Agent 运行记录。</p>
+            ) : null}
+          </article>
+        </div>
+      </details>
     </section>
   );
+}
 
-  async function runMutation(work: () => Promise<void>) {
-    setIsMutating(true);
-    setErrorMessage(null);
-
-    try {
-      await work();
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    } finally {
-      setIsMutating(false);
-    }
-  }
+function EntryCard(props: {
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+  chips: string[];
+  links?: Array<{ label: string; href: string }>;
+}) {
+  return (
+    <article className="admin-governance-link-card">
+      <div className="admin-governance-link-copy">
+        <p className="admin-governance-link-kicker">入口</p>
+        <h3>{props.title}</h3>
+        <p>{props.description}</p>
+      </div>
+      <ul className="admin-governance-chip-list">
+        {props.chips.map((chip) => (
+          <li key={chip}>{chip}</li>
+        ))}
+      </ul>
+      <div className="admin-governance-link-actions">
+        <a className="workbench-secondary-action admin-governance-link-action" href={props.href}>
+          {props.actionLabel}
+        </a>
+        {props.links?.map((link) => (
+          <a
+            key={link.href}
+            className="admin-governance-inline-link"
+            href={link.href}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </article>
+  );
 }
 
 function SummaryCard(props: { label: string; value: number }) {
@@ -1647,156 +454,118 @@ function SummaryCard(props: { label: string; value: number }) {
   );
 }
 
-function normalizeCommaSeparatedList(input: string | string[] | undefined): string[] | undefined {
-  const values = Array.isArray(input)
-    ? input
-    : input
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0);
-
-  return values && values.length > 0 ? values : undefined;
-}
-
-function renderCommaSeparatedList(values: string[] | undefined): string {
-  return values?.join(", ") ?? "";
-}
-
-function collectHarnessRoutingVersions(
-  routingPolicies: AdminGovernanceOverview["routingPolicies"],
-  module: TemplateModule,
-  templateFamilyId: string,
-) {
-  return routingPolicies
-    .filter(
-      (policy) =>
-        (policy.scope_kind === "template_family" &&
-          policy.scope_value === templateFamilyId) ||
-        (policy.scope_kind === "module" && policy.scope_value === module),
-    )
-    .flatMap((policy) => policy.versions);
-}
-
-function buildFrozenBindingInput(
-  lane: "baseline" | "candidate",
-  environment: NonNullable<HarnessEnvironmentPreviewViewModel["active_environment"]>,
-) {
-  return {
-    lane,
-    executionProfileId: environment.execution_profile.id,
-    runtimeBindingId: environment.runtime_binding.id,
-    modelRoutingPolicyVersionId: environment.model_routing_policy_version.id,
-    retrievalPresetId: environment.retrieval_preset.id,
-    manualReviewPolicyId: environment.manual_review_policy.id,
-    modelId: environment.model_routing_policy_version.primary_model_id,
-    runtimeId: environment.runtime_binding.runtime_id,
-    promptTemplateId: environment.execution_profile.prompt_template_id,
-    skillPackageIds: environment.execution_profile.skill_package_ids,
-    qualityPackageVersionIds:
-      environment.runtime_binding.quality_package_version_ids ?? [],
-    moduleTemplateId: environment.execution_profile.module_template_id,
-  };
-}
-
-function normalizeOptionalText(value: string): string | undefined {
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function normalizeOptionalSelection(value: string): string | null {
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function toggleModuleSelection(
-  currentModules: readonly TemplateModule[],
-  module: TemplateModule,
-): TemplateModule[] {
-  if (currentModules.includes(module)) {
-    return currentModules.filter((value) => value !== module);
-  }
-
-  return [...currentModules, module];
-}
-
-function resolveConnectionDisplayName(
-  connections: AdminGovernanceOverview["aiProviderConnections"],
-  connectionId: string | undefined,
-): string {
-  if (!connectionId) {
-    return "Unassigned";
-  }
-
-  const connection = connections.find((record) => record.id === connectionId);
-  return connection ? `${connection.name} (${connection.id})` : connectionId;
-}
-
-function resolveConnectionProviderKind(
-  connections: AdminGovernanceOverview["aiProviderConnections"],
-  connectionId: string | undefined,
-): string {
-  if (!connectionId) {
-    return "legacy_unbound";
-  }
-
-  return connections.find((record) => record.id === connectionId)?.provider_kind ?? "unknown";
-}
-
-function formatModelDisplayName(
-  model: Pick<ModelRegistryEntryViewModel, "id" | "provider" | "model_name">,
-): string {
-  return `${model.provider} / ${model.model_name} (${model.id})`;
-}
-
-function createSelectedModelForm(
-  model: ModelRegistryEntryViewModel | null,
-  defaultConnectionId: string,
-): {
-  allowedModules: TemplateModule[];
-  isProdAllowed: boolean;
-  connectionId: string;
-  fallbackModelId: string;
-} {
-  return {
-    allowedModules: [...(model?.allowed_modules ?? [])],
-    isProdAllowed: model?.is_prod_allowed ?? true,
-    connectionId: model?.connection_id ?? defaultConnectionId,
-    fallbackModelId: model?.fallback_model_id ?? "",
-  };
-}
-
-function resolveSelectedModelId(
-  models: readonly ModelRegistryEntryViewModel[],
-  requestedId: string | null,
-): string | null {
-  if (requestedId && models.some((model) => model.id === requestedId)) {
-    return requestedId;
-  }
-
-  return models[0]?.id ?? null;
-}
-
-function filterEligibleFallbackModels(
-  models: readonly ModelRegistryEntryViewModel[],
-  allowedModules: readonly TemplateModule[],
-  excludeModelId?: string,
-): ModelRegistryEntryViewModel[] {
-  return models.filter(
-    (model) =>
-      model.id !== excludeModelId &&
-      model.allowed_modules.some((module) => allowedModules.includes(module)),
+function SnapshotRow(props: { label: string; value: string }) {
+  return (
+    <div className="admin-governance-snapshot-row">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
   );
 }
 
-function resolveModelDisplayName(
-  models: readonly ModelRegistryEntryViewModel[],
-  modelId: string | undefined,
-): string {
-  if (!modelId) {
-    return "None";
+function buildGovernanceAlerts(
+  overview: AdminGovernanceOverview,
+  executionPreview: ResolvedExecutionBundleViewModel | null,
+) {
+  const alerts: string[] = [];
+  const connections = overview.aiProviderConnections ?? [];
+  const qualityPackages = overview.qualityPackages ?? [];
+
+  if (connections.length === 0) {
+    alerts.push("尚未配置 AI 连接，需先在 AI 接入页完成接入。");
   }
 
-  const model = models.find((record) => record.id === modelId);
+  const unknownConnections = connections.filter(
+    (connection) => connection.last_test_status === "unknown",
+  );
+  if (unknownConnections.length > 0) {
+    alerts.push(`有 ${unknownConnections.length} 个 AI 连接尚未完成连通性测试。`);
+  }
+
+  if (qualityPackages.every((record) => record.status !== "published")) {
+    alerts.push("还没有已发布质量包，Harness 对照结果的落地依据会偏弱。");
+  }
+
+  if (executionPreview?.warnings.length) {
+    alerts.push(
+      `当前治理预览存在 ${executionPreview.warnings.length} 条预警：${executionPreview.warnings
+        .map((warning) => warning.code)
+        .join(", ")}。`,
+    );
+  }
+
+  if (overview.harnessAdapterHealth?.some((record) => record.latest_degradation_reason)) {
+    alerts.push("Harness 适配器存在降级记录，建议进入 Harness 控制页进一步查看。");
+  }
+
+  if (alerts.length === 0) {
+    alerts.push("当前没有需要前台立刻处理的全局提醒。");
+  }
+
+  return alerts;
+}
+
+function formatConnectionTestStatus(status: string | null | undefined) {
+  switch (status) {
+    case "passed":
+      return "连通正常";
+    case "failed":
+      return "连通失败";
+    case "unknown":
+    default:
+      return "待测试";
+  }
+}
+
+function formatManuscriptTypeLabel(value: string) {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "review":
+      return "综述";
+    case "case_report":
+      return "病例报告";
+    case "guideline_interpretation":
+      return "指南解读";
+    default:
+      return value;
+  }
+}
+
+function formatModuleLabel(value: string) {
+  switch (value) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    default:
+      return value;
+  }
+}
+
+function countAssignedModuleDefaults(
+  moduleDefaults: Record<string, string | null | undefined>,
+) {
+  return Object.values(moduleDefaults).filter((value) => value != null && value.length > 0).length;
+}
+
+function formatModelDisplayName(
+  model: Pick<ResolvedExecutionBundleViewModel["resolved_model"], "id" | "provider" | "model_name">,
+) {
+  return `${model.provider} / ${model.model_name} (${model.id})`;
+}
+
+function resolveModelDisplayName(
+  models: readonly Pick<ResolvedExecutionBundleViewModel["resolved_model"], "id" | "provider" | "model_name">[],
+  modelId: string | undefined | null,
+) {
+  if (!modelId) {
+    return "未分配";
+  }
+
+  const model = models.find((candidate) => candidate.id === modelId);
   return model ? formatModelDisplayName(model) : modelId;
 }
 
@@ -1810,12 +579,12 @@ function toErrorMessage(error: unknown): string {
       }
     }
 
-    return `Request failed (${error.status}).`;
+    return `请求失败（${error.status}）。`;
   }
 
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message.trim();
   }
 
-  return "Request failed.";
+  return "请求失败。";
 }

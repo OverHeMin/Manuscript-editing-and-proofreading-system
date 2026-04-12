@@ -59,6 +59,7 @@ export interface KnowledgeLibraryListItemResponseBody {
   selected_revision_id?: string;
   semantic_status?: KnowledgeSemanticStatus;
   content_block_count: number;
+  contributor_label?: string;
   updated_at?: string;
 }
 

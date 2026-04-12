@@ -28,10 +28,9 @@ export function KnowledgeLibrarySemanticPanel({
     <section className="knowledge-library-panel knowledge-library-semantic-panel">
       <header className="knowledge-library-panel-header">
         <div>
-          <h2>AI Understanding</h2>
+          <h2>语义层</h2>
           <p>
-            This layer is user-editable. Confirmed semantic fields become the preferred
-            retrieval surface for downstream AI modules.
+            这里是 AI 读取到的语义层。你可以直接修订摘要、检索词和检索片段，再决定是否确认。
           </p>
         </div>
         <span className={`knowledge-library-semantic-status is-${status}`}>
@@ -40,17 +39,17 @@ export function KnowledgeLibrarySemanticPanel({
       </header>
 
       <label className="knowledge-library-block-editor">
-        <span>Page Summary</span>
+        <span>页面摘要</span>
         <textarea
           rows={4}
           value={pageSummary}
           onChange={(event) => onChange({ pageSummary: event.target.value })}
-          placeholder="Summarize when this knowledge should be retrieved"
+          placeholder="概括这条知识应在什么场景下被 AI 优先检索"
         />
       </label>
 
       <label className="knowledge-library-block-editor">
-        <span>Retrieval Terms</span>
+        <span>检索词</span>
         <input
           value={retrievalTerms}
           onChange={(event) =>
@@ -58,12 +57,12 @@ export function KnowledgeLibrarySemanticPanel({
               retrievalTerms: splitCommaSeparated(event.target.value),
             })
           }
-          placeholder="Comma-separated semantic retrieval terms"
+          placeholder="用逗号分隔可触发检索的语义词"
         />
       </label>
 
       <label className="knowledge-library-block-editor">
-        <span>Retrieval Snippets</span>
+        <span>检索片段</span>
         <textarea
           rows={4}
           value={retrievalSnippets}
@@ -72,16 +71,16 @@ export function KnowledgeLibrarySemanticPanel({
               retrievalSnippets: splitLineSeparated(event.target.value),
             })
           }
-          placeholder="One retrieval snippet per line"
+          placeholder="每行一个检索片段"
         />
       </label>
 
       <div className="knowledge-library-actions">
         <button type="button" disabled={isBusy} onClick={onRegenerate}>
-          Regenerate Semantics
+          重算语义层
         </button>
         <button type="button" disabled={isBusy} onClick={onConfirm}>
-          Confirm Semantic Layer
+          确认语义层
         </button>
       </div>
     </section>
@@ -93,14 +92,14 @@ export function formatKnowledgeSemanticStatusLabel(
 ): string {
   switch (status) {
     case "pending_confirmation":
-      return "Pending Confirmation";
+      return "待确认";
     case "confirmed":
-      return "Confirmed";
+      return "已确认";
     case "stale":
-      return "Stale";
+      return "待刷新";
     case "not_generated":
     default:
-      return "Not Generated";
+      return "未生成";
   }
 }
 

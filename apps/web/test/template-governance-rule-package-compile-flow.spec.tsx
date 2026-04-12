@@ -174,12 +174,12 @@ test("package-first authoring shell renders compile preview results and draft-co
     />,
   );
 
-  assert.match(markup, /Compile Preview/);
-  assert.match(markup, /Compile To Draft Rule Set/);
-  assert.match(markup, /Draft rule set ready/);
-  assert.match(markup, /Open Draft Rule Set/);
-  assert.match(markup, /Open Advanced Rule Editor/);
-  assert.match(markup, /Go To Publish Area/);
-  assert.match(markup, /Knowledge Projection Preview/);
+  assert.match(markup, /编译预览/);
+  assert.match(markup, /编译为规则草稿/);
+  assert.match(markup, /规则草稿已就绪/);
+  assert.match(markup, /打开规则草稿/);
+  assert.match(markup, /打开高级规则编辑器/);
+  assert.match(markup, /前往发布区/);
+  assert.match(markup, /知识投影预览/);
   assert.doesNotMatch(markup, /Publish Rule Package/);
 });

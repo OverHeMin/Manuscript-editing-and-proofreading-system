@@ -9,6 +9,7 @@ import {
   type WorkbenchRuntimeMode,
 } from "../../app/persistent-session.ts";
 import type { AuthRole } from "../auth/index.ts";
+import type { WorkbenchSettingsSection } from "../auth/workbench.ts";
 import {
   createSystemSettingsWorkbenchController,
   type SystemSettingsWorkbenchController,
@@ -74,6 +75,7 @@ interface SelectedProviderFormState {
 export interface SystemSettingsWorkbenchPageProps {
   controller?: SystemSettingsWorkbenchController;
   runtimeMode?: WorkbenchRuntimeMode;
+  section?: WorkbenchSettingsSection;
   initialOverview?: SystemSettingsWorkbenchOverview | null;
   initialErrorMessage?: string | null;
 }
@@ -81,9 +83,12 @@ export interface SystemSettingsWorkbenchPageProps {
 export function SystemSettingsWorkbenchPage({
   controller = defaultController,
   runtimeMode = resolveWorkbenchRuntimeMode(import.meta.env),
+  section = "ai-access",
   initialOverview = null,
   initialErrorMessage = null,
 }: SystemSettingsWorkbenchPageProps) {
+  const landingCopy = resolveSystemSettingsLandingCopy(section);
+  const demoUnsupportedCopy = resolveSystemSettingsDemoUnsupportedCopy(section);
   const [overview, setOverview] = useState<SystemSettingsWorkbenchOverview | null>(
     initialOverview,
   );
@@ -456,12 +461,12 @@ export function SystemSettingsWorkbenchPage({
       <section className="system-settings-workbench">
         <header className="system-settings-hero">
           <p className="system-settings-kicker">系统设置</p>
-          <h2>账号管理</h2>
-          <p>当前演示模式不提供账号管理能力。</p>
+          <h2>{landingCopy.title}</h2>
+          <p>{demoUnsupportedCopy.heroNotice}</p>
         </header>
         <article className="system-settings-panel system-settings-notice" role="status">
           <h3>暂不支持</h3>
-          <p>请连接持久化后端后再进行管理员账号维护。</p>
+          <p>{demoUnsupportedCopy.bodyNotice}</p>
         </article>
       </section>
     );
@@ -471,8 +476,9 @@ export function SystemSettingsWorkbenchPage({
     <section className="system-settings-workbench">
       <header className="system-settings-hero">
         <p className="system-settings-kicker">系统设置</p>
-        <h2>账号管理</h2>
-        <p>集中维护内测环境账号、角色权限，以及 AI 提供方连接状态。</p>
+        <h2>{landingCopy.title}</h2>
+        <p>{landingCopy.summary}</p>
+        <p>{landingCopy.emphasis}</p>
       </header>
 
       {statusMessage ? (
@@ -988,6 +994,43 @@ export function SystemSettingsWorkbenchPage({
       ) : null}
     </section>
   );
+}
+
+function resolveSystemSettingsDemoUnsupportedCopy(section: WorkbenchSettingsSection): {
+  heroNotice: string;
+  bodyNotice: string;
+} {
+  if (section === "accounts") {
+    return {
+      heroNotice: "当前演示模式不提供账号与权限维护能力。",
+      bodyNotice: "请连接持久化后端后再进行管理员账号维护。",
+    };
+  }
+
+  return {
+    heroNotice: "当前演示模式不提供 AI 接入能力。",
+    bodyNotice: "请连接持久化后端后再进行模型连接与密钥维护。",
+  };
+}
+
+function resolveSystemSettingsLandingCopy(section: WorkbenchSettingsSection): {
+  title: string;
+  summary: string;
+  emphasis: string;
+} {
+  if (section === "accounts") {
+    return {
+      title: "账号与权限",
+      summary: "集中维护内测环境账号、角色权限，以及访问策略。",
+      emphasis: "优先关注账号状态与角色权限配置。",
+    };
+  }
+
+  return {
+    title: "AI 接入",
+    summary: "集中维护模型连接、密钥轮换与接入策略。",
+    emphasis: "优先关注模型连接状态与密钥健康度。",
+  };
 }
 
 function formatRoleLabel(role: AuthRole): string {

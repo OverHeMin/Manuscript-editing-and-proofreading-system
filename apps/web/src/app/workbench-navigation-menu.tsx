@@ -1,15 +1,17 @@
-import type { WorkbenchId } from "../features/auth/index.ts";
-import type { WorkbenchNavigationGroup } from "./workbench-navigation.ts";
+import type {
+  WorkbenchNavigationGroup,
+  WorkbenchNavigationTarget,
+} from "./workbench-navigation.ts";
 
 export interface WorkbenchNavigationMenuProps {
   groups: readonly WorkbenchNavigationGroup[];
-  activeWorkbenchId: WorkbenchId;
-  onNavigate: (workbenchId: WorkbenchId) => void;
+  activeTargetKey: string | null;
+  onNavigate: (target: WorkbenchNavigationTarget) => void;
 }
 
 export function WorkbenchNavigationMenu({
   groups,
-  activeWorkbenchId,
+  activeTargetKey,
   onNavigate,
 }: WorkbenchNavigationMenuProps) {
   return (
@@ -27,16 +29,16 @@ export function WorkbenchNavigationMenu({
           <p className="workbench-nav-group-description">{group.description}</p>
           <ul className="workbench-nav-list">
             {group.items.map((item) => {
-              const isActive = item.id === activeWorkbenchId;
+              const isActive = item.targetKey === activeTargetKey;
 
               return (
-                <li key={item.id}>
+                <li key={item.key}>
                   <button
                     type="button"
                     className={`workbench-nav-button${isActive ? " is-active" : ""}`}
                     data-emphasis={item.emphasis}
                     aria-current={isActive ? "page" : undefined}
-                    onClick={() => onNavigate(item.id)}
+                    onClick={() => onNavigate(item.target)}
                   >
                     <span className="workbench-nav-button-label">{item.label}</span>
                     <small>{item.description}</small>

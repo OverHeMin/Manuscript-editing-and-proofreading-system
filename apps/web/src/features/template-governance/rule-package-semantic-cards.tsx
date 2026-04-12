@@ -1,4 +1,11 @@
 import type { RulePackageDraftViewModel } from "../editorial-rules/index.ts";
+import {
+  formatRulePackageAutomationPostureLabel,
+  formatRulePackagePublishLayerLabel,
+  formatRulePackageTargetLabel,
+  formatTemplateGovernanceManuscriptTypeLabel,
+  formatTemplateGovernanceModuleLabel,
+} from "./template-governance-display.ts";
 
 export interface RulePackageSemanticCardsProps {
   packageDraft: RulePackageDraftViewModel | null;
@@ -16,13 +23,11 @@ export function RulePackageSemanticCards({
       <article className="template-governance-card rule-package-panel">
         <div className="template-governance-panel-header">
           <div>
-            <h3>Semantic Cards</h3>
-            <p>Select a rule package to inspect its AI-readable understanding layer.</p>
+            <h3>语义卡片</h3>
+            <p>先选择一个规则包，再查看 AI 可读的理解层和适用边界。</p>
           </div>
         </div>
-        <p className="template-governance-empty">
-          No rule package is selected yet.
-        </p>
+        <p className="template-governance-empty">当前还没有选中规则包。</p>
       </article>
     );
   }
@@ -54,7 +59,7 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>规则是什么</h3>
-            <p>Keep the package name, target object, and publishing layer concise enough for quick confirmation.</p>
+            <p>先确认规则包名称、作用对象和发布层级，保证录入足够简洁可复核。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -64,11 +69,11 @@ export function RulePackageSemanticCards({
           </div>
           <div>
             <span>规则对象</span>
-            <p>{packageDraft.cards.rule_what.object}</p>
+            <p>{formatRulePackageTargetLabel(packageDraft.cards.rule_what.object)}</p>
           </div>
           <div>
             <span>发布层级</span>
-            <p>{formatPublishLayer(packageDraft.cards.rule_what.publish_layer)}</p>
+            <p>{formatRulePackagePublishLayerLabel(packageDraft.cards.rule_what.publish_layer)}</p>
           </div>
         </div>
       </article>
@@ -76,8 +81,8 @@ export function RulePackageSemanticCards({
       <article className="template-governance-card rule-package-panel">
         <div className="template-governance-panel-header">
           <div>
-            <h3>AI怎么理解它</h3>
-            <p>Expose the sentence-level intent that the AI should use when deciding whether this package applies.</p>
+            <h3>AI 怎么理解它</h3>
+            <p>把句子级摘要说清楚，让 AI 知道这个规则包在什么情况下应该生效。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -99,11 +104,11 @@ export function RulePackageSemanticCards({
           </div>
           <div>
             <span>命中对象</span>
-            <p>{joinValues(packageDraft.cards.ai_understanding.hit_objects)}</p>
+            <p>{joinValues(packageDraft.cards.ai_understanding.hit_objects, formatRulePackageTargetLabel)}</p>
           </div>
           <div>
             <span>命中位置</span>
-            <p>{joinValues(packageDraft.cards.ai_understanding.hit_locations)}</p>
+            <p>{joinValues(packageDraft.cards.ai_understanding.hit_locations, formatRulePackageTargetLabel)}</p>
           </div>
         </div>
       </article>
@@ -112,20 +117,25 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>适用于哪里</h3>
-            <p>Keep scope grounded in manuscript type, module, section, and table semantics instead of low-level selectors.</p>
+            <p>按稿件类型、模块和章节语义来定义范围，不把底层选择器直接暴露给操作员。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
           <div>
             <span>稿件类型</span>
-            <p>{joinValues(packageDraft.cards.applicability.manuscript_types)}</p>
+            <p>
+              {joinValues(
+                packageDraft.cards.applicability.manuscript_types,
+                formatTemplateGovernanceManuscriptTypeLabel,
+              )}
+            </p>
           </div>
           <div>
             <span>适用模块</span>
-            <p>{joinValues(packageDraft.cards.applicability.modules)}</p>
+            <p>{joinValues(packageDraft.cards.applicability.modules, formatTemplateGovernanceModuleLabel)}</p>
           </div>
           <div className="template-governance-field-full">
-            <span>章节/块</span>
+            <span>章节 / 块</span>
             <textarea
               rows={3}
               value={joinLines(applicability)}
@@ -142,7 +152,7 @@ export function RulePackageSemanticCards({
           </div>
           <div className="template-governance-field-full">
             <span>表格对象</span>
-            <p>{joinValues(packageDraft.cards.applicability.table_targets)}</p>
+            <p>{joinValues(packageDraft.cards.applicability.table_targets, formatRulePackageTargetLabel)}</p>
           </div>
         </div>
       </article>
@@ -151,14 +161,14 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>前后示例</h3>
-            <p>Keep at least one grounded before/after pair so operators can see why the package exists.</p>
+            <p>至少保留一组前后对照，让操作员知道这个规则包到底在修什么。</p>
           </div>
         </div>
         {evidenceExamples.length ? (
           <div className="rule-package-evidence-grid">
             <article>
               <label className="template-governance-field">
-                <span>Before</span>
+                <span>处理前</span>
                 <textarea
                   rows={3}
                   value={primaryEvidenceExample.before}
@@ -179,7 +189,7 @@ export function RulePackageSemanticCards({
                 />
               </label>
               <label className="template-governance-field">
-                <span>After</span>
+                <span>处理后</span>
                 <textarea
                   rows={3}
                   value={primaryEvidenceExample.after}
@@ -202,9 +212,7 @@ export function RulePackageSemanticCards({
             </article>
           </div>
         ) : (
-          <p className="template-governance-empty">
-            No evidence examples have been attached yet.
-          </p>
+          <p className="template-governance-empty">还没有补充前后示例。</p>
         )}
       </article>
 
@@ -212,7 +220,7 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>什么时候不要用</h3>
-            <p>Make the package fail safely by surfacing non-applicable boundaries and mandatory human review moments.</p>
+            <p>把不适用边界和人工复核条件说清楚，确保规则包可以安全失效。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -250,7 +258,7 @@ export function RulePackageSemanticCards({
           </div>
           <div>
             <span>风险姿态</span>
-            <p>{packageDraft.cards.exclusions.risk_posture}</p>
+            <p>{formatRulePackageAutomationPostureLabel(packageDraft.cards.exclusions.risk_posture)}</p>
           </div>
         </div>
       </article>
@@ -258,14 +266,15 @@ export function RulePackageSemanticCards({
   );
 }
 
-function formatPublishLayer(
-  publishLayer: RulePackageDraftViewModel["cards"]["rule_what"]["publish_layer"],
+function joinValues(
+  values: readonly string[],
+  formatter?: (value: string) => string,
 ): string {
-  return publishLayer === "journal_template" ? "期刊小模板" : "大模板";
-}
+  if (values.length === 0) {
+    return "未限定";
+  }
 
-function joinValues(values: readonly string[]): string {
-  return values.length > 0 ? values.join("，") : "未限定";
+  return values.map((value) => (formatter ? formatter(value) : value)).join("、");
 }
 
 function joinLines(values: readonly string[]): string {

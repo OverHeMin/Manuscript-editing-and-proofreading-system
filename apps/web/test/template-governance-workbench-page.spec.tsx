@@ -164,7 +164,7 @@ test("template governance workbench page renders the package-first rule center w
           latestRun: null,
           latestSnapshot: null,
           signals: [],
-          message: "No retrieval-quality run has been recorded for this template family yet.",
+          message: "当前模板族还没有检索质量运行记录。",
         },
         knowledgeItems: [],
         visibleKnowledgeItems: [],
@@ -317,36 +317,27 @@ test("template governance workbench page renders the package-first rule center w
     />,
   );
 
-  assert.match(markup, /Rule Center/);
   assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /\u89c4\u5219\u5f55\u5165\u5de5\u4f5c\u53f0/u);
-  assert.match(markup, /\u89c4\u5219\u5b66\u4e60\u5de5\u4f5c\u53f0/u);
-  assert.match(markup, /Rule Packages/);
-  assert.match(markup, /\u793a\u4f8b\u9a71\u52a8\u5f55\u5165/u);
-  assert.match(markup, /Preview/);
-  assert.match(markup, /Refresh Preview/);
-  assert.match(markup, /Open Advanced Rule Editor/);
-  assert.doesNotMatch(markup, /Rule Authoring Navigator/);
-  assert.doesNotMatch(markup, /Rule Authoring Form/);
-  assert.doesNotMatch(markup, /Rule Authoring Preview/);
-  assert.doesNotMatch(markup, /Rule Ledger/);
-  assert.doesNotMatch(markup, /Rule Explainability/);
-  assert.match(markup, /Template Families/);
-  assert.match(markup, /Module Templates/);
-  assert.match(markup, /Retrieval Quality/);
-  assert.match(markup, /Knowledge Library/);
-  assert.match(markup, /AI Instruction Template/);
-  assert.match(markup, /Knowledge authoring has moved to the standalone Knowledge Library workbench\./);
-  assert.match(markup, /Open Knowledge Library/);
-  assert.match(markup, /Continue In Knowledge Library/);
-  assert.doesNotMatch(markup, /Create Knowledge Draft/);
-  assert.doesNotMatch(markup, /Submit Draft for Review/);
+  assert.match(markup, /\u89c4\u5219\u5f55\u5165/u);
+  assert.match(markup, /\u5b66\u4e60\u56de\u6d41/u);
+  assert.match(markup, /\u89c4\u5219\u5305/u);
+  assert.match(markup, /\u89c4\u5219\u521b\u5efa/u);
+  assert.match(markup, /\u6a21\u677f\u5957\u7528/u);
+  assert.match(markup, /\u6821\u5bf9\u7b56\u7565/u);
+  assert.match(markup, /\u901a\u7528\u6821\u5bf9/u);
+  assert.match(markup, /\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9/u);
+  assert.match(markup, /AI \u6307\u4ee4\u6a21\u677f/u);
+  assert.match(markup, /\u77e5\u8bc6\u5e93/u);
+  assert.match(markup, /\u6253\u5f00\u77e5\u8bc6\u5e93/u);
+  assert.doesNotMatch(markup, /Rule Center/);
+  assert.doesNotMatch(markup, /AI Instruction Template/);
   assert.match(markup, /front_matter/);
-  assert.match(markup, /author_line/);
-  assert.match(markup, /Automation/);
-  assert.match(markup, /Human Review/);
-  assert.match(markup, /guarded_auto/);
+  assert.match(markup, /作者行/);
+  assert.match(markup, /自动化姿态/);
+  assert.match(markup, /人工复核/);
+  assert.match(markup, /谨慎自动/);
+  assert.match(markup, /规则集/);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });
