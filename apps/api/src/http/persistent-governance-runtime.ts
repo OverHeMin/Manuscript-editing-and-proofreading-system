@@ -69,6 +69,7 @@ import {
 import {
   createHarnessControlPlaneApi,
   HarnessControlPlaneService,
+  PostgresHarnessControlPlaneRollbackRepository,
 } from "../modules/harness-control-plane/index.ts";
 import {
   createExecutionTrackingApi,
@@ -132,6 +133,11 @@ import {
   ManuscriptLifecycleService,
   PostgresManuscriptRepository,
 } from "../modules/manuscripts/index.ts";
+import {
+  createManuscriptQualityPackageApi,
+  ManuscriptQualityPackageService,
+  PostgresManuscriptQualityPackageRepository,
+} from "../modules/manuscript-quality-packages/index.ts";
 import {
   createPromptSkillRegistryApi,
   PostgresPromptSkillRegistryRepository,
@@ -301,6 +307,10 @@ export function createPersistentGovernanceRuntime(
   const manualReviewPolicyRepository = new PostgresManualReviewPolicyRepository({
     client: options.client,
   });
+  const harnessControlPlaneRollbackRepository =
+    new PostgresHarnessControlPlaneRollbackRepository({
+      client: options.client,
+    });
   const sandboxProfileRepository = new PostgresSandboxProfileRepository({
     client: options.client,
   });
@@ -313,6 +323,10 @@ export function createPersistentGovernanceRuntime(
     });
   const promptSkillRegistryRepository =
     new PostgresPromptSkillRegistryRepository({
+      client: options.client,
+    });
+  const manuscriptQualityPackageRepository =
+    new PostgresManuscriptQualityPackageRepository({
       client: options.client,
     });
   const verificationOpsRepository = new PostgresVerificationOpsRepository({
@@ -531,6 +545,9 @@ export function createPersistentGovernanceRuntime(
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
   });
+  const manuscriptQualityPackageService = new ManuscriptQualityPackageService({
+    repository: manuscriptQualityPackageRepository,
+  });
   const modelRegistryService = new ModelRegistryService({
     repository: modelRegistryRepository,
     routingPolicyRepository: modelRoutingPolicyRepository,
@@ -544,6 +561,7 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
   const retrievalPresetService = new RetrievalPresetService({
     repository: retrievalPresetRepository,
@@ -560,6 +578,7 @@ export function createPersistentGovernanceRuntime(
     promptSkillRegistryRepository,
     executionGovernanceRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
@@ -581,6 +600,7 @@ export function createPersistentGovernanceRuntime(
     modelRoutingGovernanceService,
     retrievalPresetService,
     manualReviewPolicyService,
+    rollbackHistoryRepository: harnessControlPlaneRollbackRepository,
   });
   const harnessIntegrationService = new HarnessIntegrationService({
     repository: harnessIntegrationRepository,
@@ -664,6 +684,7 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    documentStructureService,
     transactionManager: workbenchTransactionManager,
   });
   const editingService = new EditingService({
@@ -835,6 +856,9 @@ export function createPersistentGovernanceRuntime(
     modelRegistryApi: createModelRegistryApi({ modelRegistryService }),
     modelRoutingGovernanceApi: createModelRoutingGovernanceApi({
       modelRoutingGovernanceService,
+    }),
+    manuscriptQualityPackageApi: createManuscriptQualityPackageApi({
+      manuscriptQualityPackageService,
     }),
     retrievalPresetApi: createRetrievalPresetApi({
       retrievalPresetService,

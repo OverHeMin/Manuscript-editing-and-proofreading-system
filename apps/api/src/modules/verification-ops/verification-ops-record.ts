@@ -111,6 +111,7 @@ export interface FrozenExperimentBindingRecord {
   runtime_id: string;
   prompt_template_id: string;
   skill_package_ids: string[];
+  quality_package_version_ids?: string[];
   module_template_id: string;
 }
 

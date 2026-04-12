@@ -104,6 +104,15 @@ export class ExecutionResolutionKnowledgeItemNotFoundError extends Error {
   }
 }
 
+export class ExecutionResolutionScopeMismatchError extends Error {
+  constructor(assetKind: string, assetId: string, input: ResolveExecutionBundleInput) {
+    super(
+      `Resolved execution asset ${assetKind} ${assetId} does not belong to scope ${formatResolutionScope(input)}.`,
+    );
+    this.name = "ExecutionResolutionScopeMismatchError";
+  }
+}
+
 export class ExecutionResolutionService {
   private readonly executionGovernanceService: ExecutionGovernanceService;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
@@ -149,7 +158,10 @@ export class ExecutionResolutionService {
     input: ResolveExecutionBundleInput,
   ): Promise<ResolvedExecutionBundleRecord> {
     const profile = input.executionProfileId
-      ? await this.executionGovernanceService.getProfile(input.executionProfileId)
+      ? this.assertExecutionProfileScope(
+          await this.executionGovernanceService.getProfile(input.executionProfileId),
+          input,
+        )
       : await this.executionGovernanceService.resolveActiveProfile({
           module: input.module,
           manuscriptType: input.manuscriptType,
@@ -562,7 +574,10 @@ export class ExecutionResolutionService {
     }
 
     if (input.runtimeBindingId) {
-      return this.runtimeBindingService.getBinding(input.runtimeBindingId);
+      return this.assertRuntimeBindingScope(
+        await this.runtimeBindingService.getBinding(input.runtimeBindingId),
+        input,
+      );
     }
 
     return this.runtimeBindingService.getActiveBindingForScope({
@@ -598,7 +613,7 @@ export class ExecutionResolutionService {
         );
       }
 
-      return version;
+      return this.assertModelRoutingPolicyVersionScope(version, input);
     }
 
     const templateFamilyPolicy =
@@ -636,7 +651,10 @@ export class ExecutionResolutionService {
     }
 
     if (input.retrievalPresetId) {
-      return this.retrievalPresetService.getPreset(input.retrievalPresetId);
+      return this.assertRetrievalPresetScope(
+        await this.retrievalPresetService.getPreset(input.retrievalPresetId),
+        input,
+      );
     }
 
     try {
@@ -669,7 +687,10 @@ export class ExecutionResolutionService {
     }
 
     if (input.manualReviewPolicyId) {
-      return this.manualReviewPolicyService.getPolicy(input.manualReviewPolicyId);
+      return this.assertManualReviewPolicyScope(
+        await this.manualReviewPolicyService.getPolicy(input.manualReviewPolicyId),
+        input,
+      );
     }
 
     try {
@@ -685,6 +706,101 @@ export class ExecutionResolutionService {
 
       throw error;
     }
+  }
+
+  private assertExecutionProfileScope(
+    profile: Awaited<ReturnType<ExecutionGovernanceService["getProfile"]>>,
+    input: ResolveExecutionBundleInput,
+  ): Awaited<ReturnType<ExecutionGovernanceService["getProfile"]>> {
+    if (
+      profile.module !== input.module ||
+      profile.manuscript_type !== input.manuscriptType ||
+      profile.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "execution_profile",
+        profile.id,
+        input,
+      );
+    }
+
+    return profile;
+  }
+
+  private assertRuntimeBindingScope(
+    binding: NonNullable<ResolvedExecutionBundleRecord["runtime_binding"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["runtime_binding"]> {
+    if (
+      binding.module !== input.module ||
+      binding.manuscript_type !== input.manuscriptType ||
+      binding.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "runtime_binding",
+        binding.id,
+        input,
+      );
+    }
+
+    return binding;
+  }
+
+  private assertModelRoutingPolicyVersionScope(
+    version: NonNullable<ResolvedExecutionBundleRecord["model_routing_policy_version"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["model_routing_policy_version"]> {
+    const isCompatible =
+      (version.scope_kind === "template_family" &&
+        version.scope_value === input.templateFamilyId) ||
+      (version.scope_kind === "module" && version.scope_value === input.module);
+    if (!isCompatible) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "model_routing_policy_version",
+        version.id,
+        input,
+      );
+    }
+
+    return version;
+  }
+
+  private assertRetrievalPresetScope(
+    preset: NonNullable<ResolvedExecutionBundleRecord["retrieval_preset"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["retrieval_preset"]> {
+    if (
+      preset.module !== input.module ||
+      preset.manuscript_type !== input.manuscriptType ||
+      preset.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "retrieval_preset",
+        preset.id,
+        input,
+      );
+    }
+
+    return preset;
+  }
+
+  private assertManualReviewPolicyScope(
+    policy: NonNullable<ResolvedExecutionBundleRecord["manual_review_policy"]>,
+    input: ResolveExecutionBundleInput,
+  ): NonNullable<ResolvedExecutionBundleRecord["manual_review_policy"]> {
+    if (
+      policy.module !== input.module ||
+      policy.manuscript_type !== input.manuscriptType ||
+      policy.template_family_id !== input.templateFamilyId
+    ) {
+      throw new ExecutionResolutionScopeMismatchError(
+        "manual_review_policy",
+        policy.id,
+        input,
+      );
+    }
+
+    return policy;
   }
 }
 
@@ -779,6 +895,10 @@ function createWarning(
         message: label,
       };
   }
+}
+
+function formatResolutionScope(input: ResolveExecutionBundleInput): string {
+  return `${input.module}/${input.manuscriptType}/${input.templateFamilyId}`;
 }
 
 function createProviderIssue(
