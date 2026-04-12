@@ -599,6 +599,121 @@ test("harness control plane previews activates and rolls back core components ev
   );
 });
 
+test("harness control plane fails open when optional retrieval and manual review components are absent", async () => {
+  const {
+    service,
+    scope,
+    setActiveManualReviewPolicyId,
+    setActiveRetrievalPresetId,
+  } = createHarnessControlPlaneServiceHarness();
+  setActiveRetrievalPresetId(undefined);
+  setActiveManualReviewPolicyId(undefined);
+
+  const activeEnvironment = await service.getActiveEnvironment(scope);
+
+  assert.equal(activeEnvironment.execution_profile.id, "profile-active-1");
+  assert.equal(activeEnvironment.runtime_binding.id, "binding-active-1");
+  assert.equal(
+    activeEnvironment.model_routing_policy_version.id,
+    "routing-version-active-1",
+  );
+  assert.equal(
+    (activeEnvironment as { retrieval_preset?: RetrievalPresetRecord }).retrieval_preset,
+    undefined,
+  );
+  assert.equal(
+    (activeEnvironment as { manual_review_policy?: ManualReviewPolicyRecord })
+      .manual_review_policy,
+    undefined,
+  );
+});
+
+test("harness control plane previews activates and rolls back core components even when optional scope assets are absent", async () => {
+  const {
+    service,
+    scope,
+    setActiveManualReviewPolicyId,
+    setActiveRetrievalPresetId,
+  } = createHarnessControlPlaneServiceHarness();
+  setActiveRetrievalPresetId(undefined);
+  setActiveManualReviewPolicyId(undefined);
+
+  const preview = await service.previewEnvironment({
+    ...scope,
+    executionProfileId: "profile-draft-2",
+    runtimeBindingId: "binding-draft-2",
+    modelRoutingPolicyVersionId: "routing-version-draft-2",
+  });
+
+  assert.equal(
+    (preview.active_environment as { retrieval_preset?: RetrievalPresetRecord })
+      .retrieval_preset,
+    undefined,
+  );
+  assert.equal(
+    (preview.active_environment as { manual_review_policy?: ManualReviewPolicyRecord })
+      .manual_review_policy,
+    undefined,
+  );
+  assert.equal(
+    (preview.candidate_environment as { retrieval_preset?: RetrievalPresetRecord })
+      .retrieval_preset,
+    undefined,
+  );
+  assert.equal(
+    (preview.candidate_environment as { manual_review_policy?: ManualReviewPolicyRecord })
+      .manual_review_policy,
+    undefined,
+  );
+  assert.deepEqual(preview.diff.changed_components, [
+    "execution_profile",
+    "runtime_binding",
+    "model_routing_policy_version",
+  ]);
+
+  const activated = await service.activateEnvironment("admin", {
+    ...scope,
+    executionProfileId: "profile-draft-2",
+    runtimeBindingId: "binding-draft-2",
+    modelRoutingPolicyVersionId: "routing-version-draft-2",
+    reason: "Activate only the required governed components.",
+  });
+
+  assert.equal(activated.execution_profile.id, "profile-draft-2");
+  assert.equal(activated.runtime_binding.id, "binding-draft-2");
+  assert.equal(activated.model_routing_policy_version.id, "routing-version-draft-2");
+  assert.equal(
+    (activated as { retrieval_preset?: RetrievalPresetRecord }).retrieval_preset,
+    undefined,
+  );
+  assert.equal(
+    (activated as { manual_review_policy?: ManualReviewPolicyRecord })
+      .manual_review_policy,
+    undefined,
+  );
+
+  const rolledBack = await service.rollbackEnvironment("admin", {
+    ...scope,
+    reason: "Rollback required components only.",
+  });
+
+  assert.equal(rolledBack.execution_profile.id, "profile-active-1");
+  assert.equal(rolledBack.runtime_binding.id, "binding-active-1");
+  assert.equal(
+    rolledBack.model_routing_policy_version.id,
+    "routing-version-active-1",
+  );
+  assert.equal(
+    (rolledBack as { retrieval_preset?: RetrievalPresetRecord }).retrieval_preset,
+    undefined,
+  );
+  assert.equal(
+    (rolledBack as { manual_review_policy?: ManualReviewPolicyRecord })
+      .manual_review_policy,
+    undefined,
+  );
+});
+
 test("harness control plane previews explicit override ids and diffs them against active state", async () => {
   const { service, scope } = createHarnessControlPlaneServiceHarness();
 

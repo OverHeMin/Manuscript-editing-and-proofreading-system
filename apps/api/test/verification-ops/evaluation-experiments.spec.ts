@@ -489,7 +489,6 @@ test("experiment runs freeze quality package refs as a primary A/B variable", as
     module_template_id: "template-prod-1",
   });
 });
-
 test("experiment runs reject multi-variable diffs and persist per-item failure summaries", async () => {
   const { verificationOpsApi, sampleSet, suite } =
     await seedPublishedSuiteAndSampleSet();
