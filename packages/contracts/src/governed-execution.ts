@@ -13,6 +13,8 @@ import type {
   ModuleType,
   TemplateKnowledgeBindingPurpose,
 } from "./templates.js";
+import type { ManuscriptQualityFindingSummary } from "./manuscript-quality.js";
+import type { ManuscriptQualityPackageVersionRef } from "./manuscript-quality-packages.js";
 
 export type ModuleExecutionProfileId = string;
 export type KnowledgeBindingRuleId = string;
@@ -92,9 +94,11 @@ export interface ModuleExecutionSnapshot {
   prompt_template: PromptTemplateVersionRef;
   skill_packages: SkillPackageVersionRef[];
   model: ModelVersionRef;
+  quality_packages?: ManuscriptQualityPackageVersionRef[];
   knowledge_item_ids: KnowledgeItemId[];
   created_asset_ids: DocumentAssetId[];
   draft_snapshot_id?: ModuleExecutionSnapshotId;
+  quality_findings_summary?: ManuscriptQualityFindingSummary;
   created_at: string;
 }
 

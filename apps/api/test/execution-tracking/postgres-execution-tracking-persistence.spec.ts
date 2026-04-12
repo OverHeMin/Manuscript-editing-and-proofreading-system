@@ -25,9 +25,34 @@ test("postgres execution tracking repository persists snapshots and knowledge hi
       skill_package_versions: ["1.0.0"],
       model_id: "66666666-6666-6666-6666-666666666666",
       model_version: "2026-03-01",
+      quality_packages: [
+        {
+          package_id: "quality-package-version-1",
+          package_name: "Medical Research Style",
+          package_kind: "general_style_package",
+          target_scopes: ["general_proofreading"],
+          version: 2,
+        },
+      ],
       knowledge_item_ids: ["77777777-7777-7777-7777-777777777777"],
       created_asset_ids: ["88888888-8888-8888-8888-888888888888"],
       agent_execution_log_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      quality_findings_summary: {
+        total_issue_count: 2,
+        issue_count_by_scope: {
+          general_proofreading: 2,
+        },
+        issue_count_by_action: {
+          suggest_fix: 1,
+          manual_review: 1,
+        },
+        issue_count_by_severity: {
+          medium: 1,
+          high: 1,
+        },
+        highest_action: "manual_review",
+        representative_issue_ids: ["issue-1"],
+      },
       created_at: "2026-03-30T12:00:00.000Z",
     });
     await repository.saveKnowledgeHitLog({
@@ -64,9 +89,34 @@ test("postgres execution tracking repository persists snapshots and knowledge hi
       skill_package_versions: ["1.0.0"],
       model_id: "66666666-6666-6666-6666-666666666666",
       model_version: "2026-03-01",
+      quality_packages: [
+        {
+          package_id: "quality-package-version-1",
+          package_name: "Medical Research Style",
+          package_kind: "general_style_package",
+          target_scopes: ["general_proofreading"],
+          version: 2,
+        },
+      ],
       knowledge_item_ids: ["77777777-7777-7777-7777-777777777777"],
       created_asset_ids: ["88888888-8888-8888-8888-888888888888"],
       agent_execution_log_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      quality_findings_summary: {
+        total_issue_count: 2,
+        issue_count_by_scope: {
+          general_proofreading: 2,
+        },
+        issue_count_by_action: {
+          suggest_fix: 1,
+          manual_review: 1,
+        },
+        issue_count_by_severity: {
+          medium: 1,
+          high: 1,
+        },
+        highest_action: "manual_review",
+        representative_issue_ids: ["issue-1"],
+      },
       created_at: "2026-03-30T12:00:00.000Z",
     });
     assert.equal(snapshots.length, 1);

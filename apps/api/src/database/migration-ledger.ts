@@ -36,6 +36,22 @@ const migrationDescriptions = new Map<string, string>([
     "0034_harness_control_plane_p0.sql",
     "Add governed retrieval presets and manual review policies for the Harness control plane.",
   ],
+  [
+    "0035_harness_control_plane_rollback_history.sql",
+    "Persist Harness environment rollback snapshots for governed recovery history.",
+  ],
+  [
+    "0036_execution_snapshot_quality_findings_summary.sql",
+    "Persist advisory manuscript quality finding summaries on execution snapshots.",
+  ],
+  [
+    "0037_manuscript_quality_package_governance.sql",
+    "Persist governed manuscript quality package versions for general and medical analyzers.",
+  ],
+  [
+    "0038_manuscript_quality_runtime_refs.sql",
+    "Persist runtime binding quality package refs and frozen execution snapshot quality package versions.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

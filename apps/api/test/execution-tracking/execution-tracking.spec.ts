@@ -65,6 +65,15 @@ test("execution tracking stores a frozen snapshot and per-knowledge hit reasons"
     skillPackageVersions: ["2.0.0"],
     modelId: "model-1",
     modelVersion: "2026-03",
+    qualityPackages: [
+      {
+        package_id: "quality-package-version-1",
+        package_name: "Medical Research Style",
+        package_kind: "general_style_package",
+        target_scopes: ["general_proofreading"],
+        version: 2,
+      },
+    ],
     createdAssetIds: ["asset-1"],
     knowledgeHits: [
       {
@@ -89,6 +98,15 @@ test("execution tracking stores a frozen snapshot and per-knowledge hit reasons"
   assert.equal(snapshot.module_template_version_no, 3);
   assert.equal(snapshot.prompt_template_version, "1.2.0");
   assert.equal(snapshot.model_version, "2026-03");
+  assert.deepEqual(snapshot.quality_packages, [
+    {
+      package_id: "quality-package-version-1",
+      package_name: "Medical Research Style",
+      package_kind: "general_style_package",
+      target_scopes: ["general_proofreading"],
+      version: 2,
+    },
+  ]);
   assert.equal(snapshot.agent_execution_log_id, undefined);
   assert.equal(hitLogs.length, 2);
   assert.deepEqual(hitLogs[0]?.match_reasons, ["template_family", "risk_tag"]);
@@ -199,6 +217,15 @@ test("execution tracking api enriches snapshot create and get responses with run
       skillPackageIds: ["skill-1"],
       skillPackageVersions: ["1.0.0"],
       modelId: "model-1",
+      qualityPackages: [
+        {
+          package_id: "quality-package-version-1",
+          package_name: "Medical Research Style",
+          package_kind: "general_style_package",
+          target_scopes: ["general_proofreading"],
+          version: 2,
+        },
+      ],
       knowledgeHits: [],
     },
   });
@@ -213,6 +240,15 @@ test("execution tracking api enriches snapshot create and get responses with run
     "reported",
   );
   assert.equal(created.body.agent_execution_log_id, undefined);
+  assert.deepEqual(created.body.quality_packages, [
+    {
+      package_id: "quality-package-version-1",
+      package_name: "Medical Research Style",
+      package_kind: "general_style_package",
+      target_scopes: ["general_proofreading"],
+      version: 2,
+    },
+  ]);
   assert.equal(created.body.agent_execution.observation_status, "not_linked");
   assert.deepEqual(created.body.runtime_binding_readiness.report, readinessReport);
   assert.equal(loaded.status, 200);

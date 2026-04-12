@@ -52,6 +52,7 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
+import type { ManuscriptQualityService } from "../manuscript-quality/manuscript-quality-service.ts";
 
 export interface CreateProofreadingDraftInput {
   manuscriptId: string;
@@ -113,6 +114,7 @@ export interface ProofreadingServiceOptions {
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
   >;
+  manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
@@ -193,6 +195,10 @@ export class ProofreadingService {
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
   >;
+  private readonly manuscriptQualityService?: Pick<
+    ManuscriptQualityService,
+    "runChecks"
+  >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
@@ -230,6 +236,7 @@ export class ProofreadingService {
           return [];
         },
       };
+    this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -532,9 +539,13 @@ export class ProofreadingService {
         skillPackageVersions: resolvedContext.skillPackageVersions,
         modelId: resolvedContext.modelId,
         modelVersion: resolvedContext.modelVersion,
+        qualityPackages: proofreadingFindings?.resolvedQualityPackages,
         createdAssetIds: [asset.id],
         agentExecutionLogId,
         draftSnapshotId: resolvedContext.draftSnapshotId,
+        qualityFindingsSummary: proofreadingFindings?.qualityFindingSummary
+          ? structuredClone(proofreadingFindings.qualityFindingSummary)
+          : undefined,
         knowledgeHits: resolvedContext.knowledgeHits,
       });
       if (agentExecutionLogId) {
@@ -675,6 +686,9 @@ export class ProofreadingService {
         governedContext.verificationExpectations.evaluation_suite_ids,
       releaseCheckProfileId:
         governedContext.verificationExpectations.release_check_profile_id,
+      qualityPackageVersionIds: [
+        ...(governedContext.runtimeBinding.quality_package_version_ids ?? []),
+      ],
     };
   }
 
@@ -732,6 +746,8 @@ export class ProofreadingService {
       evaluationSuiteIds: [...draftExecutionLog.evaluation_suite_ids],
       releaseCheckProfileId: draftExecutionLog.release_check_profile_id,
       agentExecutionLogId: draftExecutionLog.id,
+      qualityPackageVersionIds:
+        snapshot.quality_packages?.map((entry) => entry.package_id) ?? [],
     };
   }
 
@@ -771,14 +787,53 @@ export class ProofreadingService {
           fileName: sourceAsset?.file_name ?? input.parentAssetId,
         })
       : undefined;
-
-    return inspectProofreadingRules({
+    const proofreadingFindings = inspectProofreadingRules({
       blocks,
       rules: input.resolvedContext.rules ?? [],
       resolvedRules: input.resolvedContext.resolvedRules,
       tableSnapshots: documentStructureSnapshot?.tables ?? [],
       manualReviewPolicy: input.resolvedContext.manualReviewPolicy,
     });
+    const qualityRun = this.manuscriptQualityService
+      ? await this.manuscriptQualityService.runChecks({
+          blocks: blocks.map((block) => ({
+            text: block.text,
+            style: block.block_kind,
+          })),
+          requestedScopes: ["general_proofreading", "medical_specialized"],
+          targetModule: "proofreading",
+          tableSnapshots: documentStructureSnapshot?.tables ?? [],
+          qualityPackageVersionIds: input.resolvedContext.qualityPackageVersionIds,
+        })
+      : undefined;
+    const resolvedQualityPackages = qualityRun?.resolved_quality_packages?.map(
+      (entry) => ({
+        package_id: entry.package_id,
+        package_name: entry.package_name,
+        package_kind: entry.package_kind,
+        target_scopes: [...entry.target_scopes],
+        version: entry.version,
+      }),
+    );
+
+    return {
+      ...proofreadingFindings,
+      ...(qualityRun
+        ? {
+            qualityFindings: qualityRun.issues.map((issue) =>
+              structuredClone(issue),
+            ),
+            qualityFindingSummary: structuredClone(
+              qualityRun.quality_findings_summary,
+            ),
+            ...(resolvedQualityPackages
+              ? {
+                  resolvedQualityPackages,
+                }
+              : {}),
+          }
+        : {}),
+    };
   }
 }
 
@@ -810,6 +865,7 @@ interface ResolvedProofreadingGovernedContext {
   evaluationSuiteIds: string[];
   releaseCheckProfileId?: string;
   agentExecutionLogId?: string;
+  qualityPackageVersionIds: string[];
 }
 
 function extractDraftSnapshotId(draftJob: JobRecord | undefined): string | undefined {
@@ -849,6 +905,16 @@ function renderProofreadingReport(
     lines.push("## Manual Review", "");
     for (const item of findings.manualReviewItems) {
       lines.push(`- ${item.ruleId}: ${item.reason}`);
+    }
+    lines.push("");
+  }
+
+  if ((findings.qualityFindings?.length ?? 0) > 0) {
+    lines.push("## Quality Findings", "");
+    for (const issue of findings.qualityFindings ?? []) {
+      lines.push(
+        `- [${issue.action}] ${issue.issue_type}: ${issue.explanation}`,
+      );
     }
     lines.push("");
   }
