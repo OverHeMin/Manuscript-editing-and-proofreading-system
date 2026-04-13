@@ -1208,6 +1208,187 @@ test("workbench http routes expose duplicate-check matches and acknowledgement-a
   }
 });
 
+test("workbench http routes expose knowledge ai intake and semantic assist suggestions without persistence", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createResponse = await fetch(`${baseUrl}/api/v1/knowledge/assets/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "AI assist baseline draft",
+        canonicalText: "Clinical studies must define the primary endpoint.",
+        knowledgeKind: "rule",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+      }),
+    });
+    const created = (await createResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+
+    assert.equal(createResponse.status, 201);
+
+    const intakeResponse = await fetch(`${baseUrl}/api/v1/knowledge/library/ai-intake`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sourceText:
+          "Clinical studies must disclose the primary endpoint in the methods section.",
+        sourceLabel: "Guideline excerpt",
+        operatorHints: "Focus on screening usage.",
+      }),
+    });
+    const intakeBody = (await intakeResponse.json()) as {
+      suggestedDraft: { title: string };
+      warnings: string[];
+    };
+
+    const semanticAssistResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/semantic-layer/assist`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instructionText:
+            "Make retrieval terms broader without changing title ownership.",
+          targetScopes: ["semantic_layer", "metadata_patch"],
+        }),
+      },
+    );
+    const semanticAssistBody = (await semanticAssistResponse.json()) as {
+      suggestedSemanticLayer: { pageSummary: string };
+      suggestedFieldPatch: { aliases: string[] };
+      warnings: string[];
+    };
+
+    const assetResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/${created.asset.id}?revisionId=${created.selected_revision.id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const assetBody = (await assetResponse.json()) as {
+      selected_revision: {
+        title: string;
+        summary?: string;
+      };
+    };
+
+    assert.equal(intakeResponse.status, 200);
+    assert.equal(intakeBody.suggestedDraft.title, "Primary endpoint rule");
+    assert.ok(intakeBody.warnings.length > 0);
+    assert.equal(semanticAssistResponse.status, 200);
+    assert.equal(
+      semanticAssistBody.suggestedSemanticLayer.pageSummary,
+      "Operator-ready semantic summary.",
+    );
+    assert.deepEqual(semanticAssistBody.suggestedFieldPatch.aliases, [
+      "endpoint definition",
+    ]);
+    assert.equal(assetResponse.status, 200);
+    assert.equal(assetBody.selected_revision.title, "AI assist baseline draft");
+    assert.equal(assetBody.selected_revision.summary, undefined);
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("default in-memory http runtime exposes knowledge ai intake and semantic assist suggestions", async () => {
+  const { server, baseUrl } = await startDefaultDemoServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const createResponse = await fetch(`${baseUrl}/api/v1/knowledge/assets/drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Default runtime AI assist baseline draft",
+        canonicalText: "Clinical studies must define the primary endpoint.",
+        knowledgeKind: "rule",
+        moduleScope: "screening",
+        manuscriptTypes: ["clinical_study"],
+      }),
+    });
+    const created = (await createResponse.json()) as {
+      asset: { id: string };
+      selected_revision: { id: string };
+    };
+
+    assert.equal(createResponse.status, 201);
+
+    const intakeResponse = await fetch(`${baseUrl}/api/v1/knowledge/library/ai-intake`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sourceText:
+          "Clinical studies must disclose the primary endpoint in the methods section.",
+        sourceLabel: "Guideline excerpt",
+        operatorHints: "Focus on screening usage.",
+      }),
+    });
+    const intakeBody = (await intakeResponse.json()) as {
+      suggestedDraft: { title: string };
+      warnings: string[];
+    };
+
+    const semanticAssistResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/semantic-layer/assist`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instructionText:
+            "Make retrieval terms broader without changing title ownership.",
+          targetScopes: ["semantic_layer", "metadata_patch"],
+        }),
+      },
+    );
+    const semanticAssistBody = (await semanticAssistResponse.json()) as {
+      suggestedSemanticLayer: { pageSummary: string };
+      suggestedFieldPatch: { aliases: string[] };
+      warnings: string[];
+    };
+
+    assert.equal(intakeResponse.status, 200);
+    assert.equal(intakeBody.suggestedDraft.title, "Primary endpoint rule");
+    assert.ok(intakeBody.warnings.length > 0);
+    assert.equal(semanticAssistResponse.status, 200);
+    assert.equal(
+      semanticAssistBody.suggestedSemanticLayer.pageSummary,
+      "Operator-ready semantic summary.",
+    );
+    assert.deepEqual(semanticAssistBody.suggestedFieldPatch.aliases, [
+      "endpoint definition",
+    ]);
+    assert.ok(semanticAssistBody.warnings.length > 0);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http module routes reject operators outside the assigned public-beta desk", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 

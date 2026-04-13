@@ -1,5 +1,7 @@
 import {
+  assistKnowledgeRevisionSemanticLayer,
   checkKnowledgeDuplicates,
+  createKnowledgeLibraryAiIntakeSuggestion,
   confirmKnowledgeSemanticLayer,
   createKnowledgeDraftRevision,
   createKnowledgeLibraryDraft,
@@ -21,6 +23,10 @@ import type {
   DuplicateWarningAcknowledgementInput,
   KnowledgeContentBlockViewModel,
   KnowledgeLibraryFilterState,
+  KnowledgeLibraryAiIntakeSuggestionInput,
+  KnowledgeLibraryAiIntakeSuggestionViewModel,
+  KnowledgeLibrarySemanticAssistInput,
+  KnowledgeLibrarySemanticAssistSuggestionViewModel,
   KnowledgeLibrarySummaryViewModel,
   KnowledgeLibraryWorkbenchViewModel,
   KnowledgeSemanticLayerInput,
@@ -76,6 +82,12 @@ export interface KnowledgeLibraryWorkbenchController {
   loadWorkbench(
     input?: LoadKnowledgeLibraryWorkbenchInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  createAiIntakeSuggestion(
+    input: KnowledgeLibraryAiIntakeSuggestionInput,
+  ): Promise<KnowledgeLibraryAiIntakeSuggestionViewModel>;
+  assistSemanticLayer(
+    input: KnowledgeLibrarySemanticAssistInput,
+  ): Promise<KnowledgeLibrarySemanticAssistSuggestionViewModel>;
   checkDuplicates(
     input: DuplicateKnowledgeCheckInput,
   ): Promise<DuplicateKnowledgeMatchViewModel[]>;
@@ -114,6 +126,17 @@ export function createKnowledgeLibraryWorkbenchController(
   return {
     loadWorkbench(input = {}) {
       return loadKnowledgeLibraryWorkbench(client, input);
+    },
+    async createAiIntakeSuggestion(input) {
+      return (await createKnowledgeLibraryAiIntakeSuggestion(client, input)).body;
+    },
+    async assistSemanticLayer(input) {
+      return (
+        await assistKnowledgeRevisionSemanticLayer(client, input.revisionId, {
+          instructionText: input.instructionText,
+          targetScopes: input.targetScopes,
+        })
+      ).body;
     },
     async checkDuplicates(input) {
       return (await checkKnowledgeDuplicates(client, input)).body;

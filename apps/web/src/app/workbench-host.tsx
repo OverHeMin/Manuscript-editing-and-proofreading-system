@@ -7,7 +7,10 @@ import type {
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { EvaluationWorkbenchPage } from "../features/evaluation-workbench/index.ts";
 import { HarnessDatasetsWorkbenchPage } from "../features/harness-datasets/index.ts";
-import { KnowledgeLibraryWorkbenchPage } from "../features/knowledge-library/index.ts";
+import {
+  KnowledgeLibraryLedgerPage,
+  KnowledgeLibraryWorkbenchPage,
+} from "../features/knowledge-library/index.ts";
 import { KnowledgeReviewWorkbenchPage } from "../features/knowledge-review/index.ts";
 import { LearningReviewWorkbenchPage } from "../features/learning-review/index.ts";
 import {
@@ -86,6 +89,10 @@ export function WorkbenchHost({
     if (nextActiveWorkbenchId !== activeWorkbenchId) {
       setRouteState({
         activeWorkbenchId: nextActiveWorkbenchId,
+        knowledgeView:
+          nextActiveWorkbenchId === "knowledge-library"
+            ? routeState.knowledgeView
+            : undefined,
       });
     }
   }, [activeWorkbenchId, session.defaultWorkbench, visibleEntries]);
@@ -106,6 +113,7 @@ export function WorkbenchHost({
     }
 
     window.addEventListener("hashchange", handleHashChange);
+    handleHashChange();
     return () => {
       window.removeEventListener("hashchange", handleHashChange);
     };
@@ -248,7 +256,13 @@ export function WorkbenchHost({
           />
         );
       case "knowledge-library":
-        return (
+        return routeState.knowledgeView === "ledger" ? (
+          <KnowledgeLibraryLedgerPage
+            actorRole={session.role}
+            prefilledAssetId={routeState.assetId}
+            prefilledRevisionId={routeState.revisionId}
+          />
+        ) : (
           <KnowledgeLibraryWorkbenchPage
             actorRole={session.role}
             prefilledAssetId={routeState.assetId}
@@ -341,6 +355,7 @@ export function WorkbenchHost({
       knowledgeItemId: handoff?.knowledgeItemId,
       assetId: handoff?.assetId,
       revisionId: handoff?.revisionId,
+      knowledgeView: handoff?.knowledgeView,
       reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
       sampleSetItemId: handoff?.sampleSetItemId,
       ruleCenterMode: handoff?.ruleCenterMode,
@@ -474,6 +489,7 @@ function resolveInitialWorkbenchRoute(
       knowledgeItemId: location.knowledgeItemId,
       assetId: location.assetId,
       revisionId: location.revisionId,
+      knowledgeView: location.knowledgeView,
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
       sampleSetItemId: location.sampleSetItemId,
       ruleCenterMode: location.ruleCenterMode,

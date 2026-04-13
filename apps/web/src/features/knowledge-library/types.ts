@@ -194,6 +194,32 @@ export interface DuplicateWarningAcknowledgementInput {
   matches: DuplicateWarningAcknowledgementMatchInput[];
 }
 
+export interface KnowledgeLibraryAiIntakeSuggestionInput {
+  sourceText: string;
+  sourceLabel?: string;
+  sourceLink?: string;
+  operatorHints?: string;
+}
+
+export interface KnowledgeLibraryAiIntakeSuggestionViewModel {
+  suggestedDraft: CreateKnowledgeLibraryDraftInput;
+  suggestedContentBlocks: KnowledgeContentBlockViewModel[];
+  suggestedSemanticLayer?: KnowledgeSemanticLayerViewModel;
+  warnings: string[];
+}
+
+export interface KnowledgeLibrarySemanticAssistInput {
+  revisionId: string;
+  instructionText: string;
+  targetScopes?: string[];
+}
+
+export interface KnowledgeLibrarySemanticAssistSuggestionViewModel {
+  suggestedSemanticLayer: KnowledgeSemanticLayerInput;
+  suggestedFieldPatch?: UpdateKnowledgeLibraryDraftInput;
+  warnings: string[];
+}
+
 export interface CreateKnowledgeLibraryDraftInput {
   title: string;
   canonicalText: string;

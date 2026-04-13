@@ -7,10 +7,14 @@ import type {
   KnowledgeAssetDetailViewModel,
   KnowledgeContentBlockViewModel,
   KnowledgeLibraryFilterState,
+  KnowledgeLibraryAiIntakeSuggestionInput,
+  KnowledgeLibraryAiIntakeSuggestionViewModel,
   KnowledgeLibraryQueryMode,
   KnowledgeRevisionViewModel,
   KnowledgeLibrarySummaryViewModel,
+  KnowledgeLibrarySemanticAssistSuggestionViewModel,
   KnowledgeSemanticLayerInput,
+  KnowledgeLibrarySemanticAssistInput,
   KnowledgeSemanticStatus,
   KnowledgeUploadInput,
   KnowledgeUploadViewModel,
@@ -78,6 +82,11 @@ export interface ReplaceKnowledgeRevisionContentBlocksInput {
   blocks: readonly KnowledgeContentBlockViewModel[];
 }
 
+type KnowledgeLibrarySemanticAssistRequestBody = Omit<
+  KnowledgeLibrarySemanticAssistInput,
+  "revisionId"
+>;
+
 export function listKnowledgeLibraryAssets(
   client: KnowledgeLibraryHttpClient,
   input: ListKnowledgeLibraryAssetsInput = {},
@@ -113,6 +122,17 @@ export function createKnowledgeLibraryDraft(
   return client.request<KnowledgeAssetDetailViewModel>({
     method: "POST",
     url: "/api/v1/knowledge/assets/drafts",
+    body: input,
+  });
+}
+
+export function createKnowledgeLibraryAiIntakeSuggestion(
+  client: KnowledgeLibraryHttpClient,
+  input: KnowledgeLibraryAiIntakeSuggestionInput,
+) {
+  return client.request<KnowledgeLibraryAiIntakeSuggestionViewModel>({
+    method: "POST",
+    url: "/api/v1/knowledge/library/ai-intake",
     body: input,
   });
 }
@@ -179,6 +199,18 @@ export function confirmKnowledgeSemanticLayer(
   return client.request<KnowledgeRevisionViewModel>({
     method: "POST",
     url: `/api/v1/knowledge/revisions/${revisionId}/semantic-layer/confirm`,
+    body: input,
+  });
+}
+
+export function assistKnowledgeRevisionSemanticLayer(
+  client: KnowledgeLibraryHttpClient,
+  revisionId: string,
+  input: KnowledgeLibrarySemanticAssistRequestBody,
+) {
+  return client.request<KnowledgeLibrarySemanticAssistSuggestionViewModel>({
+    method: "POST",
+    url: `/api/v1/knowledge/revisions/${revisionId}/semantic-layer/assist`,
     body: input,
   });
 }

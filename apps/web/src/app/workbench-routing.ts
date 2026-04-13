@@ -20,12 +20,14 @@ export type WorkbenchRenderKind =
 export type RuleCenterMode = "authoring" | "learning";
 export type SettingsSection = WorkbenchSettingsSection;
 export type HarnessSection = WorkbenchHarnessSection;
+export type KnowledgeLibraryView = "classic" | "ledger";
 
 export interface WorkbenchHandoff {
   manuscriptId?: string;
   knowledgeItemId?: string;
   assetId?: string;
   revisionId?: string;
+  knowledgeView?: KnowledgeLibraryView;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
@@ -39,6 +41,7 @@ export interface WorkbenchLocation {
   knowledgeItemId?: string;
   assetId?: string;
   revisionId?: string;
+  knowledgeView?: KnowledgeLibraryView;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
@@ -111,6 +114,8 @@ export function formatWorkbenchHash(
   const assetId = typeof handoff === "string" ? undefined : handoff?.assetId;
   const revisionId =
     typeof handoff === "string" ? undefined : handoff?.revisionId;
+  const knowledgeView =
+    typeof handoff === "string" ? undefined : handoff?.knowledgeView;
   const reviewedCaseSnapshotId =
     typeof handoff === "string" ? undefined : handoff?.reviewedCaseSnapshotId;
   const sampleSetItemId =
@@ -136,6 +141,10 @@ export function formatWorkbenchHash(
 
   if (revisionId && revisionId.trim().length > 0) {
     params.set("revisionId", revisionId.trim());
+  }
+
+  if (knowledgeView === "ledger") {
+    params.set("knowledgeView", knowledgeView);
   }
 
   if (reviewedCaseSnapshotId && reviewedCaseSnapshotId.trim().length > 0) {
@@ -182,6 +191,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
   const assetId = params.get("assetId")?.trim();
   const revisionId = params.get("revisionId")?.trim();
+  const knowledgeView = normalizeKnowledgeLibraryView(params.get("knowledgeView"));
   const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
   const sampleSetItemId = params.get("sampleSetItemId")?.trim();
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
@@ -194,6 +204,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
     ...(assetId && assetId.length > 0 ? { assetId } : {}),
     ...(revisionId && revisionId.length > 0 ? { revisionId } : {}),
+    ...(knowledgeView ? { knowledgeView } : {}),
     ...(reviewedCaseSnapshotId && reviewedCaseSnapshotId.length > 0
       ? { reviewedCaseSnapshotId }
       : {}),
@@ -217,6 +228,16 @@ export function isManuscriptWorkbenchId(
 
 function normalizeRuleCenterMode(value: string | null): RuleCenterMode | undefined {
   if (value === "authoring" || value === "learning") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function normalizeKnowledgeLibraryView(
+  value: string | null,
+): KnowledgeLibraryView | undefined {
+  if (value === "classic" || value === "ledger") {
     return value;
   }
 
