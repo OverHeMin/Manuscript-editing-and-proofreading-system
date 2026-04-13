@@ -2,17 +2,23 @@ import { type FormEvent, useEffect, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import {
+  applyAiIntakeSuggestion,
   buildCreateDraftInput,
   createEmptyLedgerComposer,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
+import { KnowledgeLibraryAiIntakePanel } from "./knowledge-library-ai-intake-panel.tsx";
 import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
 } from "./knowledge-library-controller.ts";
 import { KnowledgeLibraryLedgerTable } from "./knowledge-library-ledger-table.tsx";
+import { KnowledgeLibrarySemanticAssistantPanel } from "./knowledge-library-semantic-assistant-panel.tsx";
 import type {
+  KnowledgeLibraryAiIntakeSuggestionViewModel,
   KnowledgeLibraryFilterState,
+  KnowledgeLibrarySemanticAssistSuggestionViewModel,
+  KnowledgeSemanticLayerViewModel,
   KnowledgeLibraryWorkbenchViewModel,
 } from "./types.ts";
 
@@ -31,6 +37,10 @@ export interface KnowledgeLibraryLedgerPageProps {
   actorRole?: AuthRole;
   initialViewModel?: KnowledgeLibraryWorkbenchViewModel | null;
   initialComposer?: KnowledgeLibraryLedgerComposer | null;
+  initialWorkspaceTab?: LedgerWorkspaceTab;
+  initialAiIntakeOpen?: boolean;
+  initialAiIntakeSuggestion?: KnowledgeLibraryAiIntakeSuggestionViewModel | null;
+  initialSemanticSuggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel | null;
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
 }
@@ -40,6 +50,10 @@ export function KnowledgeLibraryLedgerPage({
   actorRole = "knowledge_reviewer",
   initialViewModel = null,
   initialComposer = null,
+  initialWorkspaceTab = "fields",
+  initialAiIntakeOpen = false,
+  initialAiIntakeSuggestion = null,
+  initialSemanticSuggestion = null,
   prefilledAssetId,
   prefilledRevisionId,
 }: KnowledgeLibraryLedgerPageProps) {
@@ -49,7 +63,20 @@ export function KnowledgeLibraryLedgerPage({
   const [composer, setComposer] = useState<KnowledgeLibraryLedgerComposer | null>(
     initialComposer,
   );
-  const [workspaceTab, setWorkspaceTab] = useState<LedgerWorkspaceTab>("fields");
+  const [workspaceTab, setWorkspaceTab] = useState<LedgerWorkspaceTab>(
+    initialWorkspaceTab,
+  );
+  const [isAiIntakeOpen, setIsAiIntakeOpen] = useState(initialAiIntakeOpen);
+  const [aiIntakeSourceText, setAiIntakeSourceText] = useState("");
+  const [aiIntakeSuggestion, setAiIntakeSuggestion] =
+    useState<KnowledgeLibraryAiIntakeSuggestionViewModel | null>(
+      initialAiIntakeSuggestion,
+    );
+  const [semanticInstructionText, setSemanticInstructionText] = useState("");
+  const [semanticSuggestion, setSemanticSuggestion] =
+    useState<KnowledgeLibrarySemanticAssistSuggestionViewModel | null>(
+      initialSemanticSuggestion,
+    );
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
     initialViewModel ? "ready" : "idle",
   );
@@ -121,6 +148,7 @@ export function KnowledgeLibraryLedgerPage({
   function handleStartNewRecord() {
     setComposer(createEmptyLedgerComposer());
     setWorkspaceTab("fields");
+    setIsAiIntakeOpen(false);
     setStatusMessage(null);
     setErrorMessage(null);
   }
@@ -128,10 +156,48 @@ export function KnowledgeLibraryLedgerPage({
   function handleSelectAsset(assetId: string) {
     setComposer(null);
     setWorkspaceTab("fields");
+    setSemanticSuggestion(null);
     void loadWorkbench({
       selectedAssetId: assetId,
       filters: viewModel?.filters,
     });
+  }
+
+  function handleApplyAiIntakeSuggestion() {
+    setComposer((current) =>
+      applyAiIntakeSuggestion(current ?? createEmptyLedgerComposer(), aiIntakeSuggestion!),
+    );
+    setIsAiIntakeOpen(false);
+    setWorkspaceTab("fields");
+  }
+
+  function handleApplySemanticSuggestion() {
+    if (!semanticSuggestion) {
+      return;
+    }
+
+    setComposer((current) => {
+      const baseComposer =
+        current ??
+        createComposerFromSelectedRevision(selectedRevision, viewModel?.selectedAssetId ?? null);
+      if (!baseComposer) {
+        return current;
+      }
+
+      return {
+        ...baseComposer,
+        draft: {
+          ...baseComposer.draft,
+          ...semanticSuggestion.suggestedFieldPatch,
+        },
+        semanticLayerDraft: toPendingSemanticLayerDraft(
+          baseComposer.persistedRevisionId ?? selectedRevision?.id ?? "local-only",
+          semanticSuggestion,
+        ),
+        warnings: [...semanticSuggestion.warnings],
+      };
+    });
+    setSemanticSuggestion(null);
   }
 
   function updateComposer<K extends keyof KnowledgeLibraryLedgerComposer["draft"]>(
@@ -191,13 +257,23 @@ export function KnowledgeLibraryLedgerPage({
           <button type="button" onClick={handleStartNewRecord}>
             New Record
           </button>
-          <button type="button">AI Parse Intake</button>
+          <button type="button" onClick={() => setIsAiIntakeOpen((current) => !current)}>
+            AI Parse Intake
+          </button>
         </div>
       </section>
 
       {statusMessage ? <p className="knowledge-library-ledger-status">{statusMessage}</p> : null}
       {errorMessage ? (
         <p className="knowledge-library-ledger-status is-error">{errorMessage}</p>
+      ) : null}
+      {isAiIntakeOpen ? (
+        <KnowledgeLibraryAiIntakePanel
+          sourceText={aiIntakeSourceText}
+          onSourceTextChange={setAiIntakeSourceText}
+          suggestion={aiIntakeSuggestion}
+          onApplySuggestion={aiIntakeSuggestion ? handleApplyAiIntakeSuggestion : undefined}
+        />
       ) : null}
 
       <div className="knowledge-library-ledger-layout">
@@ -306,9 +382,15 @@ export function KnowledgeLibraryLedgerPage({
               </p>
             )
           ) : workspaceTab === "semantic" ? (
-            <p className="knowledge-library-ledger-empty">
-              Semantic assistance lands here in the next task.
-            </p>
+            <KnowledgeLibrarySemanticAssistantPanel
+              instructionText={semanticInstructionText}
+              onInstructionTextChange={setSemanticInstructionText}
+              suggestion={semanticSuggestion}
+              onApplySuggestion={semanticSuggestion ? handleApplySemanticSuggestion : undefined}
+              onDiscardSuggestion={
+                semanticSuggestion ? () => setSemanticSuggestion(null) : undefined
+              }
+            />
           ) : (
             <p className="knowledge-library-ledger-empty">
               Content blocks stay in the same workspace and will be connected next.
@@ -326,6 +408,61 @@ export function KnowledgeLibraryLedgerPage({
 
 function preventDefault(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
+}
+
+function createComposerFromSelectedRevision(
+  selectedRevision: KnowledgeLibraryWorkbenchViewModel["detail"]["selected_revision"] | null,
+  selectedAssetId: string | null,
+): KnowledgeLibraryLedgerComposer | null {
+  if (!selectedRevision) {
+    return null;
+  }
+
+  return {
+    mode: "existing_revision",
+    persistedAssetId: selectedAssetId,
+    persistedRevisionId: selectedRevision.id,
+    draft: {
+      title: selectedRevision.title,
+      canonicalText: selectedRevision.canonical_text,
+      summary: selectedRevision.summary,
+      knowledgeKind: selectedRevision.knowledge_kind,
+      moduleScope: selectedRevision.routing.module_scope,
+      manuscriptTypes: selectedRevision.routing.manuscript_types,
+      sections: selectedRevision.routing.sections,
+      riskTags: selectedRevision.routing.risk_tags,
+      disciplineTags: selectedRevision.routing.discipline_tags,
+      evidenceLevel: selectedRevision.evidence_level,
+      sourceType: selectedRevision.source_type,
+      sourceLink: selectedRevision.source_link,
+      aliases: selectedRevision.aliases,
+      effectiveAt: selectedRevision.effective_at,
+      expiresAt: selectedRevision.expires_at,
+      bindings: selectedRevision.bindings.map((binding) => ({
+        bindingKind: binding.binding_kind,
+        bindingTargetId: binding.binding_target_id,
+        bindingTargetLabel: binding.binding_target_label,
+      })),
+    },
+    contentBlocksDraft: [...selectedRevision.content_blocks],
+    semanticLayerDraft: selectedRevision.semantic_layer,
+    warnings: [],
+  };
+}
+
+function toPendingSemanticLayerDraft(
+  revisionId: string,
+  suggestion: KnowledgeLibrarySemanticAssistSuggestionViewModel,
+): KnowledgeSemanticLayerViewModel {
+  return {
+    revision_id: revisionId,
+    status: "pending_confirmation",
+    page_summary: suggestion.suggestedSemanticLayer.pageSummary,
+    retrieval_terms: suggestion.suggestedSemanticLayer.retrievalTerms,
+    retrieval_snippets: suggestion.suggestedSemanticLayer.retrievalSnippets,
+    table_semantics: suggestion.suggestedSemanticLayer.tableSemantics,
+    image_understanding: suggestion.suggestedSemanticLayer.imageUnderstanding,
+  };
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string): string {
