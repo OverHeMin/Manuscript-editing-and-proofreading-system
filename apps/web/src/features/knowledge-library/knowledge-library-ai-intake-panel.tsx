@@ -4,14 +4,18 @@ export interface KnowledgeLibraryAiIntakePanelProps {
   sourceText: string;
   onSourceTextChange: (value: string) => void;
   suggestion?: KnowledgeLibraryAiIntakeSuggestionViewModel | null;
+  onGenerateSuggestion?: () => void;
   onApplySuggestion?: () => void;
+  isBusy?: boolean;
 }
 
 export function KnowledgeLibraryAiIntakePanel({
   sourceText,
   onSourceTextChange,
   suggestion = null,
+  onGenerateSuggestion,
   onApplySuggestion,
+  isBusy = false,
 }: KnowledgeLibraryAiIntakePanelProps) {
   return (
     <section className="knowledge-library-ledger-panel">
@@ -30,6 +34,18 @@ export function KnowledgeLibraryAiIntakePanel({
           onChange={(event) => onSourceTextChange(event.target.value)}
         />
       </label>
+
+      {onGenerateSuggestion ? (
+        <div className="knowledge-library-ledger-panel__actions">
+          <button
+            type="button"
+            onClick={onGenerateSuggestion}
+            disabled={isBusy || sourceText.trim().length === 0}
+          >
+            Parse Intake
+          </button>
+        </div>
+      ) : null}
 
       {suggestion ? (
         <section className="knowledge-library-ledger-panel__suggestion">

@@ -113,6 +113,7 @@ export function WorkbenchHost({
     }
 
     window.addEventListener("hashchange", handleHashChange);
+    handleHashChange();
     return () => {
       window.removeEventListener("hashchange", handleHashChange);
     };

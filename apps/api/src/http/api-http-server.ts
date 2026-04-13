@@ -157,6 +157,9 @@ import {
 } from "../modules/feedback-governance/index.ts";
 import {
   createKnowledgeApi,
+  type KnowledgeAiIntakeSuggestionInput,
+  KnowledgeAiAssistService,
+  KnowledgeAiAssistUnavailableError,
   KnowledgeContentBlockOrderError,
   KnowledgeContentBlockPayloadInvalidError,
   KnowledgeAssetNotFoundError,
@@ -181,6 +184,7 @@ import {
   type KnowledgeRecord,
   type KnowledgeRevisionRecord,
   type KnowledgeReviewActionRecord,
+  type KnowledgeSemanticAssistInput,
   type UpdateKnowledgeRevisionDraftInput,
   type UpdateKnowledgeDraftInput,
 } from "../modules/knowledge/index.ts";
@@ -688,6 +692,9 @@ type HttpRouteMatch =
       route: "knowledge-create-library-draft";
     }
   | {
+      route: "knowledge-ai-intake";
+    }
+  | {
       route: "knowledge-create-draft-revision";
       assetId: string;
     }
@@ -720,6 +727,10 @@ type HttpRouteMatch =
       }
     | {
         route: "knowledge-confirm-semantic-layer";
+        revisionId: string;
+      }
+    | {
+        route: "knowledge-semantic-assist";
         revisionId: string;
       }
     | {
@@ -1535,6 +1546,40 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
     repository: knowledgeRepository,
   });
+  const knowledgeAiAssistService = new KnowledgeAiAssistService({
+    repository: knowledgeRepository,
+    generator: {
+      async createIntakeSuggestion() {
+        return {
+          suggestedDraft: {
+            title: "Primary endpoint rule",
+            canonicalText:
+              "Clinical studies must define the primary endpoint.",
+            knowledgeKind: "rule",
+            moduleScope: "screening",
+            manuscriptTypes: ["clinical_study"],
+          },
+          suggestedContentBlocks: [],
+          warnings: ["No evidence level found in the intake source."],
+        };
+      },
+      async assistSemanticLayer() {
+        return {
+          suggestedSemanticLayer: {
+            pageSummary: "Operator-ready semantic summary.",
+            retrievalTerms: ["primary endpoint", "screening"],
+            retrievalSnippets: [
+              "Prefer this rule when endpoint wording is vague.",
+            ],
+          },
+          suggestedFieldPatch: {
+            aliases: ["endpoint definition"],
+          },
+          warnings: ["Title remains user-owned in semantic assist."],
+        };
+      },
+    },
+  });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir: input.uploadRootDir,
     createId: () => nextId("knowledge-upload"),
@@ -1741,6 +1786,7 @@ export function createInMemoryApiRuntime(input: {
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      aiAssistService: knowledgeAiAssistService,
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,
@@ -4260,6 +4306,11 @@ async function handleRoute(
       return runtime.knowledgeApi.createLibraryDraft(
         (await readJsonBody(req)) as CreateKnowledgeLibraryDraftInput,
       );
+    case "knowledge-ai-intake":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.createAiIntakeSuggestion(
+        (await readJsonBody(req)) as KnowledgeAiIntakeSuggestionInput,
+      );
     case "knowledge-create-draft-revision":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.createDraftRevision({
@@ -4330,6 +4381,15 @@ async function handleRoute(
         return runtime.knowledgeApi.confirmSemanticLayer({
           revisionId: routeMatch.revisionId,
           input: (await readJsonBody(req)) as Record<string, unknown>,
+        });
+    case "knowledge-semantic-assist":
+        await requirePermission(req, runtime, "knowledge.review");
+        return runtime.knowledgeApi.assistSemanticLayer({
+          revisionId: routeMatch.revisionId,
+          input: (await readJsonBody(req)) as Omit<
+            KnowledgeSemanticAssistInput,
+            "revisionId"
+          >,
         });
     case "knowledge-upload-image":
         await requirePermission(req, runtime, "knowledge.review");
@@ -6039,13 +6099,17 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-library-list" };
   }
 
-    if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
-      return { route: "knowledge-create-library-draft" };
-    }
+  if (method === "POST" && path === "/api/v1/knowledge/library/ai-intake") {
+    return { route: "knowledge-ai-intake" };
+  }
 
-    if (method === "POST" && path === "/api/v1/knowledge/uploads") {
-      return { route: "knowledge-upload-image" };
-    }
+  if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
+    return { route: "knowledge-create-library-draft" };
+  }
+
+  if (method === "POST" && path === "/api/v1/knowledge/uploads") {
+    return { route: "knowledge-upload-image" };
+  }
 
   if (method === "POST" && path === "/api/v1/knowledge/duplicate-check") {
     return { route: "knowledge-duplicate-check" };
@@ -6291,6 +6355,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
       };
     }
 
+    const knowledgeSemanticAssistMatch = path.match(
+      /^\/api\/v1\/knowledge\/revisions\/([^/]+)\/semantic-layer\/assist$/,
+    );
+    if (method === "POST" && knowledgeSemanticAssistMatch) {
+      return {
+        route: "knowledge-semantic-assist",
+        revisionId: knowledgeSemanticAssistMatch[1],
+      };
+    }
+
     return null;
   }
 
@@ -6477,6 +6551,10 @@ function mapErrorToHttpResponse(
     error instanceof KnowledgeRetrievalSnapshotNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
+  }
+
+  if (error instanceof KnowledgeAiAssistUnavailableError) {
+    return [503, { error: "service_unavailable", message: error.message }];
   }
 
   if (

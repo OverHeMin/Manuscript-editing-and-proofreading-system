@@ -52,7 +52,9 @@
 .knowledge-library-ledger-command-bar__query-mode,
 .knowledge-library-ledger-command-bar__actions,
 .knowledge-library-ledger-tabs,
-.knowledge-library-ledger-fields__actions {
+.knowledge-library-ledger-fields__actions,
+.knowledge-library-ledger-workspace__actions,
+.knowledge-library-ledger-panel__actions {
   display: flex;
   gap: 0.75rem;
 }
@@ -123,6 +125,79 @@
 .knowledge-library-ledger-fields {
   display: grid;
   gap: 1rem;
+}
+
+.knowledge-library-ledger-stack,
+.knowledge-library-ledger-workspace__body,
+.knowledge-library-ledger-workspace__footer,
+.knowledge-library-ledger-warnings,
+.knowledge-library-ledger-panel,
+.knowledge-library-ledger-panel__suggestion {
+  display: grid;
+  gap: 1rem;
+}
+
+.knowledge-library-ledger-workspace__body {
+  margin-top: 1rem;
+}
+
+.knowledge-library-ledger-workspace__footer {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #d7dce5;
+}
+
+.knowledge-library-ledger-warnings {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #f0d6a7;
+  border-radius: 0.85rem;
+  background: #fff7ea;
+}
+
+.knowledge-library-ledger-warnings h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.knowledge-library-ledger-warnings ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.knowledge-library-ledger-panel {
+  padding: 1rem;
+  border: 1px solid #d7dce5;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+}
+
+.knowledge-library-ledger-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.knowledge-library-ledger-panel__field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.knowledge-library-ledger-panel__field textarea,
+.knowledge-library-ledger-panel__field input {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #c6cfdb;
+  border-radius: 0.75rem;
+  font: inherit;
+}
+
+.knowledge-library-ledger-panel__suggestion {
+  padding: 0.9rem 1rem;
+  border: 1px solid #c6d6f2;
+  border-radius: 0.85rem;
+  background: #eef4ff;
 }
 
 .knowledge-library-ledger-fields input,

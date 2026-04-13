@@ -39,6 +39,10 @@ import {
   InMemoryKnowledgeReviewActionRepository,
 } from "../../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { createKnowledgeApi } from "../../../src/modules/knowledge/knowledge-api.ts";
+import {
+  KnowledgeAiAssistService,
+  type KnowledgeAiAssistGenerator,
+} from "../../../src/modules/knowledge/knowledge-ai-assist-service.ts";
 import { KnowledgeSemanticLayerService } from "../../../src/modules/knowledge/knowledge-semantic-layer-service.ts";
 import { KnowledgeService } from "../../../src/modules/knowledge/knowledge-service.ts";
 import { KnowledgeUploadService } from "../../../src/modules/knowledge/knowledge-upload-service.ts";
@@ -340,6 +344,38 @@ export function createWorkbenchRuntime(input: {
   const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
     repository: knowledgeRepository,
   });
+  const knowledgeAiAssistGenerator: KnowledgeAiAssistGenerator = {
+    async createIntakeSuggestion() {
+      return {
+        suggestedDraft: {
+          title: "Primary endpoint rule",
+          canonicalText: "Clinical studies must define the primary endpoint.",
+          knowledgeKind: "rule",
+          moduleScope: "screening",
+          manuscriptTypes: ["clinical_study"],
+        },
+        suggestedContentBlocks: [],
+        warnings: ["No evidence level found in the intake source."],
+      };
+    },
+    async assistSemanticLayer() {
+      return {
+        suggestedSemanticLayer: {
+          pageSummary: "Operator-ready semantic summary.",
+          retrievalTerms: ["primary endpoint", "screening"],
+          retrievalSnippets: ["Prefer this rule when endpoint wording is vague."],
+        },
+        suggestedFieldPatch: {
+          aliases: ["endpoint definition"],
+        },
+        warnings: ["Title remains user-owned in semantic assist."],
+      };
+    },
+  };
+  const knowledgeAiAssistService = new KnowledgeAiAssistService({
+    repository: knowledgeRepository,
+    generator: knowledgeAiAssistGenerator,
+  });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir:
       input.uploadRootDir ??
@@ -489,6 +525,7 @@ export function createWorkbenchRuntime(input: {
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      aiAssistService: knowledgeAiAssistService,
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
     }),

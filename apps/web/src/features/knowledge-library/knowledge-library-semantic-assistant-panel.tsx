@@ -4,16 +4,20 @@ export interface KnowledgeLibrarySemanticAssistantPanelProps {
   instructionText: string;
   onInstructionTextChange: (value: string) => void;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel | null;
+  onGenerateSuggestion?: () => void;
   onApplySuggestion?: () => void;
   onDiscardSuggestion?: () => void;
+  isBusy?: boolean;
 }
 
 export function KnowledgeLibrarySemanticAssistantPanel({
   instructionText,
   onInstructionTextChange,
   suggestion = null,
+  onGenerateSuggestion,
   onApplySuggestion,
   onDiscardSuggestion,
+  isBusy = false,
 }: KnowledgeLibrarySemanticAssistantPanelProps) {
   return (
     <section className="knowledge-library-ledger-panel">
@@ -32,6 +36,18 @@ export function KnowledgeLibrarySemanticAssistantPanel({
           onChange={(event) => onInstructionTextChange(event.target.value)}
         />
       </label>
+
+      {onGenerateSuggestion ? (
+        <div className="knowledge-library-ledger-panel__actions">
+          <button
+            type="button"
+            onClick={onGenerateSuggestion}
+            disabled={isBusy || instructionText.trim().length === 0}
+          >
+            Suggest Semantic Patch
+          </button>
+        </div>
+      ) : null}
 
       {suggestion ? (
         <section className="knowledge-library-ledger-panel__suggestion">

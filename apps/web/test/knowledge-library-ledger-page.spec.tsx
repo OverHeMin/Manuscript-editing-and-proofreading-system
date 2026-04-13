@@ -295,3 +295,118 @@ test("knowledge library ledger page renders semantic suggestion review controls"
   assert.match(markup, /Apply Suggestion/);
   assert.match(markup, /Discard Suggestion/);
 });
+
+test("knowledge library ledger page renders rich-content editing and submit controls for persisted drafts", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            summary: "Screening knowledge.",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            contributor_label: "editor.zh",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            summary: "Screening knowledge.",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            contributor_label: "editor.zh",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: "knowledge-1-revision-2",
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Primary endpoint rule",
+          summary: "Screening knowledge.",
+          knowledge_kind: "rule",
+          status: "draft",
+          module_scope: "screening",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 1,
+          contributor_label: "editor.zh",
+          updated_at: "2026-04-08T08:30:00.000Z",
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            current_approved_revision_id: "knowledge-1-revision-1",
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Primary endpoint rule draft",
+            canonical_text:
+              "Clinical studies must define the primary endpoint before screening sign-off.",
+            summary: "Screening knowledge.",
+            knowledge_kind: "rule",
+            routing: {
+              module_scope: "screening",
+              manuscript_types: ["clinical_study"],
+              sections: ["methods"],
+            },
+            content_blocks: [
+              {
+                id: "knowledge-1-revision-2-block-1",
+                revision_id: "knowledge-1-revision-2",
+                block_type: "text_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  text: "Existing content block.",
+                },
+              },
+            ],
+            semantic_layer: {
+              revision_id: "knowledge-1-revision-2",
+              status: "confirmed",
+              page_summary: "Operator-confirmed summary.",
+              retrieval_terms: ["endpoint"],
+              retrieval_snippets: ["screening rule"],
+            },
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+          revisions: [],
+        },
+      }}
+      initialWorkspaceTab="content_blocks"
+    />,
+  );
+
+  assert.match(markup, /Add Text Block/);
+  assert.match(markup, /Save Rich Content/);
+  assert.match(markup, /Submit To Review/);
+});

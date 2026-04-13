@@ -88,7 +88,9 @@ import {
 } from "../modules/harness-integrations/index.ts";
 import {
   createKnowledgeApi,
+  KnowledgeAiAssistService,
   KnowledgeService,
+  OpenAiKnowledgeAiAssistGenerator,
   KnowledgeSemanticLayerService,
   KnowledgeUploadService,
   PostgresKnowledgeRepository,
@@ -635,6 +637,13 @@ export function createPersistentGovernanceRuntime(
   const knowledgeSemanticLayerService = new KnowledgeSemanticLayerService({
     repository: knowledgeRepository,
   });
+  const knowledgeAiAssistService = new KnowledgeAiAssistService({
+    repository: knowledgeRepository,
+    generator: new OpenAiKnowledgeAiAssistGenerator({
+      aiGatewayService,
+      aiProviderRuntimeService,
+    }),
+  });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir: uploadRootDir,
   });
@@ -839,6 +848,7 @@ export function createPersistentGovernanceRuntime(
     }),
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
+      aiAssistService: knowledgeAiAssistService,
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,

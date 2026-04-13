@@ -4,6 +4,13 @@ import type {
   HarnessDatasetDraftCandidateRecord,
   HarnessDatasetService,
 } from "../harness-datasets/harness-dataset-service.ts";
+import type {
+  KnowledgeAiAssistService,
+  KnowledgeAiIntakeSuggestionInput,
+  KnowledgeAiIntakeSuggestionRecord,
+  KnowledgeSemanticAssistInput,
+  KnowledgeSemanticAssistSuggestionRecord,
+} from "./knowledge-ai-assist-service.ts";
 import { normalizeKnowledgeContentBlocksInput } from "./knowledge-content-block-normalizer.ts";
 import type { KnowledgeSemanticLayerService } from "./knowledge-semantic-layer-service.ts";
 import { KnowledgeAssetNotFoundError, KnowledgeService } from "./knowledge-service.ts";
@@ -64,6 +71,7 @@ export interface KnowledgeLibraryListResponse {
 export interface CreateKnowledgeApiOptions {
   knowledgeService: KnowledgeService;
   harnessDatasetService?: HarnessDatasetService;
+  aiAssistService?: KnowledgeAiAssistService;
   semanticLayerService?: KnowledgeSemanticLayerService;
   uploadService?: KnowledgeUploadService;
 }
@@ -72,6 +80,7 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
   const {
     knowledgeService,
     harnessDatasetService,
+    aiAssistService,
     semanticLayerService,
     uploadService,
   } = options;
@@ -101,6 +110,15 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       return {
         status: 201,
         body: await knowledgeService.createLibraryDraft(input),
+      };
+    },
+
+    async createAiIntakeSuggestion(
+      input: KnowledgeAiIntakeSuggestionInput,
+    ): Promise<RouteResponse<KnowledgeAiIntakeSuggestionRecord>> {
+      return {
+        status: 200,
+        body: await aiAssistService!.createIntakeSuggestion(input),
       };
     },
 
@@ -298,6 +316,23 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       return {
         status: 200,
         body: await knowledgeService.confirmSemanticLayer(revisionId, input),
+      };
+    },
+
+    async assistSemanticLayer({
+      revisionId,
+      input,
+    }: {
+      revisionId: string;
+      input: Omit<KnowledgeSemanticAssistInput, "revisionId">;
+    }): Promise<RouteResponse<KnowledgeSemanticAssistSuggestionRecord>> {
+      return {
+        status: 200,
+        body: await aiAssistService!.assistSemanticLayer({
+          revisionId,
+          instructionText: input.instructionText,
+          targetScopes: input.targetScopes,
+        }),
       };
     },
 

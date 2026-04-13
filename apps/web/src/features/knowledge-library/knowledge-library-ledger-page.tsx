@@ -1,6 +1,7 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
+import type { ManuscriptType } from "../manuscripts/types.ts";
 import {
   applyAiIntakeSuggestion,
   buildCreateDraftInput,
@@ -12,14 +13,35 @@ import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
 } from "./knowledge-library-controller.ts";
+import { KnowledgeLibraryDuplicatePanel } from "./knowledge-library-duplicate-panel.tsx";
 import { KnowledgeLibraryLedgerTable } from "./knowledge-library-ledger-table.tsx";
+import { KnowledgeLibraryRichContentEditor } from "./knowledge-library-rich-content-editor.tsx";
 import { KnowledgeLibrarySemanticAssistantPanel } from "./knowledge-library-semantic-assistant-panel.tsx";
+import { KnowledgeLibrarySemanticPanel } from "./knowledge-library-semantic-panel.tsx";
+import {
+  buildDuplicateCheckTriggerSignature,
+  getStrongDuplicateMatches,
+  isImmediateDuplicateCheckResultStale,
+  KnowledgeLibraryDuplicateStatusRow,
+  KnowledgeLibraryDuplicateSubmitConfirmation,
+  resolveDuplicateAcknowledgementSubmitDecision,
+  resolveDuplicateSubmitDecision,
+  shouldInvalidateDuplicateSubmitConfirmation,
+  type KnowledgeLibraryDuplicateCheckState,
+} from "./knowledge-library-workbench-page.tsx";
 import type {
+  DuplicateKnowledgeCheckInput,
+  DuplicateKnowledgeMatchViewModel,
+  DuplicateWarningAcknowledgementInput,
   KnowledgeLibraryAiIntakeSuggestionViewModel,
   KnowledgeLibraryFilterState,
   KnowledgeLibrarySemanticAssistSuggestionViewModel,
+  KnowledgeRevisionViewModel,
   KnowledgeSemanticLayerViewModel,
   KnowledgeLibraryWorkbenchViewModel,
+  KnowledgeSemanticLayerInput,
+  KnowledgeUploadInput,
+  KnowledgeUploadViewModel,
 } from "./types.ts";
 
 if (typeof document !== "undefined") {
@@ -31,6 +53,11 @@ const defaultController = createKnowledgeLibraryWorkbenchController(
 );
 
 type LedgerWorkspaceTab = "fields" | "semantic" | "content_blocks";
+
+interface ImmediateDuplicateCheckContext {
+  selectedRevisionId: string | null;
+  duplicateCheckSignature: string | null;
+}
 
 export interface KnowledgeLibraryLedgerPageProps {
   controller?: KnowledgeLibraryWorkbenchController;
@@ -61,7 +88,7 @@ export function KnowledgeLibraryLedgerPage({
     initialViewModel,
   );
   const [composer, setComposer] = useState<KnowledgeLibraryLedgerComposer | null>(
-    initialComposer,
+    () => initialComposer ?? createEditableComposerFromViewModel(initialViewModel),
   );
   const [workspaceTab, setWorkspaceTab] = useState<LedgerWorkspaceTab>(
     initialWorkspaceTab,
@@ -83,6 +110,31 @@ export function KnowledgeLibraryLedgerPage({
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateKnowledgeMatchViewModel[]>(
+    [],
+  );
+  const [duplicateCheckState, setDuplicateCheckState] =
+    useState<KnowledgeLibraryDuplicateCheckState>("not_checked");
+  const [duplicateCheckErrorMessage, setDuplicateCheckErrorMessage] = useState<
+    string | null
+  >(null);
+  const [lastCheckedDuplicateSignature, setLastCheckedDuplicateSignature] = useState<
+    string | null
+  >(null);
+  const [pendingSubmitStrongMatches, setPendingSubmitStrongMatches] = useState<
+    DuplicateKnowledgeMatchViewModel[]
+  >([]);
+  const [isDuplicateSubmitConfirmationOpen, setIsDuplicateSubmitConfirmationOpen] =
+    useState(false);
+  const [duplicateConfirmationDraftSignature, setDuplicateConfirmationDraftSignature] =
+    useState<string | null>(null);
+  const [isImmediateDuplicateCheckPending, setIsImmediateDuplicateCheckPending] =
+    useState(false);
+  const duplicateCheckRequestIdRef = useRef(0);
+  const latestDuplicateCheckContextRef = useRef<ImmediateDuplicateCheckContext>({
+    selectedRevisionId: composer?.persistedRevisionId ?? null,
+    duplicateCheckSignature: null,
+  });
 
   useEffect(() => {
     if (initialViewModel) {
@@ -95,8 +147,139 @@ export function KnowledgeLibraryLedgerPage({
     });
   }, [controller, initialViewModel, prefilledAssetId, prefilledRevisionId]);
 
-  const selectedAssetId = composer ? null : viewModel?.selectedAssetId ?? null;
-  const selectedRevision = composer ? null : viewModel?.detail?.selected_revision ?? null;
+  const selectedAssetId = composer?.persistedAssetId ?? viewModel?.selectedAssetId ?? null;
+  const selectedRevision = viewModel?.detail?.selected_revision ?? null;
+  const selectedRevisionId = composer?.persistedRevisionId ?? selectedRevision?.id ?? null;
+  const currentDraftSignature = JSON.stringify(composer?.draft ?? null);
+  const duplicateCheckInput = useMemo(
+    () => createLedgerDuplicateCheckInput(composer),
+    [composer],
+  );
+  const duplicateCheckSignature = useMemo(
+    () => buildDuplicateCheckTriggerSignature(duplicateCheckInput),
+    [duplicateCheckInput],
+  );
+  const strongDuplicateMatches = getStrongDuplicateMatches(duplicateMatches);
+  const isDuplicateResultStale =
+    duplicateCheckState === "checked" &&
+    duplicateCheckSignature != null &&
+    lastCheckedDuplicateSignature != null &&
+    duplicateCheckSignature !== lastCheckedDuplicateSignature;
+  const firstPendingStrongDuplicateMatch = pendingSubmitStrongMatches[0] ?? null;
+
+  useEffect(() => {
+    latestDuplicateCheckContextRef.current = {
+      selectedRevisionId,
+      duplicateCheckSignature,
+    };
+  }, [duplicateCheckSignature, selectedRevisionId]);
+
+  useEffect(() => {
+    duplicateCheckRequestIdRef.current += 1;
+    setIsImmediateDuplicateCheckPending(false);
+  }, [duplicateCheckSignature, selectedRevisionId]);
+
+  useEffect(() => {
+    if (
+      !shouldInvalidateDuplicateSubmitConfirmation({
+        isConfirmationOpen: isDuplicateSubmitConfirmationOpen,
+        confirmationDraftSignature: duplicateConfirmationDraftSignature,
+        currentDraftSignature,
+      })
+    ) {
+      return;
+    }
+
+    setIsDuplicateSubmitConfirmationOpen(false);
+    setPendingSubmitStrongMatches([]);
+    setDuplicateConfirmationDraftSignature(null);
+  }, [
+    currentDraftSignature,
+    duplicateConfirmationDraftSignature,
+    isDuplicateSubmitConfirmationOpen,
+  ]);
+
+  useEffect(() => {
+    if (!composer || !duplicateCheckInput || !duplicateCheckSignature) {
+      setDuplicateMatches([]);
+      setDuplicateCheckState("not_checked");
+      setDuplicateCheckErrorMessage(null);
+      setLastCheckedDuplicateSignature(null);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = duplicateCheckRequestIdRef.current + 1;
+    duplicateCheckRequestIdRef.current = requestId;
+    const requestContext: ImmediateDuplicateCheckContext = {
+      selectedRevisionId,
+      duplicateCheckSignature,
+    };
+    setDuplicateMatches([]);
+    setDuplicateCheckState("checking");
+    setDuplicateCheckErrorMessage(null);
+
+    const timer = globalThis.setTimeout(async () => {
+      if (
+        isImmediateDuplicateCheckResultStale({
+          requestId,
+          latestRequestId: duplicateCheckRequestIdRef.current,
+          expectedContext: requestContext,
+          currentContext: latestDuplicateCheckContextRef.current,
+        })
+      ) {
+        return;
+      }
+
+      try {
+        const matches = await controller.checkDuplicates(duplicateCheckInput);
+        if (
+          cancelled ||
+          isImmediateDuplicateCheckResultStale({
+            requestId,
+            latestRequestId: duplicateCheckRequestIdRef.current,
+            expectedContext: requestContext,
+            currentContext: latestDuplicateCheckContextRef.current,
+          })
+        ) {
+          return;
+        }
+
+        setDuplicateMatches(matches);
+        setDuplicateCheckState("checked");
+        setDuplicateCheckErrorMessage(null);
+        setLastCheckedDuplicateSignature(duplicateCheckSignature);
+      } catch (error) {
+        if (
+          cancelled ||
+          isImmediateDuplicateCheckResultStale({
+            requestId,
+            latestRequestId: duplicateCheckRequestIdRef.current,
+            expectedContext: requestContext,
+            currentContext: latestDuplicateCheckContextRef.current,
+          })
+        ) {
+          return;
+        }
+
+        setDuplicateMatches([]);
+        setDuplicateCheckState("error");
+        setDuplicateCheckErrorMessage(toErrorMessage(error, "Duplicate check failed."));
+        setLastCheckedDuplicateSignature(null);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timer);
+    };
+  }, [
+    composer,
+    controller,
+    duplicateCheckInput,
+    duplicateCheckSignature,
+    selectedRevisionId,
+  ]);
 
   async function loadWorkbench(input: {
     selectedAssetId?: string;
@@ -113,11 +296,36 @@ export function KnowledgeLibraryLedgerPage({
           input.selectedRevisionId ?? viewModel?.selectedRevisionId ?? null,
         filters: input.filters ?? viewModel?.filters,
       });
-      setViewModel(nextViewModel);
-      setLoadStatus("ready");
+      applyLoadedWorkbench(nextViewModel);
     } catch (error) {
       setLoadStatus("error");
       setErrorMessage(toErrorMessage(error, "Knowledge ledger failed to load."));
+    }
+  }
+
+  function applyLoadedWorkbench(nextViewModel: KnowledgeLibraryWorkbenchViewModel) {
+    setViewModel(nextViewModel);
+    setComposer(createEditableComposerFromViewModel(nextViewModel));
+    setLoadStatus("ready");
+    setSemanticSuggestion(null);
+  }
+
+  async function runMutation(
+    action: () => Promise<KnowledgeLibraryWorkbenchViewModel>,
+    successMessage: string,
+  ) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextViewModel = await action();
+      applyLoadedWorkbench(nextViewModel);
+      setStatusMessage(successMessage);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "Knowledge ledger action failed."));
+    } finally {
+      setIsBusy(false);
     }
   }
 
@@ -126,29 +334,53 @@ export function KnowledgeLibraryLedgerPage({
       return;
     }
 
-    setIsBusy(true);
-    setErrorMessage(null);
-    setStatusMessage(null);
-
-    try {
-      const nextViewModel = await controller.createDraftAndLoad({
-        ...buildCreateDraftInput(composer),
-        filters: viewModel?.filters,
-      });
-      setViewModel(nextViewModel);
-      setComposer(null);
-      setStatusMessage("Draft saved.");
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error, "Draft save failed."));
-    } finally {
-      setIsBusy(false);
+    if (composer.persistedRevisionId) {
+      await runMutation(
+        () =>
+          controller.saveDraftAndLoad({
+            revisionId: composer.persistedRevisionId!,
+            input: {
+              ...composer.draft,
+            },
+            filters: viewModel?.filters,
+          }),
+        "Draft saved.",
+      );
+      return;
     }
+
+    await runMutation(
+      () =>
+        controller.createDraftAndLoad({
+          ...buildCreateDraftInput(composer),
+          filters: viewModel?.filters,
+        }),
+      "Draft saved.",
+    );
+  }
+
+  async function handleCreateDerivedDraft() {
+    const assetId = viewModel?.selectedAssetId;
+    if (!assetId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.createDerivedDraftAndLoad({
+          assetId,
+          filters: viewModel.filters,
+        }),
+      "Update draft derived from the approved revision.",
+    );
   }
 
   function handleStartNewRecord() {
     setComposer(createEmptyLedgerComposer());
     setWorkspaceTab("fields");
     setIsAiIntakeOpen(false);
+    setAiIntakeSuggestion(null);
+    setSemanticSuggestion(null);
     setStatusMessage(null);
     setErrorMessage(null);
   }
@@ -164,11 +396,41 @@ export function KnowledgeLibraryLedgerPage({
   }
 
   function handleApplyAiIntakeSuggestion() {
+    if (!aiIntakeSuggestion) {
+      return;
+    }
+
     setComposer((current) =>
-      applyAiIntakeSuggestion(current ?? createEmptyLedgerComposer(), aiIntakeSuggestion!),
+      applyAiIntakeSuggestion(
+        current?.mode === "new_local" ? current : createEmptyLedgerComposer(),
+        aiIntakeSuggestion,
+      ),
     );
+    setAiIntakeSuggestion(null);
     setIsAiIntakeOpen(false);
     setWorkspaceTab("fields");
+    setStatusMessage("AI intake suggestion applied locally.");
+  }
+
+  async function handleRunAiIntake() {
+    if (aiIntakeSourceText.trim().length === 0) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextSuggestion = await controller.createAiIntakeSuggestion({
+        sourceText: aiIntakeSourceText.trim(),
+      });
+      setAiIntakeSuggestion(nextSuggestion);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "AI parse intake failed."));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function handleApplySemanticSuggestion() {
@@ -194,10 +456,297 @@ export function KnowledgeLibraryLedgerPage({
           baseComposer.persistedRevisionId ?? selectedRevision?.id ?? "local-only",
           semanticSuggestion,
         ),
-        warnings: [...semanticSuggestion.warnings],
+        warnings: [...baseComposer.warnings, ...semanticSuggestion.warnings],
       };
     });
     setSemanticSuggestion(null);
+    setStatusMessage("Semantic suggestion applied locally.");
+  }
+
+  async function handleRunSemanticAssist() {
+    if (!composer?.persistedRevisionId || semanticInstructionText.trim().length === 0) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextSuggestion = await controller.assistSemanticLayer({
+        revisionId: composer.persistedRevisionId,
+        instructionText: semanticInstructionText.trim(),
+        targetScopes: ["semantic_layer", "metadata_patch"],
+      });
+      setSemanticSuggestion(nextSuggestion);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "Semantic assist failed."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function handleSemanticDraftChange(input: KnowledgeSemanticLayerInput) {
+    setComposer((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const currentSemanticLayer = current.semanticLayerDraft ?? selectedRevision?.semantic_layer;
+      return {
+        ...current,
+        semanticLayerDraft: {
+          revision_id:
+            currentSemanticLayer?.revision_id ??
+            current.persistedRevisionId ??
+            "draft-revision",
+          status: currentSemanticLayer?.status ?? "stale",
+          page_summary:
+            input.pageSummary ??
+            currentSemanticLayer?.page_summary ??
+            selectedRevision?.semantic_layer?.page_summary,
+          retrieval_terms:
+            input.retrievalTerms ?? currentSemanticLayer?.retrieval_terms,
+          retrieval_snippets:
+            input.retrievalSnippets ?? currentSemanticLayer?.retrieval_snippets,
+          table_semantics:
+            input.tableSemantics ?? currentSemanticLayer?.table_semantics,
+          image_understanding:
+            input.imageUnderstanding ?? currentSemanticLayer?.image_understanding,
+        },
+      };
+    });
+  }
+
+  async function handleRegenerateSemanticLayer() {
+    if (!composer?.persistedRevisionId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.regenerateSemanticLayerAndLoad({
+          revisionId: composer.persistedRevisionId!,
+          filters: viewModel.filters,
+        }),
+      "AI semantic layer regenerated.",
+    );
+  }
+
+  async function handleConfirmSemanticLayer() {
+    if (!composer?.persistedRevisionId || !composer.semanticLayerDraft || !viewModel) {
+      return;
+    }
+
+    const semanticLayerDraft = composer.semanticLayerDraft;
+
+    await runMutation(
+      () =>
+        controller.confirmSemanticLayerAndLoad({
+          revisionId: composer.persistedRevisionId!,
+          filters: viewModel.filters,
+          input: {
+            pageSummary: semanticLayerDraft.page_summary,
+            retrievalTerms: semanticLayerDraft.retrieval_terms,
+            retrievalSnippets: semanticLayerDraft.retrieval_snippets,
+            tableSemantics: semanticLayerDraft.table_semantics,
+            imageUnderstanding: semanticLayerDraft.image_understanding,
+          },
+        }),
+      "AI semantic layer confirmed.",
+    );
+  }
+
+  async function handleSaveRichContent() {
+    if (!composer?.persistedRevisionId || !viewModel) {
+      return;
+    }
+
+    await runMutation(
+      () =>
+        controller.replaceContentBlocksAndLoad({
+          revisionId: composer.persistedRevisionId!,
+          blocks: composer.contentBlocksDraft,
+          filters: viewModel.filters,
+        }),
+      "Rich content saved.",
+    );
+  }
+
+  async function handleUploadImage(
+    input: KnowledgeUploadInput,
+  ): Promise<KnowledgeUploadViewModel | void> {
+    return controller.uploadImage(input);
+  }
+
+  async function handleSubmitDraft() {
+    if (
+      !composer?.persistedRevisionId ||
+      !viewModel ||
+      isBusy ||
+      isImmediateDuplicateCheckPending
+    ) {
+      return;
+    }
+
+    const submitCheckContext: ImmediateDuplicateCheckContext = {
+      selectedRevisionId: composer.persistedRevisionId,
+      duplicateCheckSignature,
+    };
+    let matchesForSubmitDecision = duplicateMatches;
+    const submitDecision = resolveDuplicateSubmitDecision({
+      duplicateCheckInput,
+      duplicateCheckState,
+      duplicateCheckSignature,
+      lastCheckedDuplicateSignature,
+      matches: matchesForSubmitDecision,
+    });
+    if (submitDecision === "refresh_check") {
+      const freshMatches = await runImmediateDuplicateCheckBeforeSubmit({
+        input: duplicateCheckInput,
+        signature: duplicateCheckSignature,
+        context: submitCheckContext,
+      });
+      if (freshMatches == null || freshMatches === "stale") {
+        return;
+      }
+
+      matchesForSubmitDecision = freshMatches;
+    }
+
+    const nextStrongMatches = getStrongDuplicateMatches(matchesForSubmitDecision);
+    if (nextStrongMatches.length > 0) {
+      setPendingSubmitStrongMatches(nextStrongMatches);
+      setIsDuplicateSubmitConfirmationOpen(true);
+      setDuplicateConfirmationDraftSignature(currentDraftSignature);
+      return;
+    }
+
+    setPendingSubmitStrongMatches([]);
+    setIsDuplicateSubmitConfirmationOpen(false);
+    setDuplicateConfirmationDraftSignature(null);
+    await runMutation(
+      () =>
+        controller.submitDraftAndLoad({
+          revisionId: composer.persistedRevisionId!,
+          filters: viewModel.filters,
+        }),
+      "Draft submitted to knowledge review.",
+    );
+  }
+
+  async function handleContinueSubmitWithDuplicateAcknowledgement() {
+    const continueDecision = resolveDuplicateAcknowledgementSubmitDecision({
+      revisionId: composer?.persistedRevisionId ?? null,
+      hasViewModel: viewModel != null,
+      pendingStrongMatchCount: pendingSubmitStrongMatches.length,
+      isBusy,
+      isImmediateDuplicateCheckPending,
+      isConfirmationOpen: isDuplicateSubmitConfirmationOpen,
+      confirmationDraftSignature: duplicateConfirmationDraftSignature,
+      currentDraftSignature,
+    });
+    if (continueDecision === "blocked") {
+      return;
+    }
+
+    if (continueDecision === "stale") {
+      setIsDuplicateSubmitConfirmationOpen(false);
+      setPendingSubmitStrongMatches([]);
+      setDuplicateConfirmationDraftSignature(null);
+      setStatusMessage(
+        "Draft changed since the duplicate warning opened. Review refreshed duplicate signals before continuing.",
+      );
+      return;
+    }
+
+    if (!composer?.persistedRevisionId || !viewModel) {
+      return;
+    }
+
+    const duplicateAcknowledgement: DuplicateWarningAcknowledgementInput = {
+      acknowledged: true,
+      matches: pendingSubmitStrongMatches,
+    };
+    setPendingSubmitStrongMatches([]);
+    setIsDuplicateSubmitConfirmationOpen(false);
+    setDuplicateConfirmationDraftSignature(null);
+    await runMutation(
+      () =>
+        controller.submitDraftAndLoad({
+          revisionId: composer.persistedRevisionId!,
+          filters: viewModel.filters,
+          duplicateAcknowledgement,
+        }),
+      "Draft submitted to knowledge review.",
+    );
+  }
+
+  async function runImmediateDuplicateCheckBeforeSubmit(input: {
+    input: DuplicateKnowledgeCheckInput | null;
+    signature: string | null;
+    context: ImmediateDuplicateCheckContext;
+  }): Promise<DuplicateKnowledgeMatchViewModel[] | null | "stale"> {
+    if (!input.input || !input.signature) {
+      return [];
+    }
+
+    const requestId = duplicateCheckRequestIdRef.current + 1;
+    duplicateCheckRequestIdRef.current = requestId;
+    setIsImmediateDuplicateCheckPending(true);
+    setDuplicateMatches([]);
+    setDuplicateCheckState("checking");
+    setDuplicateCheckErrorMessage(null);
+
+    try {
+      const matches = await controller.checkDuplicates(input.input);
+      if (
+        isImmediateDuplicateCheckResultStale({
+          requestId,
+          latestRequestId: duplicateCheckRequestIdRef.current,
+          expectedContext: input.context,
+          currentContext: latestDuplicateCheckContextRef.current,
+        })
+      ) {
+        return "stale";
+      }
+
+      setDuplicateMatches(matches);
+      setDuplicateCheckState("checked");
+      setDuplicateCheckErrorMessage(null);
+      setLastCheckedDuplicateSignature(input.signature);
+      return matches;
+    } catch (error) {
+      if (
+        isImmediateDuplicateCheckResultStale({
+          requestId,
+          latestRequestId: duplicateCheckRequestIdRef.current,
+          expectedContext: input.context,
+          currentContext: latestDuplicateCheckContextRef.current,
+        })
+      ) {
+        return "stale";
+      }
+
+      setDuplicateMatches([]);
+      setDuplicateCheckState("error");
+      setDuplicateCheckErrorMessage(toErrorMessage(error, "Duplicate check failed."));
+      setLastCheckedDuplicateSignature(null);
+      return null;
+    } finally {
+      setIsImmediateDuplicateCheckPending(false);
+    }
+  }
+
+  function handleOpenExistingAsset(match: DuplicateKnowledgeMatchViewModel) {
+    setIsDuplicateSubmitConfirmationOpen(false);
+    setPendingSubmitStrongMatches([]);
+    setDuplicateConfirmationDraftSignature(null);
+    void loadWorkbench({
+      selectedAssetId: match.matched_asset_id,
+      selectedRevisionId: match.matched_revision_id,
+      filters: viewModel?.filters,
+    });
   }
 
   function updateComposer<K extends keyof KnowledgeLibraryLedgerComposer["draft"]>(
@@ -233,7 +782,12 @@ export function KnowledgeLibraryLedgerPage({
         <div className="knowledge-library-ledger-page__hero-meta">
           <span>Role: {actorRole}</span>
           <span>Surface: ledger</span>
-          <span>State: {composer ? "local draft" : selectedAssetId ?? "browse"}</span>
+          <span>
+            State:{" "}
+            {composer?.mode === "new_local"
+              ? "local draft"
+              : selectedAssetId ?? "browse"}
+          </span>
         </div>
       </header>
 
@@ -272,7 +826,9 @@ export function KnowledgeLibraryLedgerPage({
           sourceText={aiIntakeSourceText}
           onSourceTextChange={setAiIntakeSourceText}
           suggestion={aiIntakeSuggestion}
+          onGenerateSuggestion={() => void handleRunAiIntake()}
           onApplySuggestion={aiIntakeSuggestion ? handleApplyAiIntakeSuggestion : undefined}
+          isBusy={isBusy}
         />
       ) : null}
 
@@ -286,21 +842,36 @@ export function KnowledgeLibraryLedgerPage({
         <section className="knowledge-library-ledger-workspace">
           <header className="knowledge-library-ledger-workspace__header">
             <div>
-              <h2>{composer ? "New Record Workspace" : "Editable Workspace"}</h2>
+              <h2>{composer ? "Editable Workspace" : "Browse Workspace"}</h2>
               <p>
                 {composer
-                  ? "Start locally, review the minimum fields, then save the first governed draft."
-                  : "Select a row to edit fields, semantics, and rich content from one workspace."}
+                  ? "Edit draft fields, AI semantic suggestions, and rich content in one governed workspace."
+                  : "Select a row to inspect the current revision or create an update draft."}
               </p>
             </div>
-            {composer ? (
+            {composer?.mode === "new_local" ? (
               <span className="knowledge-library-ledger-badge">Unsaved local draft</span>
+            ) : composer?.persistedRevisionId ? (
+              <span className="knowledge-library-ledger-badge is-selected">
+                Revision {selectedRevision?.revision_no ?? "draft"}
+              </span>
             ) : selectedRevision ? (
               <span className="knowledge-library-ledger-badge is-selected">
                 Revision {selectedRevision.revision_no}
               </span>
             ) : null}
           </header>
+
+          {composer?.warnings.length ? (
+            <section className="knowledge-library-ledger-warnings">
+              <h3>Working Notes</h3>
+              <ul>
+                {composer.warnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <nav className="knowledge-library-ledger-tabs" aria-label="Workspace Tabs">
             <button
@@ -326,81 +897,182 @@ export function KnowledgeLibraryLedgerPage({
             </button>
           </nav>
 
-          {workspaceTab === "fields" ? (
-            composer ? (
-              <form className="knowledge-library-ledger-fields" onSubmit={preventDefault}>
-                <label>
-                  <span>Title</span>
-                  <input
-                    type="text"
-                    value={composer.draft.title}
-                    onChange={(event) => updateComposer("title", event.target.value)}
+          <div className="knowledge-library-ledger-workspace__body">
+            {workspaceTab === "fields" ? (
+              composer ? (
+                <form className="knowledge-library-ledger-fields" onSubmit={preventDefault}>
+                  <label>
+                    <span>Title</span>
+                    <input
+                      type="text"
+                      aria-label="Title"
+                      value={composer.draft.title}
+                      onChange={(event) => updateComposer("title", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Canonical Text</span>
+                    <textarea
+                      rows={8}
+                      aria-label="Canonical Text"
+                      value={composer.draft.canonicalText}
+                      onChange={(event) =>
+                        updateComposer("canonicalText", event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Summary</span>
+                    <textarea
+                      rows={4}
+                      value={composer.draft.summary ?? ""}
+                      onChange={(event) => updateComposer("summary", event.target.value)}
+                    />
+                  </label>
+                  <div className="knowledge-library-ledger-fields__actions">
+                    <button type="submit" onClick={() => void handleSaveDraft()} disabled={isBusy}>
+                      Save Draft
+                    </button>
+                  </div>
+                </form>
+              ) : selectedRevision ? (
+                <section className="knowledge-library-ledger-fields knowledge-library-ledger-fields--readonly">
+                  <label>
+                    <span>Title</span>
+                    <input type="text" value={selectedRevision.title} readOnly />
+                  </label>
+                  <label>
+                    <span>Canonical Text</span>
+                    <textarea rows={8} value={selectedRevision.canonical_text} readOnly />
+                  </label>
+                  <label>
+                    <span>Summary</span>
+                    <textarea rows={4} value={selectedRevision.summary ?? ""} readOnly />
+                  </label>
+                </section>
+              ) : (
+                <p className="knowledge-library-ledger-empty">
+                  Choose a row or start a new record to open the fields workspace.
+                </p>
+              )
+            ) : workspaceTab === "semantic" ? (
+              <div className="knowledge-library-ledger-stack">
+                <KnowledgeLibrarySemanticAssistantPanel
+                  instructionText={semanticInstructionText}
+                  onInstructionTextChange={setSemanticInstructionText}
+                  suggestion={semanticSuggestion}
+                  onGenerateSuggestion={() => void handleRunSemanticAssist()}
+                  onApplySuggestion={semanticSuggestion ? handleApplySemanticSuggestion : undefined}
+                  onDiscardSuggestion={
+                    semanticSuggestion ? () => setSemanticSuggestion(null) : undefined
+                  }
+                  isBusy={isBusy}
+                />
+                {composer ? (
+                  <KnowledgeLibrarySemanticPanel
+                    semanticLayer={composer.semanticLayerDraft ?? selectedRevision?.semantic_layer}
+                    onChange={handleSemanticDraftChange}
+                    onRegenerate={() => void handleRegenerateSemanticLayer()}
+                    onConfirm={() => void handleConfirmSemanticLayer()}
+                    isBusy={isBusy}
+                    actionLabels={{
+                      regenerate: "Regenerate Semantics",
+                      confirm: "Confirm Semantic Layer",
+                    }}
                   />
-                </label>
-                <label>
-                  <span>Canonical Text</span>
-                  <textarea
-                    rows={8}
-                    value={composer.draft.canonicalText}
-                    onChange={(event) =>
-                      updateComposer("canonicalText", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Summary</span>
-                  <textarea
-                    rows={4}
-                    value={composer.draft.summary ?? ""}
-                    onChange={(event) => updateComposer("summary", event.target.value)}
-                  />
-                </label>
+                ) : (
+                  <p className="knowledge-library-ledger-empty">
+                    Save or open a draft revision before confirming semantic changes.
+                  </p>
+                )}
+              </div>
+            ) : composer ? (
+              <div className="knowledge-library-ledger-stack">
+                <KnowledgeLibraryRichContentEditor
+                  blocks={composer.contentBlocksDraft}
+                  onChange={(blocks) =>
+                    setComposer((current) =>
+                      current
+                        ? {
+                            ...current,
+                            contentBlocksDraft: blocks,
+                          }
+                        : current,
+                    )
+                  }
+                  onUploadImage={handleUploadImage}
+                />
                 <div className="knowledge-library-ledger-fields__actions">
-                  <button type="submit" onClick={() => void handleSaveDraft()} disabled={isBusy}>
-                    Save Draft
+                  <button
+                    type="button"
+                    disabled={isBusy || !composer.persistedRevisionId}
+                    onClick={() => void handleSaveRichContent()}
+                  >
+                    Save Rich Content
                   </button>
                 </div>
-              </form>
-            ) : selectedRevision ? (
-              <section className="knowledge-library-ledger-fields knowledge-library-ledger-fields--readonly">
-                <label>
-                  <span>Title</span>
-                  <input type="text" value={selectedRevision.title} readOnly />
-                </label>
-                <label>
-                  <span>Canonical Text</span>
-                  <textarea rows={8} value={selectedRevision.canonical_text} readOnly />
-                </label>
-                <label>
-                  <span>Summary</span>
-                  <textarea rows={4} value={selectedRevision.summary ?? ""} readOnly />
-                </label>
-              </section>
+              </div>
             ) : (
               <p className="knowledge-library-ledger-empty">
-                Choose a row or start a new record to open the fields workspace.
+                Create an update draft before editing content blocks.
               </p>
-            )
-          ) : workspaceTab === "semantic" ? (
-            <KnowledgeLibrarySemanticAssistantPanel
-              instructionText={semanticInstructionText}
-              onInstructionTextChange={setSemanticInstructionText}
-              suggestion={semanticSuggestion}
-              onApplySuggestion={semanticSuggestion ? handleApplySemanticSuggestion : undefined}
-              onDiscardSuggestion={
-                semanticSuggestion ? () => setSemanticSuggestion(null) : undefined
-              }
-            />
-          ) : (
-            <p className="knowledge-library-ledger-empty">
-              Content blocks stay in the same workspace and will be connected next.
-            </p>
-          )}
+            )}
+          </div>
+
+          <footer className="knowledge-library-ledger-workspace__footer">
+            <div className="knowledge-library-ledger-workspace__actions">
+              {composer?.persistedRevisionId ? (
+                <button
+                  type="button"
+                  disabled={isBusy || isImmediateDuplicateCheckPending}
+                  onClick={() => void handleSubmitDraft()}
+                >
+                  Submit To Review
+                </button>
+              ) : null}
+              {!composer && selectedAssetId ? (
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void handleCreateDerivedDraft()}
+                >
+                  Create Update Draft
+                </button>
+              ) : null}
+            </div>
+
+            {composer ? (
+              <KnowledgeLibraryDuplicateStatusRow
+                checkState={duplicateCheckState}
+                strongMatchCount={strongDuplicateMatches.length}
+                isStale={isDuplicateResultStale}
+                checkErrorMessage={duplicateCheckErrorMessage}
+              />
+            ) : null}
+
+            {isDuplicateSubmitConfirmationOpen && firstPendingStrongDuplicateMatch ? (
+              <KnowledgeLibraryDuplicateSubmitConfirmation
+                match={firstPendingStrongDuplicateMatch}
+                isBusy={isBusy}
+                onOpenAsset={handleOpenExistingAsset}
+                onContinueAnyway={() => void handleContinueSubmitWithDuplicateAcknowledgement()}
+              />
+            ) : null}
+
+            {composer ? (
+              <KnowledgeLibraryDuplicatePanel
+                matches={duplicateMatches}
+                checkState={duplicateCheckState}
+                checkErrorMessage={duplicateCheckErrorMessage}
+                onOpenAsset={handleOpenExistingAsset}
+              />
+            ) : null}
+          </footer>
         </section>
       </div>
 
       {loadStatus === "loading" ? (
-        <p className="knowledge-library-ledger-status">Loading ledger…</p>
+        <p className="knowledge-library-ledger-status">Loading ledger...</p>
       ) : null}
     </main>
   );
@@ -410,8 +1082,19 @@ function preventDefault(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
 }
 
+function createEditableComposerFromViewModel(
+  viewModel: KnowledgeLibraryWorkbenchViewModel | null,
+): KnowledgeLibraryLedgerComposer | null {
+  const selectedRevision = viewModel?.detail?.selected_revision ?? null;
+  if (!selectedRevision || selectedRevision.status !== "draft") {
+    return null;
+  }
+
+  return createComposerFromSelectedRevision(selectedRevision, viewModel?.selectedAssetId ?? null);
+}
+
 function createComposerFromSelectedRevision(
-  selectedRevision: KnowledgeLibraryWorkbenchViewModel["detail"]["selected_revision"] | null,
+  selectedRevision: KnowledgeRevisionViewModel | null,
   selectedAssetId: string | null,
 ): KnowledgeLibraryLedgerComposer | null {
   if (!selectedRevision) {
@@ -450,6 +1133,36 @@ function createComposerFromSelectedRevision(
   };
 }
 
+function createLedgerDuplicateCheckInput(
+  composer: KnowledgeLibraryLedgerComposer | null,
+): DuplicateKnowledgeCheckInput | null {
+  if (!composer) {
+    return null;
+  }
+
+  const title = composer.draft.title.trim();
+  const canonicalText = composer.draft.canonicalText.trim();
+  if (title.length === 0 || canonicalText.length < 12) {
+    return null;
+  }
+
+  return {
+    title,
+    canonicalText,
+    summary: optionalTrimmedValue(composer.draft.summary),
+    knowledgeKind: composer.draft.knowledgeKind,
+    moduleScope: composer.draft.moduleScope,
+    manuscriptTypes: normalizeManuscriptTypes(composer.draft.manuscriptTypes),
+    sections: normalizeStringArray(composer.draft.sections),
+    riskTags: normalizeStringArray(composer.draft.riskTags),
+    disciplineTags: normalizeStringArray(composer.draft.disciplineTags),
+    aliases: normalizeStringArray(composer.draft.aliases),
+    bindings: composer.draft.bindings,
+    currentAssetId: composer.persistedAssetId ?? undefined,
+    currentRevisionId: composer.persistedRevisionId ?? undefined,
+  };
+}
+
 function toPendingSemanticLayerDraft(
   revisionId: string,
   suggestion: KnowledgeLibrarySemanticAssistSuggestionViewModel,
@@ -463,6 +1176,35 @@ function toPendingSemanticLayerDraft(
     table_semantics: suggestion.suggestedSemanticLayer.tableSemantics,
     image_understanding: suggestion.suggestedSemanticLayer.imageUnderstanding,
   };
+}
+
+function normalizeManuscriptTypes(
+  value: KnowledgeLibraryLedgerComposer["draft"]["manuscriptTypes"],
+): DuplicateKnowledgeCheckInput["manuscriptTypes"] {
+  if (value === "any") {
+    return "any";
+  }
+
+  const normalized = value
+    .map((entry) => entry.trim())
+    .filter((entry): entry is ManuscriptType => entry.length > 0);
+  return normalized.length > 0 ? normalized : "any";
+}
+
+function normalizeStringArray(values: string[] | undefined): string[] | undefined {
+  if (!values) {
+    return undefined;
+  }
+
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function optionalTrimmedValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string): string {
