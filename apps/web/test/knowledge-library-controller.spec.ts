@@ -759,6 +759,98 @@ test("knowledge library controller can persist rich content, semantic confirmati
   });
 });
 
+test("knowledge library controller posts ai intake and semantic assist requests", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/library/ai-intake") {
+        return {
+          status: 200,
+          body: {
+            suggestedDraft: {
+              title: "Primary endpoint rule",
+              canonicalText: "Clinical studies must define the primary endpoint.",
+              knowledgeKind: "rule",
+              moduleScope: "screening",
+              manuscriptTypes: ["clinical_study"],
+            },
+            suggestedContentBlocks: [],
+            warnings: ["No evidence level was found in the source text."],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/revisions/revision-1/semantic-layer/assist") {
+        return {
+          status: 200,
+          body: {
+            suggestedSemanticLayer: {
+              pageSummary: "Operator-ready semantic summary.",
+              retrievalTerms: ["primary endpoint", "screening"],
+              retrievalSnippets: ["Prefer this rule when endpoint wording is vague."],
+            },
+            suggestedFieldPatch: {
+              summary: "Updated semantic summary for endpoint screening.",
+              aliases: ["endpoint definition"],
+            },
+            warnings: ["Title is intentionally unchanged in V1 semantic assist."],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const intakeSuggestion = await controller.createAiIntakeSuggestion({
+    sourceText:
+      "Clinical studies must disclose the primary endpoint in the methods section.",
+    sourceLabel: "Guideline excerpt",
+    operatorHints: "Focus on screening usage.",
+  });
+  const semanticSuggestion = await controller.assistSemanticLayer({
+    revisionId: "revision-1",
+    instructionText: "Make retrieval terms broader without changing title ownership.",
+    targetScopes: ["semantic_layer", "metadata_patch"],
+  });
+
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/knowledge/library/ai-intake",
+      body: {
+        sourceText:
+          "Clinical studies must disclose the primary endpoint in the methods section.",
+        sourceLabel: "Guideline excerpt",
+        operatorHints: "Focus on screening usage.",
+      },
+    },
+    {
+      method: "POST",
+      url: "/api/v1/knowledge/revisions/revision-1/semantic-layer/assist",
+      body: {
+        instructionText:
+          "Make retrieval terms broader without changing title ownership.",
+        targetScopes: ["semantic_layer", "metadata_patch"],
+      },
+    },
+  ]);
+  assert.equal(intakeSuggestion.suggestedDraft.title, "Primary endpoint rule");
+  assert.equal(
+    semanticSuggestion.suggestedSemanticLayer.pageSummary,
+    "Operator-ready semantic summary.",
+  );
+  assert.deepEqual(semanticSuggestion.suggestedFieldPatch.aliases, [
+    "endpoint definition",
+  ]);
+});
+
 function createKnowledgeAssetDetail(input: {
   assetId: string;
   revisionId: string;
