@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ManuscriptTypeDetectionSummary } from "@medical/contracts";
+import { MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT } from "@medical/contracts";
 import { ManuscriptNotFoundError } from "../assets/document-asset-service.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -18,15 +20,20 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type { TemplateFamilyRepository } from "../templates/template-repository.ts";
 import type { ManuscriptRecord, ManuscriptType } from "./manuscript-record.ts";
+import {
+  HeuristicManuscriptTypeRecognitionService,
+  type ManuscriptTypeRecognitionService,
+} from "./manuscript-type-recognition-service.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
 export interface UploadManuscriptInput {
   title: string;
-  manuscriptType: ManuscriptType;
+  manuscriptType?: ManuscriptType;
   createdBy: string;
   fileName: string;
   mimeType: string;
   storageKey: string;
+  fileContentBase64?: string;
 }
 
 export interface UploadManuscriptResult {
@@ -55,6 +62,7 @@ export interface ManuscriptLifecycleServiceOptions {
   assetRepository: DocumentAssetRepository;
   jobRepository: JobRepository;
   templateFamilyRepository?: TemplateFamilyRepository;
+  manuscriptTypeRecognitionService?: ManuscriptTypeRecognitionService;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
   now?: () => Date;
@@ -110,11 +118,21 @@ export class ManuscriptBatchItemNotFoundError extends Error {
   }
 }
 
+export class ManuscriptBatchUploadLimitExceededError extends Error {
+  constructor(itemCount: number) {
+    super(
+      `Batch uploads cannot exceed ${MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT} manuscripts. Received ${itemCount}.`,
+    );
+    this.name = "ManuscriptBatchUploadLimitExceededError";
+  }
+}
+
 export class ManuscriptLifecycleService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly assetRepository: DocumentAssetRepository;
   private readonly jobRepository: JobRepository;
   private readonly templateFamilyRepository?: TemplateFamilyRepository;
+  private readonly manuscriptTypeRecognitionService: ManuscriptTypeRecognitionService;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
   private readonly now: () => Date;
@@ -124,6 +142,9 @@ export class ManuscriptLifecycleService {
     this.assetRepository = options.assetRepository;
     this.jobRepository = options.jobRepository;
     this.templateFamilyRepository = options.templateFamilyRepository;
+    this.manuscriptTypeRecognitionService =
+      options.manuscriptTypeRecognitionService ??
+      new HeuristicManuscriptTypeRecognitionService();
     this.transactionManager =
       options.transactionManager ??
       createWriteTransactionManager({
@@ -136,8 +157,9 @@ export class ManuscriptLifecycleService {
   }
 
   async upload(input: UploadManuscriptInput): Promise<UploadManuscriptResult> {
+    const resolvedType = await this.resolveUploadManuscriptType(input);
     const templateFamilyId = await this.resolveDefaultTemplateFamilyId(
-      input.manuscriptType,
+      resolvedType.manuscriptType,
     );
 
     return this.transactionManager.withTransaction(
@@ -154,13 +176,18 @@ export class ManuscriptLifecycleService {
         const manuscript: ManuscriptRecord = {
           id: manuscriptId,
           title: input.title,
-          manuscript_type: input.manuscriptType,
+          manuscript_type: resolvedType.manuscriptType,
           status: "uploaded",
           created_by: input.createdBy,
           current_screening_asset_id: undefined,
           current_editing_asset_id: undefined,
           current_proofreading_asset_id: undefined,
           current_template_family_id: templateFamilyId,
+          ...(resolvedType.detectionSummary
+            ? {
+                manuscript_type_detection_summary: resolvedType.detectionSummary,
+              }
+            : {}),
           created_at: timestamp,
           updated_at: timestamp,
         };
@@ -221,10 +248,25 @@ export class ManuscriptLifecycleService {
       throw new Error("Batch uploads require at least one item.");
     }
 
-    const templateFamilyIds = await Promise.all(
-      input.items.map((item) =>
-        this.resolveDefaultTemplateFamilyId(item.manuscriptType),
-      ),
+    if (input.items.length > MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT) {
+      throw new ManuscriptBatchUploadLimitExceededError(input.items.length);
+    }
+
+    const resolvedItems = await Promise.all(
+      input.items.map(async (item) => {
+        const resolvedType = await this.resolveUploadManuscriptType({
+          ...item,
+          createdBy: input.createdBy,
+        });
+
+        return {
+          item,
+          resolvedType,
+          templateFamilyId: await this.resolveDefaultTemplateFamilyId(
+            resolvedType.manuscriptType,
+          ),
+        };
+      }),
     );
 
     return this.transactionManager.withTransaction(
@@ -238,21 +280,26 @@ export class ManuscriptLifecycleService {
         const uploadedItems: UploadManuscriptResult[] = [];
         const batchItems: JobBatchItemRecord[] = [];
 
-        for (const [index, item] of input.items.entries()) {
+        for (const [index, resolvedItem] of resolvedItems.entries()) {
+          const { item, resolvedType, templateFamilyId } = resolvedItem;
           const manuscriptId = this.createId();
           const assetId = this.createId();
           const jobId = this.createId();
-          const templateFamilyId = templateFamilyIds[index];
           const manuscript: ManuscriptRecord = {
             id: manuscriptId,
             title: item.title,
-            manuscript_type: item.manuscriptType,
+            manuscript_type: resolvedType.manuscriptType,
             status: "uploaded",
             created_by: input.createdBy,
             current_screening_asset_id: undefined,
             current_editing_asset_id: undefined,
             current_proofreading_asset_id: undefined,
             current_template_family_id: templateFamilyId,
+            ...(resolvedType.detectionSummary
+              ? {
+                  manuscript_type_detection_summary: resolvedType.detectionSummary,
+                }
+              : {}),
             created_at: timestamp,
             updated_at: timestamp,
           };
@@ -363,6 +410,28 @@ export class ManuscriptLifecycleService {
     }
 
     return matchingFamilies[0]?.id;
+  }
+
+  private async resolveUploadManuscriptType(input: UploadManuscriptInput): Promise<{
+    manuscriptType: ManuscriptType;
+    detectionSummary?: ManuscriptTypeDetectionSummary;
+  }> {
+    if (input.manuscriptType) {
+      return {
+        manuscriptType: input.manuscriptType,
+      };
+    }
+
+    const detectionSummary = await this.manuscriptTypeRecognitionService.detect({
+      title: input.title,
+      fileName: input.fileName,
+      fileContentBase64: input.fileContentBase64,
+    });
+
+    return {
+      manuscriptType: detectionSummary.final_type,
+      detectionSummary,
+    };
   }
 
   getManuscript(manuscriptId: string): Promise<ManuscriptRecord | undefined> {

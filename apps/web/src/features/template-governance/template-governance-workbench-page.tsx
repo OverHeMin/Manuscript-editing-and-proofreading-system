@@ -37,13 +37,19 @@ import type {
   EditorialRuleExecutionMode,
   EditorialRuleSeverity,
   EditorialRuleSetViewModel,
+  ExtractionTaskCandidateViewModel,
   EditorialRuleType,
   RulePackageDraftViewModel,
   RulePackageWorkspaceSourceInputViewModel,
 } from "../editorial-rules/index.ts";
 import type {
+  GovernedContentModuleClass,
+  GovernedContentModuleViewModel,
+  JournalTemplateProfileViewModel,
   ModuleTemplateViewModel,
+  RuleEvidenceExampleViewModel,
   TemplateModule,
+  TemplateCompositionViewModel,
   TemplateFamilyStatus,
 } from "../templates/index.ts";
 import { RuleAuthoringForm } from "./rule-authoring-form.tsx";
@@ -82,15 +88,44 @@ import {
 import type { RuleAuthoringDraft, RuleAuthoringObject } from "./rule-authoring-types.ts";
 import {
   createTemplateGovernanceWorkbenchController,
+  type TemplateGovernanceContentModuleLedgerViewModel,
+  type TemplateGovernanceExtractionLedgerViewModel,
+  type TemplateGovernanceTemplateLedgerViewModel,
   type TemplateGovernanceWorkbenchController,
   type TemplateGovernanceWorkbenchFilters,
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
 import {
+  TemplateGovernanceOverviewPage,
+  type TemplateGovernanceOverviewMetrics,
+} from "./template-governance-overview-page.tsx";
+import { TemplateGovernanceContentModuleLedgerPage } from "./template-governance-content-module-ledger-page.tsx";
+import type { TemplateGovernanceContentModuleFormValues } from "./template-governance-content-module-form.tsx";
+import { TemplateGovernanceExtractionLedgerPage } from "./template-governance-extraction-ledger-page.tsx";
+import type { TemplateGovernanceExtractionTaskFormDraft } from "./template-governance-extraction-task-form.tsx";
+import {
+  TemplateGovernanceJournalTemplateLedgerPage,
+  type TemplateGovernanceJournalTemplateLedgerViewModel,
+} from "./template-governance-journal-template-ledger-page.tsx";
+import type { TemplateGovernanceJournalTemplateFormValues } from "./template-governance-journal-template-form.tsx";
+import type { TemplateGovernanceCandidateConfirmationFormValues } from "./template-governance-candidate-confirmation-form.tsx";
+import { TemplateGovernanceLedgerToolbar } from "./template-governance-ledger-toolbar.tsx";
+import type { TemplateGovernanceLedgerSearchState } from "./template-governance-ledger-types.ts";
+import {
+  createTemplateGovernanceNavigationItems,
+  type TemplateGovernanceNavigationTarget,
+} from "./template-governance-navigation.ts";
+import { TemplateGovernanceTemplateLedgerPage } from "./template-governance-template-ledger-page.tsx";
+import type { TemplateGovernanceTemplateFormValues } from "./template-governance-template-form.tsx";
+import {
+  formatRulePackageKindLabel,
   formatTemplateGovernanceConfidencePolicyLabel,
   formatTemplateGovernanceExecutionModeLabel,
   formatTemplateGovernanceFamilyStatusLabel,
   formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceExtractionCandidateStatusLabel,
+  formatTemplateGovernanceExtractionDestinationLabel,
+  formatTemplateGovernanceExtractionTaskStatusLabel,
   formatTemplateGovernanceKnowledgeKindLabel,
   formatTemplateGovernanceManuscriptTypeLabel,
   formatTemplateGovernanceModuleLabel,
@@ -275,11 +310,47 @@ export function TemplateGovernanceWorkbenchPage({
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
   if (initialView === "overview") {
-    return <TemplateGovernanceOverviewPlaceholder overview={initialOverview} />;
+    return (
+      <TemplateGovernanceOverviewRoute
+        controller={controller}
+        initialOverview={initialOverview}
+      />
+    );
   }
 
   if (initialView === "extraction-ledger") {
-    return <TemplateGovernanceExtractionLedgerPlaceholder />;
+    return <TemplateGovernanceExtractionLedgerRoute controller={controller} />;
+  }
+
+  if (initialView === "large-template-ledger") {
+    return <TemplateGovernanceTemplateLedgerRoute controller={controller} />;
+  }
+
+  if (initialView === "journal-template-ledger") {
+    return (
+      <TemplateGovernanceJournalTemplateLedgerRoute
+        controller={controller}
+        actorRole={actorRole}
+      />
+    );
+  }
+
+  if (initialView === "general-package-ledger") {
+    return (
+      <TemplateGovernanceContentModuleLedgerRoute
+        controller={controller}
+        moduleClass="general"
+      />
+    );
+  }
+
+  if (initialView === "medical-package-ledger") {
+    return (
+      <TemplateGovernanceContentModuleLedgerRoute
+        controller={controller}
+        moduleClass="medical_specialized"
+      />
+    );
   }
 
   const initialRuleDraft = resolveInitialRuleAuthoringDraft(initialOverview);
@@ -2426,87 +2497,1815 @@ export function TemplateGovernanceWorkbenchPage({
   );
 }
 
-function TemplateGovernanceOverviewPlaceholder({
-  overview,
+function TemplateGovernanceOverviewRoute({
+  controller,
+  initialOverview,
 }: {
-  overview: TemplateGovernanceWorkbenchOverview | null;
+  controller: TemplateGovernanceWorkbenchController;
+  initialOverview: TemplateGovernanceWorkbenchOverview | null;
 }) {
-  const templateCount = overview?.templateFamilies.length ?? 0;
-  const moduleCount = overview?.moduleTemplates.length ?? 0;
-  const pendingKnowledgeCount =
-    overview?.visibleKnowledgeItems.filter(
-      (item) => item.status === "draft" || item.status === "pending_review",
-    ).length ?? 0;
+  const [overview, setOverview] = useState(initialOverview);
+  const [extractionAwaitingConfirmationCount, setExtractionAwaitingConfirmationCount] =
+    useState(0);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!initialOverview) {
+      void controller.loadOverview().then((nextOverview) => {
+        if (!isCancelled) {
+          setOverview(nextOverview);
+        }
+      });
+    }
+
+    void controller.loadExtractionLedger().then((ledger) => {
+      if (!isCancelled) {
+        setExtractionAwaitingConfirmationCount(
+          ledger.summary.awaitingConfirmationCount,
+        );
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller, initialOverview]);
 
   return (
-    <section className="template-governance-overview-page">
-      <header className="template-governance-hero">
-        <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">规则中心总览</p>
-          <h1>规则中心总览</h1>
-          <p>先看总览数据，再进入模板、提取与模块台账。</p>
-        </div>
-      </header>
-
-      <div className="template-governance-overview-metrics">
-        <article className="template-governance-card">
-          <h2>模板数量</h2>
-          <p>{templateCount}</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>模块数量</h2>
-          <p>{moduleCount}</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>待确认提取候选</h2>
-          <p>{pendingKnowledgeCount}</p>
-        </article>
-      </div>
-
-      <div className="template-governance-overview-links">
-        <article className="template-governance-card">
-          <h2>模板台账</h2>
-          <p>管理模板容器、版本和套用入口。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>原稿/编辑稿提取台账</h2>
-          <p>先提取候选，再确认 AI 语义与入库去向。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>通用模块台账</h2>
-          <p>沉淀跨稿件场景复用的通用模块。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>医学专用模块台账</h2>
-          <p>沉淀医学专用的高风险高价值模块。</p>
-        </article>
-      </div>
-    </section>
+    <TemplateGovernanceOverviewPage
+      metrics={buildTemplateGovernanceOverviewMetrics(
+        overview,
+        extractionAwaitingConfirmationCount,
+      )}
+      onOpenView={navigateToTemplateGovernanceView}
+    />
   );
 }
 
-function TemplateGovernanceExtractionLedgerPlaceholder() {
-  return (
-    <section className="template-governance-extraction-ledger-page">
-      <header className="template-governance-hero">
-        <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">提取台账</p>
-          <h1>原稿/编辑稿提取台账</h1>
-          <p>这是新的候选中枢入口，后续会承接任务表、候选表和 AI 语义确认。</p>
-        </div>
-      </header>
-
-      <div className="template-governance-actions">
-        <button type="button">新建提取任务</button>
-        <button type="button">搜索任务</button>
-      </div>
-
-      <article className="template-governance-card">
-        <h2>待确认数</h2>
-        <p>后续这里会显示提取任务表和候选确认表。</p>
-      </article>
-    </section>
+function TemplateGovernanceExtractionLedgerRoute({
+  controller,
+}: {
+  controller: TemplateGovernanceWorkbenchController;
+}) {
+  const [ledger, setLedger] = useState<TemplateGovernanceExtractionLedgerViewModel>(
+    createEmptyExtractionLedgerViewModel(),
   );
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [searchValue, setSearchValue] = useState("");
+  const [searchState, setSearchState] = useState<TemplateGovernanceLedgerSearchState>(
+    createEmptyLedgerSearchState(),
+  );
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [taskDraft, setTaskDraft] = useState<TemplateGovernanceExtractionTaskFormDraft>(
+    createExtractionTaskDraft(),
+  );
+  const [candidateFormOpen, setCandidateFormOpen] = useState(false);
+  const [candidateFormValues, setCandidateFormValues] =
+    useState<TemplateGovernanceCandidateConfirmationFormValues>(
+      createCandidateConfirmationFormValues(),
+    );
+  const [originalFile, setOriginalFile] = useState<BrowserUploadFile | null>(null);
+  const [editedFile, setEditedFile] = useState<BrowserUploadFile | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const selectedCandidate = selectExtractionCandidate(ledger, selectedCandidateId);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    void controller
+      .loadExtractionLedger()
+      .then((nextLedger) => {
+        if (!isCancelled) {
+          setLedger(nextLedger);
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setErrorMessage(toErrorMessage(error, "提取台账加载失败"));
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller]);
+
+  useEffect(() => {
+    setSelectedCandidateId((current) => {
+      const candidateIds =
+        ledger.selectedTask?.candidates.map((candidate) => candidate.id) ?? [];
+      if (current && candidateIds.includes(current)) {
+        return current;
+      }
+
+      return candidateIds[0] ?? null;
+    });
+  }, [ledger.selectedTask]);
+
+  function resetFeedback() {
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  function handleSearchAction() {
+    setSearchState(buildExtractionLedgerSearchState(ledger, searchValue));
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    handleSearchAction();
+  }
+
+  function handleOpenTaskForm() {
+    resetFeedback();
+    setCandidateFormOpen(false);
+    setTaskFormOpen(true);
+    setOriginalFile(null);
+    setEditedFile(null);
+    setTaskDraft(createExtractionTaskDraft());
+  }
+
+  async function handleSelectTask(taskId: string) {
+    resetFeedback();
+    setTaskFormOpen(false);
+    setCandidateFormOpen(false);
+    setIsBusy(true);
+
+    try {
+      const nextLedger = await controller.loadExtractionLedger({
+        selectedTaskId: taskId,
+      });
+      setLedger(nextLedger);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "切换提取任务失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function handleSelectCandidate(candidateId: string) {
+    resetFeedback();
+    setSelectedCandidateId(candidateId);
+  }
+
+  function handleOpenCandidateForm() {
+    resetFeedback();
+    if (!selectedCandidate) {
+      setErrorMessage("请先选择一个候选，再确认 AI 语义。");
+      return;
+    }
+
+    setTaskFormOpen(false);
+    setCandidateFormOpen(true);
+    setCandidateFormValues(createCandidateConfirmationFormValues(selectedCandidate));
+  }
+
+  function handleOriginalFileSelect(file: BrowserUploadFile | null) {
+    setOriginalFile(file);
+    setTaskDraft((current) => ({
+      ...current,
+      originalFileLabel: file?.name,
+    }));
+  }
+
+  function handleEditedFileSelect(file: BrowserUploadFile | null) {
+    setEditedFile(file);
+    setTaskDraft((current) => ({
+      ...current,
+      editedFileLabel: file?.name,
+    }));
+  }
+
+  async function handleTaskFormSubmit() {
+    const validationMessage = validateExtractionTaskDraft(taskDraft, {
+      originalFile,
+      editedFile,
+    });
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
+      return;
+    }
+
+    if (!originalFile || !editedFile) {
+      setErrorMessage("请同时上传原稿和编辑稿。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { task, ledger: nextLedger } = await controller.createExtractionTaskAndReload({
+        taskName: taskDraft.taskName.trim(),
+        manuscriptType: taskDraft.manuscriptType,
+        ...(taskDraft.journalKey.trim()
+          ? { journalKey: taskDraft.journalKey.trim() }
+          : {}),
+        originalFile: await createInlineUploadFields(originalFile),
+        editedFile: await createInlineUploadFields(editedFile),
+      });
+      setLedger(nextLedger);
+      setSelectedCandidateId(task.candidates[0]?.id ?? null);
+      setTaskFormOpen(false);
+      setTaskDraft(createExtractionTaskDraft(task.manuscript_type));
+      setOriginalFile(null);
+      setEditedFile(null);
+      setStatusMessage(`提取任务已创建：${task.task_name}`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "创建提取任务失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleCandidateAction(
+    confirmationStatus: TemplateGovernanceCandidateConfirmationFormValues["confirmationStatus"],
+    successMessage: string,
+  ) {
+    if (!ledger.selectedTask || !selectedCandidate) {
+      setErrorMessage("请先选择候选，再执行确认。");
+      return;
+    }
+
+    const validationMessage = validateCandidateConfirmationFormValues(
+      candidateFormValues,
+    );
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { ledger: nextLedger } =
+        await controller.updateExtractionTaskCandidateAndReload({
+          taskId: ledger.selectedTask.id,
+          candidateId: selectedCandidate.id,
+          input: toCandidateUpdateInput(
+            selectedCandidate,
+            candidateFormValues,
+            confirmationStatus,
+          ),
+        });
+      setLedger(nextLedger);
+      setCandidateFormOpen(false);
+      setStatusMessage(successMessage);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "候选语义确认失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <TemplateGovernanceExtractionLedgerPage
+      viewModel={ledger}
+      selectedCandidateId={selectedCandidateId}
+      searchState={searchState}
+      searchValue={searchValue}
+      taskFormOpen={taskFormOpen}
+      taskDraft={taskDraft}
+      candidateFormOpen={candidateFormOpen}
+      candidateFormValues={candidateFormValues}
+      isBusy={isBusy}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      navigationItems={createTemplateGovernanceNavigationItems(
+        "extraction-ledger",
+        navigateToTemplateGovernanceSection,
+      )}
+      onSearchValueChange={setSearchValue}
+      onSearchSubmit={handleSearchSubmit}
+      onSearchAction={handleSearchAction}
+      onOpenTaskForm={handleOpenTaskForm}
+      onOpenCandidateForm={handleOpenCandidateForm}
+      onSelectTask={(taskId) => {
+        void handleSelectTask(taskId);
+      }}
+      onSelectCandidate={handleSelectCandidate}
+      onTaskDraftChange={setTaskDraft}
+      onOriginalFileSelect={handleOriginalFileSelect}
+      onEditedFileSelect={handleEditedFileSelect}
+      onTaskFormCancel={() => {
+        setTaskFormOpen(false);
+      }}
+      onTaskFormSubmit={() => {
+        void handleTaskFormSubmit();
+      }}
+      onCandidateFormChange={setCandidateFormValues}
+      onCandidateFormCancel={() => {
+        setCandidateFormOpen(false);
+      }}
+      onCandidateHold={() => {
+        void handleCandidateAction("held", "候选已暂存，后续可继续修改 AI 语义。");
+      }}
+      onCandidateReject={() => {
+        void handleCandidateAction("rejected", "候选已驳回。");
+      }}
+      onCandidateConfirm={() => {
+        void handleCandidateAction("confirmed", "候选已确认入库。");
+      }}
+    />
+  );
+}
+
+function TemplateGovernanceContentModuleLedgerRoute({
+  controller,
+  moduleClass,
+}: {
+  controller: TemplateGovernanceWorkbenchController;
+  moduleClass: GovernedContentModuleClass;
+}) {
+  const [ledger, setLedger] =
+    useState<TemplateGovernanceContentModuleLedgerViewModel>(
+      createEmptyContentModuleLedgerViewModel(),
+    );
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [formValues, setFormValues] = useState<TemplateGovernanceContentModuleFormValues>(
+    createContentModuleFormValues(moduleClass),
+  );
+  const [searchValue, setSearchValue] = useState("");
+  const [searchState, setSearchState] = useState<TemplateGovernanceLedgerSearchState>(
+    createEmptyLedgerSearchState(),
+  );
+  const [isBusy, setIsBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    void controller
+      .loadContentModuleLedger({
+        moduleClass,
+      })
+      .then((nextLedger) => {
+        if (!isCancelled) {
+          setLedger(nextLedger);
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setErrorMessage(toErrorMessage(error, "模块台账加载失败"));
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller, moduleClass]);
+
+  useEffect(() => {
+    setFormValues((current) =>
+      formMode === "edit" && ledger.selectedModule
+        ? toContentModuleFormValues(ledger.selectedModule)
+        : current,
+    );
+  }, [formMode, ledger.selectedModule]);
+
+  function resetFeedback() {
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  function handleSearchAction() {
+    setSearchState(
+      buildContentModuleSearchState({
+        ledger,
+        ledgerKind: moduleClass,
+        query: searchValue,
+      }),
+    );
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    handleSearchAction();
+  }
+
+  function handleSelectModule(moduleId: string) {
+    resetFeedback();
+    setFormMode(null);
+    setLedger((current) => selectContentModule(current, moduleId));
+  }
+
+  function handleOpenCreateForm() {
+    resetFeedback();
+    setFormMode("create");
+    setFormValues(createContentModuleFormValues(moduleClass));
+  }
+
+  function handleOpenEditForm() {
+    if (!ledger.selectedModule) {
+      setErrorMessage("请先在台账中选择一个模块。");
+      return;
+    }
+
+    resetFeedback();
+    setFormMode("edit");
+    setFormValues(toContentModuleFormValues(ledger.selectedModule));
+  }
+
+  async function handleArchiveSelected() {
+    if (!ledger.selectedModule) {
+      setErrorMessage("请先在台账中选择一个模块。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { contentModule, ledger: nextLedger } =
+        await controller.updateContentModuleDraftAndReload({
+          contentModuleId: ledger.selectedModule.id,
+          moduleClass,
+          selectedModuleId: null,
+          input: {
+            status: "archived",
+          },
+        });
+      setLedger(nextLedger);
+      setFormMode(null);
+      setStatusMessage(`模块已删除：${contentModule.name}`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "删除模块失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleFormSubmit() {
+    const validationMessage = validateContentModuleFormValues(formValues);
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      if (formMode === "edit" && ledger.selectedModule) {
+        const { contentModule, ledger: nextLedger } =
+          await controller.updateContentModuleDraftAndReload({
+            contentModuleId: ledger.selectedModule.id,
+            moduleClass,
+            selectedModuleId: ledger.selectedModule.id,
+            input: toContentModuleUpdateInput(formValues),
+          });
+        setLedger(nextLedger);
+        setStatusMessage(`模块已更新：${contentModule.name}`);
+      } else {
+        const { contentModule, ledger: nextLedger } =
+          await controller.createContentModuleDraftAndReload(
+            toContentModuleCreateInput(formValues, moduleClass),
+          );
+        setLedger(nextLedger);
+        setStatusMessage(`模块已创建：${contentModule.name}`);
+      }
+
+      setFormMode(null);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "保存模块失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <TemplateGovernanceContentModuleLedgerPage
+      ledgerKind={moduleClass}
+      viewModel={ledger}
+      formMode={formMode}
+      formValues={formValues}
+      searchState={searchState}
+      searchValue={searchValue}
+      isBusy={isBusy}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      navigationItems={createTemplateGovernanceNavigationItems(
+        moduleClass === "general"
+          ? "general-package-ledger"
+          : "medical-package-ledger",
+        navigateToTemplateGovernanceSection,
+      )}
+      onSearchValueChange={setSearchValue}
+      onSearchSubmit={handleSearchSubmit}
+      onOpenCreateForm={handleOpenCreateForm}
+      onArchiveSelected={() => {
+        void handleArchiveSelected();
+      }}
+      onJoinTemplate={() => {
+        navigateToTemplateGovernanceSection("large-template-ledger");
+      }}
+      onSelectModule={handleSelectModule}
+      onOpenEditForm={handleOpenEditForm}
+      onFormChange={setFormValues}
+      onFormCancel={() => {
+        setFormMode(null);
+      }}
+      onFormSubmit={() => {
+        void handleFormSubmit();
+      }}
+    />
+  );
+}
+
+function TemplateGovernanceJournalTemplateLedgerRoute({
+  controller,
+  actorRole,
+}: {
+  controller: TemplateGovernanceWorkbenchController;
+  actorRole: AuthRole;
+}) {
+  const [viewModel, setViewModel] =
+    useState<TemplateGovernanceJournalTemplateLedgerViewModel>(
+      createEmptyJournalTemplateLedgerViewModel(),
+    );
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [formValues, setFormValues] =
+    useState<TemplateGovernanceJournalTemplateFormValues>(
+      createJournalTemplateFormValues(),
+    );
+  const [searchValue, setSearchValue] = useState("");
+  const [searchState, setSearchState] = useState<TemplateGovernanceLedgerSearchState>(
+    createEmptyLedgerSearchState(),
+  );
+  const [isBusy, setIsBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    void controller
+      .loadOverview()
+      .then((overview) => {
+        if (!isCancelled) {
+          setViewModel(toJournalTemplateLedgerViewModel(overview));
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setErrorMessage(toErrorMessage(error, "期刊模板台账加载失败"));
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller]);
+
+  function resetFeedback() {
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  async function handleReload(input: {
+    selectedTemplateFamilyId?: string | null;
+    selectedJournalTemplateId?: string | null;
+  } = {}) {
+    const overview = await controller.loadOverview(input);
+    setViewModel(toJournalTemplateLedgerViewModel(overview));
+  }
+
+  function handleSearchAction() {
+    setSearchState(buildJournalTemplateSearchState(viewModel, searchValue));
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    handleSearchAction();
+  }
+
+  function handleSelectTemplateFamily(templateFamilyId: string) {
+    setIsBusy(true);
+    resetFeedback();
+    setFormMode(null);
+
+    void handleReload({
+      selectedTemplateFamilyId: templateFamilyId,
+      selectedJournalTemplateId: null,
+    })
+      .catch((error) => {
+        setErrorMessage(toErrorMessage(error, "切换大模板失败"));
+      })
+      .finally(() => {
+        setIsBusy(false);
+      });
+  }
+
+  function handleSelectJournalTemplate(journalTemplateId: string) {
+    resetFeedback();
+    setFormMode(null);
+    setViewModel((current) =>
+      selectJournalTemplateLedger(current, journalTemplateId),
+    );
+  }
+
+  function handleOpenCreateForm() {
+    if (!viewModel.selectedTemplateFamilyId) {
+      setErrorMessage("请先选择一个大模板。");
+      return;
+    }
+
+    resetFeedback();
+    setFormMode("create");
+    setFormValues(createJournalTemplateFormValues(viewModel.selectedTemplateFamilyId));
+  }
+
+  function handleOpenEditForm() {
+    if (!viewModel.selectedJournalTemplate) {
+      setErrorMessage("请先在台账中选择一个期刊模板。");
+      return;
+    }
+
+    resetFeedback();
+    setFormMode("edit");
+    setFormValues(toJournalTemplateFormValues(viewModel.selectedJournalTemplate));
+  }
+
+  async function handleArchiveSelected() {
+    if (!viewModel.selectedJournalTemplate) {
+      setErrorMessage("请先在台账中选择一个期刊模板。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { overview } = await controller.archiveJournalTemplateProfileAndReload({
+        journalTemplateProfileId: viewModel.selectedJournalTemplate.id,
+        actorRole,
+        selectedTemplateFamilyId: viewModel.selectedTemplateFamilyId,
+        selectedJournalTemplateId: null,
+      });
+      setViewModel(toJournalTemplateLedgerViewModel(overview));
+      setFormMode(null);
+      setStatusMessage(
+        `期刊模板已删除：${viewModel.selectedJournalTemplate.journal_name}`,
+      );
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "删除期刊模板失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleActivateSelected() {
+    if (!viewModel.selectedJournalTemplate) {
+      setErrorMessage("请先在台账中选择一个期刊模板。");
+      return;
+    }
+
+    if (viewModel.selectedJournalTemplate.status === "active") {
+      setStatusMessage("当前期刊模板已经处于启用状态。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { overview } = await controller.activateJournalTemplateProfileAndReload({
+        journalTemplateProfileId: viewModel.selectedJournalTemplate.id,
+        actorRole,
+        selectedTemplateFamilyId: viewModel.selectedTemplateFamilyId,
+        selectedJournalTemplateId: viewModel.selectedJournalTemplate.id,
+      });
+      setViewModel(toJournalTemplateLedgerViewModel(overview));
+      setStatusMessage(
+        `期刊模板已启用：${viewModel.selectedJournalTemplate.journal_name}`,
+      );
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "启用期刊模板失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleFormSubmit() {
+    const validationMessage = validateJournalTemplateFormValues(formValues);
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
+      return;
+    }
+
+    if (formMode === "edit") {
+      setErrorMessage("当前版本暂不支持直接修改期刊模板，请删除后重建。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { overview, journalTemplateProfile } =
+        await controller.createJournalTemplateProfileAndReload({
+          templateFamilyId: formValues.templateFamilyId.trim(),
+          manuscriptType:
+            viewModel.selectedTemplateFamily?.manuscript_type ?? "other",
+          journalName: formValues.journalName.trim(),
+          journalKey: formValues.journalKey.trim(),
+          selectedTemplateFamilyId: formValues.templateFamilyId.trim(),
+          selectedJournalTemplateId: null,
+        });
+      setViewModel(toJournalTemplateLedgerViewModel(overview));
+      setFormMode(null);
+      setFormValues(createJournalTemplateFormValues(formValues.templateFamilyId));
+      setStatusMessage(`期刊模板已创建：${journalTemplateProfile.journal_name}`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "保存期刊模板失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <TemplateGovernanceJournalTemplateLedgerPage
+      viewModel={viewModel}
+      formMode={formMode}
+      formValues={formValues}
+      searchState={searchState}
+      searchValue={searchValue}
+      isBusy={isBusy}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      navigationItems={createTemplateGovernanceNavigationItems(
+        "journal-template-ledger",
+        navigateToTemplateGovernanceSection,
+      )}
+      onSearchValueChange={setSearchValue}
+      onSearchSubmit={handleSearchSubmit}
+      onOpenCreateForm={handleOpenCreateForm}
+      onArchiveSelected={() => {
+        void handleArchiveSelected();
+      }}
+      onActivateSelected={() => {
+        void handleActivateSelected();
+      }}
+      onSelectTemplateFamily={handleSelectTemplateFamily}
+      onSelectJournalTemplate={handleSelectJournalTemplate}
+      onOpenEditForm={handleOpenEditForm}
+      onFormChange={setFormValues}
+      onFormCancel={() => {
+        setFormMode(null);
+      }}
+      onFormSubmit={() => {
+        void handleFormSubmit();
+      }}
+    />
+  );
+}
+
+function TemplateGovernanceTemplateLedgerRoute({
+  controller,
+}: {
+  controller: TemplateGovernanceWorkbenchController;
+}) {
+  const [ledger, setLedger] = useState<TemplateGovernanceTemplateLedgerViewModel>(
+    createEmptyTemplateLedgerViewModel(),
+  );
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [formValues, setFormValues] = useState<TemplateGovernanceTemplateFormValues>(
+    createTemplateFormValues(),
+  );
+  const [searchValue, setSearchValue] = useState("");
+  const [searchState, setSearchState] = useState<TemplateGovernanceLedgerSearchState>(
+    createEmptyLedgerSearchState(),
+  );
+  const [isBusy, setIsBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    void controller
+      .loadTemplateLedger()
+      .then((nextLedger) => {
+        if (!isCancelled) {
+          setLedger(nextLedger);
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setErrorMessage(toErrorMessage(error, "模板台账加载失败"));
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller]);
+
+  useEffect(() => {
+    setFormValues((current) =>
+      formMode === "edit" && ledger.selectedTemplate
+        ? toTemplateFormValues(
+            ledger.selectedTemplate,
+            ledger.generalModules,
+            ledger.medicalModules,
+          )
+        : current,
+    );
+  }, [formMode, ledger.generalModules, ledger.medicalModules, ledger.selectedTemplate]);
+
+  function resetFeedback() {
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  function handleSearchAction() {
+    setSearchState(buildTemplateLedgerSearchState(ledger, searchValue));
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    handleSearchAction();
+  }
+
+  function handleSelectTemplate(templateId: string) {
+    resetFeedback();
+    setFormMode(null);
+    setLedger((current) => selectTemplateComposition(current, templateId));
+  }
+
+  function handleOpenCreateForm() {
+    resetFeedback();
+    setFormMode("create");
+    setFormValues(createTemplateFormValues());
+  }
+
+  function handleOpenEditForm() {
+    if (!ledger.selectedTemplate) {
+      setErrorMessage("请先在台账中选择一个模板。");
+      return;
+    }
+
+    resetFeedback();
+    setFormMode("edit");
+    setFormValues(
+      toTemplateFormValues(
+        ledger.selectedTemplate,
+        ledger.generalModules,
+        ledger.medicalModules,
+      ),
+    );
+  }
+
+  async function handleArchiveSelected() {
+    if (!ledger.selectedTemplate) {
+      setErrorMessage("请先在台账中选择一个模板。");
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const { templateComposition, ledger: nextLedger } =
+        await controller.updateTemplateCompositionDraftAndReload({
+          templateCompositionId: ledger.selectedTemplate.id,
+          selectedTemplateId: null,
+          input: {
+            status: "archived",
+          },
+        });
+      setLedger(nextLedger);
+      setFormMode(null);
+      setStatusMessage(`模板已删除：${templateComposition.name}`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "删除模板失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleFormSubmit() {
+    const validatedInput = validateTemplateFormValues(formValues, ledger);
+    if ("error" in validatedInput) {
+      setErrorMessage(validatedInput.error);
+      return;
+    }
+
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      if (formMode === "edit" && ledger.selectedTemplate) {
+        const { templateComposition, ledger: nextLedger } =
+          await controller.updateTemplateCompositionDraftAndReload({
+            templateCompositionId: ledger.selectedTemplate.id,
+            selectedTemplateId: ledger.selectedTemplate.id,
+            input: validatedInput.updateInput,
+          });
+        setLedger(nextLedger);
+        setStatusMessage(`模板已更新：${templateComposition.name}`);
+      } else {
+        const { templateComposition, ledger: nextLedger } =
+          await controller.createTemplateCompositionDraftAndReload(
+            validatedInput.createInput,
+          );
+        setLedger(nextLedger);
+        setStatusMessage(`模板已创建：${templateComposition.name}`);
+      }
+
+      setFormMode(null);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "保存模板失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <TemplateGovernanceTemplateLedgerPage
+      viewModel={ledger}
+      formMode={formMode}
+      formValues={formValues}
+      searchState={searchState}
+      searchValue={searchValue}
+      isBusy={isBusy}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      navigationItems={createTemplateGovernanceNavigationItems(
+        "large-template-ledger",
+        navigateToTemplateGovernanceSection,
+      )}
+      onSearchValueChange={setSearchValue}
+      onSearchSubmit={handleSearchSubmit}
+      onOpenCreateForm={handleOpenCreateForm}
+      onArchiveSelected={() => {
+        void handleArchiveSelected();
+      }}
+      onApplyToManuscript={() => {
+        setStatusMessage("大模板已整理完成，可继续配置期刊模板。");
+      }}
+      onSelectTemplate={handleSelectTemplate}
+      onOpenEditForm={handleOpenEditForm}
+      onFormChange={setFormValues}
+      onFormCancel={() => {
+        setFormMode(null);
+      }}
+      onFormSubmit={() => {
+        void handleFormSubmit();
+      }}
+    />
+  );
+}
+
+function buildTemplateGovernanceOverviewMetrics(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+  extractionAwaitingConfirmationCount: number,
+): TemplateGovernanceOverviewMetrics {
+  return {
+    templateCount: overview?.templateFamilies.length ?? 0,
+    moduleCount: overview?.moduleTemplates.length ?? 0,
+    pendingKnowledgeCount:
+      overview?.visibleKnowledgeItems.filter(
+        (item) => item.status === "draft" || item.status === "pending_review",
+      ).length ?? 0,
+    extractionAwaitingConfirmationCount,
+  };
+}
+
+function createEmptyExtractionLedgerViewModel(): TemplateGovernanceExtractionLedgerViewModel {
+  return {
+    tasks: [],
+    selectedTaskId: null,
+    selectedTask: null,
+    summary: {
+      totalTaskCount: 0,
+      candidateCount: 0,
+      awaitingConfirmationCount: 0,
+    },
+  };
+}
+
+function createEmptyContentModuleLedgerViewModel(): TemplateGovernanceContentModuleLedgerViewModel {
+  return {
+    modules: [],
+    selectedModuleId: null,
+    selectedModule: null,
+    summary: {
+      totalCount: 0,
+      draftCount: 0,
+      publishedCount: 0,
+    },
+  };
+}
+
+function createEmptyTemplateLedgerViewModel(): TemplateGovernanceTemplateLedgerViewModel {
+  return {
+    templates: [],
+    generalModules: [],
+    medicalModules: [],
+    selectedTemplateId: null,
+    selectedTemplate: null,
+    summary: {
+      templateCount: 0,
+      draftCount: 0,
+      publishedCount: 0,
+    },
+  };
+}
+
+function createEmptyJournalTemplateLedgerViewModel(): TemplateGovernanceJournalTemplateLedgerViewModel {
+  return {
+    templateFamilies: [],
+    selectedTemplateFamilyId: null,
+    selectedTemplateFamily: null,
+    journalTemplates: [],
+    selectedJournalTemplateId: null,
+    selectedJournalTemplate: null,
+    summary: {
+      familyCount: 0,
+      journalCount: 0,
+      activeCount: 0,
+    },
+  };
+}
+
+function createEmptyLedgerSearchState(): TemplateGovernanceLedgerSearchState {
+  return {
+    mode: "idle",
+    query: "",
+    title: "",
+    rows: [],
+  };
+}
+
+function createExtractionTaskDraft(
+  manuscriptType: ManuscriptType = "clinical_study",
+): TemplateGovernanceExtractionTaskFormDraft {
+  return {
+    taskName: "",
+    manuscriptType,
+    journalKey: "",
+  };
+}
+
+function createCandidateConfirmationFormValues(
+  candidate?: ExtractionTaskCandidateViewModel,
+): TemplateGovernanceCandidateConfirmationFormValues {
+  return {
+    semanticSummary: candidate?.semantic_draft_payload.semantic_summary ?? "",
+    applicability: candidate?.semantic_draft_payload.applicability.join(", ") ?? "",
+    suggestedDestination: candidate?.suggested_destination ?? "template",
+    confirmationStatus: candidate?.confirmation_status ?? "ai_semantic_ready",
+  };
+}
+
+function createContentModuleFormValues(
+  ledgerKind: GovernedContentModuleClass,
+): TemplateGovernanceContentModuleFormValues {
+  return {
+    name: "",
+    category: "",
+    manuscriptTypeScope: "",
+    executionModuleScope: "",
+    applicableSections: "",
+    summary: "",
+    guidance: "",
+    examples: "",
+    evidenceLevel: "unknown",
+    riskLevel: ledgerKind === "medical_specialized" ? "medium" : "medium",
+  };
+}
+
+function createTemplateFormValues(): TemplateGovernanceTemplateFormValues {
+  return {
+    name: "",
+    manuscriptType: "",
+    journalScope: "",
+    executionModuleScope: "",
+    generalModuleIds: "",
+    medicalModuleIds: "",
+    notes: "",
+  };
+}
+
+function createJournalTemplateFormValues(
+  templateFamilyId = "",
+): TemplateGovernanceJournalTemplateFormValues {
+  return {
+    templateFamilyId,
+    journalName: "",
+    journalKey: "",
+  };
+}
+
+function toJournalTemplateLedgerViewModel(
+  overview: TemplateGovernanceWorkbenchOverview,
+): TemplateGovernanceJournalTemplateLedgerViewModel {
+  return {
+    templateFamilies: overview.templateFamilies,
+    selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+    selectedTemplateFamily: overview.selectedTemplateFamily,
+    journalTemplates: overview.journalTemplateProfiles,
+    selectedJournalTemplateId: overview.selectedJournalTemplateId,
+    selectedJournalTemplate: overview.selectedJournalTemplateProfile,
+    summary: {
+      familyCount: overview.templateFamilies.length,
+      journalCount: overview.journalTemplateProfiles.length,
+      activeCount: overview.journalTemplateProfiles.filter(
+        (template) => template.status === "active",
+      ).length,
+    },
+  };
+}
+
+function selectExtractionCandidate(
+  ledger: TemplateGovernanceExtractionLedgerViewModel,
+  selectedCandidateId: string | null,
+): ExtractionTaskCandidateViewModel | null {
+  const candidates = ledger.selectedTask?.candidates ?? [];
+  if (selectedCandidateId) {
+    const selectedCandidate = candidates.find(
+      (candidate) => candidate.id === selectedCandidateId,
+    );
+    if (selectedCandidate) {
+      return selectedCandidate;
+    }
+  }
+
+  return candidates[0] ?? null;
+}
+
+function selectJournalTemplateLedger(
+  viewModel: TemplateGovernanceJournalTemplateLedgerViewModel,
+  selectedJournalTemplateId: string,
+): TemplateGovernanceJournalTemplateLedgerViewModel {
+  return {
+    ...viewModel,
+    selectedJournalTemplateId,
+    selectedJournalTemplate:
+      viewModel.journalTemplates.find(
+        (template) => template.id === selectedJournalTemplateId,
+      ) ?? null,
+  };
+}
+
+function selectContentModule(
+  ledger: TemplateGovernanceContentModuleLedgerViewModel,
+  selectedModuleId: string,
+): TemplateGovernanceContentModuleLedgerViewModel {
+  return {
+    ...ledger,
+    selectedModuleId,
+    selectedModule:
+      ledger.modules.find((module) => module.id === selectedModuleId) ?? null,
+  };
+}
+
+function selectTemplateComposition(
+  ledger: TemplateGovernanceTemplateLedgerViewModel,
+  selectedTemplateId: string,
+): TemplateGovernanceTemplateLedgerViewModel {
+  return {
+    ...ledger,
+    selectedTemplateId,
+    selectedTemplate:
+      ledger.templates.find((template) => template.id === selectedTemplateId) ??
+      null,
+  };
+}
+
+function buildExtractionLedgerSearchState(
+  ledger: TemplateGovernanceExtractionLedgerViewModel,
+  query: string,
+): TemplateGovernanceLedgerSearchState {
+  return {
+    mode: "results",
+    query: query.trim(),
+    title: "原稿/编辑稿提取查找结果",
+    rows: [
+      ...ledger.tasks
+        .filter((task) =>
+          matchesLedgerQuery(query, [
+            task.task_name,
+            task.original_file_name,
+            task.edited_file_name,
+            task.journal_key,
+            formatTemplateGovernanceManuscriptTypeLabel(task.manuscript_type),
+            formatTemplateGovernanceExtractionTaskStatusLabel(task.status),
+          ]),
+        )
+        .map((task) => ({
+          id: task.id,
+          primary: task.task_name,
+          secondary: `${task.original_file_name} -> ${task.edited_file_name}`,
+          cells: [
+            formatTemplateGovernanceManuscriptTypeLabel(task.manuscript_type),
+            `${task.candidate_count} 个候选`,
+            formatTemplateGovernanceExtractionTaskStatusLabel(task.status),
+          ],
+        })),
+      ...(ledger.selectedTask?.candidates ?? [])
+        .filter((candidate) =>
+          matchesLedgerQuery(query, [
+            candidate.title,
+            candidate.semantic_draft_payload.semantic_summary,
+            candidate.semantic_draft_payload.applicability.join(" "),
+            formatRulePackageKindLabel(candidate.package_kind),
+            formatTemplateGovernanceExtractionDestinationLabel(
+              candidate.suggested_destination,
+            ),
+            formatTemplateGovernanceExtractionCandidateStatusLabel(
+              candidate.confirmation_status,
+            ),
+          ]),
+        )
+        .map((candidate) => ({
+          id: candidate.id,
+          primary: candidate.title,
+          secondary: candidate.semantic_draft_payload.semantic_summary,
+          cells: [
+            formatRulePackageKindLabel(candidate.package_kind),
+            formatTemplateGovernanceExtractionDestinationLabel(
+              candidate.suggested_destination,
+            ),
+            formatTemplateGovernanceExtractionCandidateStatusLabel(
+              candidate.confirmation_status,
+            ),
+          ],
+        })),
+    ],
+  };
+}
+
+function buildContentModuleSearchState(input: {
+  ledger: TemplateGovernanceContentModuleLedgerViewModel;
+  ledgerKind: GovernedContentModuleClass;
+  query: string;
+}): TemplateGovernanceLedgerSearchState {
+  const pageTitle =
+    input.ledgerKind === "general" ? "通用包查找结果" : "医学专用包查找结果";
+
+  return {
+    mode: "results",
+    query: input.query.trim(),
+    title: pageTitle,
+    rows: input.ledger.modules
+      .filter((module) =>
+        matchesLedgerQuery(input.query, [
+          module.name,
+          module.category,
+          module.summary,
+          ...(module.applicable_sections ?? []),
+          ...(module.guidance ?? []),
+          ...module.manuscript_type_scope,
+          ...module.execution_module_scope,
+          ...module.manuscript_type_scope.map((item) =>
+            formatTemplateGovernanceManuscriptTypeLabel(item),
+          ),
+          ...module.execution_module_scope.map((item) =>
+            formatTemplateGovernanceModuleLabel(item),
+          ),
+        ]),
+      )
+      .map((module) => ({
+        id: module.id,
+        primary: module.name,
+        secondary: module.summary,
+        cells: [
+          module.category,
+          module.manuscript_type_scope
+            .map((item) => formatTemplateGovernanceManuscriptTypeLabel(item))
+            .join(" / "),
+          formatTemplateGovernanceGovernedAssetStatusLabel(module.status),
+        ],
+      })),
+  };
+}
+
+function buildTemplateLedgerSearchState(
+  ledger: TemplateGovernanceTemplateLedgerViewModel,
+  query: string,
+): TemplateGovernanceLedgerSearchState {
+  return {
+    mode: "results",
+    query: query.trim(),
+    title: "大模板查找结果",
+    rows: ledger.templates
+      .filter((template) =>
+        matchesLedgerQuery(query, [
+          template.name,
+          template.journal_scope,
+          template.notes,
+          template.manuscript_type,
+          ...template.execution_module_scope,
+          ...template.general_module_ids,
+          ...template.medical_module_ids,
+          formatTemplateGovernanceManuscriptTypeLabel(template.manuscript_type),
+          ...template.execution_module_scope.map((item) =>
+            formatTemplateGovernanceModuleLabel(item),
+          ),
+        ]),
+      )
+      .map((template) => ({
+        id: template.id,
+        primary: template.name,
+        secondary: template.notes ?? "未填写模板说明",
+        cells: [
+          formatTemplateGovernanceManuscriptTypeLabel(template.manuscript_type),
+          template.execution_module_scope
+            .map((module) => formatTemplateGovernanceModuleLabel(module))
+            .join(" / "),
+          formatTemplateGovernanceGovernedAssetStatusLabel(template.status),
+        ],
+      })),
+  };
+}
+
+function buildJournalTemplateSearchState(
+  viewModel: TemplateGovernanceJournalTemplateLedgerViewModel,
+  query: string,
+): TemplateGovernanceLedgerSearchState {
+  return {
+    mode: "results",
+    query: query.trim(),
+    title: "期刊模板查找结果",
+    rows: viewModel.journalTemplates
+      .filter((template) => {
+        const templateFamily =
+          viewModel.templateFamilies.find(
+            (family) => family.id === template.template_family_id,
+          ) ?? null;
+
+        return matchesLedgerQuery(query, [
+          template.journal_name,
+          template.journal_key,
+          templateFamily?.name,
+          templateFamily?.manuscript_type,
+          templateFamily
+            ? formatTemplateGovernanceManuscriptTypeLabel(
+                templateFamily.manuscript_type,
+              )
+            : undefined,
+          formatTemplateGovernanceFamilyStatusLabel(template.status),
+        ]);
+      })
+      .map((template) => {
+        const templateFamily =
+          viewModel.templateFamilies.find(
+            (family) => family.id === template.template_family_id,
+          ) ?? null;
+
+        return {
+          id: template.id,
+          primary: template.journal_name,
+          secondary: `${templateFamily?.name ?? "未绑定"} / ${template.journal_key}`,
+          cells: [
+            templateFamily
+              ? formatTemplateGovernanceManuscriptTypeLabel(
+                  templateFamily.manuscript_type,
+                )
+              : "未设置",
+            formatTemplateGovernanceFamilyStatusLabel(template.status),
+            template.status,
+          ],
+        };
+      }),
+  };
+}
+
+function matchesLedgerQuery(
+  query: string,
+  haystacks: readonly (string | null | undefined)[],
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+
+  return haystacks.some((value) => value?.toLowerCase().includes(needle));
+}
+
+function validateExtractionTaskDraft(
+  draft: TemplateGovernanceExtractionTaskFormDraft,
+  files: {
+    originalFile: BrowserUploadFile | null;
+    editedFile: BrowserUploadFile | null;
+  },
+): string | null {
+  if (draft.taskName.trim().length === 0) {
+    return "请先填写提取任务名称。";
+  }
+  if (!files.originalFile || !files.editedFile) {
+    return "请同时上传原稿和编辑稿。";
+  }
+
+  return null;
+}
+
+function validateCandidateConfirmationFormValues(
+  values: TemplateGovernanceCandidateConfirmationFormValues,
+): string | null {
+  if (values.semanticSummary.trim().length === 0) {
+    return "请先确认 AI 语义摘要。";
+  }
+
+  return null;
+}
+
+function validateContentModuleFormValues(
+  values: TemplateGovernanceContentModuleFormValues,
+): string | null {
+  if (values.name.trim().length === 0) {
+    return "请先填写模块名称。";
+  }
+  if (parseLedgerManuscriptTypes(values.manuscriptTypeScope).length === 0) {
+    return "请至少填写一个稿件类型，可用 clinical_study, review 这类代码。";
+  }
+  if (parseTemplateModules(values.executionModuleScope).length === 0) {
+    return "请至少填写一个执行模块，可用 screening, editing, proofreading。";
+  }
+  if (values.summary.trim().length === 0) {
+    return "请先填写模块摘要。";
+  }
+
+  return null;
+}
+
+function validateTemplateFormValues(
+  values: TemplateGovernanceTemplateFormValues,
+  ledger: TemplateGovernanceTemplateLedgerViewModel,
+):
+  | {
+      createInput: {
+        name: string;
+        manuscriptType: ManuscriptType;
+        journalScope?: string;
+        generalModuleIds?: string[];
+        medicalModuleIds?: string[];
+        executionModuleScope: TemplateModule[];
+        notes?: string;
+      };
+      updateInput: {
+        name: string;
+        journalScope?: string;
+        generalModuleIds?: string[];
+        medicalModuleIds?: string[];
+        executionModuleScope: TemplateModule[];
+        notes?: string;
+      };
+    }
+  | {
+      error: string;
+    } {
+  if (values.name.trim().length === 0) {
+    return { error: "请先填写模板名称。" };
+  }
+
+  const manuscriptType = parseLedgerManuscriptTypes(values.manuscriptType)[0];
+  if (!manuscriptType) {
+    return { error: "请填写一个有效的稿件类型。" };
+  }
+
+  const executionModuleScope = parseTemplateModules(values.executionModuleScope);
+  if (executionModuleScope.length === 0) {
+    return { error: "请至少填写一个执行模块。" };
+  }
+
+  const generalModuleIds = resolveGovernedModuleIds(
+    values.generalModuleIds,
+    ledger.generalModules,
+  );
+  if (generalModuleIds.unresolved.length > 0) {
+    return {
+      error: `这些通用模块未匹配到台账：${generalModuleIds.unresolved.join("、")}`,
+    };
+  }
+
+  const medicalModuleIds = resolveGovernedModuleIds(
+    values.medicalModuleIds,
+    ledger.medicalModules,
+  );
+  if (medicalModuleIds.unresolved.length > 0) {
+    return {
+      error: `这些医学模块未匹配到台账：${medicalModuleIds.unresolved.join("、")}`,
+    };
+  }
+
+  const journalScope = values.journalScope.trim();
+  const notes = values.notes.trim();
+
+  return {
+    createInput: {
+      name: values.name.trim(),
+      manuscriptType,
+      executionModuleScope,
+      ...(journalScope ? { journalScope } : {}),
+      generalModuleIds: generalModuleIds.ids,
+      medicalModuleIds: medicalModuleIds.ids,
+      ...(notes ? { notes } : {}),
+    },
+    updateInput: {
+      name: values.name.trim(),
+      journalScope,
+      generalModuleIds: generalModuleIds.ids,
+      medicalModuleIds: medicalModuleIds.ids,
+      executionModuleScope,
+      notes,
+    },
+  };
+}
+
+function validateJournalTemplateFormValues(
+  values: TemplateGovernanceJournalTemplateFormValues,
+): string | null {
+  if (values.templateFamilyId.trim().length === 0) {
+    return "请先选择一个大模板。";
+  }
+
+  if (values.journalName.trim().length === 0) {
+    return "请填写期刊名称。";
+  }
+
+  if (values.journalKey.trim().length === 0) {
+    return "请填写期刊键。";
+  }
+
+  return null;
+}
+
+function toCandidateUpdateInput(
+  candidate: ExtractionTaskCandidateViewModel,
+  values: TemplateGovernanceCandidateConfirmationFormValues,
+  confirmationStatus: TemplateGovernanceCandidateConfirmationFormValues["confirmationStatus"],
+) {
+  return {
+    confirmationStatus,
+    suggestedDestination: values.suggestedDestination,
+    semanticDraftPayload: {
+      ...candidate.semantic_draft_payload,
+      semantic_summary: values.semanticSummary.trim(),
+      applicability: parseStringList(values.applicability),
+    },
+  };
+}
+
+function toContentModuleFormValues(
+  module: GovernedContentModuleViewModel,
+): TemplateGovernanceContentModuleFormValues {
+  return {
+    name: module.name,
+    category: module.category,
+    manuscriptTypeScope: module.manuscript_type_scope.join(", "),
+    executionModuleScope: module.execution_module_scope.join(", "),
+    applicableSections: (module.applicable_sections ?? []).join(", "),
+    summary: module.summary,
+    guidance: (module.guidance ?? []).join(", "),
+    examples: formatRuleEvidenceExamples(module.examples),
+    evidenceLevel: module.evidence_level ?? "unknown",
+    riskLevel: module.risk_level ?? "medium",
+  };
+}
+
+function toContentModuleCreateInput(
+  values: TemplateGovernanceContentModuleFormValues,
+  moduleClass: GovernedContentModuleClass,
+) {
+  const applicableSections = parseStringList(values.applicableSections);
+  const guidance = parseStringList(values.guidance);
+  const examples = parseRuleEvidenceExamples(values.examples);
+
+  return {
+    moduleClass,
+    name: values.name.trim(),
+    category: values.category.trim(),
+    manuscriptTypeScope: parseLedgerManuscriptTypes(values.manuscriptTypeScope),
+    executionModuleScope: parseTemplateModules(values.executionModuleScope),
+    summary: values.summary.trim(),
+    ...(applicableSections.length ? { applicableSections } : {}),
+    ...(guidance.length ? { guidance } : {}),
+    ...(examples.length ? { examples } : {}),
+    ...(moduleClass === "medical_specialized"
+      ? {
+          evidenceLevel: values.evidenceLevel,
+          riskLevel: values.riskLevel,
+        }
+      : {}),
+  };
+}
+
+function toContentModuleUpdateInput(
+  values: TemplateGovernanceContentModuleFormValues,
+) {
+  const applicableSections = parseStringList(values.applicableSections);
+  const guidance = parseStringList(values.guidance);
+  const examples = parseRuleEvidenceExamples(values.examples);
+
+  return {
+    name: values.name.trim(),
+    category: values.category.trim(),
+    manuscriptTypeScope: parseLedgerManuscriptTypes(values.manuscriptTypeScope),
+    executionModuleScope: parseTemplateModules(values.executionModuleScope),
+    summary: values.summary.trim(),
+    applicableSections,
+    guidance,
+    examples,
+    evidenceLevel: values.evidenceLevel,
+    riskLevel: values.riskLevel,
+  };
+}
+
+function toTemplateFormValues(
+  template: TemplateCompositionViewModel,
+  generalModules: readonly GovernedContentModuleViewModel[],
+  medicalModules: readonly GovernedContentModuleViewModel[],
+): TemplateGovernanceTemplateFormValues {
+  return {
+    name: template.name,
+    manuscriptType: template.manuscript_type,
+    journalScope: template.journal_scope ?? "",
+    executionModuleScope: template.execution_module_scope.join(", "),
+    generalModuleIds: formatGovernedModuleReferences(
+      template.general_module_ids,
+      generalModules,
+    ),
+    medicalModuleIds: formatGovernedModuleReferences(
+      template.medical_module_ids,
+      medicalModules,
+    ),
+    notes: template.notes ?? "",
+  };
+}
+
+function toJournalTemplateFormValues(
+  template: JournalTemplateProfileViewModel,
+): TemplateGovernanceJournalTemplateFormValues {
+  return {
+    templateFamilyId: template.template_family_id,
+    journalName: template.journal_name,
+    journalKey: template.journal_key,
+  };
+}
+
+function formatGovernedModuleReferences(
+  moduleIds: readonly string[],
+  modules: readonly GovernedContentModuleViewModel[],
+): string {
+  return moduleIds
+    .map(
+      (moduleId) =>
+        modules.find((module) => module.id === moduleId)?.name ?? moduleId,
+    )
+    .join(", ");
+}
+
+function resolveGovernedModuleIds(
+  value: string,
+  modules: readonly GovernedContentModuleViewModel[],
+): {
+  ids: string[];
+  unresolved: string[];
+} {
+  const ids: string[] = [];
+  const unresolved: string[] = [];
+
+  for (const token of parseStringList(value)) {
+    const matchedModule = modules.find(
+      (module) => module.id === token || module.name === token,
+    );
+    if (matchedModule) {
+      ids.push(matchedModule.id);
+    } else {
+      unresolved.push(token);
+    }
+  }
+
+  return {
+    ids: [...new Set(ids)],
+    unresolved,
+  };
+}
+
+function parseLedgerManuscriptTypes(value: string): ManuscriptType[] {
+  return parseStringList(value)
+    .map((item) => normalizeLedgerManuscriptType(item))
+    .filter((item): item is ManuscriptType => item != null);
+}
+
+function parseTemplateModules(value: string): TemplateModule[] {
+  return parseStringList(value)
+    .map((item) => normalizeTemplateModule(item))
+    .filter((item): item is TemplateModule => item != null);
+}
+
+function normalizeLedgerManuscriptType(value: string): ManuscriptType | null {
+  if (manuscriptTypes.includes(value as ManuscriptType)) {
+    return value as ManuscriptType;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  return (
+    manuscriptTypes.find(
+      (item) =>
+        formatTemplateGovernanceManuscriptTypeLabel(item).toLowerCase() ===
+        normalizedValue,
+    ) ?? null
+  );
+}
+
+function normalizeTemplateModule(value: string): TemplateModule | null {
+  if (templateModules.includes(value as TemplateModule)) {
+    return value as TemplateModule;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  return (
+    templateModules.find(
+      (item) =>
+        formatTemplateGovernanceModuleLabel(item).toLowerCase() ===
+        normalizedValue,
+    ) ?? null
+  );
+}
+
+function parseStringList(value: string): string[] {
+  return value
+    .split(/[\n,，;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseRuleEvidenceExamples(value: string): RuleEvidenceExampleViewModel[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line
+        .split(/\s*(?:=>|->|\|)\s*/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      if (parts.length === 1) {
+        return {
+          before: parts[0],
+          after: parts[0],
+        };
+      }
+
+      if (parts.length === 2) {
+        return {
+          before: parts[0],
+          after: parts[1],
+        };
+      }
+
+      return {
+        before: parts[0],
+        after: parts[1],
+        note: parts.slice(2).join(" | "),
+      };
+    });
+}
+
+function formatRuleEvidenceExamples(
+  examples: readonly RuleEvidenceExampleViewModel[] | undefined,
+): string {
+  return (
+    examples?.map((example) => {
+      const base = `${example.before} => ${example.after}`;
+      return example.note ? `${base} | ${example.note}` : base;
+    }).join("\n") ?? ""
+  );
+}
+
+function navigateToTemplateGovernanceView(
+  view:
+    | "overview"
+    | "large-template-ledger"
+    | "journal-template-ledger"
+    | "extraction-ledger"
+    | "general-package-ledger"
+    | "medical-package-ledger",
+) {
+  navigateToTemplateGovernanceSection(view);
+}
+
+function navigateToTemplateGovernanceSection(
+  target: TemplateGovernanceNavigationTarget,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.location.hash = formatWorkbenchHash("template-governance", {
+    ruleCenterMode: target === "authoring" ? "authoring" : undefined,
+    templateGovernanceView: target,
+  });
 }
 
 interface TemplateGovernanceRulesPanelProps {

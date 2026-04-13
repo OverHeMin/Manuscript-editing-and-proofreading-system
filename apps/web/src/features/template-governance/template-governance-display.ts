@@ -164,6 +164,49 @@ export function formatTemplateGovernanceKnowledgeKindLabel(value: string): strin
   }
 }
 
+export function formatTemplateGovernanceExtractionTaskStatusLabel(value: string): string {
+  switch (value) {
+    case "awaiting_confirmation":
+      return "待语义确认";
+    case "partially_confirmed":
+      return "部分已确认";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "提取失败";
+    default:
+      return value;
+  }
+}
+
+export function formatTemplateGovernanceExtractionCandidateStatusLabel(value: string): string {
+  switch (value) {
+    case "ai_semantic_ready":
+      return "AI 已生成";
+    case "held":
+      return "暂存待定";
+    case "confirmed":
+      return "已确认";
+    case "rejected":
+      return "已驳回";
+    default:
+      return value;
+  }
+}
+
+export function formatTemplateGovernanceExtractionDestinationLabel(value: string): string {
+  switch (value) {
+    case "general_module":
+      return "通用模块";
+    case "medical_module":
+      return "医学专用模块";
+    case "template":
+      return "模板台账";
+    default:
+      return value;
+  }
+}
+
 export function formatRulePackagePublishLayerLabel(value: string): string {
   switch (value) {
     case "journal_template":

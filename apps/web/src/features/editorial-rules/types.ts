@@ -1,4 +1,5 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { ManuscriptType } from "../manuscripts/types.ts";
 import type { TemplateModule } from "../templates/types.ts";
 
 export type EditorialRuleSetStatus = "draft" | "published" | "archived";
@@ -383,4 +384,70 @@ export interface RulePackageCompileToDraftResultViewModel {
   }>;
   publish_readiness: RulePackageCompilePublishReadinessViewModel;
   projection_readiness: RulePackageCompileProjectionReadinessViewModel;
+}
+
+export type ExtractionTaskStatusViewModel =
+  | "awaiting_confirmation"
+  | "partially_confirmed"
+  | "completed"
+  | "failed";
+
+export type ExtractionCandidateConfirmationStatusViewModel =
+  | "ai_semantic_ready"
+  | "held"
+  | "confirmed"
+  | "rejected";
+
+export type ExtractionCandidateSuggestedDestinationViewModel =
+  | "template"
+  | "general_module"
+  | "medical_module";
+
+export interface ExtractionTaskViewModel {
+  id: string;
+  task_name: string;
+  manuscript_type: ManuscriptType;
+  original_file_name: string;
+  edited_file_name: string;
+  journal_key?: string;
+  source_session_id: string;
+  status: ExtractionTaskStatusViewModel;
+  candidate_count: number;
+  pending_confirmation_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtractionTaskCandidateViewModel {
+  id: string;
+  task_id: string;
+  package_id: string;
+  package_kind: RulePackageKind;
+  title: string;
+  confirmation_status: ExtractionCandidateConfirmationStatusViewModel;
+  suggested_destination: ExtractionCandidateSuggestedDestinationViewModel;
+  candidate_payload: RulePackageCandidateViewModel;
+  semantic_draft_payload: AiRuleUnderstandingPayloadViewModel;
+  intake_payload?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtractionTaskDetailViewModel extends ExtractionTaskViewModel {
+  candidates: ExtractionTaskCandidateViewModel[];
+}
+
+export interface CreateExtractionTaskInputViewModel {
+  taskName: string;
+  manuscriptType: ManuscriptType;
+  originalFile: InlineUploadFilePayloadViewModel;
+  editedFile: InlineUploadFilePayloadViewModel;
+  journalKey?: string;
+}
+
+export interface UpdateExtractionTaskCandidateInputViewModel {
+  confirmationStatus?: ExtractionCandidateConfirmationStatusViewModel;
+  suggestedDestination?: ExtractionCandidateSuggestedDestinationViewModel;
+  semanticDraftPayload?: AiRuleUnderstandingPayloadViewModel;
+  intakePayload?: Record<string, unknown>;
 }

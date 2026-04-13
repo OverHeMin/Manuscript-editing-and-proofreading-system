@@ -647,16 +647,23 @@ function createPostgresTemplateHarness(
     learningCandidateRepository: options.learningCandidateRepository,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => pool.connect(),
-      createContext: (client) => ({
-        templateFamilyRepository: new PostgresTemplateFamilyRepository({
-          client: client as PoolClient,
-        }),
-        moduleTemplateRepository:
-          options.createModuleTemplateRepository?.(client as PoolClient) ??
-          new PostgresModuleTemplateRepository({
+      createContext: (client) => {
+        const transactionalTemplateFamilyRepository =
+          new PostgresTemplateFamilyRepository({
             client: client as PoolClient,
-          }),
-      }),
+          });
+
+        return {
+          templateFamilyRepository: transactionalTemplateFamilyRepository,
+          moduleTemplateRepository:
+            options.createModuleTemplateRepository?.(client as PoolClient) ??
+            new PostgresModuleTemplateRepository({
+              client: client as PoolClient,
+            }),
+          contentModuleRepository: transactionalTemplateFamilyRepository,
+          templateCompositionRepository: transactionalTemplateFamilyRepository,
+        };
+      },
     }),
     createId,
   });

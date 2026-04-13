@@ -774,7 +774,7 @@ export function KnowledgeLibraryWorkbenchPage({
   const activeRevisionId = selectedRevisionId;
 
   return (
-    <main className="knowledge-library-workbench">
+    <main className="knowledge-library-workbench knowledge-library-workbench-page">
       <header className="knowledge-library-hero">
         <div className="knowledge-library-hero-copy">
           <span className="knowledge-library-eyebrow">协作与回收区</span>

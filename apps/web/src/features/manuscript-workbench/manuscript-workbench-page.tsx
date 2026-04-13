@@ -10,6 +10,7 @@ import type {
   JobViewModel,
   UploadManuscriptInput,
 } from "../manuscripts/index.ts";
+import { MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
   ManuscriptWorkbenchControls,
@@ -272,7 +273,6 @@ export function ManuscriptWorkbenchPage({
   );
   const [uploadForm, setUploadForm] = useState<UploadManuscriptInput>({
     title: `${mode} sample manuscript`,
-    manuscriptType: "review",
     createdBy: "web-workbench",
     fileName: `${mode}-sample.docx`,
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -292,7 +292,8 @@ export function ManuscriptWorkbenchPage({
     uploadForm.title.trim().length > 0 &&
     uploadForm.fileName.trim().length > 0 &&
     uploadForm.mimeType.trim().length > 0 &&
-    (attachedUploadFiles.length > 1 || hasUploadPayload(uploadForm));
+    attachedUploadFiles.length <= MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT &&
+    hasUploadPayload(uploadForm);
   const workbenchBusy = busy || isPrefillLoading;
   const activeCoreStripPillar = resolveCoreStripActivePillar(mode);
   const notice = resolveWorkbenchNotice({
@@ -577,6 +578,12 @@ export function ManuscriptWorkbenchPage({
             if (attachedUploadFiles.length > 1) {
               if (!controller.uploadManuscriptBatchAndLoad) {
                 throw new Error("Batch uploads are unavailable in the current workbench controller.");
+              }
+
+              if (attachedUploadFiles.length > MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT) {
+                throw new Error(
+                  `Batch uploads cannot exceed ${MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT} manuscripts.`,
+                );
               }
 
               const result = await controller.uploadManuscriptBatchAndLoad({
@@ -897,7 +904,7 @@ export function ManuscriptWorkbenchPage({
 
   const shouldUseMainlineLayout = mode !== "submission";
   const detectedManuscriptTypeLabel = workspace
-    ? formatWorkbenchManuscriptTypeLabel(workspace.manuscript.manuscript_type)
+    ? formatDetectedManuscriptType(workspace.manuscript)
     : "待 AI 识别";
   const auxiliarySectionCount = [
     Boolean(intakePanel),
@@ -926,10 +933,12 @@ export function ManuscriptWorkbenchPage({
     <article
       className={`workbench-placeholder manuscript-workbench-shell manuscript-workbench-shell--${mode}`}
     >
-      <header className="manuscript-workbench-hero">
-        <div className="manuscript-workbench-hero-copy">
-          <span className="manuscript-workbench-hero-eyebrow">
-            {resolveHeroEyebrow(mode)}
+      <header className="manuscript-workbench-shell-header">
+        <div className="manuscript-workbench-shell-copy">
+          <span className="manuscript-workbench-section-eyebrow">
+            {mode === "submission"
+              ? "\u7a3f\u4ef6\u63a5\u5165"
+              : "\u6838\u5fc3\u5de5\u4f5c\u53f0"}
           </span>
           <h2>{resolveTitle(mode)}</h2>
           <p>{resolveDescription(mode)}</p>
@@ -937,14 +946,14 @@ export function ManuscriptWorkbenchPage({
             <WorkbenchCoreStrip activePillarId={activeCoreStripPillar} />
           ) : null}
         </div>
-        <dl className="manuscript-workbench-hero-metrics">
-          <div className="manuscript-workbench-hero-metric">
-            <dt>工作线定位</dt>
-            <dd>{resolveHeroLane(mode)}</dd>
+        <dl className="manuscript-workbench-shell-metrics">
+          <div className="manuscript-workbench-desk-stat">
+            <span>{"\u5de5\u4f5c\u7ebf\u5b9a\u4f4d"}</span>
+            <strong>{resolveHeroLane(mode)}</strong>
           </div>
-          <div className="manuscript-workbench-hero-metric">
-            <dt>当前焦点</dt>
-            <dd>{resolveHeroFocus(mode)}</dd>
+          <div className="manuscript-workbench-desk-stat">
+            <span>{"\u5f53\u524d\u7126\u70b9"}</span>
+            <strong>{resolveHeroFocus(mode)}</strong>
           </div>
         </dl>
       </header>
@@ -1335,14 +1344,31 @@ function formatAssetOptionLabel(asset: {
   return `${asset.file_name ?? asset.asset_type} · ${asset.asset_type} · ${asset.id}`;
 }
 
+function formatDetectedManuscriptType(
+  manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
+): string {
+  const label = formatWorkbenchManuscriptTypeLabel(manuscript.manuscript_type);
+  const confidence = manuscript.manuscript_type_detection_summary?.confidence;
+
+  if (typeof confidence !== "number") {
+    return label;
+  }
+
+  return `${label} (${Math.round(confidence * 100)}%)`;
+}
+
 function formatWorkbenchManuscriptTypeLabel(manuscriptType: string): string {
   switch (manuscriptType) {
     case "review":
-      return "综述";
+      return "\u7efc\u8ff0";
     case "clinical_study":
-      return "临床研究";
+      return "\u4e34\u5e8a\u7814\u7a76";
+    case "meta_analysis":
+      return "Meta-analysis";
+    case "systematic_review":
+      return "\u7cfb\u7edf\u7efc\u8ff0";
     case "case_report":
-      return "病例报告";
+      return "\u75c5\u4f8b\u62a5\u544a";
     default:
       return manuscriptType;
   }

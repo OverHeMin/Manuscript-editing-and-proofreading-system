@@ -470,6 +470,157 @@
   padding-top: 4px;
 }
 
+.template-governance-ledger-toolbar,
+.template-governance-ledger-toolbar-copy,
+.template-governance-ledger-nav,
+.template-governance-ledger-toolbar-controls,
+.template-governance-ledger-search,
+.template-governance-ledger-grid,
+.template-governance-ledger-section,
+.template-governance-ledger-section-header,
+.template-governance-ledger-search-page,
+.template-governance-form-layer,
+.template-governance-form-header,
+.template-governance-overview-entries,
+.template-governance-overview-entry,
+.template-governance-ledger-coming-soon {
+  display: grid;
+  gap: 12px;
+}
+
+.template-governance-ledger-toolbar {
+  padding: 18px;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 250, 242, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.template-governance-ledger-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-governance-ledger-nav-item {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 101, 51, 0.14);
+  background: rgba(255, 252, 246, 0.96);
+  color: #5e4722;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.template-governance-ledger-nav-item.is-active {
+  border-color: rgba(112, 84, 35, 0.72);
+  background: linear-gradient(135deg, rgba(216, 190, 132, 0.22), rgba(255, 250, 242, 0.96));
+  color: #402d11;
+}
+
+.template-governance-ledger-toolbar-controls {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.template-governance-ledger-search {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.template-governance-ledger-search input {
+  min-height: 42px;
+}
+
+.template-governance-ledger-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.template-governance-ledger-grid,
+.template-governance-overview-entries {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.template-governance-ledger-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.template-governance-ledger-kpi {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 101, 51, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 252, 246, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.template-governance-ledger-kpi span {
+  color: #7a6a54;
+  font-size: 0.8rem;
+}
+
+.template-governance-ledger-kpi strong {
+  color: #2b2215;
+  font-size: 1.1rem;
+}
+
+.template-governance-ledger-table-shell {
+  overflow: auto;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.template-governance-ledger-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.template-governance-ledger-table th,
+.template-governance-ledger-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(126, 101, 51, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.template-governance-ledger-table th {
+  position: sticky;
+  top: 0;
+  background: #fbf7ef;
+  color: #6f5835;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+.template-governance-form-layer {
+  padding: 8px 0 0;
+}
+
+.template-governance-form-header h2,
+.template-governance-ledger-section-header h2 {
+  margin: 0;
+}
+
+.template-governance-upload-dropzone {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed rgba(126, 101, 51, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 250, 242, 0.72);
+}
+
+.template-governance-upload-dropzone input {
+  max-width: 100%;
+}
+
 @media (max-width: 960px) {
   .template-governance-grid,
   .template-governance-capability-grid,
@@ -480,7 +631,11 @@
   .template-governance-learning-diff-grid,
   .rule-package-workbench-columns,
   .rule-package-definition-grid,
-  .template-governance-strategy-grid {
+  .template-governance-strategy-grid,
+  .template-governance-ledger-toolbar-controls,
+  .template-governance-ledger-grid,
+  .template-governance-overview-entries,
+  .template-governance-ledger-search {
     grid-template-columns: 1fr;
   }
 }

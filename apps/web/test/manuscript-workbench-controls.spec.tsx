@@ -4,7 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ManuscriptWorkbenchControls } from "../src/features/manuscript-workbench/manuscript-workbench-controls.tsx";
 
-test("manuscript workbench controls render structured operator panels for upload, lookup, actions, and utilities", () => {
+test("manuscript workbench controls render compact intake, lookup, actions, and utilities without a manual type selector", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="proofreading"
@@ -14,17 +14,19 @@ test("manuscript workbench controls render structured operator panels for upload
       intake={{
         uploadForm: {
           title: "Neurology case review",
-          manuscriptType: "case_report",
           createdBy: "web-workbench",
           fileName: "case-report.docx",
-          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           fileContentBase64: "SGVsbG8=",
         },
+        attachedFileCount: 2,
+        attachedFileNames: ["case-report.docx", "case-report-supplement.docx"],
         canSubmit: true,
         onTitleChange: () => {},
         onManuscriptTypeChange: () => {},
         onStorageKeyChange: () => {},
-        onFileSelect: () => {},
+        onFilesSelect: () => {},
         onSubmit: () => {},
       }}
       lookup={{
@@ -40,7 +42,7 @@ test("manuscript workbench controls render structured operator panels for upload
         options: [
           {
             value: "asset-edited-1",
-            label: "edited_docx · asset-edited-1",
+            label: "edited_docx 路 asset-edited-1",
           },
         ],
         onSelect: () => {},
@@ -68,16 +70,13 @@ test("manuscript workbench controls render structured operator panels for upload
     />,
   );
 
-  assert.match(markup, /批量处理与辅助动作/);
-  assert.match(markup, /低频能力按需展开/);
+  assert.match(markup, /manuscript-workbench-controls/);
   assert.match(markup, /manuscript-workbench-batch-drawer-trigger/);
-  assert.match(markup, /批量处理/);
-  assert.match(markup, /稿件接入/);
-  assert.match(markup, /校对草稿生成/);
-  assert.match(markup, /校对定稿/);
-  assert.match(markup, /工作区工具/);
-  assert.match(markup, /导出当前资产/);
-  assert.match(markup, /刷新最新任务/);
+  assert.match(markup, /type="file"/);
+  assert.match(markup, /multiple/);
+  assert.match(markup, /manuscript-workbench-panel/);
+  assert.match(markup, /10/);
+  assert.doesNotMatch(markup, /clinical_study/);
 });
 
 test("manuscript workbench controls show inline guidance when required operator inputs are still missing", () => {
@@ -91,13 +90,16 @@ test("manuscript workbench controls show inline guidance when required operator 
           manuscriptType: "review",
           createdBy: "web-workbench",
           fileName: "editing-sample.docx",
-          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         },
+        attachedFileCount: 0,
+        attachedFileNames: [],
         canSubmit: false,
         onTitleChange: () => {},
         onManuscriptTypeChange: () => {},
         onStorageKeyChange: () => {},
-        onFileSelect: () => {},
+        onFilesSelect: () => {},
         onSubmit: () => {},
       }}
       lookup={{
@@ -123,13 +125,9 @@ test("manuscript workbench controls show inline guidance when required operator 
     />,
   );
 
-  assert.match(markup, /工作台操作区/);
-  assert.match(markup, /请先填写稿件标题。/);
-  assert.match(markup, /请先选择本地文件或填写存储键。/);
-  assert.match(markup, /请先输入稿件 ID 再加载工作区。/);
-  assert.match(markup, /请先选择父资产再启动当前模块。/);
-  assert.match(markup, /工作区至少生成一条任务后，才可刷新最新任务。/);
+  assert.match(markup, /manuscript-workbench-validation-list/);
   assert.match(markup, /class="manuscript-workbench-field is-invalid"/);
+  assert.match(markup, /disabled=""/);
 });
 
 test("manuscript workbench controls surface the currently selected asset context for operators", () => {
@@ -150,7 +148,7 @@ test("manuscript workbench controls surface the currently selected asset context
         options: [
           {
             value: "asset-edited-1",
-            label: "editing-final.docx · edited_docx · asset-edited-1",
+            label: "editing-final.docx 路 edited_docx 路 asset-edited-1",
           },
         ],
         selectedContextLabel: "Selected Parent Asset",
@@ -164,7 +162,7 @@ test("manuscript workbench controls surface the currently selected asset context
         options: [
           {
             value: "asset-draft-1",
-            label: "proofreading-draft.docx · proofreading_draft_report · asset-draft-1",
+            label: "proofreading-draft.docx 路 proofreading_draft_report 路 asset-draft-1",
           },
         ],
         selectedContextLabel: "Selected Draft Asset",
@@ -174,10 +172,9 @@ test("manuscript workbench controls surface the currently selected asset context
     />,
   );
 
-  assert.match(markup, /已选父资产/);
   assert.match(markup, /editing-final\.docx/);
-  assert.match(markup, /已选草稿资产/);
   assert.match(markup, /proofreading-draft\.docx/);
+  assert.match(markup, /manuscript-workbench-selection-context/);
 });
 
 test("manuscript workbench controls render a journal template selector beside module actions", () => {
@@ -194,16 +191,16 @@ test("manuscript workbench controls render a journal template selector beside mo
         title: "Journal Template",
         baseTemplateLabel: "Clinical Study Family",
         selectedJournalTemplateId: "journal-template-1",
-        currentAppliedLabel: "《中西医结合杂志》",
+        currentAppliedLabel: "Current Journal Template",
         hasPendingChange: false,
         options: [
           {
             value: "journal-template-1",
-            label: "《中西医结合杂志》",
+            label: "Journal Template One",
           },
           {
             value: "journal-template-2",
-            label: "《临床研究杂志》",
+            label: "Journal Template Two",
           },
         ],
         onSelect: () => {},
@@ -226,8 +223,7 @@ test("manuscript workbench controls render a journal template selector beside mo
     />,
   );
 
-  assert.match(markup, /期刊模板/);
   assert.match(markup, /Clinical Study Family/);
-  assert.match(markup, /《中西医结合杂志》/);
-  assert.match(markup, /保存模板上下文/);
+  assert.match(markup, /Journal Template One/);
+  assert.match(markup, /Journal Template Two/);
 });

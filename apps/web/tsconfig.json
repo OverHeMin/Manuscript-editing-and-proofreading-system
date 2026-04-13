@@ -4,6 +4,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@medical/contracts": ["../../packages/contracts/src/index.ts"]
+    },
     "strict": true,
     "jsx": "react-jsx",
     "isolatedModules": true,

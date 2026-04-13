@@ -2,7 +2,23 @@ import type { ManuscriptRecord } from "./manuscript-record.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
 function cloneRecord(record: ManuscriptRecord): ManuscriptRecord {
-  return { ...record };
+  return {
+    ...record,
+    ...(record.manuscript_type_detection_summary
+      ? {
+          manuscript_type_detection_summary: {
+            ...record.manuscript_type_detection_summary,
+            ...(record.manuscript_type_detection_summary.matched_signals
+              ? {
+                  matched_signals: [
+                    ...record.manuscript_type_detection_summary.matched_signals,
+                  ],
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 export class InMemoryManuscriptRepository implements ManuscriptRepository {

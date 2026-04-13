@@ -432,3 +432,288 @@ test("template governance controller previews package compile results and compil
     true,
   );
 });
+
+test("template governance controller loads extraction tasks and selected task candidates", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.url === "/api/v1/editorial-rules/extraction-tasks" &&
+        input.method === "GET"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "task-demo-1",
+              task_name: "原稿/编辑稿提取",
+              manuscript_type: "clinical_study",
+              original_file_name: "original.docx",
+              edited_file_name: "edited.docx",
+              source_session_id: "session-demo-1",
+              status: "awaiting_confirmation",
+              candidate_count: 2,
+              pending_confirmation_count: 2,
+              created_at: "2026-04-13T09:30:00.000Z",
+              updated_at: "2026-04-13T09:30:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/editorial-rules/extraction-tasks/task-demo-1" &&
+        input.method === "GET"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "task-demo-1",
+            task_name: "原稿/编辑稿提取",
+            manuscript_type: "clinical_study",
+            original_file_name: "original.docx",
+            edited_file_name: "edited.docx",
+            source_session_id: "session-demo-1",
+            status: "awaiting_confirmation",
+            candidate_count: 2,
+            pending_confirmation_count: 2,
+            created_at: "2026-04-13T09:30:00.000Z",
+            updated_at: "2026-04-13T09:30:00.000Z",
+            candidates: [
+              {
+                id: "candidate-demo-1",
+                task_id: "task-demo-1",
+                package_id: "package-front-matter",
+                package_kind: "front_matter",
+                title: "前置信息包",
+                confirmation_status: "ai_semantic_ready",
+                suggested_destination: "template",
+                candidate_payload: {
+                  package_id: "package-front-matter",
+                  package_kind: "front_matter",
+                  title: "前置信息包",
+                  rule_object: "front_matter",
+                  suggested_layer: "journal_template",
+                  automation_posture: "guarded_auto",
+                  status: "draft",
+                  cards: {
+                    rule_what: {
+                      title: "前置信息包",
+                      object: "front_matter",
+                      publish_layer: "journal_template",
+                    },
+                    ai_understanding: {
+                      summary: "统一作者、单位与通讯作者块。",
+                      hit_objects: ["author_line"],
+                      hit_locations: ["front_matter"],
+                    },
+                    applicability: {
+                      manuscript_types: ["clinical_study"],
+                      modules: ["editing"],
+                      sections: ["front_matter"],
+                      table_targets: [],
+                    },
+                    evidence: {
+                      examples: [],
+                    },
+                    exclusions: {
+                      not_applicable_when: [],
+                      human_review_required_when: [],
+                      risk_posture: "guarded_auto",
+                    },
+                  },
+                  preview: {
+                    hit_summary: "命中前置信息块。",
+                    hits: [],
+                    misses: [],
+                    decision: {
+                      automation_posture: "guarded_auto",
+                      needs_human_review: true,
+                      reason: "需人工确认。",
+                    },
+                  },
+                  semantic_draft: {
+                    semantic_summary: "统一作者、单位与通讯作者块。",
+                    hit_scope: ["author_line"],
+                    applicability: ["front_matter"],
+                    evidence_examples: [],
+                    failure_boundaries: [],
+                    normalization_recipe: ["统一作者标签"],
+                    review_policy: ["人工确认后入库"],
+                    confirmed_fields: [],
+                  },
+                },
+                semantic_draft_payload: {
+                  semantic_summary: "统一作者、单位与通讯作者块。",
+                  hit_scope: ["author_line"],
+                  applicability: ["front_matter"],
+                  evidence_examples: [],
+                  failure_boundaries: [],
+                  normalization_recipe: ["统一作者标签"],
+                  review_policy: ["人工确认后入库"],
+                  confirmed_fields: [],
+                },
+                created_at: "2026-04-13T09:30:00.000Z",
+                updated_at: "2026-04-13T09:30:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadExtractionLedger();
+
+  assert.equal(ledger.tasks.length, 1);
+  assert.equal(ledger.selectedTaskId, "task-demo-1");
+  assert.equal(
+    ledger.selectedTask?.candidates[0]?.confirmation_status,
+    "ai_semantic_ready",
+  );
+  assert.equal(ledger.summary.totalTaskCount, 1);
+  assert.equal(ledger.summary.awaitingConfirmationCount, 2);
+  assert.equal(
+    requests.some(
+      (request) => request.url === "/api/v1/editorial-rules/extraction-tasks",
+    ),
+    true,
+  );
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.url === "/api/v1/editorial-rules/extraction-tasks/task-demo-1",
+    ),
+    true,
+  );
+});
+
+test("template governance controller loads governed content-module and template ledgers", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url.startsWith("/api/v1/templates/content-modules")
+      ) {
+        const moduleClass = new URL(
+          `https://example.test${input.url}`,
+        ).searchParams.get("moduleClass");
+
+        if (moduleClass === "medical_specialized") {
+          return {
+            status: 200,
+            body: [
+              {
+                id: "medical-module-1",
+                module_class: "medical_specialized",
+                name: "medical terminology guard",
+                category: "medical_fact",
+                manuscript_type_scope: ["clinical_study"],
+                execution_module_scope: ["editing", "proofreading"],
+                summary: "Focused on medical terminology and outcome wording.",
+                template_usage_count: 2,
+                evidence_level: "guideline",
+                risk_level: "medium",
+                status: "published",
+                created_at: "2026-04-13T12:10:00.000Z",
+                updated_at: "2026-04-13T12:10:00.000Z",
+              },
+            ] as TResponse,
+          };
+        }
+
+        return {
+          status: 200,
+          body: [
+            {
+              id: "general-module-1",
+              module_class: "general",
+              name: "参考文献格式统一",
+              category: "reference",
+              manuscript_type_scope: ["review"],
+              execution_module_scope: ["editing"],
+              summary: "统一参考文献著录顺序与标点。",
+              template_usage_count: 1,
+              status: "draft",
+              created_at: "2026-04-13T12:00:00.000Z",
+              updated_at: "2026-04-13T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/templates/template-compositions" &&
+        input.method === "GET"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "template-composition-1",
+              name: "临床研究主模板",
+              manuscript_type: "clinical_study",
+              general_module_ids: ["general-module-1"],
+              medical_module_ids: ["medical-module-1"],
+              execution_module_scope: ["editing"],
+              version_no: 1,
+              status: "draft",
+              created_at: "2026-04-13T12:00:00.000Z",
+              updated_at: "2026-04-13T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const moduleLedger = await controller.loadContentModuleLedger({
+    moduleClass: "general",
+  });
+  const templateLedger = await controller.loadTemplateLedger();
+
+  assert.equal(moduleLedger.modules.length, 1);
+  assert.equal(moduleLedger.summary.totalCount, 1);
+  assert.equal(templateLedger.templates.length, 1);
+  assert.equal(templateLedger.generalModules.length, 1);
+  assert.equal(templateLedger.medicalModules.length, 1);
+  assert.equal(templateLedger.summary.templateCount, 1);
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.url === "/api/v1/templates/content-modules?moduleClass=general",
+    ),
+    true,
+  );
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.url ===
+        "/api/v1/templates/content-modules?moduleClass=medical_specialized",
+    ),
+    true,
+  );
+  assert.equal(
+    requests.some(
+      (request) => request.url === "/api/v1/templates/template-compositions",
+    ),
+    true,
+  );
+});

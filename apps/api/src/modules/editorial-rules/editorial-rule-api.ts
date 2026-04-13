@@ -22,6 +22,11 @@ import type {
   PreviewRulePackageDraftInput,
 } from "./editorial-rule-package-types.ts";
 import type { EditorialRulePackageService } from "./editorial-rule-package-service.ts";
+import type {
+  ExtractionTaskDetailRecord,
+  ExtractionTaskRecord,
+} from "./extraction-task-record.ts";
+import type { ExtractionTaskService } from "./extraction-task-service.ts";
 import type { RulePackageCompileService } from "./rule-package-compile-service.ts";
 import type {
   RulePackageCandidate,
@@ -47,8 +52,12 @@ export interface CreateEditorialRuleApiOptions {
     | "createExampleSourceSession"
     | "generateCandidates"
     | "loadWorkspace"
-      | "previewCandidate"
-      | "generateCandidatesFromReviewedCase"
+    | "previewCandidate"
+    | "generateCandidatesFromReviewedCase"
+  >;
+  extractionTaskService?: Pick<
+    ExtractionTaskService,
+    "createTask" | "listTasks" | "getTask" | "updateCandidate"
   >;
   rulePackageCompileService?: Pick<
     RulePackageCompileService,
@@ -61,6 +70,7 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
     editorialRuleService,
     editorialRulePreviewService,
     editorialRulePackageService,
+    extractionTaskService,
     rulePackageCompileService,
   } = options;
 
@@ -159,6 +169,54 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
       return {
         status: 201,
         body: await editorialRulePackageService!.createExampleSourceSession(input),
+      };
+    },
+
+    async listExtractionTasks(): Promise<RouteResponse<ExtractionTaskRecord[]>> {
+      return {
+        status: 200,
+        body: await extractionTaskService!.listTasks(),
+      };
+    },
+
+    async createExtractionTask({
+      input,
+    }: {
+      input: Parameters<ExtractionTaskService["createTask"]>[0];
+    }): Promise<RouteResponse<ExtractionTaskDetailRecord>> {
+      return {
+        status: 201,
+        body: await extractionTaskService!.createTask(input),
+      };
+    },
+
+    async getExtractionTask({
+      taskId,
+    }: {
+      taskId: string;
+    }): Promise<RouteResponse<ExtractionTaskDetailRecord>> {
+      return {
+        status: 200,
+        body: await extractionTaskService!.getTask(taskId),
+      };
+    },
+
+    async updateExtractionTaskCandidate({
+      taskId,
+      candidateId,
+      input,
+    }: {
+      taskId: string;
+      candidateId: string;
+      input: Omit<Parameters<ExtractionTaskService["updateCandidate"]>[0], "taskId" | "candidateId">;
+    }): Promise<RouteResponse<ExtractionTaskDetailRecord>> {
+      return {
+        status: 200,
+        body: await extractionTaskService!.updateCandidate({
+          taskId,
+          candidateId,
+          ...input,
+        }),
       };
     },
 

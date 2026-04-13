@@ -51,11 +51,13 @@ test("submission workbench renders a real multi-file picker for inline batch upl
   assert.match(markup, /工作线定位/);
   assert.match(markup, /type="file"/);
   assert.match(markup, /multiple/);
+  assert.doesNotMatch(markup, /clinical_study/);
+  assert.match(markup, /10/);
   assert.match(markup, /存储键/);
   assert.match(markup, /上传稿件/);
 });
 
-test("editing workbench renders a distinct localized hero for the current mainline lane", () => {
+test("editing workbench keeps the shared desk layout without a page-level hero", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchPage
       mode="editing"
@@ -97,6 +99,7 @@ test("editing workbench renders a distinct localized hero for the current mainli
   assert.match(markup, /manuscript-workbench-mainline-layout/);
   assert.match(markup, /manuscript-workbench-queue-pane/);
   assert.match(markup, /manuscript-workbench-focus-panel/);
+  assert.doesNotMatch(markup, /manuscript-workbench-hero/);
   assert.match(markup, /AI 识别稿件类型/);
   assert.match(markup, /批量处理/);
 });
@@ -112,6 +115,7 @@ test("screening workbench renders queue, focus, and batch sections before a manu
   assert.match(markup, /manuscript-workbench-shell--screening/);
   assert.match(markup, /manuscript-workbench-queue-pane/);
   assert.match(markup, /manuscript-workbench-focus-panel/);
+  assert.doesNotMatch(markup, /manuscript-workbench-hero/);
   assert.match(markup, /manuscript-workbench-batch-drawer/);
   assert.match(markup, /初筛队列/);
   assert.match(markup, /AI 识别稿件类型/);

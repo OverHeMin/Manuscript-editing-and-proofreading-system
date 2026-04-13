@@ -45,8 +45,15 @@ import {
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
+  EditorialRulePackageService,
   EditorialRuleProjectionService,
+  EditorialRuleResolutionService,
   EditorialRuleService,
+  ExtractionTaskService,
+  ExampleSourceSessionService,
+  PostgresExtractionTaskRepository,
+  ReviewedCaseRulePackageSourceService,
+  RulePackageCompileService,
   PostgresEditorialRuleRepository,
 } from "../modules/editorial-rules/index.ts";
 import {
@@ -281,6 +288,9 @@ export function createPersistentGovernanceRuntime(
   const editorialRuleRepository = new PostgresEditorialRuleRepository({
     client: options.client,
   });
+  const extractionTaskRepository = new PostgresExtractionTaskRepository({
+    client: options.client,
+  });
   const learningGovernanceRepository = new PostgresLearningGovernanceRepository({
     client: options.client,
   });
@@ -462,6 +472,9 @@ export function createPersistentGovernanceRuntime(
   const templateService = new TemplateGovernanceService({
     templateFamilyRepository,
     moduleTemplateRepository,
+    contentModuleRepository: templateFamilyRepository,
+    templateCompositionRepository: templateFamilyRepository,
+    extractionTaskRepository,
     learningCandidateRepository,
     harnessDatasetRepository,
     knowledgeRetrievalRepository,
@@ -473,6 +486,12 @@ export function createPersistentGovernanceRuntime(
           client,
         }),
         moduleTemplateRepository: new PostgresModuleTemplateRepository({
+          client,
+        }),
+        contentModuleRepository: new PostgresTemplateFamilyRepository({
+          client,
+        }),
+        templateCompositionRepository: new PostgresTemplateFamilyRepository({
           client,
         }),
       }),
@@ -487,6 +506,29 @@ export function createPersistentGovernanceRuntime(
     repository: editorialRuleRepository,
     templateFamilyRepository,
     projectionService: editorialRuleProjectionService,
+  });
+  const editorialRuleResolutionService = new EditorialRuleResolutionService({
+    repository: editorialRuleRepository,
+  });
+  const rulePackageExampleSourceSessionService = new ExampleSourceSessionService({
+    uploadRootDir,
+  });
+  const editorialRulePackageService = new EditorialRulePackageService({
+    exampleSourceSessionService: rulePackageExampleSourceSessionService,
+    reviewedCaseSourceService: new ReviewedCaseRulePackageSourceService({
+      snapshotRepository: reviewedCaseSnapshotRepository,
+      assetRepository,
+      rootDir: uploadRootDir,
+    }),
+  });
+  const extractionTaskService = new ExtractionTaskService({
+    repository: extractionTaskRepository,
+    rulePackageService: editorialRulePackageService,
+  });
+  const rulePackageCompileService = new RulePackageCompileService({
+    repository: editorialRuleRepository,
+    resolutionService: editorialRuleResolutionService,
+    editorialRuleService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -779,6 +821,9 @@ export function createPersistentGovernanceRuntime(
     }),
     editorialRuleApi: createEditorialRuleApi({
       editorialRuleService,
+      editorialRulePackageService,
+      extractionTaskService,
+      rulePackageCompileService,
     }),
     editingApi: createEditingApi({
       editingService,

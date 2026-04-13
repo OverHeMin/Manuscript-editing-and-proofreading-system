@@ -1,17 +1,25 @@
 import type { RoleKey } from "../../users/roles.ts";
 import { TemplateGovernanceService } from "./template-governance-service.ts";
 import type {
+  CreateContentModuleDraftFromCandidateInput,
+  CreateContentModuleDraftInput,
   CreateJournalTemplateProfileInput,
+  CreateTemplateCompositionDraftFromCandidateInput,
+  CreateTemplateCompositionDraftInput,
   CreateTemplateRetrievalQualityRunInput,
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
+  UpdateContentModuleDraftInput,
   UpdateModuleTemplateDraftInput,
+  UpdateTemplateCompositionDraftInput,
   UpdateTemplateFamilyInput,
 } from "./template-governance-service.ts";
 import type { KnowledgeRetrievalQualityRunRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type {
+  GovernedContentModuleRecord,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
+  TemplateCompositionRecord,
   TemplateFamilyRecord,
 } from "./template-record.ts";
 
@@ -43,6 +51,44 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
       return {
         status: 201,
         body: await templateService.createModuleTemplateDraft(input),
+      };
+    },
+
+    async createContentModuleDraft(
+      input: CreateContentModuleDraftInput,
+    ): Promise<RouteResponse<GovernedContentModuleRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createContentModuleDraft(input),
+      };
+    },
+
+    async createContentModuleDraftFromCandidate(
+      input: CreateContentModuleDraftFromCandidateInput,
+    ): Promise<RouteResponse<GovernedContentModuleRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createContentModuleDraftFromCandidate(input),
+      };
+    },
+
+    async createTemplateCompositionDraft(
+      input: CreateTemplateCompositionDraftInput,
+    ): Promise<RouteResponse<TemplateCompositionRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createTemplateCompositionDraft(input),
+      };
+    },
+
+    async createTemplateCompositionDraftFromCandidate(
+      input: CreateTemplateCompositionDraftFromCandidateInput,
+    ): Promise<RouteResponse<TemplateCompositionRecord>> {
+      return {
+        status: 201,
+        body: await templateService.createTemplateCompositionDraftFromCandidate(
+          input,
+        ),
       };
     },
 
@@ -107,6 +153,28 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
       };
     },
 
+    async listContentModules({
+      moduleClass,
+    }: {
+      moduleClass?: CreateContentModuleDraftInput["moduleClass"];
+    }): Promise<
+      RouteResponse<Array<GovernedContentModuleRecord & { template_usage_count: number }>>
+    > {
+      return {
+        status: 200,
+        body: await templateService.listContentModules({ moduleClass }),
+      };
+    },
+
+    async listTemplateCompositions(): Promise<
+      RouteResponse<TemplateCompositionRecord[]>
+    > {
+      return {
+        status: 200,
+        body: await templateService.listTemplateCompositions(),
+      };
+    },
+
     async listModuleTemplatesByTemplateFamilyId({
       templateFamilyId,
     }: {
@@ -161,6 +229,38 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
         body: await templateService.archiveJournalTemplateProfile(
           journalTemplateProfileId,
           actorRole,
+        ),
+      };
+    },
+
+    async updateContentModuleDraft({
+      contentModuleId,
+      input,
+    }: {
+      contentModuleId: string;
+      input: UpdateContentModuleDraftInput;
+    }): Promise<RouteResponse<GovernedContentModuleRecord>> {
+      return {
+        status: 200,
+        body: await templateService.updateContentModuleDraft(
+          contentModuleId,
+          input,
+        ),
+      };
+    },
+
+    async updateTemplateCompositionDraft({
+      templateCompositionId,
+      input,
+    }: {
+      templateCompositionId: string;
+      input: UpdateTemplateCompositionDraftInput;
+    }): Promise<RouteResponse<TemplateCompositionRecord>> {
+      return {
+        status: 200,
+        body: await templateService.updateTemplateCompositionDraft(
+          templateCompositionId,
+          input,
         ),
       };
     },

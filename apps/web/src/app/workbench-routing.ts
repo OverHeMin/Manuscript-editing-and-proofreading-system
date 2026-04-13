@@ -22,12 +22,14 @@ export type SettingsSection = WorkbenchSettingsSection;
 export type HarnessSection = WorkbenchHarnessSection;
 export type KnowledgeLibraryView = "classic" | "ledger";
 export type TemplateGovernanceView =
+  | "authoring"
   | "classic"
   | "overview"
-  | "template-ledger"
+  | "large-template-ledger"
+  | "journal-template-ledger"
   | "extraction-ledger"
-  | "general-module-ledger"
-  | "medical-module-ledger";
+  | "general-package-ledger"
+  | "medical-package-ledger";
 
 export interface WorkbenchHandoff {
   manuscriptId?: string;
@@ -267,14 +269,28 @@ function normalizeTemplateGovernanceView(
   value: string | null,
 ): TemplateGovernanceView | undefined {
   if (
+    value === "authoring" ||
     value === "classic" ||
     value === "overview" ||
-    value === "template-ledger" ||
+    value === "large-template-ledger" ||
+    value === "journal-template-ledger" ||
     value === "extraction-ledger" ||
-    value === "general-module-ledger" ||
-    value === "medical-module-ledger"
+    value === "general-package-ledger" ||
+    value === "medical-package-ledger"
   ) {
     return value;
+  }
+
+  if (value === "template-ledger") {
+    return "large-template-ledger";
+  }
+
+  if (value === "general-module-ledger") {
+    return "general-package-ledger";
+  }
+
+  if (value === "medical-module-ledger") {
+    return "medical-package-ledger";
   }
 
   return undefined;

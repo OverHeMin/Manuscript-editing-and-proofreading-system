@@ -25,7 +25,6 @@ test("manuscript upload accepts inline file content, stores it locally, and pers
       },
       body: JSON.stringify({
         title: "Inline content upload",
-        manuscriptType: "review",
         createdBy: "forged-user",
         fileName: "inline-content.docx",
         mimeType:
@@ -34,13 +33,30 @@ test("manuscript upload accepts inline file content, stores it locally, and pers
       }),
     });
     const uploaded = (await response.json()) as {
-      manuscript: { id: string; created_by: string };
+      manuscript: {
+        id: string;
+        created_by: string;
+        manuscript_type: string;
+        manuscript_type_detection_summary?: {
+          detected_type: string;
+          final_type: string;
+          source: string;
+          confidence: number;
+        };
+      };
       asset: { storage_key: string; file_name?: string };
       job: { requested_by: string };
     };
 
     assert.equal(response.status, 201);
     assert.equal(uploaded.manuscript.created_by, "dev-user");
+    assert.equal(uploaded.manuscript.manuscript_type, "review");
+    assert.deepEqual(uploaded.manuscript.manuscript_type_detection_summary, {
+      detected_type: "review",
+      final_type: "review",
+      source: "heuristic",
+      confidence: 0.52,
+    });
     assert.equal(uploaded.job.requested_by, "dev-user");
     assert.equal(uploaded.asset.file_name, "inline-content.docx");
     assert.match(uploaded.asset.storage_key, /^uploads\/\d{4}\/\d{2}\/\d{2}\//);
@@ -51,6 +67,45 @@ test("manuscript upload accepts inline file content, stores it locally, and pers
     );
     const storedContent = await readFile(storedPath, "utf8");
     assert.equal(storedContent, "Hello World");
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("batch manuscript upload rejects requests beyond the guarded upload limit", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-upload-batch-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const response = await fetch(`${baseUrl}/api/v1/manuscripts/upload-batch`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        createdBy: "forged-user",
+        items: Array.from({ length: 11 }, (_, index) => ({
+          title: `Inline content upload ${index + 1}`,
+          fileName: `inline-content-${index + 1}.docx`,
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          fileContentBase64: "SGVsbG8gV29ybGQ=",
+        })),
+      }),
+    });
+    const errorBody = (await response.json()) as {
+      error: string;
+      message: string;
+    };
+
+    assert.equal(response.status, 400);
+    assert.equal(errorBody.error, "invalid_request");
+    assert.match(errorBody.message, /cannot exceed 10/i);
   } finally {
     await stopServer(server);
     await rm(uploadRootDir, { recursive: true, force: true });

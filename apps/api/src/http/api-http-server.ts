@@ -130,7 +130,11 @@ import {
   EditorialRulePackageService,
   EditorialRuleProjectionService,
   EditorialRuleResolutionService,
+  ExtractionTaskCandidateNotFoundError,
+  ExtractionTaskNotFoundError,
+  ExtractionTaskService,
   ExampleSourceSessionService,
+  InMemoryExtractionTaskRepository,
   ReviewedCaseRulePackageSourceService,
   RulePackageCompileService,
   RulePackageExampleSourceSessionNotFoundError,
@@ -233,6 +237,7 @@ import {
   InMemoryManuscriptRepository,
   JobNotFoundError,
   createManuscriptApi,
+  ManuscriptBatchUploadLimitExceededError,
   type ManuscriptRecord,
   ManuscriptLifecycleService,
 } from "../modules/manuscripts/index.ts";
@@ -307,6 +312,8 @@ import {
 } from "../modules/screening/index.ts";
 import {
   createTemplateApi,
+  ExtractionCandidateIntakeStateError,
+  GovernedContentModuleNotFoundError,
   JournalTemplateProfileKeyConflictError,
   JournalTemplateProfileNotFoundError,
   JournalTemplateProfileStatusTransitionError,
@@ -320,6 +327,7 @@ import {
   TemplateRetrievalQualityRunNotFoundError,
   TemplateFamilyNotFoundError,
   TemplateFamilyManuscriptTypeMismatchError,
+  TemplateCompositionNotFoundError,
   TemplateGovernanceService,
 } from "../modules/templates/index.ts";
 import {
@@ -754,11 +762,28 @@ type HttpRouteMatch =
       route: "templates-create-module-draft";
     }
   | {
+      route: "templates-create-content-module-draft";
+    }
+  | {
+      route: "templates-create-content-module-draft-from-candidate";
+    }
+  | {
       route: "templates-create-journal-template";
+    }
+  | {
+      route: "templates-list-content-modules";
+      moduleClass?: string;
+    }
+  | {
+      route: "templates-list-template-compositions";
     }
   | {
       route: "templates-update-module-draft";
       moduleTemplateId: string;
+    }
+  | {
+      route: "templates-update-content-module-draft";
+      contentModuleId: string;
     }
   | {
       route: "templates-list-module-templates";
@@ -781,6 +806,16 @@ type HttpRouteMatch =
       moduleTemplateId: string;
     }
   | {
+      route: "templates-create-template-composition-draft";
+    }
+  | {
+      route: "templates-create-template-composition-draft-from-candidate";
+    }
+  | {
+      route: "templates-update-template-composition-draft";
+      templateCompositionId: string;
+    }
+  | {
       route: "templates-activate-journal-template";
       journalTemplateProfileId: string;
     }
@@ -793,6 +828,21 @@ type HttpRouteMatch =
     }
   | {
       route: "editorial-rules-list-rule-sets";
+    }
+  | {
+      route: "editorial-rules-list-extraction-tasks";
+    }
+  | {
+      route: "editorial-rules-create-extraction-task";
+    }
+  | {
+      route: "editorial-rules-get-extraction-task";
+      taskId: string;
+    }
+  | {
+      route: "editorial-rules-update-extraction-task-candidate";
+      taskId: string;
+      candidateId: string;
     }
   | {
       route: "editorial-rules-publish-rule-set";
@@ -1301,6 +1351,7 @@ export function createInMemoryApiRuntime(input: {
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const extractionTaskRepository = new InMemoryExtractionTaskRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
   const modelRoutingGovernanceRepository =
@@ -1376,6 +1427,9 @@ export function createInMemoryApiRuntime(input: {
   const templateService = new TemplateGovernanceService({
     templateFamilyRepository,
     moduleTemplateRepository,
+    contentModuleRepository: templateFamilyRepository,
+    templateCompositionRepository: templateFamilyRepository,
+    extractionTaskRepository,
     learningCandidateRepository,
     harnessDatasetRepository,
     knowledgeRetrievalRepository,
@@ -1393,6 +1447,26 @@ export function createInMemoryApiRuntime(input: {
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
+  });
+  const rulePackageExampleSourceSessionService = new ExampleSourceSessionService({
+    uploadRootDir: input.uploadRootDir,
+  });
+  const editorialRulePackageService = new EditorialRulePackageService({
+    exampleSourceSessionService: rulePackageExampleSourceSessionService,
+    reviewedCaseSourceService: new ReviewedCaseRulePackageSourceService({
+      snapshotRepository: reviewedCaseSnapshotRepository,
+      assetRepository,
+      rootDir: input.uploadRootDir,
+    }),
+  });
+  const extractionTaskService = new ExtractionTaskService({
+    repository: extractionTaskRepository,
+    rulePackageService: editorialRulePackageService,
+  });
+  const rulePackageCompileService = new RulePackageCompileService({
+    repository: editorialRuleRepository,
+    resolutionService: editorialRuleResolutionService,
+    editorialRuleService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -1613,6 +1687,7 @@ export function createInMemoryApiRuntime(input: {
       knowledgeRepository,
       editorialRuleRepository,
       moduleTemplateRepository,
+      extractionTaskRepository,
       promptSkillRegistryRepository,
       executionGovernanceRepository,
       sandboxProfileRepository,
@@ -1707,21 +1782,9 @@ export function createInMemoryApiRuntime(input: {
     }),
     editorialRuleApi: createEditorialRuleApi({
       editorialRuleService,
-      editorialRulePackageService: new EditorialRulePackageService({
-        exampleSourceSessionService: new ExampleSourceSessionService({
-          uploadRootDir: input.uploadRootDir,
-        }),
-        reviewedCaseSourceService: new ReviewedCaseRulePackageSourceService({
-          snapshotRepository: reviewedCaseSnapshotRepository,
-          assetRepository,
-          rootDir: input.uploadRootDir,
-        }),
-      }),
-      rulePackageCompileService: new RulePackageCompileService({
-        repository: editorialRuleRepository,
-        resolutionService: editorialRuleResolutionService,
-        editorialRuleService,
-      }),
+      editorialRulePackageService,
+      extractionTaskService,
+      rulePackageCompileService,
     }),
     editingApi: createEditingApi({
       editingService,
@@ -2144,6 +2207,7 @@ function seedDemoWorkbenchData(input: {
   knowledgeRepository: InMemoryKnowledgeRepository;
   editorialRuleRepository: InMemoryEditorialRuleRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
+  extractionTaskRepository: InMemoryExtractionTaskRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
   executionGovernanceRepository: InMemoryExecutionGovernanceRepository;
   sandboxProfileRepository: InMemorySandboxProfileRepository;
@@ -2221,6 +2285,258 @@ function seedDemoWorkbenchData(input: {
     version_no: 1,
     status: "published",
     prompt: "Seeded proofreading prompt",
+  });
+
+  void input.templateFamilyRepository.saveContentModule({
+    id: "general-module-seeded-1",
+    module_class: "general",
+    name: "参考文献格式统一",
+    category: "reference",
+    manuscript_type_scope: ["clinical_study", "review"],
+    execution_module_scope: ["editing", "proofreading"],
+    applicable_sections: ["references"],
+    summary: "统一参考文献著录顺序、期刊缩写与标点格式。",
+    guidance: ["作者后接题名", "期刊名使用标准缩写"],
+    status: "published",
+    created_at: "2026-03-31T07:56:30.000Z",
+    updated_at: "2026-03-31T07:56:30.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "general-module-seeded-2",
+    module_class: "general",
+    name: "缩略语首次释义",
+    category: "terminology",
+    manuscript_type_scope: ["clinical_study", "systematic_review"],
+    execution_module_scope: ["screening", "editing"],
+    applicable_sections: ["abstract", "introduction"],
+    summary: "确保英文缩略语首次出现时给出全称，并保持全文一致。",
+    guidance: ["首次出现时括注全称", "后文保持缩略语统一"],
+    status: "draft",
+    created_at: "2026-03-31T07:57:00.000Z",
+    updated_at: "2026-03-31T07:57:00.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "medical-module-seeded-1",
+    module_class: "medical_specialized",
+    name: "伦理声明核查",
+    category: "ethics",
+    manuscript_type_scope: ["clinical_study", "case_report"],
+    execution_module_scope: ["screening", "editing"],
+    applicable_sections: ["ethics", "methods"],
+    summary: "核对伦理审批号、知情同意与伦理委员会表述是否完整。",
+    guidance: ["缺失审批号时转人工复核", "涉及人体研究必须有知情同意说明"],
+    evidence_level: "high",
+    risk_level: "high",
+    status: "published",
+    created_at: "2026-03-31T07:57:30.000Z",
+    updated_at: "2026-03-31T07:57:30.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "medical-module-seeded-2",
+    module_class: "medical_specialized",
+    name: "终点与统计口径核对",
+    category: "statistics",
+    manuscript_type_scope: ["clinical_study"],
+    execution_module_scope: ["screening", "editing", "proofreading"],
+    applicable_sections: ["abstract", "methods", "results"],
+    summary: "检查主要终点、统计方法和结果表述是否前后一致。",
+    guidance: ["终点名称需与方法学一致", "P 值和效应量必须对应"],
+    evidence_level: "high",
+    risk_level: "medium",
+    status: "draft",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+
+  void input.templateFamilyRepository.saveTemplateComposition({
+    id: "template-composition-seeded-1",
+    name: "临床研究主模板",
+    manuscript_type: "clinical_study",
+    general_module_ids: ["general-module-seeded-1", "general-module-seeded-2"],
+    medical_module_ids: ["medical-module-seeded-1", "medical-module-seeded-2"],
+    execution_module_scope: ["screening", "editing", "proofreading"],
+    notes: "适用于常规临床研究来稿的全流程治理。",
+    source_task_id: "extraction-task-seeded-1",
+    source_candidate_ids: ["extraction-candidate-seeded-2"],
+    version_no: 1,
+    status: "draft",
+    created_at: "2026-03-31T07:58:30.000Z",
+    updated_at: "2026-03-31T07:58:30.000Z",
+  });
+  void input.templateFamilyRepository.saveTemplateComposition({
+    id: "template-composition-seeded-2",
+    name: "病例报告精简模板",
+    manuscript_type: "case_report",
+    general_module_ids: ["general-module-seeded-1"],
+    medical_module_ids: ["medical-module-seeded-1"],
+    execution_module_scope: ["editing", "proofreading"],
+    notes: "优先覆盖伦理与作者信息等高频结构。",
+    version_no: 1,
+    status: "published",
+    created_at: "2026-03-31T07:59:00.000Z",
+    updated_at: "2026-03-31T07:59:00.000Z",
+  });
+
+  void input.extractionTaskRepository.saveTask({
+    id: "extraction-task-seeded-1",
+    task_name: "临床研究原稿/编辑稿差异提取",
+    manuscript_type: "clinical_study",
+    original_file_name: "seeded-original.docx",
+    edited_file_name: "seeded-edited.docx",
+    source_session_id: "example-source-session-seeded-1",
+    status: "awaiting_confirmation",
+    candidate_count: 2,
+    pending_confirmation_count: 2,
+    created_at: "2026-03-31T08:01:00.000Z",
+    updated_at: "2026-03-31T08:01:00.000Z",
+  });
+  void input.extractionTaskRepository.saveCandidate({
+    id: "extraction-candidate-seeded-1",
+    task_id: "extraction-task-seeded-1",
+    package_id: "package-ethics-module",
+    package_kind: "numeric_statistics",
+    title: "伦理声明模块",
+    confirmation_status: "ai_semantic_ready",
+    suggested_destination: "medical_module",
+    candidate_payload: {
+      package_id: "package-ethics-module",
+      package_kind: "numeric_statistics",
+      title: "伦理声明模块",
+      rule_object: "paragraph",
+      suggested_layer: "template_family",
+      automation_posture: "guarded_auto",
+      status: "draft",
+      cards: {
+        rule_what: {
+          title: "伦理声明模块",
+          object: "paragraph",
+          publish_layer: "template_family",
+        },
+        ai_understanding: {
+          summary: "提取伦理批准、知情同意与伦理委员会信息。",
+          hit_objects: ["ethics_statement"],
+          hit_locations: ["methods"],
+        },
+        applicability: {
+          manuscript_types: ["clinical_study"],
+          modules: ["screening", "editing"],
+          sections: ["ethics", "methods"],
+          table_targets: [],
+        },
+        evidence: { examples: [] },
+        exclusions: {
+          not_applicable_when: [],
+          human_review_required_when: ["伦理批准号缺失"],
+          risk_posture: "guarded_auto",
+        },
+      },
+      preview: {
+        hit_summary: "命中伦理声明块。",
+        hits: [],
+        misses: [],
+        decision: {
+          automation_posture: "guarded_auto",
+          needs_human_review: true,
+          reason: "涉及伦理信息，入库前需人工确认。",
+        },
+      },
+      semantic_draft: {
+        semantic_summary: "提取伦理批准、知情同意与伦理委员会信息。",
+        hit_scope: ["ethics_statement"],
+        applicability: ["ethics", "methods"],
+        evidence_examples: [],
+        failure_boundaries: ["伦理批准号缺失时不可自动通过"],
+        normalization_recipe: ["抽取伦理号", "保留知情同意表述"],
+        review_policy: ["入库前必须人工确认"],
+        confirmed_fields: [],
+      },
+    },
+    semantic_draft_payload: {
+      semantic_summary: "提取伦理批准、知情同意与伦理委员会信息。",
+      hit_scope: ["ethics_statement"],
+      applicability: ["ethics", "methods"],
+      evidence_examples: [],
+      failure_boundaries: ["伦理批准号缺失时不可自动通过"],
+      normalization_recipe: ["抽取伦理号", "保留知情同意表述"],
+      review_policy: ["入库前必须人工确认"],
+      confirmed_fields: [],
+    },
+    created_at: "2026-03-31T08:01:10.000Z",
+    updated_at: "2026-03-31T08:01:10.000Z",
+  });
+  void input.extractionTaskRepository.saveCandidate({
+    id: "extraction-candidate-seeded-2",
+    task_id: "extraction-task-seeded-1",
+    package_id: "package-front-matter-template",
+    package_kind: "front_matter",
+    title: "作者与单位前置信息包",
+    confirmation_status: "ai_semantic_ready",
+    suggested_destination: "template",
+    candidate_payload: {
+      package_id: "package-front-matter-template",
+      package_kind: "front_matter",
+      title: "作者与单位前置信息包",
+      rule_object: "front_matter",
+      suggested_layer: "journal_template",
+      automation_posture: "guarded_auto",
+      status: "draft",
+      cards: {
+        rule_what: {
+          title: "作者与单位前置信息包",
+          object: "front_matter",
+          publish_layer: "journal_template",
+        },
+        ai_understanding: {
+          summary: "统一作者、单位、通讯作者与基金脚注块。",
+          hit_objects: ["author_line", "affiliation"],
+          hit_locations: ["front_matter"],
+        },
+        applicability: {
+          manuscript_types: ["clinical_study"],
+          modules: ["editing"],
+          sections: ["front_matter"],
+          table_targets: [],
+        },
+        evidence: { examples: [] },
+        exclusions: {
+          not_applicable_when: [],
+          human_review_required_when: ["作者顺序发生变化"],
+          risk_posture: "guarded_auto",
+        },
+      },
+      preview: {
+        hit_summary: "命中作者与单位块。",
+        hits: [],
+        misses: [],
+        decision: {
+          automation_posture: "guarded_auto",
+          needs_human_review: true,
+          reason: "前置信息涉及署名，需人工确认。",
+        },
+      },
+      semantic_draft: {
+        semantic_summary: "统一作者、单位、通讯作者与基金脚注块。",
+        hit_scope: ["author_line", "affiliation"],
+        applicability: ["front_matter"],
+        evidence_examples: [],
+        failure_boundaries: ["作者顺序变化时不得自动套用"],
+        normalization_recipe: ["合并作者单位样式", "统一通讯作者标签"],
+        review_policy: ["确认署名无误后入模板"],
+        confirmed_fields: [],
+      },
+    },
+    semantic_draft_payload: {
+      semantic_summary: "统一作者、单位、通讯作者与基金脚注块。",
+      hit_scope: ["author_line", "affiliation"],
+      applicability: ["front_matter"],
+      evidence_examples: [],
+      failure_boundaries: ["作者顺序变化时不得自动套用"],
+      normalization_recipe: ["合并作者单位样式", "统一通讯作者标签"],
+      review_policy: ["确认署名无误后入模板"],
+      confirmed_fields: [],
+    },
+    created_at: "2026-03-31T08:01:20.000Z",
+    updated_at: "2026-03-31T08:01:20.000Z",
   });
 
   void input.promptSkillRegistryRepository.savePromptTemplate({
@@ -3022,19 +3338,19 @@ async function handleRoute(
         storageKey?: string;
       };
       const {
-        fileContentBase64,
         storageKey: requestedStorageKey,
         ...uploadBody
       } = body;
       const storageKey = await resolveUploadStorageKey({
         fileName: uploadBody.fileName,
-        fileContentBase64,
+        fileContentBase64: body.fileContentBase64,
         requestedStorageKey,
         uploadRootDir,
       });
 
       return runtime.manuscriptApi.upload({
         ...uploadBody,
+        fileContentBase64: body.fileContentBase64,
         createdBy: session.user.id,
         storageKey,
       });
@@ -3057,19 +3373,19 @@ async function handleRoute(
       const items = await Promise.all(
         (body.items ?? []).map(async (item) => {
           const {
-            fileContentBase64,
             storageKey: requestedStorageKey,
             ...uploadBody
           } = item;
           const storageKey = await resolveUploadStorageKey({
             fileName: uploadBody.fileName,
-            fileContentBase64,
+            fileContentBase64: item.fileContentBase64,
             requestedStorageKey,
             uploadRootDir,
           });
 
           return {
             ...uploadBody,
+            fileContentBase64: item.fileContentBase64,
             storageKey,
           };
         }),
@@ -3720,11 +4036,39 @@ async function handleRoute(
           typeof runtime.templateApi.createModuleTemplateDraft
         >[0],
       );
+    case "templates-create-content-module-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createContentModuleDraft(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createContentModuleDraft
+        >[0],
+      );
+    case "templates-create-content-module-draft-from-candidate":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createContentModuleDraftFromCandidate(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createContentModuleDraftFromCandidate
+        >[0],
+      );
     case "templates-create-journal-template":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.createJournalTemplateProfile(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createJournalTemplateProfile
+        >[0],
+      );
+    case "templates-create-template-composition-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createTemplateCompositionDraft(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createTemplateCompositionDraft
+        >[0],
+      );
+    case "templates-create-template-composition-draft-from-candidate":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.createTemplateCompositionDraftFromCandidate(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.createTemplateCompositionDraftFromCandidate
         >[0],
       );
     case "templates-update-module-draft":
@@ -3735,11 +4079,30 @@ async function handleRoute(
           typeof runtime.templateApi.updateModuleTemplateDraft
         >[0]["input"],
       });
+    case "templates-update-content-module-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.updateContentModuleDraft({
+        contentModuleId: routeMatch.contentModuleId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateContentModuleDraft
+        >[0]["input"],
+      });
     case "templates-list-module-templates":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
         templateFamilyId: routeMatch.templateFamilyId,
       });
+    case "templates-list-content-modules":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.listContentModules({
+        moduleClass: routeMatch.moduleClass as
+          | "general"
+          | "medical_specialized"
+          | undefined,
+      });
+    case "templates-list-template-compositions":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.listTemplateCompositions();
     case "templates-list-journal-templates":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.templateApi.listJournalTemplateProfilesByTemplateFamilyId({
@@ -3770,6 +4133,14 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "templates-update-template-composition-draft":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.templateApi.updateTemplateCompositionDraft({
+        templateCompositionId: routeMatch.templateCompositionId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateTemplateCompositionDraft
+        >[0]["input"],
+      });
     case "templates-activate-journal-template": {
       const session = await requirePermission(req, runtime, "templates.publish");
       return runtime.templateApi.activateJournalTemplateProfile({
@@ -3807,6 +4178,36 @@ async function handleRoute(
     case "editorial-rules-list-rule-sets":
       await requirePermission(req, runtime, "permissions.manage");
       return runtime.editorialRuleApi.listRuleSets();
+    case "editorial-rules-list-extraction-tasks":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.editorialRuleApi.listExtractionTasks();
+    case "editorial-rules-create-extraction-task": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.createExtractionTask
+      >[0];
+
+      return runtime.editorialRuleApi.createExtractionTask({
+        input: body.input,
+      });
+    }
+    case "editorial-rules-get-extraction-task":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.editorialRuleApi.getExtractionTask({
+        taskId: routeMatch.taskId,
+      });
+    case "editorial-rules-update-extraction-task-candidate": {
+      await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.updateExtractionTaskCandidate
+      >[0];
+
+      return runtime.editorialRuleApi.updateExtractionTaskCandidate({
+        taskId: routeMatch.taskId,
+        candidateId: routeMatch.candidateId,
+        input: body.input,
+      });
+    }
     case "editorial-rules-publish-rule-set": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       return runtime.editorialRuleApi.publishRuleSet({
@@ -5144,8 +5545,43 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "templates-create-module-draft" };
   }
 
+  if (method === "POST" && path === "/api/v1/templates/content-modules") {
+    return { route: "templates-create-content-module-draft" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/templates/content-modules/intake-from-candidate"
+  ) {
+    return { route: "templates-create-content-module-draft-from-candidate" };
+  }
+
+  if (method === "GET" && path === "/api/v1/templates/content-modules") {
+    return {
+      route: "templates-list-content-modules",
+      moduleClass: readRequestUrl(req).searchParams.get("moduleClass") ?? undefined,
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/templates/journal-templates") {
     return { route: "templates-create-journal-template" };
+  }
+
+  if (method === "POST" && path === "/api/v1/templates/template-compositions") {
+    return { route: "templates-create-template-composition-draft" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/templates/template-compositions/intake-from-candidate"
+  ) {
+    return {
+      route: "templates-create-template-composition-draft-from-candidate",
+    };
+  }
+
+  if (method === "GET" && path === "/api/v1/templates/template-compositions") {
+    return { route: "templates-list-template-compositions" };
   }
 
   if (method === "POST" && path === "/api/v1/editorial-rules/rule-sets") {
@@ -5154,6 +5590,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/api/v1/editorial-rules/rule-sets") {
     return { route: "editorial-rules-list-rule-sets" };
+  }
+
+  if (method === "GET" && path === "/api/v1/editorial-rules/extraction-tasks") {
+    return { route: "editorial-rules-list-extraction-tasks" };
+  }
+
+  if (method === "POST" && path === "/api/v1/editorial-rules/extraction-tasks") {
+    return { route: "editorial-rules-create-extraction-task" };
   }
 
   if (
@@ -5546,6 +5990,26 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const updateContentModuleDraftMatch = path.match(
+    /^\/api\/v1\/templates\/content-modules\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateContentModuleDraftMatch) {
+    return {
+      route: "templates-update-content-module-draft",
+      contentModuleId: updateContentModuleDraftMatch[1],
+    };
+  }
+
+  const updateTemplateCompositionDraftMatch = path.match(
+    /^\/api\/v1\/templates\/template-compositions\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateTemplateCompositionDraftMatch) {
+    return {
+      route: "templates-update-template-composition-draft",
+      templateCompositionId: updateTemplateCompositionDraftMatch[1],
+    };
+  }
+
   const publishModuleTemplateMatch = path.match(
     /^\/api\/v1\/templates\/module-templates\/([^/]+)\/publish$/,
   );
@@ -5630,6 +6094,27 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "editorial-rules-list-rules",
       ruleSetId: editorialRulesMatch[1],
+    };
+  }
+
+  const extractionTaskMatch = path.match(
+    /^\/api\/v1\/editorial-rules\/extraction-tasks\/([^/]+)$/,
+  );
+  if (method === "GET" && extractionTaskMatch) {
+    return {
+      route: "editorial-rules-get-extraction-task",
+      taskId: extractionTaskMatch[1],
+    };
+  }
+
+  const extractionTaskCandidateMatch = path.match(
+    /^\/api\/v1\/editorial-rules\/extraction-tasks\/([^/]+)\/candidates\/([^/]+)$/,
+  );
+  if (method === "POST" && extractionTaskCandidateMatch) {
+    return {
+      route: "editorial-rules-update-extraction-task-candidate",
+      taskId: extractionTaskCandidateMatch[1],
+      candidateId: extractionTaskCandidateMatch[2],
     };
   }
 
@@ -6512,7 +6997,9 @@ function mapErrorToHttpResponse(
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof JournalTemplateProfileNotFoundError ||
+    error instanceof GovernedContentModuleNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
+    error instanceof TemplateCompositionNotFoundError ||
     error instanceof TemplateRetrievalQualityRunNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
     error instanceof ModelRegistryEntryNotFoundError ||
@@ -6525,6 +7012,8 @@ function mapErrorToHttpResponse(
     error instanceof PromptTemplateNotFoundError ||
     error instanceof EditorialRuleSetNotFoundError ||
     error instanceof EditorialRuleTemplateFamilyNotFoundError ||
+    error instanceof ExtractionTaskNotFoundError ||
+    error instanceof ExtractionTaskCandidateNotFoundError ||
     error instanceof RulePackageExampleSourceSessionNotFoundError ||
     error instanceof ReviewedCaseSourceAssetNotFoundError ||
     error instanceof AiProviderConnectionNotFoundError ||
@@ -6567,6 +7056,7 @@ function mapErrorToHttpResponse(
     error instanceof JournalTemplateProfileStatusTransitionError ||
     error instanceof TemplateFamilyActiveConflictError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
+    error instanceof ExtractionCandidateIntakeStateError ||
     error instanceof ModuleTemplateDraftNotEditableError ||
     error instanceof ModuleTemplateStatusTransitionError ||
     error instanceof DuplicateModelRegistryEntryError ||
@@ -6634,7 +7124,8 @@ function mapErrorToHttpResponse(
     error instanceof ReviewedCaseSnapshotRepositoryRequiredError ||
     error instanceof EvaluationSampleSetSourceEligibilityError ||
     error instanceof VerificationRetrievalDependencyError ||
-    error instanceof HarnessIntegrationValidationError
+    error instanceof HarnessIntegrationValidationError ||
+    error instanceof ManuscriptBatchUploadLimitExceededError
   ) {
     return [400, { error: "invalid_request", message: error.message }];
   }

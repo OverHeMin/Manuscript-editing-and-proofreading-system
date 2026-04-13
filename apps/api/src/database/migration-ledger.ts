@@ -52,6 +52,18 @@ const migrationDescriptions = new Map<string, string>([
     "0038_manuscript_quality_runtime_refs.sql",
     "Persist runtime binding quality package refs and frozen execution snapshot quality package versions.",
   ],
+  [
+    "0039_rule_package_extraction_tasks.sql",
+    "Persist rule-package extraction tasks and AI semantic confirmation candidates for the rule center ledger.",
+  ],
+  [
+    "0040_rule_center_content_modules_and_template_compositions.sql",
+    "Persist governed content modules and template compositions for the rule center ledgers.",
+  ],
+  [
+    "0041_manuscript_type_detection_summary.sql",
+    "Persist upload-time manuscript type detection summaries on manuscripts.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

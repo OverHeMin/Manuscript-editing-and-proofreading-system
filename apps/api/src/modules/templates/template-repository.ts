@@ -1,6 +1,9 @@
 import type {
+  GovernedContentModuleClass,
+  GovernedContentModuleRecord,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
+  TemplateCompositionRecord,
   TemplateFamilyRecord,
   TemplateModule,
 } from "./template-record.ts";
@@ -34,4 +37,22 @@ export interface ModuleTemplateRepository {
     templateFamilyId: string,
     module: TemplateModule,
   ): Promise<number>;
+}
+
+export interface GovernedContentModuleRepository {
+  saveContentModule(record: GovernedContentModuleRecord): Promise<void>;
+  findContentModuleById(
+    id: string,
+  ): Promise<GovernedContentModuleRecord | undefined>;
+  listContentModules(input?: {
+    moduleClass?: GovernedContentModuleClass;
+  }): Promise<GovernedContentModuleRecord[]>;
+}
+
+export interface TemplateCompositionRepository {
+  saveTemplateComposition(record: TemplateCompositionRecord): Promise<void>;
+  findTemplateCompositionById(
+    id: string,
+  ): Promise<TemplateCompositionRecord | undefined>;
+  listTemplateCompositions(): Promise<TemplateCompositionRecord[]>;
 }

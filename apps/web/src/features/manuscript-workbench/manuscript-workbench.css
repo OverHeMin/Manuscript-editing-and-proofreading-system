@@ -40,6 +40,7 @@
   --manuscript-dark-card-end: rgba(24, 21, 17, 0.98);
 }
 
+.manuscript-workbench-shell-header,
 .manuscript-workbench-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
@@ -56,11 +57,13 @@
     0 18px 34px var(--manuscript-panel-shadow);
 }
 
+.manuscript-workbench-shell-copy,
 .manuscript-workbench-hero-copy {
   display: grid;
   gap: 10px;
 }
 
+.manuscript-workbench-shell-copy h2,
 .manuscript-workbench-hero-copy h2 {
   margin: 0;
   font-family: var(--font-display);
@@ -68,6 +71,7 @@
   color: var(--manuscript-hero-ink);
 }
 
+.manuscript-workbench-shell-copy p,
 .manuscript-workbench-hero-copy p {
   margin: 0;
   max-width: 720px;
@@ -91,6 +95,7 @@
   text-transform: uppercase;
 }
 
+.manuscript-workbench-shell-metrics,
 .manuscript-workbench-hero-metrics,
 .manuscript-workbench-summary-hero-stats {
   display: grid;
@@ -334,6 +339,7 @@
   grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(280px, 340px);
   gap: 18px;
   align-items: start;
+  min-height: 0;
 }
 
 .manuscript-workbench-queue-pane,
@@ -341,6 +347,9 @@
 .manuscript-workbench-batch-drawer {
   display: grid;
   gap: 16px;
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  overflow: hidden;
   padding: 18px;
   border: 1px solid rgba(126, 101, 51, 0.14);
   border-radius: 20px;
@@ -606,6 +615,9 @@
 
 .manuscript-workbench-batch-drawer-body {
   display: grid;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .manuscript-workbench-controls-grid {
@@ -795,6 +807,9 @@
 .manuscript-workbench-summary {
   display: grid;
   gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .manuscript-workbench-focus-context {
@@ -1083,6 +1098,7 @@
 
 @media (max-width: 1024px) {
   .manuscript-workbench-mainline-layout,
+  .manuscript-workbench-shell-header,
   .manuscript-workbench-hero,
   .manuscript-workbench-focus-panel-header,
   .manuscript-workbench-focus-context,

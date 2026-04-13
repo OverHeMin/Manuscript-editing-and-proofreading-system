@@ -7,17 +7,17 @@ import {
 
 test("workbench routing parses templateGovernanceView ledgers", () => {
   const route = resolveWorkbenchLocation(
-    "#template-governance?templateGovernanceView=extraction-ledger",
+    "#template-governance?templateGovernanceView=journal-template-ledger",
   );
 
   assert.equal(route.workbenchId, "template-governance");
-  assert.equal(route.templateGovernanceView, "extraction-ledger");
+  assert.equal(route.templateGovernanceView, "journal-template-ledger");
 });
 
 test("formatWorkbenchHash preserves the requested rule-center subpage", () => {
   const hash = formatWorkbenchHash("template-governance", {
-    templateGovernanceView: "medical-module-ledger",
+    templateGovernanceView: "medical-package-ledger",
   });
 
-  assert.match(hash, /templateGovernanceView=medical-module-ledger/u);
+  assert.match(hash, /templateGovernanceView=medical-package-ledger/u);
 });

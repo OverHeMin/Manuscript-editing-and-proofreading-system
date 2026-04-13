@@ -1,10 +1,14 @@
 import type {
+  GovernedContentModuleRepository,
   ModuleTemplateRepository,
+  TemplateCompositionRepository,
   TemplateFamilyRepository,
 } from "./template-repository.ts";
 import type {
+  GovernedContentModuleRecord,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
+  TemplateCompositionRecord,
   TemplateFamilyRecord,
   TemplateModule,
 } from "./template-record.ts";
@@ -33,15 +37,59 @@ function cloneJournalTemplateProfileRecord(
   return { ...record };
 }
 
+function cloneGovernedContentModuleRecord(
+  record: GovernedContentModuleRecord,
+): GovernedContentModuleRecord {
+  return {
+    ...record,
+    manuscript_type_scope: [...record.manuscript_type_scope],
+    execution_module_scope: [...record.execution_module_scope],
+    applicable_sections: record.applicable_sections
+      ? [...record.applicable_sections]
+      : undefined,
+    guidance: record.guidance ? [...record.guidance] : undefined,
+    examples: record.examples
+      ? record.examples.map((example) => ({ ...example }))
+      : undefined,
+  };
+}
+
+function cloneTemplateCompositionRecord(
+  record: TemplateCompositionRecord,
+): TemplateCompositionRecord {
+  return {
+    ...record,
+    general_module_ids: [...record.general_module_ids],
+    medical_module_ids: [...record.medical_module_ids],
+    execution_module_scope: [...record.execution_module_scope],
+    source_candidate_ids: record.source_candidate_ids
+      ? [...record.source_candidate_ids]
+      : undefined,
+  };
+}
+
 function versionKey(templateFamilyId: string, module: TemplateModule): string {
   return `${templateFamilyId}:${module}`;
 }
 
-export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepository {
+export class InMemoryTemplateFamilyRepository
+  implements
+    TemplateFamilyRepository,
+    GovernedContentModuleRepository,
+    TemplateCompositionRepository
+{
   private readonly records = new Map<string, TemplateFamilyRecord>();
   private readonly journalTemplateProfileRecords = new Map<
     string,
     JournalTemplateProfileRecord
+  >();
+  private readonly contentModuleRecords = new Map<
+    string,
+    GovernedContentModuleRecord
+  >();
+  private readonly templateCompositionRecords = new Map<
+    string,
+    TemplateCompositionRecord
   >();
 
   async save(record: TemplateFamilyRecord): Promise<void> {
@@ -93,9 +141,56 @@ export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepositor
       .map(cloneJournalTemplateProfileRecord);
   }
 
+  async saveContentModule(record: GovernedContentModuleRecord): Promise<void> {
+    this.contentModuleRecords.set(
+      record.id,
+      cloneGovernedContentModuleRecord(record),
+    );
+  }
+
+  async findContentModuleById(
+    id: string,
+  ): Promise<GovernedContentModuleRecord | undefined> {
+    const record = this.contentModuleRecords.get(id);
+    return record ? cloneGovernedContentModuleRecord(record) : undefined;
+  }
+
+  async listContentModules(input?: {
+    moduleClass?: GovernedContentModuleRecord["module_class"];
+  }): Promise<GovernedContentModuleRecord[]> {
+    return [...this.contentModuleRecords.values()]
+      .filter((record) =>
+        input?.moduleClass ? record.module_class === input.moduleClass : true,
+      )
+      .sort((left, right) => left.created_at.localeCompare(right.created_at))
+      .map(cloneGovernedContentModuleRecord);
+  }
+
+  async saveTemplateComposition(record: TemplateCompositionRecord): Promise<void> {
+    this.templateCompositionRecords.set(
+      record.id,
+      cloneTemplateCompositionRecord(record),
+    );
+  }
+
+  async findTemplateCompositionById(
+    id: string,
+  ): Promise<TemplateCompositionRecord | undefined> {
+    const record = this.templateCompositionRecords.get(id);
+    return record ? cloneTemplateCompositionRecord(record) : undefined;
+  }
+
+  async listTemplateCompositions(): Promise<TemplateCompositionRecord[]> {
+    return [...this.templateCompositionRecords.values()]
+      .sort((left, right) => left.created_at.localeCompare(right.created_at))
+      .map(cloneTemplateCompositionRecord);
+  }
+
   snapshotState(): {
     records: Map<string, TemplateFamilyRecord>;
     journalTemplateProfileRecords: Map<string, JournalTemplateProfileRecord>;
+    contentModuleRecords: Map<string, GovernedContentModuleRecord>;
+    templateCompositionRecords: Map<string, TemplateCompositionRecord>;
   } {
     return {
       records: new Map(
@@ -110,12 +205,26 @@ export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepositor
           cloneJournalTemplateProfileRecord(record),
         ]),
       ),
+      contentModuleRecords: new Map(
+        [...this.contentModuleRecords.entries()].map(([id, record]) => [
+          id,
+          cloneGovernedContentModuleRecord(record),
+        ]),
+      ),
+      templateCompositionRecords: new Map(
+        [...this.templateCompositionRecords.entries()].map(([id, record]) => [
+          id,
+          cloneTemplateCompositionRecord(record),
+        ]),
+      ),
     };
   }
 
   restoreState(snapshot: {
     records: Map<string, TemplateFamilyRecord>;
     journalTemplateProfileRecords: Map<string, JournalTemplateProfileRecord>;
+    contentModuleRecords: Map<string, GovernedContentModuleRecord>;
+    templateCompositionRecords: Map<string, TemplateCompositionRecord>;
   }): void {
     this.records.clear();
     for (const [id, record] of snapshot.records.entries()) {
@@ -126,6 +235,17 @@ export class InMemoryTemplateFamilyRepository implements TemplateFamilyRepositor
       this.journalTemplateProfileRecords.set(
         id,
         cloneJournalTemplateProfileRecord(record),
+      );
+    }
+    this.contentModuleRecords.clear();
+    for (const [id, record] of snapshot.contentModuleRecords.entries()) {
+      this.contentModuleRecords.set(id, cloneGovernedContentModuleRecord(record));
+    }
+    this.templateCompositionRecords.clear();
+    for (const [id, record] of snapshot.templateCompositionRecords.entries()) {
+      this.templateCompositionRecords.set(
+        id,
+        cloneTemplateCompositionRecord(record),
       );
     }
   }

@@ -185,20 +185,6 @@ export function WorkbenchHost({
   const activeWorkbenchDescription = describeWorkbenchFocus(activeWorkbenchId);
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
   const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
-  const isImmersiveSurface =
-    activeWorkbenchId === "knowledge-library" && routeState.knowledgeView === "ledger";
-
-  if (isImmersiveSurface) {
-    return (
-      <main className="app-shell app-shell--immersive">
-        <section
-          className={`workbench-immersive-surface workbench-immersive-surface--${activeRenderKind}`}
-        >
-          {renderContent()}
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="app-shell">
@@ -328,7 +314,7 @@ export function WorkbenchHost({
             initialMode={routeState.ruleCenterMode ?? "authoring"}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
-            initialView={routeState.templateGovernanceView ?? "classic"}
+            initialView={routeState.templateGovernanceView ?? "overview"}
           />
         );
       case "system-settings":

@@ -1,3 +1,4 @@
+import type { ManuscriptTypeDetectionSummary } from "@medical/contracts";
 import type { ManuscriptRecord } from "./manuscript-record.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
@@ -12,6 +13,7 @@ interface ManuscriptRow {
   id: string;
   title: string;
   manuscript_type: ManuscriptRecord["manuscript_type"];
+  manuscript_type_detection_summary: ManuscriptTypeDetectionSummary | string | null;
   status: ManuscriptRecord["status"];
   created_by: string;
   current_screening_asset_id: string | null;
@@ -33,6 +35,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           id,
           title,
           manuscript_type,
+          manuscript_type_detection_summary,
           status,
           created_by,
           current_screening_asset_id,
@@ -43,11 +46,12 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           created_at,
           updated_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         on conflict (id) do update
         set
           title = excluded.title,
           manuscript_type = excluded.manuscript_type,
+          manuscript_type_detection_summary = excluded.manuscript_type_detection_summary,
           status = excluded.status,
           created_by = excluded.created_by,
           current_screening_asset_id = excluded.current_screening_asset_id,
@@ -62,6 +66,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
         record.id,
         record.title,
         record.manuscript_type,
+        record.manuscript_type_detection_summary ?? null,
         record.status,
         record.created_by,
         record.current_screening_asset_id ?? null,
@@ -82,6 +87,7 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           id,
           title,
           manuscript_type,
+          manuscript_type_detection_summary,
           status,
           created_by,
           current_screening_asset_id,
@@ -106,6 +112,13 @@ function mapManuscriptRow(row: ManuscriptRow): ManuscriptRecord {
     id: row.id,
     title: row.title,
     manuscript_type: row.manuscript_type,
+    ...(normalizeDetectionSummary(row.manuscript_type_detection_summary)
+      ? {
+          manuscript_type_detection_summary: normalizeDetectionSummary(
+            row.manuscript_type_detection_summary,
+          )!,
+        }
+      : {}),
     status: row.status,
     created_by: row.created_by,
     ...(row.current_screening_asset_id
@@ -125,6 +138,26 @@ function mapManuscriptRow(row: ManuscriptRow): ManuscriptRecord {
       : {}),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
+  };
+}
+
+function normalizeDetectionSummary(
+  value: ManuscriptRow["manuscript_type_detection_summary"],
+): ManuscriptTypeDetectionSummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed =
+    typeof value === "string"
+      ? (JSON.parse(value) as ManuscriptTypeDetectionSummary)
+      : value;
+
+  return {
+    ...parsed,
+    ...(parsed.matched_signals
+      ? { matched_signals: [...parsed.matched_signals] }
+      : {}),
   };
 }
 

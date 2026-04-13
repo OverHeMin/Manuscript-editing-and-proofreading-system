@@ -32,22 +32,29 @@ import {
 } from "../prompt-skill-registry/index.ts";
 import {
   compileRulePackagesToDraft as requestCompileRulePackagesToDraft,
+  createExtractionTask as requestCreateExtractionTask,
   createRulePackageExampleSourceSession as requestCreateRulePackageExampleSourceSession,
   createEditorialRule,
   createEditorialRuleSet,
+  getExtractionTask as requestExtractionTask,
   listEditorialRulesByRuleSetId,
   listEditorialRuleSets,
+  listExtractionTasks as requestExtractionTasks,
   loadRulePackageWorkspace as requestRulePackageWorkspace,
   previewRulePackageCompile as requestRulePackageCompilePreview,
   previewRulePackageDraft as requestRulePackagePreview,
   publishEditorialRuleSet,
+  updateExtractionTaskCandidate as requestUpdateExtractionTaskCandidate,
   type CompileRulePackagesToDraftInputViewModel,
+  type CreateExtractionTaskInputViewModel,
   type CreateEditorialRuleInput,
   type CreateEditorialRuleSetInput,
   type CreateRulePackageExampleSourceSessionInput,
   type EditorialRulesHttpClient,
   type EditorialRuleSetViewModel,
   type EditorialRuleViewModel,
+  type ExtractionTaskDetailViewModel,
+  type ExtractionTaskViewModel,
   type PreviewCompileRulePackagesInputViewModel,
   type RulePackageCandidateViewModel,
   type RulePackageCompilePreviewViewModel,
@@ -57,27 +64,45 @@ import {
   type RulePackagePreviewViewModel,
   type RulePackageWorkspaceSourceInputViewModel,
   type RulePackageWorkspaceViewModel,
+  type UpdateExtractionTaskCandidateInputViewModel,
 } from "../editorial-rules/index.ts";
 import {
+  createContentModuleDraft,
+  createContentModuleDraftFromCandidate,
   activateJournalTemplateProfile,
   archiveJournalTemplateProfile,
+  createTemplateCompositionDraft,
+  createTemplateCompositionDraftFromCandidate,
   createJournalTemplateProfile,
   createModuleTemplateDraft,
   createTemplateFamily,
+  listContentModules,
   listJournalTemplateProfilesByTemplateFamilyId,
   listModuleTemplatesByTemplateFamilyId,
+  listTemplateCompositions,
   listTemplateFamilies,
   publishModuleTemplate,
+  updateContentModuleDraft,
   updateModuleTemplateDraft,
+  updateTemplateCompositionDraft,
   updateTemplateFamily,
+  type CreateContentModuleDraftFromCandidateInput,
+  type CreateContentModuleDraftInput,
   type CreateJournalTemplateProfileInput,
   type JournalTemplateProfileViewModel,
+  type GovernedContentModuleClass,
+  type GovernedContentModuleViewModel,
   type CreateModuleTemplateDraftInput,
+  type CreateTemplateCompositionDraftFromCandidateInput,
+  type CreateTemplateCompositionDraftInput,
   type CreateTemplateFamilyInput,
   type ModuleTemplateViewModel,
+  type TemplateCompositionViewModel,
   type TemplateFamilyViewModel,
   type TemplateHttpClient,
+  type UpdateContentModuleDraftInput,
   type UpdateModuleTemplateDraftInput,
+  type UpdateTemplateCompositionDraftInput,
   type UpdateTemplateFamilyInput,
 } from "../templates/index.ts";
 
@@ -123,9 +148,76 @@ export interface TemplateGovernanceWorkbenchController {
   loadOverview(
     input?: TemplateGovernanceReloadContext,
   ): Promise<TemplateGovernanceWorkbenchOverview>;
+  loadExtractionLedger(input?: {
+    selectedTaskId?: string | null;
+  }): Promise<TemplateGovernanceExtractionLedgerViewModel>;
+  loadContentModuleLedger(input: {
+    moduleClass: GovernedContentModuleClass;
+    selectedModuleId?: string | null;
+  }): Promise<TemplateGovernanceContentModuleLedgerViewModel>;
+  loadTemplateLedger(input?: {
+    selectedTemplateId?: string | null;
+  }): Promise<TemplateGovernanceTemplateLedgerViewModel>;
   loadRulePackageWorkspace(
     input: RulePackageWorkspaceSourceInputViewModel,
   ): Promise<RulePackageWorkspaceViewModel>;
+  createExtractionTaskAndReload(input: CreateExtractionTaskInputViewModel): Promise<{
+    task: ExtractionTaskDetailViewModel;
+    ledger: TemplateGovernanceExtractionLedgerViewModel;
+  }>;
+  updateExtractionTaskCandidateAndReload(input: {
+    taskId: string;
+    candidateId: string;
+    input: UpdateExtractionTaskCandidateInputViewModel;
+  }): Promise<{
+    task: ExtractionTaskDetailViewModel;
+    ledger: TemplateGovernanceExtractionLedgerViewModel;
+  }>;
+  createContentModuleDraftAndReload(input: CreateContentModuleDraftInput & {
+    selectedModuleId?: string | null;
+  }): Promise<{
+    contentModule: GovernedContentModuleViewModel;
+    ledger: TemplateGovernanceContentModuleLedgerViewModel;
+  }>;
+  updateContentModuleDraftAndReload(input: {
+    contentModuleId: string;
+    input: UpdateContentModuleDraftInput;
+    moduleClass: GovernedContentModuleClass;
+    selectedModuleId?: string | null;
+  }): Promise<{
+    contentModule: GovernedContentModuleViewModel;
+    ledger: TemplateGovernanceContentModuleLedgerViewModel;
+  }>;
+  createContentModuleDraftFromCandidateAndReload(
+    input: CreateContentModuleDraftFromCandidateInput & {
+      selectedModuleId?: string | null;
+    },
+  ): Promise<{
+    contentModule: GovernedContentModuleViewModel;
+    ledger: TemplateGovernanceContentModuleLedgerViewModel;
+  }>;
+  createTemplateCompositionDraftAndReload(input: CreateTemplateCompositionDraftInput & {
+    selectedTemplateId?: string | null;
+  }): Promise<{
+    templateComposition: TemplateCompositionViewModel;
+    ledger: TemplateGovernanceTemplateLedgerViewModel;
+  }>;
+  updateTemplateCompositionDraftAndReload(input: {
+    templateCompositionId: string;
+    input: UpdateTemplateCompositionDraftInput;
+    selectedTemplateId?: string | null;
+  }): Promise<{
+    templateComposition: TemplateCompositionViewModel;
+    ledger: TemplateGovernanceTemplateLedgerViewModel;
+  }>;
+  createTemplateCompositionDraftFromCandidateAndReload(
+    input: CreateTemplateCompositionDraftFromCandidateInput & {
+      selectedTemplateId?: string | null;
+    },
+  ): Promise<{
+    templateComposition: TemplateCompositionViewModel;
+    ledger: TemplateGovernanceTemplateLedgerViewModel;
+  }>;
   createRulePackageExampleSourceSession(
     input: CreateRulePackageExampleSourceSessionInput,
   ): Promise<RulePackageExampleSourceSessionViewModel>;
@@ -250,6 +342,47 @@ export interface TemplateGovernanceWorkbenchController {
   }>;
 }
 
+export interface TemplateGovernanceExtractionLedgerSummary {
+  totalTaskCount: number;
+  candidateCount: number;
+  awaitingConfirmationCount: number;
+}
+
+export interface TemplateGovernanceExtractionLedgerViewModel {
+  tasks: ExtractionTaskViewModel[];
+  selectedTaskId: string | null;
+  selectedTask: ExtractionTaskDetailViewModel | null;
+  summary: TemplateGovernanceExtractionLedgerSummary;
+}
+
+export interface TemplateGovernanceContentModuleLedgerSummary {
+  totalCount: number;
+  draftCount: number;
+  publishedCount: number;
+}
+
+export interface TemplateGovernanceContentModuleLedgerViewModel {
+  modules: GovernedContentModuleViewModel[];
+  selectedModuleId: string | null;
+  selectedModule: GovernedContentModuleViewModel | null;
+  summary: TemplateGovernanceContentModuleLedgerSummary;
+}
+
+export interface TemplateGovernanceTemplateLedgerSummary {
+  templateCount: number;
+  draftCount: number;
+  publishedCount: number;
+}
+
+export interface TemplateGovernanceTemplateLedgerViewModel {
+  templates: TemplateCompositionViewModel[];
+  generalModules: GovernedContentModuleViewModel[];
+  medicalModules: GovernedContentModuleViewModel[];
+  selectedTemplateId: string | null;
+  selectedTemplate: TemplateCompositionViewModel | null;
+  summary: TemplateGovernanceTemplateLedgerSummary;
+}
+
 type TemplateGovernanceHttpClient =
   KnowledgeHttpClient &
   TemplateHttpClient &
@@ -264,8 +397,125 @@ export function createTemplateGovernanceWorkbenchController(
     loadOverview(input) {
       return loadTemplateGovernanceOverview(client, input);
     },
+    loadExtractionLedger(input) {
+      return loadTemplateGovernanceExtractionLedger(client, input);
+    },
+    loadContentModuleLedger(input) {
+      return loadTemplateGovernanceContentModuleLedger(client, input);
+    },
+    loadTemplateLedger(input) {
+      return loadTemplateGovernanceTemplateLedger(client, input);
+    },
     async loadRulePackageWorkspace(input) {
       return (await requestRulePackageWorkspace(client, input)).body;
+    },
+    async createExtractionTaskAndReload(input) {
+      const task = (await requestCreateExtractionTask(client, input)).body;
+
+      return {
+        task,
+        ledger: await loadTemplateGovernanceExtractionLedger(client, {
+          selectedTaskId: task.id,
+        }),
+      };
+    },
+    async updateExtractionTaskCandidateAndReload(input) {
+      const task = (
+        await requestUpdateExtractionTaskCandidate(
+          client,
+          input.taskId,
+          input.candidateId,
+          input.input,
+        )
+      ).body;
+
+      return {
+        task,
+        ledger: await loadTemplateGovernanceExtractionLedger(client, {
+          selectedTaskId: task.id,
+        }),
+      };
+    },
+    async createContentModuleDraftAndReload(input) {
+      const { selectedModuleId: _selectedModuleId, ...draftInput } = input;
+      const contentModule = (await createContentModuleDraft(client, draftInput)).body;
+
+      return {
+        contentModule,
+        ledger: await loadTemplateGovernanceContentModuleLedger(client, {
+          moduleClass: contentModule.module_class,
+          selectedModuleId: contentModule.id,
+        }),
+      };
+    },
+    async updateContentModuleDraftAndReload(input) {
+      const contentModule = (
+        await updateContentModuleDraft(client, input.contentModuleId, input.input)
+      ).body;
+
+      return {
+        contentModule,
+        ledger: await loadTemplateGovernanceContentModuleLedger(client, {
+          moduleClass: input.moduleClass,
+          selectedModuleId: input.selectedModuleId ?? contentModule.id,
+        }),
+      };
+    },
+    async createContentModuleDraftFromCandidateAndReload(input) {
+      const { selectedModuleId: _selectedModuleId, ...draftInput } = input;
+      const contentModule = (
+        await createContentModuleDraftFromCandidate(client, draftInput)
+      ).body;
+
+      return {
+        contentModule,
+        ledger: await loadTemplateGovernanceContentModuleLedger(client, {
+          moduleClass: contentModule.module_class,
+          selectedModuleId: contentModule.id,
+        }),
+      };
+    },
+    async createTemplateCompositionDraftAndReload(input) {
+      const { selectedTemplateId: _selectedTemplateId, ...draftInput } = input;
+      const templateComposition = (
+        await createTemplateCompositionDraft(client, draftInput)
+      ).body;
+
+      return {
+        templateComposition,
+        ledger: await loadTemplateGovernanceTemplateLedger(client, {
+          selectedTemplateId: templateComposition.id,
+        }),
+      };
+    },
+    async updateTemplateCompositionDraftAndReload(input) {
+      const templateComposition = (
+        await updateTemplateCompositionDraft(
+          client,
+          input.templateCompositionId,
+          input.input,
+        )
+      ).body;
+
+      return {
+        templateComposition,
+        ledger: await loadTemplateGovernanceTemplateLedger(client, {
+          selectedTemplateId: input.selectedTemplateId ?? templateComposition.id,
+        }),
+      };
+    },
+    async createTemplateCompositionDraftFromCandidateAndReload(input) {
+      const { selectedTemplateId: _selectedTemplateId, ...draftInput } = input;
+      const templateComposition = (
+        await createTemplateCompositionDraftFromCandidate(client, draftInput)
+      ).body;
+
+      return {
+        templateComposition,
+        ledger: await loadTemplateGovernanceTemplateLedger(client, {
+          selectedTemplateId: templateComposition.id,
+        }),
+      };
     },
     async createRulePackageExampleSourceSession(input) {
       return (await requestCreateRulePackageExampleSourceSession(client, input))
@@ -619,6 +869,105 @@ export function createTemplateGovernanceWorkbenchController(
           filters: input.filters,
         }),
       };
+    },
+  };
+}
+
+async function loadTemplateGovernanceExtractionLedger(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    selectedTaskId?: string | null;
+  } = {},
+): Promise<TemplateGovernanceExtractionLedgerViewModel> {
+  const tasks = (await requestExtractionTasks(client)).body;
+  const selectedTaskId = resolveSelectedId(
+    tasks.map((task) => task.id),
+    input.selectedTaskId,
+  );
+  const selectedTask =
+    selectedTaskId == null
+      ? null
+      : (await requestExtractionTask(client, selectedTaskId)).body;
+
+  return {
+    tasks,
+    selectedTaskId,
+    selectedTask,
+    summary: {
+      totalTaskCount: tasks.length,
+      candidateCount: tasks.reduce(
+        (total, task) => total + task.candidate_count,
+        0,
+      ),
+      awaitingConfirmationCount: tasks.reduce(
+        (total, task) => total + task.pending_confirmation_count,
+        0,
+      ),
+    },
+  };
+}
+
+async function loadTemplateGovernanceContentModuleLedger(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    moduleClass: GovernedContentModuleClass;
+    selectedModuleId?: string | null;
+  },
+): Promise<TemplateGovernanceContentModuleLedgerViewModel> {
+  const modules = (await listContentModules(client, input.moduleClass)).body;
+  const selectedModuleId = resolveSelectedId(
+    modules.map((module) => module.id),
+    input.selectedModuleId,
+  );
+  const selectedModule =
+    modules.find((module) => module.id === selectedModuleId) ?? null;
+
+  return {
+    modules,
+    selectedModuleId,
+    selectedModule,
+    summary: {
+      totalCount: modules.length,
+      draftCount: modules.filter((module) => module.status === "draft").length,
+      publishedCount: modules.filter((module) => module.status === "published")
+        .length,
+    },
+  };
+}
+
+async function loadTemplateGovernanceTemplateLedger(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    selectedTemplateId?: string | null;
+  } = {},
+): Promise<TemplateGovernanceTemplateLedgerViewModel> {
+  const [templatesResponse, generalModulesResponse, medicalModulesResponse] =
+    await Promise.all([
+      listTemplateCompositions(client),
+      listContentModules(client, "general"),
+      listContentModules(client, "medical_specialized"),
+    ]);
+  const templates = templatesResponse.body;
+  const selectedTemplateId = resolveSelectedId(
+    templates.map((template) => template.id),
+    input.selectedTemplateId,
+  );
+  const selectedTemplate =
+    templates.find((template) => template.id === selectedTemplateId) ?? null;
+
+  return {
+    templates,
+    generalModules: generalModulesResponse.body,
+    medicalModules: medicalModulesResponse.body,
+    selectedTemplateId,
+    selectedTemplate,
+    summary: {
+      templateCount: templates.length,
+      draftCount: templates.filter((template) => template.status === "draft")
+        .length,
+      publishedCount: templates.filter(
+        (template) => template.status === "published",
+      ).length,
     },
   };
 }

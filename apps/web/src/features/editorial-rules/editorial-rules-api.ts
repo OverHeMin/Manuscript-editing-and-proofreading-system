@@ -1,8 +1,11 @@
 import type {
   CompileRulePackagesToDraftInputViewModel,
+  CreateExtractionTaskInputViewModel,
   CreateRulePackageExampleSourceSessionInput,
   CreateEditorialRuleInput,
   CreateEditorialRuleSetInput,
+  ExtractionTaskDetailViewModel,
+  ExtractionTaskViewModel,
   GenerateRulePackageCandidatesFromReviewedCaseInput,
   EditorialRuleSetViewModel,
   EditorialRuleViewModel,
@@ -15,6 +18,7 @@ import type {
   RulePackagePreviewViewModel,
   RulePackageWorkspaceSourceInputViewModel,
   RulePackageWorkspaceViewModel,
+  UpdateExtractionTaskCandidateInputViewModel,
 } from "./types.ts";
 
 export interface EditorialRulesHttpClient {
@@ -100,6 +104,47 @@ export function createRulePackageExampleSourceSession(
   return client.request<RulePackageExampleSourceSessionViewModel>({
     method: "POST",
     url: "/api/v1/editorial-rules/rule-packages/example-source-sessions",
+    body: { input },
+  });
+}
+
+export function listExtractionTasks(client: EditorialRulesHttpClient) {
+  return client.request<ExtractionTaskViewModel[]>({
+    method: "GET",
+    url: "/api/v1/editorial-rules/extraction-tasks",
+  });
+}
+
+export function createExtractionTask(
+  client: EditorialRulesHttpClient,
+  input: CreateExtractionTaskInputViewModel,
+) {
+  return client.request<ExtractionTaskDetailViewModel>({
+    method: "POST",
+    url: "/api/v1/editorial-rules/extraction-tasks",
+    body: { input },
+  });
+}
+
+export function getExtractionTask(
+  client: EditorialRulesHttpClient,
+  taskId: string,
+) {
+  return client.request<ExtractionTaskDetailViewModel>({
+    method: "GET",
+    url: `/api/v1/editorial-rules/extraction-tasks/${taskId}`,
+  });
+}
+
+export function updateExtractionTaskCandidate(
+  client: EditorialRulesHttpClient,
+  taskId: string,
+  candidateId: string,
+  input: UpdateExtractionTaskCandidateInputViewModel,
+) {
+  return client.request<ExtractionTaskDetailViewModel>({
+    method: "POST",
+    url: `/api/v1/editorial-rules/extraction-tasks/${taskId}/candidates/${candidateId}`,
     body: { input },
   });
 }

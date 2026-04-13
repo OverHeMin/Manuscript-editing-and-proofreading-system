@@ -1,3 +1,8 @@
+import type {
+  ManuscriptType as SharedManuscriptType,
+  ManuscriptTypeDetectionSummary,
+} from "@medical/contracts";
+
 export type ManuscriptStatus =
   | "draft"
   | "uploaded"
@@ -6,25 +11,13 @@ export type ManuscriptStatus =
   | "completed"
   | "archived";
 
-export type ManuscriptType =
-  | "clinical_study"
-  | "review"
-  | "systematic_review"
-  | "meta_analysis"
-  | "case_report"
-  | "guideline_interpretation"
-  | "expert_consensus"
-  | "diagnostic_study"
-  | "basic_research"
-  | "nursing_study"
-  | "methodology_paper"
-  | "brief_report"
-  | "other";
+export type ManuscriptType = SharedManuscriptType;
 
 export interface ManuscriptRecord {
   id: string;
   title: string;
   manuscript_type: ManuscriptType;
+  manuscript_type_detection_summary?: ManuscriptTypeDetectionSummary;
   status: ManuscriptStatus;
   created_by: string;
   current_screening_asset_id?: string;

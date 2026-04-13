@@ -353,6 +353,52 @@ test("batch upload creates a stable root job with queued items and visible progr
   );
 });
 
+test("batch upload rejects requests that exceed the guarded upload limit", async () => {
+  const { manuscriptService } = createLifecycleHarness();
+
+  await assert.rejects(
+    () =>
+      manuscriptService.uploadBatch({
+        createdBy: "user-batch-limit",
+        items: Array.from({ length: 11 }, (_, index) => ({
+          title: `Batch manuscript ${index + 1}`,
+          fileName: `batch-${index + 1}.docx`,
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          storageKey: `uploads/batch-${index + 1}.docx`,
+        })),
+      }),
+    /cannot exceed 10/i,
+  );
+});
+
+test("upload detects manuscript type when the operator does not provide one", async () => {
+  const { api } = createLifecycleHarness([
+    "manuscript-detected-1",
+    "asset-detected-1",
+    "job-detected-1",
+  ]);
+
+  const uploadResponse = await api.upload({
+    title: "Meta-analysis of perioperative outcomes",
+    manuscriptType: undefined,
+    createdBy: "user-detected",
+    fileName: "meta-analysis.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/meta-analysis.docx",
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploadResponse.body.manuscript.manuscript_type, "meta_analysis");
+  assert.deepEqual(uploadResponse.body.manuscript.manuscript_type_detection_summary, {
+    detected_type: "meta_analysis",
+    final_type: "meta_analysis",
+    source: "heuristic",
+    confidence: 0.94,
+    matched_signals: ["meta-analysis", "meta analysis"],
+  });
+});
+
 test("batch lifecycle reports running work, failed-item retry, cancellation, and restart recovery posture", async () => {
   const {
     api,

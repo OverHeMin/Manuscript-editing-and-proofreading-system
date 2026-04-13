@@ -158,8 +158,18 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   assert.match(markup, /knowledge-library-ledger-grid/u);
   assert.match(markup, /knowledge-library-ledger-toolbar/u);
   assert.doesNotMatch(markup, /knowledge-library-record-drawer/u);
-  assert.doesNotMatch(markup, /workbench-header/u);
-  assert.doesNotMatch(markup, /workbench-nav/u);
+  assert.match(markup, /workbench-header/u);
+  assert.match(markup, /workbench-nav/u);
+});
+
+test("workbench host defaults bare knowledge library hashes to the main page", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#knowledge-library?assetId=knowledge-42&revisionId=knowledge-42-revision-2",
+  );
+
+  assert.match(markup, /knowledge-library-workbench-page/u);
+  assert.match(markup, /workbench-header/u);
+  assert.match(markup, /workbench-nav/u);
 });
 
 test("workbench host runtime render routes rule center overview hashes to the overview page", async () => {
@@ -169,6 +179,14 @@ test("workbench host runtime render routes rule center overview hashes to the ov
 
   assert.match(markup, /template-governance-overview-page/u);
   assert.match(markup, /待确认提取候选/u);
+  assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
+});
+
+test("workbench host defaults bare rule center hashes to the overview page", async () => {
+  const markup = await renderWorkbenchHostAtHash("#template-governance");
+
+  assert.match(markup, /template-governance-overview-page/u);
+  assert.match(markup, /template-governance-overview-entries/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 

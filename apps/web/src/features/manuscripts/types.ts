@@ -1,3 +1,12 @@
+import type {
+  ManuscriptType as SharedManuscriptType,
+  ManuscriptTypeDetectionSummary,
+} from "@medical/contracts";
+import { MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT as SHARED_MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT } from "@medical/contracts";
+
+export const MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT =
+  SHARED_MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT;
+
 export type ManuscriptStatus =
   | "draft"
   | "uploaded"
@@ -6,20 +15,7 @@ export type ManuscriptStatus =
   | "completed"
   | "archived";
 
-export type ManuscriptType =
-  | "clinical_study"
-  | "review"
-  | "systematic_review"
-  | "meta_analysis"
-  | "case_report"
-  | "guideline_interpretation"
-  | "expert_consensus"
-  | "diagnostic_study"
-  | "basic_research"
-  | "nursing_study"
-  | "methodology_paper"
-  | "brief_report"
-  | "other";
+export type ManuscriptType = SharedManuscriptType;
 
 export type DocumentAssetType =
   | "original"
@@ -327,6 +323,7 @@ export interface ManuscriptViewModel {
   id: string;
   title: string;
   manuscript_type: ManuscriptType;
+  manuscript_type_detection_summary?: ManuscriptTypeDetectionSummary;
   status: ManuscriptStatus;
   created_by: string;
   current_screening_asset_id?: string;
@@ -446,7 +443,7 @@ export interface JobViewModel {
 
 export interface UploadManuscriptInput {
   title: string;
-  manuscriptType: ManuscriptType;
+  manuscriptType?: ManuscriptType;
   createdBy: string;
   fileName: string;
   mimeType: string;
