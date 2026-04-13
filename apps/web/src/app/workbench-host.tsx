@@ -328,6 +328,7 @@ export function WorkbenchHost({
             initialMode={routeState.ruleCenterMode ?? "authoring"}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+            initialView={routeState.templateGovernanceView ?? "classic"}
           />
         );
       case "system-settings":
@@ -370,6 +371,7 @@ export function WorkbenchHost({
       assetId: handoff?.assetId,
       revisionId: handoff?.revisionId,
       knowledgeView: handoff?.knowledgeView,
+      templateGovernanceView: handoff?.templateGovernanceView,
       reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
       sampleSetItemId: handoff?.sampleSetItemId,
       ruleCenterMode: handoff?.ruleCenterMode,
@@ -504,6 +506,7 @@ function resolveInitialWorkbenchRoute(
       assetId: location.assetId,
       revisionId: location.revisionId,
       knowledgeView: location.knowledgeView,
+      templateGovernanceView: location.templateGovernanceView,
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
       sampleSetItemId: location.sampleSetItemId,
       ruleCenterMode: location.ruleCenterMode,
