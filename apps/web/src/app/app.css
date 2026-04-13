@@ -86,6 +86,16 @@ a {
     linear-gradient(180deg, #11100e 0%, #171512 100%);
 }
 
+.app-shell--immersive {
+  padding: 0;
+  background:
+    linear-gradient(180deg, #f7f8fb 0%, #eef2f7 100%);
+}
+
+.workbench-immersive-surface {
+  min-height: 100vh;
+}
+
 .workbench-host {
   width: min(1480px, 100%);
   margin: 0 auto;

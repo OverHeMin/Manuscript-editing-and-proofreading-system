@@ -155,8 +155,11 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   );
 
   assert.match(markup, /knowledge-library-ledger-page/u);
-  assert.match(markup, /Knowledge Ledger/u);
+  assert.match(markup, /knowledge-library-ledger-grid/u);
+  assert.match(markup, /knowledge-library-ledger-toolbar/u);
   assert.doesNotMatch(markup, /knowledge-library-record-drawer/u);
+  assert.doesNotMatch(markup, /workbench-header/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
