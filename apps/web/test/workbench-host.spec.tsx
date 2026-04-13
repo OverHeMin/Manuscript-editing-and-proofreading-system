@@ -162,6 +162,26 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
+test("workbench host runtime render routes rule center overview hashes to the overview page", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#template-governance?templateGovernanceView=overview",
+  );
+
+  assert.match(markup, /template-governance-overview-page/u);
+  assert.match(markup, /待确认提取候选/u);
+  assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
+});
+
+test("workbench host runtime render routes rule center extraction hashes to the extraction ledger entry surface", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#template-governance?templateGovernanceView=extraction-ledger",
+  );
+
+  assert.match(markup, /template-governance-extraction-ledger-page/u);
+  assert.match(markup, /新建提取任务/u);
+  assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
+});
+
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,

@@ -21,6 +21,13 @@ export type RuleCenterMode = "authoring" | "learning";
 export type SettingsSection = WorkbenchSettingsSection;
 export type HarnessSection = WorkbenchHarnessSection;
 export type KnowledgeLibraryView = "classic" | "ledger";
+export type TemplateGovernanceView =
+  | "classic"
+  | "overview"
+  | "template-ledger"
+  | "extraction-ledger"
+  | "general-module-ledger"
+  | "medical-module-ledger";
 
 export interface WorkbenchHandoff {
   manuscriptId?: string;
@@ -28,6 +35,7 @@ export interface WorkbenchHandoff {
   assetId?: string;
   revisionId?: string;
   knowledgeView?: KnowledgeLibraryView;
+  templateGovernanceView?: TemplateGovernanceView;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
@@ -42,6 +50,7 @@ export interface WorkbenchLocation {
   assetId?: string;
   revisionId?: string;
   knowledgeView?: KnowledgeLibraryView;
+  templateGovernanceView?: TemplateGovernanceView;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
   ruleCenterMode?: RuleCenterMode;
@@ -116,6 +125,8 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.revisionId;
   const knowledgeView =
     typeof handoff === "string" ? undefined : handoff?.knowledgeView;
+  const templateGovernanceView =
+    typeof handoff === "string" ? undefined : handoff?.templateGovernanceView;
   const reviewedCaseSnapshotId =
     typeof handoff === "string" ? undefined : handoff?.reviewedCaseSnapshotId;
   const sampleSetItemId =
@@ -145,6 +156,10 @@ export function formatWorkbenchHash(
 
   if (knowledgeView === "ledger") {
     params.set("knowledgeView", knowledgeView);
+  }
+
+  if (templateGovernanceView && templateGovernanceView !== "classic") {
+    params.set("templateGovernanceView", templateGovernanceView);
   }
 
   if (reviewedCaseSnapshotId && reviewedCaseSnapshotId.trim().length > 0) {
@@ -192,6 +207,9 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const assetId = params.get("assetId")?.trim();
   const revisionId = params.get("revisionId")?.trim();
   const knowledgeView = normalizeKnowledgeLibraryView(params.get("knowledgeView"));
+  const templateGovernanceView = normalizeTemplateGovernanceView(
+    params.get("templateGovernanceView"),
+  );
   const reviewedCaseSnapshotId = params.get("reviewedCaseSnapshotId")?.trim();
   const sampleSetItemId = params.get("sampleSetItemId")?.trim();
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
@@ -205,6 +223,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(assetId && assetId.length > 0 ? { assetId } : {}),
     ...(revisionId && revisionId.length > 0 ? { revisionId } : {}),
     ...(knowledgeView ? { knowledgeView } : {}),
+    ...(templateGovernanceView ? { templateGovernanceView } : {}),
     ...(reviewedCaseSnapshotId && reviewedCaseSnapshotId.length > 0
       ? { reviewedCaseSnapshotId }
       : {}),
@@ -238,6 +257,23 @@ function normalizeKnowledgeLibraryView(
   value: string | null,
 ): KnowledgeLibraryView | undefined {
   if (value === "classic" || value === "ledger") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function normalizeTemplateGovernanceView(
+  value: string | null,
+): TemplateGovernanceView | undefined {
+  if (
+    value === "classic" ||
+    value === "overview" ||
+    value === "template-ledger" ||
+    value === "extraction-ledger" ||
+    value === "general-module-ledger" ||
+    value === "medical-module-ledger"
+  ) {
     return value;
   }
 
