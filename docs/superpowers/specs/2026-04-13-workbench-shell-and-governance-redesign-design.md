@@ -66,12 +66,16 @@ The following decisions are treated as final input for implementation.
 ### 3. Rule center
 
 - the rule-center main page should keep only compact overview data and entrances
-- the rule center should use exactly three working subpages:
-  - `template ledger`
+- the rule center should evolve into `rule center 2.0` with one lightweight home page and five working subpages:
+  - `large template ledger`
+  - `journal template ledger`
+  - `general package ledger`
+  - `medical package ledger`
   - `original-edited extraction`
-  - `content module ledger`
-- `general modules` and `medical specialized modules` should no longer be separate top-level rule-center landing pages
-- those two classes should be handled within the content-module ledger flow
+- large templates should manage manuscript-family governance
+- journal templates should manage journal-specific or scenario-specific specialization
+- general and medical packages should become first-class governed assets with table-first maintenance
+- rule-center authoring and maintenance should follow the same simple, table-first, AI-assisted interaction model as the knowledge library
 
 ### 4. Harness
 
@@ -209,15 +213,22 @@ This means operators should enter core meaning in text fields. Images may suppor
 
 ## Rule Center Redesign
 
-This section supersedes today's earlier rule-center split that used separate general and medical module pages.
+This section supersedes both:
+
+- the earlier split that used separate general and medical module pages
+- the later simplified three-page ledger proposal
+
+The approved direction is now `rule center 2.0`: a rule-governance hub that is simple to operate like the knowledge library, but structured deeply enough to manage large templates, journal templates, general packages, medical packages, extraction, AI semantics, and downstream Harness validation.
 
 ### Main page
 
 The main rule-center page should be lightweight and should only provide:
 
 - small overview metrics
-- entry points to the three working subpages
+- entry points to the five working subpages
 - optionally a compact recent activity list
+- recent pending AI confirmations
+- recent package changes waiting for Harness verification
 
 It should not provide:
 
@@ -226,18 +237,96 @@ It should not provide:
 - large management introductions
 - duplicate buttons that already exist in the left navigation
 
-### Three working subpages
+### Rule center 2.0 information architecture
 
-#### 1. `template ledger`
+The approved page family is:
+
+- `rule-center home`
+- `large template ledger`
+- `journal template ledger`
+- `general package ledger`
+- `medical package ledger`
+- `original-edited extraction`
+
+All five working pages should share one interaction pattern:
+
+- compact toolbar above the table
+- dense ledger as the primary surface
+- same-page temporary form for add and edit
+- dedicated search results surface
+- built-in AI semantic layer before final save or publish
+
+### 1. `large template ledger`
 
 Purpose:
 
-- manage templates as governed containers
-- reuse module assets
-- duplicate and publish templates
-- bind templates into manuscript flows
+- manage manuscript-family-level template governance
+- represent the `big template` concept the user requested
+- map naturally onto the existing `template family` backend model
+- define which package families and execution scopes a manuscript family should inherit
+- serve as the top container for journal templates
 
-#### 2. `original-edited extraction`
+Each row should answer:
+
+- what manuscript family this template governs
+- which execution modules it applies to
+- which general packages it includes
+- which medical packages it includes
+- whether it is draft, active, archived, or pending verification
+
+### 2. `journal template ledger`
+
+Purpose:
+
+- manage journal-specific or scenario-specific specialization under a large template
+- represent the `small template` concept the user requested
+- map onto the existing `journal template profile` backend model
+- keep journal-level constraints easy to see and easy to modify
+
+Each row should answer:
+
+- which large template it belongs to
+- which journal or scenario it targets
+- what additional requirements override or refine the parent family
+- which packages it reuses or narrows
+- whether it is active for selection in manuscript flows
+
+### 3. `general package ledger`
+
+Purpose:
+
+- manage reusable cross-manuscript governed packages
+- centralize what the user currently thinks of as `general package`
+- absorb package maintenance that is currently scattered or hidden in admin surfaces
+- keep package maintenance table-first and simple
+
+Typical package families here include:
+
+- title and heading structure
+- abstract and keyword norms
+- punctuation and full-width / half-width conventions
+- reference formatting
+- figure and table caption rules
+- common wording normalization
+
+### 4. `medical package ledger`
+
+Purpose:
+
+- manage reusable medical-specialized governed packages
+- centralize what the user currently thinks of as `medical specialized package`
+- provide deeper introspection and configuration than the current surfaces allow
+
+Typical package families here include:
+
+- statistical description parsing
+- statistical inference checks
+- diagnostic-study metric checks
+- survival-analysis wording and number checks
+- meta-analysis structure and indicator checks
+- ethics and registration requirements
+
+### 5. `original-edited extraction`
 
 Purpose:
 
@@ -246,37 +335,201 @@ Purpose:
 - view extraction output
 - run AI semantic understanding
 - confirm candidate intake
+- route approved candidates into:
+  - large template drafts
+  - journal template drafts
+  - general package drafts
+  - medical package drafts
 
-#### 3. `content module ledger`
+### Large template and journal template hierarchy
 
-Purpose:
+The approved hierarchy is:
 
-- manage all governed content modules in one table-first surface
-- include both `general modules` and `medical specialized modules`
-- distinguish them by type, filter, tag, or segmented view inside the same page family
+`large template -> journal template -> governed packages -> manuscript execution`
 
-### Content-module ledger behavior
+Expected mapping to current backend reality:
 
-The content-module ledger should not flatten all modules into one undifferentiated list.
+- `large template` corresponds to `template family`
+- `journal template` corresponds to `journal template profile`
+- package sets attach beneath those layers and are later activated through governed runtime and Harness controls
+
+This means the product direction is compatible with the current repository model and should not require a total backend rewrite before the UI improves.
+
+### Package-ledger behavior
+
+The package ledgers should not feel like developer consoles.
 
 Recommended behavior:
 
 - one shared page shell
 - one shared toolbar
 - one shared ledger pattern
-- visible classification for:
-  - `general`
-  - `medical_specialized`
+- a detail panel or temporary form that stays simple to edit
+- AI semantic assistance before save
+- clear provenance and downstream usage visibility
 
-Allowed implementations:
+### Rule-center forms must match knowledge-library simplicity
 
-- segmented tabs inside the same page
-- a type switch above the table
-- a filter chip row
+The user explicitly wants the rule center to feel as easy to use as the knowledge library.
 
-Not allowed:
+That means:
 
-- two separate top-level landing pages again
+- no expert-only permanent side drawers
+- no giant all-in-one authoring console as the main interaction mode
+- no making operators memorize hidden relationships before they can save a record
+
+Required form behavior:
+
+- add and edit reuse the same form surface
+- cancel always closes the form cleanly
+- repeatable fields must support both add and delete
+- AI semantic generation happens inside the form
+- the operator can modify the AI semantic output before save
+- records should not be committed until the operator accepts the semantic layer
+
+### AI semantic layer inside rule-center authoring
+
+AI semantic assistance should not be limited to extraction candidates.
+
+It should also support:
+
+- large template authoring
+- journal template authoring
+- general package authoring
+- medical package authoring
+
+Suggested AI semantic blocks:
+
+- what this asset governs
+- where it applies
+- where it should not apply
+- risk boundaries
+- suggested parent or child relationships
+- recommended Harness verification scope
+
+The operator flow should remain:
+
+1. enter or paste the human-authored content
+2. click `generate AI semantics`
+3. review and edit the AI interpretation
+4. confirm the semantic layer
+5. save the governed draft
+
+### Knowledge review and quality optimization linkage
+
+The user wants the knowledge-review and quality-optimization lines to call each other more often. That is the correct direction.
+
+Rule center 2.0 should add explicit bidirectional linkage:
+
+- approved knowledge can generate:
+  - package draft candidates
+  - template recommendations
+  - extraction enrichment hints
+- recurring quality findings can generate:
+  - knowledge candidates
+  - package-improvement candidates
+  - review-backlog items
+
+This should create a visible governance chain:
+
+`knowledge review -> package draft -> template binding -> Harness validation -> runtime use -> quality finding -> knowledge feedback`
+
+### Package provenance and inspectability
+
+Operators should be able to inspect and tune governed packages, not just list them.
+
+Each package detail surface should expose:
+
+- basic metadata
+- applicable manuscript families
+- applicable journal templates
+- execution scope
+- source knowledge references
+- source extraction task or candidate
+- downstream template usage
+- recent quality hits
+- latest Harness comparison state
+
+### Configurable versus engine-owned package logic
+
+The user asked whether general and medical packages can expose parsing-layer details for adjustment. The answer should be yes, but with clear boundaries.
+
+#### Operator-configurable package layer
+
+These should be editable through the rule center:
+
+- terminology dictionaries
+- alias maps
+- unit maps
+- threshold ranges
+- pattern sets
+- section applicability
+- exclusion conditions
+- review escalation thresholds
+- examples and counterexamples
+- AI semantic summaries
+- risk labels
+
+#### Engine-owned parser layer
+
+These should remain repo-owned and tested in code:
+
+- low-level numeric parsing
+- table-structure traversal
+- formula extraction
+- cross-cell and cross-section reconciliation logic
+- complex statistical expression parsing core
+
+The product rule is:
+
+- operators can tune governed parameters
+- operators should not be editing raw parser code in the browser
+
+### Medical package deepening
+
+The medical package ledger should support stronger statistical and medical analysis packages.
+
+Recommended first families:
+
+- `statistical description package`
+- `statistical inference package`
+- `diagnostic metrics package`
+- `survival analysis package`
+- `meta-analysis package`
+- `ethics and registration package`
+
+For example, a statistical package should be able to govern:
+
+- `n (%)`
+- `mean ± SD`
+- `median (IQR)`
+- `P value`
+- `95% CI`
+- `OR / RR / HR`
+- sensitivity / specificity / AUC
+
+The operator should be able to view and modify:
+
+- accepted notation variants
+- preferred normalization output
+- suspicious-value thresholds
+- unit expectations
+- manual-review triggers
+- known false-positive guards
+
+### Package detail tabs
+
+To make package behavior explainable and editable, each package should expose a detail page or form tabs such as:
+
+- `overview`
+- `semantic layer`
+- `parse scope`
+- `dictionary and units`
+- `thresholds and boundaries`
+- `examples and false positives`
+- `knowledge links`
+- `Harness evidence`
+- `version history`
 
 ### Extraction candidate flow
 
@@ -287,6 +540,20 @@ Approved flow:
 `upload original + edited manuscript -> extract candidates -> AI semantic understanding -> human edit and confirm -> intake into template or content-module draft`
 
 The AI semantic layer belongs between extraction and formal governance intake.
+
+### Harness relationship
+
+Rule center should become the primary authoring and maintenance surface for packages and templates.
+
+Harness should remain the activation, comparison, and rollback surface.
+
+That means:
+
+- create and edit in rule center
+- validate and compare in Harness
+- activate and roll back through governed environment controls
+
+This keeps authoring simple while preserving operational safety.
 
 ## Harness And Admin Consolidation
 
@@ -488,14 +755,17 @@ The redesign is successful for implementation planning if all of the following r
 1. the global left navigation remains in place across the system
 2. page-internal hero and intro sections are removed from working pages
 3. knowledge library keeps a main page and a dedicated ledger subpage, with explicit round-trip navigation only for that family
-4. rule center lands on a compact overview page with entrances to exactly three working subpages
-5. `general modules` and `medical specialized modules` are handled inside the content-module ledger flow, not as separate rule-center landing pages
+4. rule center lands on a compact home page with entrances to exactly five working subpages
+5. rule center supports `large templates`, `journal templates`, `general packages`, `medical packages`, and `original-edited extraction` as first-class governed surfaces
 6. Harness becomes the single in-product home for environment and experiment controls
 7. management overview no longer duplicates domain-owned content
 8. `screening / editing / proofreading` share one layout family with a narrow queue rail and a dominant central canvas
 9. normal manuscript upload no longer depends on mandatory manual manuscript-type selection
 10. AI type recognition can drive automatic matching of governed template and runtime assets
 11. batch upload exists and enforces a default per-batch cap of `10` on both frontend and backend
+12. rule center authoring uses the same simple table-plus-form-plus-AI-semantic interaction model as the knowledge library
+13. knowledge review and quality optimization can exchange governed candidates and provenance links
+14. medical packages expose configurable parsing and threshold layers without turning parser code into freeform browser-authored logic
 
 ## Superseded Or Adjusted Prior Decisions
 
@@ -508,9 +778,11 @@ This document updates and partially supersedes earlier assumptions in:
 Specific corrections:
 
 - knowledge-library ledger should keep the global shell
-- rule center should use three subpages rather than separate general and medical top-level module pages
+- rule center should use a home page plus five working subpages rather than the earlier three-page or separate-module variants
 - page-level introductions should be removed broadly across workbench pages
 - Harness ownership should be centralized in Harness rather than duplicated in management overview pages
+- rule center should absorb package maintenance that is currently too hidden inside admin-governance surfaces
+- rule-center forms should gain the same AI semantic confirmation posture already approved for the knowledge library
 
 ## Recommended Next Step
 
@@ -518,8 +790,10 @@ After this integrated design is approved in writing, the next step should be a c
 
 1. shared shell cleanup and page-header reduction
 2. knowledge-library main/subpage navigation alignment
-3. rule-center overview and three-ledger restructuring
-4. Harness consolidation and live control exposure
-5. manuscript workbench layout unification
-6. AI manuscript-type recognition and governed auto-binding
-7. batch-upload guardrail enforcement
+3. rule-center home page and five-subpage restructuring
+4. rule-center package authoring simplification and AI semantic forms
+5. knowledge-review and quality-optimization linkage
+6. Harness consolidation and live control exposure
+7. manuscript workbench layout unification
+8. AI manuscript-type recognition and governed auto-binding
+9. batch-upload guardrail enforcement
