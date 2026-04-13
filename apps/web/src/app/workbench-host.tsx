@@ -314,7 +314,11 @@ export function WorkbenchHost({
             initialMode={routeState.ruleCenterMode ?? "authoring"}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+<<<<<<< HEAD
             initialView={routeState.templateGovernanceView ?? "overview"}
+=======
+            initialView={routeState.templateGovernanceView ?? "classic"}
+>>>>>>> origin/main
           />
         );
       case "system-settings":
