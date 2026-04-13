@@ -78,6 +78,25 @@ test("workbench routing formats and resolves knowledge library handoff hashes", 
   });
 });
 
+test("workbench routing formats and resolves knowledge library ledger hashes", () => {
+  const hash = formatWorkbenchHash("knowledge-library", {
+    assetId: "knowledge-42",
+    revisionId: "knowledge-42-revision-2",
+    knowledgeView: "ledger",
+  });
+
+  assert.equal(
+    hash,
+    "#knowledge-library?assetId=knowledge-42&revisionId=knowledge-42-revision-2&knowledgeView=ledger",
+  );
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "knowledge-library",
+    assetId: "knowledge-42",
+    revisionId: "knowledge-42-revision-2",
+    knowledgeView: "ledger",
+  });
+});
+
 test("workbench routing formats and resolves knowledge review revision hashes", () => {
   const hash = formatWorkbenchHash("knowledge-review", {
     revisionId: "knowledge-42-revision-2",

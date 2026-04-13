@@ -1,5 +1,6 @@
 export * from "./types.ts";
 export * from "./knowledge-library-api.ts";
+export * from "./knowledge-library-ledger-page.tsx";
 export * from "./knowledge-library-controller.ts";
 export * from "./knowledge-library-grid-table.tsx";
 export * from "./knowledge-library-grid-toolbar.tsx";

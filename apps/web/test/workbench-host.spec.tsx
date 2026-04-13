@@ -149,6 +149,16 @@ test("knowledge reviewer defaults to knowledge library", () => {
   assert.equal(session.defaultWorkbench, "knowledge-library");
 });
 
+test("workbench host runtime render routes knowledge ledger hashes to the ledger page shell", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#knowledge-library?knowledgeView=ledger&assetId=knowledge-42&revisionId=knowledge-42-revision-2",
+  );
+
+  assert.match(markup, /knowledge-library-ledger-page/u);
+  assert.match(markup, /Knowledge Ledger/u);
+  assert.doesNotMatch(markup, /knowledge-library-record-drawer/u);
+});
+
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
