@@ -310,7 +310,6 @@ export function TemplateGovernanceWorkbenchPage({
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
   if (initialView === "overview") {
-<<<<<<< HEAD
     return (
       <TemplateGovernanceOverviewRoute
         controller={controller}
@@ -352,13 +351,6 @@ export function TemplateGovernanceWorkbenchPage({
         moduleClass="medical_specialized"
       />
     );
-=======
-    return <TemplateGovernanceOverviewPlaceholder overview={initialOverview} />;
-  }
-
-  if (initialView === "extraction-ledger") {
-    return <TemplateGovernanceExtractionLedgerPlaceholder />;
->>>>>>> origin/main
   }
 
   const initialRuleDraft = resolveInitialRuleAuthoringDraft(initialOverview);
@@ -2505,7 +2497,6 @@ export function TemplateGovernanceWorkbenchPage({
   );
 }
 
-<<<<<<< HEAD
 function TemplateGovernanceOverviewRoute({
   controller,
   initialOverview,
@@ -4317,91 +4308,6 @@ function navigateToTemplateGovernanceSection(
   });
 }
 
-=======
-function TemplateGovernanceOverviewPlaceholder({
-  overview,
-}: {
-  overview: TemplateGovernanceWorkbenchOverview | null;
-}) {
-  const templateCount = overview?.templateFamilies.length ?? 0;
-  const moduleCount = overview?.moduleTemplates.length ?? 0;
-  const pendingKnowledgeCount =
-    overview?.visibleKnowledgeItems.filter(
-      (item) => item.status === "draft" || item.status === "pending_review",
-    ).length ?? 0;
-
-  return (
-    <section className="template-governance-overview-page">
-      <header className="template-governance-hero">
-        <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">规则中心总览</p>
-          <h1>规则中心总览</h1>
-          <p>先看总览数据，再进入模板、提取与模块台账。</p>
-        </div>
-      </header>
-
-      <div className="template-governance-overview-metrics">
-        <article className="template-governance-card">
-          <h2>模板数量</h2>
-          <p>{templateCount}</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>模块数量</h2>
-          <p>{moduleCount}</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>待确认提取候选</h2>
-          <p>{pendingKnowledgeCount}</p>
-        </article>
-      </div>
-
-      <div className="template-governance-overview-links">
-        <article className="template-governance-card">
-          <h2>模板台账</h2>
-          <p>管理模板容器、版本和套用入口。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>原稿/编辑稿提取台账</h2>
-          <p>先提取候选，再确认 AI 语义与入库去向。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>通用模块台账</h2>
-          <p>沉淀跨稿件场景复用的通用模块。</p>
-        </article>
-        <article className="template-governance-card">
-          <h2>医学专用模块台账</h2>
-          <p>沉淀医学专用的高风险高价值模块。</p>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-function TemplateGovernanceExtractionLedgerPlaceholder() {
-  return (
-    <section className="template-governance-extraction-ledger-page">
-      <header className="template-governance-hero">
-        <div className="template-governance-hero-copy">
-          <p className="template-governance-eyebrow">提取台账</p>
-          <h1>原稿/编辑稿提取台账</h1>
-          <p>这是新的候选中枢入口，后续会承接任务表、候选表和 AI 语义确认。</p>
-        </div>
-      </header>
-
-      <div className="template-governance-actions">
-        <button type="button">新建提取任务</button>
-        <button type="button">搜索任务</button>
-      </div>
-
-      <article className="template-governance-card">
-        <h2>待确认数</h2>
-        <p>后续这里会显示提取任务表和候选确认表。</p>
-      </article>
-    </section>
-  );
-}
-
->>>>>>> origin/main
 interface TemplateGovernanceRulesPanelProps {
   overview: TemplateGovernanceWorkbenchOverview | null;
   selectedRuleSet: EditorialRuleSetViewModel | null;
