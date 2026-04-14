@@ -1,4 +1,9 @@
 import {
+  createRuleWizardEntryFormState,
+  type RuleWizardEntryFormState,
+} from "./template-governance-rule-wizard-api.ts";
+import { TemplateGovernanceRuleWizardStepEntry } from "./template-governance-rule-wizard-step-entry.tsx";
+import {
   getNextRuleWizardStep,
   getPreviousRuleWizardStep,
   getRuleWizardStepLabel,
@@ -9,6 +14,8 @@ import {
 export interface TemplateGovernanceRuleWizardProps {
   state: RuleWizardState;
   title?: string;
+  entryFormState?: RuleWizardEntryFormState;
+  onEntryFormChange?: (nextValue: RuleWizardEntryFormState) => void;
   onBack?: () => void;
   onPrevious?: () => void;
   onNext?: () => void;
@@ -19,6 +26,8 @@ export interface TemplateGovernanceRuleWizardProps {
 export function TemplateGovernanceRuleWizard({
   state,
   title,
+  entryFormState = createRuleWizardEntryFormState(),
+  onEntryFormChange,
   onBack,
   onPrevious,
   onNext,
@@ -69,30 +78,37 @@ export function TemplateGovernanceRuleWizard({
         </ol>
       </article>
 
-      <article className="template-governance-card template-governance-ledger-section">
-        <header className="template-governance-ledger-section-header">
-          <h2>{getRuleWizardStepLabel(state.step)}</h2>
-          <p>{resolveWizardStepHint(state.step)}</p>
-        </header>
-        <div className="template-governance-detail-grid">
-          <div>
-            <span>当前模式</span>
-            <p>{resolveWizardModeLabel(state.mode)}</p>
+      {state.step === "entry" ? (
+        <TemplateGovernanceRuleWizardStepEntry
+          value={entryFormState}
+          onChange={(nextValue) => onEntryFormChange?.(nextValue)}
+        />
+      ) : (
+        <article className="template-governance-card template-governance-ledger-section">
+          <header className="template-governance-ledger-section-header">
+            <h2>{getRuleWizardStepLabel(state.step)}</h2>
+            <p>{resolveWizardStepHint(state.step)}</p>
+          </header>
+          <div className="template-governance-detail-grid">
+            <div>
+              <span>当前模式</span>
+              <p>{resolveWizardModeLabel(state.mode)}</p>
+            </div>
+            <div>
+              <span>草稿状态</span>
+              <p>{state.dirty ? "有未保存变更" : "已同步"}</p>
+            </div>
+            <div>
+              <span>来源记录</span>
+              <p>{title ?? "从统一规则台账打开"}</p>
+            </div>
+            <div>
+              <span>下一步</span>
+              <p>{nextStep ? getRuleWizardStepLabel(nextStep) : "保存与发布"}</p>
+            </div>
           </div>
-          <div>
-            <span>草稿状态</span>
-            <p>{state.dirty ? "有未保存变更" : "已同步"}</p>
-          </div>
-          <div>
-            <span>来源记录</span>
-            <p>{title ?? "从统一规则台账打开"}</p>
-          </div>
-          <div>
-            <span>下一步</span>
-            <p>{nextStep ? getRuleWizardStepLabel(nextStep) : "保存与发布"}</p>
-          </div>
-        </div>
-      </article>
+        </article>
+      )}
 
       <footer className="template-governance-actions">
         {previousStep ? (
@@ -144,8 +160,6 @@ function resolveWizardModeLabel(mode: RuleWizardState["mode"]): string {
 
 function resolveWizardStepHint(step: RuleWizardState["step"]): string {
   switch (step) {
-    case "entry":
-      return "先收口高频信息与证据块，后续步骤只围绕语义和治理决策继续。";
     case "semantic":
       return "先看 AI 识别出的结构化语义，再决定是否补证据或继续确认。";
     case "confirm":

@@ -122,6 +122,11 @@ import type {
   TemplateGovernanceRuleLedgerViewModel,
 } from "./template-governance-ledger-types.ts";
 import { createTemplateGovernanceRuleLedgerViewModel } from "./template-governance-rule-ledger-state.ts";
+import {
+  saveRuleWizardEntryDraft as persistRuleWizardEntryDraft,
+  type RuleWizardEntryFormState,
+  type SaveRuleWizardEntryDraftResult,
+} from "./template-governance-rule-wizard-api.ts";
 
 export interface TemplateGovernanceWorkbenchFilters {
   searchText: string;
@@ -170,6 +175,11 @@ export interface TemplateGovernanceWorkbenchController {
     searchQuery?: string;
     selectedRowId?: string | null;
   }): Promise<TemplateGovernanceRuleLedgerViewModel>;
+  saveRuleWizardEntryDraft(input: {
+    form: RuleWizardEntryFormState;
+    draftAssetId?: string;
+    draftRevisionId?: string;
+  }): Promise<SaveRuleWizardEntryDraftResult>;
   loadExtractionLedger(input?: {
     selectedTaskId?: string | null;
   }): Promise<TemplateGovernanceExtractionLedgerViewModel>;
@@ -422,6 +432,9 @@ export function createTemplateGovernanceWorkbenchController(
     },
     loadRuleLedger(input) {
       return loadTemplateGovernanceRuleLedger(client, input);
+    },
+    saveRuleWizardEntryDraft(input) {
+      return persistRuleWizardEntryDraft(client, input);
     },
     loadExtractionLedger(input) {
       return loadTemplateGovernanceExtractionLedger(client, input);

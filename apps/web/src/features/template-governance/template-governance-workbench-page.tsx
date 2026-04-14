@@ -135,6 +135,10 @@ import {
   type RuleWizardState,
 } from "./template-governance-rule-wizard-state.ts";
 import {
+  createRuleWizardEntryFormState,
+  type RuleWizardEntryFormState,
+} from "./template-governance-rule-wizard-api.ts";
+import {
   formatRulePackageKindLabel,
   formatTemplateGovernanceConfidencePolicyLabel,
   formatTemplateGovernanceExecutionModeLabel,
@@ -2581,6 +2585,9 @@ function TemplateGovernanceRuleLedgerRoute({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [wizardState, setWizardState] = useState<RuleWizardState | null>(null);
   const [wizardTitle, setWizardTitle] = useState<string | undefined>(undefined);
+  const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
+    () => createRuleWizardEntryFormState(),
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -2630,6 +2637,7 @@ function TemplateGovernanceRuleLedgerRoute({
   function handleOpenCreateRule() {
     setWizardState(createRuleWizardState("create"));
     setWizardTitle(undefined);
+    setWizardEntryForm(createRuleWizardEntryFormState());
   }
 
   function handleOpenSelectedItem(rowId: string) {
@@ -2647,6 +2655,58 @@ function TemplateGovernanceRuleLedgerRoute({
       ),
     );
     setWizardTitle(selectedRow.title);
+    setWizardEntryForm(
+      createRuleWizardEntryFormState({
+        title: selectedRow.title,
+      }),
+    );
+  }
+
+  async function handleSaveRuleWizardDraft() {
+    if (!wizardState) {
+      return;
+    }
+
+    if (wizardState.step !== "entry") {
+      setWizardState((current) =>
+        current == null ? current : { ...current, dirty: false },
+      );
+      setStatusMessage("规则草稿已暂存。");
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await controller.saveRuleWizardEntryDraft({
+        form: wizardEntryForm,
+        draftAssetId: wizardState.draftAssetId,
+        draftRevisionId: wizardState.draftRevisionId,
+      });
+      setWizardState((current) =>
+        current == null
+          ? current
+          : {
+              ...current,
+              dirty: false,
+              draftAssetId: result.draftAssetId,
+              draftRevisionId: result.draftRevisionId,
+            },
+      );
+      setStatusMessage("规则草稿已暂存。");
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则录入草稿保存失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function handleRuleWizardEntryFormChange(nextValue: RuleWizardEntryFormState) {
+    setWizardEntryForm(nextValue);
+    setWizardState((current) =>
+      current == null ? current : { ...current, dirty: true },
+    );
   }
 
   if (wizardState) {
@@ -2654,6 +2714,8 @@ function TemplateGovernanceRuleLedgerRoute({
       <TemplateGovernanceRuleWizard
         state={wizardState}
         title={wizardTitle}
+        entryFormState={wizardEntryForm}
+        onEntryFormChange={handleRuleWizardEntryFormChange}
         onBack={() => {
           setWizardState(null);
           setStatusMessage("已返回规则台账。");
@@ -2669,10 +2731,7 @@ function TemplateGovernanceRuleLedgerRoute({
           );
         }}
         onSaveDraft={() => {
-          setWizardState((current) =>
-            current == null ? current : { ...current, dirty: false },
-          );
-          setStatusMessage("规则草稿已暂存。");
+          void handleSaveRuleWizardDraft();
         }}
         onComplete={() => {
           setWizardState(null);

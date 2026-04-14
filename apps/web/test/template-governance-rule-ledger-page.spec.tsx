@@ -47,3 +47,32 @@ test("rule ledger page renders unified categories and command bar actions", () =
   assert.match(markup, /批量操作/u);
   assert.match(markup, /导入/u);
 });
+
+test("rule ledger page can expose a guided action for the selected item", () => {
+  const Page = TemplateGovernanceRuleLedgerPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      selectedItemActionLabel="编辑规则"
+      initialViewModel={{
+        category: "all",
+        rows: [
+          {
+            id: "rule-1",
+            asset_kind: "rule",
+            title: "术语统一规则",
+            module_label: "编辑",
+            manuscript_type_label: "论著",
+            semantic_status: "待确认",
+            publish_status: "草稿",
+            contributor_label: "editor.zh",
+            updated_at: "2026-04-14T09:00:00.000Z",
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(markup, /编辑规则/u);
+});
