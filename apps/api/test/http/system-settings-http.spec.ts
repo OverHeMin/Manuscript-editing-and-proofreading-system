@@ -7,7 +7,10 @@ import {
 } from "../../src/http/api-http-server.ts";
 import { createPersistentGovernanceRuntime } from "../../src/http/persistent-governance-runtime.ts";
 import { createPersistentHttpAuthRuntime } from "../../src/http/persistent-auth-runtime.ts";
-import { AiProviderCredentialCrypto } from "../../src/modules/ai-provider-connections/index.ts";
+import {
+  AiProviderCredentialCrypto,
+  type AiProviderConnectivityProbe,
+} from "../../src/modules/ai-provider-connections/index.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -191,6 +194,160 @@ test("persistent governance runtime lets admins manage system-settings users", a
   });
 });
 
+test("persistent governance runtime exposes ai provider overview readiness under the system-settings namespace", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary system-settings database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentSystemSettingsUsers(seedPool);
+
+      const serverHandle = await startPersistentSystemSettingsServer(databaseUrl, {
+        aiProviderConnectivityProbe: {
+          testConnection: async () => ({
+            status: "passed",
+            testedAt: new Date("2026-04-10T10:00:00.000Z"),
+          }),
+        },
+      });
+      try {
+        const adminCookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const createResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              connection_metadata: {
+                test_model_name: "qwen-max",
+              },
+              credentials: {
+                apiKey: "sk-qwen-production-1234",
+              },
+              enabled: true,
+            }),
+          },
+        );
+        const createdConnection = (await createResponse.json()) as {
+          id: string;
+          compatibility_mode?: string;
+          credential_summary?: { mask?: string };
+          readiness?: { status?: string; credential_configured?: boolean };
+        };
+
+        assert.equal(createResponse.status, 201);
+        assert.equal(createdConnection.compatibility_mode, "openai_chat_compatible");
+        assert.equal(createdConnection.credential_summary?.mask, "sk-***1234");
+        assert.equal(createdConnection.readiness?.status, "ready");
+        assert.equal(createdConnection.readiness?.credential_configured, true);
+
+        const updateResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${createdConnection.id}`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Qwen Production Main",
+              connection_metadata: {
+                test_model_name: "qwen-plus",
+              },
+              enabled: true,
+            }),
+          },
+        );
+        assert.equal(updateResponse.status, 200);
+
+        const rotateResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${createdConnection.id}/rotate-credential`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              credentials: {
+                apiKey: "sk-qwen-production-5678",
+              },
+            }),
+          },
+        );
+        assert.equal(rotateResponse.status, 200);
+
+        const testResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/${createdConnection.id}/test`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              connection_metadata: {
+                test_model_name: "qwen-plus",
+              },
+            }),
+          },
+        );
+        assert.equal(testResponse.status, 200);
+
+        const listResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+        const listedConnections = (await listResponse.json()) as Array<{
+          id: string;
+          compatibility_mode?: string;
+          connection_metadata?: { test_model_name?: string };
+          credential_summary?: { mask?: string };
+          readiness?: {
+            status?: string;
+            credential_configured?: boolean;
+            summary?: string;
+          };
+        }>;
+        const listedConnection = listedConnections.find(
+          (record) => record.id === createdConnection.id,
+        );
+
+        assert.equal(listResponse.status, 200);
+        assert.ok(listedConnection);
+        assert.equal(listedConnection.compatibility_mode, "openai_chat_compatible");
+        assert.equal(listedConnection.connection_metadata?.test_model_name, "qwen-plus");
+        assert.equal(listedConnection.credential_summary?.mask, "sk-***5678");
+        assert.equal(listedConnection.readiness?.status, "ready");
+        assert.equal(listedConnection.readiness?.credential_configured, true);
+        assert.ok(
+          typeof listedConnection.readiness?.summary === "string" &&
+            listedConnection.readiness.summary.length > 0,
+        );
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime rejects non-admin system-settings access", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -292,7 +449,12 @@ async function seedPersistentSystemSettingsUsers(pool: Pool): Promise<void> {
   });
 }
 
-async function startPersistentSystemSettingsServer(databaseUrl: string): Promise<{
+async function startPersistentSystemSettingsServer(
+  databaseUrl: string,
+  options: {
+    aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
+  } = {},
+): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
 }> {
@@ -310,6 +472,7 @@ async function startPersistentSystemSettingsServer(databaseUrl: string): Promise
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
         AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
       }),
+      aiProviderConnectivityProbe: options.aiProviderConnectivityProbe,
     }),
   });
 

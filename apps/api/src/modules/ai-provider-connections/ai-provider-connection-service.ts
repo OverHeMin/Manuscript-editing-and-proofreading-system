@@ -125,8 +125,9 @@ export class AiProviderConnectionService {
     this.createId = options.createId ?? randomUUID;
   }
 
-  listConnections(): Promise<AiProviderConnectionRecord[]> {
-    return this.repository.list();
+  async listConnections(): Promise<AiProviderConnectionRecord[]> {
+    const connections = await this.repository.list();
+    return connections.map((connection) => attachConnectionReadiness(connection));
   }
 
   async createConnection(input: {
@@ -420,13 +421,13 @@ export class AiProviderConnectionService {
       throw new AiProviderConnectionNotFoundError(connectionId);
     }
 
-    return {
+    return attachConnectionReadiness({
       ...connection,
       connection_metadata: cloneConnectionMetadata(connection.connection_metadata),
       credential_summary: connection.credential_summary
         ? { ...connection.credential_summary }
         : undefined,
-    };
+    });
   }
 
   private assertAdmin(role: RoleKey): void {
@@ -603,4 +604,62 @@ function summarizeError(error: unknown): string {
   return summary.length <= MAX_ERROR_SUMMARY_LENGTH
     ? summary
     : `${summary.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3)}...`;
+}
+
+function attachConnectionReadiness(
+  connection: AiProviderConnectionRecord,
+): AiProviderConnectionRecord {
+  const credentialConfigured = Boolean(connection.credential_summary?.mask);
+  const adapterSupported = connection.compatibility_mode === PHASE_ONE_COMPATIBILITY_MODE;
+
+  if (!connection.enabled) {
+    return {
+      ...connection,
+      readiness: {
+        status: "disabled",
+        summary: "连接已停用，运行时不会使用该提供方。",
+        credential_configured: credentialConfigured,
+        adapter_supported: adapterSupported,
+      },
+    };
+  }
+
+  if (!credentialConfigured) {
+    return {
+      ...connection,
+      readiness: {
+        status: "missing_credentials",
+        summary: "尚未配置 API Key，当前连接不能用于运行时执行。",
+        credential_configured: false,
+        adapter_supported: adapterSupported,
+      },
+    };
+  }
+
+  if (!adapterSupported) {
+    return {
+      ...connection,
+      readiness: {
+        status: "unsupported_compatibility",
+        summary: "当前兼容模式暂不受此运行时支持。",
+        credential_configured: true,
+        adapter_supported: false,
+      },
+    };
+  }
+
+  return {
+    ...connection,
+    readiness: {
+      status: "ready",
+      summary:
+        connection.last_test_status === "failed"
+          ? "结构条件已满足，但最近一次连通性测试失败。"
+          : connection.last_test_status === "passed"
+            ? "结构条件已满足，最近一次连通性测试通过。"
+            : "结构条件已满足，尚未进行连通性测试。",
+      credential_configured: true,
+      adapter_supported: true,
+    },
+  };
 }

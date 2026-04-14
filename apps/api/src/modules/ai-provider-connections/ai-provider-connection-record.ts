@@ -1,8 +1,20 @@
 export type AiProviderConnectionTestStatus = "unknown" | "passed" | "failed";
+export type AiProviderConnectionReadinessStatus =
+  | "ready"
+  | "disabled"
+  | "missing_credentials"
+  | "unsupported_compatibility";
 
 export interface AiProviderCredentialSummary {
   mask: string;
   version: number;
+}
+
+export interface AiProviderConnectionReadiness {
+  status: AiProviderConnectionReadinessStatus;
+  summary: string;
+  credential_configured: boolean;
+  adapter_supported: boolean;
 }
 
 export interface AiProviderConnectionRecord {
@@ -17,6 +29,7 @@ export interface AiProviderConnectionRecord {
   last_test_at?: Date;
   last_error_summary?: string;
   credential_summary?: AiProviderCredentialSummary;
+  readiness?: AiProviderConnectionReadiness;
 }
 
 export interface AiProviderCredentialRecord {

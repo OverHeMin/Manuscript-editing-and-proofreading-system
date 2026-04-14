@@ -198,6 +198,59 @@ test("provider kinds map to the openai_chat_compatible execution path", async ()
   }
 });
 
+test("listing connections exposes readiness, masked credentials, compatibility mode, and test metadata for system settings", async () => {
+  const { service } = createTestService();
+
+  await createConnection(
+    service,
+    buildConnectionDraft({
+      id: "ready-connection",
+      provider_kind: "qwen",
+      connection_metadata: {
+        test_model_name: "qwen-max",
+      },
+      credentials: { apiKey: "sk-ready-secret-1234" },
+    }),
+  );
+  await createConnection(
+    service,
+    {
+      id: "missing-credential-connection",
+      name: "Disabled bridge",
+      provider_kind: "openai_compatible",
+      base_url: "https://api.openai.com",
+      enabled: false,
+      connection_metadata: {
+        test_model_name: "gpt-4.1",
+      },
+    },
+  );
+
+  const listedConnections = await service.listConnections();
+  const readyConnection = listedConnections.find((record) => record.id === "ready-connection");
+  const disabledConnection = listedConnections.find(
+    (record) => record.id === "missing-credential-connection",
+  );
+
+  assert.ok(readyConnection);
+  assert.equal(readyConnection.compatibility_mode, "openai_chat_compatible");
+  assert.equal(
+    readyConnection.connection_metadata?.test_model_name,
+    "qwen-max",
+  );
+  assert.equal(readyConnection.credential_summary?.mask.startsWith("sk-"), true);
+  assert.equal(readyConnection.readiness?.status, "ready");
+  assert.equal(readyConnection.readiness?.credential_configured, true);
+  assert.ok(
+    typeof readyConnection.readiness?.summary === "string" &&
+      readyConnection.readiness.summary.length > 0,
+  );
+
+  assert.ok(disabledConnection);
+  assert.equal(disabledConnection.readiness?.status, "disabled");
+  assert.equal(disabledConnection.readiness?.credential_configured, false);
+});
+
 test("openai/deepseek reject custom base URLs while openai_compatible accepts them", async () => {
   const { service } = createTestService();
   const customBase = "https://custom.base";
