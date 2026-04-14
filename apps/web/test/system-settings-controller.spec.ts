@@ -71,6 +71,87 @@ const baseProviderConnections = [
   },
 ] as const;
 
+const baseRegisteredModels = [
+  {
+    id: "model-qwen-max",
+    provider: "qwen",
+    model_name: "qwen-max",
+    model_version: "2026-04-10",
+    allowed_modules: ["screening", "editing"],
+    is_prod_allowed: true,
+    connection_id: "provider-qwen-1",
+    connection_name: "Qwen Production",
+  },
+  {
+    id: "model-deepseek-chat",
+    provider: "deepseek",
+    model_name: "deepseek-chat",
+    model_version: "2026-04-10",
+    allowed_modules: ["editing", "proofreading"],
+    is_prod_allowed: false,
+    fallback_model_id: "model-qwen-max",
+    fallback_model_name: "qwen-max",
+    connection_id: "provider-deepseek-1",
+    connection_name: "DeepSeek Staging",
+  },
+] as const;
+
+const baseModuleDefaults = [
+  {
+    module_key: "screening",
+    primary_model_id: "model-qwen-max",
+    primary_model_name: "qwen-max",
+    fallback_model_id: "model-deepseek-chat",
+    fallback_model_name: "deepseek-chat",
+    temperature: 0.2,
+  },
+  {
+    module_key: "editing",
+    primary_model_id: "model-deepseek-chat",
+    primary_model_name: "deepseek-chat",
+    fallback_model_id: "model-qwen-max",
+    fallback_model_name: "qwen-max",
+    temperature: 0.4,
+  },
+] as const;
+
+function maybeHandleAiAccessReads<TResponse>(
+  input: { url: string },
+  data: {
+    providerConnections?: readonly unknown[];
+    registeredModels?: readonly unknown[];
+    moduleDefaults?: readonly unknown[];
+  },
+):
+  | {
+      status: number;
+      body: TResponse;
+    }
+  | null {
+  if (input.url === "/api/v1/system-settings/ai-providers") {
+    return {
+      status: 200,
+      body: [...(data.providerConnections ?? [])] as TResponse,
+    };
+  }
+
+  if (input.url === "/api/v1/system-settings/models") {
+    return {
+      status: 200,
+      body: [...(data.registeredModels ?? [])] as TResponse,
+    };
+  }
+
+  if (input.url === "/api/v1/system-settings/module-defaults") {
+    return {
+      status: 200,
+      body: [...(data.moduleDefaults ?? [])] as TResponse,
+    };
+  }
+
+  return null;
+}
+
 test("system settings controller loads account overview from the user list endpoint", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createSystemSettingsWorkbenchController({
@@ -81,11 +162,13 @@ test("system settings controller loads account overview from the user list endpo
     }) => {
       requests.push(input);
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -108,6 +191,8 @@ test("system settings controller loads account overview from the user list endpo
     [
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
 });
@@ -137,11 +222,13 @@ test("system settings controller creates a user and reloads around the new selec
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -178,6 +265,8 @@ test("system settings controller creates a user and reloads around the new selec
       "POST /api/v1/system-settings/users",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -213,11 +302,13 @@ test("system settings controller updates the selected user profile and reloads w
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -254,6 +345,8 @@ test("system settings controller updates the selected user profile and reloads w
       "POST /api/v1/system-settings/users/editor-1/profile",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -285,11 +378,13 @@ test("system settings controller resets a password and reloads the current selec
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -320,6 +415,8 @@ test("system settings controller resets a password and reloads the current selec
       "POST /api/v1/system-settings/users/editor-1/reset-password",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -368,11 +465,13 @@ test("system settings controller disables and re-enables a user while keeping th
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -411,14 +510,18 @@ test("system settings controller disables and re-enables a user while keeping th
       "POST /api/v1/system-settings/users/editor-1/disable",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
       "POST /api/v1/system-settings/users/editor-1/enable",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
 });
 
-test("system settings controller loads ai provider connections alongside the account overview", async () => {
+test("system settings controller loads ai provider connections, registered models, and module defaults alongside the account overview", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createSystemSettingsWorkbenchController({
     request: async <TResponse>(input: {
@@ -428,11 +531,13 @@ test("system settings controller loads ai provider connections alongside the acc
     }) => {
       requests.push(input);
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [...baseProviderConnections] as TResponse,
-        };
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: baseProviderConnections,
+        registeredModels: baseRegisteredModels,
+        moduleDefaults: baseModuleDefaults,
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -456,10 +561,65 @@ test("system settings controller loads ai provider connections alongside the acc
   assert.equal(providerOverview.selectedConnectionId, "provider-qwen-1");
   assert.equal(providerOverview.selectedConnection?.name, "Qwen Production");
   assert.deepEqual(
+    overview.registeredModels.map((model) => ({
+      id: model.id,
+      modelName: model.modelName,
+      connectionName: model.connectionName,
+      fallbackModelName: model.fallbackModelName,
+      productionAllowed: model.productionAllowed,
+    })),
+    [
+      {
+        id: "model-qwen-max",
+        modelName: "qwen-max",
+        connectionName: "Qwen Production",
+        fallbackModelName: null,
+        productionAllowed: true,
+      },
+      {
+        id: "model-deepseek-chat",
+        modelName: "deepseek-chat",
+        connectionName: "DeepSeek Staging",
+        fallbackModelName: "qwen-max",
+        productionAllowed: false,
+      },
+    ],
+  );
+  assert.deepEqual(
+    overview.moduleDefaults.map((record) => ({
+      moduleKey: record.moduleKey,
+      primaryModelName: record.primaryModelName,
+      fallbackModelName: record.fallbackModelName,
+      temperature: record.temperature,
+    })),
+    [
+      {
+        moduleKey: "screening",
+        primaryModelName: "qwen-max",
+        fallbackModelName: "deepseek-chat",
+        temperature: 0.2,
+      },
+      {
+        moduleKey: "editing",
+        primaryModelName: "deepseek-chat",
+        fallbackModelName: "qwen-max",
+        temperature: 0.4,
+      },
+      {
+        moduleKey: "proofreading",
+        primaryModelName: null,
+        fallbackModelName: null,
+        temperature: null,
+      },
+    ],
+  );
+  assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
+      "GET /api/v1/system-settings/models",
+      "GET /api/v1/system-settings/module-defaults",
     ],
   );
 });
@@ -496,29 +656,31 @@ test("system settings controller creates an ai provider connection and reloads a
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [
-            ...baseProviderConnections,
-            {
-              id: "provider-qwen-2",
-              name: "Qwen Fallback",
-              provider_kind: "qwen",
-              compatibility_mode: "openai_chat_compatible",
-              base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-              enabled: true,
-              connection_metadata: {
-                test_model_name: "qwen-plus",
-              },
-              last_test_status: "unknown",
-              credential_summary: {
-                mask: "sk-***z999",
-                version: 1,
-              },
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [
+          ...baseProviderConnections,
+          {
+            id: "provider-qwen-2",
+            name: "Qwen Fallback",
+            provider_kind: "qwen",
+            compatibility_mode: "openai_chat_compatible",
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            enabled: true,
+            connection_metadata: {
+              test_model_name: "qwen-plus",
             },
-          ] as TResponse,
-        };
+            last_test_status: "unknown",
+            credential_summary: {
+              mask: "sk-***z999",
+              version: 1,
+            },
+          },
+        ],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {
@@ -566,6 +728,196 @@ test("system settings controller creates an ai provider connection and reloads a
     credentials: {
       apiKey: "secret-key",
     },
+  });
+});
+
+test("system settings controller creates a registered model and reloads the ai access overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  let models = [...baseRegisteredModels];
+  const controller = createSystemSettingsWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/system-settings/models") {
+        const createdModel = {
+          id: "model-qwen-plus",
+          provider: "qwen",
+          model_name: "qwen-plus",
+          model_version: "2026-04-14",
+          allowed_modules: ["proofreading"],
+          is_prod_allowed: false,
+          fallback_model_id: "model-qwen-max",
+          fallback_model_name: "qwen-max",
+          connection_id: "provider-qwen-1",
+          connection_name: "Qwen Production",
+        };
+        models = [...models, createdModel];
+        return {
+          status: 201,
+          body: createdModel as TResponse,
+        };
+      }
+
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: baseProviderConnections,
+        registeredModels: models,
+        moduleDefaults: baseModuleDefaults,
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
+      }
+
+      return {
+        status: 200,
+        body: [...baseUsers] as TResponse,
+      };
+    },
+  });
+
+  const result = await (controller as typeof controller & {
+    createRegisteredModelAndReload: (input: {
+      providerKind: "qwen" | "deepseek";
+      modelName: string;
+      connectionId: string;
+      allowedModules: Array<"screening" | "editing" | "proofreading">;
+      productionAllowed: boolean;
+      fallbackModelId?: string | null;
+      selectedConnectionId?: string | null;
+    }) => Promise<{
+      createdModel: { id: string; modelName: string; fallbackModelName?: string | null };
+      overview: {
+        registeredModels: Array<{ id: string; modelName: string }>;
+        selectedConnectionId?: string | null;
+      };
+    }>;
+  }).createRegisteredModelAndReload({
+    providerKind: "qwen",
+    modelName: "qwen-plus",
+    connectionId: "provider-qwen-1",
+    allowedModules: ["proofreading"],
+    productionAllowed: false,
+    fallbackModelId: "model-qwen-max",
+    selectedConnectionId: "provider-qwen-1",
+  });
+
+  assert.equal(result.createdModel.id, "model-qwen-plus");
+  assert.equal(result.createdModel.modelName, "qwen-plus");
+  assert.equal(result.createdModel.fallbackModelName, "qwen-max");
+  assert.equal(result.overview.selectedConnectionId, "provider-qwen-1");
+  assert.deepEqual(
+    result.overview.registeredModels.map((model) => model.id),
+    ["model-qwen-max", "model-deepseek-chat", "model-qwen-plus"],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    provider: "qwen",
+    modelName: "qwen-plus",
+    allowedModules: ["proofreading"],
+    isProdAllowed: false,
+    fallbackModelId: "model-qwen-max",
+    connectionId: "provider-qwen-1",
+  });
+});
+
+test("system settings controller saves a module default with temperature and reloads the ai access overview", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  let defaults = [...baseModuleDefaults];
+  const controller = createSystemSettingsWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/system-settings/module-defaults") {
+        const savedDefault = {
+          module_key: "proofreading",
+          primary_model_id: "model-deepseek-chat",
+          primary_model_name: "deepseek-chat",
+          fallback_model_id: "model-qwen-max",
+          fallback_model_name: "qwen-max",
+          temperature: 0.3,
+        };
+        defaults = [...baseModuleDefaults, savedDefault];
+        return {
+          status: 200,
+          body: savedDefault as TResponse,
+        };
+      }
+
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: baseProviderConnections,
+        registeredModels: baseRegisteredModels,
+        moduleDefaults: defaults,
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
+      }
+
+      return {
+        status: 200,
+        body: [...baseUsers] as TResponse,
+      };
+    },
+  });
+
+  const result = await (controller as typeof controller & {
+    saveModuleDefaultAndReload: (input: {
+      moduleKey: "screening" | "editing" | "proofreading";
+      primaryModelId: string;
+      fallbackModelId?: string | null;
+      temperature?: number | null;
+      selectedConnectionId?: string | null;
+    }) => Promise<{
+      updatedModuleDefault: { moduleKey: string; primaryModelName?: string | null; temperature?: number | null };
+      overview: {
+        moduleDefaults: Array<{ moduleKey: string; primaryModelName?: string | null; temperature?: number | null }>;
+      };
+    }>;
+  }).saveModuleDefaultAndReload({
+    moduleKey: "proofreading",
+    primaryModelId: "model-deepseek-chat",
+    fallbackModelId: "model-qwen-max",
+    temperature: 0.3,
+    selectedConnectionId: "provider-deepseek-1",
+  });
+
+  assert.equal(result.updatedModuleDefault.moduleKey, "proofreading");
+  assert.equal(result.updatedModuleDefault.primaryModelName, "deepseek-chat");
+  assert.equal(result.updatedModuleDefault.temperature, 0.3);
+  assert.deepEqual(
+    result.overview.moduleDefaults.map((record) => ({
+      moduleKey: record.moduleKey,
+      primaryModelName: record.primaryModelName,
+      temperature: record.temperature,
+    })),
+    [
+      {
+        moduleKey: "screening",
+        primaryModelName: "qwen-max",
+        temperature: 0.2,
+      },
+      {
+        moduleKey: "editing",
+        primaryModelName: "deepseek-chat",
+        temperature: 0.4,
+      },
+      {
+        moduleKey: "proofreading",
+        primaryModelName: "deepseek-chat",
+        temperature: 0.3,
+      },
+    ],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    module_key: "proofreading",
+    primary_model_id: "model-deepseek-chat",
+    fallback_model_id: "model-qwen-max",
+    temperature: 0.3,
   });
 });
 
@@ -618,27 +970,29 @@ test("system settings controller rotates and tests the selected ai provider conn
         };
       }
 
-      if (input.url === "/api/v1/system-settings/ai-providers") {
-        return {
-          status: 200,
-          body: [
-            {
-              ...baseProviderConnections[0],
-              last_test_status: lastTestStatus,
-              ...(lastTestStatus === "failed"
-                ? {
-                    last_test_at: "2026-04-10T09:30:00.000Z",
-                    last_error_summary: "HTTP 429",
-                  }
-                : {}),
-              credential_summary: {
-                mask: "sk-***b777",
-                version: credentialVersion,
-              },
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: [
+          {
+            ...baseProviderConnections[0],
+            last_test_status: lastTestStatus,
+            ...(lastTestStatus === "failed"
+              ? {
+                  last_test_at: "2026-04-10T09:30:00.000Z",
+                  last_error_summary: "HTTP 429",
+                }
+              : {}),
+            credential_summary: {
+              mask: "sk-***b777",
+              version: credentialVersion,
             },
-            baseProviderConnections[1],
-          ] as TResponse,
-        };
+          },
+          baseProviderConnections[1],
+        ],
+        registeredModels: [],
+        moduleDefaults: [],
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
       }
 
       return {

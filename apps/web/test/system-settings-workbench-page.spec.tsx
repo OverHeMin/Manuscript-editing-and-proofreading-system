@@ -106,6 +106,59 @@ const loadedOverview = {
       version: 1,
     },
   },
+  registeredModels: [
+    {
+      id: "model-qwen-max",
+      modelName: "qwen-max",
+      displayName: "qwen-max",
+      connectionId: "provider-qwen-1",
+      connectionName: "Qwen Production",
+      allowedModules: ["screening", "editing"],
+      productionAllowed: true,
+      fallbackModelId: null,
+      fallbackModelName: null,
+    },
+    {
+      id: "model-deepseek-chat",
+      modelName: "deepseek-chat",
+      displayName: "deepseek-chat",
+      connectionId: "provider-deepseek-1",
+      connectionName: "DeepSeek Staging",
+      allowedModules: ["editing", "proofreading"],
+      productionAllowed: false,
+      fallbackModelId: "model-qwen-max",
+      fallbackModelName: "qwen-max",
+    },
+  ],
+  moduleDefaults: [
+    {
+      moduleKey: "screening",
+      moduleLabel: "初筛",
+      primaryModelId: "model-qwen-max",
+      primaryModelName: "qwen-max",
+      fallbackModelId: "model-deepseek-chat",
+      fallbackModelName: "deepseek-chat",
+      temperature: 0.2,
+    },
+    {
+      moduleKey: "editing",
+      moduleLabel: "编辑",
+      primaryModelId: "model-deepseek-chat",
+      primaryModelName: "deepseek-chat",
+      fallbackModelId: "model-qwen-max",
+      fallbackModelName: "qwen-max",
+      temperature: 0.4,
+    },
+    {
+      moduleKey: "proofreading",
+      moduleLabel: "校对",
+      primaryModelId: "model-qwen-max",
+      primaryModelName: "qwen-max",
+      fallbackModelId: null,
+      fallbackModelName: null,
+      temperature: 0.3,
+    },
+  ],
 } as const;
 
 test("system settings accounts section renders overview cards, user list, create form, and selected-user actions in Chinese", () => {
@@ -229,6 +282,34 @@ test("system settings workbench page renders ai provider controls alongside mask
   assert.match(markup, /\u6d4b\u8bd5\u6a21\u578b/);
   assert.match(markup, /\u542f\u7528\u72b6\u6001/);
   assert.match(markup, /\u8fde\u63a5\u6d4b\u8bd5/);
+});
+
+test("system settings workbench page renders registered models and editable module defaults with localized temperature copy", () => {
+  const markup = renderToStaticMarkup(
+    <SystemSettingsWorkbenchPage
+      runtimeMode="persistent"
+      section="ai-access"
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={loadedOverview as never}
+    />,
+  );
+
+  assert.match(markup, /\u6a21\u578b\u6ce8\u518c/);
+  assert.match(markup, /qwen-max/);
+  assert.match(markup, /deepseek-chat/);
+  assert.match(markup, /Qwen Production/);
+  assert.match(markup, /DeepSeek Staging/);
+  assert.match(markup, /\u521d\u7b5b/);
+  assert.match(markup, /\u7f16\u8f91/);
+  assert.match(markup, /\u6821\u5bf9/);
+  assert.match(markup, /\u6e29\u5ea6/);
+  assert.match(markup, /value=\"0\.2\"/);
+  assert.match(markup, /\u4fdd\u5b58\u6a21\u5757\u9ed8\u8ba4\u503c/);
+  assert.doesNotMatch(markup, /temperature/i);
 });
 
 test("system settings workbench page lands on different first-view emphasis for ai-access vs accounts", () => {

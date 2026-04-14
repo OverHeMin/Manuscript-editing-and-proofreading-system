@@ -1,12 +1,16 @@
 import {
   createSystemSettingsAiProvider,
+  createSystemSettingsRegisteredModel,
   createSystemSettingsUser,
   disableSystemSettingsUser,
   enableSystemSettingsUser,
   listSystemSettingsAiProviders,
+  listSystemSettingsModels,
+  listSystemSettingsModuleDefaults,
   listSystemSettingsUsers,
   resetSystemSettingsUserPassword,
   rotateSystemSettingsAiProviderCredential,
+  saveSystemSettingsModuleDefault,
   testSystemSettingsAiProvider,
   updateSystemSettingsAiProvider,
   updateSystemSettingsUserProfile,
@@ -14,14 +18,25 @@ import {
 } from "./system-settings-api.ts";
 import type {
   CreateAiProviderConnectionInput,
+  CreateSystemSettingsRegisteredModelInput,
   CreateSystemSettingsUserInput,
+  SaveSystemSettingsModuleDefaultInput,
   SystemSettingsAiProviderConnectionViewModel,
+  SystemSettingsModuleDefaultViewModel,
+  SystemSettingsModuleKey,
+  SystemSettingsRegisteredModelViewModel,
   SystemSettingsSummary,
   SystemSettingsUserViewModel,
   SystemSettingsWorkbenchOverview,
   UpdateAiProviderConnectionInput,
   UpdateSystemSettingsUserProfileInput,
 } from "./types.ts";
+
+const systemSettingsModuleKeys: SystemSettingsModuleKey[] = [
+  "screening",
+  "editing",
+  "proofreading",
+];
 
 export interface SystemSettingsReloadContext {
   selectedUserId?: string | null;
@@ -83,6 +98,14 @@ export interface SystemSettingsWorkbenchController {
     testModelName: string;
   } & SystemSettingsReloadContext): Promise<{
     updatedConnection: SystemSettingsAiProviderConnectionViewModel;
+    overview: SystemSettingsWorkbenchOverview;
+  }>;
+  createRegisteredModelAndReload(input: CreateSystemSettingsRegisteredModelInput & SystemSettingsReloadContext): Promise<{
+    createdModel: SystemSettingsRegisteredModelViewModel;
+    overview: SystemSettingsWorkbenchOverview;
+  }>;
+  saveModuleDefaultAndReload(input: SaveSystemSettingsModuleDefaultInput & SystemSettingsReloadContext): Promise<{
+    updatedModuleDefault: SystemSettingsModuleDefaultViewModel;
     overview: SystemSettingsWorkbenchOverview;
   }>;
 }
@@ -205,6 +228,28 @@ export function createSystemSettingsWorkbenchController(
         }),
       };
     },
+    async createRegisteredModelAndReload(input) {
+      const createdModel = (await createSystemSettingsRegisteredModel(client, input)).body;
+
+      return {
+        createdModel,
+        overview: await loadSystemSettingsOverview(client, {
+          selectedUserId: input.selectedUserId,
+          selectedConnectionId: input.selectedConnectionId ?? input.connectionId,
+        }),
+      };
+    },
+    async saveModuleDefaultAndReload(input) {
+      const updatedModuleDefault = (await saveSystemSettingsModuleDefault(client, input)).body;
+
+      return {
+        updatedModuleDefault,
+        overview: await loadSystemSettingsOverview(client, {
+          selectedUserId: input.selectedUserId,
+          selectedConnectionId: input.selectedConnectionId,
+        }),
+      };
+    },
   };
 }
 
@@ -212,14 +257,19 @@ async function loadSystemSettingsOverview(
   client: SystemSettingsHttpClient,
   input: SystemSettingsReloadContext = {},
 ): Promise<SystemSettingsWorkbenchOverview> {
-  const [userResponse, connectionResponse] = await Promise.all([
-    listSystemSettingsUsers(client),
-    listSystemSettingsAiProviders(client),
-  ]);
+  const [userResponse, connectionResponse, modelResponse, moduleDefaultResponse] =
+    await Promise.all([
+      listSystemSettingsUsers(client),
+      listSystemSettingsAiProviders(client),
+      listSystemSettingsModels(client),
+      listSystemSettingsModuleDefaults(client),
+    ]);
 
   return buildOverview({
     users: userResponse.body,
     providerConnections: connectionResponse.body,
+    registeredModels: modelResponse.body,
+    moduleDefaults: moduleDefaultResponse.body,
     preferredSelectedUserId: input.selectedUserId,
     preferredSelectedConnectionId: input.selectedConnectionId,
   });
@@ -228,6 +278,8 @@ async function loadSystemSettingsOverview(
 function buildOverview(input: {
   users: SystemSettingsUserViewModel[];
   providerConnections: SystemSettingsAiProviderConnectionViewModel[];
+  registeredModels: SystemSettingsRegisteredModelViewModel[];
+  moduleDefaults: SystemSettingsModuleDefaultViewModel[];
   preferredSelectedUserId?: string | null;
   preferredSelectedConnectionId?: string | null;
 }): SystemSettingsWorkbenchOverview {
@@ -256,5 +308,45 @@ function buildOverview(input: {
     providerConnections: input.providerConnections,
     selectedConnectionId: selectedConnection?.id ?? null,
     selectedConnection,
+    registeredModels: input.registeredModels,
+    moduleDefaults: mergeModuleDefaults(input.moduleDefaults),
   };
+}
+
+function mergeModuleDefaults(
+  moduleDefaults: SystemSettingsModuleDefaultViewModel[],
+): SystemSettingsModuleDefaultViewModel[] {
+  const defaultsByKey = new Map(
+    moduleDefaults.map((record) => [record.moduleKey, record] as const),
+  );
+
+  return systemSettingsModuleKeys.map((moduleKey) => {
+    const existingRecord = defaultsByKey.get(moduleKey);
+    if (existingRecord) {
+      return existingRecord;
+    }
+
+    return {
+      moduleKey,
+      moduleLabel: formatModuleLabel(moduleKey),
+      primaryModelId: null,
+      primaryModelName: null,
+      fallbackModelId: null,
+      fallbackModelName: null,
+      temperature: null,
+    };
+  });
+}
+
+function formatModuleLabel(moduleKey: SystemSettingsModuleKey): string {
+  switch (moduleKey) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    default:
+      return moduleKey;
+  }
 }

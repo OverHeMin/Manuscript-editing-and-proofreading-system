@@ -71,8 +71,8 @@ export interface SystemSettingsWorkbenchOverview {
   providerConnections: SystemSettingsAiProviderConnectionViewModel[];
   selectedConnectionId: string | null;
   selectedConnection: SystemSettingsAiProviderConnectionViewModel | null;
-  registeredModels?: SystemSettingsRegisteredModelViewModel[];
-  moduleDefaults?: SystemSettingsModuleDefaultViewModel[];
+  registeredModels: SystemSettingsRegisteredModelViewModel[];
+  moduleDefaults: SystemSettingsModuleDefaultViewModel[];
 }
 
 export interface CreateSystemSettingsUserInput {
@@ -101,4 +101,20 @@ export interface UpdateAiProviderConnectionInput {
   baseUrl?: string;
   testModelName: string;
   enabled: boolean;
+}
+
+export interface CreateSystemSettingsRegisteredModelInput {
+  providerKind: AiProviderKind;
+  modelName: string;
+  connectionId: string;
+  allowedModules: SystemSettingsModuleKey[];
+  productionAllowed: boolean;
+  fallbackModelId?: string | null;
+}
+
+export interface SaveSystemSettingsModuleDefaultInput {
+  moduleKey: SystemSettingsModuleKey;
+  primaryModelId: string;
+  fallbackModelId?: string | null;
+  temperature?: number | null;
 }

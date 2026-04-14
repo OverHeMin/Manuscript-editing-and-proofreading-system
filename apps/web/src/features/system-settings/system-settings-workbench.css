@@ -55,6 +55,12 @@
   gap: 1rem;
 }
 
+.system-settings-ai-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
 .system-settings-section-header {
   display: flex;
   align-items: flex-start;
@@ -180,6 +186,51 @@
   font-size: 0.9rem;
 }
 
+.system-settings-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.system-settings-subpanel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid #d9dee8;
+  background: #f8fafc;
+}
+
+.system-settings-fieldset {
+  margin: 0;
+  min-width: 0;
+  border: 1px solid #c9d3df;
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+}
+
+.system-settings-fieldset legend {
+  padding: 0 0.35rem;
+  color: #52606d;
+  font-size: 0.9rem;
+}
+
+.system-settings-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.system-settings-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #17324d;
+}
+
+.system-settings-checkbox input {
+  margin: 0;
+}
+
 .system-settings-actions-full {
   grid-column: 1 / -1;
 }
@@ -215,8 +266,13 @@
 @media (max-width: 1100px) {
   .system-settings-summary-grid,
   .system-settings-layout,
+  .system-settings-ai-grid,
   .system-settings-provider-layout,
   .system-settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-settings-checkbox-grid {
     grid-template-columns: 1fr;
   }
 

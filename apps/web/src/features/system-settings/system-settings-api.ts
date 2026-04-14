@@ -1,7 +1,12 @@
 import type {
   CreateAiProviderConnectionInput,
+  CreateSystemSettingsRegisteredModelInput,
   CreateSystemSettingsUserInput,
+  SaveSystemSettingsModuleDefaultInput,
   SystemSettingsAiProviderConnectionViewModel,
+  SystemSettingsModuleDefaultViewModel,
+  SystemSettingsModuleKey,
+  SystemSettingsRegisteredModelViewModel,
   SystemSettingsUserViewModel,
   UpdateAiProviderConnectionInput,
   UpdateSystemSettingsUserProfileInput,
@@ -16,6 +21,26 @@ export interface SystemSettingsHttpClient {
     status: number;
     body: TResponse;
   }>;
+}
+
+interface SystemSettingsModelApiRecord {
+  id: string;
+  model_name: string;
+  allowed_modules: SystemSettingsModuleKey[];
+  is_prod_allowed: boolean;
+  fallback_model_id?: string | null;
+  fallback_model_name?: string | null;
+  connection_id: string;
+  connection_name?: string | null;
+}
+
+interface SystemSettingsModuleDefaultApiRecord {
+  module_key: SystemSettingsModuleKey;
+  primary_model_id?: string | null;
+  primary_model_name?: string | null;
+  fallback_model_id?: string | null;
+  fallback_model_name?: string | null;
+  temperature?: number | null;
 }
 
 export function listSystemSettingsUsers(client: SystemSettingsHttpClient) {
@@ -164,6 +189,121 @@ export function testSystemSettingsAiProvider(
       },
     },
   });
+}
+
+export async function listSystemSettingsModels(client: SystemSettingsHttpClient) {
+  const response = await client.request<SystemSettingsModelApiRecord[]>({
+    method: "GET",
+    url: "/api/v1/system-settings/models",
+  });
+
+  return {
+    ...response,
+    body: response.body.map(mapSystemSettingsModelRecord),
+  };
+}
+
+export async function createSystemSettingsRegisteredModel(
+  client: SystemSettingsHttpClient,
+  input: CreateSystemSettingsRegisteredModelInput,
+) {
+  const response = await client.request<SystemSettingsModelApiRecord>({
+    method: "POST",
+    url: "/api/v1/system-settings/models",
+    body: {
+      provider: input.providerKind,
+      modelName: input.modelName.trim(),
+      allowedModules: input.allowedModules,
+      isProdAllowed: input.productionAllowed,
+      ...(normalizeOptionalText(input.fallbackModelId ?? "")
+        ? { fallbackModelId: normalizeOptionalText(input.fallbackModelId ?? "") }
+        : {}),
+      connectionId: input.connectionId,
+    },
+  });
+
+  return {
+    ...response,
+    body: mapSystemSettingsModelRecord(response.body),
+  };
+}
+
+export async function listSystemSettingsModuleDefaults(client: SystemSettingsHttpClient) {
+  const response = await client.request<SystemSettingsModuleDefaultApiRecord[]>({
+    method: "GET",
+    url: "/api/v1/system-settings/module-defaults",
+  });
+
+  return {
+    ...response,
+    body: response.body.map(mapSystemSettingsModuleDefaultRecord),
+  };
+}
+
+export async function saveSystemSettingsModuleDefault(
+  client: SystemSettingsHttpClient,
+  input: SaveSystemSettingsModuleDefaultInput,
+) {
+  const response = await client.request<SystemSettingsModuleDefaultApiRecord>({
+    method: "POST",
+    url: "/api/v1/system-settings/module-defaults",
+    body: {
+      module_key: input.moduleKey,
+      primary_model_id: input.primaryModelId,
+      ...(normalizeOptionalText(input.fallbackModelId ?? "")
+        ? { fallback_model_id: normalizeOptionalText(input.fallbackModelId ?? "") }
+        : {}),
+      ...(typeof input.temperature === "number" ? { temperature: input.temperature } : {}),
+    },
+  });
+
+  return {
+    ...response,
+    body: mapSystemSettingsModuleDefaultRecord(response.body),
+  };
+}
+
+function mapSystemSettingsModelRecord(
+  record: SystemSettingsModelApiRecord,
+): SystemSettingsRegisteredModelViewModel {
+  return {
+    id: record.id,
+    modelName: record.model_name,
+    displayName: record.model_name,
+    connectionId: record.connection_id,
+    connectionName: record.connection_name ?? record.connection_id,
+    allowedModules: record.allowed_modules,
+    productionAllowed: record.is_prod_allowed,
+    fallbackModelId: record.fallback_model_id ?? null,
+    fallbackModelName: record.fallback_model_name ?? null,
+  };
+}
+
+function mapSystemSettingsModuleDefaultRecord(
+  record: SystemSettingsModuleDefaultApiRecord,
+): SystemSettingsModuleDefaultViewModel {
+  return {
+    moduleKey: record.module_key,
+    moduleLabel: formatModuleLabel(record.module_key),
+    primaryModelId: record.primary_model_id ?? null,
+    primaryModelName: record.primary_model_name ?? null,
+    fallbackModelId: record.fallback_model_id ?? null,
+    fallbackModelName: record.fallback_model_name ?? null,
+    temperature: record.temperature ?? null,
+  };
+}
+
+function formatModuleLabel(moduleKey: SystemSettingsModuleKey): string {
+  switch (moduleKey) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    default:
+      return moduleKey;
+  }
 }
 
 function normalizeOptionalText(value: string | undefined): string | undefined {
