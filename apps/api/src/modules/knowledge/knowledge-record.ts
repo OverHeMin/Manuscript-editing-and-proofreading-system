@@ -133,7 +133,9 @@ export type KnowledgeRevisionBindingKind =
   | "template_family"
   | "module_template"
   | "section"
-  | "journal_template";
+  | "journal_template"
+  | "general_package"
+  | "medical_package";
 
 export type KnowledgeContentBlockType =
   | "text_block"

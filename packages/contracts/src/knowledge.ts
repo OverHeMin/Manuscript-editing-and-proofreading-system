@@ -51,6 +51,14 @@ export interface KnowledgeItemRouting {
   discipline_tags?: string[];
 }
 
+export type KnowledgeRevisionBindingKind =
+  | "template_family"
+  | "module_template"
+  | "section"
+  | "journal_template"
+  | "general_package"
+  | "medical_package";
+
 export interface KnowledgeItem {
   id: KnowledgeItemId;
   title: string;

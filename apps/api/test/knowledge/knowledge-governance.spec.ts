@@ -202,6 +202,41 @@ test("knowledge drafts can be updated and listed before review", async () => {
   assert.equal(listed.body[0]?.id, draft.body.id);
 });
 
+test("knowledge library drafts preserve package binding kinds", async () => {
+  const { service } = createKnowledgeHarness();
+
+  const savedRevision = await service.createLibraryDraft({
+    title: "Terminology normalization rule",
+    canonicalText:
+      "Medical terminology should remain normalized across the manuscript.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "pkg-general",
+        bindingTargetLabel: "General Proofreading Package",
+      },
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "pkg-medical",
+        bindingTargetLabel: "Medical Proofreading Package",
+      },
+      {
+        bindingKind: "template_family",
+        bindingTargetId: "family-clinical-study",
+        bindingTargetLabel: "Clinical Study Family",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    savedRevision.selected_revision.bindings.map((binding) => binding.binding_kind),
+    ["general_package", "medical_package", "template_family"],
+  );
+});
+
 test("knowledge items can be archived as the governed delete path", async () => {
   const { api } = createKnowledgeHarness();
 

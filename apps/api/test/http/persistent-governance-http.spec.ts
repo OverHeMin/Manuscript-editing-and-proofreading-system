@@ -340,6 +340,74 @@ test("persistent governance runtime persists knowledge library asset revisions a
   });
 });
 
+test("persistent governance runtime accepts package binding kinds on knowledge drafts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const server = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(server.baseUrl);
+        const createResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/assets/drafts`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Terminology normalization rule",
+              canonicalText:
+                "Medical terminology should remain normalized across the manuscript.",
+              knowledgeKind: "rule",
+              moduleScope: "editing",
+              manuscriptTypes: ["clinical_study"],
+              bindings: [
+                {
+                  bindingKind: "medical_package",
+                  bindingTargetId: "pkg-medical",
+                  bindingTargetLabel: "Medical Proofreading Package",
+                },
+                {
+                  bindingKind: "template_family",
+                  bindingTargetId: "family-clinical-study",
+                  bindingTargetLabel: "Clinical Study Family",
+                },
+              ],
+            }),
+          },
+        );
+        const created = (await createResponse.json()) as {
+          selected_revision?: {
+            bindings?: Array<{
+              binding_kind: string;
+            }>;
+          };
+        };
+
+        assert.equal(createResponse.status, 201);
+        assert.deepEqual(
+          created.selected_revision?.bindings?.map((binding) => binding.binding_kind),
+          ["medical_package", "template_family"],
+        );
+      } finally {
+        await stopServer(server.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime keeps duplicate acknowledgement audit rows across restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
