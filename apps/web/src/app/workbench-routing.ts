@@ -24,6 +24,7 @@ export type KnowledgeLibraryView = "classic" | "ledger";
 export type TemplateGovernanceView =
   | "authoring"
   | "classic"
+  | "rule-ledger"
   | "overview"
   | "large-template-ledger"
   | "journal-template-ledger"
@@ -271,6 +272,7 @@ function normalizeTemplateGovernanceView(
   if (
     value === "authoring" ||
     value === "classic" ||
+    value === "rule-ledger" ||
     value === "overview" ||
     value === "large-template-ledger" ||
     value === "journal-template-ledger" ||

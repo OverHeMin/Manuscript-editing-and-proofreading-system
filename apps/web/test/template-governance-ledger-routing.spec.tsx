@@ -21,3 +21,14 @@ test("formatWorkbenchHash preserves the requested rule-center subpage", () => {
 
   assert.match(hash, /templateGovernanceView=medical-package-ledger/u);
 });
+
+test("formatWorkbenchHash preserves rule-ledger view", () => {
+  const hash = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "rule-ledger" as never,
+  });
+  const route = resolveWorkbenchLocation(hash);
+
+  assert.match(hash, /templateGovernanceView=rule-ledger/u);
+  assert.equal(route.workbenchId, "template-governance");
+  assert.equal(route.templateGovernanceView, "rule-ledger");
+});

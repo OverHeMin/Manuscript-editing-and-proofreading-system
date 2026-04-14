@@ -17,7 +17,7 @@ type OverviewEntryView =
 
 export interface TemplateGovernanceOverviewPageProps {
   metrics: TemplateGovernanceOverviewMetrics;
-  onOpenView?: (view: OverviewEntryView) => void;
+  onOpenView?: (view: TemplateGovernanceView) => void;
 }
 
 interface OverviewEntry {
@@ -63,7 +63,7 @@ export function TemplateGovernanceOverviewPage({
       <header className="template-governance-overview-header">
         <div>
           <p className="template-governance-eyebrow">规则中心总览</p>
-          <h1>规则中心总览</h1>
+          <h1>规则中心</h1>
         </div>
       </header>
 
@@ -76,7 +76,7 @@ export function TemplateGovernanceOverviewPage({
             onClick={
               item.key === "overview"
                 ? undefined
-                : () => onOpenView?.(item.key as OverviewEntryView)
+                : () => onOpenView?.(item.key)
             }
           >
             {item.label}
@@ -100,6 +100,26 @@ export function TemplateGovernanceOverviewPage({
         <article className="template-governance-card">
           <h2>待确认提取候选</h2>
           <p>{metrics.extractionAwaitingConfirmationCount}</p>
+        </article>
+      </div>
+
+      <div className="template-governance-overview-entries">
+        <article
+          className="template-governance-card template-governance-overview-entry"
+        >
+          <h2>规则台账</h2>
+          <p>把规则、规则包和候选去向收拢到同一条主工作线，作为规则中心的日常入口。</p>
+          <div className="template-governance-actions">
+            <button type="button" onClick={() => onOpenView?.("rule-ledger")}>
+              新建规则
+            </button>
+            <button type="button" onClick={() => onOpenView?.("rule-ledger")}>
+              进入规则台账
+            </button>
+            <button type="button" onClick={() => onOpenView?.("extraction-ledger")}>
+              查看待审核
+            </button>
+          </div>
         </article>
       </div>
 

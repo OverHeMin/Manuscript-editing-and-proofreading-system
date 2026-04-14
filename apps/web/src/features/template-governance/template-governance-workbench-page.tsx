@@ -4286,6 +4286,7 @@ function formatRuleEvidenceExamples(
 function navigateToTemplateGovernanceView(
   view:
     | "overview"
+    | "rule-ledger"
     | "large-template-ledger"
     | "journal-template-ledger"
     | "extraction-ledger"

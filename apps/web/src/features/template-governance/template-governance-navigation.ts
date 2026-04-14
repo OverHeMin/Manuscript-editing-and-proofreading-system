@@ -1,5 +1,6 @@
 export type TemplateGovernanceNavigationTarget =
   | "overview"
+  | "rule-ledger"
   | "authoring"
   | "large-template-ledger"
   | "journal-template-ledger"
@@ -16,6 +17,7 @@ export interface TemplateGovernanceNavigationItem {
 
 const navigationOrder: readonly TemplateGovernanceNavigationTarget[] = [
   "overview",
+  "rule-ledger",
   "large-template-ledger",
   "journal-template-ledger",
   "general-package-ledger",
@@ -25,6 +27,7 @@ const navigationOrder: readonly TemplateGovernanceNavigationTarget[] = [
 
 const navigationLabels: Record<TemplateGovernanceNavigationTarget, string> = {
   overview: "总览",
+  "rule-ledger": "规则台账",
   authoring: "规则录入",
   "large-template-ledger": "大模板台账",
   "journal-template-ledger": "期刊模板台账",

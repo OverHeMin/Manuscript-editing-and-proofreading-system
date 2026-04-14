@@ -341,3 +341,56 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });
+
+test("template governance overview keeps rule ledger as the daily-driver entry", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+        loadExtractionLedger: async () => ({
+          summary: {
+            awaitingConfirmationCount: 6,
+          },
+        }),
+      }}
+      initialView="overview"
+      initialOverview={{
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        retrievalInsights: null,
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
+  assert.match(markup, /\u65b0\u5efa\u89c4\u5219/u);
+  assert.match(markup, /\u8fdb\u5165\u89c4\u5219\u53f0\u8d26/u);
+  assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
+  assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
+});
