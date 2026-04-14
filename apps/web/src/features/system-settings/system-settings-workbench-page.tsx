@@ -16,6 +16,8 @@ import {
 } from "./system-settings-controller.ts";
 import type {
   AiProviderKind,
+  SystemSettingsModuleDefaultViewModel,
+  SystemSettingsRegisteredModelViewModel,
   SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsUserViewModel,
   SystemSettingsWorkbenchOverview,
@@ -468,6 +470,117 @@ export function SystemSettingsWorkbenchPage({
           <h3>暂不支持</h3>
           <p>{demoUnsupportedCopy.bodyNotice}</p>
         </article>
+        {section === "accounts" ? (
+          <>
+            <section className="system-settings-summary-grid">
+              <article className="system-settings-card">
+                <span>账号列表</span>
+                <strong>需连接持久化后端</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>创建账号</span>
+                <strong>待启用</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>角色维护</span>
+                <strong>待启用</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>密码重置</span>
+                <strong>待启用</strong>
+              </article>
+            </section>
+
+            <div className="system-settings-layout">
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>账号列表</h3>
+                    <p>连接持久化后端后，这里会展示可维护的内测账号与角色状态。</p>
+                  </div>
+                </div>
+                <p className="system-settings-empty">{demoUnsupportedCopy.bodyNotice}</p>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>创建账号</h3>
+                    <p>账号与权限分区只负责人员、角色和访问控制，不承载 AI 配置。</p>
+                  </div>
+                </div>
+                <p className="system-settings-empty">连接持久化后端后可创建账号并分配初始角色。</p>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>账号操作</h3>
+                    <p>选中账号后可在这里执行资料更新、密码重置与启停操作。</p>
+                  </div>
+                </div>
+                <div className="system-settings-provider-inline">
+                  <span>修改账号信息</span>
+                  <span>重置登录密码</span>
+                </div>
+                <p className="system-settings-empty">演示模式下仅展示账号分区结构，不执行真实维护。</p>
+              </article>
+            </div>
+          </>
+        ) : (
+          <>
+            <section className="system-settings-summary-grid">
+              <article className="system-settings-card">
+                <span>提供方连接</span>
+                <strong>需连接持久化后端</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>模型注册</span>
+                <strong>待启用</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>模块默认值</span>
+                <strong>待启用</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>温度控制</span>
+                <strong>待启用</strong>
+              </article>
+            </section>
+
+            <div className="system-settings-layout">
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>AI 提供方</h3>
+                    <p>这里会集中维护 API Key、连接状态与连通性测试结果。</p>
+                  </div>
+                </div>
+                <p className="system-settings-empty">{demoUnsupportedCopy.bodyNotice}</p>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>模型注册</h3>
+                    <p>在 AI 接入内登记可用模型，并限定允许服务的业务模块。</p>
+                  </div>
+                </div>
+                <p className="system-settings-empty">模型注册层会在此绑定连接、可用模块与兜底模型。</p>
+              </article>
+
+              <article className="system-settings-panel">
+                <div className="system-settings-panel-header">
+                  <div>
+                    <h3>模块默认值</h3>
+                    <p>在同一分区内设置 screening、editing、proofreading 的默认模型与温度。</p>
+                  </div>
+                </div>
+                <p className="system-settings-empty">模块默认值层会在此集中配置模型绑定与温度控制。</p>
+              </article>
+            </div>
+          </>
+        )}
       </section>
     );
   }
@@ -495,26 +608,66 @@ export function SystemSettingsWorkbenchPage({
 
       {overview ? (
         <>
-          <section className="system-settings-summary-grid">
-            <article className="system-settings-card">
-              <span>账号总数</span>
-              <strong>{overview.summary.totalUsers}</strong>
-            </article>
-            <article className="system-settings-card">
-              <span>启用中</span>
-              <strong>{overview.summary.activeUsers}</strong>
-            </article>
-            <article className="system-settings-card">
-              <span>已停用</span>
-              <strong>{overview.summary.disabledUsers}</strong>
-            </article>
-            <article className="system-settings-card">
-              <span>管理员</span>
-              <strong>{overview.summary.adminUsers}</strong>
-            </article>
-          </section>
+          {section === "accounts" ? (
+            <section className="system-settings-summary-grid">
+              <article className="system-settings-card">
+                <span>账号总数</span>
+                <strong>{overview.summary.totalUsers}</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>启用中</span>
+                <strong>{overview.summary.activeUsers}</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>已停用</span>
+                <strong>{overview.summary.disabledUsers}</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>管理员</span>
+                <strong>{overview.summary.adminUsers}</strong>
+              </article>
+            </section>
+          ) : (
+            <section className="system-settings-summary-grid">
+              <article className="system-settings-card">
+                <span>连接总数</span>
+                <strong>{overview.providerConnections.length}</strong>
+              </article>
+              <article className="system-settings-card">
+                <span>已启用</span>
+                <strong>
+                  {overview.providerConnections.filter((connection) => connection.enabled).length}
+                </strong>
+              </article>
+              <article className="system-settings-card">
+                <span>已通过测试</span>
+                <strong>
+                  {
+                    overview.providerConnections.filter(
+                      (connection) => connection.last_test_status === "passed",
+                    ).length
+                  }
+                </strong>
+              </article>
+              <article className="system-settings-card">
+                <span>模块默认值</span>
+                <strong>
+                  {
+                    (overview.moduleDefaults ?? buildPendingModuleDefaults()).filter(
+                      (record) =>
+                        typeof record.primaryModelName === "string" &&
+                        record.primaryModelName.length > 0,
+                    ).length
+                  }
+                  /{(overview.moduleDefaults ?? buildPendingModuleDefaults()).length}
+                </strong>
+              </article>
+            </section>
+          )}
 
-          <div className="system-settings-layout">
+          {section === "accounts" ? (
+            <>
+              <div className="system-settings-layout">
             <article className="system-settings-panel">
               <div className="system-settings-panel-header">
                 <div>
@@ -703,20 +856,25 @@ export function SystemSettingsWorkbenchPage({
               )}
             </article>
           </div>
+            </>
+          ) : null}
 
-          <section className="system-settings-provider-shell">
-            <div className="system-settings-section-header">
-              <div>
-                <h3>AI 提供方</h3>
-                <p>统一维护国内外模型连接、密钥轮换与连通性测试结果。</p>
-              </div>
-              <div className="system-settings-provider-summary">
-                <span>连接数 {overview.providerConnections.length}</span>
-                <span>
-                  已启用 {overview.providerConnections.filter((connection) => connection.enabled).length}
-                </span>
-              </div>
-            </div>
+          {section === "ai-access" ? (
+            <>
+              <section className="system-settings-provider-shell">
+                <div className="system-settings-section-header">
+                  <div>
+                    <h3>AI 提供方</h3>
+                    <p>统一维护国内外模型连接、密钥轮换与连通性测试结果。</p>
+                  </div>
+                  <div className="system-settings-provider-summary">
+                    <span>连接数 {overview.providerConnections.length}</span>
+                    <span>
+                      已启用{" "}
+                      {overview.providerConnections.filter((connection) => connection.enabled).length}
+                    </span>
+                  </div>
+                </div>
 
             <div className="system-settings-provider-layout">
               <article className="system-settings-panel">
@@ -986,10 +1144,70 @@ export function SystemSettingsWorkbenchPage({
               </article>
             </div>
           </section>
+
+              <div className="system-settings-layout">
+                <article className="system-settings-panel">
+                  <div className="system-settings-panel-header">
+                    <div>
+                      <h3>模型注册</h3>
+                      <p>在 AI 接入内登记可用模型，并限定模块范围与兜底关系。</p>
+                    </div>
+                  </div>
+                  {(overview.registeredModels ?? []).length > 0 ? (
+                    <ul className="system-settings-user-list">
+                      {(overview.registeredModels ?? []).map((model) => (
+                        <li key={model.id}>
+                          <div className="system-settings-user-row">
+                            <span>{model.displayName}</span>
+                            <small>
+                              {model.connectionName} · {formatAllowedModulesLabel(model.allowedModules)} ·{" "}
+                              {model.productionAllowed ? "可用于生产" : "仅限试运行"}
+                            </small>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="system-settings-empty">
+                      当前还没有已登记模型。下一步会在这里绑定连接、允许模块与兜底模型。
+                    </p>
+                  )}
+                </article>
+
+                <article className="system-settings-panel">
+                  <div className="system-settings-panel-header">
+                    <div>
+                      <h3>模块默认值</h3>
+                      <p>集中设置 screening、editing、proofreading 的默认模型与温度。</p>
+                    </div>
+                  </div>
+                  <ul className="system-settings-user-list">
+                    {(overview.moduleDefaults ?? buildPendingModuleDefaults()).map((record) => (
+                      <li key={record.moduleKey}>
+                        <div className="system-settings-user-row">
+                          <span>{record.moduleLabel}</span>
+                          <small>
+                            {record.primaryModelName
+                              ? `主模型：${record.primaryModelName}`
+                              : "主模型待配置"}{" "}
+                            ·{" "}
+                            {record.fallbackModelName
+                              ? `兜底：${record.fallbackModelName}`
+                              : "兜底模型待配置"}{" "}
+                            · {formatTemperatureLabel(record.temperature)}
+                          </small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              </div>
+            </>
+          ) : null}
         </>
       ) : loadStatus === "loading" || loadStatus === "idle" ? (
         <article className="system-settings-panel" role="status">
-          <p>正在加载账号列表...</p>
+          <p>{resolveSystemSettingsLoadingMessage(section)}</p>
         </article>
       ) : null}
     </section>
@@ -1031,6 +1249,50 @@ function resolveSystemSettingsLandingCopy(section: WorkbenchSettingsSection): {
     summary: "集中维护模型连接、密钥轮换与接入策略。",
     emphasis: "优先关注模型连接状态与密钥健康度。",
   };
+}
+
+function resolveSystemSettingsLoadingMessage(
+  section: WorkbenchSettingsSection,
+): string {
+  return section === "accounts"
+    ? "正在加载账号与权限..."
+    : "正在加载 AI 接入配置...";
+}
+
+function buildPendingModuleDefaults(): SystemSettingsModuleDefaultViewModel[] {
+  return [
+    {
+      moduleKey: "screening",
+      moduleLabel: "screening",
+      primaryModelName: null,
+      fallbackModelName: null,
+      temperature: null,
+    },
+    {
+      moduleKey: "editing",
+      moduleLabel: "editing",
+      primaryModelName: null,
+      fallbackModelName: null,
+      temperature: null,
+    },
+    {
+      moduleKey: "proofreading",
+      moduleLabel: "proofreading",
+      primaryModelName: null,
+      fallbackModelName: null,
+      temperature: null,
+    },
+  ];
+}
+
+function formatAllowedModulesLabel(
+  modules: SystemSettingsRegisteredModelViewModel["allowedModules"],
+): string {
+  return modules.length > 0 ? modules.join(" / ") : "模块待配置";
+}
+
+function formatTemperatureLabel(temperature: number | null | undefined): string {
+  return typeof temperature === "number" ? `温度 ${temperature}` : "温度待配置";
 }
 
 function formatRoleLabel(role: AuthRole): string {

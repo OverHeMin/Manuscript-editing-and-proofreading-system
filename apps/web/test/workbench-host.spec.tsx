@@ -86,6 +86,9 @@ test("workbench host runtime render forwards settingsSection=ai-access into acti
 
   assert.match(markup, /system-settings-workbench/u);
   assert.match(markup, /\u0041\u0049 \u63a5\u5165/u);
+  assert.match(markup, /\u6a21\u578b\u6ce8\u518c/u);
+  assert.match(markup, /\u6a21\u5757\u9ed8\u8ba4\u503c/u);
+  assert.doesNotMatch(markup, /\u521b\u5efa\u8d26\u53f7/u);
   assert.match(
     markup,
     /workbench-nav-button is-active[\s\S]*?\u0041\u0049 \u63a5\u5165/u,
@@ -101,6 +104,9 @@ test("workbench host runtime render shows split settings target label in header 
     markup,
     /workbench-header-focus-card[\s\S]*?<strong>\u8d26\u53f7\u4e0e\u6743\u9650<\/strong>/u,
   );
+  assert.match(markup, /\u521b\u5efa\u8d26\u53f7/u);
+  assert.match(markup, /\u4fee\u6539\u8d26\u53f7\u4fe1\u606f/u);
+  assert.doesNotMatch(markup, /\u6a21\u578b\u6ce8\u518c/u);
   assert.match(
     markup,
     /workbench-nav-button is-active[\s\S]*?\u8d26\u53f7\u4e0e\u6743\u9650/u,

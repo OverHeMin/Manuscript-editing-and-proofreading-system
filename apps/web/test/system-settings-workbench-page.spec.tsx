@@ -108,10 +108,11 @@ const loadedOverview = {
   },
 } as const;
 
-test("system settings workbench page renders overview cards, user list, create form, and selected-user actions in Chinese", () => {
+test("system settings accounts section renders overview cards, user list, create form, and selected-user actions in Chinese", () => {
   const markup = renderToStaticMarkup(
     <SystemSettingsWorkbenchPage
       runtimeMode="persistent"
+      section="accounts"
       controller={{
         loadOverview: async () => {
           throw new Error("not used");
@@ -122,7 +123,7 @@ test("system settings workbench page renders overview cards, user list, create f
   );
 
   assert.match(markup, /\u7cfb\u7edf\u8bbe\u7f6e/);
-  assert.match(markup, /AI 接入/u);
+  assert.match(markup, /\u8d26\u53f7\u4e0e\u6743\u9650/u);
   assert.match(markup, /\u8d26\u53f7\u603b\u6570/);
   assert.match(markup, /\u542f\u7528\u4e2d/);
   assert.match(markup, /\u5df2\u505c\u7528/);
@@ -259,6 +260,18 @@ test("system settings workbench page lands on different first-view emphasis for 
 
   assert.match(aiAccessMarkup, /AI 接入/u);
   assert.match(aiAccessMarkup, /优先关注模型连接状态与密钥健康度/u);
+  assert.match(aiAccessMarkup, /AI 提供方/u);
+  assert.match(aiAccessMarkup, /模型注册/u);
+  assert.match(aiAccessMarkup, /模块默认值/u);
+  assert.doesNotMatch(aiAccessMarkup, /创建账号/u);
+  assert.doesNotMatch(aiAccessMarkup, /修改账号信息/u);
+  assert.doesNotMatch(aiAccessMarkup, /重置登录密码/u);
   assert.match(accountsMarkup, /账号与权限/u);
   assert.match(accountsMarkup, /优先关注账号状态与角色权限配置/u);
+  assert.match(accountsMarkup, /创建账号/u);
+  assert.match(accountsMarkup, /修改账号信息/u);
+  assert.match(accountsMarkup, /重置登录密码/u);
+  assert.doesNotMatch(accountsMarkup, /AI 提供方/u);
+  assert.doesNotMatch(accountsMarkup, /模型注册/u);
+  assert.doesNotMatch(accountsMarkup, /模块默认值/u);
 });

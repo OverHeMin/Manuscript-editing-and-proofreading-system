@@ -3,6 +3,7 @@ import type { AuthRole } from "../auth/index.ts";
 export type SystemSettingsUserStatus = "active" | "disabled" | "locked";
 export type AiProviderKind = "openai" | "openai_compatible" | "qwen" | "deepseek";
 export type AiProviderConnectionTestStatus = "unknown" | "passed" | "failed";
+export type SystemSettingsModuleKey = "screening" | "editing" | "proofreading";
 
 export interface SystemSettingsUserViewModel {
   id: string;
@@ -33,6 +34,28 @@ export interface SystemSettingsAiProviderConnectionViewModel {
   credential_summary?: SystemSettingsAiProviderCredentialSummary;
 }
 
+export interface SystemSettingsRegisteredModelViewModel {
+  id: string;
+  modelName: string;
+  displayName: string;
+  connectionId: string;
+  connectionName: string;
+  allowedModules: SystemSettingsModuleKey[];
+  productionAllowed: boolean;
+  fallbackModelId?: string | null;
+  fallbackModelName?: string | null;
+}
+
+export interface SystemSettingsModuleDefaultViewModel {
+  moduleKey: SystemSettingsModuleKey;
+  moduleLabel: string;
+  primaryModelId?: string | null;
+  primaryModelName?: string | null;
+  fallbackModelId?: string | null;
+  fallbackModelName?: string | null;
+  temperature?: number | null;
+}
+
 export interface SystemSettingsSummary {
   totalUsers: number;
   activeUsers: number;
@@ -48,6 +71,8 @@ export interface SystemSettingsWorkbenchOverview {
   providerConnections: SystemSettingsAiProviderConnectionViewModel[];
   selectedConnectionId: string | null;
   selectedConnection: SystemSettingsAiProviderConnectionViewModel | null;
+  registeredModels?: SystemSettingsRegisteredModelViewModel[];
+  moduleDefaults?: SystemSettingsModuleDefaultViewModel[];
 }
 
 export interface CreateSystemSettingsUserInput {
