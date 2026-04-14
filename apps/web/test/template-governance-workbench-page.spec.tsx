@@ -394,3 +394,37 @@ test("template governance overview keeps rule ledger as the daily-driver entry",
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
   assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
 });
+
+test("template governance workbench page renders the unified rule ledger when rule-ledger is the selected view", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadRuleLedger: async () => ({
+          category: "all",
+          rows: [
+            {
+              id: "rule-1",
+              asset_kind: "rule",
+              title: "统一术语规则",
+              module_label: "编辑",
+              manuscript_type_label: "论著",
+              semantic_status: "待确认",
+              publish_status: "草稿",
+              contributor_label: "editor.zh",
+              updated_at: "2026-04-14T09:00:00.000Z",
+            },
+          ],
+        }),
+      }}
+      initialView="rule-ledger"
+    />,
+  );
+
+  assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
+  assert.match(markup, /\u5168\u90e8\u8d44\u4ea7/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
+  assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
+});

@@ -99,6 +99,7 @@ import {
   TemplateGovernanceOverviewPage,
   type TemplateGovernanceOverviewMetrics,
 } from "./template-governance-overview-page.tsx";
+import { TemplateGovernanceRuleLedgerPage } from "./template-governance-rule-ledger-page.tsx";
 import { TemplateGovernanceContentModuleLedgerPage } from "./template-governance-content-module-ledger-page.tsx";
 import type { TemplateGovernanceContentModuleFormValues } from "./template-governance-content-module-form.tsx";
 import { TemplateGovernanceExtractionLedgerPage } from "./template-governance-extraction-ledger-page.tsx";
@@ -117,6 +118,15 @@ import {
 } from "./template-governance-navigation.ts";
 import { TemplateGovernanceTemplateLedgerPage } from "./template-governance-template-ledger-page.tsx";
 import type { TemplateGovernanceTemplateFormValues } from "./template-governance-template-form.tsx";
+import type {
+  TemplateGovernanceRuleLedgerCategory,
+  TemplateGovernanceRuleLedgerViewModel,
+} from "./template-governance-ledger-types.ts";
+import {
+  createEmptyTemplateGovernanceRuleLedgerViewModel,
+  createTemplateGovernanceRuleLedgerViewModel,
+  selectTemplateGovernanceRuleLedgerRow,
+} from "./template-governance-rule-ledger-state.ts";
 import {
   formatRulePackageKindLabel,
   formatTemplateGovernanceConfidencePolicyLabel,
@@ -316,6 +326,10 @@ export function TemplateGovernanceWorkbenchPage({
         initialOverview={initialOverview}
       />
     );
+  }
+
+  if (initialView === "rule-ledger") {
+    return <TemplateGovernanceRuleLedgerRoute controller={controller} />;
   }
 
   if (initialView === "extraction-ledger") {
@@ -2543,6 +2557,106 @@ function TemplateGovernanceOverviewRoute({
   );
 }
 
+function TemplateGovernanceRuleLedgerRoute({
+  controller,
+}: {
+  controller: TemplateGovernanceWorkbenchController;
+}) {
+  const [ledger, setLedger] = useState<TemplateGovernanceRuleLedgerViewModel>(
+    createEmptyTemplateGovernanceRuleLedgerViewModel(),
+  );
+  const [searchValue, setSearchValue] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] =
+    useState<TemplateGovernanceRuleLedgerCategory>("all");
+  const [isBusy, setIsBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    void controller
+      .loadRuleLedger({
+        category: selectedCategory,
+        searchQuery,
+      })
+      .then((nextLedger) => {
+        if (!isCancelled) {
+          setLedger(nextLedger);
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setErrorMessage(toErrorMessage(error, "规则台账加载失败"));
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsBusy(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [controller, searchQuery, selectedCategory]);
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSearchQuery(searchValue.trim());
+  }
+
+  function handleSelectCategory(category: TemplateGovernanceRuleLedgerCategory) {
+    setSelectedCategory(category);
+    setStatusMessage(null);
+  }
+
+  function handleSelectRow(rowId: string) {
+    setLedger((current) => selectTemplateGovernanceRuleLedgerRow(current, rowId));
+  }
+
+  return (
+    <TemplateGovernanceRuleLedgerPage
+      initialViewModel={createTemplateGovernanceRuleLedgerViewModel({
+        rows: ledger.rows,
+        category: selectedCategory,
+        searchQuery,
+        selectedRowId: ledger.selectedRowId ?? ledger.selectedRow?.id ?? null,
+      })}
+      navigationItems={createTemplateGovernanceNavigationItems(
+        "rule-ledger",
+        navigateToTemplateGovernanceSection,
+      )}
+      searchValue={searchValue}
+      isBusy={isBusy}
+      statusMessage={statusMessage}
+      errorMessage={errorMessage}
+      onSearchValueChange={setSearchValue}
+      onSearchSubmit={handleSearchSubmit}
+      onSelectCategory={handleSelectCategory}
+      onSelectRow={handleSelectRow}
+      onOpenCreateRule={() => {
+        setStatusMessage("规则向导将在下一任务接入，这里先固定到统一规则台账。");
+      }}
+      onOpenSearch={() => {
+        setStatusMessage("可以使用顶部搜索框筛选当前台账。");
+      }}
+      onOpenFilter={() => {
+        setStatusMessage("先用分类视图切换规则、模板、规则包和回流候选。");
+      }}
+      onOpenBulkActions={() => {
+        setStatusMessage("批量操作将在后续规则向导完成后接入。");
+      }}
+      onImport={() => {
+        navigateToTemplateGovernanceSection("extraction-ledger");
+      }}
+    />
+  );
+}
+
 function TemplateGovernanceExtractionLedgerRoute({
   controller,
 }: {
@@ -4284,15 +4398,13 @@ function formatRuleEvidenceExamples(
 }
 
 function navigateToTemplateGovernanceView(
-  view:
-    | "overview"
-    | "rule-ledger"
-    | "large-template-ledger"
-    | "journal-template-ledger"
-    | "extraction-ledger"
-    | "general-package-ledger"
-    | "medical-package-ledger",
+  view: TemplateGovernanceView,
 ) {
+  if (view === "classic" || view === "authoring") {
+    navigateToTemplateGovernanceSection("rule-ledger");
+    return;
+  }
+
   navigateToTemplateGovernanceSection(view);
 }
 

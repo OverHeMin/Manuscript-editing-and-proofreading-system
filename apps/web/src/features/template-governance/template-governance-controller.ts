@@ -13,6 +13,11 @@ import {
   type UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
 import {
+  listLearningCandidates,
+  type LearningCandidateViewModel,
+  type LearningReviewHttpClient,
+} from "../learning-review/index.ts";
+import {
   getLatestTemplateFamilyRetrievalQualityRun,
   getRetrievalSnapshot,
   type KnowledgeRetrievalHttpClient,
@@ -105,6 +110,18 @@ import {
   type UpdateTemplateCompositionDraftInput,
   type UpdateTemplateFamilyInput,
 } from "../templates/index.ts";
+import {
+  formatTemplateGovernanceFamilyStatusLabel,
+  formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceManuscriptTypeLabel,
+  formatTemplateGovernanceModuleLabel,
+} from "./template-governance-display.ts";
+import type {
+  TemplateGovernanceRuleLedgerCategory,
+  TemplateGovernanceRuleLedgerRow,
+  TemplateGovernanceRuleLedgerViewModel,
+} from "./template-governance-ledger-types.ts";
+import { createTemplateGovernanceRuleLedgerViewModel } from "./template-governance-rule-ledger-state.ts";
 
 export interface TemplateGovernanceWorkbenchFilters {
   searchText: string;
@@ -148,6 +165,11 @@ export interface TemplateGovernanceWorkbenchController {
   loadOverview(
     input?: TemplateGovernanceReloadContext,
   ): Promise<TemplateGovernanceWorkbenchOverview>;
+  loadRuleLedger(input?: {
+    category?: TemplateGovernanceRuleLedgerCategory;
+    searchQuery?: string;
+    selectedRowId?: string | null;
+  }): Promise<TemplateGovernanceRuleLedgerViewModel>;
   loadExtractionLedger(input?: {
     selectedTaskId?: string | null;
   }): Promise<TemplateGovernanceExtractionLedgerViewModel>;
@@ -387,6 +409,7 @@ type TemplateGovernanceHttpClient =
   KnowledgeHttpClient &
   TemplateHttpClient &
   KnowledgeRetrievalHttpClient &
+  LearningReviewHttpClient &
   PromptSkillRegistryHttpClient &
   EditorialRulesHttpClient;
 
@@ -396,6 +419,9 @@ export function createTemplateGovernanceWorkbenchController(
   return {
     loadOverview(input) {
       return loadTemplateGovernanceOverview(client, input);
+    },
+    loadRuleLedger(input) {
+      return loadTemplateGovernanceRuleLedger(client, input);
     },
     loadExtractionLedger(input) {
       return loadTemplateGovernanceExtractionLedger(client, input);
@@ -871,6 +897,73 @@ export function createTemplateGovernanceWorkbenchController(
       };
     },
   };
+}
+
+async function loadTemplateGovernanceRuleLedger(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    category?: TemplateGovernanceRuleLedgerCategory;
+    searchQuery?: string;
+    selectedRowId?: string | null;
+  } = {},
+): Promise<TemplateGovernanceRuleLedgerViewModel> {
+  const [
+    knowledgeItemsResponse,
+    templateFamiliesResponse,
+    templatesResponse,
+    generalModulesResponse,
+    medicalModulesResponse,
+    learningCandidatesResponse,
+  ] = await Promise.all([
+    listKnowledgeItems(client),
+    listTemplateFamilies(client),
+    listTemplateCompositions(client),
+    listContentModules(client, "general"),
+    listContentModules(client, "medical_specialized"),
+    listLearningCandidates(client),
+  ]);
+
+  const journalTemplateEntries = (
+    await Promise.all(
+      templateFamiliesResponse.body.map(async (family) => ({
+        family,
+        journalTemplates: (
+          await listJournalTemplateProfilesByTemplateFamilyId(client, family.id)
+        ).body,
+      })),
+    )
+  ).flatMap(({ family, journalTemplates }) =>
+    journalTemplates.map((journalTemplate) => ({
+      family,
+      journalTemplate,
+    })),
+  );
+
+  const rows = [
+    ...knowledgeItemsResponse.body
+      .filter((item) => item.knowledge_kind === "rule")
+      .map(mapKnowledgeItemToRuleLedgerRow),
+    ...templatesResponse.body.map(mapTemplateCompositionToRuleLedgerRow),
+    ...journalTemplateEntries.map(({ family, journalTemplate }) =>
+      mapJournalTemplateToRuleLedgerRow(journalTemplate, family),
+    ),
+    ...generalModulesResponse.body.map((module) =>
+      mapContentModuleToRuleLedgerRow(module, "general_package"),
+    ),
+    ...medicalModulesResponse.body.map((module) =>
+      mapContentModuleToRuleLedgerRow(module, "medical_package"),
+    ),
+    ...learningCandidatesResponse.body
+      .filter((candidate) => candidate.type === "rule_candidate")
+      .map(mapLearningCandidateToRuleLedgerRow),
+  ].sort(compareRuleLedgerRowsByUpdatedAt);
+
+  return createTemplateGovernanceRuleLedgerViewModel({
+    rows,
+    category: input.category,
+    searchQuery: input.searchQuery,
+    selectedRowId: input.selectedRowId,
+  });
 }
 
 async function loadTemplateGovernanceExtractionLedger(
@@ -1390,4 +1483,150 @@ function createRetrievalSignals(
 
 function isNotFoundHttpError(error: unknown): boolean {
   return error instanceof BrowserHttpClientError && error.status === 404;
+}
+
+function mapKnowledgeItemToRuleLedgerRow(
+  item: KnowledgeItemViewModel,
+): TemplateGovernanceRuleLedgerRow {
+  return {
+    id: item.id,
+    asset_kind: "rule",
+    title: item.title,
+    module_label: formatRuleLedgerModuleLabel(item.routing.module_scope),
+    manuscript_type_label: formatRuleLedgerManuscriptTypeLabel(
+      item.routing.manuscript_types,
+    ),
+    semantic_status:
+      item.status === "draft" || item.status === "pending_review"
+        ? "待确认"
+        : "已确认",
+    publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(item.status),
+    contributor_label: item.source_type ? "知识规则" : "规则中心",
+    updated_at: item.effective_at,
+  };
+}
+
+function mapTemplateCompositionToRuleLedgerRow(
+  template: TemplateCompositionViewModel,
+): TemplateGovernanceRuleLedgerRow {
+  return {
+    id: template.id,
+    asset_kind: "large_template",
+    title: template.name,
+    module_label: template.execution_module_scope
+      .map((module) => formatTemplateGovernanceModuleLabel(module))
+      .join(" / "),
+    manuscript_type_label: formatTemplateGovernanceManuscriptTypeLabel(
+      template.manuscript_type,
+    ),
+    semantic_status: "模板已整理",
+    publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(template.status),
+    contributor_label: "大模板",
+    updated_at: template.updated_at,
+  };
+}
+
+function mapJournalTemplateToRuleLedgerRow(
+  journalTemplate: JournalTemplateProfileViewModel,
+  family: TemplateFamilyViewModel,
+): TemplateGovernanceRuleLedgerRow {
+  return {
+    id: journalTemplate.id,
+    asset_kind: "journal_template",
+    title: journalTemplate.journal_name,
+    module_label: "期刊模板",
+    manuscript_type_label: formatTemplateGovernanceManuscriptTypeLabel(
+      family.manuscript_type,
+    ),
+    semantic_status: "期刊定制",
+    publish_status: formatTemplateGovernanceFamilyStatusLabel(journalTemplate.status),
+    contributor_label: journalTemplate.journal_key,
+  };
+}
+
+function mapContentModuleToRuleLedgerRow(
+  module: GovernedContentModuleViewModel,
+  assetKind: "general_package" | "medical_package",
+): TemplateGovernanceRuleLedgerRow {
+  return {
+    id: module.id,
+    asset_kind: assetKind,
+    title: module.name,
+    module_label: module.execution_module_scope
+      .map((executionModule) => formatTemplateGovernanceModuleLabel(executionModule))
+      .join(" / "),
+    manuscript_type_label: module.manuscript_type_scope
+      .map((manuscriptType) => formatTemplateGovernanceManuscriptTypeLabel(manuscriptType))
+      .join(" / "),
+    semantic_status: module.evidence_level === "unknown" ? "待补证据" : "已沉淀",
+    publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(module.status),
+    contributor_label: module.category,
+    updated_at: module.updated_at,
+  };
+}
+
+function mapLearningCandidateToRuleLedgerRow(
+  candidate: LearningCandidateViewModel,
+): TemplateGovernanceRuleLedgerRow {
+  return {
+    id: candidate.id,
+    asset_kind: "recycled_candidate",
+    title: candidate.title?.trim() || candidate.proposal_text?.trim() || candidate.id,
+    module_label: formatTemplateGovernanceModuleLabel(candidate.module),
+    manuscript_type_label: formatTemplateGovernanceManuscriptTypeLabel(
+      candidate.manuscript_type,
+    ),
+    semantic_status: "回流待收编",
+    publish_status: formatLearningCandidateStatusLabel(candidate.status),
+    contributor_label: candidate.created_by,
+    updated_at: candidate.updated_at,
+  };
+}
+
+function formatRuleLedgerModuleLabel(value: string): string {
+  return value === "any" ? "全部模块" : formatTemplateGovernanceModuleLabel(value);
+}
+
+function formatRuleLedgerManuscriptTypeLabel(
+  value: KnowledgeItemViewModel["routing"]["manuscript_types"],
+): string {
+  return value === "any"
+    ? "全部稿件"
+    : value.map((manuscriptType) => formatTemplateGovernanceManuscriptTypeLabel(manuscriptType)).join(" / ");
+}
+
+function formatLearningCandidateStatusLabel(value: LearningCandidateViewModel["status"]): string {
+  switch (value) {
+    case "draft":
+      return "草稿";
+    case "pending_review":
+      return "待审核";
+    case "approved":
+      return "已通过";
+    case "rejected":
+      return "已驳回";
+    case "archived":
+      return "已归档";
+    default:
+      return value;
+  }
+}
+
+function compareRuleLedgerRowsByUpdatedAt(
+  left: TemplateGovernanceRuleLedgerRow,
+  right: TemplateGovernanceRuleLedgerRow,
+): number {
+  if (left.updated_at == null && right.updated_at == null) {
+    return left.title.localeCompare(right.title, "zh-CN");
+  }
+
+  if (left.updated_at == null) {
+    return 1;
+  }
+
+  if (right.updated_at == null) {
+    return -1;
+  }
+
+  return right.updated_at.localeCompare(left.updated_at);
 }
