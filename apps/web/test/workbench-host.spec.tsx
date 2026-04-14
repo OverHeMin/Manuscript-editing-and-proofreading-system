@@ -529,7 +529,8 @@ test("workbench shell header renders fully Chinese top copy and active desk summ
   assert.doesNotMatch(html, /Medical Editorial Control Deck/);
   assert.match(html, /医学编辑中控台/u);
   assert.match(html, /医学稿件处理系统/u);
-  assert.match(html, /workbench-shell-pillar-list/);
+  assert.match(html, /workbench-header-focus-card/);
+  assert.doesNotMatch(html, /workbench-shell-pillar-list/);
   assert.match(html, /button/);
 });
 

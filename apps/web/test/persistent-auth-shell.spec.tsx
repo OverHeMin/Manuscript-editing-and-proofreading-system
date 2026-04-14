@@ -26,6 +26,10 @@ test("persistent auth shell renders bootstrapping status while restoring session
     kind: "bootstrapping",
   });
 
+  assert.match(html, /app-shell-auth/);
+  assert.match(html, /auth-shell/);
+  assert.match(html, /auth-shell-hero/);
+  assert.match(html, /auth-shell-card/);
   assert.match(html, /正在恢复工作会话/);
   assert.match(html, /正在恢复当前后台工作会话/);
   assert.match(html, /auth-shell-brand/);
@@ -74,8 +78,27 @@ test("persistent auth shell renders a retry state when session bootstrap fails",
     message: "Unable to reach backend auth runtime.",
   });
 
+  assert.match(html, /app-shell-auth/);
+  assert.match(html, /auth-shell/);
+  assert.match(html, /auth-shell-hero/);
+  assert.match(html, /auth-shell-card/);
   assert.match(html, /工作会话恢复失败/);
   assert.match(html, /Unable to reach backend auth runtime/);
   assert.match(html, /重新检查会话/);
   assert.match(html, /auth-shell-brand/);
+});
+
+test("persistent auth shell keeps the premium entrance shell while login is pending", () => {
+  const html = render({
+    kind: "unauthenticated",
+    username: "persistent.reviewer",
+    password: "secret",
+    isLoginPending: true,
+    loginErrorMessage: null,
+  });
+
+  assert.match(html, /app-shell-auth/);
+  assert.match(html, /auth-shell-hero/);
+  assert.match(html, /auth-shell-card/);
+  assert.match(html, />登录中\.\.\.</);
 });

@@ -239,21 +239,27 @@ export function PersistentAuthShellView({
   switch (state.kind) {
     case "bootstrapping":
       return (
-        <main className="app-shell">
-          <section className="auth-card" role="status" aria-live="polite">
-            <AuthShellBrand
-              title="正在恢复工作会话"
-              description="正在恢复当前后台工作会话，完成后将进入编辑部工作台。"
-            />
-          </section>
-        </main>
+        <AuthShellScaffold
+          cardKicker="会话恢复"
+          cardTitle="正在恢复工作会话"
+          cardDescription="正在恢复当前后台工作会话，完成后将进入编辑部工作台。"
+          cardRole="status"
+        >
+          <div className="auth-stage-stack" aria-live="polite">
+            <p>正在校验登录态、工作区权限与最近一次操作环境，请稍候。</p>
+          </div>
+        </AuthShellScaffold>
       );
     case "bootstrap-error":
       return (
-        <main className="app-shell">
-          <section className="auth-card" role="alert">
-            <AuthShellBrand title="工作会话恢复失败" />
-            <p>{state.message}</p>
+        <AuthShellScaffold
+          cardKicker="会话恢复"
+          cardTitle="工作会话恢复失败"
+          cardDescription="请确认网络与后台服务可用后，再重新检查当前会话。"
+          cardRole="alert"
+        >
+          <div className="auth-stage-stack">
+            <p className="auth-error-message">{state.message}</p>
             <div className="auth-actions">
               <button
                 type="button"
@@ -263,8 +269,8 @@ export function PersistentAuthShellView({
                 重新检查会话
               </button>
             </div>
-          </section>
-        </main>
+          </div>
+        </AuthShellScaffold>
       );
     case "authenticated":
       return renderAuthenticated({
@@ -277,109 +283,139 @@ export function PersistentAuthShellView({
       });
     case "unauthenticated":
       return (
-        <main className="app-shell app-shell-auth">
-          <div className="auth-shell">
-            <section className="auth-shell-hero" aria-label="系统介绍">
-              <div className="auth-shell-hero-copy">
-                <AuthShellBrand
-                  title="为筛查、编辑、校对与知识入库提供稳定一致的工作入口"
-                  description="面向医学稿件处理场景打造的专业工作台，让高频流程更聚焦，协作与回收更顺畅。"
-                />
-                <p className="auth-shell-hero-summary">
-                  登录后进入初筛、编辑、校对与知识库工作区。
-                </p>
-                <div className="auth-shell-hero-metrics" aria-label="系统特点">
-                  <article className="auth-shell-metric">
-                    <span>队列优先</span>
-                    <strong>批量筛查与单稿处理分层协同</strong>
-                  </article>
-                  <article className="auth-shell-metric">
-                    <span>知识回流</span>
-                    <strong>规则中心、知识库与复盘闭环统一归集</strong>
-                  </article>
-                  <article className="auth-shell-metric">
-                    <span>风控可见</span>
-                    <strong>AI 识别、风险提示与人工修订保持同屏</strong>
-                  </article>
-                </div>
-              </div>
-              <div className="auth-shell-visual" aria-hidden="true">
-                <div className="auth-shell-visual-ring auth-shell-visual-ring-primary" />
-                <div className="auth-shell-visual-ring auth-shell-visual-ring-secondary" />
-                <div className="auth-shell-visual-grid">
-                  <div className="auth-shell-visual-card">
-                    <span>稿件队列</span>
-                    <strong>初筛 / 编辑 / 校对</strong>
-                  </div>
-                  <div className="auth-shell-visual-card is-highlight">
-                    <span>协作与回收区</span>
-                    <strong>知识库 · 规则中心 · 质量优化</strong>
-                  </div>
-                  <div className="auth-shell-visual-card">
-                    <span>AI 路由</span>
-                    <strong>模型接入与 Harness 控制独立治理</strong>
-                  </div>
-                </div>
-              </div>
-            </section>
+        <AuthShellScaffold
+          cardKicker="安全登录"
+          cardTitle="编辑部工作台登录"
+          cardDescription="使用已授权账号进入当前内测系统。"
+        >
+          <form className="auth-form" onSubmit={onSubmit}>
+            <label className="auth-field">
+              <span>账号</span>
+              <input
+                className="auth-input"
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={state.username}
+                onChange={(event) => onUsernameChange(event.target.value)}
+                disabled={state.isLoginPending}
+                required
+              />
+            </label>
 
-            <section className="auth-card auth-shell-card">
-              <header className="auth-card-header">
-                <p className="auth-card-kicker">安全登录</p>
-                <h1>编辑部工作台登录</h1>
-                <p>使用已授权账号进入当前内测系统。</p>
-              </header>
+            <label className="auth-field">
+              <span>密码</span>
+              <input
+                className="auth-input"
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                value={state.password}
+                onChange={(event) => onPasswordChange(event.target.value)}
+                disabled={state.isLoginPending}
+                required
+              />
+            </label>
 
-              <form className="auth-form" onSubmit={onSubmit}>
-                <label className="auth-field">
-                  <span>账号</span>
-                  <input
-                    className="auth-input"
-                    type="text"
-                    name="username"
-                    autoComplete="username"
-                    value={state.username}
-                    onChange={(event) => onUsernameChange(event.target.value)}
-                    disabled={state.isLoginPending}
-                    required
-                  />
-                </label>
+            {state.loginErrorMessage ? (
+              <p className="auth-error-message" role="alert">
+                {state.loginErrorMessage}
+              </p>
+            ) : null}
 
-                <label className="auth-field">
-                  <span>密码</span>
-                  <input
-                    className="auth-input"
-                    type="password"
-                    name="password"
-                    autoComplete="current-password"
-                    value={state.password}
-                    onChange={(event) => onPasswordChange(event.target.value)}
-                    disabled={state.isLoginPending}
-                    required
-                  />
-                </label>
-
-                {state.loginErrorMessage ? (
-                  <p className="auth-error-message" role="alert">
-                    {state.loginErrorMessage}
-                  </p>
-                ) : null}
-
-                <div className="auth-actions">
-                  <button
-                    type="submit"
-                    className="auth-primary-action"
-                    disabled={state.isLoginPending}
-                  >
-                    {state.isLoginPending ? "登录中..." : "登录"}
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>
-        </main>
+            <div className="auth-actions">
+              <button
+                type="submit"
+                className="auth-primary-action"
+                disabled={state.isLoginPending}
+              >
+                {state.isLoginPending ? "登录中..." : "登录"}
+              </button>
+            </div>
+          </form>
+        </AuthShellScaffold>
       );
   }
+}
+
+export interface AuthShellScaffoldProps {
+  cardKicker: string;
+  cardTitle: string;
+  cardDescription?: string;
+  cardRole?: "status" | "alert";
+  children?: ReactNode;
+}
+
+export function AuthShellScaffold({
+  cardKicker,
+  cardTitle,
+  cardDescription,
+  cardRole,
+  children,
+}: AuthShellScaffoldProps) {
+  return (
+    <main className="app-shell app-shell-auth">
+      <div className="auth-shell">
+        <AuthShellHero />
+        <section className="auth-card auth-shell-card" role={cardRole}>
+          <header className="auth-card-header">
+            <p className="auth-card-kicker">{cardKicker}</p>
+            <h1>{cardTitle}</h1>
+            {cardDescription ? <p>{cardDescription}</p> : null}
+          </header>
+          {children}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function AuthShellHero() {
+  return (
+    <section className="auth-shell-hero" aria-label="系统介绍">
+      <div className="auth-shell-hero-copy">
+        <AuthShellBrand
+          title="为筛查、编辑、校对与知识入库提供稳定一致的工作入口"
+          description="面向医学稿件处理场景打造的专业工作台，让高频流程更聚焦，协作与回收更顺畅。"
+        />
+        <p className="auth-shell-hero-summary">
+          登录后进入初筛、编辑、校对与知识库工作区。
+        </p>
+        <div className="auth-shell-hero-metrics" aria-label="系统特点">
+          <article className="auth-shell-metric">
+            <span>队列优先</span>
+            <strong>批量筛查与单稿处理分层协同</strong>
+          </article>
+          <article className="auth-shell-metric">
+            <span>知识回流</span>
+            <strong>规则中心、知识库与复盘闭环统一归集</strong>
+          </article>
+          <article className="auth-shell-metric">
+            <span>风控可见</span>
+            <strong>AI 识别、风险提示与人工修订保持同屏</strong>
+          </article>
+        </div>
+      </div>
+      <div className="auth-shell-visual" aria-hidden="true">
+        <div className="auth-shell-visual-ring auth-shell-visual-ring-primary" />
+        <div className="auth-shell-visual-ring auth-shell-visual-ring-secondary" />
+        <div className="auth-shell-visual-grid">
+          <div className="auth-shell-visual-card">
+            <span>稿件队列</span>
+            <strong>初筛 / 编辑 / 校对</strong>
+          </div>
+          <div className="auth-shell-visual-card is-highlight">
+            <span>协作与回收区</span>
+            <strong>知识库 · 规则中心 · 质量优化</strong>
+          </div>
+          <div className="auth-shell-visual-card">
+            <span>AI 路由</span>
+            <strong>模型接入与 Harness 控制独立治理</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 interface AuthShellBrandProps {
