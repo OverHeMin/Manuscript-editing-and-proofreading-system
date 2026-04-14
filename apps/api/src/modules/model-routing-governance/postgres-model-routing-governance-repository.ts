@@ -33,6 +33,7 @@ interface VersionRow {
   version_no: number;
   primary_model_id: string;
   fallback_model_ids: string[] | string;
+  temperature: number | string | null;
   evidence_links: ModelRoutingPolicyEvidenceLinkRecord[] | null;
   notes: string | null;
   status: ModelRoutingPolicyVersionRecord["status"];
@@ -156,6 +157,7 @@ export class PostgresModelRoutingGovernanceRepository
           version_no,
           primary_model_id,
           fallback_model_ids,
+          temperature,
           evidence_links,
           notes,
           status,
@@ -168,17 +170,19 @@ export class PostgresModelRoutingGovernanceRepository
           $3,
           $4,
           $5::uuid[],
-          $6::jsonb,
-          $7,
+          $6,
+          $7::jsonb,
           $8,
           $9,
-          $10
+          $10,
+          $11
         )
         on conflict (id) do update
         set
           version_no = excluded.version_no,
           primary_model_id = excluded.primary_model_id,
           fallback_model_ids = excluded.fallback_model_ids,
+          temperature = excluded.temperature,
           evidence_links = excluded.evidence_links,
           notes = excluded.notes,
           status = excluded.status,
@@ -190,6 +194,7 @@ export class PostgresModelRoutingGovernanceRepository
         record.version_no,
         record.primary_model_id,
         record.fallback_model_ids,
+        record.temperature ?? null,
         JSON.stringify(record.evidence_links),
         record.notes ?? null,
         record.status,
@@ -212,6 +217,7 @@ export class PostgresModelRoutingGovernanceRepository
           version.version_no,
           version.primary_model_id,
           version.fallback_model_ids,
+          version.temperature,
           version.evidence_links,
           version.notes,
           version.status,
@@ -303,6 +309,7 @@ export class PostgresModelRoutingGovernanceRepository
           version.version_no,
           version.primary_model_id,
           version.fallback_model_ids,
+          version.temperature,
           version.evidence_links,
           version.notes,
           version.status,
@@ -394,6 +401,9 @@ function mapVersionRow(row: VersionRow): ModelRoutingPolicyVersionRecord {
     version_no: row.version_no,
     primary_model_id: row.primary_model_id,
     fallback_model_ids: decodeTextArray(row.fallback_model_ids),
+    ...(row.temperature === null || row.temperature === undefined
+      ? { temperature: null }
+      : { temperature: Number(row.temperature) }),
     evidence_links: cloneEvidenceLinks(row.evidence_links ?? []),
     ...(row.notes ? { notes: row.notes } : {}),
     status: row.status,

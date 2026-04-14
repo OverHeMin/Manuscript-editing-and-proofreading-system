@@ -568,6 +568,233 @@ test("persistent governance runtime manages registered models under the system-s
   });
 });
 
+test("persistent governance runtime manages module defaults with bounded temperature under system-settings ai-access", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary system-settings database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentSystemSettingsUsers(seedPool);
+
+      const serverHandle = await startPersistentSystemSettingsServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const createProvider = async (name: string, providerKind: "qwen" | "deepseek" | "openai") => {
+          const response = await fetch(
+            `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: adminCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                name,
+                provider_kind: providerKind,
+                enabled: true,
+              }),
+            },
+          );
+          const body = (await response.json()) as { id: string };
+          assert.equal(response.status, 201);
+          return body;
+        };
+
+        const screeningConnection = await createProvider("Qwen Screening", "qwen");
+        const editingConnection = await createProvider("DeepSeek Editing", "deepseek");
+        const proofreadingConnection = await createProvider(
+          "OpenAI Proofreading",
+          "openai",
+        );
+
+        const createModel = async (input: {
+          provider: "qwen" | "deepseek" | "openai" | "anthropic";
+          modelName: string;
+          allowedModules: Array<"screening" | "editing" | "proofreading">;
+          connectionId?: string;
+        }) => {
+          const response = await fetch(
+            `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: adminCookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                provider: input.provider,
+                modelName: input.modelName,
+                allowedModules: input.allowedModules,
+                isProdAllowed: true,
+                connectionId: input.connectionId,
+              }),
+            },
+          );
+          const body = (await response.json()) as { id: string };
+          assert.equal(response.status, 201);
+          return body;
+        };
+
+        const screeningModel = await createModel({
+          provider: "qwen",
+          modelName: "qwen-screening",
+          allowedModules: ["screening"],
+          connectionId: screeningConnection.id,
+        });
+        const editingModel = await createModel({
+          provider: "deepseek",
+          modelName: "deepseek-editing",
+          allowedModules: ["editing"],
+          connectionId: editingConnection.id,
+        });
+        const proofreadingModel = await createModel({
+          provider: "openai",
+          modelName: "gpt-proofreading",
+          allowedModules: ["proofreading"],
+          connectionId: proofreadingConnection.id,
+        });
+        const fallbackModel = await createModel({
+          provider: "anthropic",
+          modelName: "claude-fallback",
+          allowedModules: ["screening", "editing", "proofreading"],
+        });
+
+        const saveScreeningDefaultResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/module-defaults`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              module_key: "screening",
+              primary_model_id: screeningModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.1,
+            }),
+          },
+        );
+        assert.equal(saveScreeningDefaultResponse.status, 200);
+
+        const saveEditingDefaultResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/module-defaults`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              module_key: "editing",
+              primary_model_id: editingModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.2,
+            }),
+          },
+        );
+        assert.equal(saveEditingDefaultResponse.status, 200);
+
+        const saveProofreadingDefaultResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/module-defaults`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              module_key: "proofreading",
+              primary_model_id: proofreadingModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.3,
+            }),
+          },
+        );
+        assert.equal(saveProofreadingDefaultResponse.status, 200);
+
+        const listDefaultsResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/module-defaults`,
+          {
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+        const moduleDefaults = (await listDefaultsResponse.json()) as Array<{
+          module_key: "screening" | "editing" | "proofreading";
+          primary_model_id?: string;
+          fallback_model_id?: string;
+          temperature?: number | null;
+        }>;
+
+        assert.equal(listDefaultsResponse.status, 200);
+        assert.deepEqual(
+          moduleDefaults.map((record) => ({
+            module_key: record.module_key,
+            primary_model_id: record.primary_model_id,
+            fallback_model_id: record.fallback_model_id,
+            temperature: record.temperature,
+          })),
+          [
+            {
+              module_key: "screening",
+              primary_model_id: screeningModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.1,
+            },
+            {
+              module_key: "editing",
+              primary_model_id: editingModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.2,
+            },
+            {
+              module_key: "proofreading",
+              primary_model_id: proofreadingModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 0.3,
+            },
+          ],
+        );
+
+        const invalidTemperatureResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/module-defaults`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              module_key: "screening",
+              primary_model_id: screeningModel.id,
+              fallback_model_id: fallbackModel.id,
+              temperature: 1.4,
+            }),
+          },
+        );
+        const invalidTemperatureBody = (await invalidTemperatureResponse.json()) as {
+          error: string;
+        };
+
+        assert.equal(invalidTemperatureResponse.status, 400);
+        assert.equal(invalidTemperatureBody.error, "invalid_request");
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime rejects non-admin system-settings access", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

@@ -2,9 +2,11 @@ import type { RoleKey } from "../../users/roles.ts";
 import type {
   ModelRoutingPolicyRecord,
   ModelRoutingPolicyVersionEnvelope,
+  SystemSettingsModuleDefaultRecord,
 } from "./model-routing-governance-record.ts";
 import type {
   CreateModelRoutingPolicyInput,
+  CreateSystemSettingsModuleDefaultInput,
   ModelRoutingGovernanceService,
   ModelRoutingPolicyDecisionInput,
   UpdateDraftModelRoutingPolicyVersionInput,
@@ -42,6 +44,15 @@ export function createModelRoutingGovernanceApi(
       return {
         status: 200,
         body: await modelRoutingGovernanceService.listPolicies(),
+      };
+    },
+
+    async listSystemSettingsModuleDefaults(): Promise<
+      RouteResponse<SystemSettingsModuleDefaultRecord[]>
+    > {
+      return {
+        status: 200,
+        body: await modelRoutingGovernanceService.listSystemSettingsModuleDefaults(),
       };
     },
 
@@ -172,6 +183,22 @@ export function createModelRoutingGovernanceApi(
         status: 200,
         body: await modelRoutingGovernanceService.rollbackPolicy(
           policyId,
+          actorRole,
+          input,
+        ),
+      };
+    },
+
+    async saveSystemSettingsModuleDefault({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: CreateSystemSettingsModuleDefaultInput;
+    }): Promise<RouteResponse<SystemSettingsModuleDefaultRecord>> {
+      return {
+        status: 200,
+        body: await modelRoutingGovernanceService.saveSystemSettingsModuleDefault(
           actorRole,
           input,
         ),

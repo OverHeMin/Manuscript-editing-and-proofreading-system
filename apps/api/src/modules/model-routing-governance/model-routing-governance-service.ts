@@ -9,6 +9,8 @@ import type {
   ModelRoutingPolicyRecord,
   ModelRoutingPolicyScopeKind,
   ModelRoutingPolicyScopeRecord,
+  SystemSettingsModuleDefaultRecord,
+  SystemSettingsModuleKey,
   ModelRoutingPolicyVersionEnvelope,
   ModelRoutingPolicyVersionRecord,
 } from "./model-routing-governance-record.ts";
@@ -19,6 +21,7 @@ export interface CreateModelRoutingPolicyInput {
   scopeValue: string;
   primaryModelId: string;
   fallbackModelIds: string[];
+  temperature?: number | null;
   evidenceLinks: ModelRoutingPolicyEvidenceLinkRecord[];
   notes?: string;
 }
@@ -26,8 +29,16 @@ export interface CreateModelRoutingPolicyInput {
 export interface UpdateDraftModelRoutingPolicyVersionInput {
   primaryModelId?: string;
   fallbackModelIds?: string[];
+  temperature?: number | null;
   evidenceLinks?: ModelRoutingPolicyEvidenceLinkRecord[];
   notes?: string;
+}
+
+export interface CreateSystemSettingsModuleDefaultInput {
+  moduleKey: SystemSettingsModuleKey;
+  primaryModelId: string;
+  fallbackModelId?: string | null;
+  temperature?: number | null;
 }
 
 export interface ModelRoutingPolicyDecisionInput {
@@ -146,6 +157,9 @@ export class ModelRoutingGovernanceService {
       version_no: 1,
       primary_model_id: normalizedModels.primaryModelId,
       fallback_model_ids: normalizedModels.fallbackModelIds,
+      ...(input.temperature !== undefined
+        ? { temperature: normalizeTemperature(input.temperature) }
+        : {}),
       evidence_links: cloneEvidenceLinks(input.evidenceLinks),
       ...(input.notes ? { notes: input.notes } : {}),
       status: "draft",
@@ -208,6 +222,11 @@ export class ModelRoutingGovernanceService {
           : cloneEvidenceLinks(input.evidenceLinks),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       updated_at: this.now().toISOString(),
+      ...(input.temperature !== undefined
+        ? { temperature: normalizeTemperature(input.temperature) }
+        : version.temperature !== undefined
+          ? { temperature: version.temperature }
+          : {}),
     };
 
     await this.repository.saveVersion(updatedVersion);
@@ -253,9 +272,12 @@ export class ModelRoutingGovernanceService {
         policy.versions.reduce(
           (highestVersion, record) => Math.max(highestVersion, record.version_no),
           0,
-        ) + 1,
+      ) + 1,
       primary_model_id: normalizedModels.primaryModelId,
       fallback_model_ids: normalizedModels.fallbackModelIds,
+      ...(input.temperature !== undefined
+        ? { temperature: normalizeTemperature(input.temperature) }
+        : {}),
       evidence_links: cloneEvidenceLinks(input.evidenceLinks),
       ...(input.notes ? { notes: input.notes } : {}),
       status: "draft",
@@ -470,6 +492,146 @@ export class ModelRoutingGovernanceService {
     return policy?.active_version ? policy : undefined;
   }
 
+  async listSystemSettingsModuleDefaults(): Promise<
+    SystemSettingsModuleDefaultRecord[]
+  > {
+    const policies = await this.repository.listPolicies();
+    const activeVersionByModule = new Map<
+      SystemSettingsModuleKey,
+      ModelRoutingPolicyVersionRecord
+    >();
+
+    for (const policy of policies) {
+      if (policy.scope_kind !== "module" || !policy.active_version) {
+        continue;
+      }
+
+      activeVersionByModule.set(
+        policy.scope_value as SystemSettingsModuleKey,
+        policy.active_version,
+      );
+    }
+
+    const modelNameById = await this.loadModelNamesById(
+      [...activeVersionByModule.values()].flatMap((version) => [
+        version.primary_model_id,
+        version.fallback_model_ids[0],
+      ]),
+    );
+
+    return ROUTABLE_MODULES.map((moduleKey) =>
+      buildSystemSettingsModuleDefaultRecord({
+        moduleKey,
+        version: activeVersionByModule.get(moduleKey),
+        modelNameById,
+      }),
+    );
+  }
+
+  async saveSystemSettingsModuleDefault(
+    actorRole: RoleKey,
+    input: CreateSystemSettingsModuleDefaultInput,
+  ): Promise<SystemSettingsModuleDefaultRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const normalizedScope = normalizeScope("module", input.moduleKey);
+    const normalizedModels = await this.validateModelSelection({
+      scopeKind: "module",
+      scopeValue: normalizedScope.scope_value,
+      primaryModelId: input.primaryModelId,
+      fallbackModelIds: input.fallbackModelId ? [input.fallbackModelId] : [],
+    });
+    const timestamp = this.now().toISOString();
+    const existingPolicy = await this.repository.findPolicyByScope(
+      normalizedScope.scope_kind,
+      normalizedScope.scope_value,
+    );
+    const existingScope = existingPolicy
+      ? await this.requireScope(existingPolicy.policy_id)
+      : undefined;
+    const scope: ModelRoutingPolicyScopeRecord =
+      existingScope ??
+      ({
+        id: this.createId(),
+        scope_kind: normalizedScope.scope_kind,
+        scope_value: normalizedScope.scope_value,
+        created_at: timestamp,
+        updated_at: timestamp,
+      } satisfies ModelRoutingPolicyScopeRecord);
+    const nextVersionNo =
+      existingPolicy?.versions.reduce(
+        (highestVersion, record) => Math.max(highestVersion, record.version_no),
+        0,
+      ) ?? 0;
+    const version: ModelRoutingPolicyVersionRecord = {
+      id: this.createId(),
+      policy_scope_id: scope.id,
+      scope_kind: "module",
+      scope_value: normalizedScope.scope_value,
+      version_no: nextVersionNo + 1,
+      primary_model_id: normalizedModels.primaryModelId,
+      fallback_model_ids: normalizedModels.fallbackModelIds.slice(0, 1),
+      temperature: normalizeTemperature(input.temperature),
+      evidence_links: [],
+      status: "active",
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    if (!existingScope) {
+      await this.repository.saveScope(scope);
+    }
+
+    if (existingScope?.active_version_id) {
+      const activeVersion = await this.requireVersion(existingScope.active_version_id);
+      if (activeVersion.id !== version.id) {
+        await this.repository.saveVersion({
+          ...activeVersion,
+          status: "superseded",
+          updated_at: timestamp,
+        });
+        await this.repository.saveDecision(
+          this.createDecision({
+            policyScopeId: activeVersion.policy_scope_id,
+            policyVersionId: activeVersion.id,
+            decisionKind: "supersede",
+            actorRole,
+            reason: `System settings replaced the ${normalizedScope.scope_value} module default.`,
+            evidenceLinks: activeVersion.evidence_links,
+          }),
+        );
+      }
+    }
+
+    await this.repository.saveVersion(version);
+    await this.repository.saveScope({
+      ...scope,
+      active_version_id: version.id,
+      updated_at: timestamp,
+    });
+    await this.repository.saveDecision(
+      this.createDecision({
+        policyScopeId: scope.id,
+        policyVersionId: version.id,
+        decisionKind: "activate",
+        actorRole,
+        reason: `System settings updated the ${normalizedScope.scope_value} module default.`,
+        evidenceLinks: [],
+      }),
+    );
+
+    const modelNameById = await this.loadModelNamesById([
+      version.primary_model_id,
+      version.fallback_model_ids[0],
+    ]);
+
+    return buildSystemSettingsModuleDefaultRecord({
+      moduleKey: normalizedScope.scope_value as SystemSettingsModuleKey,
+      version,
+      modelNameById,
+    });
+  }
+
   private async transitionVersion(
     versionId: string,
     actorRole: RoleKey,
@@ -669,6 +831,21 @@ export class ModelRoutingGovernanceService {
       created_at: this.now().toISOString(),
     };
   }
+
+  private async loadModelNamesById(
+    modelIds: Array<string | undefined>,
+  ): Promise<Map<string, string>> {
+    const lookup = new Map<string, string>();
+
+    for (const modelId of [...new Set(modelIds.filter(Boolean))] as string[]) {
+      const model = await this.modelRegistryRepository.findById(modelId);
+      if (model) {
+        lookup.set(model.id, model.model_name);
+      }
+    }
+
+    return lookup;
+  }
 }
 
 function normalizeScope(
@@ -701,6 +878,55 @@ function cloneEvidenceLinks(
   evidenceLinks: ModelRoutingPolicyEvidenceLinkRecord[],
 ): ModelRoutingPolicyEvidenceLinkRecord[] {
   return evidenceLinks.map((link) => ({ ...link }));
+}
+
+function normalizeTemperature(temperature: number | null | undefined): number | null {
+  if (temperature === undefined || temperature === null) {
+    return null;
+  }
+
+  if (!Number.isFinite(temperature)) {
+    throw new ModelRoutingGovernanceValidationError(
+      "Temperature must be a finite number.",
+    );
+  }
+
+  if (temperature < 0 || temperature > 1) {
+    throw new ModelRoutingGovernanceValidationError(
+      "Temperature must stay between 0 and 1 for system settings defaults.",
+    );
+  }
+
+  return Math.round(temperature * 100) / 100;
+}
+
+function buildSystemSettingsModuleDefaultRecord(input: {
+  moduleKey: SystemSettingsModuleKey;
+  version?: ModelRoutingPolicyVersionRecord;
+  modelNameById: Map<string, string>;
+}): SystemSettingsModuleDefaultRecord {
+  const fallbackModelId = input.version?.fallback_model_ids[0];
+
+  return {
+    module_key: input.moduleKey,
+    ...(input.version
+      ? {
+          primary_model_id: input.version.primary_model_id,
+        }
+      : {}),
+    ...(input.version
+      ? {
+          primary_model_name: input.modelNameById.get(
+            input.version.primary_model_id,
+          ),
+        }
+      : {}),
+    ...(fallbackModelId ? { fallback_model_id: fallbackModelId } : {}),
+    ...(fallbackModelId
+      ? { fallback_model_name: input.modelNameById.get(fallbackModelId) }
+      : {}),
+    temperature: input.version?.temperature ?? null,
+  };
 }
 
 const ROUTABLE_MODULES = ["screening", "editing", "proofreading"] as const;

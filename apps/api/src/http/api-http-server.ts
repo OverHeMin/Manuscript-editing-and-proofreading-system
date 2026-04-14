@@ -460,6 +460,12 @@ type HttpRouteMatch =
       route: "system-settings-models-create";
     }
   | {
+      route: "system-settings-module-defaults-list";
+    }
+  | {
+      route: "system-settings-module-defaults-create";
+    }
+  | {
       route: "manuscripts-upload";
     }
   | {
@@ -3383,6 +3389,36 @@ async function handleRoute(
         },
       });
     }
+    case "system-settings-module-defaults-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.modelRoutingGovernanceApi.listSystemSettingsModuleDefaults();
+    case "system-settings-module-defaults-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        module_key: string;
+        primary_model_id: string;
+        fallback_model_id?: string | null;
+        temperature?: number | null;
+      };
+
+      return runtime.modelRoutingGovernanceApi.saveSystemSettingsModuleDefault({
+        actorRole: session.user.role,
+        input: {
+          moduleKey: body.module_key as Parameters<
+            typeof runtime.modelRoutingGovernanceApi.saveSystemSettingsModuleDefault
+          >[0]["input"]["moduleKey"],
+          primaryModelId: body.primary_model_id,
+          fallbackModelId:
+            typeof body.fallback_model_id === "string"
+              ? coalesceOptionalString(body.fallback_model_id)
+              : body.fallback_model_id === null
+                ? null
+                : undefined,
+          temperature:
+            typeof body.temperature === "number" ? body.temperature : body.temperature ?? undefined,
+        },
+      });
+    }
     case "manuscripts-upload": {
       const session = await requirePermission(req, runtime, "manuscripts.submit");
       const body = (await readJsonBody(req)) as Parameters<
@@ -5385,6 +5421,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/system-settings/models") {
     return { route: "system-settings-models-create" };
+  }
+
+  if (method === "GET" && path === "/api/v1/system-settings/module-defaults") {
+    return { route: "system-settings-module-defaults-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/system-settings/module-defaults") {
+    return { route: "system-settings-module-defaults-create" };
   }
 
   const systemSettingsUpdateProfileMatch = path.match(

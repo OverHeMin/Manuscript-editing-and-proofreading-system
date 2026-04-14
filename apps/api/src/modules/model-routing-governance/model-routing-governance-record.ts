@@ -1,6 +1,7 @@
 import type { RoleKey } from "../../users/roles.ts";
 
 export type ModelRoutingPolicyScopeKind = "module" | "template_family";
+export type SystemSettingsModuleKey = "screening" | "editing" | "proofreading";
 export type ModelRoutingPolicyVersionStatus =
   | "draft"
   | "pending_review"
@@ -46,6 +47,7 @@ export interface ModelRoutingPolicyVersionRecord {
   version_no: number;
   primary_model_id: string;
   fallback_model_ids: string[];
+  temperature?: number | null;
   evidence_links: ModelRoutingPolicyEvidenceLinkRecord[];
   notes?: string;
   status: ModelRoutingPolicyVersionStatus;
@@ -78,4 +80,13 @@ export interface ModelRoutingPolicyVersionEnvelope {
   policy_id: string;
   scope: ModelRoutingPolicyScopeRecord;
   version: ModelRoutingPolicyVersionRecord;
+}
+
+export interface SystemSettingsModuleDefaultRecord {
+  module_key: SystemSettingsModuleKey;
+  primary_model_id?: string;
+  primary_model_name?: string;
+  fallback_model_id?: string;
+  fallback_model_name?: string;
+  temperature?: number | null;
 }

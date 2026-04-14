@@ -7,6 +7,7 @@ import {
   ModelRoutingGovernanceDraftNotEditableError,
   ModelRoutingGovernanceService,
   ModelRoutingGovernanceValidationError,
+  type CreateSystemSettingsModuleDefaultInput,
 } from "../../src/modules/model-routing-governance/index.ts";
 import type { ModelRegistryRecord } from "../../src/modules/model-registry/model-record.ts";
 
@@ -368,6 +369,154 @@ test("model routing governance validates production readiness, module compatibil
         versionId: createdDraft.body.version.id,
         input: {
           reason: "This should fail without evidence.",
+        },
+      }),
+    ModelRoutingGovernanceValidationError,
+  );
+});
+
+test("model routing governance exposes bounded system-settings module defaults without mixing template-family overrides", async () => {
+  const { api, modelRegistryRepository } = createGovernanceHarness();
+  const systemSettingsApi = api as typeof api & {
+    listSystemSettingsModuleDefaults: () => Promise<{
+      status: number;
+      body: Array<{
+        module_key: "screening" | "editing" | "proofreading";
+        primary_model_id?: string;
+        fallback_model_id?: string;
+        temperature?: number | null;
+      }>;
+    }>;
+    saveSystemSettingsModuleDefault: (input: {
+      actorRole: "admin";
+      input: CreateSystemSettingsModuleDefaultInput;
+    }) => Promise<{
+      status: number;
+      body: {
+        module_key: "screening" | "editing" | "proofreading";
+        primary_model_id?: string;
+        fallback_model_id?: string;
+        temperature?: number | null;
+      };
+    }>;
+  };
+
+  await seedModels(modelRegistryRepository, [
+    {
+      id: "model-screening-default",
+      provider: "qwen",
+      model_name: "qwen-screening",
+      model_version: "2026-04",
+      allowed_modules: ["screening"],
+      is_prod_allowed: true,
+    },
+    {
+      id: "model-editing-default",
+      provider: "deepseek",
+      model_name: "deepseek-editing",
+      model_version: "2026-04",
+      allowed_modules: ["editing"],
+      is_prod_allowed: true,
+    },
+    {
+      id: "model-proofreading-default",
+      provider: "openai",
+      model_name: "gpt-proofreading",
+      model_version: "2026-04",
+      allowed_modules: ["proofreading"],
+      is_prod_allowed: true,
+    },
+    {
+      id: "model-shared-fallback",
+      provider: "anthropic",
+      model_name: "claude-fallback",
+      model_version: "4.1",
+      allowed_modules: ["screening", "editing", "proofreading"],
+      is_prod_allowed: true,
+    },
+  ]);
+
+  await api.createPolicy({
+    actorRole: "admin",
+    input: {
+      scopeKind: "template_family",
+      scopeValue: "family-1",
+      primaryModelId: "model-shared-fallback",
+      fallbackModelIds: [],
+      evidenceLinks: [{ kind: "evaluation_run", id: "run-template-family-1" }],
+      notes: "Template-family override should stay outside the system-settings list.",
+    },
+  });
+
+  await systemSettingsApi.saveSystemSettingsModuleDefault({
+    actorRole: "admin",
+    input: {
+      moduleKey: "screening",
+      primaryModelId: "model-screening-default",
+      fallbackModelId: "model-shared-fallback",
+      temperature: 0.1,
+    },
+  });
+  await systemSettingsApi.saveSystemSettingsModuleDefault({
+    actorRole: "admin",
+    input: {
+      moduleKey: "editing",
+      primaryModelId: "model-editing-default",
+      fallbackModelId: "model-shared-fallback",
+      temperature: 0.2,
+    },
+  });
+  await systemSettingsApi.saveSystemSettingsModuleDefault({
+    actorRole: "admin",
+    input: {
+      moduleKey: "proofreading",
+      primaryModelId: "model-proofreading-default",
+      fallbackModelId: "model-shared-fallback",
+      temperature: 0.3,
+    },
+  });
+
+  const listedDefaults = await systemSettingsApi.listSystemSettingsModuleDefaults();
+
+  assert.equal(listedDefaults.status, 200);
+  assert.deepEqual(
+    listedDefaults.body.map((record) => ({
+      module_key: record.module_key,
+      primary_model_id: record.primary_model_id,
+      fallback_model_id: record.fallback_model_id,
+      temperature: record.temperature,
+    })),
+    [
+      {
+        module_key: "screening",
+        primary_model_id: "model-screening-default",
+        fallback_model_id: "model-shared-fallback",
+        temperature: 0.1,
+      },
+      {
+        module_key: "editing",
+        primary_model_id: "model-editing-default",
+        fallback_model_id: "model-shared-fallback",
+        temperature: 0.2,
+      },
+      {
+        module_key: "proofreading",
+        primary_model_id: "model-proofreading-default",
+        fallback_model_id: "model-shared-fallback",
+        temperature: 0.3,
+      },
+    ],
+  );
+
+  await assert.rejects(
+    () =>
+      systemSettingsApi.saveSystemSettingsModuleDefault({
+        actorRole: "admin",
+        input: {
+          moduleKey: "screening",
+          primaryModelId: "model-screening-default",
+          fallbackModelId: "model-shared-fallback",
+          temperature: 1.4,
         },
       }),
     ModelRoutingGovernanceValidationError,
