@@ -115,7 +115,7 @@ git add apps/web/src/app/App.tsx apps/web/src/app/app.css apps/web/src/app/persi
 git commit -m "feat: finalize premium entrance and auth shell states"
 ```
 
-## Task 2: Finalize the left-navigation IA and role-based group posture
+## Task 2: Finalize the baseline left-navigation IA and role-based group posture
 
 **Files:**
 - Modify: `apps/web/src/app/workbench-navigation.ts`
@@ -130,7 +130,8 @@ Cover:
   - `核心流程`
   - `协作与回收区`
   - `管理区`
-- `知识审核 / 规则中心 / 质量优化` sit in `协作与回收区`
+- `知识审核 / 规则中心` are stable items in `协作与回收区`
+- `质量优化` may remain as a temporary compatibility entry in `协作与回收区` during the shell-baseline phase, but it is expected to be folded away by the later collaboration-and-recovery child plan
 - management labels stay:
   - `管理总览`
   - `AI 接入`
@@ -146,7 +147,7 @@ Run:
 pnpm --filter @medsys/web exec node --import tsx --test ./test/workbench-host.spec.tsx
 ```
 
-Expected: FAIL if the current group model, labels, or ordering still reflect stale IA assumptions.
+Expected: FAIL if the current group model, labels, or ordering still reflect stale IA assumptions for the shell-baseline phase.
 
 - [ ] **Step 3: Implement the final grouped navigation model**
 

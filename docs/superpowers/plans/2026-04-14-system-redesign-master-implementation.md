@@ -49,8 +49,37 @@ Reasoning:
 
 ### Detailed implementation plans already available
 
+- [2026-04-14-shared-shell-and-entrance-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-shared-shell-and-entrance-final-implementation.md)
+- [2026-04-14-ai-access-and-system-settings-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-ai-access-and-system-settings-final-implementation.md)
 - [2026-04-14-rule-center-final-structure-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-rule-center-final-structure-implementation.md)
+- [2026-04-14-knowledge-library-final-structure-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-knowledge-library-final-structure-implementation.md)
+- [2026-04-14-knowledge-review-and-quality-recovery-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-knowledge-review-and-quality-recovery-final-implementation.md)
+- [2026-04-14-manuscript-workbench-final-desk-and-governed-intake-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-manuscript-workbench-final-desk-and-governed-intake-implementation.md)
+- [2026-04-14-management-overview-thinning-and-final-chinese-acceptance-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-management-overview-thinning-and-final-chinese-acceptance-implementation.md)
 - [2026-04-07-system-settings-account-management.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-07-system-settings-account-management.md)
+
+### Child-plan ownership
+
+When a dedicated child plan exists for a phase, that child plan is the execution source of truth.
+
+Use this mapping:
+
+1. shared entrance and shell
+   - [2026-04-14-shared-shell-and-entrance-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-shared-shell-and-entrance-final-implementation.md)
+2. centralized AI access and settings cleanup
+   - [2026-04-14-ai-access-and-system-settings-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-ai-access-and-system-settings-final-implementation.md)
+3. rule-center rollout
+   - [2026-04-14-rule-center-final-structure-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-rule-center-final-structure-implementation.md)
+4. knowledge-library rollout
+   - [2026-04-14-knowledge-library-final-structure-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-knowledge-library-final-structure-implementation.md)
+5. knowledge-review and recycled-candidate consolidation
+   - [2026-04-14-knowledge-review-and-quality-recovery-final-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-knowledge-review-and-quality-recovery-final-implementation.md)
+6. manuscript-workbench redesign
+   - [2026-04-14-manuscript-workbench-final-desk-and-governed-intake-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-manuscript-workbench-final-desk-and-governed-intake-implementation.md)
+7. management-overview thinning, translation sweep, and full acceptance
+   - [2026-04-14-management-overview-thinning-and-final-chinese-acceptance-implementation.md](/C:/医学稿件处理系统V1/docs/superpowers/plans/2026-04-14-management-overview-thinning-and-final-chinese-acceptance-implementation.md)
+
+The inline tasks below remain useful as a phase summary, but where a dedicated child plan conflicts with the summary wording, execute the child plan.
 
 ### Approved design inputs to keep aligned
 
