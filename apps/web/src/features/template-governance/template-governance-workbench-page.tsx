@@ -100,6 +100,7 @@ import {
   type TemplateGovernanceOverviewMetrics,
 } from "./template-governance-overview-page.tsx";
 import { TemplateGovernanceRuleLedgerPage } from "./template-governance-rule-ledger-page.tsx";
+import { TemplateGovernanceRuleWizard } from "./template-governance-rule-wizard.tsx";
 import { TemplateGovernanceContentModuleLedgerPage } from "./template-governance-content-module-ledger-page.tsx";
 import type { TemplateGovernanceContentModuleFormValues } from "./template-governance-content-module-form.tsx";
 import { TemplateGovernanceExtractionLedgerPage } from "./template-governance-extraction-ledger-page.tsx";
@@ -127,6 +128,12 @@ import {
   createTemplateGovernanceRuleLedgerViewModel,
   selectTemplateGovernanceRuleLedgerRow,
 } from "./template-governance-rule-ledger-state.ts";
+import {
+  advanceRuleWizardState,
+  createRuleWizardState,
+  rewindRuleWizardState,
+  type RuleWizardState,
+} from "./template-governance-rule-wizard-state.ts";
 import {
   formatRulePackageKindLabel,
   formatTemplateGovernanceConfidencePolicyLabel,
@@ -2572,6 +2579,8 @@ function TemplateGovernanceRuleLedgerRoute({
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [wizardState, setWizardState] = useState<RuleWizardState | null>(null);
+  const [wizardTitle, setWizardTitle] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let isCancelled = false;
@@ -2618,6 +2627,61 @@ function TemplateGovernanceRuleLedgerRoute({
     setLedger((current) => selectTemplateGovernanceRuleLedgerRow(current, rowId));
   }
 
+  function handleOpenCreateRule() {
+    setWizardState(createRuleWizardState("create"));
+    setWizardTitle(undefined);
+  }
+
+  function handleOpenSelectedItem(rowId: string) {
+    const selectedRow = ledger.rows.find((row) => row.id === rowId) ?? null;
+    if (!selectedRow) {
+      return;
+    }
+
+    setWizardState(
+      createRuleWizardState(
+        selectedRow.asset_kind === "recycled_candidate" ? "candidate" : "edit",
+        {
+          sourceRowId: selectedRow.id,
+        },
+      ),
+    );
+    setWizardTitle(selectedRow.title);
+  }
+
+  if (wizardState) {
+    return (
+      <TemplateGovernanceRuleWizard
+        state={wizardState}
+        title={wizardTitle}
+        onBack={() => {
+          setWizardState(null);
+          setStatusMessage("已返回规则台账。");
+        }}
+        onPrevious={() => {
+          setWizardState((current) =>
+            current == null ? current : rewindRuleWizardState(current),
+          );
+        }}
+        onNext={() => {
+          setWizardState((current) =>
+            current == null ? current : advanceRuleWizardState(current),
+          );
+        }}
+        onSaveDraft={() => {
+          setWizardState((current) =>
+            current == null ? current : { ...current, dirty: false },
+          );
+          setStatusMessage("规则草稿已暂存。");
+        }}
+        onComplete={() => {
+          setWizardState(null);
+          setStatusMessage("规则向导已关闭，请继续在规则台账完成后续治理。");
+        }}
+      />
+    );
+  }
+
   return (
     <TemplateGovernanceRuleLedgerPage
       initialViewModel={createTemplateGovernanceRuleLedgerViewModel({
@@ -2638,9 +2702,11 @@ function TemplateGovernanceRuleLedgerRoute({
       onSearchSubmit={handleSearchSubmit}
       onSelectCategory={handleSelectCategory}
       onSelectRow={handleSelectRow}
-      onOpenCreateRule={() => {
-        setStatusMessage("规则向导将在下一任务接入，这里先固定到统一规则台账。");
-      }}
+      onOpenCreateRule={handleOpenCreateRule}
+      onOpenSelectedItem={handleOpenSelectedItem}
+      selectedItemActionLabel={
+        ledger.selectedRow?.asset_kind === "recycled_candidate" ? "转成规则" : "编辑规则"
+      }
       onOpenSearch={() => {
         setStatusMessage("可以使用顶部搜索框筛选当前台账。");
       }}

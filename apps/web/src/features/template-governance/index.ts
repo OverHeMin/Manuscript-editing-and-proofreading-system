@@ -7,6 +7,8 @@ export * from "./template-governance-journal-template-ledger-page.tsx";
 export * from "./template-governance-overview-page.tsx";
 export * from "./template-governance-rule-ledger-page.tsx";
 export * from "./template-governance-rule-ledger-state.ts";
+export * from "./template-governance-rule-wizard.tsx";
+export * from "./template-governance-rule-wizard-state.ts";
 export * from "./template-governance-template-form.tsx";
 export * from "./template-governance-template-ledger-page.tsx";
 export * from "./template-governance-workbench-page.tsx";

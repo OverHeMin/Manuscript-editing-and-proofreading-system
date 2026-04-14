@@ -26,6 +26,8 @@ export interface TemplateGovernanceRuleLedgerPageProps {
   onSelectCategory?: (category: TemplateGovernanceRuleLedgerCategory) => void;
   onSelectRow?: (rowId: string) => void;
   onOpenCreateRule?: () => void;
+  onOpenSelectedItem?: (rowId: string) => void;
+  selectedItemActionLabel?: string;
   onOpenSearch?: () => void;
   onOpenFilter?: () => void;
   onOpenBulkActions?: () => void;
@@ -44,6 +46,8 @@ export function TemplateGovernanceRuleLedgerPage({
   onSelectCategory,
   onSelectRow,
   onOpenCreateRule,
+  onOpenSelectedItem,
+  selectedItemActionLabel = "编辑规则",
   onOpenSearch,
   onOpenFilter,
   onOpenBulkActions,
@@ -233,6 +237,13 @@ export function TemplateGovernanceRuleLedgerPage({
           <div className="template-governance-actions">
             <button type="button" onClick={onOpenCreateRule} disabled={isBusy}>
               {isBusy ? "处理中..." : "新建规则"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenSelectedItem?.(viewModel.selectedRow!.id)}
+              disabled={isBusy}
+            >
+              {selectedItemActionLabel}
             </button>
           </div>
         </article>
