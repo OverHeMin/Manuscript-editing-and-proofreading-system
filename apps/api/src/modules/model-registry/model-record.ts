@@ -5,6 +5,8 @@ export type ModelProvider =
   | "anthropic"
   | "google"
   | "azure_openai"
+  | "qwen"
+  | "deepseek"
   | "local"
   | "other";
 
@@ -31,6 +33,11 @@ export interface ModelRegistryRecord {
   rate_limit?: ModelRateLimit;
   fallback_model_id?: string;
   connection_id?: string;
+}
+
+export interface SystemSettingsModelRecord extends ModelRegistryRecord {
+  connection_name?: string;
+  fallback_model_name?: string;
 }
 
 export interface ModelRoutingPolicyRecord {

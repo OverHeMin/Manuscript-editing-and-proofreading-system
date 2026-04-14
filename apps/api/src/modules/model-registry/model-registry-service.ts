@@ -6,6 +6,7 @@ import type { AiProviderConnectionRepository } from "../ai-provider-connections/
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
+  SystemSettingsModelRecord,
 } from "./model-record.ts";
 import type {
   ModelRegistryRepository,
@@ -81,6 +82,13 @@ export class ModelRegistryConnectionReferenceNotFoundError extends Error {
   constructor(connectionId: string) {
     super(`connectionId references missing ai provider connection ${connectionId}.`);
     this.name = "ModelRegistryConnectionReferenceNotFoundError";
+  }
+}
+
+export class ModelRegistryConnectionStateConflictError extends Error {
+  constructor(connectionId: string) {
+    super(`connectionId references disabled ai provider connection ${connectionId}.`);
+    this.name = "ModelRegistryConnectionStateConflictError";
   }
 }
 
@@ -196,6 +204,29 @@ export class ModelRegistryService {
     return this.repository.list();
   }
 
+  async listSystemSettingsModels(): Promise<SystemSettingsModelRecord[]> {
+    const records = await this.repository.listSystemSettingsModels();
+    if (!this.aiProviderConnectionRepository) {
+      return records.map(cloneSystemSettingsModelRecord);
+    }
+
+    const connectionNameById = new Map(
+      (await this.aiProviderConnectionRepository.list()).map((connection) => [
+        connection.id,
+        connection.name,
+      ]),
+    );
+
+    return records.map((record) => ({
+      ...cloneSystemSettingsModelRecord(record),
+      ...(record.connection_name || !record.connection_id
+        ? {}
+        : {
+            connection_name: connectionNameById.get(record.connection_id),
+          }),
+    }));
+  }
+
   getRoutingPolicy(): Promise<ModelRoutingPolicyRecord> {
     return this.routingPolicyRepository.get();
   }
@@ -287,6 +318,9 @@ export class ModelRegistryService {
     if (!connection) {
       throw new ModelRegistryConnectionReferenceNotFoundError(connectionId);
     }
+    if (!connection.enabled) {
+      throw new ModelRegistryConnectionStateConflictError(connectionId);
+    }
 
     return connection.id;
   }
@@ -367,3 +401,22 @@ const ROUTABLE_MODULES: TemplateModule[] = [
   "editing",
   "proofreading",
 ];
+
+function cloneSystemSettingsModelRecord(
+  record: SystemSettingsModelRecord,
+): SystemSettingsModelRecord {
+  return {
+    ...record,
+    allowed_modules: [...record.allowed_modules],
+    cost_profile: record.cost_profile ? { ...record.cost_profile } : undefined,
+    rate_limit: record.rate_limit ? { ...record.rate_limit } : undefined,
+    ...(record.connection_id ? { connection_id: record.connection_id } : {}),
+    ...(record.connection_name ? { connection_name: record.connection_name } : {}),
+    ...(record.fallback_model_id
+      ? { fallback_model_id: record.fallback_model_id }
+      : {}),
+    ...(record.fallback_model_name
+      ? { fallback_model_name: record.fallback_model_name }
+      : {}),
+  };
+}

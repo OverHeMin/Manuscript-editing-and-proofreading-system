@@ -1,6 +1,7 @@
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
+  SystemSettingsModelRecord,
 } from "./model-record.ts";
 
 export interface ModelRegistryRepository {
@@ -12,6 +13,7 @@ export interface ModelRegistryRepository {
     modelVersion: string,
   ): Promise<ModelRegistryRecord | undefined>;
   list(): Promise<ModelRegistryRecord[]>;
+  listSystemSettingsModels(): Promise<SystemSettingsModelRecord[]>;
 }
 
 export interface ModelRoutingPolicyRepository {

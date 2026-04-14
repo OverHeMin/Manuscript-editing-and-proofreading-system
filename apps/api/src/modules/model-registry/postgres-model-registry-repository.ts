@@ -1,6 +1,7 @@
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
+  SystemSettingsModelRecord,
 } from "./model-record.ts";
 import type {
   ModelRegistryRepository,
@@ -31,6 +32,11 @@ interface ModelRoutingPolicyRow {
   system_default_model_id: string | null;
   module_defaults: ModelRoutingPolicyRecord["module_defaults"] | null;
   template_overrides: ModelRoutingPolicyRecord["template_overrides"] | null;
+}
+
+interface SystemSettingsModelRow extends ModelRegistryRow {
+  connection_name: string | null;
+  fallback_model_name: string | null;
 }
 
 export class PostgresModelRegistryRepository
@@ -166,6 +172,34 @@ export class PostgresModelRegistryRepository
 
     return result.rows.map(mapModelRegistryRow);
   }
+
+  async listSystemSettingsModels(): Promise<SystemSettingsModelRecord[]> {
+    const result = await this.dependencies.client.query<SystemSettingsModelRow>(
+      `
+        select
+          m.id,
+          m.provider,
+          m.model_name,
+          m.model_version,
+          m.allowed_modules,
+          m.is_prod_allowed,
+          m.cost_profile,
+          m.rate_limit,
+          m.fallback_model_id,
+          m.connection_id,
+          connection_record.name as connection_name,
+          fallback_record.model_name as fallback_model_name
+        from model_registry m
+        left join ai_provider_connections connection_record
+          on connection_record.id = m.connection_id
+        left join model_registry fallback_record
+          on fallback_record.id = m.fallback_model_id
+        order by m.provider::text asc, m.model_name asc, m.model_version asc, m.id asc
+      `,
+    );
+
+    return result.rows.map(mapSystemSettingsModelRow);
+  }
 }
 
 export class PostgresModelRoutingPolicyRepository
@@ -241,6 +275,18 @@ function mapModelRegistryRow(row: ModelRegistryRow): ModelRegistryRecord {
       ? { fallback_model_id: row.fallback_model_id }
       : {}),
     ...(row.connection_id ? { connection_id: row.connection_id } : {}),
+  };
+}
+
+function mapSystemSettingsModelRow(
+  row: SystemSettingsModelRow,
+): SystemSettingsModelRecord {
+  return {
+    ...mapModelRegistryRow(row),
+    ...(row.connection_name ? { connection_name: row.connection_name } : {}),
+    ...(row.fallback_model_name
+      ? { fallback_model_name: row.fallback_model_name }
+      : {}),
   };
 }
 

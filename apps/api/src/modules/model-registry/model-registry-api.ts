@@ -8,6 +8,7 @@ import type {
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
+  SystemSettingsModelRecord,
 } from "./model-record.ts";
 
 interface RouteResponse<T> {
@@ -55,6 +56,15 @@ export function createModelRegistryApi(options: CreateModelRegistryApiOptions) {
       return {
         status: 200,
         body: await modelRegistryService.listModelEntries(),
+      };
+    },
+
+    async listSystemSettingsModels(): Promise<
+      RouteResponse<SystemSettingsModelRecord[]>
+    > {
+      return {
+        status: 200,
+        body: await modelRegistryService.listSystemSettingsModels(),
       };
     },
 

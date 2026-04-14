@@ -348,6 +348,226 @@ test("persistent governance runtime exposes ai provider overview readiness under
   });
 });
 
+test("persistent governance runtime manages registered models under the system-settings ai-access namespace", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary system-settings database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentSystemSettingsUsers(seedPool);
+
+      const serverHandle = await startPersistentSystemSettingsServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+
+        const qwenConnectionResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              enabled: true,
+            }),
+          },
+        );
+        const qwenConnection = (await qwenConnectionResponse.json()) as {
+          id: string;
+        };
+        assert.equal(qwenConnectionResponse.status, 201);
+
+        const deepseekConnectionResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "DeepSeek Primary",
+              provider_kind: "deepseek",
+              enabled: true,
+            }),
+          },
+        );
+        const deepseekConnection = (await deepseekConnectionResponse.json()) as {
+          id: string;
+        };
+        assert.equal(deepseekConnectionResponse.status, 201);
+
+        const createPrimaryModelResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "qwen",
+              modelName: "qwen-max",
+              allowedModules: ["screening", "editing"],
+              isProdAllowed: true,
+              connectionId: qwenConnection.id,
+            }),
+          },
+        );
+        const primaryModel = (await createPrimaryModelResponse.json()) as {
+          id: string;
+          model_name?: string;
+          connection_id?: string;
+        };
+
+        assert.equal(createPrimaryModelResponse.status, 201);
+        assert.equal(primaryModel.model_name, "qwen-max");
+        assert.equal(primaryModel.connection_id, qwenConnection.id);
+
+        const createSecondaryModelResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "deepseek",
+              modelName: "deepseek-chat",
+              allowedModules: ["editing", "proofreading"],
+              isProdAllowed: false,
+              fallbackModelId: primaryModel.id,
+              connectionId: deepseekConnection.id,
+            }),
+          },
+        );
+
+        assert.equal(createSecondaryModelResponse.status, 201);
+
+        const listModelsResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+          {
+            headers: {
+              Cookie: adminCookie,
+            },
+          },
+        );
+        const listedModels = (await listModelsResponse.json()) as Array<{
+          id: string;
+          model_name: string;
+          connection_name?: string;
+          fallback_model_name?: string;
+        }>;
+
+        assert.equal(listModelsResponse.status, 200);
+        assert.deepEqual(
+          listedModels.map((record) => ({
+            id: record.id,
+            model_name: record.model_name,
+            connection_name: record.connection_name,
+            fallback_model_name: record.fallback_model_name,
+          })),
+          [
+            {
+              id: listedModels[0]?.id ?? "",
+              model_name: "deepseek-chat",
+              connection_name: "DeepSeek Primary",
+              fallback_model_name: "qwen-max",
+            },
+            {
+              id: primaryModel.id,
+              model_name: "qwen-max",
+              connection_name: "Qwen Production",
+              fallback_model_name: undefined,
+            },
+          ],
+        );
+
+        const missingConnectionResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "qwen",
+              modelName: "qwen-missing",
+              allowedModules: ["screening"],
+              isProdAllowed: false,
+              connectionId: "00000000-0000-0000-0000-000000009999",
+            }),
+          },
+        );
+        const missingConnectionBody = (await missingConnectionResponse.json()) as {
+          error: string;
+        };
+
+        assert.equal(missingConnectionResponse.status, 404);
+        assert.equal(missingConnectionBody.error, "not_found");
+
+        const disabledConnectionResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Disabled Provider",
+              provider_kind: "qwen",
+              enabled: false,
+            }),
+          },
+        );
+        const disabledConnection = (await disabledConnectionResponse.json()) as {
+          id: string;
+        };
+        assert.equal(disabledConnectionResponse.status, 201);
+
+        const createDisabledModelResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/models`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "qwen",
+              modelName: "qwen-disabled",
+              allowedModules: ["screening"],
+              isProdAllowed: false,
+              connectionId: disabledConnection.id,
+            }),
+          },
+        );
+        const disabledConnectionBody = (await createDisabledModelResponse.json()) as {
+          error: string;
+        };
+
+        assert.equal(createDisabledModelResponse.status, 409);
+        assert.equal(disabledConnectionBody.error, "state_conflict");
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime rejects non-admin system-settings access", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

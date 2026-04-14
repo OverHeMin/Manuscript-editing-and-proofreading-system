@@ -1,6 +1,7 @@
 import type {
   ModelRegistryRecord,
   ModelRoutingPolicyRecord,
+  SystemSettingsModelRecord,
 } from "./model-record.ts";
 import type {
   ModelRegistryRepository,
@@ -77,6 +78,20 @@ export class InMemoryModelRegistryRepository implements ModelRegistryRepository 
     return [...this.records.values()]
       .sort(compareModels)
       .map(cloneModelRegistryRecord);
+  }
+
+  async listSystemSettingsModels(): Promise<SystemSettingsModelRecord[]> {
+    return [...this.records.values()]
+      .sort(compareModels)
+      .map((record) => ({
+        ...cloneModelRegistryRecord(record),
+        ...(record.fallback_model_id
+          ? {
+              fallback_model_name:
+                this.records.get(record.fallback_model_id)?.model_name,
+            }
+          : {}),
+      }));
   }
 }
 

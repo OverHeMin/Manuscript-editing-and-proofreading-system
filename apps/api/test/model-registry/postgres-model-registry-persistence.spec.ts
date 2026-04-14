@@ -161,6 +161,81 @@ test("postgres model registry persistence stores models and routing policy", asy
   });
 });
 
+test("postgres model registry persistence exposes system-settings model views with connection and fallback labels", async () => {
+  await withTemporaryModelRegistryPool(async (pool) => {
+    const connectionRepository = new PostgresAiProviderConnectionRepository({
+      client: pool,
+    });
+    const modelRepository = new PostgresModelRegistryRepository({
+      client: pool,
+    });
+
+    await connectionRepository.save({
+      id: "00000000-0000-0000-0000-000000000201",
+      name: "Qwen Production",
+      provider_kind: "qwen",
+      compatibility_mode: "openai_chat_compatible",
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      enabled: true,
+      connection_metadata: { environment: "test" },
+    });
+    await connectionRepository.save({
+      id: "00000000-0000-0000-0000-000000000202",
+      name: "DeepSeek Primary",
+      provider_kind: "deepseek",
+      compatibility_mode: "openai_chat_compatible",
+      base_url: "https://api.deepseek.com",
+      enabled: true,
+      connection_metadata: { environment: "test" },
+    });
+
+    await modelRepository.save({
+      id: "00000000-0000-0000-0000-000000000301",
+      provider: "qwen" as never,
+      model_name: "qwen-max",
+      model_version: "",
+      allowed_modules: ["screening", "editing"],
+      is_prod_allowed: true,
+      connection_id: "00000000-0000-0000-0000-000000000201",
+    });
+    await modelRepository.save({
+      id: "00000000-0000-0000-0000-000000000302",
+      provider: "deepseek" as never,
+      model_name: "deepseek-chat",
+      model_version: "",
+      allowed_modules: ["editing", "proofreading"],
+      is_prod_allowed: false,
+      fallback_model_id: "00000000-0000-0000-0000-000000000301",
+      connection_id: "00000000-0000-0000-0000-000000000202",
+    });
+
+    const systemSettingsModels = await modelRepository.listSystemSettingsModels();
+
+    assert.deepEqual(
+      systemSettingsModels.map((record) => ({
+        id: record.id,
+        model_name: record.model_name,
+        connection_name: record.connection_name,
+        fallback_model_name: record.fallback_model_name,
+      })),
+      [
+        {
+          id: "00000000-0000-0000-0000-000000000302",
+          model_name: "deepseek-chat",
+          connection_name: "DeepSeek Primary",
+          fallback_model_name: "qwen-max",
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000301",
+          model_name: "qwen-max",
+          connection_name: "Qwen Production",
+          fallback_model_name: undefined,
+        },
+      ],
+    );
+  });
+});
+
 async function withTemporaryModelRegistryPool(
   run: (pool: Pool) => Promise<void>,
 ): Promise<void> {

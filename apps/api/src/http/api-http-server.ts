@@ -248,6 +248,7 @@ import {
   InMemoryModelRegistryRepository,
   InMemoryModelRoutingPolicyRepository,
   ModelRegistryConnectionReferenceNotFoundError,
+  ModelRegistryConnectionStateConflictError,
   ModelRegistryEntryNotFoundError,
   ModelRegistryService,
   ModelRoutingPolicyValidationError,
@@ -451,6 +452,12 @@ type HttpRouteMatch =
   | {
       route: "system-settings-ai-providers-test";
       connectionId: string;
+    }
+  | {
+      route: "system-settings-models-list";
+    }
+  | {
+      route: "system-settings-models-create";
     }
   | {
       route: "manuscripts-upload";
@@ -3329,6 +3336,53 @@ async function handleRoute(
         input: body,
       });
     }
+    case "system-settings-models-list":
+      await requirePermission(req, runtime, "permissions.manage");
+      return runtime.modelRegistryApi.listSystemSettingsModels();
+    case "system-settings-models-create": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        actorRole?: string;
+        provider: string;
+        modelName: string;
+        modelVersion?: string;
+        allowedModules: string[];
+        isProdAllowed: boolean;
+        costProfile?: Parameters<
+          typeof runtime.modelRegistryApi.createModelEntry
+        >[0]["input"]["costProfile"];
+        rateLimit?: Parameters<
+          typeof runtime.modelRegistryApi.createModelEntry
+        >[0]["input"]["rateLimit"];
+        fallbackModelId?: string | null;
+        connectionId?: string | null;
+      };
+
+      return runtime.modelRegistryApi.createModelEntry({
+        actorRole: session.user.role,
+        input: {
+          provider: body.provider as Parameters<
+            typeof runtime.modelRegistryApi.createModelEntry
+          >[0]["input"]["provider"],
+          modelName: body.modelName,
+          modelVersion: coalesceOptionalString(body.modelVersion),
+          allowedModules: body.allowedModules as Parameters<
+            typeof runtime.modelRegistryApi.createModelEntry
+          >[0]["input"]["allowedModules"],
+          isProdAllowed: body.isProdAllowed,
+          costProfile: body.costProfile,
+          rateLimit: body.rateLimit,
+          fallbackModelId:
+            typeof body.fallbackModelId === "string"
+              ? coalesceOptionalString(body.fallbackModelId)
+              : undefined,
+          connectionId:
+            typeof body.connectionId === "string"
+              ? coalesceOptionalString(body.connectionId)
+              : undefined,
+        },
+      });
+    }
     case "manuscripts-upload": {
       const session = await requirePermission(req, runtime, "manuscripts.submit");
       const body = (await readJsonBody(req)) as Parameters<
@@ -5325,6 +5379,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "system-settings-ai-providers-create" };
   }
 
+  if (method === "GET" && path === "/api/v1/system-settings/models") {
+    return { route: "system-settings-models-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/system-settings/models") {
+    return { route: "system-settings-models-create" };
+  }
+
   const systemSettingsUpdateProfileMatch = path.match(
     /^\/api\/v1\/system-settings\/users\/([^/]+)\/profile$/,
   );
@@ -7094,6 +7156,10 @@ function mapErrorToHttpResponse(
     error instanceof LastActiveAdminDisableError ||
     error instanceof LastActiveAdminDemotionError
   ) {
+    return [409, { error: "state_conflict", message: error.message }];
+  }
+
+  if (error instanceof ModelRegistryConnectionStateConflictError) {
     return [409, { error: "state_conflict", message: error.message }];
   }
 
