@@ -56,6 +56,16 @@ export interface SystemSettingsModuleDefaultViewModel {
   temperature?: number | null;
 }
 
+export interface SystemSettingsResolvedModuleDefaultViewModel {
+  moduleKey: SystemSettingsModuleKey;
+  moduleLabel: string;
+  selectedModelId: string | null;
+  selectedModelLabel: string | null;
+  fallbackModelId: string | null;
+  fallbackModelLabel: string | null;
+  temperature: number | null;
+}
+
 export interface SystemSettingsSummary {
   totalUsers: number;
   activeUsers: number;

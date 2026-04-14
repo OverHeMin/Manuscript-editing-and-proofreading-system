@@ -7,6 +7,7 @@ import {
   listSystemSettingsAiProviders,
   listSystemSettingsModels,
   listSystemSettingsModuleDefaults,
+  listSystemSettingsResolvedModuleDefaults,
   listSystemSettingsUsers,
   resetSystemSettingsUserPassword,
   rotateSystemSettingsAiProviderCredential,
@@ -24,6 +25,7 @@ import type {
   SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsModuleDefaultViewModel,
   SystemSettingsModuleKey,
+  SystemSettingsResolvedModuleDefaultViewModel,
   SystemSettingsRegisteredModelViewModel,
   SystemSettingsSummary,
   SystemSettingsUserViewModel,
@@ -108,6 +110,7 @@ export interface SystemSettingsWorkbenchController {
     updatedModuleDefault: SystemSettingsModuleDefaultViewModel;
     overview: SystemSettingsWorkbenchOverview;
   }>;
+  loadResolvedModuleDefaults(): Promise<SystemSettingsResolvedModuleDefaultViewModel[]>;
 }
 
 export function createSystemSettingsWorkbenchController(
@@ -250,6 +253,10 @@ export function createSystemSettingsWorkbenchController(
         }),
       };
     },
+    async loadResolvedModuleDefaults() {
+      const response = await listSystemSettingsResolvedModuleDefaults(client);
+      return mergeResolvedModuleDefaults(response.body);
+    },
   };
 }
 
@@ -333,6 +340,31 @@ function mergeModuleDefaults(
       primaryModelName: null,
       fallbackModelId: null,
       fallbackModelName: null,
+      temperature: null,
+    };
+  });
+}
+
+function mergeResolvedModuleDefaults(
+  moduleDefaults: SystemSettingsResolvedModuleDefaultViewModel[],
+): SystemSettingsResolvedModuleDefaultViewModel[] {
+  const defaultsByKey = new Map(
+    moduleDefaults.map((record) => [record.moduleKey, record] as const),
+  );
+
+  return systemSettingsModuleKeys.map((moduleKey) => {
+    const existingRecord = defaultsByKey.get(moduleKey);
+    if (existingRecord) {
+      return existingRecord;
+    }
+
+    return {
+      moduleKey,
+      moduleLabel: formatModuleLabel(moduleKey),
+      selectedModelId: null,
+      selectedModelLabel: null,
+      fallbackModelId: null,
+      fallbackModelLabel: null,
       temperature: null,
     };
   });

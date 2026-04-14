@@ -921,6 +921,85 @@ test("system settings controller saves a module default with temperature and rel
   });
 });
 
+test("system settings controller exposes a read-only resolved module-default contract for downstream pages", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createSystemSettingsWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      const aiAccessResponse = maybeHandleAiAccessReads<TResponse>(input, {
+        providerConnections: baseProviderConnections,
+        registeredModels: baseRegisteredModels,
+        moduleDefaults: baseModuleDefaults,
+      });
+      if (aiAccessResponse) {
+        return aiAccessResponse;
+      }
+
+      return {
+        status: 200,
+        body: [...baseUsers] as TResponse,
+      };
+    },
+  });
+
+  const downstreamDefaults = await (controller as typeof controller & {
+    loadResolvedModuleDefaults: () => Promise<
+      Array<{
+        moduleKey: "screening" | "editing" | "proofreading";
+        moduleLabel: string;
+        selectedModelId: string | null;
+        selectedModelLabel: string | null;
+        fallbackModelId: string | null;
+        fallbackModelLabel: string | null;
+        temperature: number | null;
+      }>
+    >;
+  }).loadResolvedModuleDefaults();
+
+  assert.deepEqual(downstreamDefaults, [
+    {
+      moduleKey: "screening",
+      moduleLabel: "初筛",
+      selectedModelId: "model-qwen-max",
+      selectedModelLabel: "qwen-max",
+      fallbackModelId: "model-deepseek-chat",
+      fallbackModelLabel: "deepseek-chat",
+      temperature: 0.2,
+    },
+    {
+      moduleKey: "editing",
+      moduleLabel: "编辑",
+      selectedModelId: "model-deepseek-chat",
+      selectedModelLabel: "deepseek-chat",
+      fallbackModelId: "model-qwen-max",
+      fallbackModelLabel: "qwen-max",
+      temperature: 0.4,
+    },
+    {
+      moduleKey: "proofreading",
+      moduleLabel: "校对",
+      selectedModelId: null,
+      selectedModelLabel: null,
+      fallbackModelId: null,
+      fallbackModelLabel: null,
+      temperature: null,
+    },
+  ]);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    ["GET /api/v1/system-settings/module-defaults"],
+  );
+  assert.equal(
+    "connectionId" in downstreamDefaults[0],
+    false,
+  );
+});
+
 test("system settings controller rotates and tests the selected ai provider connection before reloading it", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   let credentialVersion = 2;

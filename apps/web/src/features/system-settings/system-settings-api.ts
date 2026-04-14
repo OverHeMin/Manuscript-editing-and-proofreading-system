@@ -6,6 +6,7 @@ import type {
   SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsModuleDefaultViewModel,
   SystemSettingsModuleKey,
+  SystemSettingsResolvedModuleDefaultViewModel,
   SystemSettingsRegisteredModelViewModel,
   SystemSettingsUserViewModel,
   UpdateAiProviderConnectionInput,
@@ -240,6 +241,17 @@ export async function listSystemSettingsModuleDefaults(client: SystemSettingsHtt
   };
 }
 
+export async function listSystemSettingsResolvedModuleDefaults(
+  client: SystemSettingsHttpClient,
+) {
+  const response = await listSystemSettingsModuleDefaults(client);
+
+  return {
+    ...response,
+    body: response.body.map(mapResolvedModuleDefaultRecord),
+  };
+}
+
 export async function saveSystemSettingsModuleDefault(
   client: SystemSettingsHttpClient,
   input: SaveSystemSettingsModuleDefaultInput,
@@ -289,6 +301,20 @@ function mapSystemSettingsModuleDefaultRecord(
     primaryModelName: record.primary_model_name ?? null,
     fallbackModelId: record.fallback_model_id ?? null,
     fallbackModelName: record.fallback_model_name ?? null,
+    temperature: record.temperature ?? null,
+  };
+}
+
+function mapResolvedModuleDefaultRecord(
+  record: SystemSettingsModuleDefaultViewModel,
+): SystemSettingsResolvedModuleDefaultViewModel {
+  return {
+    moduleKey: record.moduleKey,
+    moduleLabel: record.moduleLabel,
+    selectedModelId: record.primaryModelId ?? null,
+    selectedModelLabel: record.primaryModelName ?? null,
+    fallbackModelId: record.fallbackModelId ?? null,
+    fallbackModelLabel: record.fallbackModelName ?? null,
     temperature: record.temperature ?? null,
   };
 }
