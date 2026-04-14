@@ -11,6 +11,7 @@ const {
 } = await import("../src/features/template-governance/template-governance-rule-wizard.tsx");
 const {
   createRuleDraftInput,
+  createRuleWizardBindingInputs,
   confirmSemanticLayerInput,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
 
@@ -165,5 +166,66 @@ test("rule wizard confirm input keeps semantic summary and retrieval terms align
         "\u8be5\u89c4\u5219\u7528\u4e8e\u68c0\u67e5\u533b\u5b66\u672f\u8bed\u3001\u7f29\u7565\u8bed\u548c\u4e2d\u82f1\u6587\u540d\u79f0\u662f\u5426\u7edf\u4e00\u3002",
       retrievalTerms: ["\u672f\u8bed\u7edf\u4e00", "\u7f29\u5199\u91ca\u4e49"],
     },
+  );
+});
+
+test("rule wizard binding and publish steps render package and release controls", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const bindingMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "binding",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+  const publishMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "publish",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+
+  assert.match(bindingMarkup, /\u8fdb\u5165\u54ea\u4e2a\u89c4\u5219\u5305/u);
+  assert.match(bindingMarkup, /\u901a\u7528\u6821\u5bf9\u5305/u);
+  assert.match(bindingMarkup, /\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305/u);
+  assert.match(publishMarkup, /\u53d1\u5e03\u65b9\u5f0f/u);
+  assert.match(publishMarkup, /\u63d0\u4ea4\u5ba1\u6838/u);
+  assert.match(publishMarkup, /\u5b8c\u6210\u5e76\u8fd4\u56de\u89c4\u5219\u4e2d\u5fc3/u);
+});
+
+test("rule wizard binding selections map into package and template family bindings", () => {
+  assert.deepEqual(
+    createRuleWizardBindingInputs({
+      selectedPackageKind: "medical_package",
+      selectedPackageId: "pkg-medical",
+      selectedPackageLabel: "\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305",
+      selectedTemplateFamilies: [
+        {
+          id: "family-clinical",
+          name: "\u8bba\u8457\u57fa\u7840\u65cf",
+        },
+      ],
+    }),
+    [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "pkg-medical",
+        bindingTargetLabel: "\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305",
+      },
+      {
+        bindingKind: "template_family",
+        bindingTargetId: "family-clinical",
+        bindingTargetLabel: "\u8bba\u8457\u57fa\u7840\u65cf",
+      },
+    ],
   );
 });

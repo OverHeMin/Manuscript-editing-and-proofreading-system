@@ -2,16 +2,27 @@ import { useEffect, useState } from "react";
 import { BrowserHttpClientError, createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import {
+  createRuleWizardBindingFormState,
   createRuleWizardConfirmFormState,
   createRuleWizardEntryFormState,
+  createRuleWizardPublishFormState,
   createRuleWizardSemanticViewModel,
   confirmRuleWizardSemanticLayer,
+  loadRuleWizardBindingOptions,
+  publishRuleWizardRevision,
   regenerateRuleWizardSemanticLayer,
+  saveRuleWizardBindingDraft,
+  submitRuleWizardRevisionForReview,
+  type RuleWizardBindingFormState,
+  type RuleWizardBindingOptions,
   type RuleWizardConfirmFormState,
   type RuleWizardEntryFormState,
+  type RuleWizardPublishFormState,
 } from "./template-governance-rule-wizard-api.ts";
+import { TemplateGovernanceRuleWizardStepBinding } from "./template-governance-rule-wizard-step-binding.tsx";
 import { TemplateGovernanceRuleWizardStepConfirm } from "./template-governance-rule-wizard-step-confirm.tsx";
 import { TemplateGovernanceRuleWizardStepEntry } from "./template-governance-rule-wizard-step-entry.tsx";
+import { TemplateGovernanceRuleWizardStepPublish } from "./template-governance-rule-wizard-step-publish.tsx";
 import { TemplateGovernanceRuleWizardStepSemantic } from "./template-governance-rule-wizard-step-semantic.tsx";
 import {
   getNextRuleWizardStep,
@@ -62,6 +73,17 @@ export function TemplateGovernanceRuleWizard({
     () => createRuleWizardConfirmFormState({ form: entryFormState }),
   );
 
+  const [bindingOptions, setBindingOptions] = useState<RuleWizardBindingOptions>();
+  const [bindingDirty, setBindingDirty] = useState(false);
+  const [bindingFormState, setBindingFormState] = useState<RuleWizardBindingFormState>(
+    () => createRuleWizardBindingFormState(),
+  );
+  const [publishFormState, setPublishFormState] = useState<RuleWizardPublishFormState>(
+    () => createRuleWizardPublishFormState(),
+  );
+  const [isBindingBusy, setIsBindingBusy] = useState(false);
+  const [bindingErrorMessage, setBindingErrorMessage] = useState<string | null>(null);
+
   const semanticViewModel = createRuleWizardSemanticViewModel({
     form: entryFormState,
     revision: semanticRevision,
@@ -75,6 +97,11 @@ export function TemplateGovernanceRuleWizard({
     setAwaitingSemanticDraft(false);
     setConfirmDirty(false);
     setConfirmFormState(createRuleWizardConfirmFormState({ form: entryFormState }));
+    setBindingOptions(undefined);
+    setBindingDirty(false);
+    setBindingFormState(createRuleWizardBindingFormState());
+    setPublishFormState(createRuleWizardPublishFormState());
+    setBindingErrorMessage(null);
   }, [state.mode, state.sourceRowId, title]);
 
   useEffect(() => {
@@ -88,6 +115,17 @@ export function TemplateGovernanceRuleWizard({
       );
     }
   }, [confirmDirty, entryFormState, semanticRevision, semanticSuggestion]);
+
+  useEffect(() => {
+    if (!bindingDirty) {
+      setBindingFormState(
+        createRuleWizardBindingFormState({
+          semanticViewModel,
+          options: bindingOptions,
+        }),
+      );
+    }
+  }, [bindingDirty, bindingOptions, semanticViewModel]);
 
   useEffect(() => {
     if (!awaitingSemanticDraft || !state.draftRevisionId || isSemanticBusy) {
@@ -109,6 +147,35 @@ export function TemplateGovernanceRuleWizard({
 
     void handleRegenerateSemanticLayer();
   }, [isSemanticBusy, semanticRevision?.id, state.draftRevisionId, state.step]);
+
+  useEffect(() => {
+    if (state.step !== "binding" || bindingOptions || isBindingBusy) {
+      return;
+    }
+
+    void handleLoadBindingOptions();
+  }, [bindingOptions, isBindingBusy, state.step]);
+
+  async function handleLoadBindingOptions() {
+    setIsBindingBusy(true);
+    setBindingErrorMessage(null);
+
+    try {
+      const options = await loadRuleWizardBindingOptions(defaultRuleWizardClient);
+      setBindingOptions(options);
+      setBindingDirty(false);
+      setBindingFormState(
+        createRuleWizardBindingFormState({
+          semanticViewModel,
+          options,
+        }),
+      );
+    } catch (error) {
+      setBindingErrorMessage(resolveWizardErrorMessage(error, "规则绑定选项加载失败"));
+    } finally {
+      setIsBindingBusy(false);
+    }
+  }
 
   async function handleRegenerateSemanticLayer() {
     if (!state.draftRevisionId) {
@@ -195,9 +262,40 @@ export function TemplateGovernanceRuleWizard({
     }
   }
 
+  async function handleSaveBindingDraft(): Promise<boolean> {
+    if (!state.draftRevisionId) {
+      setBindingErrorMessage("请先保存前面的规则草稿，再写入规则包绑定。");
+      onSaveDraft?.();
+      return false;
+    }
+
+    setIsBindingBusy(true);
+    setBindingErrorMessage(null);
+
+    try {
+      await saveRuleWizardBindingDraft(
+        defaultRuleWizardClient,
+        state.draftRevisionId,
+        bindingFormState,
+      );
+      setBindingDirty(false);
+      return true;
+    } catch (error) {
+      setBindingErrorMessage(resolveWizardErrorMessage(error, "规则绑定保存失败"));
+      return false;
+    } finally {
+      setIsBindingBusy(false);
+    }
+  }
+
   function handleConfirmFormChange(nextValue: RuleWizardConfirmFormState) {
     setConfirmFormState(nextValue);
     setConfirmDirty(true);
+  }
+
+  function handleBindingFormChange(nextValue: RuleWizardBindingFormState) {
+    setBindingFormState(nextValue);
+    setBindingDirty(true);
   }
 
   async function handleSaveDraftClick() {
@@ -206,6 +304,18 @@ export function TemplateGovernanceRuleWizard({
       if (!confirmed) {
         return;
       }
+    }
+
+    if (state.step === "binding" || state.step === "publish") {
+      const saved = await handleSaveBindingDraft();
+      if (!saved) {
+        return;
+      }
+    }
+
+    if (state.step === "publish") {
+      onComplete?.();
+      return;
     }
 
     onSaveDraft?.();
@@ -226,7 +336,45 @@ export function TemplateGovernanceRuleWizard({
       }
     }
 
+    if (state.step === "binding") {
+      const saved = await handleSaveBindingDraft();
+      if (!saved) {
+        return;
+      }
+    }
+
     onNext?.();
+  }
+
+  async function handleCompleteClick() {
+    if (state.step !== "publish") {
+      onComplete?.();
+      return;
+    }
+
+    const saved = await handleSaveBindingDraft();
+    if (!saved || !state.draftRevisionId) {
+      return;
+    }
+
+    try {
+      if (publishFormState.releaseAction === "submit_review") {
+        await submitRuleWizardRevisionForReview(defaultRuleWizardClient, state.draftRevisionId);
+      }
+
+      if (publishFormState.releaseAction === "publish_now") {
+        await submitRuleWizardRevisionForReview(defaultRuleWizardClient, state.draftRevisionId);
+        await publishRuleWizardRevision(
+          defaultRuleWizardClient,
+          state.draftRevisionId,
+          publishFormState.reviewNote,
+        );
+      }
+
+      onComplete?.();
+    } catch (error) {
+      setBindingErrorMessage(resolveWizardErrorMessage(error, "规则发布动作执行失败"));
+    }
   }
 
   return (
@@ -275,8 +423,13 @@ export function TemplateGovernanceRuleWizard({
         entryFormState,
         semanticViewModel,
         confirmFormState,
+        bindingOptions,
+        bindingFormState,
+        publishFormState,
         isSemanticBusy,
+        isBindingBusy,
         semanticErrorMessage,
+        bindingErrorMessage,
         onEntryFormChange,
         onPrevious,
         onRegenerateSemanticLayer: () => {
@@ -293,6 +446,8 @@ export function TemplateGovernanceRuleWizard({
           );
           setConfirmDirty(false);
         },
+        onBindingFormChange: handleBindingFormChange,
+        onPublishFormChange: setPublishFormState,
       })}
 
       <footer className="template-governance-actions">
@@ -304,10 +459,12 @@ export function TemplateGovernanceRuleWizard({
         <button type="button" onClick={() => void handleSaveDraftClick()}>
           保存草稿
         </button>
-        <button type="button" onClick={() => void handleNextClick()}>
-          下一步：{nextStep ? getRuleWizardStepLabel(nextStep) : "保存与发布"}
-        </button>
-        <button type="button" onClick={onComplete}>
+        {nextStep ? (
+          <button type="button" onClick={() => void handleNextClick()}>
+            下一步：{getRuleWizardStepLabel(nextStep)}
+          </button>
+        ) : null}
+        <button type="button" onClick={() => void handleCompleteClick()}>
           完成并返回规则中心
         </button>
       </footer>
@@ -320,13 +477,20 @@ function renderWizardBody(input: {
   entryFormState: RuleWizardEntryFormState;
   semanticViewModel: ReturnType<typeof createRuleWizardSemanticViewModel>;
   confirmFormState: RuleWizardConfirmFormState;
+  bindingOptions?: RuleWizardBindingOptions;
+  bindingFormState: RuleWizardBindingFormState;
+  publishFormState: RuleWizardPublishFormState;
   isSemanticBusy: boolean;
+  isBindingBusy: boolean;
   semanticErrorMessage: string | null;
+  bindingErrorMessage: string | null;
   onEntryFormChange?: (nextValue: RuleWizardEntryFormState) => void;
   onPrevious?: () => void;
   onRegenerateSemanticLayer: () => void;
   onConfirmFormChange: (nextValue: RuleWizardConfirmFormState) => void;
   onAcceptHighConfidence: () => void;
+  onBindingFormChange: (nextValue: RuleWizardBindingFormState) => void;
+  onPublishFormChange: (nextValue: RuleWizardPublishFormState) => void;
 }) {
   switch (input.state.step) {
     case "entry":
@@ -357,37 +521,28 @@ function renderWizardBody(input: {
           onAcceptHighConfidence={input.onAcceptHighConfidence}
         />
       );
-    default:
+    case "binding":
       return (
-        <article className="template-governance-card template-governance-ledger-section">
-          <header className="template-governance-ledger-section-header">
-            <h2>{getRuleWizardStepLabel(input.state.step)}</h2>
-            <p>{resolveWizardStepHint(input.state.step)}</p>
-          </header>
-          <div className="template-governance-detail-grid">
-            <div>
-              <span>当前模式</span>
-              <p>{resolveWizardModeLabel(input.state.mode)}</p>
-            </div>
-            <div>
-              <span>草稿状态</span>
-              <p>{input.state.dirty ? "有未保存变更" : "已同步"}</p>
-            </div>
-            <div>
-              <span>来源记录</span>
-              <p>从统一规则台账打开</p>
-            </div>
-            <div>
-              <span>下一步</span>
-              <p>
-                {getNextRuleWizardStep(input.state.step)
-                  ? getRuleWizardStepLabel(getNextRuleWizardStep(input.state.step)!)
-                  : "保存与发布"}
-              </p>
-            </div>
-          </div>
-        </article>
+        <TemplateGovernanceRuleWizardStepBinding
+          value={input.bindingFormState}
+          options={input.bindingOptions}
+          isBusy={input.isBindingBusy}
+          errorMessage={input.bindingErrorMessage}
+          onChange={input.onBindingFormChange}
+        />
       );
+    case "publish":
+      return (
+        <TemplateGovernanceRuleWizardStepPublish
+          value={input.publishFormState}
+          bindingState={input.bindingFormState}
+          isBusy={input.isBindingBusy}
+          errorMessage={input.bindingErrorMessage}
+          onChange={input.onPublishFormChange}
+        />
+      );
+    default:
+      return null;
   }
 }
 
@@ -404,28 +559,6 @@ function resolveWizardTitle(mode: RuleWizardState["mode"], title: string | undef
     case "create":
     default:
       return "新建规则";
-  }
-}
-
-function resolveWizardModeLabel(mode: RuleWizardState["mode"]): string {
-  switch (mode) {
-    case "edit":
-      return "编辑已有规则";
-    case "candidate":
-      return "把回流候选转为规则";
-    case "create":
-    default:
-      return "新建治理规则";
-  }
-}
-
-function resolveWizardStepHint(step: RuleWizardState["step"]): string {
-  switch (step) {
-    case "binding":
-      return "用业务语言决定它进入哪个模板族、规则包和执行模块。";
-    case "publish":
-    default:
-      return "确认保存方式和回台账后的动作，让发布闭环保持短而清晰。";
   }
 }
 

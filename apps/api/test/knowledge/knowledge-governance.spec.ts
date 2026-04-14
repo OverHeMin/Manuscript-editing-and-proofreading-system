@@ -237,6 +237,55 @@ test("knowledge library drafts preserve package binding kinds", async () => {
   );
 });
 
+test("knowledge library revisions can update rule bindings and complete review lifecycle", async () => {
+  const { api } = createKnowledgeHarness();
+
+  const created = await api.createLibraryDraft({
+    title: "Rule binding lifecycle",
+    canonicalText: "This rule should be routed through governed rule packages.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+  });
+  const revisionId = created.body.selected_revision.id;
+  const updated = await api.updateRevisionDraft({
+    revisionId,
+    input: {
+      bindings: [
+        {
+          bindingKind: "medical_package",
+          bindingTargetId: "pkg-medical",
+          bindingTargetLabel: "Medical Proofreading Package",
+        },
+        {
+          bindingKind: "template_family",
+          bindingTargetId: "family-clinical",
+          bindingTargetLabel: "Clinical Family",
+        },
+      ],
+    },
+  });
+  const submitted = await api.submitRevisionForReview({
+    revisionId,
+  });
+  const approved = await api.approveRevision({
+    revisionId,
+    actorRole: "knowledge_reviewer",
+    reviewNote: "Approved from the rule wizard lifecycle path.",
+  });
+
+  assert.deepEqual(
+    updated.body.selected_revision.bindings.map((binding) => binding.binding_kind),
+    ["medical_package", "template_family"],
+  );
+  assert.equal(submitted.body.selected_revision.status, "pending_review");
+  assert.equal(approved.body.selected_revision.status, "approved");
+  assert.deepEqual(
+    approved.body.selected_revision.bindings.map((binding) => binding.binding_kind),
+    ["medical_package", "template_family"],
+  );
+});
+
 test("knowledge items can be archived as the governed delete path", async () => {
   const { api } = createKnowledgeHarness();
 

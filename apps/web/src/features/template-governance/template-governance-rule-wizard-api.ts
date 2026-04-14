@@ -2,6 +2,7 @@ import {
   assistKnowledgeRevisionSemanticLayer,
   confirmKnowledgeSemanticLayer,
   createKnowledgeLibraryDraft,
+  submitKnowledgeRevisionForReview,
   regenerateKnowledgeSemanticLayer,
   replaceKnowledgeRevisionContentBlocks,
   updateKnowledgeRevisionDraft,
@@ -12,11 +13,13 @@ import type {
   KnowledgeAssetDetailViewModel,
   KnowledgeContentBlockViewModel,
   KnowledgeLibrarySemanticAssistSuggestionViewModel,
+  KnowledgeRevisionBindingInput,
   KnowledgeRevisionViewModel,
   KnowledgeSemanticLayerInput,
   KnowledgeSemanticLayerViewModel,
   UpdateKnowledgeLibraryDraftInput,
 } from "../knowledge-library/types.ts";
+import { listContentModules, listTemplateFamilies } from "../templates/index.ts";
 import type { KnowledgeSourceType } from "../knowledge/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 
@@ -98,6 +101,45 @@ export interface RegenerateRuleWizardSemanticResult {
 export interface ConfirmRuleWizardSemanticResult {
   detail: KnowledgeAssetDetailViewModel;
   semanticViewModel: RuleWizardSemanticViewModel;
+}
+
+export interface RuleWizardBindingOption {
+  id: string;
+  label: string;
+}
+
+export interface RuleWizardTemplateFamilyOption {
+  id: string;
+  name: string;
+  manuscriptType: ManuscriptType;
+}
+
+export interface RuleWizardBindingOptions {
+  generalPackages: RuleWizardBindingOption[];
+  medicalPackages: RuleWizardBindingOption[];
+  templateFamilies: RuleWizardTemplateFamilyOption[];
+}
+
+export interface RuleWizardBindingFormState {
+  selectedPackageKind: "general_package" | "medical_package";
+  selectedPackageId: string;
+  selectedPackageLabel: string;
+  selectedTemplateFamilies: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+export type RuleWizardReleaseAction = "save_draft" | "submit_review" | "publish_now";
+
+export interface RuleWizardPublishFormState {
+  releaseAction: RuleWizardReleaseAction;
+  reviewNote: string;
+}
+
+export interface RuleWizardBindingDraftResult {
+  detail: KnowledgeAssetDetailViewModel;
+  bindingInputs: KnowledgeRevisionBindingInput[];
 }
 
 export function createRuleWizardEntryFormState(
@@ -217,6 +259,67 @@ export function createRuleWizardConfirmFormState(input: {
   };
 }
 
+export function createRuleWizardBindingFormState(input: {
+  semanticViewModel?: RuleWizardSemanticViewModel;
+  options?: RuleWizardBindingOptions;
+} = {}): RuleWizardBindingFormState {
+  const packageKind =
+    input.semanticViewModel?.suggestedPackage.includes("医学") ||
+    input.semanticViewModel?.ruleType === "terminology_consistency"
+      ? "medical_package"
+      : "general_package";
+  const packageOptions =
+    packageKind === "medical_package"
+      ? input.options?.medicalPackages ?? []
+      : input.options?.generalPackages ?? [];
+  const selectedPackage = packageOptions[0];
+
+  return {
+    selectedPackageKind: packageKind,
+    selectedPackageId: selectedPackage?.id ?? "",
+    selectedPackageLabel: selectedPackage?.label ?? "",
+    selectedTemplateFamilies: deriveDefaultTemplateFamilies(
+      input.options?.templateFamilies ?? [],
+      input.semanticViewModel?.manuscriptTypes,
+    ),
+  };
+}
+
+export function createRuleWizardPublishFormState(
+  input: Partial<RuleWizardPublishFormState> = {},
+): RuleWizardPublishFormState {
+  return {
+    releaseAction: input.releaseAction ?? "submit_review",
+    reviewNote: input.reviewNote ?? "",
+  };
+}
+
+export function createRuleWizardBindingInputs(
+  form: RuleWizardBindingFormState,
+): KnowledgeRevisionBindingInput[] {
+  const bindings: KnowledgeRevisionBindingInput[] = [];
+
+  if (form.selectedPackageId.trim().length > 0 && form.selectedPackageLabel.trim().length > 0) {
+    bindings.push({
+      bindingKind: form.selectedPackageKind,
+      bindingTargetId: form.selectedPackageId.trim(),
+      bindingTargetLabel: form.selectedPackageLabel.trim(),
+    });
+  }
+
+  return bindings.concat(
+    form.selectedTemplateFamilies
+      .filter(
+        (family) => family.id.trim().length > 0 && family.name.trim().length > 0,
+      )
+      .map((family) => ({
+        bindingKind: "template_family" as const,
+        bindingTargetId: family.id.trim(),
+        bindingTargetLabel: family.name.trim(),
+      })),
+  );
+}
+
 export function confirmSemanticLayerInput(
   form: RuleWizardConfirmFormState,
 ): KnowledgeSemanticLayerInput {
@@ -310,6 +413,74 @@ export async function confirmRuleWizardSemanticLayer(
       },
     }),
   };
+}
+
+export async function loadRuleWizardBindingOptions(
+  client: KnowledgeLibraryHttpClient,
+): Promise<RuleWizardBindingOptions> {
+  const [generalPackages, medicalPackages, templateFamilies] = await Promise.all([
+    listContentModules(client, "general"),
+    listContentModules(client, "medical_specialized"),
+    listTemplateFamilies(client),
+  ]);
+
+  return {
+    generalPackages: generalPackages.body.map((module) => ({
+      id: module.id,
+      label: module.name,
+    })),
+    medicalPackages: medicalPackages.body.map((module) => ({
+      id: module.id,
+      label: module.name,
+    })),
+    templateFamilies: templateFamilies.body.map((family) => ({
+      id: family.id,
+      name: family.name,
+      manuscriptType: family.manuscript_type,
+    })),
+  };
+}
+
+export async function saveRuleWizardBindingDraft(
+  client: KnowledgeLibraryHttpClient,
+  revisionId: string,
+  form: RuleWizardBindingFormState,
+): Promise<RuleWizardBindingDraftResult> {
+  const bindingInputs = createRuleWizardBindingInputs(form);
+  const detail = (
+    await updateKnowledgeRevisionDraft(client, revisionId, {
+      bindings: bindingInputs,
+    })
+  ).body;
+
+  return {
+    detail,
+    bindingInputs,
+  };
+}
+
+export async function submitRuleWizardRevisionForReview(
+  client: KnowledgeLibraryHttpClient,
+  revisionId: string,
+): Promise<KnowledgeAssetDetailViewModel> {
+  return (await submitKnowledgeRevisionForReview(client, revisionId)).body;
+}
+
+export async function publishRuleWizardRevision(
+  client: KnowledgeLibraryHttpClient,
+  revisionId: string,
+  reviewNote?: string,
+): Promise<KnowledgeAssetDetailViewModel> {
+  return (
+    await client.request<KnowledgeAssetDetailViewModel>({
+      method: "POST",
+      url: `/api/v1/knowledge/revisions/${revisionId}/approve`,
+      body: {
+        actorRole: "admin",
+        reviewNote,
+      },
+    })
+  ).body;
 }
 
 export function createRuleDraftContentBlocks(
@@ -647,4 +818,26 @@ function splitLineSeparated(value: string): string[] | undefined {
     .filter((entry) => entry.length > 0);
 
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function deriveDefaultTemplateFamilies(
+  options: RuleWizardTemplateFamilyOption[],
+  manuscriptTypes: string | undefined,
+): Array<{ id: string; name: string }> {
+  const normalizedTypes = splitCommaSeparated(manuscriptTypes ?? "");
+  const matchedFamily =
+    normalizedTypes.length === 0
+      ? options[0]
+      : options.find((option) => normalizedTypes.includes(option.manuscriptType));
+
+  if (!matchedFamily) {
+    return [];
+  }
+
+  return [
+    {
+      id: matchedFamily.id,
+      name: matchedFamily.name,
+    },
+  ];
 }

@@ -408,6 +408,133 @@ test("persistent governance runtime accepts package binding kinds on knowledge d
   });
 });
 
+test("persistent governance runtime updates rule bindings and approves the revision lifecycle", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent governance database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentGovernanceData(seedPool);
+
+      const server = await startPersistentGovernanceServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentAdmin(server.baseUrl);
+        const createResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/assets/drafts`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Rule binding lifecycle",
+              canonicalText: "Governed rules should bind to packages before publish.",
+              knowledgeKind: "rule",
+              moduleScope: "editing",
+              manuscriptTypes: ["clinical_study"],
+            }),
+          },
+        );
+        const created = (await createResponse.json()) as {
+          asset: { id: string };
+          selected_revision: { id: string };
+        };
+        const updateResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              bindings: [
+                {
+                  bindingKind: "medical_package",
+                  bindingTargetId: "pkg-medical",
+                  bindingTargetLabel: "Medical Proofreading Package",
+                },
+                {
+                  bindingKind: "template_family",
+                  bindingTargetId: "family-clinical",
+                  bindingTargetLabel: "Clinical Family",
+                },
+              ],
+            }),
+          },
+        );
+        const updated = (await updateResponse.json()) as {
+          selected_revision: {
+            bindings: Array<{ binding_kind: string }>;
+          };
+        };
+        const submitResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/submit`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const approveResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/approve`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              actorRole: "knowledge_reviewer",
+              reviewNote: "Approved from the rule wizard lifecycle path.",
+            }),
+          },
+        );
+        const detailResponse = await fetch(
+          `${server.baseUrl}/api/v1/knowledge/assets/${created.asset.id}?revisionId=${created.selected_revision.id}`,
+          {
+            headers: {
+              Cookie: cookie,
+            },
+          },
+        );
+        const detail = (await detailResponse.json()) as {
+          selected_revision: {
+            status: string;
+            bindings: Array<{ binding_kind: string }>;
+          };
+        };
+
+        assert.equal(createResponse.status, 201);
+        assert.equal(updateResponse.status, 200);
+        assert.deepEqual(
+          updated.selected_revision.bindings.map((binding) => binding.binding_kind),
+          ["medical_package", "template_family"],
+        );
+        assert.equal(submitResponse.status, 200);
+        assert.equal(approveResponse.status, 200);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detail.selected_revision.status, "approved");
+        assert.deepEqual(
+          detail.selected_revision.bindings.map((binding) => binding.binding_kind),
+          ["medical_package", "template_family"],
+        );
+      } finally {
+        await stopServer(server.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent governance runtime keeps duplicate acknowledgement audit rows across restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

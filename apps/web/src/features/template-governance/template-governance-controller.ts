@@ -123,7 +123,14 @@ import type {
 } from "./template-governance-ledger-types.ts";
 import { createTemplateGovernanceRuleLedgerViewModel } from "./template-governance-rule-ledger-state.ts";
 import {
+  loadRuleWizardBindingOptions as requestRuleWizardBindingOptions,
+  publishRuleWizardRevision as publishRuleWizardRevisionAction,
+  saveRuleWizardBindingDraft as persistRuleWizardBindingDraft,
   saveRuleWizardEntryDraft as persistRuleWizardEntryDraft,
+  submitRuleWizardRevisionForReview as submitRuleWizardRevisionAction,
+  type RuleWizardBindingDraftResult,
+  type RuleWizardBindingFormState,
+  type RuleWizardBindingOptions,
   type RuleWizardEntryFormState,
   type SaveRuleWizardEntryDraftResult,
 } from "./template-governance-rule-wizard-api.ts";
@@ -180,6 +187,18 @@ export interface TemplateGovernanceWorkbenchController {
     draftAssetId?: string;
     draftRevisionId?: string;
   }): Promise<SaveRuleWizardEntryDraftResult>;
+  loadRuleWizardBindingOptions(): Promise<RuleWizardBindingOptions>;
+  saveRuleWizardBindingDraft(input: {
+    draftRevisionId: string;
+    form: RuleWizardBindingFormState;
+  }): Promise<RuleWizardBindingDraftResult>;
+  submitRuleWizardRevision(input: {
+    draftRevisionId: string;
+  }): Promise<Awaited<ReturnType<typeof submitRuleWizardRevisionAction>>>;
+  publishRuleWizardRevision(input: {
+    draftRevisionId: string;
+    reviewNote?: string;
+  }): Promise<Awaited<ReturnType<typeof publishRuleWizardRevisionAction>>>;
   loadExtractionLedger(input?: {
     selectedTaskId?: string | null;
   }): Promise<TemplateGovernanceExtractionLedgerViewModel>;
@@ -435,6 +454,22 @@ export function createTemplateGovernanceWorkbenchController(
     },
     saveRuleWizardEntryDraft(input) {
       return persistRuleWizardEntryDraft(client, input);
+    },
+    loadRuleWizardBindingOptions() {
+      return requestRuleWizardBindingOptions(client);
+    },
+    saveRuleWizardBindingDraft(input) {
+      return persistRuleWizardBindingDraft(client, input.draftRevisionId, input.form);
+    },
+    submitRuleWizardRevision(input) {
+      return submitRuleWizardRevisionAction(client, input.draftRevisionId);
+    },
+    publishRuleWizardRevision(input) {
+      return publishRuleWizardRevisionAction(
+        client,
+        input.draftRevisionId,
+        input.reviewNote,
+      );
     },
     loadExtractionLedger(input) {
       return loadTemplateGovernanceExtractionLedger(client, input);
