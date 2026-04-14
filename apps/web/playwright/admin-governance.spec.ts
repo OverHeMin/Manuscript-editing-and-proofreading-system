@@ -38,7 +38,7 @@ test("admin can create a template family and module draft from the governance co
   );
   await expect(page.getByRole("link", { name: "打开规则中心" })).toHaveAttribute(
     "href",
-    /#template-governance\?ruleCenterMode=authoring/,
+    /#template-governance\?templateGovernanceView=authoring&ruleCenterMode=authoring/,
   );
 
   await page.getByRole("link", { name: "进入 Harness 控制" }).click();
@@ -81,7 +81,7 @@ test("template governance supports journal-scoped abstract and table rule author
   const journalName = `\u300a\u6848\u4f8b\u62a5\u9053\u6d4f\u89c8 ${Date.now()}\u300b`;
   const journalKey = slugify(`case-report-journal-${Date.now()}`);
 
-  await page.goto("/#template-governance", {
+  await page.goto("/#template-governance?templateGovernanceView=authoring&ruleCenterMode=authoring", {
     waitUntil: "domcontentloaded",
   });
 

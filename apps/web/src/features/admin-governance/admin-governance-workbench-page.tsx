@@ -169,6 +169,7 @@ export function AdminGovernanceWorkbenchPage({
           title="规则中心"
           description="规则、模板与校对策略已迁入协作与回收区，避免继续堆在管理页。"
           href={formatWorkbenchHash("template-governance", {
+            templateGovernanceView: "authoring",
             ruleCenterMode: "authoring",
           })}
           actionLabel="打开规则中心"
