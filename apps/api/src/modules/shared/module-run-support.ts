@@ -1,4 +1,5 @@
 import type { RoleKey } from "../../users/roles.ts";
+import type { ModuleExecutionMode } from "@medical/contracts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { ResolvedModelSelection } from "../ai-gateway/ai-gateway-service.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
@@ -13,6 +14,12 @@ import type {
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { SeedGovernedExecutionRunsInput } from "../verification-ops/verification-ops-service.ts";
 import type { EvaluationRunRecord } from "../verification-ops/verification-ops-record.ts";
+
+export const GOVERNED_MANUSCRIPT_MAINLINE_MODULES = [
+  "screening",
+  "editing",
+  "proofreading",
+] as const satisfies readonly TemplateModule[];
 
 export interface PrepareModuleExecutionInput {
   manuscriptId: string;
@@ -54,6 +61,12 @@ export interface ModuleExecutionResult<TJob, TAsset> {
   agent_runtime_id?: string;
   agent_profile_id?: string;
   agent_execution_log_id?: string;
+}
+
+export function resolveModuleExecutionMode(
+  executionMode?: ModuleExecutionMode,
+): ModuleExecutionMode {
+  return executionMode ?? "governed";
 }
 
 export interface GovernedEvaluationRunSeeder {

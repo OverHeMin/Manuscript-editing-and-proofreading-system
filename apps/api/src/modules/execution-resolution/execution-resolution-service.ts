@@ -1,4 +1,12 @@
+import type {
+  GovernedExecutionContextSummary,
+  GovernedExecutionModuleSummary,
+  JournalTemplateSelectionState,
+} from "@medical/contracts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
+import {
+  ActiveExecutionProfileNotFoundError,
+} from "../execution-governance/execution-governance-service.ts";
 import type {
   ModelSelectionWarning,
   ResolvedAiProviderConnectionSummary,
@@ -28,6 +36,7 @@ import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
+import { GOVERNED_MANUSCRIPT_MAINLINE_MODULES } from "../shared/module-run-support.ts";
 import type {
   ExecutionResolutionModelSource,
   ProviderReadinessIssueRecord,
@@ -45,6 +54,12 @@ export interface ResolveExecutionBundleInput {
   modelRoutingPolicyVersionId?: string;
   retrievalPresetId?: string;
   manualReviewPolicyId?: string;
+}
+
+export interface ResolveOperatorSummaryInput {
+  manuscriptType: ManuscriptType;
+  baseTemplateFamilyId?: string;
+  journalTemplateId?: string;
 }
 
 export interface ExecutionResolutionServiceOptions {
@@ -270,6 +285,56 @@ export class ExecutionResolutionService {
       knowledge_binding_rules: knowledgeBindingRules,
       knowledge_items: dedupeKnowledgeItems(knowledgeItems),
       runtime_binding_readiness: runtimeBindingReadiness,
+    };
+  }
+
+  async resolveOperatorSummary(
+    input: ResolveOperatorSummaryInput,
+  ): Promise<GovernedExecutionContextSummary> {
+    const journalTemplateSelectionState: JournalTemplateSelectionState =
+      input.journalTemplateId ? "selected" : "base_family_only";
+    if (!input.baseTemplateFamilyId) {
+      return {
+        observation_status: "reported",
+        manuscript_type: input.manuscriptType,
+        journal_template_selection_state: journalTemplateSelectionState,
+        ...(input.journalTemplateId
+          ? { journal_template_id: input.journalTemplateId }
+          : {}),
+        modules: GOVERNED_MANUSCRIPT_MAINLINE_MODULES.map((module) => ({
+          module,
+          status: "not_configured",
+        })),
+      };
+    }
+
+    const modules = await Promise.all(
+      GOVERNED_MANUSCRIPT_MAINLINE_MODULES.map((module) =>
+        this.resolveOperatorModuleSummary({
+          module,
+          manuscriptType: input.manuscriptType,
+          templateFamilyId: input.baseTemplateFamilyId as string,
+        }),
+      ),
+    );
+    const failedOpenErrors = modules
+      .filter((module): module is GovernedExecutionModuleSummary & { error: string } =>
+        module.status === "failed_open" && typeof module.error === "string",
+      )
+      .map((module) => `${module.module}: ${module.error}`);
+
+    return {
+      observation_status: failedOpenErrors.length > 0 ? "failed_open" : "reported",
+      manuscript_type: input.manuscriptType,
+      base_template_family_id: input.baseTemplateFamilyId,
+      journal_template_selection_state: journalTemplateSelectionState,
+      ...(input.journalTemplateId
+        ? { journal_template_id: input.journalTemplateId }
+        : {}),
+      modules,
+      ...(failedOpenErrors.length > 0
+        ? { error: failedOpenErrors.join("; ") }
+        : {}),
     };
   }
 
@@ -801,6 +866,71 @@ export class ExecutionResolutionService {
     }
 
     return policy;
+  }
+
+  private async resolveOperatorModuleSummary(input: {
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    templateFamilyId: string;
+  }): Promise<GovernedExecutionModuleSummary> {
+    try {
+      const bundle = await this.resolveExecutionBundle({
+        module: input.module,
+        manuscriptType: input.manuscriptType,
+        templateFamilyId: input.templateFamilyId,
+      });
+
+      return {
+        module: input.module,
+        status: "resolved",
+        execution_profile_id: bundle.profile.id,
+        module_template_id: bundle.module_template.id,
+        ...(bundle.runtime_binding
+          ? { runtime_binding_id: bundle.runtime_binding.id }
+          : {}),
+        ...(bundle.model_routing_policy_version
+          ? {
+              model_routing_policy_version_id:
+                bundle.model_routing_policy_version.id,
+            }
+          : {}),
+        ...(bundle.retrieval_preset
+          ? { retrieval_preset_id: bundle.retrieval_preset.id }
+          : {}),
+        ...(bundle.manual_review_policy
+          ? { manual_review_policy_id: bundle.manual_review_policy.id }
+          : {}),
+        resolved_model_id: bundle.resolved_model.id,
+        model_source: bundle.model_source,
+        provider_readiness_status: bundle.provider_readiness.status,
+        ...(bundle.runtime_binding_readiness.observation_status === "reported" &&
+        bundle.runtime_binding_readiness.report
+          ? {
+              runtime_binding_readiness_status:
+                bundle.runtime_binding_readiness.report.status,
+            }
+          : {}),
+        ...(bundle.warnings.length > 0
+          ? { warning_codes: bundle.warnings.map((warning) => warning.code) }
+          : {}),
+      };
+    } catch (error) {
+      if (error instanceof ActiveExecutionProfileNotFoundError) {
+        return {
+          module: input.module,
+          status: "not_configured",
+        };
+      }
+
+      return {
+        module: input.module,
+        status: "failed_open",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown operator summary resolution error.",
+      };
+    }
   }
 }
 

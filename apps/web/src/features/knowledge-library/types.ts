@@ -143,12 +143,19 @@ export interface KnowledgeLibrarySummaryViewModel {
   semantic_status?: KnowledgeSemanticStatus;
   content_block_count: number;
   contributor_label?: string;
+  archived_at?: string;
+  archived_by_role?: string;
   updated_at?: string;
 }
 
 export interface KnowledgeLibraryFilterState {
   searchText: string;
   queryMode: KnowledgeLibraryQueryMode;
+  knowledgeKind: KnowledgeKind | "all";
+  moduleScope: ManuscriptModule | "any";
+  semanticStatus: KnowledgeSemanticStatus | "all";
+  contributorText: string;
+  assetStatus?: "active" | "archived" | "all";
 }
 
 export interface KnowledgeRevisionBindingInput {

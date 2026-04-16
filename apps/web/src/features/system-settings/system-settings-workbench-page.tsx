@@ -34,7 +34,7 @@ const accountRoles: AuthRole[] = [
 ];
 const providerKindOptions: Array<{ value: AiProviderKind; label: string }> = [
   { value: "openai", label: "OpenAI" },
-  { value: "openai_compatible", label: "OpenAI Compatible" },
+  { value: "openai_compatible", label: "OpenAI 兼容" },
   { value: "qwen", label: "Qwen" },
   { value: "deepseek", label: "DeepSeek" },
 ];
@@ -632,7 +632,7 @@ export function SystemSettingsWorkbenchPage({
                   <form className="system-settings-form-grid" onSubmit={handleCreateProviderConnection}>
                     <label className="system-settings-field"><span>连接名称</span><input value={createProviderForm.name} onChange={(event) => setCreateProviderForm((current) => ({ ...current, name: event.target.value }))} placeholder="Qwen Production" /></label>
                     <label className="system-settings-field"><span>提供方类型</span><select value={createProviderForm.providerKind} onChange={(event) => setCreateProviderForm((current) => ({ ...current, providerKind: event.target.value as AiProviderKind }))}>{providerKindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                    <label className="system-settings-field"><span>Base URL</span><input value={createProviderForm.baseUrl} onChange={(event) => setCreateProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.deepseek.com" /></label>
+                    <label className="system-settings-field"><span>基础 URL</span><input value={createProviderForm.baseUrl} onChange={(event) => setCreateProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.deepseek.com" /></label>
                     <label className="system-settings-field"><span>测试模型</span><input value={createProviderForm.testModelName} onChange={(event) => setCreateProviderForm((current) => ({ ...current, testModelName: event.target.value }))} placeholder="qwen-max" /></label>
                     <label className="system-settings-field"><span>API Key</span><input type="password" value={createProviderForm.apiKey} onChange={(event) => setCreateProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder="sk-..." /></label>
                     <label className="system-settings-field"><span>启用状态</span><select value={createProviderForm.enabled ? "enabled" : "disabled"} onChange={(event) => setCreateProviderForm((current) => ({ ...current, enabled: event.target.value === "enabled" }))}><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
@@ -647,7 +647,7 @@ export function SystemSettingsWorkbenchPage({
                       <form className="system-settings-form-grid" onSubmit={handleUpdateSelectedProvider}>
                         <label className="system-settings-field"><span>连接名称</span><input value={selectedProviderForm.name} onChange={(event) => setSelectedProviderForm((current) => ({ ...current, name: event.target.value }))} /></label>
                         <label className="system-settings-field"><span>提供方类型</span><select value={selectedProviderForm.providerKind} disabled>{providerKindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                        <label className="system-settings-field"><span>Base URL</span><input value={selectedProviderForm.baseUrl} onChange={(event) => setSelectedProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
+                        <label className="system-settings-field"><span>基础 URL</span><input value={selectedProviderForm.baseUrl} onChange={(event) => setSelectedProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
                         <label className="system-settings-field"><span>测试模型</span><input value={selectedProviderForm.testModelName} onChange={(event) => setSelectedProviderForm((current) => ({ ...current, testModelName: event.target.value }))} /></label>
                         <label className="system-settings-field"><span>启用状态</span><select value={selectedProviderForm.enabled ? "enabled" : "disabled"} onChange={(event) => setSelectedProviderForm((current) => ({ ...current, enabled: event.target.value === "enabled" }))}><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
                         <div className="system-settings-actions system-settings-actions-full"><button type="submit" disabled={isBusy}>保存连接信息</button></div>

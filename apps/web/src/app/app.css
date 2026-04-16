@@ -667,6 +667,10 @@ a {
   animation: workbench-panel-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
 }
 
+.workbench-content--manuscript-workbench {
+  --workbench-shell-viewport-offset: clamp(176px, 18vh, 204px);
+}
+
 .workbench-content--admin-governance,
 .workbench-content--evaluation-workbench,
 .workbench-content--harness-datasets,

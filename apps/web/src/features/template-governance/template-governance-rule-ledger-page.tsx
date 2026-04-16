@@ -1,7 +1,10 @@
 import type { FormEvent } from "react";
+import { TemplateGovernanceLedgerSearchPage } from "./template-governance-ledger-search-page.tsx";
 import { TemplateGovernanceLedgerToolbar } from "./template-governance-ledger-toolbar.tsx";
 import type {
+  TemplateGovernanceLedgerSearchState,
   TemplateGovernanceRuleLedgerCategory,
+  TemplateGovernanceRuleLedgerRow,
   TemplateGovernanceRuleLedgerViewModel,
 } from "./template-governance-ledger-types.ts";
 import {
@@ -14,9 +17,41 @@ import {
   type TemplateGovernanceNavigationItem,
 } from "./template-governance-navigation.ts";
 
+export interface TemplateGovernanceRuleLedgerFilterState {
+  isOpen: boolean;
+  moduleOptions: string[];
+  publishStatusOptions: string[];
+  semanticStatusOptions: string[];
+  moduleValue: string;
+  publishStatusValue: string;
+  semanticStatusValue: string;
+  onModuleValueChange?: (value: string) => void;
+  onPublishStatusValueChange?: (value: string) => void;
+  onSemanticStatusValueChange?: (value: string) => void;
+}
+
+export interface TemplateGovernanceRuleLedgerBulkState {
+  isOpen: boolean;
+  selectedRowIds: string[];
+  showSelectedOnly: boolean;
+  onToggleRowSelection?: (rowId: string) => void;
+  onSelectVisibleRows?: () => void;
+  onClearSelection?: () => void;
+  onToggleShowSelectedOnly?: () => void;
+}
+
+export interface TemplateGovernanceRuleLedgerClientFilterInput {
+  moduleValue: string;
+  publishStatusValue: string;
+  semanticStatusValue: string;
+}
+
 export interface TemplateGovernanceRuleLedgerPageProps {
   initialViewModel?: TemplateGovernanceRuleLedgerViewModel;
   navigationItems?: readonly TemplateGovernanceNavigationItem[];
+  searchState?: TemplateGovernanceLedgerSearchState;
+  filterState?: TemplateGovernanceRuleLedgerFilterState;
+  bulkState?: TemplateGovernanceRuleLedgerBulkState;
   searchValue?: string;
   isBusy?: boolean;
   statusMessage?: string | null;
@@ -37,6 +72,9 @@ export interface TemplateGovernanceRuleLedgerPageProps {
 export function TemplateGovernanceRuleLedgerPage({
   initialViewModel = createEmptyTemplateGovernanceRuleLedgerViewModel(),
   navigationItems,
+  searchState = createEmptyRuleLedgerSearchState(),
+  filterState = createClosedRuleLedgerFilterState(),
+  bulkState = createClosedRuleLedgerBulkState(),
   searchValue = "",
   isBusy = false,
   statusMessage = null,
@@ -95,6 +133,87 @@ export function TemplateGovernanceRuleLedgerPage({
 
       {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
+      <TemplateGovernanceLedgerSearchPage searchState={searchState} />
+
+      {filterState.isOpen ? (
+        <article className="template-governance-card template-governance-ledger-section">
+          <header className="template-governance-ledger-section-header">
+            <h2>筛选面板</h2>
+            <p>进一步按执行模块、语义状态和发布状态缩小当前台账范围。</p>
+          </header>
+          <div className="template-governance-detail-grid">
+            <label className="template-governance-field">
+              <span>执行模块</span>
+              <select
+                value={filterState.moduleValue}
+                onChange={(event) => filterState.onModuleValueChange?.(event.target.value)}
+              >
+                <option value="all">全部模块</option>
+                {filterState.moduleOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="template-governance-field">
+              <span>发布状态</span>
+              <select
+                value={filterState.publishStatusValue}
+                onChange={(event) =>
+                  filterState.onPublishStatusValueChange?.(event.target.value)
+                }
+              >
+                <option value="all">全部状态</option>
+                {filterState.publishStatusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="template-governance-field">
+              <span>语义状态</span>
+              <select
+                value={filterState.semanticStatusValue}
+                onChange={(event) =>
+                  filterState.onSemanticStatusValueChange?.(event.target.value)
+                }
+              >
+                <option value="all">全部状态</option>
+                {filterState.semanticStatusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </article>
+      ) : null}
+
+      {bulkState.isOpen ? (
+        <article className="template-governance-card template-governance-ledger-section">
+          <header className="template-governance-ledger-section-header">
+            <h2>批量操作面板</h2>
+            <p>进入多选模式后，可以先圈定当前结果，再决定是否仅查看已选项。</p>
+          </header>
+          <div className="template-governance-actions">
+            <button type="button" onClick={bulkState.onSelectVisibleRows}>
+              全选当前结果
+            </button>
+            <button type="button" onClick={bulkState.onToggleShowSelectedOnly}>
+              {bulkState.showSelectedOnly ? "显示全部结果" : "仅看已选"}
+            </button>
+            <button type="button" onClick={bulkState.onClearSelection}>
+              清空选择
+            </button>
+          </div>
+          <p className="template-governance-selected-note">
+            当前已选 {bulkState.selectedRowIds.length} 项。
+          </p>
+        </article>
+      ) : null}
 
       <div className="template-governance-ledger-kpi-strip">
         <article className="template-governance-ledger-kpi">
@@ -145,6 +264,7 @@ export function TemplateGovernanceRuleLedgerPage({
           <table className="template-governance-ledger-table">
             <thead>
               <tr>
+                {bulkState.isOpen ? <th>选择</th> : null}
                 <th>资产名称</th>
                 <th>资产类别</th>
                 <th>适用模块</th>
@@ -166,6 +286,15 @@ export function TemplateGovernanceRuleLedgerPage({
                         : "template-governance-ledger-row"
                     }
                   >
+                    {bulkState.isOpen ? (
+                      <td className="template-governance-ledger-table-cell-check">
+                        <input
+                          type="checkbox"
+                          checked={bulkState.selectedRowIds.includes(row.id)}
+                          onChange={() => bulkState.onToggleRowSelection?.(row.id)}
+                        />
+                      </td>
+                    ) : null}
                     <td>
                       <button
                         type="button"
@@ -186,7 +315,7 @@ export function TemplateGovernanceRuleLedgerPage({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8}>当前分类下还没有规则资产。</td>
+                  <td colSpan={bulkState.isOpen ? 9 : 8}>当前分类下还没有规则资产。</td>
                 </tr>
               )}
             </tbody>
@@ -250,6 +379,101 @@ export function TemplateGovernanceRuleLedgerPage({
       ) : null}
     </section>
   );
+}
+
+export function applyTemplateGovernanceRuleLedgerClientFilters(
+  rows: readonly TemplateGovernanceRuleLedgerRow[],
+  filters: TemplateGovernanceRuleLedgerClientFilterInput,
+): TemplateGovernanceRuleLedgerRow[] {
+  return rows.filter((row) => {
+    const matchesModule =
+      filters.moduleValue === "all" || row.module_label === filters.moduleValue;
+    const matchesPublishStatus =
+      filters.publishStatusValue === "all" || row.publish_status === filters.publishStatusValue;
+    const matchesSemanticStatus =
+      filters.semanticStatusValue === "all" ||
+      row.semantic_status === filters.semanticStatusValue;
+
+    return matchesModule && matchesPublishStatus && matchesSemanticStatus;
+  });
+}
+
+export function buildTemplateGovernanceRuleLedgerSearchState(
+  rows: readonly TemplateGovernanceRuleLedgerRow[],
+  query: string,
+): TemplateGovernanceLedgerSearchState {
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRows =
+    normalizedQuery.length === 0
+      ? rows
+      : rows.filter((row) =>
+          [
+            row.title,
+            row.module_label,
+            row.manuscript_type_label,
+            row.semantic_status,
+            row.publish_status,
+            row.contributor_label,
+          ].some((value) => value.toLowerCase().includes(normalizedQuery)),
+        );
+
+  return {
+    mode: "results",
+    query,
+    title: "搜索结果预览",
+    rows: filteredRows.map((row) => ({
+      id: row.id,
+      primary: row.title,
+      secondary: `${formatRuleLedgerCategoryLabel(row.asset_kind)} · ${row.publish_status}`,
+      cells: [row.module_label, row.manuscript_type_label, row.semantic_status],
+    })),
+  };
+}
+
+export function collectTemplateGovernanceRuleLedgerFilterOptions(
+  rows: readonly TemplateGovernanceRuleLedgerRow[],
+): Pick<
+  TemplateGovernanceRuleLedgerFilterState,
+  "moduleOptions" | "publishStatusOptions" | "semanticStatusOptions"
+> {
+  return {
+    moduleOptions: collectUniqueValues(rows.map((row) => row.module_label)),
+    publishStatusOptions: collectUniqueValues(rows.map((row) => row.publish_status)),
+    semanticStatusOptions: collectUniqueValues(rows.map((row) => row.semantic_status)),
+  };
+}
+
+function createEmptyRuleLedgerSearchState(): TemplateGovernanceLedgerSearchState {
+  return {
+    mode: "idle",
+    query: "",
+    title: "",
+    rows: [],
+  };
+}
+
+function createClosedRuleLedgerFilterState(): TemplateGovernanceRuleLedgerFilterState {
+  return {
+    isOpen: false,
+    moduleOptions: [],
+    publishStatusOptions: [],
+    semanticStatusOptions: [],
+    moduleValue: "all",
+    publishStatusValue: "all",
+    semanticStatusValue: "all",
+  };
+}
+
+function createClosedRuleLedgerBulkState(): TemplateGovernanceRuleLedgerBulkState {
+  return {
+    isOpen: false,
+    selectedRowIds: [],
+    showSelectedOnly: false,
+  };
+}
+
+function collectUniqueValues(values: readonly string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 }
 
 function formatRuleLedgerCategoryLabel(category: TemplateGovernanceRuleLedgerCategory): string {

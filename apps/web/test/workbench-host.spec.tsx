@@ -43,7 +43,10 @@ function extractGovernanceNavSection(markup: string): string {
   return nextGroup === -1 ? markup.slice(start) : markup.slice(start, nextGroup);
 }
 
-async function renderWorkbenchHostAtHash(hash: string): Promise<string> {
+async function renderWorkbenchHostAtHash(
+  hash: string,
+  role: AuthRole = "admin",
+): Promise<string> {
   const previousWindow = globalThis.window;
   globalThis.window = {
     location: { hash } as Location,
@@ -61,7 +64,7 @@ async function renderWorkbenchHostAtHash(hash: string): Promise<string> {
   try {
     const hostModule = await import("../src/app/workbench-host.tsx");
     return renderToStaticMarkup(
-      <hostModule.WorkbenchHost session={buildSession("admin")} />,
+      <hostModule.WorkbenchHost session={buildSession(role)} />,
     );
   } finally {
     if (typeof previousWindow === "undefined") {
@@ -155,6 +158,15 @@ test("knowledge reviewer defaults to knowledge library", () => {
   assert.equal(session.defaultWorkbench, "knowledge-library");
 });
 
+test("knowledge reviewer gets rule center access instead of the legacy learning-review destination", () => {
+  const session = buildSession("knowledge_reviewer");
+
+  assert.deepEqual(
+    session.availableWorkbenchEntries.map((entry) => entry.id),
+    ["knowledge-library", "knowledge-review", "template-governance"],
+  );
+});
+
 test("workbench host runtime render routes knowledge ledger hashes to the ledger page shell", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#knowledge-library?knowledgeView=ledger&assetId=knowledge-42&revisionId=knowledge-42-revision-2",
@@ -168,14 +180,54 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   assert.match(markup, /workbench-nav/u);
 });
 
-test("workbench host defaults bare knowledge library hashes to the main page", async () => {
+test("workbench host defaults bare knowledge library hashes to the final ledger page", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#knowledge-library?assetId=knowledge-42&revisionId=knowledge-42-revision-2",
   );
 
-  assert.match(markup, /knowledge-library-workbench-page/u);
+  assert.match(markup, /knowledge-library-ledger-page/u);
+  assert.match(markup, /knowledge-library-ledger-grid/u);
+  assert.match(markup, /knowledge-library-ledger-toolbar/u);
+  assert.doesNotMatch(markup, /knowledge-library-workbench-page/u);
   assert.match(markup, /workbench-header/u);
   assert.match(markup, /workbench-nav/u);
+});
+
+test("workbench host routes legacy learning-review hashes into the rule-center learning compatibility path", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#learning-review?manuscriptId=manuscript-42&reviewedCaseSnapshotId=snapshot-42",
+  );
+
+  assert.match(markup, /template-governance-recovery-route/u);
+  assert.match(markup, /data-mode="rule-center-recovery"/u);
+  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(
+    markup,
+    /workbench-header-focus-card[\s\S]*?\u89c4\u5219\u4e2d\u5fc3/u,
+  );
+  assert.doesNotMatch(markup, /learning-review-workbench/u);
+  return;
+  assert.match(markup, /回流工作区/u);
+  assert.match(markup, /workbench-header-focus-card[\s\S]*?规则中心/u);
+  assert.doesNotMatch(markup, /learning-review-workbench/u);
+});
+
+test("knowledge reviewer legacy learning-review hashes resolve to the live rule center recovery workspace", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#learning-review?manuscriptId=manuscript-42&reviewedCaseSnapshotId=snapshot-42",
+    "knowledge_reviewer",
+  );
+
+  assert.match(markup, /template-governance-recovery-route/u);
+  assert.match(markup, /data-mode="rule-center-recovery"/u);
+  assert.match(
+    markup,
+    /workbench-header-focus-card[\s\S]*?\u89c4\u5219\u4e2d\u5fc3/u,
+  );
+  assert.doesNotMatch(markup, /learning-review-compat/u);
+  return;
+  assert.match(markup, /workbench-header-focus-card[\s\S]*?瑙勫垯涓績/u);
+  assert.doesNotMatch(markup, /learning-review-compat/u);
 });
 
 test("workbench host runtime render routes rule center overview hashes to the overview page", async () => {
@@ -192,7 +244,7 @@ test("workbench host defaults bare rule center hashes to the overview page", asy
   const markup = await renderWorkbenchHostAtHash("#template-governance");
 
   assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /template-governance-overview-entries/u);
+  assert.match(markup, /template-governance-overview-panels/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
@@ -224,6 +276,17 @@ test("workbench host runtime render routes rule center extraction hashes to the 
   assert.match(markup, /template-governance-extraction-ledger-page/u);
   assert.match(markup, /新建提取任务/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
+});
+
+test("workbench host routes admin-console hashes to the lightweight management overview", async () => {
+  const markup = await renderWorkbenchHostAtHash("#admin-console");
+
+  assert.match(markup, /workbench-content--admin-governance/u);
+  assert.match(markup, /管理总览/u);
+  assert.match(markup, /正在加载管理总览/u);
+  assert.match(markup, /正在汇总 AI 接入、Harness 控制与治理资产状态/u);
+  assert.match(markup, /workbench-header-focus-card[\s\S]*?<strong>管理总览<\/strong>/u);
+  assert.doesNotMatch(markup, /manuscript-workbench-shell--screening/u);
 });
 
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
@@ -255,7 +318,7 @@ test("admin navigation model aligns to the final IA groups and management target
   );
   assert.deepEqual(
     groups[1]?.items.map((item: { id: string }) => item.id),
-    ["knowledge-review", "learning-review", "template-governance"],
+    ["knowledge-review", "template-governance"],
   );
   assert.deepEqual(
     groups[2]?.items.map((item: { label: string }) => item.label),
@@ -338,7 +401,7 @@ test("operator navigation keeps each public-beta desk on its own mainline surfac
   );
 });
 
-test("knowledge reviewer navigation excludes manuscript desks and governance entries", async () => {
+test("knowledge reviewer navigation keeps the knowledge library and recovery desks without management-only entries", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -359,7 +422,7 @@ test("knowledge reviewer navigation excludes manuscript desks and governance ent
   );
   assert.deepEqual(
     groups[1]?.items.map((item: { id: string }) => item.id),
-    ["knowledge-review", "learning-review"],
+    ["knowledge-review", "template-governance"],
   );
   assert.equal(
     groups.some((group: { id: string }) => group.id === "governance"),
@@ -393,13 +456,13 @@ test("navigation menu renders grouped admin navigation with final IA labels and 
   assert.match(html, /协作与回收区/u);
   assert.match(html, /管理区/u);
   assert.match(html, /规则中心/u);
-  assert.match(html, /质量优化/u);
+  assert.doesNotMatch(html, /质量优化/u);
   assert.match(html, /管理总览/u);
   assert.match(html, /AI 接入/u);
   assert.match(html, /账号与权限/u);
   assert.match(html, /Harness 控制/u);
   assert.match(html, /4 \u9879/u);
-  assert.match(html, /3 \u9879/u);
+  assert.match(html, /2 \u9879/u);
   assert.match(html, /\u77e5\u8bc6\u5e93/u);
   assert.match(html, /\u77e5\u8bc6\u5ba1\u6838/u);
   assert.match(html, /is-active/);

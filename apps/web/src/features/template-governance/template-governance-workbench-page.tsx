@@ -96,10 +96,19 @@ import {
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
 import {
+  buildTemplateGovernanceOverviewFallbackPendingItems,
+  buildTemplateGovernanceOverviewFallbackUpdates,
   TemplateGovernanceOverviewPage,
+  type TemplateGovernanceOverviewPendingItem,
   type TemplateGovernanceOverviewMetrics,
+  type TemplateGovernanceOverviewRecentUpdate,
 } from "./template-governance-overview-page.tsx";
-import { TemplateGovernanceRuleLedgerPage } from "./template-governance-rule-ledger-page.tsx";
+import {
+  applyTemplateGovernanceRuleLedgerClientFilters,
+  buildTemplateGovernanceRuleLedgerSearchState,
+  collectTemplateGovernanceRuleLedgerFilterOptions,
+  TemplateGovernanceRuleLedgerPage,
+} from "./template-governance-rule-ledger-page.tsx";
 import { TemplateGovernanceRuleWizard } from "./template-governance-rule-wizard.tsx";
 import { TemplateGovernanceContentModuleLedgerPage } from "./template-governance-content-module-ledger-page.tsx";
 import type { TemplateGovernanceContentModuleFormValues } from "./template-governance-content-module-form.tsx";
@@ -121,6 +130,7 @@ import { TemplateGovernanceTemplateLedgerPage } from "./template-governance-temp
 import type { TemplateGovernanceTemplateFormValues } from "./template-governance-template-form.tsx";
 import type {
   TemplateGovernanceRuleLedgerCategory,
+  TemplateGovernanceRuleLedgerRow,
   TemplateGovernanceRuleLedgerViewModel,
 } from "./template-governance-ledger-types.ts";
 import {
@@ -137,6 +147,7 @@ import {
 import {
   createRuleWizardEntryFormState,
   type RuleWizardEntryFormState,
+  type RuleWizardReleaseAction,
 } from "./template-governance-rule-wizard-api.ts";
 import {
   formatRulePackageKindLabel,
@@ -330,6 +341,11 @@ export function TemplateGovernanceWorkbenchPage({
   initialLearningCandidates = [],
   initialSelectedLearningCandidateId,
 }: TemplateGovernanceWorkbenchPageProps) {
+  const shouldShowRuleLedger =
+    initialView === "authoring" ||
+    initialView === "rule-ledger" ||
+    (initialMode === "learning" && initialView !== "overview");
+
   if (initialView === "overview") {
     return (
       <TemplateGovernanceOverviewRoute
@@ -339,8 +355,20 @@ export function TemplateGovernanceWorkbenchPage({
     );
   }
 
-  if (initialView === "rule-ledger") {
-    return <TemplateGovernanceRuleLedgerRoute controller={controller} />;
+  if (shouldShowRuleLedger) {
+    return (
+      <TemplateGovernanceRuleLedgerRoute
+        controller={controller}
+        actorRole={actorRole}
+        recoveryMode={initialMode === "learning"}
+        prefilledManuscriptId={prefilledManuscriptId}
+        prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
+        initialCategory={initialMode === "learning" ? "recycled_candidate" : "all"}
+        initialLearningCandidates={initialLearningCandidates}
+        initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+        initialWizardMode={initialView === "authoring" ? "create" : null}
+      />
+    );
   }
 
   if (initialView === "extraction-ledger") {
@@ -1777,7 +1805,7 @@ export function TemplateGovernanceWorkbenchPage({
           <p className="template-governance-eyebrow">规则中心</p>
           <h2>规则中心</h2>
           <p>
-            把规则创建、模板套用、校对策略和学习回流放进同一块可解释的治理工作台，但把高频入口做得更清楚、更好上手。
+            把规则创建、模板套用、校对策略和回流工作区放进同一块可解释的治理工作台，但把高频入口做得更清楚、更好上手。
           </p>
           <WorkbenchCoreStrip variant="secondary" />
         </div>
@@ -1805,13 +1833,13 @@ export function TemplateGovernanceWorkbenchPage({
           href={learningModeHash}
           className={`template-governance-mode-tab${workbenchMode === "learning" ? " is-active" : ""}`}
         >
-          学习回流
+          回流工作区
         </a>
       </nav>
 
       {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
         <p className="template-governance-context-note">
-          已保留学习上下文：复核快照 {normalizedPrefilledReviewedCaseSnapshotId}
+          已保留回流上下文：复核快照 {normalizedPrefilledReviewedCaseSnapshotId}
         </p>
       ) : null}
 
@@ -2532,6 +2560,10 @@ function TemplateGovernanceOverviewRoute({
   const [overview, setOverview] = useState(initialOverview);
   const [extractionAwaitingConfirmationCount, setExtractionAwaitingConfirmationCount] =
     useState(0);
+  const metrics = buildTemplateGovernanceOverviewMetrics(
+    overview,
+    extractionAwaitingConfirmationCount,
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -2559,31 +2591,140 @@ function TemplateGovernanceOverviewRoute({
 
   return (
     <TemplateGovernanceOverviewPage
-      metrics={buildTemplateGovernanceOverviewMetrics(
+      metrics={metrics}
+      pendingItems={buildTemplateGovernanceOverviewPendingItems(
         overview,
-        extractionAwaitingConfirmationCount,
+        metrics,
       )}
+      recentUpdates={buildTemplateGovernanceOverviewRecentUpdates(overview, metrics)}
       onOpenView={navigateToTemplateGovernanceView}
     />
   );
 }
 
+function TemplateGovernanceLearningRecoveryRoute({
+  actorRole,
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
+  initialLearningCandidates,
+  initialSelectedLearningCandidateId,
+  onOpenCandidateRuleDraft,
+}: {
+  actorRole: AuthRole;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  initialLearningCandidates: readonly LearningCandidateViewModel[];
+  initialSelectedLearningCandidateId?: string;
+  onOpenCandidateRuleDraft(candidateId: string): void;
+}) {
+  const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledReviewedCaseSnapshotId =
+    prefilledReviewedCaseSnapshotId?.trim() ?? "";
+
+  return (
+    <section
+      className="template-governance-recovery-route"
+      data-mode="rule-center-recovery"
+    >
+      <header className="template-governance-ledger-toolbar template-governance-recovery-toolbar">
+        <div className="template-governance-ledger-toolbar-copy">
+          <p className="template-governance-eyebrow">规则中心 · 回流工作区</p>
+          <h1>规则台账</h1>
+          <p>
+            在规则中心内处理 AI 提取或人工复核后的回流候选，完成批准、驳回与转成规则草稿。
+          </p>
+        </div>
+
+        <div className="template-governance-chip-row">
+          <span className="template-governance-chip">回流工作区</span>
+          <span className="template-governance-chip template-governance-chip-secondary">
+            待处理 {initialLearningCandidates.length}
+          </span>
+          {normalizedPrefilledManuscriptId.length > 0 ? (
+            <span className="template-governance-chip template-governance-chip-secondary">
+              稿件 {normalizedPrefilledManuscriptId}
+            </span>
+          ) : null}
+          {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
+            <span className="template-governance-chip template-governance-chip-secondary">
+              快照 {normalizedPrefilledReviewedCaseSnapshotId}
+            </span>
+          ) : null}
+        </div>
+      </header>
+
+      <RuleLearningPane
+        actorRole={actorRole}
+        prefilledManuscriptId={
+          normalizedPrefilledManuscriptId.length > 0
+            ? normalizedPrefilledManuscriptId
+            : undefined
+        }
+        prefilledReviewedCaseSnapshotId={
+          normalizedPrefilledReviewedCaseSnapshotId.length > 0
+            ? normalizedPrefilledReviewedCaseSnapshotId
+            : undefined
+        }
+        initialCandidates={initialLearningCandidates}
+        initialSelectedCandidateId={initialSelectedLearningCandidateId}
+        onConvertToRuleDraft={(prefill) => {
+          onOpenCandidateRuleDraft(prefill.sourceLearningCandidateId);
+        }}
+      />
+    </section>
+  );
+}
+
 function TemplateGovernanceRuleLedgerRoute({
   controller,
+  actorRole,
+  recoveryMode = false,
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
+  initialCategory = "all",
+  initialLearningCandidates = [],
+  initialSelectedLearningCandidateId,
+  initialWizardMode = null,
 }: {
   controller: TemplateGovernanceWorkbenchController;
+  actorRole: AuthRole;
+  recoveryMode?: boolean;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
+  initialCategory?: TemplateGovernanceRuleLedgerCategory;
+  initialLearningCandidates?: readonly LearningCandidateViewModel[];
+  initialSelectedLearningCandidateId?: string;
+  initialWizardMode?: RuleWizardState["mode"] | null;
 }) {
   const [ledger, setLedger] = useState<TemplateGovernanceRuleLedgerViewModel>(
-    createEmptyTemplateGovernanceRuleLedgerViewModel(),
+    () =>
+      mergeRuleLedgerWithLearningCandidates(
+        createEmptyTemplateGovernanceRuleLedgerViewModel(),
+        initialLearningCandidates,
+        initialCategory,
+        initialSelectedLearningCandidateId,
+      ),
   );
   const [searchValue, setSearchValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] =
-    useState<TemplateGovernanceRuleLedgerCategory>("all");
+    useState<TemplateGovernanceRuleLedgerCategory>(initialCategory);
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [wizardState, setWizardState] = useState<RuleWizardState | null>(null);
+  const [activeCommandPanel, setActiveCommandPanel] = useState<
+    "search" | "filter" | "bulk" | null
+  >(null);
+  const [clientFilterState, setClientFilterState] = useState({
+    moduleValue: "all",
+    publishStatusValue: "all",
+    semanticStatusValue: "all",
+  });
+  const [bulkSelectedRowIds, setBulkSelectedRowIds] = useState<string[]>([]);
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+  const [wizardState, setWizardState] = useState<RuleWizardState | null>(() =>
+    initialWizardMode ? createRuleWizardState(initialWizardMode) : null,
+  );
   const [wizardTitle, setWizardTitle] = useState<string | undefined>(undefined);
   const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
     () => createRuleWizardEntryFormState(),
@@ -2601,7 +2742,14 @@ function TemplateGovernanceRuleLedgerRoute({
       })
       .then((nextLedger) => {
         if (!isCancelled) {
-          setLedger(nextLedger);
+          setLedger(
+            mergeRuleLedgerWithLearningCandidates(
+              nextLedger,
+              initialLearningCandidates,
+              selectedCategory,
+              initialSelectedLearningCandidateId,
+            ),
+          );
         }
       })
       .catch((error) => {
@@ -2618,26 +2766,79 @@ function TemplateGovernanceRuleLedgerRoute({
     return () => {
       isCancelled = true;
     };
-  }, [controller, searchQuery, selectedCategory]);
+  }, [
+    controller,
+    initialLearningCandidates,
+    initialSelectedLearningCandidateId,
+    searchQuery,
+    selectedCategory,
+  ]);
+
+  useEffect(() => {
+    const availableRowIds = new Set(ledger.rows.map((row) => row.id));
+    setBulkSelectedRowIds((current) => current.filter((rowId) => availableRowIds.has(rowId)));
+  }, [ledger.rows]);
+
+  const filterOptions = collectTemplateGovernanceRuleLedgerFilterOptions(ledger.rows);
+  const filteredLedgerRows = applyTemplateGovernanceRuleLedgerClientFilters(
+    ledger.rows,
+    clientFilterState,
+  );
+  const visibleLedgerRows =
+    showSelectedOnly
+      ? filteredLedgerRows.filter((row) => bulkSelectedRowIds.includes(row.id))
+      : filteredLedgerRows;
+  const selectedLedgerRowId = ledger.selectedRowId ?? ledger.selectedRow?.id ?? null;
+  const selectedVisibleRowId =
+    selectedLedgerRowId &&
+    visibleLedgerRows.some((row) => row.id === selectedLedgerRowId)
+      ? selectedLedgerRowId
+      : null;
+  const ruleLedgerSearchState =
+    activeCommandPanel === "search"
+      ? buildTemplateGovernanceRuleLedgerSearchState(
+          visibleLedgerRows,
+          searchValue.trim().length > 0 ? searchValue.trim() : searchQuery,
+        )
+      : createEmptyLedgerSearchState();
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSearchQuery(searchValue.trim());
+    setActiveCommandPanel("search");
+    setStatusMessage(null);
   }
 
   function handleSelectCategory(category: TemplateGovernanceRuleLedgerCategory) {
     setSelectedCategory(category);
     setStatusMessage(null);
+    setActiveCommandPanel(null);
+    setShowSelectedOnly(false);
+    setBulkSelectedRowIds([]);
   }
 
   function handleSelectRow(rowId: string) {
     setLedger((current) => selectTemplateGovernanceRuleLedgerRow(current, rowId));
   }
 
+  function toggleCommandPanel(nextPanel: "search" | "filter" | "bulk") {
+    setActiveCommandPanel((current) => (current === nextPanel ? null : nextPanel));
+    setStatusMessage(null);
+  }
+
+  function handleToggleBulkRowSelection(rowId: string) {
+    setBulkSelectedRowIds((current) =>
+      current.includes(rowId)
+        ? current.filter((entry) => entry !== rowId)
+        : current.concat(rowId),
+    );
+  }
+
   function handleOpenCreateRule() {
     setWizardState(createRuleWizardState("create"));
     setWizardTitle(undefined);
     setWizardEntryForm(createRuleWizardEntryFormState());
+    setActiveCommandPanel(null);
   }
 
   function handleOpenSelectedItem(rowId: string) {
@@ -2645,6 +2846,13 @@ function TemplateGovernanceRuleLedgerRoute({
     if (!selectedRow) {
       return;
     }
+
+    const selectedLearningCandidate =
+      selectedRow.asset_kind === "recycled_candidate"
+        ? selectedRow.learning_candidate ??
+          initialLearningCandidates.find((candidate) => candidate.id === rowId) ??
+          null
+        : null;
 
     setWizardState(
       createRuleWizardState(
@@ -2656,10 +2864,13 @@ function TemplateGovernanceRuleLedgerRoute({
     );
     setWizardTitle(selectedRow.title);
     setWizardEntryForm(
-      createRuleWizardEntryFormState({
-        title: selectedRow.title,
-      }),
+      selectedLearningCandidate
+        ? createRuleWizardEntryFormStateFromLearningCandidate(selectedLearningCandidate)
+        : createRuleWizardEntryFormState({
+            title: selectedRow.title,
+          }),
     );
+    setActiveCommandPanel(null);
   }
 
   async function handleSaveRuleWizardDraft() {
@@ -2709,6 +2920,52 @@ function TemplateGovernanceRuleLedgerRoute({
     );
   }
 
+  async function handleCompleteRuleWizard(releaseAction?: RuleWizardReleaseAction) {
+    if (!wizardState) {
+      return;
+    }
+
+    const completedWizardState = wizardState;
+    const nextCategory = resolveRuleLedgerCategoryAfterWizardCompletion(
+      completedWizardState,
+      selectedCategory,
+    );
+
+    setWizardState(null);
+    setWizardTitle(undefined);
+    setActiveCommandPanel(null);
+    setShowSelectedOnly(false);
+    setBulkSelectedRowIds([]);
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const nextLedger = await controller.loadRuleLedger({
+        category: nextCategory,
+        searchQuery,
+        selectedRowId:
+          completedWizardState.draftAssetId ??
+          completedWizardState.sourceRowId ??
+          null,
+      });
+
+      setSelectedCategory(nextCategory);
+      setLedger(
+        mergeRuleLedgerWithLearningCandidates(
+          nextLedger,
+          initialLearningCandidates,
+          nextCategory,
+          initialSelectedLearningCandidateId,
+        ),
+      );
+      setStatusMessage(resolveRuleWizardCompletionMessage(releaseAction));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则台账刷新失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   if (wizardState) {
     return (
       <TemplateGovernanceRuleWizard
@@ -2733,9 +2990,23 @@ function TemplateGovernanceRuleLedgerRoute({
         onSaveDraft={() => {
           void handleSaveRuleWizardDraft();
         }}
-        onComplete={() => {
-          setWizardState(null);
-          setStatusMessage("规则向导已关闭，请继续在规则台账完成后续治理。");
+        onComplete={(input) => {
+          void handleCompleteRuleWizard(input?.releaseAction);
+        }}
+      />
+    );
+  }
+
+  if (recoveryMode) {
+    return (
+      <TemplateGovernanceLearningRecoveryRoute
+        actorRole={actorRole}
+        prefilledManuscriptId={prefilledManuscriptId}
+        prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
+        initialLearningCandidates={initialLearningCandidates}
+        initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+        onOpenCandidateRuleDraft={(candidateId) => {
+          handleOpenSelectedItem(candidateId);
         }}
       />
     );
@@ -2744,15 +3015,53 @@ function TemplateGovernanceRuleLedgerRoute({
   return (
     <TemplateGovernanceRuleLedgerPage
       initialViewModel={createTemplateGovernanceRuleLedgerViewModel({
-        rows: ledger.rows,
+        rows: visibleLedgerRows,
         category: selectedCategory,
         searchQuery,
-        selectedRowId: ledger.selectedRowId ?? ledger.selectedRow?.id ?? null,
+        selectedRowId: selectedVisibleRowId,
       })}
       navigationItems={createTemplateGovernanceNavigationItems(
         "rule-ledger",
         navigateToTemplateGovernanceSection,
       )}
+      searchState={ruleLedgerSearchState}
+      filterState={{
+        isOpen: activeCommandPanel === "filter",
+        moduleOptions: filterOptions.moduleOptions,
+        publishStatusOptions: filterOptions.publishStatusOptions,
+        semanticStatusOptions: filterOptions.semanticStatusOptions,
+        moduleValue: clientFilterState.moduleValue,
+        publishStatusValue: clientFilterState.publishStatusValue,
+        semanticStatusValue: clientFilterState.semanticStatusValue,
+        onModuleValueChange: (value) =>
+          setClientFilterState((current) => ({ ...current, moduleValue: value })),
+        onPublishStatusValueChange: (value) =>
+          setClientFilterState((current) => ({
+            ...current,
+            publishStatusValue: value,
+          })),
+        onSemanticStatusValueChange: (value) =>
+          setClientFilterState((current) => ({
+            ...current,
+            semanticStatusValue: value,
+          })),
+      }}
+      bulkState={{
+        isOpen: activeCommandPanel === "bulk",
+        selectedRowIds: bulkSelectedRowIds,
+        showSelectedOnly,
+        onToggleRowSelection: handleToggleBulkRowSelection,
+        onSelectVisibleRows: () => {
+          setBulkSelectedRowIds(filteredLedgerRows.map((row) => row.id));
+        },
+        onClearSelection: () => {
+          setBulkSelectedRowIds([]);
+          setShowSelectedOnly(false);
+        },
+        onToggleShowSelectedOnly: () => {
+          setShowSelectedOnly((current) => !current);
+        },
+      }}
       searchValue={searchValue}
       isBusy={isBusy}
       statusMessage={statusMessage}
@@ -2767,15 +3076,17 @@ function TemplateGovernanceRuleLedgerRoute({
         ledger.selectedRow?.asset_kind === "recycled_candidate" ? "转成规则" : "编辑规则"
       }
       onOpenSearch={() => {
-        setStatusMessage("可以使用顶部搜索框筛选当前台账。");
+        setSearchQuery(searchValue.trim());
+        toggleCommandPanel("search");
       }}
       onOpenFilter={() => {
-        setStatusMessage("先用分类视图切换规则、模板、规则包和回流候选。");
+        toggleCommandPanel("filter");
       }}
       onOpenBulkActions={() => {
-        setStatusMessage("批量操作将在后续规则向导完成后接入。");
+        toggleCommandPanel("bulk");
       }}
       onImport={() => {
+        setActiveCommandPanel(null);
         navigateToTemplateGovernanceSection("extraction-ledger");
       }}
     />
@@ -3051,6 +3362,144 @@ function TemplateGovernanceExtractionLedgerRoute({
       }}
     />
   );
+}
+
+function mergeRuleLedgerWithLearningCandidates(
+  ledger: TemplateGovernanceRuleLedgerViewModel,
+  learningCandidates: readonly LearningCandidateViewModel[],
+  selectedCategory: TemplateGovernanceRuleLedgerCategory,
+  initialSelectedLearningCandidateId?: string,
+): TemplateGovernanceRuleLedgerViewModel {
+  if (!learningCandidates.length) {
+    return ledger;
+  }
+
+  const candidateRows = learningCandidates.map(createRuleLedgerRowFromLearningCandidate);
+  const mergedRows = [
+    ...ledger.rows.filter(
+      (row) =>
+        !candidateRows.some((candidateRow) => candidateRow.id === row.id),
+    ),
+    ...candidateRows,
+  ];
+  const preferredRowId =
+    initialSelectedLearningCandidateId ??
+    ledger.selectedRowId ??
+    (selectedCategory === "recycled_candidate" ? candidateRows[0]?.id ?? null : null);
+  const mergedLedger = createTemplateGovernanceRuleLedgerViewModel({
+    rows: mergedRows,
+    category: ledger.category || selectedCategory,
+    searchQuery: ledger.searchQuery,
+    selectedRowId: preferredRowId,
+  });
+
+  return preferredRowId
+    ? selectTemplateGovernanceRuleLedgerRow(mergedLedger, preferredRowId)
+    : mergedLedger;
+}
+
+function createRuleLedgerRowFromLearningCandidate(
+  candidate: LearningCandidateViewModel,
+): TemplateGovernanceRuleLedgerViewModel["rows"][number] {
+  return {
+    id: candidate.id,
+    asset_kind: "recycled_candidate",
+    title: candidate.title ?? "未命名回流候选",
+    module_label: formatTemplateGovernanceModuleLabel(
+      normalizeLearningCandidateModule(candidate.module),
+    ),
+    manuscript_type_label: formatTemplateGovernanceManuscriptTypeLabel(
+      normalizeLearningCandidateManuscriptType(candidate.manuscript_type),
+    ),
+    semantic_status: "待治理",
+    publish_status:
+      candidate.status === "approved" ? "已批准候选" : "候选待处理",
+    contributor_label: candidate.created_by,
+    updated_at: candidate.updated_at,
+    learning_candidate: candidate,
+  };
+}
+
+export function createRuleWizardEntryFormStateFromRuleLedgerRow(
+  row: TemplateGovernanceRuleLedgerRow,
+): RuleWizardEntryFormState | null {
+  if (row.asset_kind !== "recycled_candidate" || row.learning_candidate == null) {
+    return null;
+  }
+
+  return createRuleWizardEntryFormStateFromLearningCandidate(row.learning_candidate);
+}
+
+export function resolveRuleLedgerCategoryAfterWizardCompletion(
+  wizardState: RuleWizardState,
+  currentCategory: TemplateGovernanceRuleLedgerCategory,
+): TemplateGovernanceRuleLedgerCategory {
+  if (
+    wizardState.mode === "candidate" &&
+    wizardState.draftAssetId &&
+    currentCategory === "recycled_candidate"
+  ) {
+    return "rule";
+  }
+
+  return currentCategory;
+}
+
+function resolveRuleWizardCompletionMessage(
+  releaseAction: RuleWizardReleaseAction | undefined,
+): string {
+  switch (releaseAction) {
+    case "save_draft":
+      return "规则草稿已回写到规则台账。";
+    case "submit_review":
+      return "规则已提交审核并返回规则台账。";
+    case "publish_now":
+      return "规则已发布并返回规则台账。";
+    default:
+      return "规则向导已关闭，请继续在规则台账完成后续治理。";
+  }
+}
+
+function createRuleWizardEntryFormStateFromLearningCandidate(
+  candidate: LearningCandidateViewModel,
+): RuleWizardEntryFormState {
+  const payload = candidate.candidate_payload;
+
+  return createRuleWizardEntryFormState({
+    title: candidate.title ?? "未命名回流候选",
+    moduleScope: normalizeLearningCandidateModule(candidate.module),
+    manuscriptTypes: normalizeLearningCandidateManuscriptType(candidate.manuscript_type),
+    sourceType: "internal_case",
+    contributor: candidate.created_by,
+    ruleBody: candidate.proposal_text ?? "",
+    positiveExample:
+      payload && typeof payload === "object" && "after_fragment" in payload
+        ? String(payload.after_fragment ?? "")
+        : "",
+    negativeExample:
+      payload && typeof payload === "object" && "before_fragment" in payload
+        ? String(payload.before_fragment ?? "")
+        : "",
+    sourceBasis:
+      payload && typeof payload === "object" && "evidence_summary" in payload
+        ? String(payload.evidence_summary ?? "")
+        : "",
+  });
+}
+
+function normalizeLearningCandidateModule(value: string): RuleWizardEntryFormState["moduleScope"] {
+  switch (value) {
+    case "screening":
+    case "editing":
+    case "proofreading":
+      return value;
+    default:
+      return "any";
+  }
+}
+
+function normalizeLearningCandidateManuscriptType(value: string): string {
+  return value.trim().length > 0 ? value : "any";
 }
 
 function TemplateGovernanceContentModuleLedgerRoute({
@@ -3714,6 +4163,97 @@ function buildTemplateGovernanceOverviewMetrics(
       ).length ?? 0,
     extractionAwaitingConfirmationCount,
   };
+}
+
+function buildTemplateGovernanceOverviewPendingItems(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+  metrics: TemplateGovernanceOverviewMetrics,
+): TemplateGovernanceOverviewPendingItem[] {
+  const items = buildTemplateGovernanceOverviewFallbackPendingItems(metrics);
+  const draftRuleSetCount =
+    overview?.ruleSets.filter((ruleSet) => ruleSet.status === "draft").length ?? 0;
+  const draftInstructionCount =
+    overview?.instructionTemplates.filter((template) => template.status === "draft").length ??
+    0;
+
+  if (draftRuleSetCount > 0) {
+    items.push({
+      id: "pending-rule-packages",
+      title: "规则包草稿待整理",
+      detail: `${draftRuleSetCount} 套规则集仍停留在草稿状态。`,
+      emphasis: `草稿 ${draftRuleSetCount} 套`,
+      actionLabel: "进入规则台账",
+      targetView: "rule-ledger",
+    });
+  }
+
+  if (draftInstructionCount > 0) {
+    items.push({
+      id: "pending-instruction-templates",
+      title: "AI 指令模板待收口",
+      detail: `${draftInstructionCount} 份指令模板尚未进入发布节奏。`,
+      emphasis: `待收口 ${draftInstructionCount} 份`,
+      actionLabel: "打开期刊模板台账",
+      targetView: "journal-template-ledger",
+    });
+  }
+
+  return items.slice(0, 4);
+}
+
+function buildTemplateGovernanceOverviewRecentUpdates(
+  overview: TemplateGovernanceWorkbenchOverview | null,
+  metrics: TemplateGovernanceOverviewMetrics,
+): TemplateGovernanceOverviewRecentUpdate[] {
+  const updates: TemplateGovernanceOverviewRecentUpdate[] = [];
+
+  if (overview?.selectedTemplateFamily) {
+    updates.push({
+      id: `template-family-${overview.selectedTemplateFamily.id}`,
+      title: overview.selectedTemplateFamily.name,
+      detail: `当前模板族 · ${formatTemplateGovernanceFamilyStatusLabel(
+        overview.selectedTemplateFamily.status,
+      )}`,
+      statusLabel: "模板族",
+      targetView: "large-template-ledger",
+    });
+  }
+
+  if (overview?.selectedJournalTemplateProfile) {
+    updates.push({
+      id: `journal-template-${overview.selectedJournalTemplateProfile.id}`,
+      title: overview.selectedJournalTemplateProfile.journal_name,
+      detail: "当前关注的期刊模板差异。",
+      statusLabel: "期刊模板",
+      targetView: "journal-template-ledger",
+    });
+  }
+
+  if (overview?.selectedRuleSet) {
+    updates.push({
+      id: `rule-set-${overview.selectedRuleSet.id}`,
+      title: `${formatTemplateGovernanceModuleLabel(overview.selectedRuleSet.module)}规则集 v${overview.selectedRuleSet.version_no}`,
+      detail: `当前规则集 · ${formatTemplateGovernanceGovernedAssetStatusLabel(
+        overview.selectedRuleSet.status,
+      )}`,
+      statusLabel: "规则包",
+      targetView: "rule-ledger",
+    });
+  }
+
+  if (overview?.selectedInstructionTemplate) {
+    updates.push({
+      id: `instruction-template-${overview.selectedInstructionTemplate.id}`,
+      title: overview.selectedInstructionTemplate.name,
+      detail: "当前 AI 指令模板入口。",
+      statusLabel: "AI 指令",
+      targetView: "journal-template-ledger",
+    });
+  }
+
+  return updates.length > 0
+    ? updates
+    : buildTemplateGovernanceOverviewFallbackUpdates(metrics);
 }
 
 function createEmptyExtractionLedgerViewModel(): TemplateGovernanceExtractionLedgerViewModel {
@@ -4525,7 +5065,7 @@ function formatRuleEvidenceExamples(
 function navigateToTemplateGovernanceView(
   view: TemplateGovernanceView,
 ) {
-  if (view === "classic" || view === "authoring") {
+  if (view === "classic") {
     navigateToTemplateGovernanceSection("rule-ledger");
     return;
   }

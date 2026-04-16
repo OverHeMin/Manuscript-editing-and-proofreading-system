@@ -49,6 +49,7 @@ export interface CreateLearningCandidateInput {
   title?: string;
   proposalText?: string;
   requestedBy: string;
+  requestedByRole?: RoleKey;
   deidentificationPassed: boolean;
   candidatePayload?: Record<string, unknown>;
   suggestedRuleObject?: string;
@@ -62,6 +63,7 @@ export interface AttachGovernedSourceInput {
   snapshotId: string;
   feedbackRecordId: string;
   sourceAssetId: string;
+  actorRole?: RoleKey;
 }
 
 export interface AttachEvaluationGovernedSourceInput {
@@ -71,6 +73,7 @@ export interface AttachEvaluationGovernedSourceInput {
   evaluationRunId: string;
   evidencePackId: string;
   sourceAssetId: string;
+  actorRole?: RoleKey;
 }
 
 export interface AttachReviewedSnapshotGovernedSourceInput {
@@ -78,6 +81,7 @@ export interface AttachReviewedSnapshotGovernedSourceInput {
   sourceKind: "reviewed_case_snapshot";
   reviewedCaseSnapshotId: string;
   sourceAssetId?: string;
+  actorRole?: RoleKey;
 }
 
 export type AttachLearningGovernedSourceInput =
@@ -99,6 +103,7 @@ export interface ExtractReviewedSnapshotRuleCandidateInput {
     evidenceSummary: string;
   };
   requestedBy: string;
+  requestedByRole?: RoleKey;
   deidentificationPassed: boolean;
   suggestedTemplateFamilyId?: string;
   suggestedJournalTemplateId?: string;
@@ -116,6 +121,7 @@ export interface ExtractFeedbackRuleCandidateInput {
     evidenceSummary: string;
   };
   requestedBy: string;
+  requestedByRole?: RoleKey;
   deidentificationPassed: boolean;
   suggestedTemplateFamilyId?: string;
   suggestedJournalTemplateId?: string;
@@ -367,6 +373,7 @@ export class LearningService {
       created_by: input.requestedBy,
       created_at: timestamp,
       updated_at: timestamp,
+      review_actions: [],
     };
 
     await this.candidateRepository.save(candidate);
@@ -427,12 +434,14 @@ export class LearningService {
             snapshotId: input.source.executionSnapshotId,
             feedbackRecordId: input.source.feedbackRecordId,
             sourceAssetId: input.source.sourceAssetId,
+            actorRole: input.requestedByRole,
           }
         : {
             candidateId: candidate.id,
             sourceKind: "reviewed_case_snapshot",
             reviewedCaseSnapshotId: reviewedSnapshot.id,
             sourceAssetId: reviewedSnapshot.snapshot_asset_id,
+            actorRole: input.requestedByRole,
           },
     );
 
@@ -479,6 +488,14 @@ export class LearningService {
       );
     const nextStatus =
       candidate.status === "draft" ? "pending_review" : candidate.status;
+    const nextReviewActions =
+      nextStatus === "pending_review" && candidate.status !== "pending_review"
+        ? appendLearningReviewAction(candidate.review_actions, {
+            action: "submitted_for_review",
+            actor_role: input.actorRole ?? "knowledge_reviewer",
+            created_at: this.now().toISOString(),
+          })
+        : candidate.review_actions;
     await this.candidateRepository.save({
       ...candidate,
       status: nextStatus,
@@ -487,6 +504,7 @@ export class LearningService {
       governed_evaluation_run_id: sourceLink.evaluation_run_id,
       governed_evidence_pack_id: sourceLink.evidence_pack_id,
       updated_at: this.now().toISOString(),
+      review_actions: nextReviewActions,
     });
 
     return sourceLink;
@@ -498,6 +516,7 @@ export class LearningService {
     const candidate = await this.createLearningCandidate(input);
     await this.attachGovernedSource({
       candidateId: candidate.id,
+      actorRole: input.requestedByRole,
       ...input.governedSource,
     });
 
@@ -512,6 +531,7 @@ export class LearningService {
   async approveLearningCandidate(
     candidateId: string,
     actorRole: RoleKey,
+    reviewNote?: string,
   ): Promise<LearningCandidateRecord> {
     this.permissionGuard.assert(actorRole, "learning.review");
 
@@ -532,9 +552,56 @@ export class LearningService {
       ...candidate,
       status: "approved",
       updated_at: this.now().toISOString(),
+      review_actions: appendLearningReviewAction(
+        candidate.review_actions,
+        createLearningReviewAction({
+          action: "approved",
+          actorRole,
+          reviewNote,
+          createdAt: this.now().toISOString(),
+        }),
+      ),
     };
     await this.candidateRepository.save(approved);
     return approved;
+  }
+
+  async rejectLearningCandidate(
+    candidateId: string,
+    actorRole: RoleKey,
+    reviewNote?: string,
+  ): Promise<LearningCandidateRecord> {
+    this.permissionGuard.assert(actorRole, "learning.review");
+
+    const candidate = await this.candidateRepository.findById(candidateId);
+    if (!candidate) {
+      throw new LearningCandidateNotFoundError(candidateId);
+    }
+
+    const sourceLinks =
+      await this.feedbackGovernanceService.listLearningCandidateSourceLinksByCandidateId(
+        candidateId,
+      );
+    if (sourceLinks.length === 0) {
+      throw new LearningCandidateGovernedProvenanceRequiredError(candidateId);
+    }
+
+    const rejected: LearningCandidateRecord = {
+      ...candidate,
+      status: "rejected",
+      updated_at: this.now().toISOString(),
+      review_actions: appendLearningReviewAction(
+        candidate.review_actions,
+        createLearningReviewAction({
+          action: "rejected",
+          actorRole,
+          reviewNote,
+          createdAt: this.now().toISOString(),
+        }),
+      ),
+    };
+    await this.candidateRepository.save(rejected);
+    return rejected;
   }
 
   async getLearningCandidate(
@@ -614,6 +681,38 @@ function createLearningWriteTransactionManager(
   }
 
   return createDirectWriteTransactionManager(context);
+}
+
+function appendLearningReviewAction(
+  actions: LearningCandidateRecord["review_actions"],
+  nextAction: NonNullable<LearningCandidateRecord["review_actions"]>[number],
+): LearningCandidateRecord["review_actions"] {
+  return [...(actions ?? []), nextAction];
+}
+
+function createLearningReviewAction({
+  action,
+  actorRole,
+  reviewNote,
+  createdAt,
+}: {
+  action: NonNullable<LearningCandidateRecord["review_actions"]>[number]["action"];
+  actorRole: RoleKey;
+  reviewNote?: string;
+  createdAt: string;
+}): NonNullable<LearningCandidateRecord["review_actions"]>[number] {
+  const normalizedReviewNote = normalizeReviewNote(reviewNote);
+  return {
+    action,
+    actor_role: actorRole,
+    created_at: createdAt,
+    ...(normalizedReviewNote ? { review_note: normalizedReviewNote } : {}),
+  };
+}
+
+function normalizeReviewNote(reviewNote: string | undefined): string | undefined {
+  const normalized = reviewNote?.trim();
+  return normalized ? normalized : undefined;
 }
 
 function isSnapshotCapableRepository<T extends object>(

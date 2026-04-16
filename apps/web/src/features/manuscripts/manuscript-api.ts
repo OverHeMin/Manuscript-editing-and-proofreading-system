@@ -53,6 +53,7 @@ export function updateManuscriptTemplateSelection(
   client: ManuscriptHttpClient,
   input: {
     manuscriptId: string;
+    templateFamilyId?: string | null;
     journalTemplateId?: string | null;
   },
 ) {
@@ -60,6 +61,7 @@ export function updateManuscriptTemplateSelection(
     method: "POST",
     url: `/api/v1/manuscripts/${input.manuscriptId}/template-selection`,
     body: {
+      templateFamilyId: input.templateFamilyId ?? null,
       journalTemplateId: input.journalTemplateId ?? null,
     },
   });

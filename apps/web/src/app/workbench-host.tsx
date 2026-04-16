@@ -23,6 +23,7 @@ import { resolveWorkbenchRuntimeMode } from "./persistent-session.ts";
 import {
   formatWorkbenchHash,
   isManuscriptWorkbenchId,
+  resolveKnowledgeLibraryEntryView,
   resolveWorkbenchLocation,
   resolveWorkbenchRenderKind,
   type WorkbenchHandoff,
@@ -66,14 +67,13 @@ export function WorkbenchHost({
   const accessibleManuscriptWorkbenchModes = visibleEntries
     .map((entry) => entry.id)
     .filter((entry): entry is ManuscriptWorkbenchMode => isManuscriptWorkbenchId(entry));
-  const canOpenLearningReview = visibleEntries.some(
-    (entry) => entry.id === "learning-review",
-  );
-  const canOpenEvaluationWorkbench = visibleEntries.some(
-    (entry) => entry.id === "evaluation-workbench",
-  );
   const hasRuleCenter = visibleEntries.some(
     (entry) => entry.id === "template-governance",
+  );
+  const canOpenLearningReview =
+    hasRuleCenter || visibleEntries.some((entry) => entry.id === "learning-review");
+  const canOpenEvaluationWorkbench = visibleEntries.some(
+    (entry) => entry.id === "evaluation-workbench",
   );
 
   useEffect(() => {
@@ -256,14 +256,14 @@ export function WorkbenchHost({
           />
         );
       case "knowledge-library":
-        return routeState.knowledgeView === "ledger" ? (
-          <KnowledgeLibraryLedgerPage
+        return resolveKnowledgeLibraryEntryView(routeState.knowledgeView) === "classic" ? (
+          <KnowledgeLibraryWorkbenchPage
             actorRole={session.role}
             prefilledAssetId={routeState.assetId}
             prefilledRevisionId={routeState.revisionId}
           />
         ) : (
-          <KnowledgeLibraryWorkbenchPage
+          <KnowledgeLibraryLedgerPage
             actorRole={session.role}
             prefilledAssetId={routeState.assetId}
             prefilledRevisionId={routeState.revisionId}
@@ -480,6 +480,25 @@ function resolveInitialWorkbenchRoute(
   const location = resolveWorkbenchLocation(
     hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
   );
+  const hasRuleCenter = visibleEntries.some(
+    (entry) => entry.id === "template-governance",
+  );
+
+  if (location.workbenchId === "learning-review" && hasRuleCenter) {
+    return {
+      activeWorkbenchId: "template-governance",
+      manuscriptId: location.manuscriptId,
+      knowledgeItemId: location.knowledgeItemId,
+      assetId: location.assetId,
+      revisionId: location.revisionId,
+      templateGovernanceView: "rule-ledger",
+      reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
+      sampleSetItemId: location.sampleSetItemId,
+      ruleCenterMode: "learning",
+      settingsSection: location.settingsSection,
+      harnessSection: location.harnessSection,
+    };
+  }
 
   if (
     location.workbenchId &&

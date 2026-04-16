@@ -557,6 +557,174 @@ test("knowledge library controller can create, update, derive, and submit a draf
   );
 });
 
+test("knowledge library controller can archive and restore an asset while reloading the active view", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/knowledge-1/archive") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "archived",
+            title: "Knowledge draft updated",
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/knowledge-1/restore") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "draft",
+            title: "Knowledge draft restored",
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-1",
+                title: "Knowledge draft restored",
+                summary: "Use consistent terminology.",
+                knowledge_kind: "reference",
+                status: "draft",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-1-revision-1",
+                semantic_status: "stale",
+                content_block_count: 1,
+                updated_at: "2026-04-08T08:40:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-1") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "draft",
+            title: "Knowledge draft restored",
+          }) as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const archived = await controller.archiveAssetAndLoad({
+    assetId: "knowledge-1",
+  });
+  const restored = await controller.restoreAssetAndLoad({
+    assetId: "knowledge-1",
+  });
+
+  assert.equal(archived.detail?.selected_revision.status, "draft");
+  assert.equal(restored.detail?.selected_revision.title, "Knowledge draft restored");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/knowledge/knowledge-1/archive",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-1",
+      "POST /api/v1/knowledge/knowledge-1/restore",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-1?revisionId=knowledge-1-revision-1",
+    ],
+  );
+});
+
+test("knowledge library controller can restore multiple archived assets with one reload", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/knowledge-1/restore") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-1",
+            revisionNo: 1,
+            status: "draft",
+            title: "Knowledge draft restored",
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/knowledge-2/restore") {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-2",
+            revisionId: "knowledge-2-revision-1",
+            revisionNo: 1,
+            status: "draft",
+            title: "Knowledge draft restored 2",
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const restored = await controller.restoreAssetsAndLoad({
+    assetIds: ["knowledge-1", "knowledge-2", "knowledge-1"],
+    filters: {
+      assetStatus: "archived",
+    },
+  });
+
+  assert.equal(restored.visibleLibrary.length, 0);
+  assert.equal(restored.selectedAssetId, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/knowledge/knowledge-1/restore",
+      "POST /api/v1/knowledge/knowledge-2/restore",
+      "GET /api/v1/knowledge/library",
+    ],
+  );
+});
+
 test("knowledge library controller can persist rich content, semantic confirmation, and image uploads", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createKnowledgeLibraryWorkbenchController({
@@ -780,7 +948,25 @@ test("knowledge library controller posts ai intake and semantic assist requests"
               moduleScope: "screening",
               manuscriptTypes: ["clinical_study"],
             },
-            suggestedContentBlocks: [],
+            suggestedContentBlocks: [
+              {
+                id: "draft-block-1",
+                revision_id: "local-draft",
+                block_type: "text_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  text: "Suggested operator-facing content block.",
+                },
+              },
+            ],
+            suggestedSemanticLayer: {
+              revision_id: "local-draft",
+              status: "pending_confirmation",
+              page_summary: "AI prepared semantic summary.",
+              retrieval_terms: ["primary endpoint", "screening"],
+              retrieval_snippets: ["Use when endpoint wording needs screening review."],
+            },
             warnings: ["No evidence level was found in the source text."],
           } as TResponse,
         };
@@ -842,6 +1028,15 @@ test("knowledge library controller posts ai intake and semantic assist requests"
     },
   ]);
   assert.equal(intakeSuggestion.suggestedDraft.title, "Primary endpoint rule");
+  assert.equal(intakeSuggestion.suggestedContentBlocks.length, 1);
+  assert.equal(
+    intakeSuggestion.suggestedContentBlocks[0]?.content_payload.text,
+    "Suggested operator-facing content block.",
+  );
+  assert.equal(
+    intakeSuggestion.suggestedSemanticLayer?.page_summary,
+    "AI prepared semantic summary.",
+  );
   assert.equal(
     semanticSuggestion.suggestedSemanticLayer.pageSummary,
     "Operator-ready semantic summary.",

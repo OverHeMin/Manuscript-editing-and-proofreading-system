@@ -40,7 +40,7 @@ test("admin navigation exposes rule center as the single rule-governance entry",
 
   assert.ok(ruleCenterItem);
   assert.equal(ruleCenterItem?.label, "\u89c4\u5219\u4e2d\u5fc3");
-  assert.equal(allItems.some((item) => item.id === "learning-review"), true);
+  assert.equal(allItems.some((item) => item.id === "learning-review"), false);
 });
 
 test("abstract preset serializes the exact normalized abstract objective example", () => {

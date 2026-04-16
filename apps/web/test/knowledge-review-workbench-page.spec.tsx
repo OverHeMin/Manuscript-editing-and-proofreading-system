@@ -28,17 +28,37 @@ const controllerStub: KnowledgeReviewWorkbenchController = {
   },
 };
 
-test("knowledge review workbench page renders a review-first desk shell around queue, detail, and actions", () => {
+test("knowledge review workbench page renders a compact review desk around queue, detail, and inline actions", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeReviewWorkbenchPage controller={controllerStub} />,
   );
 
-  assert.match(markup, /知识审核工作台/u);
-  assert.match(markup, /待审核队列/u);
-  assert.match(markup, /知识详情/u);
-  assert.match(markup, /审核动作/u);
-  assert.match(markup, /审核角色/u);
-  assert.match(markup, /通过/u);
-  assert.match(markup, /驳回/u);
+  assert.match(markup, /data-layout="compact-review-desk"/);
+  assert.match(markup, /knowledge-review-queue-pane/);
+  assert.match(markup, /knowledge-review-review-column/);
+  assert.match(markup, /knowledge-review-detail-pane/);
+  assert.match(markup, /knowledge-review-action-panel/);
+  assert.match(markup, /knowledge-review-inline-actions/);
   assert.match(markup, /workbench-core-strip-card is-active/);
+  assert.doesNotMatch(markup, /knowledge-review-hero/);
+  assert.doesNotMatch(markup, /knowledge-review-hero-stats/);
+});
+
+test("knowledge review workbench page keeps queue filters compact and near the queue", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeReviewWorkbenchPage controller={controllerStub} />,
+  );
+
+  assert.match(markup, /knowledge-review-compact-filters/);
+  assert.match(markup, /knowledge-review-queue-summary/);
+  assert.doesNotMatch(markup, /knowledge-review-inline-filters/);
+});
+
+test("knowledge review workbench page assigns independent scroll ownership to queue and detail", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeReviewWorkbenchPage controller={controllerStub} />,
+  );
+
+  assert.match(markup, /data-scroll-owner="queue"/);
+  assert.match(markup, /data-scroll-owner="detail"/);
 });

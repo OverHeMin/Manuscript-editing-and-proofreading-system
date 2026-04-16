@@ -1,5 +1,6 @@
 import {
   assistKnowledgeRevisionSemanticLayer,
+  archiveKnowledgeAsset,
   checkKnowledgeDuplicates,
   createKnowledgeLibraryAiIntakeSuggestion,
   confirmKnowledgeSemanticLayer,
@@ -10,6 +11,7 @@ import {
   type KnowledgeLibraryListItemResponseBody,
   regenerateKnowledgeSemanticLayer,
   replaceKnowledgeRevisionContentBlocks,
+  restoreKnowledgeAsset,
   type DuplicateKnowledgeAcknowledgementPayload,
   submitKnowledgeRevisionForReview,
   uploadKnowledgeImage,
@@ -78,6 +80,21 @@ export interface UpdateKnowledgeSemanticLayerAndLoadInput
   input?: KnowledgeSemanticLayerInput;
 }
 
+export interface ArchiveKnowledgeLibraryAssetAndLoadInput
+  extends KnowledgeLibraryMutationOptions {
+  assetId: string;
+}
+
+export interface RestoreKnowledgeLibraryAssetAndLoadInput
+  extends KnowledgeLibraryMutationOptions {
+  assetId: string;
+}
+
+export interface RestoreKnowledgeLibraryAssetsAndLoadInput
+  extends KnowledgeLibraryMutationOptions {
+  assetIds: readonly string[];
+}
+
 export interface KnowledgeLibraryWorkbenchController {
   loadWorkbench(
     input?: LoadKnowledgeLibraryWorkbenchInput,
@@ -112,12 +129,26 @@ export interface KnowledgeLibraryWorkbenchController {
   confirmSemanticLayerAndLoad(
     input: UpdateKnowledgeSemanticLayerAndLoadInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  archiveAssetAndLoad(
+    input: ArchiveKnowledgeLibraryAssetAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  restoreAssetAndLoad(
+    input: RestoreKnowledgeLibraryAssetAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  restoreAssetsAndLoad(
+    input: RestoreKnowledgeLibraryAssetsAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
   uploadImage(input: KnowledgeUploadInput): Promise<KnowledgeUploadViewModel>;
 }
 
 const defaultFilters: KnowledgeLibraryFilterState = {
   searchText: "",
   queryMode: "keyword",
+  knowledgeKind: "all",
+  moduleScope: "any",
+  semanticStatus: "all",
+  contributorText: "",
+  assetStatus: "active",
 };
 
 export function createKnowledgeLibraryWorkbenchController(
@@ -215,6 +246,31 @@ export function createKnowledgeLibraryWorkbenchController(
         filters: input.filters,
       });
     },
+    async archiveAssetAndLoad(input) {
+      await archiveKnowledgeAsset(client, input.assetId);
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: input.assetId,
+        filters: input.filters,
+      });
+    },
+    async restoreAssetAndLoad(input) {
+      await restoreKnowledgeAsset(client, input.assetId);
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: input.assetId,
+        filters: input.filters,
+      });
+    },
+    async restoreAssetsAndLoad(input) {
+      const uniqueAssetIds = Array.from(
+        new Set(input.assetIds.map((assetId) => assetId.trim()).filter(Boolean)),
+      );
+      await Promise.all(
+        uniqueAssetIds.map((assetId) => restoreKnowledgeAsset(client, assetId)),
+      );
+      return loadKnowledgeLibraryWorkbench(client, {
+        filters: input.filters,
+      });
+    },
     async uploadImage(input) {
       return (await uploadKnowledgeImage(client, input)).body;
     },
@@ -233,7 +289,7 @@ async function loadKnowledgeLibraryWorkbench(
     })
   ).body;
   const library = libraryResponse.items.map(mapKnowledgeLibraryListItem);
-  const visibleLibrary = applyKnowledgeLibraryFilters(library);
+  const visibleLibrary = applyKnowledgeLibraryFilters(library, filters);
   const selectedSummary = resolveSelectedSummary(
     library,
     visibleLibrary,
@@ -241,12 +297,12 @@ async function loadKnowledgeLibraryWorkbench(
   );
   const detail =
     selectedSummary == null
-      ? null
-      : (
+        ? null
+        : (
           await getKnowledgeAssetDetail(
             client,
             selectedSummary.id,
-            input.selectedRevisionId ?? undefined,
+            input.selectedRevisionId ?? selectedSummary.selected_revision_id ?? undefined,
           )
         ).body;
 
@@ -269,13 +325,61 @@ export function createKnowledgeLibraryFilterState(
     ...overrides,
     searchText: overrides.searchText?.trim() ?? defaultFilters.searchText,
     queryMode: overrides.queryMode === "semantic" ? "semantic" : "keyword",
+    contributorText:
+      overrides.contributorText?.trim() ?? defaultFilters.contributorText,
+    knowledgeKind: overrides.knowledgeKind ?? defaultFilters.knowledgeKind,
+    moduleScope: overrides.moduleScope ?? defaultFilters.moduleScope,
+    semanticStatus:
+      overrides.semanticStatus ?? defaultFilters.semanticStatus,
+    assetStatus: overrides.assetStatus ?? defaultFilters.assetStatus,
   };
 }
 
 export function applyKnowledgeLibraryFilters(
   library: readonly KnowledgeLibrarySummaryViewModel[],
+  filters: KnowledgeLibraryFilterState,
 ): KnowledgeLibrarySummaryViewModel[] {
-  return [...library];
+  const contributorQuery = filters.contributorText.trim().toLowerCase();
+
+  return library.filter((item) => {
+    if (
+      filters.knowledgeKind !== "all" &&
+      item.knowledge_kind !== filters.knowledgeKind
+    ) {
+      return false;
+    }
+
+    if (
+      filters.moduleScope !== "any" &&
+      item.module_scope !== filters.moduleScope
+    ) {
+      return false;
+    }
+
+    if (
+      filters.semanticStatus !== "all" &&
+      (item.semantic_status ?? "not_generated") !== filters.semanticStatus
+    ) {
+      return false;
+    }
+
+    if (filters.assetStatus === "archived" && item.status !== "archived") {
+      return false;
+    }
+
+    if (filters.assetStatus === "active" && item.status === "archived") {
+      return false;
+    }
+
+    if (contributorQuery.length > 0) {
+      const contributorLabel = item.contributor_label?.toLowerCase() ?? "";
+      if (!contributorLabel.includes(contributorQuery)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 }
 
 function resolveSelectedSummary(
@@ -284,14 +388,10 @@ function resolveSelectedSummary(
   preferredAssetId: string | null,
 ): KnowledgeLibrarySummaryViewModel | null {
   if (preferredAssetId) {
-    return (
-      library.find((item) => item.id === preferredAssetId) ??
-      visibleLibrary.find((item) => item.id === preferredAssetId) ??
-      null
-    );
+    return visibleLibrary.find((item) => item.id === preferredAssetId) ?? null;
   }
 
-  return visibleLibrary[0] ?? library[0] ?? null;
+  return visibleLibrary[0] ?? null;
 }
 
 function mapKnowledgeLibraryListItem(
@@ -309,6 +409,8 @@ function mapKnowledgeLibraryListItem(
     semantic_status: item.semantic_status,
     content_block_count: item.content_block_count,
     contributor_label: item.contributor_label,
+    archived_at: item.archived_at,
+    archived_by_role: item.archived_by_role,
     updated_at: item.updated_at,
   };
 }

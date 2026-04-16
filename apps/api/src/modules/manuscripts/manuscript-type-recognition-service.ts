@@ -84,6 +84,7 @@ export class HeuristicManuscriptTypeRecognitionService
         final_type: rule.type,
         source: "heuristic",
         confidence: rule.confidence,
+        ...describeConfidence(rule.confidence),
         ...(matchedSignals.length > 0 ? { matched_signals: matchedSignals } : {}),
       };
     }
@@ -93,6 +94,7 @@ export class HeuristicManuscriptTypeRecognitionService
       final_type: "review",
       source: "heuristic",
       confidence: 0.52,
+      ...describeConfidence(0.52),
     };
   }
 }
@@ -137,4 +139,28 @@ function decodeInlineText(value: string | undefined): string {
   } catch {
     return "";
   }
+}
+
+function describeConfidence(confidence: number): Pick<
+  ManuscriptTypeDetectionSummary,
+  "confidence_level" | "requires_operator_review"
+> {
+  if (confidence >= 0.9) {
+    return {
+      confidence_level: "high",
+      requires_operator_review: false,
+    };
+  }
+
+  if (confidence >= 0.7) {
+    return {
+      confidence_level: "medium",
+      requires_operator_review: false,
+    };
+  }
+
+  return {
+    confidence_level: "low",
+    requires_operator_review: true,
+  };
 }

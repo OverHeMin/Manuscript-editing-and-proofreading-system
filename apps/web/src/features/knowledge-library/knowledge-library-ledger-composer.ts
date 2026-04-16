@@ -9,6 +9,7 @@ export interface KnowledgeLibraryLedgerComposer {
   mode: "new_local" | "existing_revision";
   persistedAssetId: string | null;
   persistedRevisionId: string | null;
+  aiIntakeSourceText: string;
   draft: CreateKnowledgeLibraryDraftInput;
   contentBlocksDraft: KnowledgeContentBlockViewModel[];
   semanticLayerDraft?: KnowledgeSemanticLayerViewModel;
@@ -20,6 +21,7 @@ export function createEmptyLedgerComposer(): KnowledgeLibraryLedgerComposer {
     mode: "new_local",
     persistedAssetId: null,
     persistedRevisionId: null,
+    aiIntakeSourceText: "",
     draft: {
       title: "",
       canonicalText: "",
@@ -39,12 +41,22 @@ export function applyAiIntakeSuggestion(
 ): KnowledgeLibraryLedgerComposer {
   return {
     ...composer,
+    aiIntakeSourceText: composer.aiIntakeSourceText,
     draft: {
       ...composer.draft,
       ...suggestion.suggestedDraft,
     },
     contentBlocksDraft: [...suggestion.suggestedContentBlocks],
-    semanticLayerDraft: suggestion.suggestedSemanticLayer,
+    semanticLayerDraft: suggestion.suggestedSemanticLayer
+      ? {
+          ...suggestion.suggestedSemanticLayer,
+          revision_id:
+            composer.persistedRevisionId ??
+            suggestion.suggestedSemanticLayer.revision_id ??
+            "local-draft",
+          status: "pending_confirmation",
+        }
+      : composer.semanticLayerDraft,
     warnings: [...suggestion.warnings],
   };
 }
@@ -55,4 +67,17 @@ export function buildCreateDraftInput(
   return {
     ...composer.draft,
   };
+}
+
+export function formatLedgerTagText(values: readonly string[] | undefined): string {
+  return (values ?? []).join("、");
+}
+
+export function parseLedgerTagText(value: string): string[] | undefined {
+  const normalized = value
+    .split(/[、,，;\n]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return normalized.length > 0 ? normalized : undefined;
 }

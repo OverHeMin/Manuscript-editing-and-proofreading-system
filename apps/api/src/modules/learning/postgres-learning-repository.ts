@@ -38,6 +38,10 @@ interface LearningCandidateRow {
   created_by: string;
   created_at: Date;
   updated_at: Date;
+  review_actions:
+    | NonNullable<LearningCandidateRecord["review_actions"]>
+    | string
+    | null;
 }
 
 interface ReviewedCaseSnapshotRow {
@@ -165,7 +169,8 @@ export class PostgresLearningCandidateRepository
           suggested_journal_template_id,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          review_actions
         )
         values (
           $1,
@@ -188,7 +193,8 @@ export class PostgresLearningCandidateRepository
           $18,
           $19,
           $20,
-          $21
+          $21,
+          $22::jsonb
         )
         on conflict (id) do update
         set
@@ -211,7 +217,8 @@ export class PostgresLearningCandidateRepository
           suggested_journal_template_id = excluded.suggested_journal_template_id,
           created_by = excluded.created_by,
           created_at = excluded.created_at,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at,
+          review_actions = excluded.review_actions
       `,
       [
         record.id,
@@ -235,6 +242,7 @@ export class PostgresLearningCandidateRepository
         record.created_by,
         record.created_at,
         record.updated_at,
+        JSON.stringify(record.review_actions ?? []),
       ],
     );
   }
@@ -263,7 +271,8 @@ export class PostgresLearningCandidateRepository
           suggested_journal_template_id,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          review_actions
         from learning_candidates
         where id = $1
       `,
@@ -297,7 +306,8 @@ export class PostgresLearningCandidateRepository
           suggested_journal_template_id,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          review_actions
         from learning_candidates
         order by updated_at desc, created_at desc, id asc
       `,
@@ -332,7 +342,8 @@ export class PostgresLearningCandidateRepository
           suggested_journal_template_id,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          review_actions
         from learning_candidates
         where status = $1
         order by updated_at desc, created_at desc, id asc
@@ -350,6 +361,9 @@ function mapLearningCandidateRow(
   const candidatePayload = parseOptionalJsonObject<Record<string, unknown>>(
     row.candidate_payload,
   );
+  const reviewActions = parseOptionalJsonArray<
+    NonNullable<LearningCandidateRecord["review_actions"]>[number]
+  >(row.review_actions);
 
   return {
     id: row.id,
@@ -395,6 +409,7 @@ function mapLearningCandidateRow(
     ...(row.suggested_journal_template_id != null
       ? { suggested_journal_template_id: row.suggested_journal_template_id }
       : {}),
+    ...(reviewActions ? { review_actions: reviewActions } : {}),
   };
 }
 
@@ -417,6 +432,21 @@ function parseOptionalJsonObject<T extends Record<string, unknown>>(
 ): T | undefined {
   const parsed = parseJsonObject<T>(value);
   return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
+function parseOptionalJsonArray<T>(
+  value: readonly T[] | string | null,
+): readonly T[] | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    const parsed = JSON.parse(value) as readonly T[];
+    return parsed.length > 0 ? parsed : undefined;
+  }
+
+  return value.length > 0 ? value : undefined;
 }
 
 function mapReviewedCaseSnapshotRow(

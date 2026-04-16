@@ -342,6 +342,219 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
   });
 });
 
+test("persistent workbench upload auto-binds a governed review baseline when only a draft review family exists", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-persistent-review-baseline-"));
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent review baseline database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      await seedPool.query(
+        `
+          insert into template_families (
+            id,
+            manuscript_type,
+            name,
+            status
+          )
+          values ($1, $2, $3, $4)
+          on conflict (id) do update
+          set
+            manuscript_type = excluded.manuscript_type,
+            name = excluded.name,
+            status = excluded.status,
+            updated_at = now()
+        `,
+        [
+          "2777fcb4-862e-4a1d-9c99-c9d8d10ca72e",
+          "review",
+          "Review governance family",
+          "draft",
+        ],
+      );
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.admin",
+        );
+        const uploadResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/manuscripts/upload`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Review manuscript needing governed baseline",
+              createdBy: "forged-admin",
+              fileName: "governed-review-upload.docx",
+              mimeType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              fileContentBase64: "UmV2aWV3IG1hbnVzY3JpcHQgY29udGVudA==",
+            }),
+          },
+        );
+        const uploaded = (await uploadResponse.json()) as {
+          manuscript: {
+            id: string;
+            manuscript_type: string;
+            manuscript_type_detection_summary?: {
+              final_type: string;
+              requires_operator_review: boolean;
+            };
+            current_template_family_id?: string;
+            governed_execution_context_summary?: {
+              base_template_family_id?: string;
+              journal_template_selection_state: string;
+              modules: Array<{
+                module: string;
+                status: string;
+                execution_profile_id?: string;
+                runtime_binding_id?: string;
+                resolved_model_id?: string;
+              }>;
+            };
+          };
+        };
+
+        assert.equal(
+          uploadResponse.status,
+          201,
+          `Expected upload to succeed, received ${uploadResponse.status}: ${JSON.stringify(uploaded)}`,
+        );
+        assert.equal(uploaded.manuscript.manuscript_type, "review");
+        assert.equal(
+          uploaded.manuscript.manuscript_type_detection_summary?.final_type,
+          "review",
+        );
+        assert.ok(
+          uploaded.manuscript.current_template_family_id,
+          "Expected upload to auto-bind an active review template family.",
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.base_template_family_id,
+          uploaded.manuscript.current_template_family_id,
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.journal_template_selection_state,
+          "base_family_only",
+        );
+        assert.deepEqual(
+          uploaded.manuscript.governed_execution_context_summary?.modules.map(
+            (module) => ({
+              module: module.module,
+              status: module.status,
+              hasExecutionProfile: Boolean(module.execution_profile_id),
+              hasRuntimeBinding: Boolean(module.runtime_binding_id),
+              hasResolvedModel: Boolean(module.resolved_model_id),
+            }),
+          ),
+          [
+            {
+              module: "screening",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "editing",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "proofreading",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+          ],
+        );
+
+        const boundFamilyRows = await seedPool.query<{
+          id: string;
+          status: string;
+        }>(
+          `
+            select id, status
+            from template_families
+            where id = $1
+          `,
+          [uploaded.manuscript.current_template_family_id],
+        );
+        assert.equal(boundFamilyRows.rows[0]?.status, "active");
+        assert.notEqual(
+          uploaded.manuscript.current_template_family_id,
+          "2777fcb4-862e-4a1d-9c99-c9d8d10ca72e",
+        );
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl, {
+          uploadRootDir,
+        });
+        try {
+          const manuscriptResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const manuscript = (await manuscriptResponse.json()) as {
+            current_template_family_id?: string;
+            governed_execution_context_summary?: {
+              base_template_family_id?: string;
+              modules: Array<{ module: string; status: string }>;
+            };
+          };
+
+          assert.equal(manuscriptResponse.status, 200);
+          assert.equal(
+            manuscript.current_template_family_id,
+            uploaded.manuscript.current_template_family_id,
+          );
+          assert.equal(
+            manuscript.governed_execution_context_summary?.base_template_family_id,
+            uploaded.manuscript.current_template_family_id,
+          );
+          assert.deepEqual(
+            manuscript.governed_execution_context_summary?.modules.map((module) => ({
+              module: module.module,
+              status: module.status,
+            })),
+            [
+              { module: "screening", status: "resolved" },
+              { module: "editing", status: "resolved" },
+              { module: "proofreading", status: "resolved" },
+            ],
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("persistent workbench screening routes keep governed execution evidence across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);
@@ -783,6 +996,217 @@ test("persistent workbench proofreading routes persist semantic table evidence a
     } finally {
       await seedPool.end();
       await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("persistent bare proofreading draft can finalize without template governance and stays settled after restart", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      await seedPool.query(
+        `
+          update manuscripts
+          set current_template_family_id = null,
+              updated_at = now()
+          where id = $1
+        `,
+        [seededIds.manuscriptId],
+      );
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl);
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/proofreading/bare-draft.md",
+              fileName: "persistent-bare-proofreading-draft.md",
+              executionMode: "bare",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          job: { id: string };
+          asset: { id: string };
+          snapshot_id?: string;
+          agent_execution_log_id?: string;
+        };
+        assert.equal(draftResponse.status, 201);
+        assert.equal(draft.agent_execution_log_id, undefined);
+        assert.ok(draft.snapshot_id);
+
+        const finalizeResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/finalize`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              draftAssetId: draft.asset.id,
+              requestedBy: "forged-proofreader",
+              actorRole: "admin",
+              storageKey: "persistent/runs/proofreading/bare-final.docx",
+              fileName: "persistent-bare-proofreading-final.docx",
+            }),
+          },
+        );
+        const finalized = (await finalizeResponse.json()) as {
+          job: { id: string };
+          asset: { id: string; asset_type: string };
+          snapshot_id?: string;
+          agent_execution_log_id?: string;
+        };
+        assert.equal(finalizeResponse.status, 201);
+        assert.equal(finalized.asset.asset_type, "final_proof_annotated_docx");
+        assert.equal(finalized.agent_execution_log_id, undefined);
+        assert.ok(finalized.snapshot_id);
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl);
+        try {
+          const restartedAdminCookie = await loginAsPersistentUser(
+            secondServer.baseUrl,
+            "persistent.admin",
+          );
+          const manuscriptResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const manuscript = (await manuscriptResponse.json()) as {
+            current_proofreading_asset_id?: string;
+            module_execution_overview?: {
+              proofreading?: {
+                latest_snapshot?: { id: string };
+                settlement?: { derived_status: string };
+              };
+            };
+          };
+
+          const assetsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/assets`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const assets = (await assetsResponse.json()) as Array<{
+            id: string;
+            asset_type: string;
+          }>;
+
+          const jobResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/jobs/${finalized.job.id}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const job = (await jobResponse.json()) as {
+            payload?: Record<string, unknown>;
+            execution_tracking?: {
+              settlement?: { derived_status: string };
+            };
+          };
+
+          const exportResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/document-pipeline/export-current-asset`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: cookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                manuscriptId: seededIds.manuscriptId,
+                preferredAssetType: "final_proof_annotated_docx",
+              }),
+            },
+          );
+          const exported = (await exportResponse.json()) as {
+            asset: { id: string; asset_type: string };
+          };
+
+          const runsResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
+            {
+              headers: { Cookie: restartedAdminCookie },
+            },
+          );
+          const runs = (await runsResponse.json()) as Array<{ id: string }>;
+
+          assert.equal(manuscriptResponse.status, 200);
+          assert.equal(assetsResponse.status, 200);
+          assert.equal(jobResponse.status, 200);
+          assert.equal(exportResponse.status, 200);
+          assert.equal(runsResponse.status, 200);
+          assert.equal(manuscript.current_proofreading_asset_id, finalized.asset.id);
+          assert.equal(
+            manuscript.module_execution_overview?.proofreading?.latest_snapshot?.id,
+            finalized.snapshot_id,
+          );
+          assert.equal(
+            manuscript.module_execution_overview?.proofreading?.settlement
+              ?.derived_status,
+            "business_completed_settled",
+          );
+          assert.ok(
+            assets.some(
+              (asset) =>
+                asset.id === draft.asset.id &&
+                asset.asset_type === "proofreading_draft_report",
+            ),
+          );
+          assert.ok(
+            assets.some(
+              (asset) =>
+                asset.id === finalized.asset.id &&
+                asset.asset_type === "final_proof_annotated_docx",
+            ),
+          );
+          assert.equal(job.payload?.executionMode, "bare");
+          assert.equal(job.payload?.outputAssetId, finalized.asset.id);
+          assert.equal(
+            job.execution_tracking?.settlement?.derived_status,
+            "business_completed_settled",
+          );
+          assert.equal(exported.asset.id, finalized.asset.id);
+          assert.equal(exported.asset.asset_type, "final_proof_annotated_docx");
+          assert.deepEqual(runs, []);
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
     }
   });
 });

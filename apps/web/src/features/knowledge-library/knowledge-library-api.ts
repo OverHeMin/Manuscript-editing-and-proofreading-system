@@ -64,6 +64,8 @@ export interface KnowledgeLibraryListItemResponseBody {
   semantic_status?: KnowledgeSemanticStatus;
   content_block_count: number;
   contributor_label?: string;
+  archived_at?: string;
+  archived_by_role?: string;
   updated_at?: string;
 }
 
@@ -223,6 +225,26 @@ export function uploadKnowledgeImage(
     method: "POST",
     url: "/api/v1/knowledge/uploads",
     body: input,
+  });
+}
+
+export function archiveKnowledgeAsset(
+  client: KnowledgeLibraryHttpClient,
+  assetId: string,
+) {
+  return client.request<Record<string, unknown>>({
+    method: "POST",
+    url: `/api/v1/knowledge/${assetId}/archive`,
+  });
+}
+
+export function restoreKnowledgeAsset(
+  client: KnowledgeLibraryHttpClient,
+  assetId: string,
+) {
+  return client.request<Record<string, unknown>>({
+    method: "POST",
+    url: `/api/v1/knowledge/${assetId}/restore`,
   });
 }
 

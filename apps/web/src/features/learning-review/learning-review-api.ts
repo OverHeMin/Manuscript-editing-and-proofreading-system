@@ -4,6 +4,7 @@ import type {
   CreateLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
   LearningCandidateViewModel,
+  RejectLearningCandidateInput,
   ReviewedCaseSnapshotViewModel,
 } from "./types.ts";
 
@@ -86,6 +87,21 @@ export function approveLearningCandidate(
     url: `/api/v1/learning/candidates/${input.candidateId}/approve`,
     body: {
       actorRole: input.actorRole,
+      reviewNote: input.reviewNote,
+    },
+  });
+}
+
+export function rejectLearningCandidate(
+  client: LearningReviewHttpClient,
+  input: RejectLearningCandidateInput,
+) {
+  return client.request<LearningCandidateViewModel>({
+    method: "POST",
+    url: `/api/v1/learning/candidates/${input.candidateId}/reject`,
+    body: {
+      actorRole: input.actorRole,
+      reviewNote: input.reviewNote,
     },
   });
 }

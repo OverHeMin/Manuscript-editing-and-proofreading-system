@@ -169,7 +169,7 @@ export function KnowledgeReviewWorkbenchPage({
       }
 
       setQueueLoadStatus("error");
-      setQueueErrorMessage(toErrorMessage(error, "Review queue failed to load"));
+      setQueueErrorMessage(toErrorMessage(error, "审核队列加载失败"));
     }
   }
 
@@ -203,7 +203,7 @@ export function KnowledgeReviewWorkbenchPage({
         revisionId,
         status: "error",
         actions: current.revisionId === revisionId ? current.actions : [],
-        errorMessage: toErrorMessage(error, "Review history failed to load"),
+        errorMessage: toErrorMessage(error, "审核历史加载失败"),
       }));
     }
   }
@@ -279,8 +279,8 @@ export function KnowledgeReviewWorkbenchPage({
       status: "loading",
       message:
         actionType === "approve"
-          ? "正在提交审核通过结果..."
-          : "正在驳回并退回草稿...",
+          ? "正在提交通过结果..."
+          : "正在提交驳回并退回草稿...",
     });
 
     const result =
@@ -302,7 +302,7 @@ export function KnowledgeReviewWorkbenchPage({
       setReviewNote(result.reviewNote);
       setActionFeedback({
         status: "error",
-        message: toErrorMessage(result.error, "Review action failed"),
+        message: toErrorMessage(result.error, "审核提交失败"),
       });
       return;
     }
@@ -346,10 +346,7 @@ export function KnowledgeReviewWorkbenchPage({
 
     setActionFeedback({
       status: "success",
-      message:
-        actionType === "approve"
-          ? "知识条目已通过审核。"
-          : "知识条目已驳回。",
+      message: actionType === "approve" ? "知识条目已通过审核。" : "知识条目已驳回。",
     });
   }
 
@@ -391,34 +388,32 @@ export function KnowledgeReviewWorkbenchPage({
   );
 
   return (
-    <main className="knowledge-review-workbench">
-      <header className="knowledge-review-hero">
-        <div className="knowledge-review-hero-copy">
-          <span className="knowledge-review-eyebrow">知识审核</span>
-          <h1>知识审核工作台</h1>
-          <p>
-            在一个稳定工作台内完成待审知识修订的队列查看、上下文核对与审核决策。
-          </p>
-          <WorkbenchCoreStrip activePillarId="knowledge" />
+    <main className="knowledge-review-workbench" data-layout="compact-review-desk">
+      <header className="knowledge-review-compact-header">
+        <div className="knowledge-review-header-main">
+          <div className="knowledge-review-header-copy">
+            <span className="knowledge-review-eyebrow">知识审核</span>
+            <h1>知识审核工作台</h1>
+            <p>队列、详情、决策保持同屏，优先支持高频审核流。</p>
+          </div>
+
+          <div className="knowledge-review-header-summary" aria-label="当前审核摘要">
+            <span className="knowledge-review-summary-chip">
+              审核角色：{formatActorRole(actorRole)}
+            </span>
+            <span className="knowledge-review-summary-chip">
+              当前资产：{effectiveSelectedItem?.asset_id ?? "等待选择"}
+            </span>
+            <span className="knowledge-review-summary-chip">
+              当前修订：{effectiveSelectedItem?.revision_id ?? "等待选择"}
+            </span>
+            <span className="knowledge-review-summary-chip is-muted">
+              队列状态：{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}
+            </span>
+          </div>
         </div>
-        <dl className="knowledge-review-hero-stats">
-          <div className="knowledge-review-hero-stat">
-            <dt>审核角色</dt>
-            <dd>{formatActorRole(actorRole)}</dd>
-          </div>
-          <div className="knowledge-review-hero-stat">
-            <dt>当前资产</dt>
-            <dd>{effectiveSelectedItem?.asset_id ?? "等待选择队列项"}</dd>
-          </div>
-          <div className="knowledge-review-hero-stat">
-            <dt>当前修订</dt>
-            <dd>{effectiveSelectedItem?.revision_id ?? "等待选择队列项"}</dd>
-          </div>
-          <div className="knowledge-review-hero-stat">
-            <dt>队列状态</dt>
-            <dd>{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}</dd>
-          </div>
-        </dl>
+
+        <WorkbenchCoreStrip activePillarId="knowledge" />
       </header>
 
       <div className="knowledge-review-desk">
@@ -442,7 +437,7 @@ export function KnowledgeReviewWorkbenchPage({
           onRetryQueue={handleRetryQueue}
         />
 
-        <section className="knowledge-review-main-column">
+        <section className="knowledge-review-review-column">
           <KnowledgeReviewDetailPane
             item={effectiveSelectedItem}
             history={displayedHistory.history}
@@ -470,14 +465,14 @@ function resolveQueueStatusLabel(
   queueErrorMessage: string | null,
 ): string {
   if (queueLoadStatus === "error") {
-    return queueErrorMessage ? "队列需要恢复" : "队列加载失败";
+    return queueErrorMessage ? "需要恢复" : "加载失败";
   }
 
   if (queueLoadStatus === "loading" || queueLoadStatus === "initial") {
-    return "正在加载队列";
+    return "正在加载";
   }
 
-  return "队列就绪";
+  return "已就绪";
 }
 
 function resolveDetailSelection(
@@ -533,8 +528,7 @@ function resolveDisplayedHistory(
       actions: [],
       errorMessage: null,
     },
-    scopeNote:
-      "History currently belongs to a different revision. Reload history to inspect the selected revision.",
+    scopeNote: "当前历史属于另一条修订，刷新后可查看选中修订的审核轨迹。",
   };
 }
 

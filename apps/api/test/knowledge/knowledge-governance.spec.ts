@@ -336,6 +336,74 @@ test("submit for review rolls back the knowledge status when the audit write fai
   );
 });
 
+test("submit for review keeps the submitting actor role in knowledge audit history", async () => {
+  const { api } = createKnowledgeHarness();
+
+  const draft = await api.createDraft({
+    title: "Role aware submit",
+    canonicalText: "Audit history should keep the submitting reviewer role.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await api.submitForReview({
+    knowledgeItemId: draft.body.id,
+    actorRole: "knowledge_reviewer",
+  });
+  const history = await api.listReviewActions({
+    knowledgeItemId: draft.body.id,
+  });
+
+  assert.deepEqual(
+    history.body.map((record) => ({
+      action: record.action,
+      actor_role: record.actor_role,
+    })),
+    [
+      {
+        action: "submitted_for_review",
+        actor_role: "knowledge_reviewer",
+      },
+    ],
+  );
+});
+
+test("submit revision for review keeps the submitting actor role in revision audit history", async () => {
+  const { api } = createKnowledgeHarness();
+
+  const draft = await api.createLibraryDraft({
+    title: "Revision role aware submit",
+    canonicalText: "Revision review audit should keep the submitting reviewer role.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await api.submitRevisionForReview({
+    revisionId: draft.body.selected_revision.id,
+    actorRole: "knowledge_reviewer",
+  });
+  const history = await api.listReviewActions({
+    knowledgeItemId: draft.body.asset.id,
+  });
+
+  assert.deepEqual(
+    history.body.map((record) => ({
+      action: record.action,
+      actor_role: record.actor_role,
+      revision_id: record.revision_id,
+    })),
+    [
+      {
+        action: "submitted_for_review",
+        actor_role: "knowledge_reviewer",
+        revision_id: draft.body.selected_revision.id,
+      },
+    ],
+  );
+});
+
 test("approval rolls back the knowledge status when the audit write fails", async () => {
   const reviewActionRepository = new FailingKnowledgeReviewActionRepository(
     (record) => record.action === "approved",
@@ -371,6 +439,7 @@ test("approval rolls back the knowledge status when the audit write fails", asyn
       {
         id: "review-action-1",
         knowledge_item_id: draft.body.id,
+        revision_id: `${draft.body.id}-revision-1`,
         action: "submitted_for_review",
         actor_role: "user",
         created_at: "2026-03-27T06:00:00.000Z",

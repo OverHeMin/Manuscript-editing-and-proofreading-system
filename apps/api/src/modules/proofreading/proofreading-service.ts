@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ModuleExecutionMode } from "@medical/contracts";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -39,12 +40,16 @@ import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
+  resolveBareModuleContext,
+} from "../shared/bare-module-context-resolver.ts";
+import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
 import {
   dispatchGovernedOrchestrationBestEffort,
   type GovernedExecutionOrchestrationDispatcher,
   type ModuleExecutionResult,
+  resolveModuleExecutionMode,
 } from "../shared/module-run-support.ts";
 import {
   createWriteTransactionManager,
@@ -61,6 +66,7 @@ export interface CreateProofreadingDraftInput {
   actorRole: RoleKey;
   storageKey: string;
   fileName?: string;
+  executionMode?: ModuleExecutionMode;
 }
 
 export interface ConfirmProofreadingFinalInput {
@@ -265,6 +271,7 @@ export class ProofreadingService {
       assetType: "proofreading_draft_report",
       mimeType: "text/markdown",
       jobType: "proofreading_draft_run",
+      executionMode: input.executionMode,
     });
   }
 
@@ -397,7 +404,8 @@ export class ProofreadingService {
     assetType: "proofreading_draft_report" | "final_proof_annotated_docx";
     mimeType: string;
     jobType: "proofreading_draft_run" | "proofreading_confirm";
-    pinnedContext?: ResolvedProofreadingGovernedContext;
+    executionMode?: ModuleExecutionMode;
+    pinnedContext?: ResolvedProofreadingExecutionContext;
   }): Promise<ProofreadingRunResult> {
     const committed = await this.transactionManager.withTransaction(async (context) => {
       const { jobRepository } = context;
@@ -418,6 +426,7 @@ export class ProofreadingService {
             requestedBy: input.requestedBy,
             actorRole: input.actorRole,
             jobId,
+            executionMode: input.executionMode,
           });
       const proofreadingFindings =
         input.jobType === "proofreading_draft_run"
@@ -433,17 +442,17 @@ export class ProofreadingService {
           : undefined;
 
       const executionLog =
-        input.pinnedContext?.agentExecutionLogId
-          ? undefined
-          : await this.agentExecutionService.createLog({
+        resolvedContext.executionMode === "governed" &&
+        !input.pinnedContext?.agentExecutionLogId
+          ? await this.agentExecutionService.createLog({
               manuscriptId: input.manuscriptId,
               module: "proofreading",
               triggeredBy: input.requestedBy,
-              runtimeId: resolvedContext.agentRuntimeId,
-              sandboxProfileId: resolvedContext.sandboxProfileId,
-              agentProfileId: resolvedContext.agentProfileId,
-              runtimeBindingId: resolvedContext.runtimeBindingId,
-              toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+              runtimeId: resolvedContext.agentRuntimeId!,
+              sandboxProfileId: resolvedContext.sandboxProfileId!,
+              agentProfileId: resolvedContext.agentProfileId!,
+              runtimeBindingId: resolvedContext.runtimeBindingId!,
+              toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId!,
               routingPolicyVersionId: resolvedContext.routingPolicyVersionId,
               routingPolicyScopeKind: resolvedContext.routingPolicyScopeKind,
               routingPolicyScopeValue: resolvedContext.routingPolicyScopeValue,
@@ -455,7 +464,8 @@ export class ProofreadingService {
                 resolvedContext.verificationCheckProfileIds,
               evaluationSuiteIds: resolvedContext.evaluationSuiteIds,
               releaseCheckProfileId: resolvedContext.releaseCheckProfileId,
-            });
+            })
+          : undefined;
       const agentExecutionLogId =
         input.pinnedContext?.agentExecutionLogId ?? executionLog?.id;
 
@@ -467,6 +477,11 @@ export class ProofreadingService {
         status: "queued",
         requested_by: input.requestedBy,
         payload: {
+          ...(resolvedContext.executionMode === "bare"
+            ? {
+                executionMode: resolvedContext.executionMode,
+              }
+            : {}),
           templateId: resolvedContext.templateId,
           executionProfileId: resolvedContext.executionProfileId,
           promptTemplateId: resolvedContext.promptTemplateId,
@@ -475,12 +490,36 @@ export class ProofreadingService {
             (hit) => hit.knowledgeItemId,
           ),
           modelId: resolvedContext.modelId,
-          agentRuntimeId: resolvedContext.agentRuntimeId,
-          sandboxProfileId: resolvedContext.sandboxProfileId,
-          agentProfileId: resolvedContext.agentProfileId,
-          runtimeBindingId: resolvedContext.runtimeBindingId,
-          toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
-          agentExecutionLogId,
+          ...(resolvedContext.agentRuntimeId
+            ? {
+                agentRuntimeId: resolvedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(resolvedContext.sandboxProfileId
+            ? {
+                sandboxProfileId: resolvedContext.sandboxProfileId,
+              }
+            : {}),
+          ...(resolvedContext.agentProfileId
+            ? {
+                agentProfileId: resolvedContext.agentProfileId,
+              }
+            : {}),
+          ...(resolvedContext.runtimeBindingId
+            ? {
+                runtimeBindingId: resolvedContext.runtimeBindingId,
+              }
+            : {}),
+          ...(resolvedContext.toolPermissionPolicyId
+            ? {
+                toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+              }
+            : {}),
+          ...(agentExecutionLogId
+            ? {
+                agentExecutionLogId,
+              }
+            : {}),
           ...(resolvedContext.draftSnapshotId
             ? { draftSnapshotId: resolvedContext.draftSnapshotId }
             : {}),
@@ -573,7 +612,9 @@ export class ProofreadingService {
 
       return {
         shouldDispatchOrchestration:
-          input.jobType === "proofreading_confirm" && !!agentExecutionLogId,
+          resolvedContext.executionMode === "governed" &&
+          input.jobType === "proofreading_confirm" &&
+          !!agentExecutionLogId,
         agentExecutionLogId,
         response: {
           job: completedJob,
@@ -587,9 +628,21 @@ export class ProofreadingService {
             (hit) => hit.knowledgeItemId,
           ),
           model_id: resolvedContext.modelId,
-          agent_runtime_id: resolvedContext.agentRuntimeId,
-          agent_profile_id: resolvedContext.agentProfileId,
-          agent_execution_log_id: agentExecutionLogId,
+          ...(resolvedContext.agentRuntimeId
+            ? {
+                agent_runtime_id: resolvedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(resolvedContext.agentProfileId
+            ? {
+                agent_profile_id: resolvedContext.agentProfileId,
+              }
+            : {}),
+          ...(agentExecutionLogId
+            ? {
+                agent_execution_log_id: agentExecutionLogId,
+              }
+            : {}),
         },
       };
     });
@@ -609,7 +662,37 @@ export class ProofreadingService {
     requestedBy: string;
     actorRole: RoleKey;
     jobId: string;
-  }): Promise<ResolvedProofreadingGovernedContext> {
+    executionMode?: ModuleExecutionMode;
+  }): Promise<ResolvedProofreadingExecutionContext> {
+    if (resolveModuleExecutionMode(input.executionMode) === "bare") {
+      const bareContext = await resolveBareModuleContext({
+        manuscriptId: input.manuscriptId,
+        module: "proofreading",
+        jobId: input.jobId,
+        actorId: input.requestedBy,
+        actorRole: input.actorRole,
+        manuscriptRepository: this.manuscriptRepository,
+        aiGatewayService: this.aiGatewayService,
+      });
+
+      return {
+        executionMode: "bare",
+        executionProfileId: bareContext.executionProfileId,
+        templateId: bareContext.moduleTemplateId,
+        moduleTemplateVersionNo: bareContext.moduleTemplateVersionNo,
+        promptTemplateId: bareContext.promptTemplateId,
+        promptTemplateVersion: bareContext.promptTemplateVersion,
+        skillPackageIds: bareContext.skillPackageIds,
+        skillPackageVersions: bareContext.skillPackageVersions,
+        knowledgeHits: bareContext.knowledgeHits,
+        modelId: bareContext.modelSelection.model.id,
+        modelVersion: bareContext.modelSelection.model.model_version,
+        verificationCheckProfileIds: bareContext.verificationCheckProfileIds,
+        evaluationSuiteIds: bareContext.evaluationSuiteIds,
+        qualityPackageVersionIds: bareContext.qualityPackageVersionIds,
+      };
+    }
+
     const governedContext = await resolveGovernedAgentContext({
       manuscriptId: input.manuscriptId,
       module: "proofreading",
@@ -636,6 +719,7 @@ export class ProofreadingService {
     const moduleContext = governedContext.moduleContext;
 
     return {
+      executionMode: "governed",
       executionProfileId: governedContext.executionProfile.id,
       templateId: moduleContext.moduleTemplate.id,
       moduleTemplateVersionNo: moduleContext.moduleTemplate.version_no,
@@ -694,7 +778,7 @@ export class ProofreadingService {
 
   private async loadPinnedDraftExecutionContext(
     draftJob: JobRecord | undefined,
-  ): Promise<ResolvedProofreadingGovernedContext | undefined> {
+  ): Promise<ResolvedProofreadingExecutionContext | undefined> {
     const snapshotId = extractDraftSnapshotId(draftJob);
     if (!snapshotId) {
       return undefined;
@@ -705,16 +789,45 @@ export class ProofreadingService {
       return undefined;
     }
 
-    const draftExecutionLog = await this.loadDraftExecutionLog(draftJob);
-    if (!draftExecutionLog) {
-      return undefined;
-    }
-
     const hitLogs =
       await this.executionTrackingService.listKnowledgeHitLogsBySnapshotId(snapshotId);
+    const draftExecutionMode = extractModuleExecutionMode(draftJob);
+    const draftExecutionLog = await this.loadDraftExecutionLog(draftJob);
+
+    if (!draftExecutionLog) {
+      if (draftExecutionMode !== "bare") {
+        return undefined;
+      }
+
+      return {
+        executionMode: "bare",
+        executionProfileId: snapshot.execution_profile_id,
+        templateId: snapshot.module_template_id,
+        moduleTemplateVersionNo: snapshot.module_template_version_no,
+        promptTemplateId: snapshot.prompt_template_id,
+        promptTemplateVersion: snapshot.prompt_template_version,
+        skillPackageIds: [...snapshot.skill_package_ids],
+        skillPackageVersions: [...snapshot.skill_package_versions],
+        knowledgeHits: hitLogs.map((hit) => ({
+          knowledgeItemId: hit.knowledge_item_id,
+          matchSourceId: hit.match_source_id,
+          bindingRuleId: hit.binding_rule_id,
+          matchSource: hit.match_source,
+          matchReasons: [...hit.match_reasons],
+        })),
+        modelId: snapshot.model_id,
+        modelVersion: snapshot.model_version,
+        draftSnapshotId: snapshot.id,
+        verificationCheckProfileIds: [],
+        evaluationSuiteIds: [],
+        qualityPackageVersionIds:
+          snapshot.quality_packages?.map((entry) => entry.package_id) ?? [],
+      };
+    }
 
     // Final confirmation must stay pinned to the reviewed draft governance context.
     return {
+      executionMode: "governed",
       executionProfileId: snapshot.execution_profile_id,
       templateId: snapshot.module_template_id,
       moduleTemplateVersionNo: snapshot.module_template_version_no,
@@ -773,7 +886,7 @@ export class ProofreadingService {
   private async buildProofreadingFindings(input: {
     manuscriptId: string;
     parentAssetId: string;
-    resolvedContext: ResolvedProofreadingGovernedContext;
+    resolvedContext: ResolvedProofreadingExecutionContext;
   }): Promise<ProofreadingInspectionResult> {
     const blocks = await this.proofreadingSourceBlockResolver.resolveBlocks({
       manuscriptId: input.manuscriptId,
@@ -837,7 +950,8 @@ export class ProofreadingService {
   }
 }
 
-interface ResolvedProofreadingGovernedContext {
+interface ResolvedProofreadingExecutionContext {
+  executionMode: ModuleExecutionMode;
   executionProfileId: string;
   templateId: string;
   moduleTemplateVersionNo: number;
@@ -856,11 +970,11 @@ interface ResolvedProofreadingGovernedContext {
   routingPolicyScopeKind?: AgentExecutionLogRecord["routing_policy_scope_kind"];
   routingPolicyScopeValue?: string;
   draftSnapshotId?: string;
-  agentRuntimeId: string;
-  sandboxProfileId: string;
-  agentProfileId: string;
-  runtimeBindingId: string;
-  toolPermissionPolicyId: string;
+  agentRuntimeId?: string;
+  sandboxProfileId?: string;
+  agentProfileId?: string;
+  runtimeBindingId?: string;
+  toolPermissionPolicyId?: string;
   verificationCheckProfileIds: string[];
   evaluationSuiteIds: string[];
   releaseCheckProfileId?: string;
@@ -870,6 +984,15 @@ interface ResolvedProofreadingGovernedContext {
 
 function extractDraftSnapshotId(draftJob: JobRecord | undefined): string | undefined {
   return extractStringPayloadValue(draftJob, "snapshotId");
+}
+
+function extractModuleExecutionMode(
+  job: JobRecord | undefined,
+): ModuleExecutionMode | undefined {
+  const executionMode = job?.payload?.executionMode;
+  return executionMode === "bare" || executionMode === "governed"
+    ? executionMode
+    : undefined;
 }
 
 function extractStringPayloadValue(

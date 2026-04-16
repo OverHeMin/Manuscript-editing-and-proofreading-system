@@ -1628,6 +1628,7 @@ function mapLearningCandidateToRuleLedgerRow(
     publish_status: formatLearningCandidateStatusLabel(candidate.status),
     contributor_label: candidate.created_by,
     updated_at: candidate.updated_at,
+    learning_candidate: candidate,
   };
 }
 

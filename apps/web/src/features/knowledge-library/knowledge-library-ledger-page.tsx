@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import {
+  applyAiIntakeSuggestion,
   buildCreateDraftInput,
   createEmptyLedgerComposer,
+  formatLedgerTagText,
+  parseLedgerTagText,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
 import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
 } from "./knowledge-library-controller.ts";
-import { KnowledgeLibraryEntryForm } from "./knowledge-library-entry-form.tsx";
+import {
+  KnowledgeLibraryEntryForm,
+  type KnowledgeLibraryEntryAiAssistMode,
+} from "./knowledge-library-entry-form.tsx";
 import {
   KnowledgeLibraryLedgerGrid,
   KNOWLEDGE_LIBRARY_LEDGER_COLUMNS,
+  type KnowledgeLibraryLedgerColumnDefinition,
   type KnowledgeLibraryLedgerColumnKey,
   type KnowledgeLibraryLedgerColumnWidthMap,
 } from "./knowledge-library-ledger-grid.tsx";
-import { KnowledgeLibraryLedgerSearchPage } from "./knowledge-library-ledger-search-page.tsx";
 import {
   KnowledgeLibraryLedgerToolbar,
   type KnowledgeLibraryLedgerDensity,
@@ -44,7 +50,6 @@ const defaultController = createKnowledgeLibraryWorkbenchController(
   createBrowserHttpClient(),
 );
 
-type LedgerSurface = "table" | "search";
 type EntryFormMode = "closed" | "create" | "edit";
 type KnowledgeLibraryDuplicateCheckState =
   | "not_checked"
@@ -63,11 +68,15 @@ export interface KnowledgeLibraryLedgerPageProps {
   initialViewModel?: KnowledgeLibraryWorkbenchViewModel | null;
   initialComposer?: KnowledgeLibraryLedgerComposer | null;
   initialFormMode?: EntryFormMode;
+  initialAiAssistMode?: KnowledgeLibraryEntryAiAssistMode;
   initialSearchOpen?: boolean;
   initialSearchQuery?: string;
   actorRole?: string;
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
+  initialPriorityOrder?: string[];
+  initialColumnOrder?: KnowledgeLibraryLedgerColumnKey[];
+  initialColumnOrderPanelOpen?: boolean;
 }
 
 export function KnowledgeLibraryLedgerPage({
@@ -75,15 +84,20 @@ export function KnowledgeLibraryLedgerPage({
   initialViewModel = null,
   initialComposer = null,
   initialFormMode = "closed",
+  initialAiAssistMode = "manual",
   initialSearchOpen = false,
   initialSearchQuery = "",
   actorRole = "knowledge_reviewer",
   prefilledAssetId,
   prefilledRevisionId,
+  initialPriorityOrder,
+  initialColumnOrder,
+  initialColumnOrderPanelOpen = false,
 }: KnowledgeLibraryLedgerPageProps) {
   const [viewModel, setViewModel] = useState<KnowledgeLibraryWorkbenchViewModel | null>(
     initialViewModel,
   );
+  const initialFilters = initialViewModel?.filters;
   const [composer, setComposer] = useState<KnowledgeLibraryLedgerComposer | null>(() => {
     if (initialComposer) {
       return initialComposer;
@@ -91,10 +105,12 @@ export function KnowledgeLibraryLedgerPage({
 
     return initialFormMode === "create" ? createEmptyLedgerComposer() : null;
   });
-  const [surface, setSurface] = useState<LedgerSurface>(
-    initialSearchOpen ? "search" : "table",
+  const [boardMode, setBoardMode] = useState<EntryFormMode>(initialFormMode);
+  const setFormMode = setBoardMode;
+  const [aiAssistMode, setAiAssistMode] = useState<KnowledgeLibraryEntryAiAssistMode>(
+    initialAiAssistMode,
   );
-  const [formMode, setFormMode] = useState<EntryFormMode>(initialFormMode);
+  const [, setSurface] = useState<"table">("table");
   const [density, setDensity] =
     useState<KnowledgeLibraryLedgerDensity>("compact");
   const [columnWidths, setColumnWidths] = useState<KnowledgeLibraryLedgerColumnWidthMap>(
@@ -103,7 +119,6 @@ export function KnowledgeLibraryLedgerPage({
   const [selectedRowId, setSelectedRowId] = useState<string | null>(
     initialViewModel?.selectedAssetId ?? null,
   );
-  const [hiddenAssetIds, setHiddenAssetIds] = useState<string[]>([]);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
     initialViewModel ? "ready" : "idle",
   );
@@ -111,10 +126,28 @@ export function KnowledgeLibraryLedgerPage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(
-    initialSearchQuery || initialViewModel?.filters.searchText || "",
+    initialSearchQuery || initialFilters?.searchText || "",
   );
-  const [searchMode, setSearchMode] = useState<KnowledgeLibraryQueryMode>(
-    initialViewModel?.filters.queryMode ?? "keyword",
+  const [queryMode, setQueryMode] = useState<KnowledgeLibraryQueryMode>(
+    initialFilters?.queryMode ?? "keyword",
+  );
+  const searchMode = queryMode;
+  const setSearchMode = setQueryMode;
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [knowledgeKindFilter, setKnowledgeKindFilter] = useState<
+    KnowledgeLibraryFilterState["knowledgeKind"]
+  >(initialFilters?.knowledgeKind ?? "all");
+  const [moduleScopeFilter, setModuleScopeFilter] = useState<
+    KnowledgeLibraryFilterState["moduleScope"]
+  >(initialFilters?.moduleScope ?? "any");
+  const [semanticStatusFilter, setSemanticStatusFilter] = useState<
+    KnowledgeLibraryFilterState["semanticStatus"]
+  >(initialFilters?.semanticStatus ?? "all");
+  const [assetStatusFilter, setAssetStatusFilter] = useState<
+    NonNullable<KnowledgeLibraryFilterState["assetStatus"]>
+  >(initialFilters?.assetStatus ?? "active");
+  const [contributorQuery, setContributorQuery] = useState(
+    initialFilters?.contributorText ?? "",
   );
   const [duplicateMatches, setDuplicateMatches] = useState<
     DuplicateKnowledgeMatchViewModel[]
@@ -125,6 +158,18 @@ export function KnowledgeLibraryLedgerPage({
     string | null
   >(null);
   const [semanticNotes, setSemanticNotes] = useState<string[]>([]);
+  const [priorityOrder, setPriorityOrder] = useState<string[]>(() =>
+    initialPriorityOrder ?? readKnowledgeLibraryPriorityOrder(),
+  );
+  const [columnOrder, setColumnOrder] = useState<KnowledgeLibraryLedgerColumnKey[]>(
+    () =>
+      reconcileKnowledgeLibraryColumnOrder(
+        initialColumnOrder ?? readKnowledgeLibraryColumnOrder(),
+      ),
+  );
+  const [isColumnOrderPanelOpen, setIsColumnOrderPanelOpen] = useState(
+    initialColumnOrderPanelOpen,
+  );
   const resizeStateRef = useRef<ColumnResizeState | null>(null);
 
   useEffect(() => {
@@ -135,22 +180,33 @@ export function KnowledgeLibraryLedgerPage({
     void loadWorkbench({
       selectedAssetId: prefilledAssetId,
       selectedRevisionId: prefilledRevisionId,
-      filters:
-        initialSearchOpen || initialSearchQuery.length > 0
-          ? {
-              searchText: initialSearchQuery,
-              queryMode: searchMode,
-            }
-          : undefined,
+      filters: createCurrentFilterState({
+        searchText:
+          initialSearchOpen || initialSearchQuery.length > 0
+            ? initialSearchQuery
+            : initialFilters?.searchText ?? "",
+        queryMode,
+        knowledgeKind: knowledgeKindFilter,
+        moduleScope: moduleScopeFilter,
+        semanticStatus: semanticStatusFilter,
+        assetStatus: assetStatusFilter,
+        contributorText: contributorQuery,
+      }),
     });
   }, [
     controller,
     initialSearchOpen,
     initialSearchQuery,
+    initialFilters?.searchText,
     initialViewModel,
+    knowledgeKindFilter,
+    moduleScopeFilter,
     prefilledAssetId,
     prefilledRevisionId,
-    searchMode,
+    queryMode,
+    semanticStatusFilter,
+    assetStatusFilter,
+    contributorQuery,
   ]);
 
   useEffect(() => {
@@ -185,22 +241,64 @@ export function KnowledgeLibraryLedgerPage({
     };
   }, []);
 
+  useEffect(() => {
+    writeKnowledgeLibraryPriorityOrder(priorityOrder);
+  }, [priorityOrder]);
+
+  useEffect(() => {
+    writeKnowledgeLibraryColumnOrder(columnOrder);
+  }, [columnOrder]);
+
+  useEffect(() => {
+    const libraryAssetIds = viewModel?.library.map((item) => item.id) ?? [];
+    if (libraryAssetIds.length === 0) {
+      return;
+    }
+
+    setPriorityOrder((current) => {
+      const next = reconcileKnowledgeLibraryPriorityOrder(current, libraryAssetIds);
+      return areStringArraysEqual(current, next) ? current : next;
+    });
+  }, [viewModel?.library]);
+
+  useEffect(() => {
+    setColumnOrder((current) => {
+      const next = reconcileKnowledgeLibraryColumnOrder(current);
+      return areStringArraysEqual(current, next) ? current : next;
+    });
+  }, []);
+
   const visibleLibraryItems = useMemo(
+    () => [...(viewModel?.visibleLibrary ?? [])],
+    [viewModel?.visibleLibrary],
+  );
+  const orderedColumns = useMemo(
+    () => orderKnowledgeLibraryColumns(columnOrder),
+    [columnOrder],
+  );
+  const visiblePriorityAssetIds = useMemo(
     () =>
-      (viewModel?.visibleLibrary ?? []).filter(
-        (item) => !hiddenAssetIds.includes(item.id),
-      ),
-    [hiddenAssetIds, viewModel?.visibleLibrary],
+      visibleLibraryItems
+        .filter((item) => item.status !== "archived")
+        .map((item) => item.id),
+    [visibleLibraryItems],
   );
   const ledgerRows = useMemo(
     () =>
-      visibleLibraryItems.map((item) =>
-        createLedgerRow(
-          item,
-          viewModel?.detail?.asset.id === item.id ? viewModel.detail.selected_revision : null,
-        ),
-      ),
-    [viewModel?.detail, visibleLibraryItems],
+      visibleLibraryItems.map((item) => {
+        const priorityIndex = visiblePriorityAssetIds.indexOf(item.id);
+        return {
+          ...createLedgerRow(
+            item,
+            viewModel?.detail?.asset.id === item.id ? viewModel.detail.selected_revision : null,
+          ),
+          priorityRank: priorityIndex === -1 ? undefined : priorityIndex + 1,
+          canMovePriorityUp: priorityIndex > 0,
+          canMovePriorityDown:
+            priorityIndex !== -1 && priorityIndex < visiblePriorityAssetIds.length - 1,
+        };
+      }),
+    [viewModel?.detail, visibleLibraryItems, visiblePriorityAssetIds],
   );
   const attachments = useMemo(
     () => extractAttachments(composer?.contentBlocksDraft ?? []),
@@ -243,6 +341,8 @@ export function KnowledgeLibraryLedgerPage({
   const semanticStatusLabel = formatSemanticStatusLabel(
     composer?.semanticLayerDraft?.status ?? "not_generated",
   );
+  const canRunAiPrefill =
+    composer != null && buildAiPrefillSourceText(composer).trim().length > 0;
   const canGenerateSemantic =
     composer != null && buildSemanticSourceText(composer).trim().length > 0;
   const canApplySemantic =
@@ -253,6 +353,23 @@ export function KnowledgeLibraryLedgerPage({
     composer.draft.title.trim().length > 0 &&
     composer.draft.canonicalText.trim().length > 0 &&
     composer.semanticLayerDraft?.status === "confirmed";
+  const activeFilterCount = countActiveFilters({
+    knowledgeKind: knowledgeKindFilter,
+    moduleScope: moduleScopeFilter,
+    semanticStatus: semanticStatusFilter,
+    contributorText: contributorQuery,
+  });
+  const selectedSummary = viewModel?.selectedSummary ?? null;
+  const isArchivedScope = assetStatusFilter === "archived";
+  const visibleArchivedAssetIds = useMemo(
+    () => visibleLibraryItems.filter((item) => item.status === "archived").map((item) => item.id),
+    [visibleLibraryItems],
+  );
+  const selectedArchivedAt = formatDate(
+    selectedSummary?.archived_at ??
+      (selectedSummary?.status === "archived" ? selectedSummary.updated_at : undefined),
+  );
+  const selectedArchivedBy = formatArchiveActorRoleLabel(selectedSummary?.archived_by_role);
 
   useEffect(() => {
     if (!duplicateCheckInput) {
@@ -299,25 +416,48 @@ export function KnowledgeLibraryLedgerPage({
     <main className="knowledge-library-ledger-page">
       <header className="knowledge-library-ledger-page__header">
         <div>
-          <p className="knowledge-library-ledger-page__eyebrow">Knowledge Library</p>
+          <p className="knowledge-library-ledger-page__eyebrow">知识库</p>
           <h1>多维知识台账</h1>
           <p>只保留表格主视图，用同一张表单完成录入、编辑和 AI 语义确认。</p>
         </div>
 
         <div className="knowledge-library-ledger-page__meta">
           <span>当前角色：{actorRole}</span>
-          <span>当前模式：{surface === "search" ? "查找结果" : "台账总览"}</span>
+          <span>当前模式：{boardMode === "closed" ? "台账总览" : "录入侧板已打开"}</span>
         </div>
       </header>
 
       <KnowledgeLibraryLedgerToolbar
         totalCount={visibleLibraryItems.length}
         selectedCount={selectedRowId ? 1 : 0}
-        density={density}
-        onDensityChange={setDensity}
-        onAdd={handleOpenCreateForm}
-        onDelete={handleDeleteSelected}
-        onSearch={() => setSurface("search")}
+        searchQuery={searchQuery}
+        activeFilterCount={activeFilterCount}
+        isFilterDrawerOpen={isFilterDrawerOpen}
+        isColumnOrderPanelOpen={isColumnOrderPanelOpen}
+        activeScope={assetStatusFilter}
+        onSearchQueryChange={setSearchQuery}
+        onSearchSubmit={() => void handleRunSearch()}
+        onCreate={handleOpenCreateForm}
+        onAiIntake={handleOpenAiIntakeForm}
+        onToggleColumnOrder={() =>
+          setIsColumnOrderPanelOpen((current) => !current)
+        }
+        onToggleFilters={() => setIsFilterDrawerOpen((current) => !current)}
+        onScopeChange={(scope) => {
+          setAssetStatusFilter(scope);
+          void loadWorkbench({
+            selectedAssetId: selectedRowId ?? undefined,
+            filters: createCurrentFilterState({
+              searchText: searchQuery,
+              queryMode,
+              knowledgeKind: knowledgeKindFilter,
+              moduleScope: moduleScopeFilter,
+              semanticStatus: semanticStatusFilter,
+              assetStatus: scope,
+              contributorText: contributorQuery,
+            }),
+          });
+        }}
       />
 
       {statusMessage ? (
@@ -330,51 +470,256 @@ export function KnowledgeLibraryLedgerPage({
         <p className="knowledge-library-ledger-page__notice">正在加载知识台账…</p>
       ) : null}
 
-      <section className="knowledge-library-ledger-page__content">
-        {surface === "search" ? (
-          <KnowledgeLibraryLedgerSearchPage
-            query={searchQuery}
-            queryMode={searchMode}
-            resultCount={visibleLibraryItems.length}
-            onQueryChange={setSearchQuery}
-            onQueryModeChange={setSearchMode}
-            onRunSearch={() => void handleRunSearch()}
-            onBack={() => void handleBackToLedger()}
-          >
-            <KnowledgeLibraryLedgerGrid
-              rows={ledgerRows}
-              density={density}
-              selectedAssetId={selectedRowId}
-              columnWidths={columnWidths}
-              onSelectAsset={(assetId) => void handleSelectAsset(assetId)}
-              onEditAsset={(assetId) => void handleEditAsset(assetId)}
-              onColumnResizeStart={handleColumnResizeStart}
-            />
-          </KnowledgeLibraryLedgerSearchPage>
-        ) : (
+      <section className={`knowledge-library-ledger-page__content${boardMode !== "closed" && composer ? " has-board" : ""}`}>
+        <div className="knowledge-library-ledger-page__main">
+          {isArchivedScope ? (
+            <section
+              className="knowledge-library-ledger-recycle-bar"
+              aria-label="回收区管理"
+            >
+              <div className="knowledge-library-ledger-recycle-bar__meta">
+                <strong>回收区管理</strong>
+                <span>当前归档 {visibleArchivedAssetIds.length} 条</span>
+                <span>恢复后将回到草稿状态，需重新确认后再投入使用。</span>
+                {selectedArchivedAt ? <span>选中项回收时间：{selectedArchivedAt}</span> : null}
+                {selectedArchivedBy ? <span>选中项回收角色：{selectedArchivedBy}</span> : null}
+              </div>
+              <div className="knowledge-library-ledger-recycle-bar__actions">
+                <button
+                  type="button"
+                  data-toolbar-action="restore-selected"
+                  disabled={!selectedRowId || isBusy}
+                  onClick={() => {
+                    if (!selectedRowId) {
+                      return;
+                    }
+                    void handleRestoreAsset(selectedRowId);
+                  }}
+                >
+                  恢复当前选中
+                </button>
+                <button
+                  type="button"
+                  data-toolbar-action="restore-visible"
+                  disabled={visibleArchivedAssetIds.length === 0 || isBusy}
+                  onClick={() => void handleRestoreVisibleArchivedAssets()}
+                >
+                  恢复当前筛选结果
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {isColumnOrderPanelOpen ? (
+            <section
+              className="knowledge-library-ledger-column-order"
+              data-column-order-panel="true"
+              aria-label="列顺序调整"
+            >
+              <header className="knowledge-library-ledger-column-order__header">
+                <div>
+                  <p className="knowledge-library-ledger-page__eyebrow">列顺序</p>
+                  <h2>调整表格列顺序</h2>
+                  <p>左右移动后，最左侧这一列会继续保持固定。</p>
+                </div>
+                <div className="knowledge-library-ledger-column-order__actions">
+                  <button
+                    type="button"
+                    data-column-order-action="reset"
+                    onClick={handleResetColumnOrder}
+                  >
+                    恢复默认
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsColumnOrderPanelOpen(false)}
+                  >
+                    关闭
+                  </button>
+                </div>
+              </header>
+
+              <div className="knowledge-library-ledger-column-order__list">
+                {orderedColumns.map((column, index) => (
+                  <div
+                    key={column.key}
+                    className="knowledge-library-ledger-column-order__item"
+                    data-column-order-item={column.key}
+                  >
+                    <div className="knowledge-library-ledger-column-order__item-meta">
+                      <strong>{column.label}</strong>
+                      <span>当前第 {index + 1} 列</span>
+                    </div>
+                    <div className="knowledge-library-ledger-column-order__item-actions">
+                      <button
+                        type="button"
+                        data-column-order-action="move-left"
+                        disabled={index === 0}
+                        onClick={() => handleMoveColumn(column.key, "left")}
+                      >
+                        左移
+                      </button>
+                      <button
+                        type="button"
+                        data-column-order-action="move-right"
+                        disabled={index === orderedColumns.length - 1}
+                        onClick={() => handleMoveColumn(column.key, "right")}
+                      >
+                        右移
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <KnowledgeLibraryLedgerGrid
+            columns={orderedColumns}
             rows={ledgerRows}
             density={density}
             selectedAssetId={selectedRowId}
             columnWidths={columnWidths}
             onSelectAsset={(assetId) => void handleSelectAsset(assetId)}
             onEditAsset={(assetId) => void handleEditAsset(assetId)}
+            onArchiveAsset={(assetId) => void handleArchiveAsset(assetId)}
+            onRestoreAsset={(assetId) => void handleRestoreAsset(assetId)}
+            onMovePriorityUp={(assetId) => handleMovePriority(assetId, "up")}
+            onMovePriorityDown={(assetId) => handleMovePriority(assetId, "down")}
             onColumnResizeStart={handleColumnResizeStart}
           />
-        )}
 
-        {formMode !== "closed" && composer ? (
-          <KnowledgeLibraryEntryForm
-            mode={formMode === "create" ? "create" : "edit"}
+          {isFilterDrawerOpen ? (
+            <aside className="knowledge-library-ledger-filters" aria-label="高级筛选抽屉">
+              <header className="knowledge-library-ledger-filters__header">
+                <div>
+                  <p className="knowledge-library-ledger-page__eyebrow">筛选</p>
+                  <h2>筛选条件</h2>
+                  <p>高级条件收进抽屉，不再切换到独立搜索页。</p>
+                </div>
+                <button type="button" onClick={() => setIsFilterDrawerOpen(false)}>
+                  关闭
+                </button>
+              </header>
+
+              <div className="knowledge-library-ledger-filters__body">
+                <label>
+                  <span>搜索方式</span>
+                  <select
+                    value={queryMode}
+                    onChange={(event) =>
+                      setQueryMode(event.target.value as KnowledgeLibraryQueryMode)
+                    }
+                  >
+                    <option value="keyword">关键词检索</option>
+                    <option value="semantic">语义检索</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>分类</span>
+                  <select
+                    value={knowledgeKindFilter}
+                    onChange={(event) =>
+                      setKnowledgeKindFilter(
+                        event.target.value as KnowledgeLibraryFilterState["knowledgeKind"],
+                      )
+                    }
+                  >
+                    {KNOWLEDGE_KIND_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>适用模块</span>
+                  <select
+                    value={moduleScopeFilter}
+                    onChange={(event) =>
+                      setModuleScopeFilter(
+                        event.target.value as KnowledgeLibraryFilterState["moduleScope"],
+                      )
+                    }
+                  >
+                    {MODULE_SCOPE_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>AI语义状态</span>
+                  <select
+                    value={semanticStatusFilter}
+                    onChange={(event) =>
+                      setSemanticStatusFilter(
+                        event.target.value as KnowledgeLibraryFilterState["semanticStatus"],
+                      )
+                    }
+                  >
+                    {SEMANTIC_STATUS_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>贡献人查询</span>
+                  <input
+                    type="search"
+                    value={contributorQuery}
+                    onChange={(event) => setContributorQuery(event.target.value)}
+                    placeholder="按账号或提交人查询"
+                  />
+                </label>
+              </div>
+
+              <div className="knowledge-library-ledger-filters__actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKnowledgeKindFilter("all");
+                    setModuleScopeFilter("any");
+                    setSemanticStatusFilter("all");
+                    setContributorQuery("");
+                  }}
+                >
+                  清空
+                </button>
+                <button type="button" onClick={() => void handleRunSearch()}>
+                  应用筛选
+                </button>
+              </div>
+            </aside>
+          ) : null}
+        </div>
+
+        {boardMode !== "closed" && composer ? (
+          <aside className="knowledge-library-ledger-page__board">
+            <KnowledgeLibraryEntryForm
+            mode={boardMode === "edit" ? "edit" : "create"}
+            aiAssistMode={aiAssistMode}
             composer={composer}
             attachments={attachments}
+            contentBlocks={composer.contentBlocksDraft}
+            aiIntakeSourceText={composer.aiIntakeSourceText}
+            requiredTagsText={formatLedgerTagText(composer.draft.riskTags)}
             duplicateSummary={duplicateSummary}
             semanticStatusLabel={semanticStatusLabel}
             semanticNotes={semanticNotes}
             isBusy={isBusy}
+            canRunAiPrefill={canRunAiPrefill}
             canGenerateSemantic={canGenerateSemantic}
             canApplySemantic={canApplySemantic}
             canConfirmEntry={canConfirmEntry}
+            onAiAssistModeChange={setAiAssistMode}
             onTitleChange={(value) =>
               setComposer((current) =>
                 current ? withBaseFieldChange(current, { title: value }) : current,
@@ -402,6 +747,36 @@ export function KnowledgeLibraryLedgerPage({
             onModuleScopeChange={(value) =>
               setComposer((current) =>
                 current ? withBaseFieldChange(current, { moduleScope: value }) : current,
+              )
+            }
+            onRequiredTagsChange={(value) =>
+              setComposer((current) =>
+                current
+                  ? withSemanticReviewFieldChange(current, {
+                      riskTags: parseLedgerTagText(value),
+                    })
+                  : current,
+              )
+            }
+            onAiIntakeSourceTextChange={(value) =>
+              setComposer((current) =>
+                current
+                  ? {
+                      ...current,
+                      aiIntakeSourceText: value,
+                    }
+                  : current,
+              )
+            }
+            onRunAiPrefill={() => void handleRunAiPrefill()}
+            onContentBlocksChange={(blocks) =>
+              setComposer((current) =>
+                current
+                  ? {
+                      ...current,
+                      contentBlocksDraft: blocks,
+                    }
+                  : current,
               )
             }
             onSelectFiles={(files) => void handleUploadFiles(files)}
@@ -602,6 +977,7 @@ export function KnowledgeLibraryLedgerPage({
                 : undefined
             }
           />
+          </aside>
         ) : null}
       </section>
     </main>
@@ -640,6 +1016,13 @@ export function KnowledgeLibraryLedgerPage({
   function applyLoadedWorkbench(nextViewModel: KnowledgeLibraryWorkbenchViewModel) {
     setViewModel(nextViewModel);
     setSelectedRowId(nextViewModel.selectedAssetId ?? null);
+    setSearchQuery(nextViewModel.filters.searchText);
+    setQueryMode(nextViewModel.filters.queryMode);
+    setKnowledgeKindFilter(nextViewModel.filters.knowledgeKind);
+    setModuleScopeFilter(nextViewModel.filters.moduleScope);
+    setSemanticStatusFilter(nextViewModel.filters.semanticStatus);
+    setAssetStatusFilter(nextViewModel.filters.assetStatus ?? "active");
+    setContributorQuery(nextViewModel.filters.contributorText);
     setLoadStatus("ready");
   }
 
@@ -656,8 +1039,19 @@ export function KnowledgeLibraryLedgerPage({
 
   function handleOpenCreateForm() {
     setComposer(createEmptyLedgerComposer());
-    setFormMode("create");
-    setSurface("table");
+    setBoardMode("create");
+    setAiAssistMode("manual");
+    setIsFilterDrawerOpen(false);
+    setSemanticNotes([]);
+    setErrorMessage(null);
+    setStatusMessage(null);
+  }
+
+  function handleOpenAiIntakeForm() {
+    setComposer(createEmptyLedgerComposer());
+    setBoardMode("create");
+    setAiAssistMode("prefill");
+    setIsFilterDrawerOpen(false);
     setSemanticNotes([]);
     setErrorMessage(null);
     setStatusMessage(null);
@@ -709,8 +1103,9 @@ export function KnowledgeLibraryLedgerPage({
       }
 
       setComposer(nextComposer);
-      setFormMode("edit");
-      setSurface("table");
+      setBoardMode("edit");
+      setAiAssistMode("manual");
+      setIsFilterDrawerOpen(false);
       setSemanticNotes(nextComposer.warnings);
       setStatusMessage(null);
     } catch (error) {
@@ -721,10 +1116,106 @@ export function KnowledgeLibraryLedgerPage({
   }
 
   function handleCancelForm() {
-    setFormMode("closed");
+    setBoardMode("closed");
+    setAiAssistMode("manual");
     setSemanticNotes([]);
     setErrorMessage(null);
+    setStatusMessage(null);
     setComposer(createEditableComposerFromViewModel(viewModel));
+  }
+
+  async function handleArchiveAsset(assetId: string) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextViewModel = await controller.archiveAssetAndLoad({
+        assetId,
+        filters: createCurrentFilterState({
+          searchText: searchQuery,
+          queryMode,
+          knowledgeKind: knowledgeKindFilter,
+          moduleScope: moduleScopeFilter,
+          semanticStatus: semanticStatusFilter,
+          assetStatus: assetStatusFilter,
+          contributorText: contributorQuery,
+        }),
+      });
+
+      applyLoadedWorkbench(nextViewModel);
+      setComposer(createEditableComposerFromViewModel(nextViewModel));
+      setSemanticNotes([]);
+      setStatusMessage("知识已移入回收区。");
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "移入回收区失败。"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRestoreAsset(assetId: string) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextViewModel = await controller.restoreAssetAndLoad({
+        assetId,
+        filters: createCurrentFilterState({
+          searchText: searchQuery,
+          queryMode,
+          knowledgeKind: knowledgeKindFilter,
+          moduleScope: moduleScopeFilter,
+          semanticStatus: semanticStatusFilter,
+          assetStatus: assetStatusFilter,
+          contributorText: contributorQuery,
+        }),
+      });
+
+      applyLoadedWorkbench(nextViewModel);
+      setComposer(createEditableComposerFromViewModel(nextViewModel));
+      setSemanticNotes([]);
+      setStatusMessage("知识已从回收区恢复为草稿。");
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "恢复知识失败。"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRestoreVisibleArchivedAssets() {
+    if (visibleArchivedAssetIds.length === 0) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const nextViewModel = await controller.restoreAssetsAndLoad({
+        assetIds: visibleArchivedAssetIds,
+        filters: createCurrentFilterState({
+          searchText: searchQuery,
+          queryMode,
+          knowledgeKind: knowledgeKindFilter,
+          moduleScope: moduleScopeFilter,
+          semanticStatus: semanticStatusFilter,
+          assetStatus: assetStatusFilter,
+          contributorText: contributorQuery,
+        }),
+      });
+
+      applyLoadedWorkbench(nextViewModel);
+      setComposer(createEditableComposerFromViewModel(nextViewModel));
+      setSemanticNotes([]);
+      setStatusMessage(`已恢复 ${visibleArchivedAssetIds.length} 条知识，均已回到草稿。`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "批量恢复失败。"));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function handleDeleteSelected() {
@@ -732,29 +1223,23 @@ export function KnowledgeLibraryLedgerPage({
       return;
     }
 
-    setHiddenAssetIds((current) =>
-      current.includes(selectedRowId) ? current : [...current, selectedRowId],
-    );
-    setStatusMessage("已从当前台账视图移除所选记录。");
-    setErrorMessage(null);
-
-    if (composer?.persistedAssetId === selectedRowId) {
-      setComposer(null);
-      setFormMode("closed");
-    }
-
-    setSelectedRowId(null);
+    void handleArchiveAsset(selectedRowId);
   }
 
   async function handleRunSearch() {
     await loadWorkbench({
       selectedAssetId: selectedRowId ?? undefined,
-      filters: {
+      filters: createCurrentFilterState({
         searchText: searchQuery,
-        queryMode: searchMode,
-      },
+        queryMode,
+        knowledgeKind: knowledgeKindFilter,
+        moduleScope: moduleScopeFilter,
+        semanticStatus: semanticStatusFilter,
+        assetStatus: assetStatusFilter,
+        contributorText: contributorQuery,
+      }),
     });
-    setSurface("search");
+    setIsFilterDrawerOpen(false);
   }
 
   async function handleBackToLedger() {
@@ -765,9 +1250,92 @@ export function KnowledgeLibraryLedgerPage({
       filters: {
         searchText: "",
         queryMode: "keyword",
+        assetStatus: "active",
       },
     });
     setSurface("table");
+  }
+
+  function handleMovePriority(
+    assetId: string,
+    direction: "up" | "down",
+  ) {
+    const allAssetIds = viewModel?.library.map((item) => item.id) ?? [];
+    const nextPriorityOrder = moveKnowledgeLibraryPriority(
+      priorityOrder,
+      allAssetIds,
+      visiblePriorityAssetIds,
+      assetId,
+      direction,
+    );
+
+    if (areStringArraysEqual(priorityOrder, nextPriorityOrder)) {
+      return;
+    }
+
+    setPriorityOrder(nextPriorityOrder);
+    setErrorMessage(null);
+    setStatusMessage(
+      direction === "up" ? "已提升列表优先级。" : "已降低列表优先级。",
+    );
+  }
+
+  function handleMoveColumn(
+    columnKey: KnowledgeLibraryLedgerColumnKey,
+    direction: "left" | "right",
+  ) {
+    const nextColumnOrder = moveKnowledgeLibraryColumn(
+      columnOrder,
+      columnKey,
+      direction,
+    );
+    if (areStringArraysEqual(columnOrder, nextColumnOrder)) {
+      return;
+    }
+
+    setColumnOrder(nextColumnOrder);
+    setErrorMessage(null);
+    setStatusMessage(
+      direction === "left" ? "已将列向左移动。" : "已将列向右移动。",
+    );
+  }
+
+  function handleResetColumnOrder() {
+    setColumnOrder(DEFAULT_COLUMN_ORDER);
+    setErrorMessage(null);
+    setStatusMessage("已恢复默认列顺序。");
+  }
+
+  async function handleRunAiPrefill() {
+    if (!composer) {
+      return;
+    }
+
+    const sourceText = buildAiPrefillSourceText(composer);
+    if (sourceText.trim().length === 0) {
+      setErrorMessage("请先粘贴 AI 预填充文本来源，再生成候选内容。");
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const suggestion = await controller.createAiIntakeSuggestion({
+        sourceText,
+      });
+      setComposer((current) =>
+        current ? applyAiIntakeSuggestion(current, suggestion) : current,
+      );
+      setSemanticNotes(suggestion.warnings);
+      setStatusMessage(
+        "AI 已根据文本来源填入基础信息、内容材料和语义候选，请逐项核对后再确认录入。",
+      );
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "AI 预填充生成失败。"));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function handleGenerateSemantic() {
@@ -903,6 +1471,9 @@ export function KnowledgeLibraryLedgerPage({
       setSurface("table");
       if (input.closeForm) {
         setFormMode("closed");
+        setAiAssistMode("manual");
+      } else {
+        setFormMode("edit");
       }
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "知识保存失败。"));
@@ -911,7 +1482,7 @@ export function KnowledgeLibraryLedgerPage({
     }
   }
 
-async function handleUploadFiles(files: readonly File[]) {
+  async function handleUploadFiles(files: readonly File[]) {
     if (!composer || files.length === 0) {
       return;
     }
@@ -955,20 +1526,71 @@ async function handleUploadFiles(files: readonly File[]) {
   }
 }
 
+const KNOWLEDGE_KIND_FILTER_OPTIONS: ReadonlyArray<{
+  value: KnowledgeLibraryFilterState["knowledgeKind"];
+  label: string;
+}> = [
+  { value: "all", label: "全部分类" },
+  { value: "rule", label: "规则" },
+  { value: "case_pattern", label: "案例模式" },
+  { value: "checklist", label: "核查清单" },
+  { value: "prompt_snippet", label: "提示片段" },
+  { value: "reference", label: "参考资料" },
+  { value: "other", label: "其他" },
+];
+
+const MODULE_SCOPE_FILTER_OPTIONS: ReadonlyArray<{
+  value: KnowledgeLibraryFilterState["moduleScope"];
+  label: string;
+}> = [
+  { value: "any", label: "全部模块" },
+  { value: "screening", label: "初筛" },
+  { value: "editing", label: "编辑" },
+  { value: "proofreading", label: "校对" },
+  { value: "manual", label: "人工处理" },
+  { value: "learning", label: "学习回流" },
+];
+
+const SEMANTIC_STATUS_FILTER_OPTIONS: ReadonlyArray<{
+  value: KnowledgeLibraryFilterState["semanticStatus"];
+  label: string;
+}> = [
+  { value: "all", label: "全部状态" },
+  { value: "not_generated", label: "未生成" },
+  { value: "pending_confirmation", label: "待确认" },
+  { value: "confirmed", label: "已确认" },
+  { value: "stale", label: "待更新" },
+];
+
+const KNOWLEDGE_LIBRARY_PRIORITY_STORAGE_KEY =
+  "knowledge-library-ledger-priority-v1";
+
+const KNOWLEDGE_LIBRARY_COLUMN_ORDER_STORAGE_KEY =
+  "knowledge-library-ledger-column-order-v1";
+
+const DEFAULT_COLUMN_ORDER: KnowledgeLibraryLedgerColumnKey[] =
+  KNOWLEDGE_LIBRARY_LEDGER_COLUMNS.map((column) => column.key);
+
 const DEFAULT_COLUMN_WIDTHS: KnowledgeLibraryLedgerColumnWidthMap = {
-  title: 240,
-  answer: 320,
+  title: 320,
+  status: 120,
   category: 140,
+  moduleScope: 140,
+  manuscriptTypes: 180,
+  answer: 280,
   detail: 220,
-  attachments: 180,
-  semanticStatus: 140,
-  contributor: 140,
-  date: 120,
-  semanticSummary: 220,
+  attachments: 140,
+  semanticStatus: 160,
+  semanticSummary: 240,
   retrievalTerms: 220,
-  aliases: 220,
+  aliases: 180,
   scenarios: 220,
   riskTags: 180,
+  contributor: 160,
+  revisionId: 180,
+  archivedAt: 160,
+  archivedBy: 140,
+  date: 140,
 };
 
 const MIN_COLUMN_WIDTHS: KnowledgeLibraryLedgerColumnWidthMap =
@@ -979,6 +1601,34 @@ const MIN_COLUMN_WIDTHS: KnowledgeLibraryLedgerColumnWidthMap =
     }),
     {} as KnowledgeLibraryLedgerColumnWidthMap,
   );
+
+function createCurrentFilterState(
+  input: Partial<KnowledgeLibraryFilterState>,
+): Partial<KnowledgeLibraryFilterState> {
+  return {
+    searchText: input.searchText?.trim() ?? "",
+    queryMode: input.queryMode === "semantic" ? "semantic" : "keyword",
+    knowledgeKind: input.knowledgeKind ?? "all",
+    moduleScope: input.moduleScope ?? "any",
+    semanticStatus: input.semanticStatus ?? "all",
+    assetStatus: input.assetStatus ?? "active",
+    contributorText: input.contributorText?.trim() ?? "",
+  };
+}
+
+function countActiveFilters(
+  input: Pick<
+    KnowledgeLibraryFilterState,
+    "knowledgeKind" | "moduleScope" | "semanticStatus" | "contributorText"
+  >,
+): number {
+  return [
+    input.knowledgeKind !== "all",
+    input.moduleScope !== "any",
+    input.semanticStatus !== "all",
+    input.contributorText.trim().length > 0,
+  ].filter(Boolean).length;
+}
 
 function createEditableComposerFromViewModel(
   viewModel: KnowledgeLibraryWorkbenchViewModel | null,
@@ -1002,6 +1652,7 @@ function createComposerFromSelectedRevision(
     mode: "existing_revision",
     persistedAssetId: selectedAssetId,
     persistedRevisionId: selectedRevision.id,
+    aiIntakeSourceText: selectedRevision.canonical_text,
     draft: {
       title: selectedRevision.title,
       canonicalText: selectedRevision.canonical_text,
@@ -1030,6 +1681,7 @@ function createComposerFromSelectedRevision(
   };
 }
 
+/*
 function createLedgerRow(
   item: KnowledgeLibrarySummaryViewModel,
   revision: KnowledgeRevisionViewModel | null,
@@ -1037,12 +1689,16 @@ function createLedgerRow(
   return {
     id: item.id,
     title: item.title,
+    status: formatRevisionStatusLabel(item.status),
+    moduleScope: formatModuleScopeLabel(item.module_scope),
+    manuscriptTypes: formatManuscriptTypesLabel(item.manuscript_types),
     answer: revision?.canonical_text ?? item.summary ?? "",
     category: formatKnowledgeKind(item.knowledge_kind),
     detail: revision?.summary ?? item.summary ?? "",
     attachments: formatAttachmentLabel(revision?.content_blocks ?? []),
     semanticStatus: formatSemanticStatusLabel(item.semantic_status ?? "not_generated"),
     contributor: item.contributor_label ?? "",
+    revisionId: item.selected_revision_id ?? "",
     date: formatDate(item.updated_at),
     semanticSummary: revision?.semantic_layer?.page_summary ?? "",
     retrievalTerms: (revision?.semantic_layer?.retrieval_terms ?? []).join("、"),
@@ -1101,6 +1757,332 @@ function formatSemanticStatusLabel(
     case "not_generated":
     default:
       return "未生成";
+  }
+}
+
+*/
+
+/*
+function createLedgerRow(
+  item: KnowledgeLibrarySummaryViewModel,
+  revision: KnowledgeRevisionViewModel | null,
+) {
+  return {
+    id: item.id,
+    title: item.title,
+    status: formatRevisionStatusLabel(item.status),
+    category: formatKnowledgeKind(item.knowledge_kind),
+    moduleScope: formatModuleScopeLabel(item.module_scope),
+    manuscriptTypes: formatManuscriptTypesLabel(item.manuscript_types),
+    answer: revision?.canonical_text ?? item.summary ?? "",
+    detail: revision?.summary ?? item.summary ?? "",
+    attachments: formatAttachmentLabel(revision?.content_blocks ?? []),
+    semanticStatus: formatSemanticStatusLabel(item.semantic_status ?? "not_generated"),
+    semanticSummary: revision?.semantic_layer?.page_summary ?? "",
+    retrievalTerms: (revision?.semantic_layer?.retrieval_terms ?? []).join("、"),
+    aliases: (revision?.aliases ?? []).join("、"),
+    scenarios: (revision?.semantic_layer?.retrieval_snippets ?? []).join("；"),
+    riskTags: (revision?.routing.risk_tags ?? []).join("、"),
+    contributor: item.contributor_label ?? "",
+    revisionId: item.selected_revision_id ?? "",
+    date: formatDate(item.updated_at),
+    isArchived: item.status === "archived",
+  };
+}
+
+function formatRevisionStatusLabel(
+  value: KnowledgeLibrarySummaryViewModel["status"],
+): string {
+  switch (value) {
+    case "draft":
+      return "草稿";
+    case "pending_review":
+      return "待审核";
+    case "approved":
+      return "已批准";
+    case "superseded":
+      return "已替换";
+    case "archived":
+      return "已归档";
+    default:
+      return "未知";
+  }
+}
+
+function formatModuleScopeLabel(
+  value: KnowledgeLibrarySummaryViewModel["module_scope"] | "qa",
+): string {
+  switch (value) {
+    case "screening":
+      return "筛查";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    case "any":
+    default:
+      return "通用";
+  }
+}
+
+function formatManuscriptTypesLabel(
+  value: KnowledgeLibrarySummaryViewModel["manuscript_types"],
+): string {
+  if (value === "any") {
+    return "全部稿件";
+  }
+
+  return value.map(formatManuscriptTypeLabel).join("、");
+}
+
+function formatManuscriptTypeLabel(value: string): string {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "review":
+      return "综述";
+    case "case_report":
+      return "病例报告";
+    case "basic_research":
+      return "基础研究";
+    case "guideline":
+      return "指南";
+    case "consensus":
+      return "共识";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "systematic_review":
+      return "系统综述";
+    case "real_world_study":
+      return "真实世界研究";
+    default:
+      return value;
+  }
+}
+
+function formatKnowledgeKind(value: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
+  switch (value) {
+    case "rule":
+      return "规则";
+    case "case_pattern":
+      return "案例模式";
+    case "checklist":
+      return "核查清单";
+    case "prompt_snippet":
+      return "提示片段";
+    case "reference":
+      return "参考资料";
+    case "other":
+    default:
+      return "其他";
+  }
+}
+
+function formatAttachmentLabel(blocks: readonly KnowledgeContentBlockViewModel[]): string {
+  const imageCount = blocks.filter((block) => block.block_type === "image_block").length;
+  return imageCount > 0 ? `${imageCount} 个附件` : "";
+}
+
+function formatDate(value?: string): string {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function formatSemanticStatusLabel(
+  value: KnowledgeSemanticLayerViewModel["status"] | "not_generated",
+): string {
+  switch (value) {
+    case "confirmed":
+      return "已确认";
+    case "pending_confirmation":
+      return "待确认";
+    case "stale":
+      return "待更新";
+    case "not_generated":
+    default:
+      return "未生成";
+  }
+}
+
+*/
+
+function createLedgerRow(
+  item: KnowledgeLibrarySummaryViewModel,
+  revision: KnowledgeRevisionViewModel | null,
+) {
+  return {
+    id: item.id,
+    title: item.title,
+    status: formatRevisionStatusLabel(item.status),
+    category: formatKnowledgeKind(item.knowledge_kind),
+    moduleScope: formatModuleScopeLabel(item.module_scope),
+    manuscriptTypes: formatManuscriptTypesLabel(item.manuscript_types),
+    answer: revision?.canonical_text ?? item.summary ?? "",
+    detail: revision?.summary ?? item.summary ?? "",
+    attachments: formatAttachmentLabel(revision?.content_blocks ?? []),
+    semanticStatus: formatSemanticStatusLabel(item.semantic_status ?? "not_generated"),
+    semanticSummary: revision?.semantic_layer?.page_summary ?? "",
+    retrievalTerms: (revision?.semantic_layer?.retrieval_terms ?? []).join("、"),
+    aliases: (revision?.aliases ?? []).join("、"),
+    scenarios: (revision?.semantic_layer?.retrieval_snippets ?? []).join("；"),
+    riskTags: (revision?.routing.risk_tags ?? []).join("、"),
+    contributor: item.contributor_label ?? "",
+    revisionId: item.selected_revision_id ?? "",
+    archivedAt: formatDate(item.archived_at ?? (item.status === "archived" ? item.updated_at : undefined)),
+    archivedBy: formatArchiveActorRoleLabel(item.archived_by_role),
+    date: formatDate(item.updated_at),
+    isArchived: item.status === "archived",
+  };
+}
+
+function formatRevisionStatusLabel(
+  value: KnowledgeLibrarySummaryViewModel["status"],
+): string {
+  switch (value) {
+    case "draft":
+      return "草稿";
+    case "pending_review":
+      return "待审核";
+    case "approved":
+      return "已批准";
+    case "superseded":
+      return "已替换";
+    case "archived":
+      return "已归档";
+    default:
+      return "未知";
+  }
+}
+
+function formatModuleScopeLabel(
+  value: KnowledgeLibrarySummaryViewModel["module_scope"] | "qa",
+): string {
+  switch (value) {
+    case "screening":
+      return "筛查";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    case "qa":
+      return "质控";
+    case "any":
+    default:
+      return "通用";
+  }
+}
+
+function formatManuscriptTypesLabel(
+  value: KnowledgeLibrarySummaryViewModel["manuscript_types"],
+): string {
+  if (value === "any") {
+    return "全部稿件";
+  }
+
+  return value.map(formatManuscriptTypeLabel).join("、");
+}
+
+function formatManuscriptTypeLabel(value: string): string {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "review":
+      return "综述";
+    case "case_report":
+      return "病例报告";
+    case "basic_research":
+      return "基础研究";
+    case "guideline":
+      return "指南";
+    case "consensus":
+      return "共识";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "systematic_review":
+      return "系统综述";
+    case "real_world_study":
+      return "真实世界研究";
+    default:
+      return value;
+  }
+}
+
+function formatKnowledgeKind(value: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
+  switch (value) {
+    case "rule":
+      return "规则";
+    case "case_pattern":
+      return "案例模式";
+    case "checklist":
+      return "核查清单";
+    case "prompt_snippet":
+      return "提示片段";
+    case "reference":
+      return "参考资料";
+    case "other":
+    default:
+      return "其他";
+  }
+}
+
+function formatAttachmentLabel(blocks: readonly KnowledgeContentBlockViewModel[]): string {
+  const imageCount = blocks.filter((block) => block.block_type === "image_block").length;
+  return imageCount > 0 ? `${imageCount} 个附件` : "";
+}
+
+function formatDate(value?: string): string {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function formatSemanticStatusLabel(
+  value: KnowledgeSemanticLayerViewModel["status"] | "not_generated",
+): string {
+  switch (value) {
+    case "confirmed":
+      return "已确认";
+    case "pending_confirmation":
+      return "待确认";
+    case "stale":
+      return "待更新";
+    case "not_generated":
+    default:
+      return "未生成";
+  }
+}
+
+function formatArchiveActorRoleLabel(value?: string): string {
+  switch (value) {
+    case "admin":
+      return "管理员";
+    case "screener":
+      return "筛查员";
+    case "editor":
+      return "编辑";
+    case "proofreader":
+      return "校对";
+    case "knowledge_reviewer":
+      return "知识审核";
+    case "user":
+      return "用户";
+    default:
+      return "";
   }
 }
 
@@ -1238,6 +2220,17 @@ function buildSemanticSourceText(composer: KnowledgeLibraryLedgerComposer): stri
     .join("\n");
 }
 
+function buildAiPrefillSourceText(
+  composer: KnowledgeLibraryLedgerComposer,
+): string {
+  const attachmentEvidence = extractAttachments(composer.contentBlocksDraft)
+    .map((attachment) => [attachment.fileName, attachment.caption].filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join("\n");
+
+  return [composer.aiIntakeSourceText, attachmentEvidence].filter(Boolean).join("\n");
+}
+
 function applySemanticSuggestion(
   composer: KnowledgeLibraryLedgerComposer,
   suggestion: KnowledgeLibraryAiIntakeSuggestionViewModel,
@@ -1361,6 +2354,243 @@ function createImageBlock(input: {
       caption: "",
     },
   };
+}
+
+function readKnowledgeLibraryPriorityOrder(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(
+      KNOWLEDGE_LIBRARY_PRIORITY_STORAGE_KEY,
+    );
+    if (!storedValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(storedValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function writeKnowledgeLibraryPriorityOrder(order: readonly string[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      KNOWLEDGE_LIBRARY_PRIORITY_STORAGE_KEY,
+      JSON.stringify(order),
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory order.
+  }
+}
+
+function readKnowledgeLibraryColumnOrder(): KnowledgeLibraryLedgerColumnKey[] {
+  if (typeof window === "undefined") {
+    return DEFAULT_COLUMN_ORDER;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(
+      KNOWLEDGE_LIBRARY_COLUMN_ORDER_STORAGE_KEY,
+    );
+    if (!storedValue) {
+      return DEFAULT_COLUMN_ORDER;
+    }
+
+    const parsed = JSON.parse(storedValue);
+    if (!Array.isArray(parsed)) {
+      return DEFAULT_COLUMN_ORDER;
+    }
+
+    return reconcileKnowledgeLibraryColumnOrder(parsed);
+  } catch {
+    return DEFAULT_COLUMN_ORDER;
+  }
+}
+
+function writeKnowledgeLibraryColumnOrder(
+  order: readonly KnowledgeLibraryLedgerColumnKey[],
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      KNOWLEDGE_LIBRARY_COLUMN_ORDER_STORAGE_KEY,
+      JSON.stringify(order),
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory order.
+  }
+}
+
+function reconcileKnowledgeLibraryColumnOrder(
+  currentOrder: readonly string[],
+): KnowledgeLibraryLedgerColumnKey[] {
+  const knownKeys = new Set(DEFAULT_COLUMN_ORDER);
+  const nextOrder: KnowledgeLibraryLedgerColumnKey[] = currentOrder
+    .filter(
+      (columnKey): columnKey is KnowledgeLibraryLedgerColumnKey =>
+        typeof columnKey === "string" &&
+        knownKeys.has(columnKey as KnowledgeLibraryLedgerColumnKey),
+    )
+    .map((columnKey) => columnKey as KnowledgeLibraryLedgerColumnKey);
+
+  for (const columnKey of DEFAULT_COLUMN_ORDER) {
+    if (!nextOrder.includes(columnKey)) {
+      nextOrder.push(columnKey);
+    }
+  }
+
+  return nextOrder;
+}
+
+function orderKnowledgeLibraryColumns(
+  currentOrder: readonly KnowledgeLibraryLedgerColumnKey[],
+): KnowledgeLibraryLedgerColumnDefinition[] {
+  const columnsByKey = new Map(
+    KNOWLEDGE_LIBRARY_LEDGER_COLUMNS.map((column) => [column.key, column] as const),
+  );
+
+  return reconcileKnowledgeLibraryColumnOrder(currentOrder)
+    .map((columnKey) => columnsByKey.get(columnKey))
+    .filter(
+      (column): column is KnowledgeLibraryLedgerColumnDefinition =>
+        column != null,
+    )
+    .map((column, index) => ({
+      ...column,
+      pinned: index === 0,
+    }));
+}
+
+function moveKnowledgeLibraryColumn(
+  currentOrder: readonly KnowledgeLibraryLedgerColumnKey[],
+  columnKey: KnowledgeLibraryLedgerColumnKey,
+  direction: "left" | "right",
+): KnowledgeLibraryLedgerColumnKey[] {
+  const nextOrder = [...reconcileKnowledgeLibraryColumnOrder(currentOrder)];
+  const currentIndex = nextOrder.indexOf(columnKey);
+  if (currentIndex === -1) {
+    return nextOrder;
+  }
+
+  const targetIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= nextOrder.length) {
+    return nextOrder;
+  }
+
+  [nextOrder[currentIndex], nextOrder[targetIndex]] = [
+    nextOrder[targetIndex],
+    nextOrder[currentIndex],
+  ];
+
+  return nextOrder;
+}
+
+function reconcileKnowledgeLibraryPriorityOrder(
+  currentOrder: readonly string[],
+  assetIds: readonly string[],
+): string[] {
+  const knownIds = new Set(assetIds);
+  const nextOrder = currentOrder.filter((assetId) => knownIds.has(assetId));
+
+  for (const assetId of assetIds) {
+    if (!nextOrder.includes(assetId)) {
+      nextOrder.push(assetId);
+    }
+  }
+
+  return nextOrder;
+}
+
+function sortKnowledgeLibraryByPriority(
+  items: readonly KnowledgeLibrarySummaryViewModel[],
+  currentOrder: readonly string[],
+): KnowledgeLibrarySummaryViewModel[] {
+  if (items.length <= 1) {
+    return [...items];
+  }
+
+  const reconciledOrder = reconcileKnowledgeLibraryPriorityOrder(
+    currentOrder,
+    items.map((item) => item.id),
+  );
+  const priorityById = new Map(
+    reconciledOrder.map((assetId, index) => [assetId, index]),
+  );
+
+  return [...items].sort((left, right) => {
+    const leftPriority = priorityById.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightPriority = priorityById.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    return leftPriority - rightPriority;
+  });
+}
+
+function moveKnowledgeLibraryPriority(
+  currentOrder: readonly string[],
+  allAssetIds: readonly string[],
+  visibleAssetIds: readonly string[],
+  assetId: string,
+  direction: "up" | "down",
+): string[] {
+  if (visibleAssetIds.length <= 1) {
+    return [...currentOrder];
+  }
+
+  const orderedVisibleIds = reconcileKnowledgeLibraryPriorityOrder(
+    currentOrder,
+    visibleAssetIds,
+  );
+  const currentIndex = orderedVisibleIds.indexOf(assetId);
+  if (currentIndex === -1) {
+    return [...currentOrder];
+  }
+
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= orderedVisibleIds.length) {
+    return [...currentOrder];
+  }
+
+  const targetAssetId = orderedVisibleIds[targetIndex];
+  const nextOrder = reconcileKnowledgeLibraryPriorityOrder(currentOrder, allAssetIds);
+  const leftIndex = nextOrder.indexOf(assetId);
+  const rightIndex = nextOrder.indexOf(targetAssetId);
+  if (leftIndex === -1 || rightIndex === -1) {
+    return nextOrder;
+  }
+
+  [nextOrder[leftIndex], nextOrder[rightIndex]] = [
+    nextOrder[rightIndex],
+    nextOrder[leftIndex],
+  ];
+
+  return nextOrder;
+}
+
+function areStringArraysEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 function readFileAsBase64(file: File): Promise<string> {

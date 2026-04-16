@@ -354,6 +354,11 @@ test("upload still auto-binds the base template family when exactly one active f
     uploadResponse.body.manuscript.current_journal_template_id,
     undefined,
   );
+  assert.equal(
+    uploadResponse.body.manuscript.governed_execution_context_summary
+      ?.journal_template_selection_state,
+    "base_family_only",
+  );
 });
 
 test("operators can set or clear the journal template selection and mismatched journal families are rejected", async () => {
@@ -419,6 +424,71 @@ test("operators can set or clear the journal template selection and mismatched j
         journalTemplateId: "journal-template-2",
       }),
     /template family/i,
+  );
+});
+
+test("operators can correct the base template family as a secondary action and the journal template stays optional", async () => {
+  const { api, templateFamilyRepository } = createSelectionHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-clinical-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+  await templateFamilyRepository.save({
+    id: "family-review-1",
+    manuscript_type: "review",
+    name: "Review family",
+    status: "active",
+  });
+
+  const uploadResponse = await api.upload({
+    title: "Clinical study upload",
+    manuscriptType: undefined,
+    createdBy: "user-1",
+    fileName: "clinical-study.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/clinical-study.docx",
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(
+    uploadResponse.body.manuscript.current_template_family_id,
+    "family-clinical-1",
+  );
+  assert.equal(uploadResponse.body.manuscript.manuscript_type, "clinical_study");
+  assert.equal(
+    uploadResponse.body.manuscript.manuscript_type_detection_summary?.final_type,
+    "clinical_study",
+  );
+
+  const correctedResponse = await api.updateTemplateSelection({
+    manuscriptId: uploadResponse.body.manuscript.id,
+    templateFamilyId: "family-review-1",
+    journalTemplateId: null,
+  });
+
+  assert.equal(correctedResponse.status, 200);
+  assert.equal(correctedResponse.body.current_template_family_id, "family-review-1");
+  assert.equal(correctedResponse.body.current_journal_template_id, undefined);
+  assert.equal(correctedResponse.body.manuscript_type, "review");
+  assert.equal(
+    correctedResponse.body.manuscript_type_detection_summary?.detected_type,
+    "clinical_study",
+  );
+  assert.equal(
+    correctedResponse.body.manuscript_type_detection_summary?.final_type,
+    "review",
+  );
+  assert.equal(
+    correctedResponse.body.governed_execution_context_summary?.base_template_family_id,
+    "family-review-1",
+  );
+  assert.equal(
+    correctedResponse.body.governed_execution_context_summary
+      ?.journal_template_selection_state,
+    "base_family_only",
   );
 });
 

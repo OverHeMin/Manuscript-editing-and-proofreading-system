@@ -492,6 +492,157 @@ test("knowledge review controller approves by revision id and advances to the ne
   );
 });
 
+test("knowledge review controller rejects by revision id and advances to the next pending revision", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const queuePasses = [
+    [
+      {
+        id: "knowledge-1",
+        title: "Case report privacy guardrail",
+        canonical_text: "Mask all identifiable patient details.",
+        knowledge_kind: "checklist",
+        status: "pending_review",
+        routing: {
+          module_scope: "proofreading",
+          manuscript_types: ["case_report"],
+        },
+      },
+      {
+        id: "knowledge-2",
+        title: "Terminology consistency guardrail",
+        canonical_text: "Use consistent terminology in trial summaries.",
+        knowledge_kind: "rule",
+        status: "pending_review",
+        routing: {
+          module_scope: "editing",
+          manuscript_types: ["clinical_study"],
+        },
+      },
+    ],
+    [
+      {
+        id: "knowledge-2",
+        title: "Terminology consistency guardrail",
+        canonical_text: "Use consistent terminology in trial summaries.",
+        knowledge_kind: "rule",
+        status: "pending_review",
+        routing: {
+          module_scope: "editing",
+          manuscript_types: ["clinical_study"],
+        },
+      },
+    ],
+  ];
+
+  const controller = createKnowledgeReviewWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/knowledge/review-queue") {
+        return {
+          status: 200,
+          body: queuePasses.shift() as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-1") {
+        return {
+          status: 200,
+          body: buildReviewDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            status: "pending_review",
+            title: "Case report privacy guardrail",
+            moduleScope: "proofreading",
+            manuscriptTypes: ["case_report"],
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-2") {
+        return {
+          status: 200,
+          body: buildReviewDetail({
+            assetId: "knowledge-2",
+            revisionId: "knowledge-2-revision-1",
+            status: "pending_review",
+            title: "Terminology consistency guardrail",
+            moduleScope: "editing",
+            manuscriptTypes: ["clinical_study"],
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/revisions/knowledge-1-revision-2/reject") {
+        return {
+          status: 200,
+          body: buildReviewDetail({
+            assetId: "knowledge-1",
+            revisionId: "knowledge-1-revision-2",
+            status: "approved",
+            title: "Case report privacy guardrail",
+            moduleScope: "proofreading",
+            manuscriptTypes: ["case_report"],
+          }) as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/revisions/knowledge-2-revision-1/review-actions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "history-2",
+              knowledge_item_id: "knowledge-2",
+              revision_id: "knowledge-2-revision-1",
+              action: "submitted_for_review",
+              actor_role: "knowledge_reviewer",
+              created_at: "2026-04-08T08:25:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const seedDesk = await controller.loadDesk({
+    activeItemId: "knowledge-1-revision-2",
+  });
+  const result = await controller.rejectItem({
+    revisionId: "knowledge-1-revision-2",
+    actorRole: "knowledge_reviewer",
+    reviewNote: "Need stronger source coverage.",
+    state: createKnowledgeReviewWorkbenchState({
+      queue: seedDesk.queue,
+      activeItemId: seedDesk.selectedItem?.id ?? null,
+    }),
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    return;
+  }
+
+  assert.equal(result.desk.selectedItem?.id, "knowledge-2-revision-1");
+  assert.equal(result.desk.selectedItem?.asset_id, "knowledge-2");
+  assert.equal(result.historyRevisionId, "knowledge-2-revision-1");
+  assert.equal(result.history?.revisionId, "knowledge-2-revision-1");
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.method === "POST" &&
+        request.url === "/api/v1/knowledge/revisions/knowledge-1-revision-2/reject",
+    ),
+    true,
+  );
+});
+
 function buildReviewDetail(input: {
   assetId: string;
   revisionId: string;

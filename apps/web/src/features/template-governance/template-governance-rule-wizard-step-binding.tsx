@@ -1,3 +1,4 @@
+import type { ManuscriptModule } from "../manuscripts/types.ts";
 import type {
   RuleWizardBindingFormState,
   RuleWizardBindingOptions,
@@ -6,6 +7,9 @@ import type {
 export interface TemplateGovernanceRuleWizardStepBindingProps {
   value: RuleWizardBindingFormState;
   options?: RuleWizardBindingOptions;
+  moduleScope?: ManuscriptModule | "any";
+  manuscriptTypes?: string;
+  semanticSummary?: string;
   isBusy?: boolean;
   errorMessage?: string | null;
   onChange: (nextValue: RuleWizardBindingFormState) => void;
@@ -14,6 +18,9 @@ export interface TemplateGovernanceRuleWizardStepBindingProps {
 export function TemplateGovernanceRuleWizardStepBinding({
   value,
   options,
+  moduleScope = "editing",
+  manuscriptTypes = "clinical_study",
+  semanticSummary = "",
   isBusy = false,
   errorMessage = null,
   onChange,
@@ -51,6 +58,8 @@ export function TemplateGovernanceRuleWizardStepBinding({
                 selectedPackageKind: nextPackageKind,
                 selectedPackageId: nextPackage?.id ?? "",
                 selectedPackageLabel: nextPackage?.label ?? "",
+                reuseStrategy:
+                  nextPackageKind === "medical_package" ? "reuse_existing" : "new_binding",
               });
             }}
             disabled={isBusy}
@@ -128,6 +137,93 @@ export function TemplateGovernanceRuleWizardStepBinding({
           </div>
         </div>
       </div>
+
+      <div className="template-governance-rule-impact-grid">
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>业务调用模块</h3>
+              <p>把规则的业务落点说清楚，方便后续规则包和模板族复用。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-impact-list">
+            <div>
+              <span>执行模块</span>
+              <strong>{formatModuleScopeLabel(moduleScope)}</strong>
+            </div>
+            <div>
+              <span>稿件类型</span>
+              <strong>{manuscriptTypes || "any"}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>推荐复用</h3>
+              <p>先判断这条规则是挂到现有规则包，还是新开绑定关系。</p>
+            </div>
+          </header>
+          <label className="template-governance-field">
+            <span>复用策略</span>
+            <select
+              value={value.reuseStrategy}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  reuseStrategy: event.target.value as RuleWizardBindingFormState["reuseStrategy"],
+                })
+              }
+              disabled={isBusy}
+            >
+              <option value="reuse_existing">优先复用现有规则包</option>
+              <option value="new_binding">新建专属绑定</option>
+            </select>
+          </label>
+        </section>
+
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>影响预览</h3>
+              <p>在发布前提前看到这条规则会落到哪些业务对象。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-impact-list">
+            <div>
+              <span>规则包去向</span>
+              <strong>{value.selectedPackageLabel || "待选择规则包"}</strong>
+            </div>
+            <div>
+              <span>模板族覆盖</span>
+              <strong>
+                {value.selectedTemplateFamilies.length
+                  ? value.selectedTemplateFamilies.map((family) => family.name).join("、")
+                  : "待选择模板族"}
+              </strong>
+            </div>
+            <div>
+              <span>规则摘要</span>
+              <strong>{semanticSummary || "语义确认后会显示摘要"}</strong>
+            </div>
+          </div>
+        </section>
+      </div>
     </article>
   );
+}
+
+function formatModuleScopeLabel(value: TemplateGovernanceRuleWizardStepBindingProps["moduleScope"]): string {
+  switch (value) {
+    case "screening":
+      return "初筛";
+    case "proofreading":
+      return "校对";
+    case "editing":
+      return "编辑";
+    case "any":
+    default:
+      return "全部模块";
+  }
 }

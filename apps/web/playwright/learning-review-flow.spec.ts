@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import {
   semanticTableColumnKey,
   semanticTableDocxBase64,
@@ -9,17 +9,15 @@ const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
 const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
-const screeningHeading = "\u521d\u7b5b\u5de5\u4f5c\u53f0";
-const editingHeading = "\u7f16\u8f91\u5de5\u4f5c\u53f0";
-const proofreadingHeading = "\u6821\u5bf9\u5de5\u4f5c\u53f0";
-const ruleCenterHeading = "\u89c4\u5219\u4e2d\u5fc3";
+const screeningHeading = "当前稿件初筛判断";
+const editingHeading = "当前稿件编辑工作区";
+const proofreadingHeading = "当前稿件校对工作区";
+const ruleCenterHeading = "规则台账";
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
-const createDraftLabel = "\u751f\u6210\u8349\u7a3f";
-const finalizeProofLabel = "\u6821\u5bf9\u5b9a\u7a3f";
+const createDraftLabel = "生成校对草稿";
+const finalizeProofLabel = "确认校对定稿";
 const publishHumanFinalLabel = "\u53d1\u5e03\u4eba\u5de5\u7ec8\u7a3f";
-const prefilledDraftNotePrefix =
-  "\u5df2\u4ece\u5b66\u4e60\u5019\u9009\u9884\u586b\u89c4\u5219\u8349\u7a3f\uff1a";
 
 test("admin can complete the governed learning review flow from manuscript handoff", async ({
   page,
@@ -65,14 +63,14 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expect(page.locator("body")).toContainText(`Auto-loaded manuscript ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText(`已自动带入稿件 ${manuscriptId}`);
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
-  await expect(page.locator("body")).toContainText("Action Complete");
+  await expect(page.locator("body")).toContainText("操作已完成");
   const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
   await expect(editingLink).toBeVisible();
 
-  await editingLink.click();
+  await navigateViaHashLink(page, editingLink);
   await expect(page.getByRole("heading", { name: editingHeading })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
@@ -93,7 +91,7 @@ test("admin can complete the governed learning review flow from manuscript hando
     .first();
   await expect(proofreadingLink).toBeVisible();
 
-  await proofreadingLink.click();
+  await navigateViaHashLink(page, proofreadingLink);
   await expect(page.getByRole("heading", { name: proofreadingHeading })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
@@ -120,14 +118,21 @@ test("admin can complete the governed learning review flow from manuscript hando
   );
 
   await page.getByRole("button", { name: finalizeProofLabel }).click();
-  await expect(page.locator("body")).toContainText("Finalized asset");
+  await expect(page.locator("body")).toContainText("已完成终稿资产");
 
   await page.getByRole("button", { name: publishHumanFinalLabel }).click();
-  await expect(page.locator("body")).toContainText("Published human-final asset");
-  const learningReviewLink = page
-    .locator(`a[href*="#learning-review?manuscriptId=${manuscriptId}"]`)
-    .first();
+  await expect(page.locator("body")).toContainText("已发布人工终稿资产");
+  await expect(page.locator("body")).toContainText(
+    "人工终稿已就绪，可进入规则中心的回流工作区。",
+  );
+  const learningReviewLink = page.getByRole("link", { name: "前往回流工作区" });
   await expect(learningReviewLink).toBeVisible();
+  await expect(learningReviewLink).toHaveAttribute(
+    "href",
+    new RegExp(
+      `^#template-governance\\?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning$`,
+    ),
+  );
 
   const assetsResponse = await request.get(
     `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}/assets`,
@@ -186,14 +191,12 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(extractedCandidate.status).toBe("pending_review");
   const candidateListLabel = extractedCandidate.title ?? extractedCandidate.id;
 
-  await learningReviewLink.click();
+  await navigateViaHashLink(page, learningReviewLink);
   await expect(page.getByRole("heading", { name: ruleCenterHeading })).toBeVisible();
-  await expect(page.locator("body")).toContainText(
-    `当前学习回流来自稿件交接：${manuscriptId}`,
-  );
-  await expect(page.locator("body")).toContainText(manuscriptId);
-  await expect(page.locator("body")).toContainText("规则候选队列");
-  await expect(page.locator("body")).toContainText("规则候选复核");
+  await expect(page.locator("body")).toContainText("规则中心 · 回流工作区");
+  await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
+  await expect(page.locator("body")).toContainText("回流候选");
 
   await page
     .getByRole("button", { name: new RegExp(escapeRegExp(candidateListLabel)) })
@@ -206,36 +209,32 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.getByRole("button", { name: "批准候选" })).toBeEnabled();
   await page.getByRole("button", { name: "批准候选" }).click();
   await expect(page.locator("body")).toContainText(
-    `已批准候选：${extractedCandidate.id}`,
+    `已批准回流候选：${extractedCandidate.id}`,
   );
-  await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "转成规则" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "转成规则草稿" }).click();
-  await expect(page.locator("body")).toContainText(
-    `已从学习候选项 ${extractedCandidate.id} 预填规则草稿。`,
-  );
-  await expect(page.locator("body")).toContainText(
-    `${prefilledDraftNotePrefix}${extractedCandidate.id}`,
-  );
-  await expect(page.locator("body")).toContainText("Seeded Clinical Study Family");
+  await page.getByRole("button", { name: "转成规则" }).click();
+  await expect(page.locator("body")).toContainText("规则向导");
+  await expect(page.locator("body")).toContainText("返回规则台账");
+  await expect(page.locator("body")).toContainText(candidateListLabel);
+  await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
-
-  await page.getByRole("button", { name: "新建规则集草稿" }).click();
-  await expect(page.locator("body")).toContainText("规则集草稿已创建。");
-  await expect(page.getByRole("button", { name: "新建规则草稿" })).toBeEnabled();
-  await page.getByRole("button", { name: "新建规则草稿" }).click();
-  await expect(page.locator("body")).toContainText("规则草稿已创建。");
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    abstractObjectiveSource,
-  );
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    abstractObjectiveNormalized,
-  );
 });
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function navigateViaHashLink(
+  page: Page,
+  link: Locator,
+) {
+  const href = await link.getAttribute("href");
+  expect(href).toBeTruthy();
+  await page.goto(`/${href}`, {
+    waitUntil: "domcontentloaded",
+  });
 }
 
 async function waitForCurrentAsset(

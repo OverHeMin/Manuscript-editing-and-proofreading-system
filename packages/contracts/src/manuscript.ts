@@ -1,3 +1,5 @@
+import type { GovernedExecutionContextSummary } from "./governed-execution.js";
+
 export type ManuscriptId = string;
 export type UserId = string;
 export type TemplateFamilyId = string;
@@ -32,12 +34,15 @@ export type ManuscriptType =
   | "other";
 
 export type ManuscriptTypeDetectionSource = "ai" | "heuristic";
+export type ManuscriptTypeDetectionConfidenceLevel = "low" | "medium" | "high";
 
 export interface ManuscriptTypeDetectionSummary {
   detected_type: ManuscriptType;
   final_type: ManuscriptType;
   source: ManuscriptTypeDetectionSource;
   confidence: number;
+  confidence_level: ManuscriptTypeDetectionConfidenceLevel;
+  requires_operator_review: boolean;
   matched_signals?: string[];
 }
 
@@ -53,4 +58,5 @@ export interface Manuscript {
   current_proofreading_asset_id?: DocumentAssetId;
   current_template_family_id?: TemplateFamilyId;
   current_journal_template_id?: JournalTemplateId;
+  governed_execution_context_summary?: GovernedExecutionContextSummary;
 }

@@ -59,6 +59,8 @@ export interface KnowledgeLibraryListItemRecord {
   selected_revision_id?: string;
   semantic_status?: KnowledgeSemanticLayerRecord["status"];
   content_block_count: number;
+  archived_at?: string;
+  archived_by_role?: KnowledgeReviewActionRecord["actor_role"];
   updated_at?: string;
 }
 
@@ -435,12 +437,27 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
 
     async archive({
       knowledgeItemId,
+      actorRole,
     }: {
       knowledgeItemId: string;
+      actorRole?: RoleKey;
     }): Promise<RouteResponse<KnowledgeRecord>> {
       return {
         status: 200,
-        body: await knowledgeService.archive(knowledgeItemId),
+        body: await knowledgeService.archive(knowledgeItemId, actorRole),
+      };
+    },
+
+    async restore({
+      knowledgeItemId,
+      actorRole,
+    }: {
+      knowledgeItemId: string;
+      actorRole?: RoleKey;
+    }): Promise<RouteResponse<KnowledgeAssetDetailRecord | KnowledgeRecord>> {
+      return {
+        status: 200,
+        body: await knowledgeService.restore(knowledgeItemId, actorRole),
       };
     },
 
@@ -507,6 +524,13 @@ async function buildKnowledgeLibraryListItems(input: {
 
       const selectedRevision = detail?.selected_revision;
       const semanticLayer = selectedRevision?.semantic_layer;
+      const isArchived = (selectedRevision?.status ?? record.status) === "archived";
+      const reviewActions = isArchived
+        ? await input.knowledgeService.listReviewActions(record.id)
+        : [];
+      const latestArchiveAction = [...reviewActions]
+        .reverse()
+        .find((action) => action.action === "archived");
       const searchHaystack =
         input.queryMode === "semantic"
           ? buildSemanticSearchHaystack(semanticLayer)
@@ -530,6 +554,12 @@ async function buildKnowledgeLibraryListItems(input: {
         ...(selectedRevision ? { selected_revision_id: selectedRevision.id } : {}),
         ...(semanticLayer ? { semantic_status: semanticLayer.status } : {}),
         content_block_count: selectedRevision?.content_blocks.length ?? 0,
+        ...(isArchived
+          ? {
+              archived_at: selectedRevision?.updated_at ?? detail?.asset.updated_at,
+              archived_by_role: latestArchiveAction?.actor_role,
+            }
+          : {}),
         ...(selectedRevision?.updated_at
           ? { updated_at: selectedRevision.updated_at }
           : {}),

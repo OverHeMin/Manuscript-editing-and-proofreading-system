@@ -32,6 +32,8 @@ test("rule wizard shell renders shared step navigation and closeout actions", ()
   assert.match(markup, /下一步：AI 识别语义层/u);
   assert.match(markup, /保存草稿/u);
   assert.match(markup, /完成并返回规则中心/u);
+  assert.match(markup, /录入画布/u);
+  assert.match(markup, /AI 辅助提示/u);
   assert.match(markup, /规则正文/u);
   assert.match(markup, /正例示例/u);
   assert.match(markup, /反例示例/u);
@@ -146,6 +148,9 @@ test("rule wizard confirm step renders human confirmation and change summary sur
 
   assert.match(markup, /\u4eba\u5de5\u786e\u8ba4 AI \u7ed3\u679c/u);
   assert.match(markup, /\u4e00\u952e\u91c7\u7eb3\u9ad8\u7f6e\u4fe1\u7ed3\u679c/u);
+  assert.match(markup, /AI 建议/u);
+  assert.match(markup, /人工确认/u);
+  assert.match(markup, /规则类型判断/u);
   assert.match(markup, /\u53d8\u66f4\u6458\u8981/u);
 });
 
@@ -197,8 +202,13 @@ test("rule wizard binding and publish steps render package and release controls"
   assert.match(bindingMarkup, /\u8fdb\u5165\u54ea\u4e2a\u89c4\u5219\u5305/u);
   assert.match(bindingMarkup, /\u901a\u7528\u6821\u5bf9\u5305/u);
   assert.match(bindingMarkup, /\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305/u);
+  assert.match(bindingMarkup, /业务调用模块/u);
+  assert.match(bindingMarkup, /推荐复用/u);
+  assert.match(bindingMarkup, /影响预览/u);
   assert.match(publishMarkup, /\u53d1\u5e03\u65b9\u5f0f/u);
   assert.match(publishMarkup, /\u63d0\u4ea4\u5ba1\u6838/u);
+  assert.match(publishMarkup, /最终摘要/u);
+  assert.match(publishMarkup, /提交前检查/u);
   assert.match(publishMarkup, /\u5b8c\u6210\u5e76\u8fd4\u56de\u89c4\u5219\u4e2d\u5fc3/u);
 });
 

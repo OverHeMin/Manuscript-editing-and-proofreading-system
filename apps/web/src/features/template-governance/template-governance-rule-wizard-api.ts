@@ -124,6 +124,7 @@ export interface RuleWizardBindingFormState {
   selectedPackageKind: "general_package" | "medical_package";
   selectedPackageId: string;
   selectedPackageLabel: string;
+  reuseStrategy: "reuse_existing" | "new_binding";
   selectedTemplateFamilies: Array<{
     id: string;
     name: string;
@@ -278,6 +279,7 @@ export function createRuleWizardBindingFormState(input: {
     selectedPackageKind: packageKind,
     selectedPackageId: selectedPackage?.id ?? "",
     selectedPackageLabel: selectedPackage?.label ?? "",
+    reuseStrategy: packageKind === "medical_package" ? "reuse_existing" : "new_binding",
     selectedTemplateFamilies: deriveDefaultTemplateFamilies(
       input.options?.templateFamilies ?? [],
       input.semanticViewModel?.manuscriptTypes,

@@ -42,6 +42,13 @@ test("manuscript upload accepts inline file content, stores it locally, and pers
           final_type: string;
           source: string;
           confidence: number;
+          confidence_level: string;
+          requires_operator_review: boolean;
+        };
+        governed_execution_context_summary?: {
+          observation_status: string;
+          base_template_family_id?: string;
+          journal_template_selection_state: string;
         };
       };
       asset: { storage_key: string; file_name?: string };
@@ -56,7 +63,15 @@ test("manuscript upload accepts inline file content, stores it locally, and pers
       final_type: "review",
       source: "heuristic",
       confidence: 0.52,
+      confidence_level: "low",
+      requires_operator_review: true,
     });
+    assert.ok(uploaded.manuscript.governed_execution_context_summary);
+    assert.equal(
+      uploaded.manuscript.governed_execution_context_summary
+        ?.journal_template_selection_state,
+      "base_family_only",
+    );
     assert.equal(uploaded.job.requested_by, "dev-user");
     assert.equal(uploaded.asset.file_name, "inline-content.docx");
     assert.match(uploaded.asset.storage_key, /^uploads\/\d{4}\/\d{2}\/\d{2}\//);

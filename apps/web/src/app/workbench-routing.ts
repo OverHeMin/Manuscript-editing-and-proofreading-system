@@ -237,6 +237,12 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   };
 }
 
+export function resolveKnowledgeLibraryEntryView(
+  knowledgeView: KnowledgeLibraryView | undefined,
+): KnowledgeLibraryView {
+  return knowledgeView === "classic" ? "classic" : "ledger";
+}
+
 export function isManuscriptWorkbenchId(
   workbenchId: WorkbenchId | null | undefined,
 ): workbenchId is ManuscriptWorkbenchMode {

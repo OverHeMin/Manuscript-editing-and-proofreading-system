@@ -211,6 +211,25 @@ test("upload creates manuscript, original asset, and queued upload job records",
       current_editing_asset_id: undefined,
       current_proofreading_asset_id: undefined,
       current_template_family_id: undefined,
+      governed_execution_context_summary: {
+        observation_status: "reported",
+        manuscript_type: "clinical_study",
+        journal_template_selection_state: "base_family_only",
+        modules: [
+          {
+            module: "screening",
+            status: "not_configured",
+          },
+          {
+            module: "editing",
+            status: "not_configured",
+          },
+          {
+            module: "proofreading",
+            status: "not_configured",
+          },
+        ],
+      },
       created_at: "2026-03-26T10:00:00.000Z",
       updated_at: "2026-03-26T10:00:00.000Z",
     },
@@ -277,6 +296,10 @@ test("upload creates manuscript, original asset, and queued upload job records",
   assert.equal(
     manuscriptResponse.body.mainline_readiness_summary?.next_module,
     "screening",
+  );
+  assert.equal(
+    manuscriptResponse.body.mainline_readiness_summary?.reason,
+    "The manuscript is ready for governed screening.",
   );
 
   assert.equal(assetsResponse.status, 200);
@@ -395,7 +418,67 @@ test("upload detects manuscript type when the operator does not provide one", as
     final_type: "meta_analysis",
     source: "heuristic",
     confidence: 0.94,
+    confidence_level: "high",
+    requires_operator_review: false,
     matched_signals: ["meta-analysis", "meta analysis"],
+  });
+});
+
+test("upload exposes an explicit low-confidence intake summary and base-family-only governed posture", async () => {
+  const { api, templateFamilyRepository } = createLifecycleHarness([
+    "manuscript-low-confidence-1",
+    "asset-low-confidence-1",
+    "job-low-confidence-1",
+  ]);
+  await templateFamilyRepository.save({
+    id: "family-review-1",
+    manuscript_type: "review",
+    name: "Review Mainline",
+    status: "active",
+  });
+
+  const uploadResponse = await api.upload({
+    title: "General manuscript upload",
+    manuscriptType: undefined,
+    createdBy: "user-low-confidence",
+    fileName: "general-upload.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/general-upload.docx",
+  });
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploadResponse.body.manuscript.manuscript_type, "review");
+  assert.deepEqual(uploadResponse.body.manuscript.manuscript_type_detection_summary, {
+    detected_type: "review",
+    final_type: "review",
+    source: "heuristic",
+    confidence: 0.52,
+    confidence_level: "low",
+    requires_operator_review: true,
+  });
+  assert.deepEqual(uploadResponse.body.manuscript.governed_execution_context_summary, {
+    observation_status: "failed_open",
+    manuscript_type: "review",
+    base_template_family_id: "family-review-1",
+    journal_template_selection_state: "base_family_only",
+    modules: [
+      {
+        module: "screening",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+      {
+        module: "editing",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+      {
+        module: "proofreading",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+    ],
+    error: "Execution resolution service is unavailable.",
   });
 });
 
@@ -744,6 +827,30 @@ test("upload assigns the active template family that matches the manuscript type
     uploadResponse.body.manuscript.current_template_family_id,
     "family-review-1",
   );
+  assert.deepEqual(uploadResponse.body.manuscript.governed_execution_context_summary, {
+    observation_status: "failed_open",
+    manuscript_type: "review",
+    base_template_family_id: "family-review-1",
+    journal_template_selection_state: "base_family_only",
+    modules: [
+      {
+        module: "screening",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+      {
+        module: "editing",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+      {
+        module: "proofreading",
+        status: "failed_open",
+        error: "Execution resolution service is unavailable.",
+      },
+    ],
+    error: "Execution resolution service is unavailable.",
+  });
 });
 
 test("upload leaves the template family unset when multiple active families match the manuscript type", async () => {

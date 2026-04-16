@@ -1,4 +1,5 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { ModuleExecutionMode } from "@medical/contracts";
 
 export interface ModuleJobViewModel {
   id: string;
@@ -48,4 +49,5 @@ export interface RunScreeningInput {
   actorRole: AuthRole;
   storageKey: string;
   fileName?: string;
+  executionMode?: ModuleExecutionMode;
 }

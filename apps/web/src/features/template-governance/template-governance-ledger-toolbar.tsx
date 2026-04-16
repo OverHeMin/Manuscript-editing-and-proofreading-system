@@ -38,7 +38,7 @@ export function TemplateGovernanceLedgerToolbar({
             <button
               key={item.key}
               type="button"
-              className={`template-governance-ledger-nav-item${item.isActive ? " is-active" : ""}`}
+              className={`template-governance-ledger-nav-item${item.isActive ? " is-active" : ""}${item.priority === "secondary" ? " is-secondary" : ""}`}
               onClick={item.onClick}
             >
               {item.label}

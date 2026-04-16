@@ -14,7 +14,7 @@ const {
   KnowledgeLibraryRichContentEditor,
 } = await import("../src/features/knowledge-library/knowledge-library-rich-content-editor.tsx");
 
-test("knowledge library record drawer renders compact Chinese revision and editor framing", () => {
+test("knowledge library record drawer renders the selected revision context and review link", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryRecordDrawer
       detail={{
@@ -115,15 +115,14 @@ test("knowledge library record drawer renders compact Chinese revision and edito
     </KnowledgeLibraryRecordDrawer>,
   );
 
-  assert.match(markup, /记录抽屉/);
-  assert.match(markup, /打开审核台/);
-  assert.match(markup, /贡献账号/);
-  assert.match(markup, /版本时间线/);
-  assert.match(markup, /记录编辑区/);
+  assert.match(markup, /knowledge-library-record-drawer/);
+  assert.match(markup, /href="#knowledge-review\?revisionId=knowledge-1-revision-2"/);
+  assert.match(markup, /knowledge-1-revision-2/);
+  assert.match(markup, /Primary endpoint rule draft/);
   assert.match(markup, /editor\.zh/);
 });
 
-test("knowledge library rich content editor renders text, table, and image blocks with add actions", () => {
+test("knowledge library rich content editor renders text, table, and image blocks with stable action hooks", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryRichContentEditor
       blocks={[
@@ -170,13 +169,13 @@ test("knowledge library rich content editor renders text, table, and image block
     />,
   );
 
-  assert.match(markup, /Rich Content/);
-  assert.match(markup, /Add Text Block/);
-  assert.match(markup, /Add Table Block/);
-  assert.match(markup, /Add Image Block/);
-  assert.match(markup, /Text Block/);
-  assert.match(markup, /Table Block/);
-  assert.match(markup, /Image Block/);
+  assert.match(markup, /data-material-editor="blocks"/);
+  assert.match(markup, /data-block-action="add-text"/);
+  assert.match(markup, /data-block-action="add-table"/);
+  assert.match(markup, /data-block-action="add-image"/);
+  assert.match(markup, /data-block-type="text_block"/);
+  assert.match(markup, /data-block-type="table_block"/);
+  assert.match(markup, /data-block-type="image_block"/);
   assert.match(markup, /Primary endpoint/);
   assert.match(markup, /endpoint-figure\.png/);
   assert.match(markup, /knowledge\/rich-space\/endpoint-figure\.png/);

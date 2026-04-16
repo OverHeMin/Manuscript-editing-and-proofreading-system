@@ -6,6 +6,7 @@ import type { ResolvedExecutionBundleViewModel } from "../execution-governance/i
 import { formatExecutionResolutionModelSourceLabel } from "../execution-governance/index.ts";
 import {
   createAdminGovernanceWorkbenchController,
+  type AdminGovernanceLandingOverview,
   type AdminGovernanceOverview,
   type AdminGovernanceWorkbenchController,
 } from "./admin-governance-controller.ts";
@@ -78,44 +79,24 @@ export function AdminGovernanceWorkbenchPage({
     );
   }
 
-  const aiConnections = overview.aiProviderConnections ?? [];
-  const modelEntries = overview.modelRegistryEntries ?? [];
-  const qualityPackages = overview.qualityPackages ?? [];
-  const evaluationSuites = overview.evaluationSuites ?? [];
-  const runtimeBindings = overview.runtimeBindings ?? [];
-  const executionProfiles = overview.executionProfiles ?? [];
-  const templateFamilies = overview.templateFamilies ?? [];
-  const harnessAdapterHealth = overview.harnessAdapterHealth ?? [];
-  const toolGatewayTools = overview.toolGatewayTools ?? [];
-  const agentProfiles = overview.agentProfiles ?? [];
-  const sandboxProfiles = overview.sandboxProfiles ?? [];
-  const agentExecutionLogs = overview.agentExecutionLogs ?? [];
-  const enabledConnections = aiConnections.filter((connection) => connection.enabled).length;
-  const prodReadyModels = modelEntries.filter((model) => model.is_prod_allowed).length;
-  const publishedQualityPackages = qualityPackages.filter(
-    (record) => record.status === "published",
-  ).length;
+  const aiAccess = overview.landing.aiAccess;
+  const harness = overview.landing.harness;
   const selectedModel =
     initialExecutionPreview == null
       ? null
-      : resolveModelDisplayName(modelEntries, initialExecutionPreview.resolved_model.id);
+      : formatModelDisplayName(initialExecutionPreview.resolved_model);
+  const alerts = buildGovernanceAlerts(overview.landing, initialExecutionPreview);
 
   return (
     <section className="admin-governance-workbench">
-      <header className="admin-governance-hero">
-        <div className="admin-governance-hero-copy">
-          <p className="admin-governance-eyebrow">管理区</p>
+      <div className="admin-governance-heading">
+        <div className="admin-governance-heading-copy">
+          <p className="admin-governance-kicker">轻量入口</p>
           <h2>管理总览</h2>
-          <p>
-            把高频治理入口拿出来，把复杂配置收进专页。AI 接入、账号与权限、Harness
-            控制都从这里快速进入。
-          </p>
-          <p>
-            规则、模板与校对策略已统一收口到规则中心，管理区只保留真正的后台治理入口。
-          </p>
-          {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
+          <p>只保留跨系统治理入口和只读体征，深度配置请进入对应专页。</p>
         </div>
-      </header>
+        {errorMessage ? <p className="admin-governance-error">{errorMessage}</p> : null}
+      </div>
 
       <section className="admin-governance-entry-grid">
         <EntryCard
@@ -126,9 +107,9 @@ export function AdminGovernanceWorkbenchPage({
           })}
           actionLabel="进入 AI 接入"
           chips={[
-            `已接入 ${aiConnections.length} 个连接`,
-            `已启用 ${enabledConnections} 个连接`,
-            `生产可用 ${prodReadyModels} 个模型`,
+            `已接入 ${aiAccess.totalConnections} 个连接`,
+            `已启用 ${aiAccess.enabledConnections} 个连接`,
+            `生产可用 ${aiAccess.prodReadyModels} 个模型`,
           ]}
         />
         <EntryCard
@@ -148,9 +129,9 @@ export function AdminGovernanceWorkbenchPage({
           })}
           actionLabel="进入 Harness 控制"
           chips={[
-            `${evaluationSuites.length} 个评测套件`,
-            `${runtimeBindings.length} 个运行绑定`,
-            `${harnessAdapterHealth.length} 条适配器健康记录`,
+            `${harness.evaluationSuiteCount} 个评测套件`,
+            `${harness.runtimeBindingCount} 个运行绑定`,
+            `${harness.adapterHealthCount} 条适配器健康记录`,
           ]}
           links={[
             {
@@ -165,29 +146,13 @@ export function AdminGovernanceWorkbenchPage({
             },
           ]}
         />
-        <EntryCard
-          title="规则中心"
-          description="规则、模板与校对策略已迁入协作与回收区，避免继续堆在管理页。"
-          href={formatWorkbenchHash("template-governance", {
-            templateGovernanceView: "authoring",
-            ruleCenterMode: "authoring",
-          })}
-          actionLabel="打开规则中心"
-          chips={[
-            `${templateFamilies.length} 个模板族`,
-            `${executionProfiles.length} 条执行画像`,
-            `${publishedQualityPackages} 个已发布质量包`,
-          ]}
-        />
       </section>
 
       <section className="admin-governance-summary">
-        <SummaryCard label="AI 连接" value={aiConnections.length} />
-        <SummaryCard label="模型条目" value={modelEntries.length} />
-        <SummaryCard label="运行绑定" value={runtimeBindings.length} />
-        <SummaryCard label="评测套件" value={evaluationSuites.length} />
-        <SummaryCard label="质量包" value={qualityPackages.length} />
-        <SummaryCard label="Agent 运行" value={agentExecutionLogs.length} />
+        <SummaryCard label="已启用连接" value={aiAccess.enabledConnections} />
+        <SummaryCard label="生产模型" value={aiAccess.prodReadyModels} />
+        <SummaryCard label="Harness 适配器" value={harness.adapterHealthCount} />
+        <SummaryCard label="当前提醒" value={alerts.length} />
       </section>
 
       <section className="admin-governance-snapshot-grid">
@@ -197,7 +162,7 @@ export function AdminGovernanceWorkbenchPage({
             <span>快速判断连接、模型与回退链是否健康</span>
           </div>
           <ul className="admin-governance-list admin-governance-list-dense">
-            {aiConnections.slice(0, 4).map((connection) => (
+            {aiAccess.connections.slice(0, 4).map((connection) => (
               <li key={connection.id} className="admin-governance-asset-row">
                 <span>{connection.name}</span>
                 <small>
@@ -207,7 +172,7 @@ export function AdminGovernanceWorkbenchPage({
               </li>
             ))}
           </ul>
-          {aiConnections.length === 0 ? (
+          {aiAccess.connections.length === 0 ? (
             <p className="admin-governance-empty">尚未配置 AI 连接，请先到 AI 接入页添加。</p>
           ) : null}
 
@@ -259,29 +224,29 @@ export function AdminGovernanceWorkbenchPage({
             <span>让高阶控制保持可见，但不抢第一页</span>
           </div>
           <div className="admin-governance-snapshot-stack">
-            <SnapshotRow label="评测套件" value={`${evaluationSuites.length} 个`} />
-            <SnapshotRow label="运行绑定" value={`${runtimeBindings.length} 个`} />
+            <SnapshotRow label="评测套件" value={`${harness.evaluationSuiteCount} 个`} />
+            <SnapshotRow label="运行绑定" value={`${harness.runtimeBindingCount} 个`} />
             <SnapshotRow
               label="适配器健康"
               value={
-                harnessAdapterHealth.length > 0
-                  ? `${harnessAdapterHealth.length} 条记录`
+                harness.adapterHealthCount > 0
+                  ? `${harness.adapterHealthCount} 条记录`
                   : "暂无健康记录"
               }
             />
             <SnapshotRow
               label="最近 Judge 校准"
               value={
-                overview.latestJudgeCalibrationBatchOutcome
-                  ? `${overview.latestJudgeCalibrationBatchOutcome.execution_id} · ${overview.latestJudgeCalibrationBatchOutcome.status}`
+                harness.latestJudgeCalibrationBatchOutcome
+                  ? `${harness.latestJudgeCalibrationBatchOutcome.execution_id} · ${harness.latestJudgeCalibrationBatchOutcome.status}`
                   : "暂无批次"
               }
             />
           </div>
 
-          {harnessAdapterHealth.length > 0 ? (
+          {harness.adapterHealth.length > 0 ? (
             <ul className="admin-governance-list admin-governance-list-dense">
-              {harnessAdapterHealth.slice(0, 3).map((record) => (
+              {harness.adapterHealth.slice(0, 3).map((record) => (
                 <li key={record.adapter.id} className="admin-governance-asset-row">
                   <span>{record.adapter.display_name}</span>
                   <small>
@@ -300,29 +265,11 @@ export function AdminGovernanceWorkbenchPage({
 
         <article className="admin-governance-panel">
           <div className="admin-governance-panel-header">
-            <h3>治理资产快照</h3>
-            <span>模板、执行画像与工具策略只保留摘要</span>
-          </div>
-          <div className="admin-governance-snapshot-stack">
-            <SnapshotRow label="模板族" value={`${templateFamilies.length} 个`} />
-            <SnapshotRow label="执行画像" value={`${executionProfiles.length} 条`} />
-            <SnapshotRow label="质量包" value={`${qualityPackages.length} 个`} />
-            <SnapshotRow label="工具网关" value={`${toolGatewayTools.length} 个`} />
-            <SnapshotRow label="沙箱配置" value={`${sandboxProfiles.length} 个`} />
-            <SnapshotRow label="Agent 档案" value={`${agentProfiles.length} 个`} />
-          </div>
-          <p className="admin-governance-empty">
-            具体规则、模板与校对策略请前往规则中心，管理页不再承担长编辑链路。
-          </p>
-        </article>
-
-        <article className="admin-governance-panel">
-          <div className="admin-governance-panel-header">
             <h3>当前提醒</h3>
             <span>先看该拿出来的风险，再决定是否进入细节页</span>
           </div>
           <ul className="admin-governance-list admin-governance-list-dense">
-            {buildGovernanceAlerts(overview, initialExecutionPreview).map((alert) => (
+            {alerts.map((alert) => (
               <li key={alert} className="admin-governance-asset-row">
                 <span>{alert}</span>
               </li>
@@ -330,80 +277,6 @@ export function AdminGovernanceWorkbenchPage({
           </ul>
         </article>
       </section>
-
-      <details className="admin-governance-detail-shell">
-        <summary>查看治理资产明细</summary>
-        <div className="admin-governance-detail-grid">
-          <article className="admin-governance-panel">
-            <div className="admin-governance-panel-header">
-              <h3>模板与执行明细</h3>
-              <span>只保留摘要，编辑动作已迁往对应专页</span>
-            </div>
-            <ul className="admin-governance-list admin-governance-list-dense">
-              {templateFamilies.slice(0, 5).map((family) => (
-                <li key={family.id} className="admin-governance-asset-row">
-                  <span>{family.name}</span>
-                  <small>
-                    {formatManuscriptTypeLabel(family.manuscript_type)} · {family.status}
-                  </small>
-                </li>
-              ))}
-            </ul>
-            {templateFamilies.length === 0 ? (
-              <p className="admin-governance-empty">当前没有模板族记录。</p>
-            ) : null}
-          </article>
-
-          <article className="admin-governance-panel">
-            <div className="admin-governance-panel-header">
-              <h3>AI 路由摘要</h3>
-              <span>便于先判断是否需要进入 AI 接入页</span>
-            </div>
-            <div className="admin-governance-snapshot-stack">
-              <SnapshotRow
-                label="系统默认模型"
-                value={resolveModelDisplayName(
-                  modelEntries,
-                  overview.modelRoutingPolicy.system_default_model_id,
-                )}
-              />
-              <SnapshotRow
-                label="模块默认数"
-                value={`${countAssignedModuleDefaults(
-                  overview.modelRoutingPolicy.module_defaults,
-                )} 项`}
-              />
-              <SnapshotRow label="路由策略版本" value={`${overview.routingPolicies.length} 组`} />
-              <SnapshotRow
-                label="生产可用模型"
-                value={`${prodReadyModels} 个`}
-              />
-            </div>
-          </article>
-
-          <article className="admin-governance-panel">
-            <div className="admin-governance-panel-header">
-              <h3>最近运行摘要</h3>
-              <span>只看队列体征，不在这里展开深度排障</span>
-            </div>
-            <ul className="admin-governance-list admin-governance-list-dense">
-              {agentExecutionLogs.slice(0, 5).map((log) => (
-                <li key={log.id} className="admin-governance-asset-row">
-                  <span>
-                    {formatModuleLabel(log.module)} · 稿件 {log.manuscript_id}
-                  </span>
-                  <small>
-                    {log.status} · 运行时 {log.runtime_id} · 绑定 {log.runtime_binding_id}
-                  </small>
-                </li>
-              ))}
-            </ul>
-            {agentExecutionLogs.length === 0 ? (
-              <p className="admin-governance-empty">最近还没有 Agent 运行记录。</p>
-            ) : null}
-          </article>
-        </div>
-      </details>
     </section>
   );
 }
@@ -465,27 +338,10 @@ function SnapshotRow(props: { label: string; value: string }) {
 }
 
 function buildGovernanceAlerts(
-  overview: AdminGovernanceOverview,
+  landing: AdminGovernanceLandingOverview,
   executionPreview: ResolvedExecutionBundleViewModel | null,
 ) {
-  const alerts: string[] = [];
-  const connections = overview.aiProviderConnections ?? [];
-  const qualityPackages = overview.qualityPackages ?? [];
-
-  if (connections.length === 0) {
-    alerts.push("尚未配置 AI 连接，需先在 AI 接入页完成接入。");
-  }
-
-  const unknownConnections = connections.filter(
-    (connection) => connection.last_test_status === "unknown",
-  );
-  if (unknownConnections.length > 0) {
-    alerts.push(`有 ${unknownConnections.length} 个 AI 连接尚未完成连通性测试。`);
-  }
-
-  if (qualityPackages.every((record) => record.status !== "published")) {
-    alerts.push("还没有已发布质量包，Harness 对照结果的落地依据会偏弱。");
-  }
+  const alerts = [...landing.warnings];
 
   if (executionPreview?.warnings.length) {
     alerts.push(
@@ -493,14 +349,6 @@ function buildGovernanceAlerts(
         .map((warning) => warning.code)
         .join(", ")}。`,
     );
-  }
-
-  if (overview.harnessAdapterHealth?.some((record) => record.latest_degradation_reason)) {
-    alerts.push("Harness 适配器存在降级记录，建议进入 Harness 控制页进一步查看。");
-  }
-
-  if (alerts.length === 0) {
-    alerts.push("当前没有需要前台立刻处理的全局提醒。");
   }
 
   return alerts;
@@ -518,56 +366,10 @@ function formatConnectionTestStatus(status: string | null | undefined) {
   }
 }
 
-function formatManuscriptTypeLabel(value: string) {
-  switch (value) {
-    case "clinical_study":
-      return "临床研究";
-    case "review":
-      return "综述";
-    case "case_report":
-      return "病例报告";
-    case "guideline_interpretation":
-      return "指南解读";
-    default:
-      return value;
-  }
-}
-
-function formatModuleLabel(value: string) {
-  switch (value) {
-    case "screening":
-      return "初筛";
-    case "editing":
-      return "编辑";
-    case "proofreading":
-      return "校对";
-    default:
-      return value;
-  }
-}
-
-function countAssignedModuleDefaults(
-  moduleDefaults: Record<string, string | null | undefined>,
-) {
-  return Object.values(moduleDefaults).filter((value) => value != null && value.length > 0).length;
-}
-
 function formatModelDisplayName(
   model: Pick<ResolvedExecutionBundleViewModel["resolved_model"], "id" | "provider" | "model_name">,
 ) {
   return `${model.provider} / ${model.model_name} (${model.id})`;
-}
-
-function resolveModelDisplayName(
-  models: readonly Pick<ResolvedExecutionBundleViewModel["resolved_model"], "id" | "provider" | "model_name">[],
-  modelId: string | undefined | null,
-) {
-  if (!modelId) {
-    return "未分配";
-  }
-
-  const model = models.find((candidate) => candidate.id === modelId);
-  return model ? formatModelDisplayName(model) : modelId;
 }
 
 function toErrorMessage(error: unknown): string {

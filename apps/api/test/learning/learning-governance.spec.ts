@@ -325,6 +325,110 @@ test("learning candidate approval is restricted to the dedicated learning review
 
   assert.equal(reviewerApproved.status, 200);
   assert.equal(reviewerApproved.body.status, "approved");
+  assert.deepEqual(reviewerApproved.body.review_actions, [
+    {
+      action: "submitted_for_review",
+      actor_role: "knowledge_reviewer",
+      created_at: "2026-03-27T10:00:00.000Z",
+    },
+    {
+      action: "approved",
+      actor_role: "admin",
+      created_at: "2026-03-27T10:00:00.000Z",
+    },
+  ]);
+});
+
+test("knowledge reviewers can reject governed learning candidates and keep audit notes", async () => {
+  const {
+    learningApi,
+    learningService,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    originalAsset,
+  } = await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const snapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+  const candidate = await learningApi.createLearningCandidate({
+    snapshotId: snapshot.body.id,
+    type: "rule_candidate",
+    title: "Terminology fix",
+    proposalText: "Standardize trial terminology.",
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+  });
+
+  await seedGovernedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/editing/annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "annotated.docx",
+    parentAssetId: humanFinalAsset.id,
+    sourceModule: "editing",
+    sourceJobId: "job-1",
+  });
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    snapshotId: "execution-snapshot-1",
+    feedbackType: "manual_correction",
+    feedbackText: "Normalize terminology according to the governed template.",
+    createdBy: "editor-1",
+  });
+  await learningService.attachGovernedSource({
+    candidateId: candidate.body.id,
+    snapshotId: "execution-snapshot-1",
+    feedbackRecordId: feedback.id,
+    sourceAssetId: sourceAsset.id,
+  });
+
+  const rejected = await learningApi.rejectLearningCandidate({
+    candidateId: candidate.body.id,
+    actorRole: "knowledge_reviewer",
+    reviewNote: "Need a clearer governed destination before reuse.",
+  });
+
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.body.status, "rejected");
+  assert.deepEqual(rejected.body.review_actions, [
+    {
+      action: "submitted_for_review",
+      actor_role: "knowledge_reviewer",
+      created_at: "2026-03-27T10:00:00.000Z",
+    },
+    {
+      action: "rejected",
+      actor_role: "knowledge_reviewer",
+      review_note: "Need a clearer governed destination before reuse.",
+      created_at: "2026-03-27T10:00:00.000Z",
+    },
+  ]);
 });
 
 test("learning candidates stay draft until governed provenance is attached", async () => {

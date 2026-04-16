@@ -11,27 +11,37 @@ register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.met
 
 const {
   LearningReviewWorkbenchPage,
+  createLearningReviewCompatibilityHandoffHash,
 } = await import("../src/features/learning-review/learning-review-workbench-page.tsx");
 
-test("learning review workbench page keeps the review queue primary and admin utilities secondary", () => {
-  const markup = renderToStaticMarkup(<LearningReviewWorkbenchPage actorRole="admin" />);
+test("learning review workbench page becomes a short compatibility handoff to rule center recovery", () => {
+  const markup = renderToStaticMarkup(
+    <LearningReviewWorkbenchPage actorRole="admin" prefilledManuscriptId="manuscript-42" />,
+  );
 
-  const queueIndex = markup.indexOf("待处理队列");
-  const selectedCandidateIndex = markup.indexOf("案例详情");
-  const decisionIndex = markup.indexOf("优化动作");
-  const utilityIndex = markup.indexOf("辅助工具与候选生成");
+  assert.match(markup, /data-mode="learning-review-compat"/);
+  assert.match(markup, /\u8d28\u91cf\u4f18\u5316\u5165\u53e3\u5df2\u8fc1\u79fb/u);
+  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
+  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(markup, /manuscript-42/);
+  assert.match(markup, /templateGovernanceView=rule-ledger/);
+  assert.match(markup, /ruleCenterMode=learning/);
+  assert.doesNotMatch(markup, /\u5f85\u5904\u7406\u961f\u5217/u);
+  assert.doesNotMatch(markup, /\u6848\u4f8b\u8be6\u60c5/u);
+  assert.doesNotMatch(markup, /\u4f18\u5316\u52a8\u4f5c/u);
+  assert.doesNotMatch(markup, /\u8f85\u52a9\u5de5\u5177\u4e0e\u5019\u9009\u751f\u6210/u);
+});
 
-  assert.match(markup, /\u8d28\u91cf\u4f18\u5316/u);
-  assert.match(markup, /AI \u4e0d\u786e\u5b9a\u70b9/);
-  assert.match(markup, /\u4eba\u5de5\u4fee\u6b63/u);
-  assert.match(markup, /\u9001\u5165\u77e5\u8bc6\u5e93/u);
-  assert.match(markup, /\u9001\u5165\u89c4\u5219\u4e2d\u5fc3/u);
-  assert.match(markup, /workbench-core-strip is-supporting/);
-  assert.match(markup, /workbench-core-strip-card is-active/);
-  assert.ok(queueIndex >= 0);
-  assert.ok(selectedCandidateIndex > queueIndex);
-  assert.ok(decisionIndex > selectedCandidateIndex);
-  assert.ok(utilityIndex > decisionIndex);
+test("learning review compatibility handoff preserves manuscript and snapshot context", () => {
+  const handoffHash = createLearningReviewCompatibilityHandoffHash({
+    manuscriptId: "manuscript-42",
+    reviewedCaseSnapshotId: "snapshot-42",
+  });
+
+  assert.match(handoffHash, /templateGovernanceView=rule-ledger/);
+  assert.match(handoffHash, /ruleCenterMode=learning/);
+  assert.match(handoffHash, /manuscriptId=manuscript-42/);
+  assert.match(handoffHash, /reviewedCaseSnapshotId=snapshot-42/);
 });
 
 test("loadLearningReviewPrefill derives snapshot and candidate defaults from the manuscript asset chain", async () => {

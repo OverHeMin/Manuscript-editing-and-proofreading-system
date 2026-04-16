@@ -177,7 +177,30 @@ export interface AdminGovernanceHttpClient {
   }>;
 }
 
+export interface AdminGovernanceLandingOverview {
+  aiAccess: {
+    totalConnections: number;
+    enabledConnections: number;
+    prodReadyModels: number;
+    connections: Array<
+      Pick<
+        SystemSettingsAiProviderConnectionViewModel,
+        "id" | "name" | "provider_kind" | "compatibility_mode" | "enabled" | "last_test_status"
+      >
+    >;
+  };
+  harness: {
+    evaluationSuiteCount: number;
+    runtimeBindingCount: number;
+    adapterHealthCount: number;
+    adapterHealth: HarnessAdapterHealthViewModel[];
+    latestJudgeCalibrationBatchOutcome: HarnessJudgeCalibrationOutcomeViewModel | null;
+  };
+  warnings: string[];
+}
+
 export interface AdminGovernanceOverview {
+  landing: AdminGovernanceLandingOverview;
   templateFamilies: TemplateFamilyViewModel[];
   selectedTemplateFamilyId: string | null;
   moduleTemplates: ModuleTemplateViewModel[];
@@ -702,14 +725,14 @@ export async function loadAdminGovernanceOverview(
   } = {},
 ): Promise<AdminGovernanceOverview> {
   const [
-    familyResponse,
-    promptResponse,
-    skillResponse,
+    templateFamiliesResponse,
+    promptTemplatesResponse,
+    skillPackagesResponse,
     modelRegistryResponse,
     modelRoutingPolicyResponse,
     routingPoliciesResponse,
-    executionProfileResponse,
-    qualityPackageResponse,
+    executionProfilesResponse,
+    qualityPackagesResponse,
     toolGatewayResponse,
     sandboxProfileResponse,
     agentProfileResponse,
@@ -723,14 +746,29 @@ export async function loadAdminGovernanceOverview(
     agentExecutionResponse,
     aiProviderConnections,
   ] = await Promise.all([
-    listTemplateFamilies(client),
-    listPromptTemplates(client),
-    listSkillPackages(client),
+    loadOptional(
+      () => listTemplateFamilies(client).then((response) => response.body),
+      [] as TemplateFamilyViewModel[],
+    ),
+    loadOptional(
+      () => listPromptTemplates(client).then((response) => response.body),
+      [] as PromptTemplateViewModel[],
+    ),
+    loadOptional(
+      () => listSkillPackages(client).then((response) => response.body),
+      [] as SkillPackageViewModel[],
+    ),
     listModelRegistryEntries(client),
     getModelRoutingPolicy(client),
     listModelRoutingPolicies(client),
-    listExecutionProfiles(client),
-    listManuscriptQualityPackages(client),
+    loadOptional(
+      () => listExecutionProfiles(client).then((response) => response.body),
+      [] as ModuleExecutionProfileViewModel[],
+    ),
+    loadOptional(
+      () => listManuscriptQualityPackages(client).then((response) => response.body),
+      [] as ManuscriptQualityPackageViewModel[],
+    ),
     listToolGatewayTools(client),
     listSandboxProfiles(client),
     listAgentProfiles(client),
@@ -751,7 +789,10 @@ export async function loadAdminGovernanceOverview(
     ),
   ]);
 
-  const templateFamilies = familyResponse.body;
+  const templateFamilies = templateFamiliesResponse ?? [];
+  const aiProviderConnectionList = Array.isArray(aiProviderConnections)
+    ? aiProviderConnections
+    : [];
   const selectedTemplateFamilyId = resolveSelectedTemplateFamilyId(
     templateFamilies,
     input.selectedTemplateFamilyId ?? null,
@@ -759,25 +800,38 @@ export async function loadAdminGovernanceOverview(
   const moduleTemplates =
     selectedTemplateFamilyId == null
       ? []
-      : (
-          await listModuleTemplatesByTemplateFamilyId(
-            client,
-            selectedTemplateFamilyId,
-          )
-        ).body;
+      : ((await loadOptional(
+          () =>
+            listModuleTemplatesByTemplateFamilyId(client, selectedTemplateFamilyId).then(
+              (response) => response.body,
+            ),
+          [] as ModuleTemplateViewModel[],
+        )) ?? []);
   const harnessAdapterHealth = await loadHarnessAdapterHealth(
     client,
     harnessAdapters ?? [],
   );
+  const latestJudgeCalibrationBatchOutcome =
+    selectLatestJudgeCalibrationBatchOutcome(harnessAdapterHealth);
+  const landing = buildAdminGovernanceLandingOverview({
+    aiProviderConnections: aiProviderConnectionList,
+    modelRegistryEntries: modelRegistryResponse.body,
+    evaluationSuites: evaluationSuiteResponse.body,
+    runtimeBindings: runtimeBindingResponse.body,
+    harnessAdapterHealth,
+    latestJudgeCalibrationBatchOutcome,
+    qualityPackages: qualityPackagesResponse ?? [],
+  });
 
   return {
+    landing,
     templateFamilies,
     selectedTemplateFamilyId,
     moduleTemplates,
-    promptTemplates: promptResponse.body,
-    skillPackages: skillResponse.body,
-    executionProfiles: executionProfileResponse.body,
-    qualityPackages: qualityPackageResponse.body,
+    promptTemplates: promptTemplatesResponse ?? [],
+    skillPackages: skillPackagesResponse ?? [],
+    executionProfiles: executionProfilesResponse ?? [],
+    qualityPackages: qualityPackagesResponse ?? [],
     modelRegistryEntries: modelRegistryResponse.body,
     modelRoutingPolicy: modelRoutingPolicyResponse.body,
     routingPolicies: routingPoliciesResponse.body,
@@ -792,10 +846,73 @@ export async function loadAdminGovernanceOverview(
     runtimeBindings: runtimeBindingResponse.body,
     harnessAdapters: harnessAdapters ?? [],
     harnessAdapterHealth,
-    latestJudgeCalibrationBatchOutcome:
-      selectLatestJudgeCalibrationBatchOutcome(harnessAdapterHealth),
+    latestJudgeCalibrationBatchOutcome,
     agentExecutionLogs: agentExecutionResponse.body,
-    aiProviderConnections: aiProviderConnections ?? [],
+    aiProviderConnections: aiProviderConnectionList,
+  };
+}
+
+function buildAdminGovernanceLandingOverview(input: {
+  aiProviderConnections: SystemSettingsAiProviderConnectionViewModel[];
+  modelRegistryEntries: ModelRegistryEntryViewModel[];
+  evaluationSuites: EvaluationSuiteViewModel[];
+  runtimeBindings: RuntimeBindingViewModel[];
+  harnessAdapterHealth: HarnessAdapterHealthViewModel[];
+  latestJudgeCalibrationBatchOutcome: HarnessJudgeCalibrationOutcomeViewModel | null;
+  qualityPackages: ManuscriptQualityPackageViewModel[];
+}): AdminGovernanceLandingOverview {
+  const enabledConnections = input.aiProviderConnections.filter(
+    (connection) => connection.enabled,
+  ).length;
+  const prodReadyModels = input.modelRegistryEntries.filter(
+    (model) => model.is_prod_allowed,
+  ).length;
+  const unknownConnections = input.aiProviderConnections.filter(
+    (connection) => connection.last_test_status === "unknown",
+  );
+  const warnings: string[] = [];
+
+  if (input.aiProviderConnections.length === 0) {
+    warnings.push("尚未配置 AI 连接，需先在 AI 接入页完成接入。");
+  }
+
+  if (unknownConnections.length > 0) {
+    warnings.push(`有 ${unknownConnections.length} 个 AI 连接尚未完成连通性测试。`);
+  }
+
+  if (input.qualityPackages.every((record) => record.status !== "published")) {
+    warnings.push("还没有已发布质量包，Harness 对照结果的落地依据会偏弱。");
+  }
+
+  if (
+    input.harnessAdapterHealth.some((record) => record.latest_degradation_reason)
+  ) {
+    warnings.push("Harness 适配器存在降级记录，建议进入 Harness 控制页进一步查看。");
+  }
+
+  return {
+    aiAccess: {
+      totalConnections: input.aiProviderConnections.length,
+      enabledConnections,
+      prodReadyModels,
+      connections: input.aiProviderConnections.map((connection) => ({
+        id: connection.id,
+        name: connection.name,
+        provider_kind: connection.provider_kind,
+        compatibility_mode: connection.compatibility_mode,
+        enabled: connection.enabled,
+        last_test_status: connection.last_test_status,
+      })),
+    },
+    harness: {
+      evaluationSuiteCount: input.evaluationSuites.length,
+      runtimeBindingCount: input.runtimeBindings.length,
+      adapterHealthCount: input.harnessAdapterHealth.length,
+      adapterHealth: input.harnessAdapterHealth,
+      latestJudgeCalibrationBatchOutcome: input.latestJudgeCalibrationBatchOutcome,
+    },
+    warnings:
+      warnings.length > 0 ? warnings : ["当前没有需要前台立刻处理的全局提醒。"],
   };
 }
 

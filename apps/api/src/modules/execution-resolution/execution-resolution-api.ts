@@ -1,6 +1,7 @@
 import type { ResolvedExecutionBundleRecord } from "./execution-resolution-record.ts";
 import type {
   ExecutionResolutionService,
+  ResolveOperatorSummaryInput,
   ResolveExecutionBundleInput,
 } from "./execution-resolution-service.ts";
 
@@ -27,6 +28,17 @@ export function createExecutionResolutionApi(
       return {
         status: 200,
         body: await executionResolutionService.resolveExecutionBundle(input),
+      };
+    },
+
+    async resolveOperatorSummary({
+      input,
+    }: {
+      input: ResolveOperatorSummaryInput;
+    }): Promise<RouteResponse<Awaited<ReturnType<ExecutionResolutionService["resolveOperatorSummary"]>>>> {
+      return {
+        status: 200,
+        body: await executionResolutionService.resolveOperatorSummary(input),
       };
     },
   };

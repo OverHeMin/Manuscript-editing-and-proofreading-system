@@ -22,6 +22,7 @@ import type {
 } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import type {
+  ManuscriptWorkbenchKnowledgeReferenceViewModel,
   ManuscriptWorkbenchMode,
   ManuscriptWorkbenchWorkspace,
 } from "./manuscript-workbench-controller.ts";
@@ -60,6 +61,7 @@ export function buildLatestJobPostureDetails(
 
 export function buildJobReviewEvidenceDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
+  knowledgeReferences?: Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>,
 ): WorkbenchActionResultDetail[] {
   if (!latestJob) {
     return [];
@@ -79,8 +81,12 @@ export function buildJobReviewEvidenceDetails(
   const modelVersion = snapshot?.model_version;
   const reasonSummary =
     manualReviewItems.length > 0
-      ? uniqueValues(manualReviewItems.map((item) => item.reason))
-      : uniqueValues(executionTracking?.settlement?.reason ? [executionTracking.settlement.reason] : []);
+      ? uniqueValues(manualReviewItems.map((item) => formatOperatorFacingReason(item.reason)))
+      : uniqueValues(
+          executionTracking?.settlement?.reason
+            ? [formatOperatorFacingReason(executionTracking.settlement.reason)]
+            : [],
+        );
 
   const details: WorkbenchActionResultDetail[] = [];
 
@@ -101,7 +107,7 @@ export function buildJobReviewEvidenceDetails(
   if (knowledgeItemIds.length > 0) {
     details.push({
       label: "知识引用",
-      value: knowledgeItemIds.join(", "),
+      value: formatKnowledgeReferenceValue(knowledgeItemIds, knowledgeReferences),
     });
   }
 
@@ -132,32 +138,32 @@ export function buildJobBatchProgressDetails(
 
   return [
     {
-      label: "Batch Lifecycle",
+      label: "批次进度",
       value: formatBatchLifecycleStatusLabel(batchProgress.lifecycle_status),
     },
     {
-      label: "Batch Settlement",
+      label: "批次结算",
       value: formatBatchSettlementStatusLabel(batchProgress.settlement_status),
     },
     {
-      label: "Succeeded",
+      label: "已完成",
       value: String(batchProgress.succeeded_count),
     },
     {
-      label: "Failed",
+      label: "失败",
       value: String(batchProgress.failed_count),
     },
     {
-      label: "Running",
+      label: "处理中",
       value: String(batchProgress.running_count),
     },
     {
-      label: "Remaining",
+      label: "待处理",
       value: String(batchProgress.remaining_count),
     },
     {
-      label: "Restart Posture",
-      value: batchProgress.restart_posture.reason,
+      label: "重启状态",
+      value: formatOperatorFacingReason(batchProgress.restart_posture.reason),
     },
   ];
 }
@@ -289,7 +295,7 @@ function buildResultAssetMatrixDetails(
     });
     details.push({
       label: "导出依据",
-      value: selection.reason,
+      value: formatOperatorFacingReason(selection.reason),
     });
   }
 
@@ -358,7 +364,7 @@ export function buildManuscriptMainlineReadinessDetails(
   if (summary.reason) {
     details.push({
       label: "就绪原因",
-      value: summary.reason,
+      value: formatOperatorFacingReason(summary.reason),
     });
   }
 
@@ -433,7 +439,7 @@ export function buildManuscriptMainlineAttentionHandoffPackDetails(
   if (pack.reason) {
     details.push({
       label: "主要关注原因",
-      value: pack.reason,
+      value: formatOperatorFacingReason(pack.reason),
     });
   }
 
@@ -569,7 +575,10 @@ export function ManuscriptWorkbenchSummary({
       )
     : null;
   const latestJobBatchProgressDetails = buildJobBatchProgressDetails(latestJob);
-  const latestJobReviewEvidenceDetails = buildJobReviewEvidenceDetails(latestJob);
+  const latestJobReviewEvidenceDetails = buildJobReviewEvidenceDetails(
+    latestJob,
+    workspace.knowledgeReferences,
+  );
   const resultAssetMatrix =
     latestExport?.matrix ?? workspace.manuscript.result_asset_matrix;
   const currentExportSelection = latestExport?.selection
@@ -582,40 +591,20 @@ export function ManuscriptWorkbenchSummary({
     resultAssetMatrix,
     currentExportSelection,
   );
+  const currentManuscriptAsset =
+    workspace.currentManuscriptAsset ?? workspace.currentAsset;
+  const currentResultAsset =
+    workspace.currentAsset &&
+    workspace.currentAsset.id !== currentManuscriptAsset?.id
+      ? workspace.currentAsset
+      : null;
+  const displayedCurrentAsset = currentManuscriptAsset ?? workspace.currentAsset;
 
   return (
-    <section className="manuscript-workbench-summary">
-      <header className="manuscript-workbench-summary-hero">
-        <div className="manuscript-workbench-summary-hero-copy">
-          <span className="manuscript-workbench-section-eyebrow">实时稿件台账</span>
-          <h3>稿件总控台</h3>
-          <p>
-            无需离开当前工作线，即可查看最近操作、下一步交接与稿件当前记录。
-          </p>
-        </div>
-        <div className="manuscript-workbench-summary-hero-stats">
-          <div className="manuscript-workbench-desk-stat">
-            <span>当前工作线</span>
-            <strong>{formatWorkbenchModeLabel(mode)}</strong>
-          </div>
-          <div className="manuscript-workbench-desk-stat">
-            <span>在册资产</span>
-            <strong>{workspace.assets.length}</strong>
-          </div>
-        </div>
-      </header>
-      <section className="manuscript-workbench-focus-context">
-        <article className="manuscript-workbench-focus-context-card">
-          <span>单稿判断工作区</span>
-          <strong>{resolveSummaryFocusLabel(mode)}</strong>
-          <p>围绕当前稿件完成判断、确认与交接，批量动作留在右侧抽屉。</p>
-        </article>
-        <article className="manuscript-workbench-focus-context-card">
-          <span>AI 识别稿件类型</span>
-          <strong>{formatManuscriptTypeLabel(workspace.manuscript.manuscript_type)}</strong>
-          <p>作为辅助分类输入，可结合规则、知识与人工复核持续修正。</p>
-        </article>
-      </section>
+    <section
+      className="manuscript-workbench-summary"
+      data-summary-layout="compact-manuscript-summary"
+    >
       <div className="manuscript-workbench-summary-grid">
         <SummaryCard title="最近操作结果">
           {latestActionResult ? (
@@ -637,7 +626,7 @@ export function ManuscriptWorkbenchSummary({
               />
               <SummaryMetric
                 label="结果说明"
-                value={formatActionResultMessage(latestActionResult.message)}
+                value={formatWorkbenchActionResultMessage(latestActionResult.message)}
               />
               {latestActionResult.details.map((detail) => (
                 <SummaryMetric
@@ -695,11 +684,11 @@ export function ManuscriptWorkbenchSummary({
           />
           <SummaryMetric
             label="基础模板族"
-            value={
+            value={formatTemplateFamilyDisplayLabel(
               workspace.templateFamily?.name ??
-              workspace.manuscript.current_template_family_id ??
-              "未绑定"
-            }
+                workspace.manuscript.current_template_family_id ??
+                "未绑定",
+            )}
           />
           <SummaryMetric
             label="期刊模板"
@@ -723,7 +712,7 @@ export function ManuscriptWorkbenchSummary({
                 {workspace.selectedJournalTemplateProfile ||
                 workspace.manuscript.current_journal_template_id
                   ? "已启用"
-                  : "仅基础"}
+                  : "仅基础模板"}
               </StatusPill>
             }
           />
@@ -810,15 +799,36 @@ export function ManuscriptWorkbenchSummary({
         </SummaryCard>
 
         <SummaryCard title="当前资产">
-          {workspace.currentAsset ? (
+          {displayedCurrentAsset ? (
             <>
               <SummaryMetric
                 label="当前资产"
-                value={renderAssetIdentity(workspace.currentAsset)}
+                value={renderAssetIdentity(displayedCurrentAsset)}
               />
               <SummaryMetric
+                label="快速操作"
+                value={renderCurrentAssetShortcuts(displayedCurrentAsset)}
+              />
+              {currentResultAsset ? (
+                <SummaryMetric
+                  label="\u5f53\u524d\u7ed3\u679c"
+                  value={renderAssetIdentity(currentResultAsset)}
+                />
+              ) : null}
+              {currentResultAsset ? (
+                <SummaryMetric
+                  label="\u7ed3\u679c\u5feb\u901f\u64cd\u4f5c"
+                  value={renderCurrentResultShortcuts(currentResultAsset)}
+                />
+              ) : null}
+              <SummaryMetric
                 label="存储键"
-                value={<code>{workspace.currentAsset.storage_key}</code>}
+                value={
+                  <code>
+                    {(currentResultAsset ?? currentManuscriptAsset ?? workspace.currentAsset)
+                      ?.storage_key}
+                  </code>
+                }
               />
               <SummaryMetric
                 label="推荐父资产"
@@ -1119,7 +1129,7 @@ function renderMainlineAttentionItemsSection(
                 {formatAttentionSeverityLabel(item.severity)}
               </StatusPill>
             </div>
-            <p>{item.summary}</p>
+            <p>{formatOperatorFacingReason(item.summary)}</p>
             {item.recovery_ready_at ? (
               <small>{`恢复可用时间 ${formatTimestamp(item.recovery_ready_at)}`}</small>
             ) : null}
@@ -1137,6 +1147,84 @@ function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
       <code>{asset.id}</code>
     </span>
   );
+}
+
+function renderCurrentAssetShortcuts(asset: DocumentAssetViewModel): ReactNode {
+  const assetUrl = resolveCurrentAssetDownloadUrl(asset);
+
+  return (
+    <span
+      className="manuscript-workbench-shortcut-row"
+      data-current-asset-actions="direct"
+    >
+      <a
+        className="manuscript-workbench-shortcut"
+        href={assetUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        查看当前稿件
+      </a>
+      <a className="manuscript-workbench-shortcut" href={assetUrl} download>
+        下载当前稿件
+      </a>
+    </span>
+  );
+}
+
+function renderCurrentResultShortcuts(asset: DocumentAssetViewModel): ReactNode {
+  const assetUrl = resolveCurrentAssetDownloadUrl(asset);
+
+  return (
+    <span
+      className="manuscript-workbench-shortcut-row"
+      data-current-asset-actions="result"
+    >
+      <a
+        className="manuscript-workbench-shortcut"
+        href={assetUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {"\u67e5\u770b\u5f53\u524d\u7ed3\u679c"}
+      </a>
+      <a className="manuscript-workbench-shortcut" href={assetUrl} download>
+        {resolveCurrentResultDownloadLabel(asset)}
+      </a>
+    </span>
+  );
+}
+
+function resolveCurrentAssetDownloadUrl(asset: DocumentAssetViewModel): string {
+  return resolveBrowserApiUrl(`/api/v1/document-assets/${asset.id}/download`);
+}
+
+function resolveCurrentResultDownloadLabel(asset: DocumentAssetViewModel): string {
+  if (asset.asset_type === "screening_report") {
+    return "\u4e0b\u8f7d\u521d\u7b5b\u62a5\u544a";
+  }
+
+  if (asset.asset_type === "proofreading_draft_report") {
+    return "\u4e0b\u8f7d\u6821\u5bf9\u8349\u7a3f";
+  }
+
+  if (asset.asset_type === "final_proof_issue_report") {
+    return "\u4e0b\u8f7d\u6821\u5bf9\u95ee\u9898\u62a5\u544a";
+  }
+
+  if (asset.asset_type === "edited_docx") {
+    return "\u4e0b\u8f7d\u7f16\u8f91\u7a3f";
+  }
+
+  if (asset.asset_type === "final_proof_annotated_docx") {
+    return "\u4e0b\u8f7d\u6821\u5bf9\u5b9a\u7a3f";
+  }
+
+  if (asset.asset_type === "human_final_docx") {
+    return "\u4e0b\u8f7d\u4eba\u5de5\u7ec8\u7a3f";
+  }
+
+  return "\u4e0b\u8f7d\u5f53\u524d\u7ed3\u679c";
 }
 
 function renderAssetMatrixValue(asset: DocumentAssetViewModel): string {
@@ -1603,13 +1691,16 @@ function buildMainlineReadinessRecommendedNextStep(
       value: describeAsset(workspace.currentAsset),
     },
   ];
+  const localizedReason = summary.reason
+    ? formatOperatorFacingReason(summary.reason)
+    : undefined;
 
   if (summary.derived_status === "ready_for_next_step" && summary.next_module) {
     if (summary.next_module === mode) {
       if (mode === "screening") {
         return {
           focus: "在推荐父资产上发起初筛",
-          guidance: summary.reason ?? "稿件已满足初筛执行条件。",
+          guidance: localizedReason ?? "稿件已满足初筛执行条件。",
           details: [
             ...details,
             {
@@ -1623,7 +1714,7 @@ function buildMainlineReadinessRecommendedNextStep(
       if (mode === "editing") {
         return {
           focus: "在已初筛稿件资产上发起编辑",
-          guidance: summary.reason ?? "稿件已满足编辑执行条件。",
+          guidance: localizedReason ?? "稿件已满足编辑执行条件。",
           details: [
             ...details,
             {
@@ -1636,7 +1727,7 @@ function buildMainlineReadinessRecommendedNextStep(
 
       return {
         focus: "生成校对草稿",
-        guidance: summary.reason ?? "稿件已满足校对执行条件。",
+        guidance: localizedReason ?? "稿件已满足校对执行条件。",
         details: [
           ...details,
           {
@@ -1650,7 +1741,7 @@ function buildMainlineReadinessRecommendedNextStep(
     return {
       focus: `推进稿件进入${formatWorkbenchModeLabel(summary.next_module)}`,
       guidance:
-        summary.reason ?? `稿件已满足${formatWorkbenchModeLabel(summary.next_module)}执行条件。`,
+        localizedReason ?? `稿件已满足${formatWorkbenchModeLabel(summary.next_module)}执行条件。`,
       details,
       targetMode: summary.next_module,
       targetLabel: `前往${formatWorkbenchModeLabel(summary.next_module)}工作台`,
@@ -1660,7 +1751,7 @@ function buildMainlineReadinessRecommendedNextStep(
   if (summary.derived_status === "in_progress") {
     return {
       focus: `等待${formatWorkbenchModeLabel(summary.active_module ?? mode)}执行完成`,
-      guidance: summary.reason ?? "当前治理执行仍在进行中。",
+      guidance: localizedReason ?? "当前治理执行仍在进行中。",
       details,
     };
   }
@@ -1669,7 +1760,7 @@ function buildMainlineReadinessRecommendedNextStep(
     return {
       focus: `等待${formatWorkbenchModeLabel(summary.active_module ?? mode)}后续流程完成结算`,
       guidance:
-        summary.reason ??
+        localizedReason ??
         "业务结果已产出，但治理后续流程尚未结算。",
       details,
     };
@@ -1679,7 +1770,7 @@ function buildMainlineReadinessRecommendedNextStep(
     return {
       focus: `继续前请检查${formatWorkbenchModeLabel(summary.active_module ?? mode)}态势`,
       guidance:
-        summary.reason ??
+        localizedReason ??
         "当前主线态势需要人工关注后，才能继续交接。",
       details,
     };
@@ -1689,7 +1780,7 @@ function buildMainlineReadinessRecommendedNextStep(
     return {
       focus: "主线执行已全部结算",
       guidance:
-        summary.reason ??
+        localizedReason ??
         "初筛、编辑和校对均已完成结算。",
       details,
     };
@@ -1865,8 +1956,8 @@ function buildRecommendedNextStep(
 
   if (workspace.currentAsset?.asset_type === "human_final_docx") {
     return {
-      focus: "将该稿件移交学习审核",
-      guidance: "人工终稿已就绪，可进入学习快照治理流程。",
+      focus: "将该稿件移交回流工作区",
+      guidance: "人工终稿已就绪，可进入规则中心的回流工作区。",
       details: [
         {
           label: "稿件",
@@ -1877,9 +1968,13 @@ function buildRecommendedNextStep(
           value: describeAsset(workspace.currentAsset),
         },
       ],
-      targetLabel: canOpenLearningReview ? "前往学习审核" : undefined,
+      targetLabel: canOpenLearningReview ? "前往回流工作区" : undefined,
       targetHref: canOpenLearningReview
-        ? formatWorkbenchHash("learning-review", workspace.manuscript.id)
+        ? formatWorkbenchHash("template-governance", {
+            manuscriptId: workspace.manuscript.id,
+            templateGovernanceView: "rule-ledger",
+            ruleCenterMode: "learning",
+          })
         : undefined,
     };
   }
@@ -2479,6 +2574,91 @@ function formatSummaryRuntimeBindingReadiness(
   return "就绪";
 }
 
+function formatOperatorFacingReason(reason: string): string {
+  const normalized = reason.trim();
+  if (normalized.length === 0) {
+    return reason;
+  }
+
+  switch (normalized) {
+    case "Recovered after restart":
+      return "服务重启后已恢复";
+    case "Base only":
+      return "仅基础模板";
+    case "Active":
+      return "已启用";
+  }
+
+  const governedReadyMatch =
+    /^The manuscript is ready for governed (screening|editing|proofreading)\.$/u.exec(
+      normalized,
+    );
+  if (governedReadyMatch) {
+    return `稿件已满足受治理${formatWorkbenchModeLabel(
+      governedReadyMatch[1] as ManuscriptWorkbenchMode,
+    )}条件。`;
+  }
+
+  return reason;
+}
+
+function formatTemplateFamilyDisplayLabel(value: string): string {
+  return value
+    .replace(/^Review\b/u, "综述")
+    .replace(/^Clinical Study\b/u, "临床研究")
+    .replace(/^Case Report\b/u, "病例报告")
+    .replace(/\bgovernance family\b/iu, "治理模板族")
+    .replace(/\bbase template family\b/iu, "基础模板族")
+    .replace(/\s+基础模板族/u, "基础模板族")
+    .replace(/\s+治理模板族/u, "治理模板族");
+}
+
+function formatJournalOverrideStateLabel(value: string): string {
+  if (value === "Base only") {
+    return "仅基础模板";
+  }
+
+  if (value === "Active") {
+    return "已启用";
+  }
+
+  return value;
+}
+
+function formatSettlementStatusValue(value: string): string {
+  switch (value) {
+    case "Settled":
+    case "business_completed_settled":
+      return "已结算";
+    case "Business complete, follow-up pending":
+    case "business_completed_follow_up_pending":
+      return "业务已完成，后续待处理";
+    case "Business complete, follow-up running":
+    case "business_completed_follow_up_running":
+      return "业务已完成，后续处理中";
+    case "Business complete, follow-up retryable":
+    case "business_completed_follow_up_retryable":
+      return "业务已完成，后续可重试";
+    case "Business complete, follow-up failed":
+    case "business_completed_follow_up_failed":
+      return "业务已完成，后续失败";
+    case "Business complete, settlement unlinked":
+    case "business_completed_unlinked":
+      return "业务已完成，结算未关联";
+    case "Job failed":
+    case "job_failed":
+      return "任务失败";
+    case "Job in progress":
+    case "job_in_progress":
+      return "任务进行中";
+    case "Not started":
+    case "not_started":
+      return "未开始";
+    default:
+      return value;
+  }
+}
+
 function formatAttentionStatusLabel(
   status: NonNullable<ManuscriptMainlineAttentionHandoffPackViewModel["attention_status"]>,
 ): string {
@@ -2540,7 +2720,7 @@ function formatMainlineAttentionHandoffLabel(
 }
 
 function formatAttentionItemDetail(item: MainlineAttentionItemViewModel): string {
-  return `${formatMainlineModuleLabel(item.module)}${formatAttentionSeverityLabel(item.severity)}：${item.summary}`;
+  return `${formatMainlineModuleLabel(item.module)}${formatAttentionSeverityLabel(item.severity)}：${formatOperatorFacingReason(item.summary)}`;
 }
 
 function formatAttentionItemHeading(item: MainlineAttentionItemViewModel): string {
@@ -2716,13 +2896,13 @@ function formatBatchLifecycleStatusLabel(
 ): string {
   switch (status) {
     case "queued":
-      return "Queued";
+      return "排队中";
     case "running":
-      return "Running";
+      return "运行中";
     case "completed":
-      return "Completed";
+      return "已完成";
     case "cancelled":
-      return "Cancelled";
+      return "已取消";
   }
 }
 
@@ -2731,15 +2911,15 @@ function formatBatchSettlementStatusLabel(
 ): string {
   switch (status) {
     case "in_progress":
-      return "In progress";
+      return "处理中";
     case "succeeded":
-      return "Succeeded";
+      return "成功";
     case "partial_success":
-      return "Partial success";
+      return "部分成功";
     case "failed":
-      return "Failed";
+      return "失败";
     case "cancelled":
-      return "Cancelled";
+      return "已取消";
   }
 }
 
@@ -2748,15 +2928,15 @@ function formatBatchItemStatusLabel(
 ): string {
   switch (status) {
     case "queued":
-      return "queued";
+      return "排队中";
     case "running":
-      return "running";
+      return "运行中";
     case "succeeded":
-      return "succeeded";
+      return "成功";
     case "failed":
-      return "failed";
+      return "失败";
     case "cancelled":
-      return "cancelled";
+      return "已取消";
   }
 }
 
@@ -2847,6 +3027,22 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function uniqueValues(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))];
+}
+
+function formatKnowledgeReferenceValue(
+  knowledgeItemIds: readonly string[],
+  knowledgeReferences?: Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>,
+): string {
+  return uniqueValues(knowledgeItemIds)
+    .map((knowledgeItemId) => {
+      const reference = knowledgeReferences?.[knowledgeItemId];
+      if (!reference || reference.title.trim().length === 0) {
+        return knowledgeItemId;
+      }
+
+      return `${reference.title}（${knowledgeItemId}）`;
+    })
+    .join("; ");
 }
 
 function describeAsset(asset: DocumentAssetViewModel | null): string {
@@ -2960,6 +3156,8 @@ function formatActionResultActionLabel(actionLabel: string): string {
       return "发起编辑执行";
     case "Create Draft":
       return "生成校对草稿";
+    case "Run Bare AI Once":
+      return "AI 自动处理（本次）";
     case "Finalize Proofreading":
       return "完成校对定稿";
     case "Upload Manuscript":
@@ -2981,7 +3179,7 @@ function formatActionResultActionLabel(actionLabel: string): string {
   }
 }
 
-function formatActionResultMessage(message: string): string {
+export function formatWorkbenchActionResultMessage(message: string): string {
   const createdAssetMatch = /^Created asset (.+)$/u.exec(message);
   if (createdAssetMatch) {
     return `已生成资产 ${createdAssetMatch[1]}`;
@@ -3032,7 +3230,7 @@ function formatActionResultMessage(message: string): string {
     return `已更新模板上下文 ${updatedTemplateContextMatch[1]}`;
   }
 
-  return message;
+  return formatOperatorFacingReason(message);
 }
 
 function formatActionResultDetailLabel(label: string): string {
@@ -3041,12 +3239,43 @@ function formatActionResultDetailLabel(label: string): string {
       return "资产";
     case "Job":
       return "任务";
+    case "Job结算":
+      return "任务结算";
     case "File":
       return "文件";
     case "Manuscript":
       return "稿件";
     case "Status":
       return "状态";
+    case "Batch Job":
+      return "批次任务";
+    case "Batch Items":
+      return "批次稿件数";
+    case "Batch Lifecycle":
+    case "批次进度":
+      return "批次进度";
+    case "Batch Settlement":
+    case "批次结算":
+      return "批次结算";
+    case "Succeeded":
+    case "已完成":
+      return "已完成";
+    case "Failed":
+    case "失败":
+      return "失败";
+    case "Running":
+    case "处理中":
+      return "处理中";
+    case "Remaining":
+    case "待处理":
+      return "待处理";
+    case "Restart Posture":
+    case "重启状态":
+      return "重启状态";
+    case "Recovery":
+      return "恢复状态";
+    case "Recovery Ready At":
+      return "恢复可用时间";
     case "Current Asset":
       return "当前资产";
     case "Latest Job":
@@ -3079,7 +3308,41 @@ function formatActionResultDetailValue(label: string, value: string): string {
     return formatJobStatusLabel(value);
   }
 
-  return formatActionResultMessage(value);
+  if (label === "Batch Lifecycle" || label === "批次进度") {
+    return formatBatchLifecycleStatusLabel(
+      value as NonNullable<JobViewModel["batch_progress"]>["lifecycle_status"],
+    );
+  }
+
+  if (label === "Batch Settlement" || label === "批次结算") {
+    return formatBatchSettlementStatusLabel(
+      value as NonNullable<JobViewModel["batch_progress"]>["settlement_status"],
+    );
+  }
+
+  if (label === "Journal Overrides") {
+    return formatJournalOverrideStateLabel(value);
+  }
+
+  if (label === "Base Template Family") {
+    return formatTemplateFamilyDisplayLabel(value);
+  }
+
+  if (label.endsWith("结算") || label === "Settlement") {
+    return formatSettlementStatusValue(value);
+  }
+
+  if (
+    label === "Restart Posture" ||
+    label === "重启状态" ||
+    label === "原因摘要" ||
+    label === "导出依据" ||
+    label === "就绪原因"
+  ) {
+    return formatOperatorFacingReason(value);
+  }
+
+  return formatWorkbenchActionResultMessage(value);
 }
 
 function formatAssetTypeLabel(assetType: string): string {

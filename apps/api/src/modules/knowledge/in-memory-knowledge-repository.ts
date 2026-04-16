@@ -557,7 +557,7 @@ export class InMemoryKnowledgeReviewActionRepository
     return [...this.records.values()]
       .filter((record) => record.knowledge_item_id === knowledgeItemId)
       .sort(compareReviewActionRecordsAsc)
-      .map(cloneLegacyReviewActionRecord);
+      .map(cloneReviewActionRecord);
   }
 
   async listByRevisionId(

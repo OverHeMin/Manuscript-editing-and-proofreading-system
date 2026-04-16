@@ -25,136 +25,143 @@ export function KnowledgeReviewDetailPane({
   historyScopeNote,
   onRetryHistory,
 }: KnowledgeReviewDetailPaneProps) {
-  if (item == null) {
-    return (
-      <section className="knowledge-review-panel knowledge-review-detail-pane">
-        <header className="knowledge-review-pane-header">
-          <h2>知识详情</h2>
-          <p>从待审队列中选择一条修订后，可在这里查看审核上下文。</p>
-        </header>
-        <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-          请选择一条队列记录，以加载对应资产、修订上下文与审核历史。
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="knowledge-review-panel knowledge-review-detail-pane">
-      <header className="knowledge-review-pane-header">
-        <h2>{item.title}</h2>
-        <p>
-          {isUsingStableSnapshot
-            ? "实时队列暂时不可用，当前保留最近一次稳定选择供继续查看。"
-            : "结合稳定的资产与修订上下文，审查当前选中的知识修订。"}
-        </p>
+      <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
+        {item == null ? (
+          <div>
+            <h2>知识详情</h2>
+            <p>详情区保持在中间列，用于快速核对当前待审修订的上下文。</p>
+          </div>
+        ) : (
+          <div>
+            <h2>{item.title}</h2>
+            <p>
+              {isUsingStableSnapshot
+                ? "实时队列暂时不可用，当前保留最近一次稳定选择供继续核对。"
+                : "围绕当前修订集中核对规范文本、适用范围与审核轨迹。"}
+            </p>
+          </div>
+        )}
       </header>
 
-      <dl className="knowledge-review-detail-grid">
-        <div>
-          <dt>资产 ID</dt>
-          <dd>{item.asset_id}</dd>
-        </div>
-        <div>
-          <dt>修订 ID</dt>
-          <dd>{item.revision_id}</dd>
-        </div>
-        <div>
-          <dt>修订状态</dt>
-          <dd>{renderStatus(item.status)}</dd>
-        </div>
-        <div>
-          <dt>规范文本</dt>
-          <dd className="knowledge-review-canonical-text">{item.canonical_text}</dd>
-        </div>
-        <div>
-          <dt>摘要</dt>
-          <dd>{item.summary?.trim().length ? item.summary : "未填写"}</dd>
-        </div>
-        <div>
-          <dt>证据等级</dt>
-          <dd>{renderEvidenceLevel(item.evidence_level)}</dd>
-        </div>
-        <div>
-          <dt>来源类型</dt>
-          <dd>{item.source_type ? renderSourceType(item.source_type) : "未填写"}</dd>
-        </div>
-        <div>
-          <dt>来源链接</dt>
-          <dd>
-            {item.source_link ? (
-              <a href={item.source_link} target="_blank" rel="noreferrer">
-                {item.source_link}
-              </a>
-            ) : (
-              "未填写"
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>生效区间</dt>
-          <dd>{renderEffectiveWindow(item.effective_at, item.expires_at)}</dd>
-        </div>
-        <div>
-          <dt>适用范围</dt>
-          <dd>{renderRoutingScope(item)}</dd>
-        </div>
-        <div>
-          <dt>模板绑定</dt>
-          <dd>{item.template_bindings?.length ? item.template_bindings.join("、") : "无"}</dd>
-        </div>
-      </dl>
-
-      <section className="knowledge-review-history">
-        <header>
-          <h3>审核历史</h3>
-          <p>按修订维度追踪审核事件与审核备注。</p>
-        </header>
-
-        {historyScopeNote ? (
-          <p className="knowledge-review-history-state">{historyScopeNote}</p>
-        ) : null}
-
-        {history.status === "loading" ? (
-          <p className="knowledge-review-history-state" role="status">
-            正在加载审核历史...
-          </p>
-        ) : null}
-
-        {history.status === "error" ? (
-          <div className="knowledge-review-banner knowledge-review-banner-error">
-            <p>{history.errorMessage ?? "审核历史加载失败。"}</p>
-            <button type="button" onClick={onRetryHistory}>
-              刷新历史
-            </button>
+      <div className="knowledge-review-detail-scroll" data-scroll-owner="detail">
+        {item == null ? (
+          <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
+            请选择一条队列记录，以加载对应资产、修订上下文与审核历史。
           </div>
-        ) : null}
+        ) : (
+          <>
+            <dl className="knowledge-review-detail-grid">
+              <div>
+                <dt>资产 ID</dt>
+                <dd>{item.asset_id}</dd>
+              </div>
+              <div>
+                <dt>修订 ID</dt>
+                <dd>{item.revision_id}</dd>
+              </div>
+              <div>
+                <dt>修订状态</dt>
+                <dd>{renderStatus(item.status)}</dd>
+              </div>
+              <div>
+                <dt>证据等级</dt>
+                <dd>{renderEvidenceLevel(item.evidence_level)}</dd>
+              </div>
+              <div>
+                <dt>来源类型</dt>
+                <dd>{item.source_type ? renderSourceType(item.source_type) : "未填写"}</dd>
+              </div>
+              <div>
+                <dt>生效区间</dt>
+                <dd>{renderEffectiveWindow(item.effective_at, item.expires_at)}</dd>
+              </div>
+              <div>
+                <dt>适用范围</dt>
+                <dd>{renderRoutingScope(item)}</dd>
+              </div>
+              <div>
+                <dt>模板绑定</dt>
+                <dd>{item.template_bindings?.length ? item.template_bindings.join("、") : "无"}</dd>
+              </div>
+              <div className="knowledge-review-detail-span-full">
+                <dt>规范文本</dt>
+                <dd className="knowledge-review-canonical-text">{item.canonical_text}</dd>
+              </div>
+              <div className="knowledge-review-detail-span-full">
+                <dt>摘要</dt>
+                <dd>{item.summary?.trim().length ? item.summary : "未填写"}</dd>
+              </div>
+              <div className="knowledge-review-detail-span-full">
+                <dt>来源链接</dt>
+                <dd>
+                  {item.source_link ? (
+                    <a href={item.source_link} target="_blank" rel="noreferrer">
+                      {item.source_link}
+                    </a>
+                  ) : (
+                    "未填写"
+                  )}
+                </dd>
+              </div>
+            </dl>
 
-        {history.actions.length === 0 && history.status !== "loading" ? (
-          <p className="knowledge-review-history-state">暂未记录审核动作。</p>
-        ) : null}
+            <section className="knowledge-review-history">
+              <header>
+                <h3>审核历史</h3>
+                <p>按修订维度追踪审核事件与审核备注。</p>
+              </header>
 
-        {history.actions.length > 0 ? (
-          <ol className="knowledge-review-history-list">
-            {history.actions.map((action) => (
-              <li key={action.id}>
-                <p className="knowledge-review-history-event">
-                  {eventLabel(action.action)} ｜ {actorLabel(action.actor_role)}
+              {historyScopeNote ? (
+                <p className="knowledge-review-history-state">{historyScopeNote}</p>
+              ) : null}
+
+              {history.status === "loading" ? (
+                <p className="knowledge-review-history-state" role="status">
+                  正在加载审核历史...
                 </p>
-                <p className="knowledge-review-history-event">
-                  修订 {action.revision_id ?? action.knowledge_item_id}
-                </p>
-                <p className="knowledge-review-history-time">{formatTimestamp(action.created_at)}</p>
-                <p className="knowledge-review-history-note">
-                  {action.review_note?.trim().length
-                    ? action.review_note
-                    : "未记录审核备注。"}
-                </p>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-      </section>
+              ) : null}
+
+              {history.status === "error" ? (
+                <div className="knowledge-review-banner knowledge-review-banner-error">
+                  <p>{history.errorMessage ?? "审核历史加载失败。"}</p>
+                  <button type="button" onClick={onRetryHistory}>
+                    刷新历史
+                  </button>
+                </div>
+              ) : null}
+
+              {history.actions.length === 0 && history.status !== "loading" ? (
+                <p className="knowledge-review-history-state">暂未记录审核动作。</p>
+              ) : null}
+
+              {history.actions.length > 0 ? (
+                <ol className="knowledge-review-history-list">
+                  {history.actions.map((action) => (
+                    <li key={action.id}>
+                      <p className="knowledge-review-history-event">
+                        {eventLabel(action.action)} · {actorLabel(action.actor_role)}
+                      </p>
+                      <p className="knowledge-review-history-event">
+                        修订 {action.revision_id ?? action.knowledge_item_id}
+                      </p>
+                      <p className="knowledge-review-history-time">
+                        {formatTimestamp(action.created_at)}
+                      </p>
+                      <p className="knowledge-review-history-note">
+                        {action.review_note?.trim().length
+                          ? action.review_note
+                          : "未记录审核备注。"}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </section>
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -183,7 +190,7 @@ function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {
       ? "任意稿件类型"
       : item.routing.manuscript_types.map(renderManuscriptType).join("、");
 
-  return `${moduleScope} ｜ ${manuscriptScope}`;
+  return `${moduleScope} · ${manuscriptScope}`;
 }
 
 function renderEffectiveWindow(
@@ -208,7 +215,7 @@ function renderStatus(status: KnowledgeReviewQueueItemViewModel["status"]): stri
     case "draft":
       return "草稿";
     case "deprecated":
-      return "已弃用";
+      return "已停用";
     case "superseded":
       return "已被替代";
     case "archived":

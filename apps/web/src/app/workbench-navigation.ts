@@ -62,7 +62,7 @@ const GROUP_META: Record<
   },
   "supporting-workbench": {
     label: "协作与回收区",
-    description: "知识审核、质量优化与规则中心协作入口",
+    description: "知识审核与规则中心协作入口",
     prominence: "supporting",
   },
   governance: {

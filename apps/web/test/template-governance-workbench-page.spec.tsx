@@ -8,6 +8,8 @@ register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.met
 
 const {
   TemplateGovernanceWorkbenchPage,
+  createRuleWizardEntryFormStateFromRuleLedgerRow,
+  resolveRuleLedgerCategoryAfterWizardCompletion,
 } = await import("../src/features/template-governance/template-governance-workbench-page.tsx");
 
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
@@ -320,7 +322,7 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(markup, /workbench-core-strip is-secondary/);
   assert.match(markup, /\u89c4\u5219\u5f55\u5165/u);
-  assert.match(markup, /\u5b66\u4e60\u56de\u6d41/u);
+  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.match(markup, /\u89c4\u5219\u5305/u);
   assert.match(markup, /\u89c4\u5219\u521b\u5efa/u);
   assert.match(markup, /\u6a21\u677f\u5957\u7528/u);
@@ -392,7 +394,27 @@ test("template governance overview keeps rule ledger as the daily-driver entry",
   assert.match(markup, /\u65b0\u5efa\u89c4\u5219/u);
   assert.match(markup, /\u8fdb\u5165\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
-  assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
+});
+
+test("template governance workbench page opens the shared rule wizard when authoring is requested directly", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadRuleLedger: async () => ({
+          category: "all",
+          rows: [],
+        }),
+      }}
+      initialView="authoring"
+    />,
+  );
+
+  assert.match(markup, /\u89c4\u5219\u5411\u5bfc/u);
+  assert.match(markup, /\u57fa\u7840\u5f55\u5165\u4e0e\u8bc1\u636e\u8865\u5145/u);
+  assert.match(markup, /\u4e0b\u4e00\u6b65\uff1aAI \u8bc6\u522b\u8bed\u4e49\u5c42/u);
 });
 
 test("template governance workbench page renders the unified rule ledger when rule-ledger is the selected view", () => {
@@ -427,4 +449,132 @@ test("template governance workbench page renders the unified rule ledger when ru
   assert.match(markup, /\u5168\u90e8\u8d44\u4ea7/u);
   assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
   assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
+});
+
+test("template governance workbench page folds learning candidates into the rule ledger handoff", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadRuleLedger: async () => ({
+          category: "recycled_candidate",
+          rows: [],
+        }),
+      }}
+      initialMode="learning"
+      initialLearningCandidates={[
+        {
+          id: "candidate-rule-1",
+          type: "rule_candidate",
+          status: "pending_review",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          governed_provenance_kind: "reviewed_case_snapshot",
+          snapshot_asset_id: "snapshot-asset-1",
+          title: "Abstract heading normalization",
+          proposal_text:
+            "Normalize abstract objective headings to the governed journal style.",
+          candidate_payload: {
+            extraction_kind: "reviewed_fragment_diff",
+            before_fragment: ABSTRACT_OBJECTIVE_SOURCE,
+            after_fragment: ABSTRACT_OBJECTIVE_NORMALIZED,
+            evidence_summary: "Human-reviewed abstract heading normalization.",
+          },
+          suggested_rule_object: "abstract",
+          suggested_template_family_id: "family-1",
+          suggested_journal_template_id: "journal-alpha",
+          created_by: "editor-1",
+          created_at: "2026-04-08T08:00:00.000Z",
+          updated_at: "2026-04-08T08:05:00.000Z",
+        },
+      ]}
+      initialSelectedLearningCandidateId="candidate-rule-1"
+    />,
+  );
+
+  assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
+  assert.match(markup, /Abstract heading normalization/);
+  assert.match(markup, /\u8f6c\u6210\u89c4\u5219/u);
+  assert.doesNotMatch(markup, /RulePackageAuthoringShell/);
+});
+
+test("recycled candidate ledger rows keep the evidence needed to prefill the shared rule wizard", () => {
+  const entryForm = createRuleWizardEntryFormStateFromRuleLedgerRow({
+    id: "candidate-rule-1",
+    asset_kind: "recycled_candidate",
+    title: "Abstract heading normalization",
+    module_label: "\u7f16\u8f91",
+    manuscript_type_label: "\u4e34\u5e8a\u7814\u7a76",
+    semantic_status: "\u56de\u6d41\u5f85\u6536\u7f16",
+    publish_status: "\u5f85\u5ba1\u6838",
+    contributor_label: "editor-1",
+    learning_candidate: {
+      id: "candidate-rule-1",
+      type: "rule_candidate",
+      status: "pending_review",
+      module: "editing",
+      manuscript_type: "clinical_study",
+      governed_provenance_kind: "reviewed_case_snapshot",
+      snapshot_asset_id: "snapshot-asset-1",
+      title: "Abstract heading normalization",
+      proposal_text:
+        "Normalize abstract objective headings to the governed journal style.",
+      candidate_payload: {
+        extraction_kind: "reviewed_fragment_diff",
+        before_fragment: ABSTRACT_OBJECTIVE_SOURCE,
+        after_fragment: ABSTRACT_OBJECTIVE_NORMALIZED,
+        evidence_summary: "Human-reviewed abstract heading normalization.",
+      },
+      suggested_rule_object: "abstract",
+      suggested_template_family_id: "family-1",
+      suggested_journal_template_id: "journal-alpha",
+      created_by: "editor-1",
+      created_at: "2026-04-08T08:00:00.000Z",
+      updated_at: "2026-04-08T08:05:00.000Z",
+    },
+  });
+
+  assert.equal(
+    entryForm?.ruleBody,
+    "Normalize abstract objective headings to the governed journal style.",
+  );
+  assert.equal(entryForm?.positiveExample, ABSTRACT_OBJECTIVE_NORMALIZED);
+  assert.equal(entryForm?.negativeExample, ABSTRACT_OBJECTIVE_SOURCE);
+  assert.equal(
+    entryForm?.sourceBasis,
+    "Human-reviewed abstract heading normalization.",
+  );
+});
+
+test("candidate conversions switch the ledger back to rule rows after wizard completion", () => {
+  assert.equal(
+    resolveRuleLedgerCategoryAfterWizardCompletion(
+      {
+        mode: "candidate",
+        step: "publish",
+        dirty: false,
+        sourceRowId: "candidate-rule-1",
+        draftAssetId: "knowledge-rule-1",
+      },
+      "recycled_candidate",
+    ),
+    "rule",
+  );
+
+  assert.equal(
+    resolveRuleLedgerCategoryAfterWizardCompletion(
+      {
+        mode: "edit",
+        step: "publish",
+        dirty: false,
+        sourceRowId: "knowledge-rule-1",
+        draftAssetId: "knowledge-rule-1",
+      },
+      "all",
+    ),
+    "all",
+  );
 });

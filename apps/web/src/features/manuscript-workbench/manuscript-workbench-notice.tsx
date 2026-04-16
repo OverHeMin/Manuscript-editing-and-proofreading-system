@@ -12,6 +12,7 @@ export function ManuscriptWorkbenchNotice({
   return (
     <article
       className={`manuscript-workbench-notice is-${tone}`}
+      data-notice-layout="inline-strip"
       role={tone === "error" ? "alert" : "status"}
     >
       <strong>{title}</strong>

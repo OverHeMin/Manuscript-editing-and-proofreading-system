@@ -765,7 +765,7 @@ export class KnowledgeService {
           id: this.createId(),
           knowledge_item_id: knowledgeItemId,
           action: "submitted_for_review",
-          actor_role: "user",
+          actor_role: acknowledgedByRole,
           created_at: this.now().toISOString(),
         });
 
@@ -809,7 +809,7 @@ export class KnowledgeService {
           knowledge_item_id: asset.id,
           revision_id: revision.id,
           action: "submitted_for_review",
-          actor_role: "user",
+          actor_role: acknowledgedByRole,
           created_at: timestamp,
         });
         await this.persistDuplicateAcknowledgements({
@@ -1098,10 +1098,14 @@ export class KnowledgeService {
     return updatedRecord;
   }
 
-  async archive(knowledgeItemId: string): Promise<KnowledgeRecord> {
+  async archive(
+    knowledgeItemId: string,
+    actorRole: RoleKey = "user",
+  ): Promise<KnowledgeRecord> {
     const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
     if (asset) {
-      return this.transactionManager.withTransaction(async ({ repository }) => {
+      return this.transactionManager.withTransaction(
+        async ({ repository, reviewActionRepository }) => {
         const revisions = await repository.listRevisionsByAssetId(asset.id);
         const timestamp = this.now().toISOString();
 
@@ -1125,9 +1129,18 @@ export class KnowledgeService {
           current_approved_revision_id: undefined,
           updated_at: timestamp,
         });
+        await reviewActionRepository.save({
+          id: this.createId(),
+          knowledge_item_id: asset.id,
+          revision_id: asset.current_revision_id,
+          action: "archived",
+          actor_role: actorRole,
+          created_at: timestamp,
+        });
 
         return this.projectCompatibilityRecord(asset.id, repository);
-      });
+        },
+      );
     }
 
     const knowledgeItem = await this.requireKnowledgeItem(knowledgeItemId);
@@ -1143,6 +1156,79 @@ export class KnowledgeService {
 
     await this.repository.save(archivedRecord);
     return archivedRecord;
+  }
+
+  async restore(
+    knowledgeItemId: string,
+    actorRole: RoleKey = "user",
+  ): Promise<KnowledgeAssetDetailRecord | KnowledgeRecord> {
+    const asset = await this.findKnowledgeAssetIfSupported(knowledgeItemId);
+    if (asset) {
+      return this.transactionManager.withTransaction(
+        async ({ repository, reviewActionRepository }) => {
+          const latestAsset = await this.requireKnowledgeAsset(asset.id, repository);
+          if (latestAsset.status !== "archived") {
+            return this.buildKnowledgeAssetDetail(
+              latestAsset.id,
+              latestAsset.current_revision_id,
+              repository,
+            );
+          }
+
+          const recoveryRevision = await this.findRevisionForAssetByStatuses(
+            latestAsset,
+            ["archived"],
+            repository,
+          );
+          if (!recoveryRevision) {
+            throw new KnowledgeRevisionNotFoundError(
+              latestAsset.current_revision_id ?? latestAsset.id,
+            );
+          }
+
+          const timestamp = this.now().toISOString();
+          await repository.saveRevision({
+            ...recoveryRevision,
+            status: "draft",
+            updated_at: timestamp,
+          });
+          await repository.saveAsset({
+            ...latestAsset,
+            status: "active",
+            current_revision_id: recoveryRevision.id,
+            current_approved_revision_id: undefined,
+            updated_at: timestamp,
+          });
+          await reviewActionRepository.save({
+            id: this.createId(),
+            knowledge_item_id: latestAsset.id,
+            revision_id: recoveryRevision.id,
+            action: "restored",
+            actor_role: actorRole,
+            created_at: timestamp,
+          });
+
+          return this.buildKnowledgeAssetDetail(
+            latestAsset.id,
+            recoveryRevision.id,
+            repository,
+          );
+        },
+      );
+    }
+
+    const knowledgeItem = await this.requireKnowledgeItem(knowledgeItemId);
+    if (knowledgeItem.status !== "archived") {
+      return knowledgeItem;
+    }
+
+    const restoredRecord: KnowledgeRecord = {
+      ...knowledgeItem,
+      status: "draft",
+    };
+
+    await this.repository.save(restoredRecord);
+    return restoredRecord;
   }
 
   listKnowledgeItems(): Promise<KnowledgeRecord[]> {

@@ -11,6 +11,7 @@ export interface KnowledgeLibraryLedgerAttachment {
 
 export interface KnowledgeLibraryAttachmentFieldProps {
   attachments: readonly KnowledgeLibraryLedgerAttachment[];
+  aiIntakeEvidenceMode?: "secondary";
   isBusy: boolean;
   onSelectFiles: (files: readonly File[]) => void;
   onRemoveAttachment: (blockId: string) => void;
@@ -19,6 +20,7 @@ export interface KnowledgeLibraryAttachmentFieldProps {
 
 export function KnowledgeLibraryAttachmentField({
   attachments,
+  aiIntakeEvidenceMode,
   isBusy,
   onSelectFiles,
   onRemoveAttachment,
@@ -42,13 +44,22 @@ export function KnowledgeLibraryAttachmentField({
   }
 
   return (
-    <section className="knowledge-library-attachment-field">
+    <section
+      className="knowledge-library-attachment-field"
+      data-material-support="attachments"
+      data-ai-intake-evidence={aiIntakeEvidenceMode}
+    >
       <div className="knowledge-library-attachment-field__header">
         <div>
           <h3>图片 / 附件</h3>
           <p>支持拖拽上传，图片作为辅助信息参与录入。</p>
         </div>
-        <button type="button" onClick={openFilePicker} disabled={isBusy}>
+        <button
+          type="button"
+          data-block-action="upload-attachment"
+          onClick={openFilePicker}
+          disabled={isBusy}
+        >
           添加附件
         </button>
       </div>

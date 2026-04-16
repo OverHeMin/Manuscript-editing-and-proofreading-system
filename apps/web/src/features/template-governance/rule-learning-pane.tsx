@@ -4,6 +4,7 @@ import type { AuthRole } from "../auth/index.ts";
 import {
   approveLearningCandidate,
   listPendingLearningReviewCandidates,
+  rejectLearningCandidate,
 } from "../learning-review/learning-review-api.ts";
 import {
   buildRuleAuthoringPrefillFromLearningCandidate,
@@ -44,7 +45,7 @@ export function RuleLearningPane({
   );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [approvedCandidate, setApprovedCandidate] =
+  const [resolvedCandidate, setResolvedCandidate] =
     useState<LearningCandidateViewModel | null>(null);
   const [workbenchState, setWorkbenchState] = useState(() =>
     createLearningReviewWorkbenchState({
@@ -57,7 +58,8 @@ export function RuleLearningPane({
     void loadCandidateQueue();
   }, []);
 
-  const selectedCandidate = approvedCandidate ?? workbenchState.selectedCandidate;
+  const selectedCandidate = resolvedCandidate ?? workbenchState.selectedCandidate;
+  const pendingCount = workbenchState.queue.length;
 
   async function loadCandidateQueue() {
     setQueueStatus("loading");
@@ -65,9 +67,8 @@ export function RuleLearningPane({
     try {
       const response = await listPendingLearningReviewCandidates(defaultClient);
       startTransition(() => {
-        setWorkbenchState((current) =>
-          reconcileLearningReviewQueue(current, response.body),
-        );
+        setResolvedCandidate(null);
+        setWorkbenchState((current) => reconcileLearningReviewQueue(current, response.body));
         setQueueStatus("ready");
       });
     } catch (error) {
@@ -80,16 +81,16 @@ export function RuleLearningPane({
 
   function handleSelectCandidate(candidateId: string) {
     startTransition(() => {
-      setApprovedCandidate(null);
+      setResolvedCandidate(null);
       setWorkbenchState((current) => selectLearningReviewCandidate(current, candidateId));
-      setStatusMessage(`已载入候选详情：${candidateId}`);
+      setStatusMessage(`已切换到回流候选：${candidateId}`);
       setErrorMessage(null);
     });
   }
 
   async function handleApproveCandidate() {
     if (!workbenchState.selectedCandidate) {
-      setErrorMessage("请先从队列中选择一个待处理规则候选。");
+      setErrorMessage("请先从回流候选队列中选择一项。");
       return;
     }
 
@@ -102,11 +103,11 @@ export function RuleLearningPane({
       });
 
       startTransition(() => {
-        setApprovedCandidate(response.body);
+        setResolvedCandidate(response.body);
         setWorkbenchState((current) =>
           applyLearningReviewApprovalSuccess(current, response.body.id),
         );
-        setStatusMessage(`已批准候选：${response.body.id}`);
+        setStatusMessage(`已批准回流候选：${response.body.id}`);
       });
     });
   }
@@ -122,16 +123,32 @@ export function RuleLearningPane({
         reviewedCaseSnapshotId: prefilledReviewedCaseSnapshotId,
       }),
     );
-    setStatusMessage(`已根据 ${selectedCandidate.id} 生成规则草稿预填。`);
+    setStatusMessage(`已根据 ${selectedCandidate.id} 打开规则草稿预填。`);
     setErrorMessage(null);
   }
 
-  function handleRejectCandidate() {
-    setErrorMessage("当前版本尚未接入候选驳回 API。");
-  }
+  async function handleRejectCandidateRequest() {
+    if (!workbenchState.selectedCandidate) {
+      setErrorMessage("璇峰厛浠庡洖娴佸€欓€夐槦鍒椾腑閫夋嫨涓€椤广€?");
+      return;
+    }
 
-  function handleConvertToKnowledgeExplanation() {
-    setErrorMessage("转成知识说明仍需通过质量回流与知识回写流程完成。");
+    const candidateId = workbenchState.selectedCandidate.id;
+
+    await runBusyTask(async () => {
+      const response = await rejectLearningCandidate(defaultClient, {
+        candidateId,
+        actorRole,
+      });
+
+      startTransition(() => {
+        setResolvedCandidate(response.body);
+        setWorkbenchState((current) =>
+          applyLearningReviewApprovalSuccess(current, response.body.id),
+        );
+        setStatusMessage(`宸查┏鍥炲洖娴佸€欓€夛細${response.body.id}`);
+      });
+    });
   }
 
   async function runBusyTask(task: () => Promise<void>) {
@@ -148,7 +165,7 @@ export function RuleLearningPane({
   }
 
   return (
-    <section className="template-governance-learning-shell">
+    <section className="template-governance-recovery-shell">
       {(statusMessage || errorMessage) && (
         <p
           className={errorMessage ? "template-governance-error" : "template-governance-status"}
@@ -158,30 +175,39 @@ export function RuleLearningPane({
         </p>
       )}
 
-      {prefilledManuscriptId ? (
+      {prefilledManuscriptId || prefilledReviewedCaseSnapshotId ? (
         <p className="template-governance-context-note">
-          当前学习回流来自稿件交接：{prefilledManuscriptId}
+          {prefilledManuscriptId ? `回流来源稿件：${prefilledManuscriptId}` : "回流来源稿件待补充"}
+          {prefilledReviewedCaseSnapshotId
+            ? ` · 复核快照：${prefilledReviewedCaseSnapshotId}`
+            : ""}
         </p>
       ) : null}
 
-      <div className="template-governance-rule-layout">
-        <article className="template-governance-card">
+      <div className="template-governance-recovery-layout">
+        <article className="template-governance-card template-governance-recovery-queue">
           <div className="template-governance-panel-header">
             <div>
-              <h3>规则候选队列</h3>
-              <p>先复核 AI 提炼出的规则候选，再决定是否进入受控规则草稿。</p>
+              <h3>回流候选</h3>
+              <p>先看证据与差异，再决定批准、驳回或转成规则草稿。</p>
             </div>
-            <button type="button" disabled={isBusy} onClick={() => void loadCandidateQueue()}>
-              刷新队列
-            </button>
+
+            <div className="template-governance-chip-row">
+              <span className="template-governance-chip template-governance-chip-secondary">
+                待处理 {pendingCount}
+              </span>
+              <button type="button" disabled={isBusy} onClick={() => void loadCandidateQueue()}>
+                刷新候选
+              </button>
+            </div>
           </div>
 
           {queueStatus === "loading" && workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">正在加载规则候选...</p>
+            <p className="template-governance-empty">正在加载回流候选...</p>
           ) : queueStatus === "error" && workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">规则候选加载失败。</p>
+            <p className="template-governance-empty">回流候选加载失败。</p>
           ) : workbenchState.queue.length === 0 ? (
-            <p className="template-governance-empty">当前没有待处理规则候选。</p>
+            <p className="template-governance-empty">当前没有待处理的回流候选。</p>
           ) : (
             <ul className="template-governance-list">
               {workbenchState.queue.map((candidate) => (
@@ -189,14 +215,15 @@ export function RuleLearningPane({
                   <button
                     type="button"
                     className={`template-governance-list-button${
-                      workbenchState.selectedCandidate?.id === candidate.id ? " is-active" : ""
+                      selectedCandidate?.id === candidate.id ? " is-active" : ""
                     }`}
                     disabled={isBusy}
                     onClick={() => handleSelectCandidate(candidate.id)}
                   >
                     <span>{candidate.title ?? candidate.id}</span>
                     <small>
-                      {candidate.module} · {candidate.suggested_rule_object ?? candidate.type}
+                      {formatLearningModule(candidate.module)} ·{" "}
+                      {formatLearningManuscriptType(candidate.manuscript_type)}
                     </small>
                   </button>
                 </li>
@@ -205,15 +232,14 @@ export function RuleLearningPane({
           )}
         </article>
 
-        <div className="template-governance-rule-layout-main">
+        <div className="template-governance-recovery-main">
           <RuleLearningDiffCard candidate={selectedCandidate} />
           <RuleLearningActions
             candidate={selectedCandidate}
             isBusy={isBusy}
             onApproveCandidate={handleApproveCandidate}
             onConvertToRuleDraft={handleConvertSelectedCandidateToRuleDraft}
-            onRejectCandidate={handleRejectCandidate}
-            onConvertToKnowledgeExplanation={handleConvertToKnowledgeExplanation}
+            onRejectCandidate={handleRejectCandidateRequest}
           />
         </div>
       </div>
@@ -221,6 +247,53 @@ export function RuleLearningPane({
   );
 }
 
+function formatLearningModule(value: string): string {
+  switch (value) {
+    case "screening":
+      return "初筛";
+    case "editing":
+      return "编辑";
+    case "proofreading":
+      return "校对";
+    case "learning":
+      return "学习改写";
+    default:
+      return value;
+  }
+}
+
+function formatLearningManuscriptType(value: string): string {
+  switch (value) {
+    case "clinical_study":
+      return "临床研究";
+    case "systematic_review":
+      return "系统综述";
+    case "meta_analysis":
+      return "Meta 分析";
+    case "case_report":
+      return "病例报告";
+    case "guideline_interpretation":
+      return "指南解读";
+    case "expert_consensus":
+      return "专家共识";
+    case "diagnostic_study":
+      return "诊断研究";
+    case "basic_research":
+      return "基础研究";
+    case "nursing_study":
+      return "护理研究";
+    case "methodology_paper":
+      return "方法学论文";
+    case "brief_report":
+      return "简报";
+    case "other":
+      return "其他";
+    case "review":
+    default:
+      return "综述";
+  }
+}
+
 function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "规则学习工作台发生未知错误。";
+  return error instanceof Error ? error.message : "规则回流工作区发生未知错误。";
 }

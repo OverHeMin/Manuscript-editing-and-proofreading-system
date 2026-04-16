@@ -7,6 +7,18 @@ import type {
 } from "./manuscript-workbench-controller.ts";
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
+export type ManuscriptWorkbenchQueueFilter = "all" | "pending" | "in_progress" | "completed";
+
+export interface ManuscriptWorkbenchQueueItem {
+  manuscriptId: string;
+  title: string;
+  manuscriptTypeLabel: string;
+  statusLabel: string;
+  activityLabel: string;
+  queueScope: "batch" | "recent";
+  queueStatus: Exclude<ManuscriptWorkbenchQueueFilter, "all">;
+  isActive: boolean;
+}
 
 export interface ManuscriptWorkbenchQueuePaneProps {
   mode: Exclude<ManuscriptWorkbenchMode, "submission">;
@@ -14,6 +26,10 @@ export interface ManuscriptWorkbenchQueuePaneProps {
   lookup: ManuscriptWorkbenchLookupPanelProps;
   workspace: ManuscriptWorkbenchWorkspace | null;
   latestJob: AnyWorkbenchJob | null;
+  queueItems: ManuscriptWorkbenchQueueItem[];
+  activeQueueFilter: ManuscriptWorkbenchQueueFilter;
+  onQueueFilterChange(nextFilter: ManuscriptWorkbenchQueueFilter): void;
+  onOpenQueueItem(manuscriptId: string): void;
 }
 
 export function ManuscriptWorkbenchQueuePane({
@@ -22,16 +38,21 @@ export function ManuscriptWorkbenchQueuePane({
   lookup,
   workspace,
   latestJob,
+  queueItems,
+  activeQueueFilter,
+  onQueueFilterChange,
+  onOpenQueueItem,
 }: ManuscriptWorkbenchQueuePaneProps) {
   const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
   const queueTitle = `${formatWorkbenchModeLabel(mode)}队列`;
   const queueHint = resolveQueueHint(mode);
-  const detectedType = workspace
-    ? formatManuscriptTypeLabel(workspace.manuscript.manuscript_type)
-    : "待 AI 识别";
+  const filteredQueueItems =
+    activeQueueFilter === "all"
+      ? queueItems
+      : queueItems.filter((item) => item.queueStatus === activeQueueFilter);
 
   return (
-    <aside className="manuscript-workbench-queue-pane">
+    <aside className="manuscript-workbench-queue-pane" data-queue-view="worklist">
       <header className="manuscript-workbench-queue-pane-header">
         <div>
           <span className="manuscript-workbench-section-eyebrow">待处理队列</span>
@@ -54,37 +75,84 @@ export function ManuscriptWorkbenchQueuePane({
         </button>
       </div>
 
-      <div className="manuscript-workbench-queue-list">
-        <article className="manuscript-workbench-queue-item is-active">
-          <div className="manuscript-workbench-queue-item-header">
-            <div>
-              <span className="manuscript-workbench-queue-item-kicker">当前关注稿件</span>
-              <h4>{workspace?.manuscript.title ?? "等待载入当前稿件"}</h4>
-            </div>
-            <span className="manuscript-workbench-queue-item-badge">
-              {workspace ? formatManuscriptStatusLabel(workspace.manuscript.status) : "待载入"}
-            </span>
-          </div>
-          <dl className="manuscript-workbench-queue-item-meta">
-            <div>
-              <dt>稿件编号</dt>
-              <dd>{workspace?.manuscript.id ?? (lookup.manuscriptId.trim() || "未选择")}</dd>
-            </div>
-            <div>
-              <dt>AI 识别稿件类型</dt>
-              <dd>{detectedType}</dd>
-            </div>
-            <div>
-              <dt>最近任务</dt>
-              <dd>{latestJob ? formatWorkbenchModeLabel(latestJob.module) : "等待执行记录"}</dd>
-            </div>
-          </dl>
-        </article>
+      <div className="manuscript-workbench-queue-filters" aria-label="队列筛选">
+        {([
+          ["all", "全部稿件"],
+          ["pending", "待处理"],
+          ["in_progress", "处理中"],
+          ["completed", "已完成"],
+        ] as const).map(([filter, label]) => (
+          <button
+            key={filter}
+            type="button"
+            className={
+              filter === activeQueueFilter
+                ? "manuscript-workbench-queue-filter is-active"
+                : "manuscript-workbench-queue-filter"
+            }
+            onClick={() => onQueueFilterChange(filter)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-        <div className="manuscript-workbench-queue-tip">
-          <strong>队列与单稿分层</strong>
-          <p>左侧用于定位当前稿件，中央只保留单稿判断，批量与辅助动作统一收进右侧抽屉。</p>
-        </div>
+      <div className="manuscript-workbench-queue-list">
+        {filteredQueueItems.length > 0 ? (
+          filteredQueueItems.map((item) => (
+            <article
+              key={item.manuscriptId}
+              className={
+                item.isActive
+                  ? "manuscript-workbench-queue-item is-active"
+                  : "manuscript-workbench-queue-item"
+              }
+            >
+              <div className="manuscript-workbench-queue-item-header">
+                <div>
+                  <span className="manuscript-workbench-queue-item-kicker">
+                    {item.queueScope === "batch" ? "当前批次" : "最近进入"}
+                  </span>
+                  <h4>{item.title}</h4>
+                </div>
+                <span className="manuscript-workbench-queue-item-badge">{item.statusLabel}</span>
+              </div>
+              <dl className="manuscript-workbench-queue-item-meta">
+                <div>
+                  <dt>稿件编号</dt>
+                  <dd>{item.manuscriptId}</dd>
+                </div>
+                <div>
+                  <dt>稿件类型</dt>
+                  <dd>{item.manuscriptTypeLabel}</dd>
+                </div>
+                <div>
+                  <dt>当前进度</dt>
+                  <dd>{item.activityLabel}</dd>
+                </div>
+              </dl>
+              <div className="manuscript-workbench-button-row">
+                <button
+                  type="button"
+                  className="manuscript-workbench-queue-open"
+                  disabled={busy}
+                  onClick={() => onOpenQueueItem(item.manuscriptId)}
+                >
+                  打开稿件
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <div className="manuscript-workbench-queue-empty">
+            <strong>当前筛选下还没有稿件</strong>
+            <p>
+              {workspace
+                ? `最近任务：${latestJob ? formatWorkbenchModeLabel(latestJob.module) : "等待执行记录"}`
+                : "先上传或载入稿件，左侧队列就会开始形成可切换的工作清单。"}
+            </p>
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -132,30 +200,3 @@ function formatWorkbenchModeLabel(mode: string): string {
   return mode;
 }
 
-function formatManuscriptTypeLabel(manuscriptType: string): string {
-  switch (manuscriptType) {
-    case "review":
-      return "综述";
-    case "clinical_study":
-      return "临床研究";
-    case "case_report":
-      return "病例报告";
-    default:
-      return manuscriptType;
-  }
-}
-
-function formatManuscriptStatusLabel(status: string): string {
-  switch (status) {
-    case "uploaded":
-      return "已上传";
-    case "processing":
-      return "处理中";
-    case "completed":
-      return "已完成";
-    case "awaiting_review":
-      return "待人工复核";
-    default:
-      return status;
-  }
-}

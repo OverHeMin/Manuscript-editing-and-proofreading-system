@@ -45,7 +45,7 @@ test("demo server config resolves local defaults for demo runtime", () => {
     appEnv: "local",
     port: 3001,
     host: "127.0.0.1",
-    allowedOrigins: ["http://127.0.0.1:4173", "http://localhost:4173"],
+    allowedOrigins: ["http://127.0.0.1", "http://localhost"],
     uploadRootDir: undefined,
   });
 });

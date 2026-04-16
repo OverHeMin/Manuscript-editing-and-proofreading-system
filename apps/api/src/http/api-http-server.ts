@@ -238,8 +238,14 @@ import {
   JobNotFoundError,
   createManuscriptApi,
   ManuscriptBatchUploadLimitExceededError,
+  ManuscriptJournalTemplateFamilyMismatchError,
+  ManuscriptJournalTemplateNotActiveError,
+  ManuscriptJournalTemplateNotFoundError,
   type ManuscriptRecord,
   ManuscriptLifecycleService,
+  ManuscriptTemplateFamilyNotActiveError,
+  ManuscriptTemplateFamilyNotConfiguredError,
+  ManuscriptTemplateFamilyNotFoundError,
 } from "../modules/manuscripts/index.ts";
 import type { ManuscriptType } from "../modules/manuscripts/manuscript-record.ts";
 import {
@@ -1046,6 +1052,10 @@ type HttpRouteMatch =
       knowledgeItemId: string;
     }
   | {
+      route: "knowledge-restore";
+      knowledgeItemId: string;
+    }
+  | {
       route: "learning-list-candidates";
     }
   | {
@@ -1069,6 +1079,10 @@ type HttpRouteMatch =
     }
   | {
       route: "learning-approve-candidate";
+      candidateId: string;
+    }
+  | {
+      route: "learning-reject-candidate";
       candidateId: string;
     }
   | {
@@ -1807,6 +1821,7 @@ export function createInMemoryApiRuntime(input: {
       assetService: documentAssetService,
       executionTrackingService,
       executionGovernanceRepository,
+      executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
     }),
@@ -3503,6 +3518,7 @@ async function handleRoute(
       >;
       return runtime.manuscriptApi.updateTemplateSelection({
         manuscriptId: routeMatch.manuscriptId,
+        templateFamilyId: body.templateFamilyId,
         journalTemplateId: body.journalTemplateId,
       });
     }
@@ -4997,9 +5013,14 @@ async function handleRoute(
       });
     }
     case "knowledge-archive":
-      await requirePermission(req, runtime, "permissions.manage");
       return runtime.knowledgeApi.archive({
         knowledgeItemId: routeMatch.knowledgeItemId,
+        actorRole: (await requirePermission(req, runtime, "permissions.manage")).user.role,
+      });
+    case "knowledge-restore":
+      return runtime.knowledgeApi.restore({
+        knowledgeItemId: routeMatch.knowledgeItemId,
+        actorRole: (await requirePermission(req, runtime, "permissions.manage")).user.role,
       });
     case "learning-create-reviewed-case-snapshot": {
       const session = await requirePermission(req, runtime, "learning.review");
@@ -5030,9 +5051,10 @@ async function handleRoute(
         {
           ...((await readJsonBody(req)) as Omit<
             CreateLearningCandidateInput,
-            "requestedBy"
+            "requestedBy" | "requestedByRole"
           >),
           requestedBy: session.user.id,
+          requestedByRole: session.user.role,
         },
       );
     }
@@ -5041,9 +5063,10 @@ async function handleRoute(
       const input = {
         ...((await readJsonBody(req)) as Omit<
           ExtractRuleCandidateInput,
-          "requestedBy"
+          "requestedBy" | "requestedByRole"
         >),
         requestedBy: session.user.id,
+        requestedByRole: session.user.role,
       } as ExtractRuleCandidateInput;
       return runtime.learningApi.extractRuleCandidate(input);
     }
@@ -5053,18 +5076,35 @@ async function handleRoute(
         {
           ...((await readJsonBody(req)) as Omit<
             CreateGovernedLearningCandidateInput,
-            "requestedBy"
+            "requestedBy" | "requestedByRole"
           >),
           requestedBy: session.user.id,
+          requestedByRole: session.user.role,
         },
       );
     }
     case "learning-approve-candidate": {
       const session = await requirePermission(req, runtime, "learning.review");
+      const body = (await readJsonBody(req)) as {
+        reviewNote?: string;
+      };
 
       return runtime.learningApi.approveLearningCandidate({
         candidateId: routeMatch.candidateId,
         actorRole: session.user.role,
+        reviewNote: body.reviewNote,
+      });
+    }
+    case "learning-reject-candidate": {
+      const session = await requirePermission(req, runtime, "learning.review");
+      const body = (await readJsonBody(req)) as {
+        reviewNote?: string;
+      };
+
+      return runtime.learningApi.rejectLearningCandidate({
+        candidateId: routeMatch.candidateId,
+        actorRole: session.user.role,
+        reviewNote: body.reviewNote,
       });
     }
     case "learning-governance-create-writeback": {
@@ -6762,6 +6802,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const learningRejectMatch = path.match(
+    /^\/api\/v1\/learning\/candidates\/([^/]+)\/reject$/,
+  );
+  if (method === "POST" && learningRejectMatch) {
+    return {
+      route: "learning-reject-candidate",
+      candidateId: learningRejectMatch[1],
+    };
+  }
+
   const learningCandidateMatch = path.match(
     /^\/api\/v1\/learning\/candidates\/([^/]+)$/,
   );
@@ -6863,6 +6913,14 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "knowledge-archive",
       knowledgeItemId: archiveMatch[1],
+    };
+  }
+
+  const restoreMatch = path.match(/^\/api\/v1\/knowledge\/([^/]+)\/restore$/);
+  if (method === "POST" && restoreMatch) {
+    return {
+      route: "knowledge-restore",
+      knowledgeItemId: restoreMatch[1],
     };
   }
 
@@ -6999,7 +7057,7 @@ function createCorsHeaders(
   allowedOrigins: readonly string[],
 ): Record<string, string> {
   const requestOrigin = readSingleHeader(req.headers.origin);
-  if (!requestOrigin || !allowedOrigins.includes(requestOrigin)) {
+  if (!requestOrigin || !isAllowedOrigin(requestOrigin, allowedOrigins)) {
     return {};
   }
 
@@ -7009,6 +7067,77 @@ function createCorsHeaders(
     "Access-Control-Allow-Headers": "Content-Type, Accept",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
+}
+
+function isAllowedOrigin(
+  requestOrigin: string,
+  allowedOrigins: readonly string[],
+): boolean {
+  let parsedRequestOrigin: URL;
+  try {
+    parsedRequestOrigin = new URL(requestOrigin);
+  } catch {
+    return false;
+  }
+
+  return allowedOrigins.some((allowedOrigin) =>
+    doesAllowedOriginMatchRequestOrigin(parsedRequestOrigin, allowedOrigin),
+  );
+}
+
+function doesAllowedOriginMatchRequestOrigin(
+  requestOrigin: URL,
+  allowedOrigin: string,
+): boolean {
+  let parsedAllowedOrigin: URL;
+  try {
+    parsedAllowedOrigin = new URL(allowedOrigin);
+  } catch {
+    return false;
+  }
+
+  if (
+    parsedAllowedOrigin.protocol !== requestOrigin.protocol ||
+    parsedAllowedOrigin.hostname !== requestOrigin.hostname
+  ) {
+    return false;
+  }
+
+  if (!parsedAllowedOrigin.port) {
+    if (isLoopbackHost(parsedAllowedOrigin.hostname)) {
+      return true;
+    }
+
+    return resolveOriginPort(parsedAllowedOrigin) === resolveOriginPort(requestOrigin);
+  }
+
+  return resolveOriginPort(parsedAllowedOrigin) === resolveOriginPort(requestOrigin);
+}
+
+function resolveOriginPort(origin: URL): string {
+  if (origin.port) {
+    return origin.port;
+  }
+
+  if (origin.protocol === "https:") {
+    return "443";
+  }
+
+  if (origin.protocol === "http:") {
+    return "80";
+  }
+
+  return "";
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalizedHost = host.trim().toLowerCase();
+  return (
+    normalizedHost === "127.0.0.1" ||
+    normalizedHost === "localhost" ||
+    normalizedHost === "::1" ||
+    normalizedHost === "[::1]"
+  );
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -7103,8 +7232,10 @@ function mapErrorToHttpResponse(
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof JournalTemplateProfileNotFoundError ||
+    error instanceof ManuscriptJournalTemplateNotFoundError ||
     error instanceof GovernedContentModuleNotFoundError ||
     error instanceof TemplateFamilyNotFoundError ||
+    error instanceof ManuscriptTemplateFamilyNotFoundError ||
     error instanceof TemplateCompositionNotFoundError ||
     error instanceof TemplateRetrievalQualityRunNotFoundError ||
     error instanceof ModuleTemplateNotFoundError ||
@@ -7160,7 +7291,11 @@ function mapErrorToHttpResponse(
     error instanceof LearningGovernanceConflictError ||
     error instanceof JournalTemplateProfileKeyConflictError ||
     error instanceof JournalTemplateProfileStatusTransitionError ||
+    error instanceof ManuscriptJournalTemplateNotActiveError ||
+    error instanceof ManuscriptJournalTemplateFamilyMismatchError ||
     error instanceof TemplateFamilyActiveConflictError ||
+    error instanceof ManuscriptTemplateFamilyNotActiveError ||
+    error instanceof ManuscriptTemplateFamilyNotConfiguredError ||
     error instanceof TemplateFamilyManuscriptTypeMismatchError ||
     error instanceof ExtractionCandidateIntakeStateError ||
     error instanceof ModuleTemplateDraftNotEditableError ||

@@ -11,8 +11,8 @@ export interface DemoServerConfig {
 const DEFAULT_PORT = 3001;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_ALLOWED_ORIGINS = [
-  "http://127.0.0.1:4173",
-  "http://localhost:4173",
+  "http://127.0.0.1",
+  "http://localhost",
 ] as const;
 
 export function resolveDemoServerConfig(

@@ -18,6 +18,7 @@ import {
   type RuleWizardConfirmFormState,
   type RuleWizardEntryFormState,
   type RuleWizardPublishFormState,
+  type RuleWizardReleaseAction,
 } from "./template-governance-rule-wizard-api.ts";
 import { TemplateGovernanceRuleWizardStepBinding } from "./template-governance-rule-wizard-step-binding.tsx";
 import { TemplateGovernanceRuleWizardStepConfirm } from "./template-governance-rule-wizard-step-confirm.tsx";
@@ -43,7 +44,7 @@ export interface TemplateGovernanceRuleWizardProps {
   onPrevious?: () => void;
   onNext?: () => void;
   onSaveDraft?: () => void;
-  onComplete?: () => void;
+  onComplete?: (input?: { releaseAction?: RuleWizardReleaseAction }) => void;
 }
 
 export function TemplateGovernanceRuleWizard({
@@ -120,12 +121,22 @@ export function TemplateGovernanceRuleWizard({
     if (!bindingDirty) {
       setBindingFormState(
         createRuleWizardBindingFormState({
-          semanticViewModel,
+          semanticViewModel: createRuleWizardSemanticViewModel({
+            form: entryFormState,
+            revision: semanticRevision,
+            suggestion: semanticSuggestion,
+          }),
           options: bindingOptions,
         }),
       );
     }
-  }, [bindingDirty, bindingOptions, semanticViewModel]);
+  }, [
+    bindingDirty,
+    bindingOptions,
+    entryFormState,
+    semanticRevision,
+    semanticSuggestion,
+  ]);
 
   useEffect(() => {
     if (!awaitingSemanticDraft || !state.draftRevisionId || isSemanticBusy) {
@@ -314,7 +325,7 @@ export function TemplateGovernanceRuleWizard({
     }
 
     if (state.step === "publish") {
-      onComplete?.();
+      onComplete?.({ releaseAction: "save_draft" });
       return;
     }
 
@@ -348,7 +359,7 @@ export function TemplateGovernanceRuleWizard({
 
   async function handleCompleteClick() {
     if (state.step !== "publish") {
-      onComplete?.();
+      onComplete?.({ releaseAction: publishFormState.releaseAction });
       return;
     }
 
@@ -371,7 +382,7 @@ export function TemplateGovernanceRuleWizard({
         );
       }
 
-      onComplete?.();
+      onComplete?.({ releaseAction: publishFormState.releaseAction });
     } catch (error) {
       setBindingErrorMessage(resolveWizardErrorMessage(error, "规则发布动作执行失败"));
     }
@@ -526,6 +537,9 @@ function renderWizardBody(input: {
         <TemplateGovernanceRuleWizardStepBinding
           value={input.bindingFormState}
           options={input.bindingOptions}
+          moduleScope={input.confirmFormState.moduleScope}
+          manuscriptTypes={input.confirmFormState.manuscriptTypes}
+          semanticSummary={input.confirmFormState.semanticSummary}
           isBusy={input.isBindingBusy}
           errorMessage={input.bindingErrorMessage}
           onChange={input.onBindingFormChange}
@@ -535,6 +549,8 @@ function renderWizardBody(input: {
       return (
         <TemplateGovernanceRuleWizardStepPublish
           value={input.publishFormState}
+          entryState={input.entryFormState}
+          confirmState={input.confirmFormState}
           bindingState={input.bindingFormState}
           isBusy={input.isBindingBusy}
           errorMessage={input.bindingErrorMessage}

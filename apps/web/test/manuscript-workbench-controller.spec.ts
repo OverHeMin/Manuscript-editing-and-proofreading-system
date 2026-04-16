@@ -1,7 +1,8 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createManuscriptWorkbenchController,
+  resolveWorkbenchReadOnlyExecutionContext,
 } from "../src/features/manuscript-workbench/index.ts";
 
 test("manuscript workbench controller uploads a manuscript and hydrates workspace", async () => {
@@ -157,6 +158,93 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     storageKey: "uploads/review/review.docx",
   });
+});
+
+test("manuscript workbench controller keeps the manuscript document separate from report-style current assets", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-screen-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-screen-1",
+            title: "Screening manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_screening_asset_id: "asset-screening-report-1",
+            created_at: "2026-04-15T09:00:00.000Z",
+            updated_at: "2026-04-15T09:05:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-screen-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-screening-report-1",
+              manuscript_id: "manuscript-screen-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/report.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-original-1",
+              source_module: "screening",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "screening-report.md",
+              created_at: "2026-04-15T09:05:00.000Z",
+              updated_at: "2026-04-15T09:05:00.000Z",
+            },
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-screen-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/screening-manuscript.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "screening-manuscript.docx",
+              created_at: "2026-04-15T09:00:00.000Z",
+              updated_at: "2026-04-15T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-screen-1");
+
+  assert.equal(workspace.currentAsset?.id, "asset-screening-report-1");
+  assert.equal(workspace.currentManuscriptAsset?.id, "asset-original-1");
+  assert.equal(workspace.suggestedParentAsset?.id, "asset-original-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-screen-1",
+      "GET /api/v1/manuscripts/manuscript-screen-1/assets",
+    ],
+  );
 });
 
 test("manuscript workbench controller forwards inline file content uploads without requiring a storage key", async () => {
@@ -520,6 +608,69 @@ test("manuscript workbench controller uploads a manuscript batch and hydrates th
       "GET /api/v1/manuscripts/manuscript-batch-1",
       "GET /api/v1/manuscripts/manuscript-batch-1/assets",
     ],
+  );
+});
+
+test("manuscript workbench controller resolves a read-only governed execution context for the active workbench", () => {
+  const executionContext = resolveWorkbenchReadOnlyExecutionContext(
+    "editing",
+    {
+      manuscript: {
+        governed_execution_context_summary: {
+          observation_status: "reported",
+          manuscript_type: "clinical_study",
+          journal_template_selection_state: "base_family_only",
+          modules: [
+            {
+              module: "screening",
+              status: "configured",
+              execution_profile_id: "profile-screening-1",
+              model_routing_policy_version_id: "policy-screening-v1",
+              resolved_model_id: "model-screening-1",
+              model_source: "template_family_policy",
+              provider_readiness_status: "ok",
+              runtime_binding_readiness_status: "ready",
+            },
+            {
+              module: "editing",
+              status: "configured",
+              execution_profile_id: "profile-editing-1",
+              model_routing_policy_version_id: "policy-editing-v2",
+              resolved_model_id: "model-editing-1",
+              model_source: "template_family_policy",
+              provider_readiness_status: "warning",
+              runtime_binding_readiness_status: "degraded",
+            },
+          ],
+        },
+      },
+    } as never,
+  );
+
+  assert.deepEqual(executionContext, {
+    mode: "editing",
+    executionProfileId: "profile-editing-1",
+    modelRoutingPolicyVersionId: "policy-editing-v2",
+    resolvedModelId: "model-editing-1",
+    modelSource: "template_family_policy",
+    providerReadinessStatus: "warning",
+    runtimeBindingReadinessStatus: "degraded",
+  });
+  assert.equal(
+    resolveWorkbenchReadOnlyExecutionContext(
+      "submission",
+      {
+        manuscript: {
+          governed_execution_context_summary: {
+            observation_status: "reported",
+            manuscript_type: "clinical_study",
+            journal_template_selection_state: "base_family_only",
+            modules: [],
+          },
+        },
+      } as never,
+    ),
+    null,
   );
 });
 
@@ -1178,6 +1329,14 @@ test("manuscript workbench controller fails open when action-time job hydration 
 
   assert.deepEqual(result.runResult.job, rawJob);
   assert.equal(result.workspace.currentAsset?.id, "asset-screen-1");
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "web-workbench",
+    actorRole: "editor",
+    storageKey: "runs/screening/output.md",
+    fileName: "screening-output.md",
+  });
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -1189,9 +1348,11 @@ test("manuscript workbench controller fails open when action-time job hydration 
   );
 });
 
-test("manuscript workbench controller hydrates journal template context and can update the selected journal template before reloading workspace", async () => {
+test("manuscript workbench controller hydrates resolved template context and can correct the base family before reloading workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  let selectedTemplateFamilyId = "family-1";
   let selectedJournalTemplateId: string | undefined = "journal-template-1";
+  let resolvedManuscriptType: "clinical_study" | "review" = "clinical_study";
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
       method: "GET" | "POST";
@@ -1206,10 +1367,10 @@ test("manuscript workbench controller hydrates journal template context and can 
           body: {
             id: "manuscript-1",
             title: "Journal aware manuscript",
-            manuscript_type: "clinical_study",
+            manuscript_type: resolvedManuscriptType,
             status: "uploaded",
             created_by: "editor-1",
-            current_template_family_id: "family-1",
+            current_template_family_id: selectedTemplateFamilyId,
             current_journal_template_id: selectedJournalTemplateId,
             created_at: "2026-04-07T09:00:00.000Z",
             updated_at: "2026-04-07T09:15:00.000Z",
@@ -1254,32 +1415,41 @@ test("manuscript workbench controller hydrates journal template context and can 
               name: "Clinical Study Family",
               status: "active",
             },
+            {
+              id: "family-2",
+              manuscript_type: "review",
+              name: "Review Family",
+              status: "active",
+            },
           ] as TResponse,
         };
       }
 
       if (
         input.method === "GET" &&
-        input.url === "/api/v1/templates/families/family-1/journal-templates"
+        input.url === `/api/v1/templates/families/${selectedTemplateFamilyId}/journal-templates`
       ) {
         return {
           status: 200,
-          body: [
-            {
-              id: "journal-template-1",
-              template_family_id: "family-1",
-              journal_key: "zxyjhzz",
-              journal_name: "《中西医结合杂志》",
-              status: "active",
-            },
-            {
-              id: "journal-template-2",
-              template_family_id: "family-1",
-              journal_key: "临床期刊",
-              journal_name: "《临床研究杂志》",
-              status: "draft",
-            },
-          ] as TResponse,
+          body:
+            selectedTemplateFamilyId === "family-1"
+              ? ([
+                  {
+                    id: "journal-template-1",
+                    template_family_id: "family-1",
+                    journal_key: "journal-one",
+                    journal_name: "Journal Template One",
+                    status: "active",
+                  },
+                  {
+                    id: "journal-template-2",
+                    template_family_id: "family-1",
+                    journal_key: "journal-two",
+                    journal_name: "Journal Template Two",
+                    status: "draft",
+                  },
+                ] as TResponse)
+              : ([] as TResponse),
         };
       }
 
@@ -1288,18 +1458,21 @@ test("manuscript workbench controller hydrates journal template context and can 
         input.url === "/api/v1/manuscripts/manuscript-1/template-selection"
       ) {
         assert.deepEqual(input.body, {
+          templateFamilyId: "family-2",
           journalTemplateId: null,
         });
+        selectedTemplateFamilyId = "family-2";
         selectedJournalTemplateId = undefined;
+        resolvedManuscriptType = "review";
         return {
           status: 200,
           body: {
             id: "manuscript-1",
             title: "Journal aware manuscript",
-            manuscript_type: "clinical_study",
+            manuscript_type: "review",
             status: "uploaded",
             created_by: "editor-1",
-            current_template_family_id: "family-1",
+            current_template_family_id: "family-2",
             created_at: "2026-04-07T09:00:00.000Z",
             updated_at: "2026-04-07T09:16:00.000Z",
           } as TResponse,
@@ -1312,18 +1485,29 @@ test("manuscript workbench controller hydrates journal template context and can 
 
   const workspace = await controller.loadWorkspace("manuscript-1");
   assert.equal(workspace.templateFamily?.name, "Clinical Study Family");
+  assert.deepEqual(
+    workspace.availableTemplateFamilies?.map((family) => family.id),
+    ["family-1", "family-2"],
+  );
   assert.equal(workspace.journalTemplateProfiles.length, 2);
   assert.equal(
     workspace.selectedJournalTemplateProfile?.journal_name,
-    "《中西医结合杂志》",
+    "Journal Template One",
   );
 
   const updated = await controller.updateTemplateSelectionAndLoad({
     manuscriptId: "manuscript-1",
+    templateFamilyId: "family-2",
     journalTemplateId: null,
   });
+  assert.equal(updated.workspace.manuscript.manuscript_type, "review");
+  assert.equal(updated.workspace.templateFamily?.name, "Review Family");
   assert.equal(updated.workspace.manuscript.current_journal_template_id, undefined);
   assert.equal(updated.workspace.selectedJournalTemplateProfile, null);
+  assert.deepEqual(
+    updated.workspace.availableTemplateFamilies?.map((family) => family.id),
+    ["family-1", "family-2"],
+  );
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
@@ -1335,7 +1519,796 @@ test("manuscript workbench controller hydrates journal template context and can 
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
       "GET /api/v1/templates/families",
-      "GET /api/v1/templates/families/family-1/journal-templates",
+      "GET /api/v1/templates/families/family-2/journal-templates",
     ],
   );
 });
+
+test("manuscript workbench controller forwards one-time bare execution mode to screening editing and proofreading while leaving governed as the default", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "POST" && input.url === "/api/v1/modules/screening/run") {
+        return {
+          status: 201,
+          body: {
+            job: {
+              id: "job-screen-bare-1",
+              module: "screening",
+              job_type: "screening_run",
+              status: "completed",
+              requested_by: "screening-editor",
+              attempt_count: 1,
+              created_at: "2026-04-16T12:00:00.000Z",
+              updated_at: "2026-04-16T12:00:00.000Z",
+            },
+            asset: {
+              id: "asset-screen-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-original-1",
+              source_module: "screening",
+              source_job_id: "job-screen-bare-1",
+              created_by: "screening-editor",
+              version_no: 2,
+              is_current: true,
+              file_name: "screening-output.md",
+              created_at: "2026-04-16T12:00:00.000Z",
+              updated_at: "2026-04-16T12:00:00.000Z",
+            },
+            template_id: "template-screen-1",
+            knowledge_item_ids: [],
+            model_id: "model-screen-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "POST" && input.url === "/api/v1/modules/editing/run") {
+        return {
+          status: 201,
+          body: {
+            job: {
+              id: "job-edit-bare-1",
+              module: "editing",
+              job_type: "editing_run",
+              status: "completed",
+              requested_by: "editing-editor",
+              attempt_count: 1,
+              created_at: "2026-04-16T12:01:00.000Z",
+              updated_at: "2026-04-16T12:01:00.000Z",
+            },
+            asset: {
+              id: "asset-edit-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-original-1",
+              source_module: "editing",
+              source_job_id: "job-edit-bare-1",
+              created_by: "editing-editor",
+              version_no: 3,
+              is_current: true,
+              file_name: "editing-output.docx",
+              created_at: "2026-04-16T12:01:00.000Z",
+              updated_at: "2026-04-16T12:01:00.000Z",
+            },
+            template_id: "template-edit-1",
+            knowledge_item_ids: [],
+            model_id: "model-edit-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "POST" && input.url === "/api/v1/modules/proofreading/draft") {
+        return {
+          status: 201,
+          body: {
+            job: {
+              id: "job-proof-bare-1",
+              module: "proofreading",
+              job_type: "proofreading_draft_run",
+              status: "completed",
+              requested_by: "proofreader-1",
+              attempt_count: 1,
+              created_at: "2026-04-16T12:02:00.000Z",
+              updated_at: "2026-04-16T12:02:00.000Z",
+            },
+            asset: {
+              id: "asset-proof-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "proofreading_draft_report",
+              status: "active",
+              storage_key: "runs/proofreading/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-edit-bare-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-bare-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: false,
+              file_name: "proofreading-output.md",
+              created_at: "2026-04-16T12:02:00.000Z",
+              updated_at: "2026-04-16T12:02:00.000Z",
+            },
+            template_id: "template-proof-1",
+            knowledge_item_ids: [],
+            model_id: "model-proof-1",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-screen-bare-1") {
+        return {
+          status: 200,
+          body: {
+            id: "job-screen-bare-1",
+            manuscript_id: "manuscript-1",
+            module: "screening",
+            job_type: "screening_run",
+            status: "completed",
+            requested_by: "screening-editor",
+            attempt_count: 1,
+            created_at: "2026-04-16T12:00:00.000Z",
+            updated_at: "2026-04-16T12:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-edit-bare-1") {
+        return {
+          status: 200,
+          body: {
+            id: "job-edit-bare-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_type: "editing_run",
+            status: "completed",
+            requested_by: "editing-editor",
+            attempt_count: 1,
+            created_at: "2026-04-16T12:01:00.000Z",
+            updated_at: "2026-04-16T12:01:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/jobs/job-proof-bare-1") {
+        return {
+          status: 200,
+          body: {
+            id: "job-proof-bare-1",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            job_type: "proofreading_draft_run",
+            status: "completed",
+            requested_by: "proofreader-1",
+            attempt_count: 1,
+            created_at: "2026-04-16T12:02:00.000Z",
+            updated_at: "2026-04-16T12:02:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Bare mode candidate",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_screening_asset_id: "asset-screen-bare-1",
+            current_editing_asset_id: "asset-edit-bare-1",
+            created_at: "2026-04-16T11:30:00.000Z",
+            updated_at: "2026-04-16T12:02:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1/assets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-proof-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "proofreading_draft_report",
+              status: "active",
+              storage_key: "runs/proofreading/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-edit-bare-1",
+              source_module: "proofreading",
+              source_job_id: "job-proof-bare-1",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: false,
+              file_name: "proofreading-output.md",
+              created_at: "2026-04-16T12:02:00.000Z",
+              updated_at: "2026-04-16T12:02:00.000Z",
+            },
+            {
+              id: "asset-edit-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-original-1",
+              source_module: "editing",
+              source_job_id: "job-edit-bare-1",
+              created_by: "editing-editor",
+              version_no: 3,
+              is_current: true,
+              file_name: "editing-output.docx",
+              created_at: "2026-04-16T12:01:00.000Z",
+              updated_at: "2026-04-16T12:01:00.000Z",
+            },
+            {
+              id: "asset-screen-bare-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "screening_report",
+              status: "active",
+              storage_key: "runs/screening/output.md",
+              mime_type: "text/markdown",
+              parent_asset_id: "asset-original-1",
+              source_module: "screening",
+              source_job_id: "job-screen-bare-1",
+              created_by: "screening-editor",
+              version_no: 2,
+              is_current: false,
+              file_name: "screening-output.md",
+              created_at: "2026-04-16T12:00:00.000Z",
+              updated_at: "2026-04-16T12:00:00.000Z",
+            },
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/original.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "original.docx",
+              created_at: "2026-04-16T11:30:00.000Z",
+              updated_at: "2026-04-16T11:30:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  await controller.runModuleAndLoad({
+    mode: "screening",
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    actorRole: "editor",
+    storageKey: "runs/screening/output.md",
+    fileName: "screening-output.md",
+  });
+
+  await controller.runModuleAndLoad({
+    mode: "editing",
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    actorRole: "editor",
+    storageKey: "runs/editing/output.docx",
+    fileName: "editing-output.docx",
+    executionMode: "bare",
+  });
+
+  await controller.runModuleAndLoad({
+    mode: "proofreading",
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-edit-bare-1",
+    actorRole: "proofreader",
+    storageKey: "runs/proofreading/output.md",
+    fileName: "proofreading-output.md",
+    executionMode: "bare",
+  });
+
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "web-workbench",
+    actorRole: "editor",
+    storageKey: "runs/screening/output.md",
+    fileName: "screening-output.md",
+  });
+  assert.deepEqual(requests[4]?.body, {
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-original-1",
+    requestedBy: "web-workbench",
+    actorRole: "editor",
+    storageKey: "runs/editing/output.docx",
+    fileName: "editing-output.docx",
+    executionMode: "bare",
+  });
+  assert.deepEqual(requests[8]?.body, {
+    manuscriptId: "manuscript-1",
+    parentAssetId: "asset-edit-bare-1",
+    requestedBy: "web-workbench",
+    actorRole: "proofreader",
+    storageKey: "runs/proofreading/output.md",
+    fileName: "proofreading-output.md",
+    executionMode: "bare",
+  });
+});
+
+test("manuscript workbench controller falls back to the governed base family when the AI result has not been manually confirmed yet", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-ai-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-ai-1",
+            title: "AI recognized manuscript",
+            manuscript_type: "review",
+            manuscript_type_detection_summary: {
+              confidence_level: "low",
+              confidence: 0.42,
+              requires_operator_review: true,
+            },
+            governed_execution_context_summary: {
+              observation_status: "reported",
+              manuscript_type: "review",
+              base_template_family_id: "family-review",
+              journal_template_selection_state: "base_family_only",
+              modules: [],
+            },
+            status: "uploaded",
+            created_by: "editor-1",
+            created_at: "2026-04-14T09:00:00.000Z",
+            updated_at: "2026-04-14T09:15:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-ai-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-original-ai-1",
+              manuscript_id: "manuscript-ai-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/ai-recognized.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "ai-recognized.docx",
+              created_at: "2026-04-14T09:00:00.000Z",
+              updated_at: "2026-04-14T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-review",
+              manuscript_type: "review",
+              name: "Review Family",
+              status: "active",
+            },
+            {
+              id: "family-clinical",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/templates/families/family-review/journal-templates"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "journal-template-review-1",
+              template_family_id: "family-review",
+              journal_key: "journal-review",
+              journal_name: "Review Journal Template",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-ai-1");
+
+  assert.equal(workspace.templateFamily?.name, "Review Family");
+  assert.equal(workspace.availableTemplateFamilies?.length, 2);
+  assert.equal(workspace.journalTemplateProfiles.length, 1);
+  assert.equal(
+    workspace.journalTemplateProfiles[0]?.journal_name,
+    "Review Journal Template",
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-ai-1",
+      "GET /api/v1/manuscripts/manuscript-ai-1/assets",
+      "GET /api/v1/templates/families",
+      "GET /api/v1/templates/families/family-review/journal-templates",
+    ],
+  );
+});
+
+test("manuscript workbench controller can load template context for a manually selected manuscript type family", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+            {
+              id: "family-2",
+              manuscript_type: "review",
+              name: "Review Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/templates/families/family-2/journal-templates"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "journal-template-review",
+              template_family_id: "family-2",
+              journal_key: "cmj",
+              journal_name: "中华医学杂志",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const templateContext = await controller.loadTemplateContext?.("family-2");
+
+  assert.deepEqual(templateContext, {
+    availableTemplateFamilies: [
+      {
+        id: "family-1",
+        manuscript_type: "clinical_study",
+        name: "Clinical Study Family",
+        status: "active",
+      },
+      {
+        id: "family-2",
+        manuscript_type: "review",
+        name: "Review Family",
+        status: "active",
+      },
+    ],
+    templateFamily: {
+      id: "family-2",
+      manuscript_type: "review",
+      name: "Review Family",
+      status: "active",
+    },
+    journalTemplateProfiles: [
+      {
+        id: "journal-template-review",
+        template_family_id: "family-2",
+        journal_key: "cmj",
+        journal_name: "中华医学杂志",
+        status: "active",
+      },
+    ],
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/templates/families",
+      "GET /api/v1/templates/families/family-2/journal-templates",
+    ],
+  );
+});
+
+test("manuscript workbench controller hydrates referenced knowledge titles for module snapshots", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-knowledge-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-knowledge-1",
+            title: "Knowledge aware manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "reported",
+                latest_snapshot: {
+                  id: "snapshot-screening-1",
+                  manuscript_id: "manuscript-knowledge-1",
+                  module: "screening",
+                  job_id: "job-screening-1",
+                  execution_profile_id: "execution-profile-screening-1",
+                  module_template_id: "template-screening-1",
+                  module_template_version_no: 2,
+                  prompt_template_id: "prompt-screening-1",
+                  prompt_template_version: "2026-04-01",
+                  skill_package_ids: ["pkg-screening"],
+                  skill_package_versions: ["2026.04"],
+                  model_id: "model-screening-1",
+                  knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+                  created_asset_ids: ["asset-screening-report-1"],
+                  created_at: "2026-04-16T09:01:00.000Z",
+                  agent_execution: {
+                    observation_status: "not_linked",
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "ready",
+                      checked_at: "2026-04-16T09:01:00.000Z",
+                      issues: [],
+                    },
+                  },
+                },
+              },
+              editing: {
+                module: "editing",
+                observation_status: "reported",
+                latest_snapshot: {
+                  id: "snapshot-editing-1",
+                  manuscript_id: "manuscript-knowledge-1",
+                  module: "editing",
+                  job_id: "job-editing-1",
+                  execution_profile_id: "execution-profile-editing-1",
+                  module_template_id: "template-editing-1",
+                  module_template_version_no: 3,
+                  prompt_template_id: "prompt-editing-1",
+                  prompt_template_version: "2026-04-01",
+                  skill_package_ids: ["pkg-editing"],
+                  skill_package_versions: ["2026.04"],
+                  model_id: "model-editing-1",
+                  knowledge_item_ids: ["knowledge-2"],
+                  created_asset_ids: ["asset-editing-1"],
+                  created_at: "2026-04-16T09:02:00.000Z",
+                  agent_execution: {
+                    observation_status: "not_linked",
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "ready",
+                      checked_at: "2026-04-16T09:02:00.000Z",
+                      issues: [],
+                    },
+                  },
+                },
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "not_started",
+              },
+            },
+            created_at: "2026-04-16T09:00:00.000Z",
+            updated_at: "2026-04-16T09:02:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-knowledge-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-original-knowledge-1",
+              manuscript_id: "manuscript-knowledge-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/knowledge-aware.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "knowledge-aware.docx",
+              created_at: "2026-04-16T09:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/knowledge/assets/knowledge-1") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-1",
+              status: "active",
+              current_revision_id: "knowledge-1-revision-4",
+              current_approved_revision_id: "knowledge-1-revision-3",
+              created_at: "2026-04-10T09:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-1-revision-4",
+              asset_id: "knowledge-1",
+              revision_no: 4,
+              status: "draft",
+              title: "Primary endpoint rule draft",
+              canonical_text: "draft",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "screening",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [],
+              created_at: "2026-04-16T09:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            },
+            current_approved_revision: {
+              id: "knowledge-1-revision-3",
+              asset_id: "knowledge-1",
+              revision_no: 3,
+              status: "approved",
+              title: "Primary endpoint rule",
+              canonical_text: "approved",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "screening",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [],
+              created_at: "2026-04-15T09:00:00.000Z",
+              updated_at: "2026-04-15T09:00:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/knowledge/assets/knowledge-2") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-2",
+              status: "active",
+              current_revision_id: "knowledge-2-revision-2",
+              current_approved_revision_id: "knowledge-2-revision-2",
+              created_at: "2026-04-11T09:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-2-revision-2",
+              asset_id: "knowledge-2",
+              revision_no: 2,
+              status: "approved",
+              title: "Style glossary",
+              canonical_text: "approved",
+              knowledge_kind: "reference",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [],
+              created_at: "2026-04-16T09:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-knowledge-1");
+
+  assert.deepEqual(workspace.knowledgeReferences, {
+    "knowledge-1": {
+      id: "knowledge-1",
+      title: "Primary endpoint rule",
+      revisionId: "knowledge-1-revision-3",
+      status: "approved",
+    },
+    "knowledge-2": {
+      id: "knowledge-2",
+      title: "Style glossary",
+      revisionId: "knowledge-2-revision-2",
+      status: "approved",
+    },
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-knowledge-1",
+      "GET /api/v1/manuscripts/manuscript-knowledge-1/assets",
+      "GET /api/v1/knowledge/assets/knowledge-1",
+      "GET /api/v1/knowledge/assets/knowledge-2",
+    ],
+  );
+});
+

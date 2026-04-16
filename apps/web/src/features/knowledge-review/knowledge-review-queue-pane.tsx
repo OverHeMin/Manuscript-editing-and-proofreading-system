@@ -63,14 +63,20 @@ export function KnowledgeReviewQueuePane({
 }: KnowledgeReviewQueuePaneProps) {
   return (
     <section className="knowledge-review-panel knowledge-review-queue-pane">
-      <header className="knowledge-review-pane-header">
-        <h2>待审核队列</h2>
-        <p>{`当前显示 ${queue.length} / ${totalQueueCount} 条待审修订。`}</p>
+      <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
+        <div>
+          <h2>待审核队列</h2>
+          <p>筛选、选择、切换都保持在队列侧完成，减少审核跳转。</p>
+        </div>
+        <div className="knowledge-review-queue-summary">
+          <span className="knowledge-review-summary-chip is-muted">当前 {queue.length}</span>
+          <span className="knowledge-review-summary-chip is-muted">总待审 {totalQueueCount}</span>
+        </div>
       </header>
 
-      <div className="knowledge-review-queue-controls">
-        <label>
-          搜索
+      <div className="knowledge-review-queue-controls knowledge-review-compact-filters">
+        <label className="knowledge-review-search-field">
+          <span>搜索</span>
           <input
             type="search"
             value={filters.searchText}
@@ -79,17 +85,9 @@ export function KnowledgeReviewQueuePane({
           />
         </label>
 
-        <div className="knowledge-review-inline-filters">
+        <div className="knowledge-review-compact-filter-row">
           <label>
-            状态
-            <select value="pending_review" disabled>
-              <option value="pending_review">待审核</option>
-            </select>
-            <span className="knowledge-review-filter-note">当前工作台固定为该状态</span>
-          </label>
-
-          <label>
-            知识类型
+            <span>知识类型</span>
             <select
               value={filters.knowledgeKind}
               onChange={(event) =>
@@ -107,7 +105,7 @@ export function KnowledgeReviewQueuePane({
           </label>
 
           <label>
-            模块范围
+            <span>模块范围</span>
             <select
               value={filters.moduleScope}
               onChange={(event) =>
@@ -124,68 +122,70 @@ export function KnowledgeReviewQueuePane({
             </select>
           </label>
         </div>
+
+        <p className="knowledge-review-filter-note">当前仅展示待审核修订。</p>
       </div>
 
-      {loadErrorMessage ? (
-        <div className="knowledge-review-banner knowledge-review-banner-error" role="status">
-          <p>{loadErrorMessage}</p>
-          <button type="button" onClick={onRetryQueue}>
-            刷新队列
-          </button>
-        </div>
-      ) : null}
+      <div className="knowledge-review-queue-scroll" data-scroll-owner="queue">
+        {loadErrorMessage ? (
+          <div className="knowledge-review-banner knowledge-review-banner-error" role="status">
+            <p>{loadErrorMessage}</p>
+            <button type="button" onClick={onRetryQueue}>
+              刷新队列
+            </button>
+          </div>
+        ) : null}
 
-      {isLoading && totalQueueCount === 0 ? (
-        <div className="knowledge-review-empty-state" role="status">
-          正在加载待审核修订...
-        </div>
-      ) : null}
+        {isLoading && totalQueueCount === 0 ? (
+          <div className="knowledge-review-empty-state" role="status">
+            正在加载待审核修订...
+          </div>
+        ) : null}
 
-      {!isLoading && isQueueEmpty ? (
-        <div className="knowledge-review-empty-state">
-          当前没有待审核修订。
-        </div>
-      ) : null}
+        {!isLoading && isQueueEmpty ? (
+          <div className="knowledge-review-empty-state">当前没有待审核修订。</div>
+        ) : null}
 
-      {!isLoading && !isQueueEmpty && isNoResults ? (
-        <div className="knowledge-review-empty-state">
-          当前筛选条件下没有匹配的队列项。
-        </div>
-      ) : null}
+        {!isLoading && !isQueueEmpty && isNoResults ? (
+          <div className="knowledge-review-empty-state">
+            当前筛选条件下没有匹配的队列项。
+          </div>
+        ) : null}
 
-      {!isQueueEmpty && !isNoResults ? (
-        <ul className="knowledge-review-queue-list">
-          {queue.map((item) => {
-            const isActive = item.id === activeItemId;
-            const hints = resolveHintText(item);
+        {!isQueueEmpty && !isNoResults ? (
+          <ul className="knowledge-review-queue-list">
+            {queue.map((item) => {
+              const isActive = item.id === activeItemId;
+              const hints = resolveHintText(item);
 
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={`knowledge-review-queue-item${isActive ? " is-active" : ""}`}
-                  onClick={() => onSelectItem(item.id)}
-                >
-                  <p className="knowledge-review-queue-title">{item.title}</p>
-                  <p className="knowledge-review-queue-meta-row">
-                    <span>{item.asset_id}</span>
-                    <span>{item.revision_id}</span>
-                  </p>
-                  <p className="knowledge-review-queue-meta-row">
-                    <span>{formatKnowledgeKind(item.knowledge_kind)}</span>
-                    <span>{formatModuleScope(item.routing.module_scope)}</span>
-                    <span>{formatEvidenceLevel(item.evidence_level)}</span>
-                  </p>
-                  <p className="knowledge-review-queue-meta-row">
-                    {formatManuscriptTypes(item.routing.manuscript_types)}
-                  </p>
-                  {hints ? <p className="knowledge-review-queue-hints">{hints}</p> : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={`knowledge-review-queue-item${isActive ? " is-active" : ""}`}
+                    onClick={() => onSelectItem(item.id)}
+                  >
+                    <p className="knowledge-review-queue-title">{item.title}</p>
+                    <p className="knowledge-review-queue-meta-row">
+                      <span>{item.asset_id}</span>
+                      <span>{item.revision_id}</span>
+                    </p>
+                    <p className="knowledge-review-queue-meta-row">
+                      <span>{formatKnowledgeKind(item.knowledge_kind)}</span>
+                      <span>{formatModuleScope(item.routing.module_scope)}</span>
+                      <span>{formatEvidenceLevel(item.evidence_level)}</span>
+                    </p>
+                    <p className="knowledge-review-queue-meta-row">
+                      {formatManuscriptTypes(item.routing.manuscript_types)}
+                    </p>
+                    {hints ? <p className="knowledge-review-queue-hints">{hints}</p> : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -276,7 +276,7 @@ function resolveHintText(item: KnowledgeReviewQueueItemViewModel): string {
   const riskHint = compactHint("风险", item.routing.risk_tags);
   const hints = [templateHint, riskHint].filter((value): value is string => Boolean(value));
 
-  return hints.join(" ｜ ");
+  return hints.join(" · ");
 }
 
 function compactHint(label: string, values: readonly string[] | undefined): string | null {

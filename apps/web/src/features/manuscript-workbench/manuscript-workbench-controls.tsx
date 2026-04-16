@@ -1,9 +1,12 @@
+import { useState } from "react";
 import {
   MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT,
-  type ManuscriptType,
   type UploadManuscriptInput,
 } from "../manuscripts/index.ts";
-import type { ManuscriptWorkbenchMode } from "./manuscript-workbench-controller.ts";
+import type {
+  ManuscriptWorkbenchMode,
+  ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
+} from "./manuscript-workbench-controller.ts";
 
 export interface WorkbenchSelectOption {
   value: string;
@@ -16,7 +19,6 @@ export interface ManuscriptWorkbenchIntakePanelProps {
   attachedFileNames: string[];
   canSubmit: boolean;
   onTitleChange(value: string): void;
-  onManuscriptTypeChange(value: ManuscriptType): void;
   onStorageKeyChange(value: string): void;
   onFilesSelect(files: File[]): void;
   onSubmit(): void;
@@ -30,11 +32,22 @@ export interface ManuscriptWorkbenchLookupPanelProps {
 
 export interface ManuscriptWorkbenchTemplateSelectionPanelProps {
   title: string;
+  resolvedManuscriptTypeLabel: string;
+  confidenceLabel: string;
+  confidenceLevel?: "low" | "medium" | "high";
+  requiresOperatorReview: boolean;
+  showManualManuscriptTypeSelect?: boolean;
+  manualManuscriptTypeValue?: string;
+  manualManuscriptTypeOptions?: WorkbenchSelectOption[];
   baseTemplateLabel: string;
+  selectedTemplateFamilyId: string;
+  templateFamilyOptions: WorkbenchSelectOption[];
   selectedJournalTemplateId: string;
   currentAppliedLabel: string;
   hasPendingChange: boolean;
   options: WorkbenchSelectOption[];
+  onManualManuscriptTypeSelect?(value: string): void;
+  onTemplateFamilySelect(value: string): void;
   onSelect(value: string): void;
   onApply(): void;
 }
@@ -44,10 +57,12 @@ export interface ManuscriptWorkbenchActionPanelProps {
   selectedAssetId: string;
   emptyLabel: string;
   actionLabel: string;
+  secondaryActionLabel?: string;
   options: WorkbenchSelectOption[];
   selectedContextLabel?: string;
   onSelect(value: string): void;
   onRun(): void;
+  onSecondaryRun?(): void;
 }
 
 export interface ManuscriptWorkbenchUtilitiesPanelProps {
@@ -59,6 +74,9 @@ export interface ManuscriptWorkbenchUtilitiesPanelProps {
   onPublishHumanFinal?(): void;
 }
 
+export interface ManuscriptWorkbenchExecutionContextPanelProps
+  extends ManuscriptWorkbenchReadOnlyExecutionContextViewModel {}
+
 export interface ManuscriptWorkbenchControlsProps {
   mode: ManuscriptWorkbenchMode;
   busy: boolean;
@@ -67,6 +85,7 @@ export interface ManuscriptWorkbenchControlsProps {
   intake?: ManuscriptWorkbenchIntakePanelProps;
   lookup: ManuscriptWorkbenchLookupPanelProps;
   templateSelection?: ManuscriptWorkbenchTemplateSelectionPanelProps;
+  executionContext?: ManuscriptWorkbenchExecutionContextPanelProps;
   moduleAction?: ManuscriptWorkbenchActionPanelProps;
   finalizeAction?: ManuscriptWorkbenchActionPanelProps;
   utilities?: ManuscriptWorkbenchUtilitiesPanelProps;
@@ -80,6 +99,7 @@ export function ManuscriptWorkbenchControls({
   intake,
   lookup,
   templateSelection,
+  executionContext,
   moduleAction,
   finalizeAction,
   utilities,
@@ -93,37 +113,25 @@ export function ManuscriptWorkbenchControls({
     layout === "drawer"
       ? "manuscript-workbench-controls-grid manuscript-workbench-controls-grid--drawer"
       : "manuscript-workbench-controls-grid";
+  const showScaffoldHeader = layout !== "drawer";
 
   return (
     <section
       className={sectionClassName}
       aria-label={layout === "drawer" ? "批量处理与辅助动作" : "工作台操作区"}
     >
-      <header className="manuscript-workbench-controls-intro">
-        <div className="manuscript-workbench-controls-copy">
-          <span className="manuscript-workbench-section-eyebrow">
-            {layout === "drawer" ? "低频动作区" : "操作台"}
-          </span>
-          <h3>{layout === "drawer" ? "批量处理与辅助动作" : "同屏完成接入、检索与治理动作"}</h3>
-          <p>
-            {layout === "drawer"
-              ? "把批量上传、模板切换和导出动作收纳到右侧，中央工作区只保留当前稿件判断。"
-              : "让稿件接入、工作台检索和治理动作保持在同一张轻量工作桌面上。"}
-          </p>
-        </div>
-        <div className="manuscript-workbench-desk-stat">
-          <span>当前工作线</span>
-          <strong>{describeMode(mode)}</strong>
-        </div>
-      </header>
-
-      {layout === "drawer" ? (
-        <div className="manuscript-workbench-batch-drawer-trigger">
-          <button type="button" aria-expanded="true">
-            批量处理
-          </button>
-          <span>上传、导出和模板动作集中在这里，避免打断中间的单稿判断。</span>
-        </div>
+      {showScaffoldHeader ? (
+        <header className="manuscript-workbench-controls-intro">
+          <div className="manuscript-workbench-controls-copy">
+            <span className="manuscript-workbench-section-eyebrow">操作台</span>
+            <h3>同屏完成接入、检索与治理动作</h3>
+            <p>让稿件接入、工作台检索和治理动作保持在同一张轻量工作桌面上。</p>
+          </div>
+          <div className="manuscript-workbench-desk-stat">
+            <span>当前工作线</span>
+            <strong>{describeMode(mode)}</strong>
+          </div>
+        </header>
       ) : null}
 
       <div className={gridClassName}>
@@ -150,7 +158,7 @@ export function ManuscriptWorkbenchControls({
                   请先输入稿件 ID 再加载工作区。
                 </p>
               ) : null}
-              <div className="manuscript-workbench-button-row">
+              <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
                 <button
                   type="button"
                   disabled={busy || !canLoadWorkspace}
@@ -164,52 +172,11 @@ export function ManuscriptWorkbenchControls({
         ) : null}
 
         {templateSelection ? (
-          <article className="manuscript-workbench-panel">
-            <div className="manuscript-workbench-panel-heading">
-              <div>
-                <h3>{templateSelection.title === "Journal Template" ? "期刊模板" : templateSelection.title}</h3>
-                <p>先选定基础模板家族和期刊覆盖，再继续下游治理动作。</p>
-              </div>
-            </div>
-            <div className="manuscript-workbench-panel-body">
-              <div className="manuscript-workbench-selection-context">
-                <span>基础模板家族</span>
-                <strong>{templateSelection.baseTemplateLabel}</strong>
-              </div>
-              <label className="manuscript-workbench-field">
-                <span>期刊模板</span>
-                <select
-                  value={templateSelection.selectedJournalTemplateId}
-                  onChange={(event) => templateSelection.onSelect(event.target.value)}
-                >
-                  <option value="">仅使用基础家族</option>
-                  {templateSelection.options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="manuscript-workbench-selection-context">
-                <span>当前生效上下文</span>
-                <strong>{resolveAppliedTemplateLabel(templateSelection)}</strong>
-              </div>
-              {templateSelection.hasPendingChange ? (
-                <p className="manuscript-workbench-help is-warning">
-                  已有未保存的模板切换，请先保存，再触发新的治理动作。
-                </p>
-              ) : null}
-              <div className="manuscript-workbench-button-row">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => templateSelection.onApply()}
-                >
-                  {busy ? "处理中..." : "保存模板上下文"}
-                </button>
-              </div>
-            </div>
-          </article>
+          <TemplateSelectionPanel busy={busy} templateSelection={templateSelection} />
+        ) : null}
+
+        {executionContext ? (
+          <ExecutionContextPanel executionContext={executionContext} />
         ) : null}
 
         {moduleAction ? (
@@ -242,7 +209,7 @@ export function ManuscriptWorkbenchControls({
                   至少生成一条任务后，才可以刷新最新任务。
                 </p>
               ) : null}
-              <div className="manuscript-workbench-button-row">
+              <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
                 {utilities.canPublishHumanFinal && utilities.onPublishHumanFinal ? (
                   <button
                     type="button"
@@ -275,6 +242,61 @@ export function ManuscriptWorkbenchControls({
   );
 }
 
+function ExecutionContextPanel({
+  executionContext,
+}: {
+  executionContext: ManuscriptWorkbenchExecutionContextPanelProps;
+}) {
+  return (
+    <article
+      className="manuscript-workbench-panel"
+      data-execution-context="readonly"
+      data-execution-mode={executionContext.mode}
+    >
+      <div className="manuscript-workbench-panel-heading">
+        <div>
+          <h3>执行上下文</h3>
+          <p>AI 接入已在系统设置统一治理，这里只展示当前工作线的只读解析结果。</p>
+        </div>
+      </div>
+      <div className="manuscript-workbench-panel-body">
+        <div className="manuscript-workbench-selection-context">
+          <span>AI 接入</span>
+          <strong>集中默认</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>模型 ID</span>
+          <strong>{executionContext.resolvedModelId ?? "未解析"}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>路由策略</span>
+          <strong>{executionContext.modelRoutingPolicyVersionId ?? "未解析"}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>执行画像</span>
+          <strong>{executionContext.executionProfileId ?? "未解析"}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>模型来源</span>
+          <strong>{formatExecutionModelSourceLabel(executionContext.modelSource)}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>服务商就绪</span>
+          <strong>{formatProviderReadinessLabel(executionContext.providerReadinessStatus)}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>运行时绑定</span>
+          <strong>
+            {formatExecutionRuntimeBindingReadinessLabel(
+              executionContext.runtimeBindingReadinessStatus,
+            )}
+          </strong>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function IntakePanel({
   busy,
   intake,
@@ -282,6 +304,7 @@ function IntakePanel({
   busy: boolean;
   intake: ManuscriptWorkbenchIntakePanelProps;
 }) {
+  const [isDragActive, setIsDragActive] = useState(false);
   const requiresUploadPayload = Boolean(
     intake.attachedFileCount === 0 &&
       (intake.uploadForm.fileContentBase64?.trim().length ?? 0) === 0 &&
@@ -295,6 +318,16 @@ function IntakePanel({
     intake.attachedFileCount,
   );
   const selectedFileSummary = buildSelectedFileSummary(intake);
+  const dropzoneClassName = isDragActive
+    ? "manuscript-workbench-upload-dropzone is-active"
+    : "manuscript-workbench-upload-dropzone";
+
+  function handleSelectedFiles(files: FileList | File[] | null | undefined) {
+    const selectedFiles = Array.isArray(files) ? files : Array.from(files ?? []);
+    if (selectedFiles.length > 0) {
+      intake.onFilesSelect(selectedFiles);
+    }
+  }
 
   return (
     <article className="manuscript-workbench-panel">
@@ -322,19 +355,42 @@ function IntakePanel({
             onChange={(event) => intake.onStorageKeyChange(event.target.value)}
           />
         </label>
-        <label className={resolveFieldClassName(requiresUploadPayload || hasTooManyFiles)}>
-          <span>稿件文件</span>
-          <input
-            type="file"
-            multiple
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              if (files.length > 0) {
-                intake.onFilesSelect(files);
-              }
-            }}
-          />
-        </label>
+        <div
+          className={dropzoneClassName}
+          data-dropzone="manuscript-upload"
+          data-drag-active={isDragActive ? "true" : "false"}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragActive(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!isDragActive) {
+              setIsDragActive(true);
+            }
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setIsDragActive(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragActive(false);
+            handleSelectedFiles(event.dataTransfer?.files);
+          }}
+        >
+          <p className="manuscript-workbench-upload-dropzone-copy">
+            拖拽稿件到这里，或使用下方文件框批量选择上传。
+          </p>
+          <label className={resolveFieldClassName(requiresUploadPayload || hasTooManyFiles)}>
+            <span>稿件文件</span>
+            <input
+              type="file"
+              multiple
+              onChange={(event) => handleSelectedFiles(event.target.files)}
+            />
+          </label>
+        </div>
         <p className="manuscript-workbench-help">
           一次最多 {MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT} 个稿件，超出后提交按钮会自动停用。
         </p>
@@ -352,13 +408,139 @@ function IntakePanel({
             ))}
           </ul>
         ) : null}
-        <div className="manuscript-workbench-button-row">
+        <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
           <button
             type="button"
             disabled={busy || !intake.canSubmit || hasTooManyFiles}
             onClick={() => intake.onSubmit()}
           >
             {busy ? "处理中..." : "上传稿件"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function TemplateSelectionPanel({
+  busy,
+  templateSelection,
+}: {
+  busy: boolean;
+  templateSelection: ManuscriptWorkbenchTemplateSelectionPanelProps;
+}) {
+  const shouldShowManualManuscriptTypeSelect =
+    templateSelection.showManualManuscriptTypeSelect &&
+    (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0 &&
+    typeof templateSelection.onManualManuscriptTypeSelect === "function";
+
+  return (
+    <article className="manuscript-workbench-panel">
+      <div className="manuscript-workbench-panel-heading">
+        <div>
+          <h3>
+            {templateSelection.title === "Journal Template"
+              ? "稿件类型与期刊模板"
+              : templateSelection.title}
+          </h3>
+          <p>先看系统解析后的上下文，无需修正时可直接继续，需要时再做人工确认和期刊细化。</p>
+        </div>
+      </div>
+      <div className="manuscript-workbench-panel-body">
+        <div
+          className="manuscript-workbench-resolved-context"
+          data-confidence-level={templateSelection.confidenceLevel ?? "medium"}
+        >
+          <div className="manuscript-workbench-selection-context">
+            <span>AI 识别稿件类型</span>
+            <strong>{templateSelection.resolvedManuscriptTypeLabel}</strong>
+          </div>
+          <div className="manuscript-workbench-selection-context">
+            <span>识别置信度</span>
+            <strong>{templateSelection.confidenceLabel}</strong>
+          </div>
+          <div className="manuscript-workbench-selection-context">
+            <span>基础模板家族</span>
+            <strong>{templateSelection.baseTemplateLabel}</strong>
+          </div>
+          <div className="manuscript-workbench-selection-context">
+            <span>当前生效上下文</span>
+            <strong>{resolveAppliedTemplateLabel(templateSelection)}</strong>
+          </div>
+        </div>
+        <details
+          className="manuscript-workbench-template-override"
+          open={templateSelection.requiresOperatorReview}
+        >
+          <summary>
+            {shouldShowManualManuscriptTypeSelect
+              ? "人工修正稿件类型与模板"
+              : "修正基础模板家族"}
+          </summary>
+          {shouldShowManualManuscriptTypeSelect ? (
+            <label className="manuscript-workbench-field">
+              <span>人工确认稿件类型</span>
+              <select
+                value={templateSelection.manualManuscriptTypeValue ?? ""}
+                onChange={(event) =>
+                  templateSelection.onManualManuscriptTypeSelect?.(event.target.value)}
+              >
+                {templateSelection.manualManuscriptTypeOptions?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label className="manuscript-workbench-field">
+            <span>基础模板家族</span>
+            <select
+              value={templateSelection.selectedTemplateFamilyId}
+              onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
+            >
+              {templateSelection.templateFamilyOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </details>
+        <label className="manuscript-workbench-field">
+          <span>期刊模板（小期刊/场景）</span>
+          <select
+            value={templateSelection.selectedJournalTemplateId}
+            onChange={(event) => templateSelection.onSelect(event.target.value)}
+          >
+            <option value="">仅使用基础家族</option>
+            {templateSelection.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {templateSelection.hasPendingChange ? (
+          <p className="manuscript-workbench-help is-warning">
+            已有未保存的模板切换，请先保存，再触发新的治理动作。
+          </p>
+        ) : null}
+        {templateSelection.requiresOperatorReview ? (
+          <p className="manuscript-workbench-help is-warning">
+            AI 识别失败或低置信度时请先人工确认稿件类型，再选择期刊模板。
+          </p>
+        ) : null}
+        <p className="manuscript-workbench-help">
+          期刊模板用于细化小期刊或场景要求；如不选择，将仅按基础模板家族继续处理。
+        </p>
+        <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => templateSelection.onApply()}
+          >
+            {busy ? "处理中..." : "保存模板上下文"}
           </button>
         </div>
       </div>
@@ -379,6 +561,12 @@ function ActionPanel({
   const selectedOption = action.options.find(
     (option) => option.value === action.selectedAssetId,
   );
+  const hasSecondaryAction =
+    typeof action.onSecondaryRun === "function" &&
+    (action.secondaryActionLabel?.trim().length ?? 0) > 0;
+  const secondaryActionLabel = hasSecondaryAction
+    ? action.secondaryActionLabel ?? ""
+    : undefined;
 
   return (
     <article className="manuscript-workbench-panel">
@@ -414,7 +602,10 @@ function ActionPanel({
             请先选择资产，再执行当前模块。
           </p>
         ) : null}
-        <div className="manuscript-workbench-button-row">
+        <div
+          className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky"
+          data-secondary-action={hasSecondaryAction ? "available" : "hidden"}
+        >
           <button
             type="button"
             disabled={busy || !canRun}
@@ -422,6 +613,16 @@ function ActionPanel({
           >
             {busy ? "处理中..." : formatWorkbenchActionLabel(action.actionLabel)}
           </button>
+          {hasSecondaryAction ? (
+            <button
+              type="button"
+              className="manuscript-workbench-button-secondary"
+              disabled={busy || !canRun}
+              onClick={() => action.onSecondaryRun?.()}
+            >
+              {busy ? "处理中..." : formatWorkbenchActionLabel(secondaryActionLabel ?? "")}
+            </button>
+          ) : null}
         </div>
       </div>
     </article>
@@ -491,6 +692,7 @@ function formatWorkbenchPanelTitle(title: string): string {
   if (title === "Screening Run") return "初筛执行";
   if (title === "Editing Run") return "编辑执行";
   if (title === "Proofreading Draft") return "校对草稿生成";
+  if (title === "Proofreading Final") return "校对定稿";
   return title;
 }
 
@@ -499,6 +701,7 @@ function formatWorkbenchActionLabel(label: string): string {
   if (label === "Run Editing") return "执行编辑";
   if (label === "Create Draft") return "生成草稿";
   if (label === "Finalize Proofreading") return "校对定稿";
+  if (label === "Run Bare AI Once") return "AI 自动处理（本次）";
   return label;
 }
 
@@ -507,6 +710,57 @@ function formatSelectionContextLabel(label: string | undefined): string {
   if (label === "Selected Draft Asset") return "已选草稿资产";
   if (label === "Selected Asset") return "已选资产";
   return label ?? "已选资产";
+}
+
+function formatExecutionModelSourceLabel(source: string | undefined): string {
+  switch (source) {
+    case "template_family_policy":
+      return "模板族策略";
+    case "module_policy":
+      return "模块策略";
+    case "legacy_template_override":
+      return "历史模板覆写";
+    case "legacy_module_default":
+      return "历史模块默认";
+    case "legacy_system_default":
+      return "历史系统默认";
+    case "task_override":
+      return "任务覆写";
+    case undefined:
+      return "集中默认";
+    default:
+      return source;
+  }
+}
+
+function formatProviderReadinessLabel(status: string | undefined): string {
+  if (status === "ok") {
+    return "就绪";
+  }
+
+  if (status === "warning") {
+    return "需关注";
+  }
+
+  return "未报告";
+}
+
+function formatExecutionRuntimeBindingReadinessLabel(
+  status: string | undefined,
+): string {
+  if (status === "ready") {
+    return "就绪";
+  }
+
+  if (status === "degraded") {
+    return "已降级";
+  }
+
+  if (status === "missing") {
+    return "缺失";
+  }
+
+  return "未报告";
 }
 
 function resolveAppliedTemplateLabel(

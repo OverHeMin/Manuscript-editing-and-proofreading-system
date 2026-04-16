@@ -8,7 +8,7 @@ const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
 const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 const journalObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
 
-test("admin can create a template family and module draft from the governance console", async ({
+test("admin console exposes the current governance entry cards and can hand off to harness", async ({
   page,
   request,
 }) => {
@@ -36,16 +36,13 @@ test("admin can create a template family and module draft from the governance co
     "href",
     /#evaluation-workbench\?harnessSection=overview/,
   );
-  await expect(page.getByRole("link", { name: "打开规则中心" })).toHaveAttribute(
-    "href",
-    /#template-governance\?templateGovernanceView=authoring&ruleCenterMode=authoring/,
-  );
+  await expect(page.getByRole("link", { name: "打开规则中心" })).toHaveCount(0);
 
   await page.getByRole("link", { name: "进入 Harness 控制" }).click();
   await expect(page).toHaveURL(/#evaluation-workbench\?harnessSection=overview/);
 });
 
-test("admin can preview, verify, activate, and roll back the seeded harness environment from the control plane", async ({
+test("admin console keeps only landing snapshots and hands deeper harness work off to dedicated pages", async ({
   page,
   request,
 }) => {
@@ -57,124 +54,47 @@ test("admin can preview, verify, activate, and roll back the seeded harness envi
 
   await expect(page.getByRole("heading", { name: "AI 接入快照" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Harness 运行体征" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "治理资产快照" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前提醒" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("查看治理资产明细");
+  await expect(page.getByRole("heading", { name: "治理资产快照" })).toHaveCount(0);
+  await expect(page.getByText("查看治理资产明细")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("Harness Control Plane");
   await expect(page.locator("body")).not.toContainText("Environment Editor");
   await expect(page.locator("body")).not.toContainText("Quality Lab");
   await expect(page.locator("body")).not.toContainText("Activation Gate");
 
-  await page.getByText("查看治理资产明细").click();
-  await expect(page.getByRole("heading", { name: "模板与执行明细" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "AI 路由摘要" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "最近运行摘要" })).toBeVisible();
+  await page.getByRole("link", { name: "评测运行" }).click();
+  await expect(page).toHaveURL(/#evaluation-workbench\?harnessSection=runs/);
 });
 
-test("template governance supports journal-scoped abstract and table rule authoring", async ({
+test("template governance authoring route opens the five-step rule wizard", async ({
   page,
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  const familyName = `Case Report Rules ${Date.now()}`;
-  const journalName = `\u300a\u6848\u4f8b\u62a5\u9053\u6d4f\u89c8 ${Date.now()}\u300b`;
-  const journalKey = slugify(`case-report-journal-${Date.now()}`);
+  const ruleName = `Case Report Rule ${Date.now()}`;
 
   await page.goto("/#template-governance?templateGovernanceView=authoring&ruleCenterMode=authoring", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "规则中心" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "新建规则" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "五步流" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "基础录入与证据补充" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "返回规则台账" })).toBeVisible();
 
-  await page.getByRole("combobox", { name: "稿件类型", exact: true }).selectOption(
-    "case_report",
-  );
-  await page.getByRole("textbox", { name: "族名称", exact: true }).fill(familyName);
-  await page.getByRole("button", { name: "新建模板族草稿" }).click();
+  const ruleNameField = page.getByRole("textbox", { name: "规则名称" });
+  await expect(ruleNameField).toBeVisible();
+  await ruleNameField.fill(ruleName);
+  await page.getByRole("textbox", { name: "规则正文" }).fill("病例报告摘要标题需要统一。");
+  await page.getByRole("textbox", { name: "正例示例" }).fill("摘要 目的");
+  await page.getByRole("textbox", { name: "来源依据" }).fill("期刊格式规范第 2 节");
 
-  await expect(page.locator(".template-governance-status")).toContainText(
-    "模板族草稿已创建。",
-  );
-  const createdFamilyButton = page.getByRole("button", { name: new RegExp(familyName) });
-  await expect(createdFamilyButton).toBeVisible();
-  await createdFamilyButton.click();
-  await page.getByRole("button", { name: "展开高级规则编辑器" }).click();
-  await expect(page.getByRole("heading", { name: "规则导航" })).toBeVisible();
-
-  await page.getByRole("textbox", { name: "期刊名称" }).fill(journalName);
-  await page.getByRole("textbox", { name: "期刊标识" }).fill(journalKey);
-  await page.getByRole("button", { name: "新建期刊模板" }).click();
-
-  await expect(page.locator(".template-governance-status")).toContainText(
-    "期刊模板画像已创建。",
-  );
-
-  const journalCard = page
-    .getByRole("button", { name: "启用" })
-    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
-    .first();
-  await expect(journalCard).toContainText(journalName);
-  await expect(journalCard).toContainText("草稿");
-  await journalCard.getByRole("button", { name: "启用" }).click();
-
-  await expect(page.locator(".template-governance-status")).toContainText(
-    "期刊模板画像已启用。",
-  );
-  await expect(page.getByText(`${journalKey} | 启用中`)).toBeVisible();
-  await expect(page.getByRole("button", { name: "当前范围" })).toBeVisible();
-
-  const navigatorCard = page
-    .getByRole("heading", { name: "规则导航" })
-    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
-    .first();
-  const previewPanel = page
-    .getByRole("heading", { name: "规则预览" })
-    .locator("xpath=ancestor::article[contains(@class,'template-governance-card')]")
-    .first();
-
-  await navigatorCard.getByRole("combobox", { name: "模块" }).selectOption("editing");
-  await navigatorCard.getByRole("button", { name: "新建规则集草稿" }).click();
-
-  await expect(page.locator(".template-governance-status")).toContainText(
-    "规则集草稿已创建。",
-  );
-  await expect(previewPanel).toContainText("期刊加层：");
-  await expect(previewPanel).toContainText(
-    `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
-  );
-
-  await page.getByRole("button", { name: "新建规则草稿" }).click();
-
-  await expect(page.locator(".template-governance-status")).toContainText("规则草稿已创建。");
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    `${abstractObjectiveSource} -> ${abstractObjectiveNormalized}`,
-  );
-
-  await page.getByRole("button", { name: "表格" }).click();
-  await page.getByLabel("语义目标").selectOption("header_cell");
-  await page.getByLabel("表头路径").fill("Treatment group > n (%)");
-  await page.getByLabel("列标识").fill("Treatment group > n (%)");
-  await expect(previewPanel).toContainText("仅检查");
-  await expect(previewPanel).toContainText("semantic_target=header_cell");
-  await expect(previewPanel).toContainText("header_path=Treatment group > n (%)");
-  await expect(previewPanel).toContainText("table_id=runtime-resolved");
-  await expect(previewPanel).toContainText("期刊加层");
-  await page.getByRole("button", { name: "新建规则草稿" }).click();
-
-  await expect(page.locator(".template-governance-status")).toContainText("规则草稿已创建。");
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    "header_cell",
-  );
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    "Treatment group",
-  );
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    "n (%)",
-  );
-  await expect(page.locator(".template-governance-rule-layout-main")).toContainText(
-    "\u7981\u7528\u7ad6\u7ebf",
-  );
+  await expect(ruleNameField).toHaveValue(ruleName);
+  await expect(page.getByRole("combobox", { name: "适用模块" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存草稿" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下一步：AI 识别语义层" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "完成并返回规则中心" })).toBeVisible();
 });
 
 test("editing workbench saves a journal template context before running editing", async ({
@@ -189,30 +109,30 @@ test("editing workbench saves a journal template context before running editing"
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "编辑工作台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "当前稿件编辑工作区" })).toBeVisible();
   await expect(page.locator("body")).toContainText(prepared.manuscriptId);
   await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
-  const journalPanel = page
-    .locator(".manuscript-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "期刊模板" }) });
-  const journalSelect = journalPanel.getByLabel("期刊模板");
+  const journalSelect = page.getByLabel("期刊模板（小期刊/场景）");
 
   await expect(journalSelect).toBeVisible();
   await journalSelect.selectOption({ label: prepared.journalName });
-  await journalPanel.getByRole("button", { name: "保存模板上下文" }).click();
+  await page
+    .getByRole("button", {
+      name: /保存模板上下文|确认当前模板上下文|保存人工修正/,
+    })
+    .click();
 
   await expect(page.locator("body")).toContainText(
-    `Updated template context for ${prepared.manuscriptId}`,
+    `已保存 ${prepared.manuscriptId} 的人工模板修正`,
   );
   await expect(page.locator("body")).toContainText(prepared.journalName);
   await expect(page.locator("body")).toContainText("期刊覆写");
-  await expect(page.locator("body")).toContainText("Active");
 
-  const parentAssetSelect = page.getByLabel("父资产");
-  await expect(parentAssetSelect).toBeVisible();
-  await expect(parentAssetSelect).not.toHaveValue("");
+  const inputAssetSelect = page.getByLabel("输入稿件资产");
+  await expect(inputAssetSelect).toBeVisible();
+  await expect(inputAssetSelect).not.toHaveValue("");
 
   const manuscriptResponse = await request.get(
     `${apiBaseUrl}/api/v1/manuscripts/${prepared.manuscriptId}`,
@@ -225,7 +145,7 @@ test("editing workbench saves a journal template context before running editing"
 
   await page.getByRole("button", { name: "执行编辑" }).click();
 
-  await expect(page.locator("body")).toContainText("Created asset");
+  await expect(page.locator("body")).toContainText("已生成资产");
   await expect(page.locator("body")).toContainText(prepared.journalName);
 });
 

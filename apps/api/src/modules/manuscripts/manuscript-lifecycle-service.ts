@@ -54,6 +54,7 @@ export interface UploadManuscriptBatchResult {
 
 export interface UpdateManuscriptTemplateSelectionInput {
   manuscriptId: string;
+  templateFamilyId?: string | null;
   journalTemplateId?: string | null;
 }
 
@@ -115,6 +116,20 @@ export class ManuscriptBatchItemNotFoundError extends Error {
   constructor(batchJobId: string, itemId: string) {
     super(`Batch job ${batchJobId} does not contain item ${itemId}.`);
     this.name = "ManuscriptBatchItemNotFoundError";
+  }
+}
+
+export class ManuscriptTemplateFamilyNotFoundError extends Error {
+  constructor(templateFamilyId: string) {
+    super(`Template family ${templateFamilyId} was not found.`);
+    this.name = "ManuscriptTemplateFamilyNotFoundError";
+  }
+}
+
+export class ManuscriptTemplateFamilyNotActiveError extends Error {
+  constructor(templateFamilyId: string, status: string) {
+    super(`Template family ${templateFamilyId} is ${status} and cannot be selected.`);
+    this.name = "ManuscriptTemplateFamilyNotActiveError";
   }
 }
 
@@ -447,27 +462,81 @@ export class ManuscriptLifecycleService {
     }
 
     const timestamp = this.now().toISOString();
-    if (input.journalTemplateId === null || input.journalTemplateId === undefined) {
-      const updated: ManuscriptRecord = {
-        ...manuscript,
+    const templateFamilyRepository = this.templateFamilyRepository;
+    if (
+      (input.templateFamilyId !== undefined || input.journalTemplateId !== undefined) &&
+      !templateFamilyRepository
+    ) {
+      throw new Error("Template family repository is required for template selection.");
+    }
+
+    let updated: ManuscriptRecord = {
+      ...manuscript,
+      updated_at: timestamp,
+    };
+
+    if (input.templateFamilyId !== undefined && input.templateFamilyId !== null) {
+      const templateFamily = await templateFamilyRepository?.findById(
+        input.templateFamilyId,
+      );
+      if (!templateFamily) {
+        throw new ManuscriptTemplateFamilyNotFoundError(input.templateFamilyId);
+      }
+
+      if (templateFamily.status !== "active") {
+        throw new ManuscriptTemplateFamilyNotActiveError(
+          input.templateFamilyId,
+          templateFamily.status,
+        );
+      }
+
+      updated = {
+        ...updated,
+        manuscript_type: templateFamily.manuscript_type,
+        manuscript_type_detection_summary: reconcileDetectionSummaryWithTemplateFamily(
+          updated.manuscript_type_detection_summary,
+          templateFamily.manuscript_type,
+        ),
+        current_template_family_id: templateFamily.id,
+      };
+
+      if (updated.current_journal_template_id) {
+        const currentJournalTemplate =
+          await templateFamilyRepository?.findJournalTemplateProfileById(
+            updated.current_journal_template_id,
+          );
+        if (
+          !currentJournalTemplate ||
+          currentJournalTemplate.template_family_id !== templateFamily.id
+        ) {
+          updated = {
+            ...updated,
+            current_journal_template_id: undefined,
+          };
+        }
+      }
+    }
+
+    if (input.journalTemplateId === null) {
+      updated = {
+        ...updated,
         current_journal_template_id: undefined,
-        updated_at: timestamp,
       };
       await this.manuscriptRepository.save(updated);
       return updated;
     }
 
-    const templateFamilyRepository = this.templateFamilyRepository;
-    if (!templateFamilyRepository) {
-      throw new Error("Template family repository is required for journal template selection.");
+    if (input.journalTemplateId === undefined) {
+      await this.manuscriptRepository.save(updated);
+      return updated;
     }
 
-    if (!manuscript.current_template_family_id) {
+    if (!updated.current_template_family_id) {
       throw new ManuscriptTemplateFamilyNotConfiguredError(input.manuscriptId);
     }
 
     const journalTemplate =
-      await templateFamilyRepository.findJournalTemplateProfileById(
+      await templateFamilyRepository?.findJournalTemplateProfileById(
         input.journalTemplateId,
       );
     if (!journalTemplate) {
@@ -481,18 +550,17 @@ export class ManuscriptLifecycleService {
       );
     }
 
-    if (journalTemplate.template_family_id !== manuscript.current_template_family_id) {
+    if (journalTemplate.template_family_id !== updated.current_template_family_id) {
       throw new ManuscriptJournalTemplateFamilyMismatchError(
         input.journalTemplateId,
-        manuscript.current_template_family_id,
+        updated.current_template_family_id,
         journalTemplate.template_family_id,
       );
     }
 
-    const updated: ManuscriptRecord = {
-      ...manuscript,
+    updated = {
+      ...updated,
       current_journal_template_id: input.journalTemplateId,
-      updated_at: timestamp,
     };
     await this.manuscriptRepository.save(updated);
     return updated;
@@ -789,4 +857,18 @@ function mapBatchLifecycleStatusToJobStatus(
     case "cancelled":
       return "cancelled";
   }
+}
+
+function reconcileDetectionSummaryWithTemplateFamily(
+  detectionSummary: ManuscriptTypeDetectionSummary | undefined,
+  manuscriptType: ManuscriptType,
+): ManuscriptTypeDetectionSummary | undefined {
+  if (!detectionSummary) {
+    return undefined;
+  }
+
+  return {
+    ...detectionSummary,
+    final_type: manuscriptType,
+  };
 }

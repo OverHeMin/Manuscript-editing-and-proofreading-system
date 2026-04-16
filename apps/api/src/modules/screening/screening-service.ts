@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ModuleExecutionMode } from "@medical/contracts";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -16,6 +17,7 @@ import type {
 import type { EditorialSourceBlockResolver } from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
+import type { RecordKnowledgeHitInput } from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
@@ -28,12 +30,16 @@ import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
+  resolveBareModuleContext,
+} from "../shared/bare-module-context-resolver.ts";
+import {
   resolveGovernedAgentContext,
 } from "../shared/governed-agent-context-resolver.ts";
 import {
   dispatchGovernedOrchestrationBestEffort,
   type GovernedExecutionOrchestrationDispatcher,
   type ModuleExecutionResult,
+  resolveModuleExecutionMode,
 } from "../shared/module-run-support.ts";
 import {
   createWriteTransactionManager,
@@ -49,6 +55,7 @@ export interface RunScreeningInput {
   actorRole: RoleKey;
   storageKey: string;
   fileName?: string;
+  executionMode?: ModuleExecutionMode;
 }
 
 export interface ScreeningServiceOptions {
@@ -191,6 +198,7 @@ export class ScreeningService {
 
   async run(input: RunScreeningInput): Promise<ScreeningRunResult> {
     this.permissionGuard.assert(input.actorRole, "workbench.screening");
+    const executionMode = resolveModuleExecutionMode(input.executionMode);
 
     const committed = await this.transactionManager.withTransaction(async (context) => {
       const { jobRepository } = context;
@@ -204,53 +212,141 @@ export class ScreeningService {
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
-      const governedContext = await resolveGovernedAgentContext({
-        manuscriptId: input.manuscriptId,
-        module: "screening",
-        jobId,
-        actorId: input.requestedBy,
-        actorRole: input.actorRole,
-        manuscriptRepository: this.manuscriptRepository,
-        moduleTemplateRepository: this.moduleTemplateRepository,
-        executionGovernanceService: this.executionGovernanceService,
-        promptSkillRegistryRepository: this.promptSkillRegistryRepository,
-        knowledgeRepository: this.knowledgeRepository,
-        aiGatewayService: this.aiGatewayService,
-        retrievalPresetService: this.retrievalPresetService,
-        manualReviewPolicyService: this.manualReviewPolicyService,
-        sandboxProfileService: this.sandboxProfileService,
-        agentProfileService: this.agentProfileService,
-        agentRuntimeService: this.agentRuntimeService,
-        runtimeBindingService: this.runtimeBindingService,
-        runtimeBindingReadinessService: this.runtimeBindingReadinessService,
-        aiProviderRuntimeService: this.aiProviderRuntimeService,
-        aiProviderRuntimeCutoverEnabled: this.aiProviderRuntimeCutoverEnabled,
-        toolPermissionPolicyService: this.toolPermissionPolicyService,
-      });
-      const moduleContext = governedContext.moduleContext;
-      const executionLog = await this.agentExecutionService.createLog({
-        manuscriptId: input.manuscriptId,
-        module: "screening",
-        triggeredBy: input.requestedBy,
-        runtimeId: governedContext.runtime.id,
-        sandboxProfileId: governedContext.sandboxProfile.id,
-        agentProfileId: governedContext.agentProfile.id,
-        runtimeBindingId: governedContext.runtimeBinding.id,
-        toolPermissionPolicyId: governedContext.toolPolicy.id,
-        routingPolicyVersionId: moduleContext.modelSelection.policy_version_id,
-        routingPolicyScopeKind: moduleContext.modelSelection.policy_scope_kind,
-        routingPolicyScopeValue: moduleContext.modelSelection.policy_scope_value,
-        resolvedModelId: moduleContext.modelSelection.model.id,
-        knowledgeItemIds: moduleContext.knowledgeSelections.map(
-          (selection) => selection.knowledgeItem.id,
-        ),
-        verificationCheckProfileIds:
-          governedContext.verificationExpectations.verification_check_profile_ids,
-        evaluationSuiteIds:
-          governedContext.verificationExpectations.evaluation_suite_ids,
-        releaseCheckProfileId:
-          governedContext.verificationExpectations.release_check_profile_id,
-      });
+      let normalizedContext: {
+        executionProfileId: string;
+        templateId: string;
+        moduleTemplateVersionNo: number;
+        promptTemplateId: string;
+        promptTemplateVersion: string;
+        skillPackageIds: string[];
+        skillPackageVersions: string[];
+        knowledgeHits: RecordKnowledgeHitInput[];
+        modelSelection: Awaited<ReturnType<AiGatewayService["resolveModelSelection"]>>;
+        verificationCheckProfileIds: string[];
+        evaluationSuiteIds: string[];
+        releaseCheckProfileId?: string;
+        qualityPackageVersionIds?: string[];
+        agentRuntimeId?: string;
+        sandboxProfileId?: string;
+        agentProfileId?: string;
+        runtimeBindingId?: string;
+        toolPermissionPolicyId?: string;
+      };
+      if (executionMode === "bare") {
+        const bareContext = await resolveBareModuleContext({
+          manuscriptId: input.manuscriptId,
+          module: "screening",
+          jobId,
+          actorId: input.requestedBy,
+          actorRole: input.actorRole,
+          manuscriptRepository: this.manuscriptRepository,
+          aiGatewayService: this.aiGatewayService,
+        });
+        normalizedContext = {
+          executionProfileId: bareContext.executionProfileId,
+          templateId: bareContext.moduleTemplateId,
+          moduleTemplateVersionNo: bareContext.moduleTemplateVersionNo,
+          promptTemplateId: bareContext.promptTemplateId,
+          promptTemplateVersion: bareContext.promptTemplateVersion,
+          skillPackageIds: bareContext.skillPackageIds,
+          skillPackageVersions: bareContext.skillPackageVersions,
+          knowledgeHits: bareContext.knowledgeHits,
+          modelSelection: bareContext.modelSelection,
+          verificationCheckProfileIds: bareContext.verificationCheckProfileIds,
+          evaluationSuiteIds: bareContext.evaluationSuiteIds,
+          qualityPackageVersionIds: bareContext.qualityPackageVersionIds,
+        };
+      } else {
+        const governedContext = await resolveGovernedAgentContext({
+          manuscriptId: input.manuscriptId,
+          module: "screening",
+          jobId,
+          actorId: input.requestedBy,
+          actorRole: input.actorRole,
+          manuscriptRepository: this.manuscriptRepository,
+          moduleTemplateRepository: this.moduleTemplateRepository,
+          executionGovernanceService: this.executionGovernanceService,
+          promptSkillRegistryRepository: this.promptSkillRegistryRepository,
+          knowledgeRepository: this.knowledgeRepository,
+          aiGatewayService: this.aiGatewayService,
+          retrievalPresetService: this.retrievalPresetService,
+          manualReviewPolicyService: this.manualReviewPolicyService,
+          sandboxProfileService: this.sandboxProfileService,
+          agentProfileService: this.agentProfileService,
+          agentRuntimeService: this.agentRuntimeService,
+          runtimeBindingService: this.runtimeBindingService,
+          runtimeBindingReadinessService: this.runtimeBindingReadinessService,
+          aiProviderRuntimeService: this.aiProviderRuntimeService,
+          aiProviderRuntimeCutoverEnabled: this.aiProviderRuntimeCutoverEnabled,
+          toolPermissionPolicyService: this.toolPermissionPolicyService,
+        });
+        normalizedContext = {
+          executionProfileId: governedContext.executionProfile.id,
+          templateId: governedContext.moduleContext.moduleTemplate.id,
+          moduleTemplateVersionNo:
+            governedContext.moduleContext.moduleTemplate.version_no,
+          promptTemplateId: governedContext.moduleContext.promptTemplate.id,
+          promptTemplateVersion:
+            governedContext.moduleContext.promptTemplate.version,
+          skillPackageIds: governedContext.moduleContext.skillPackages.map(
+            (record) => record.id,
+          ),
+          skillPackageVersions: governedContext.moduleContext.skillPackages.map(
+            (record) => record.version,
+          ),
+          knowledgeHits: governedContext.moduleContext.knowledgeSelections.map(
+            (selection) => ({
+              knowledgeItemId: selection.knowledgeItem.id,
+              matchSourceId: selection.matchSourceId,
+              bindingRuleId: selection.bindingRuleId,
+              matchSource: selection.matchSource,
+              matchReasons: selection.matchReasons,
+            }),
+          ),
+          modelSelection: governedContext.moduleContext.modelSelection,
+          verificationCheckProfileIds:
+            governedContext.verificationExpectations
+              .verification_check_profile_ids,
+          evaluationSuiteIds:
+            governedContext.verificationExpectations.evaluation_suite_ids,
+          releaseCheckProfileId:
+            governedContext.verificationExpectations.release_check_profile_id,
+          qualityPackageVersionIds:
+            governedContext.runtimeBinding.quality_package_version_ids,
+          agentRuntimeId: governedContext.runtime.id,
+          sandboxProfileId: governedContext.sandboxProfile.id,
+          agentProfileId: governedContext.agentProfile.id,
+          runtimeBindingId: governedContext.runtimeBinding.id,
+          toolPermissionPolicyId: governedContext.toolPolicy.id,
+        };
+      }
+      const executionLog =
+        executionMode === "bare"
+          ? undefined
+          : await this.agentExecutionService.createLog({
+              manuscriptId: input.manuscriptId,
+              module: "screening",
+              triggeredBy: input.requestedBy,
+              runtimeId: normalizedContext.agentRuntimeId!,
+              sandboxProfileId: normalizedContext.sandboxProfileId!,
+              agentProfileId: normalizedContext.agentProfileId!,
+              runtimeBindingId: normalizedContext.runtimeBindingId!,
+              toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId!,
+              routingPolicyVersionId:
+                normalizedContext.modelSelection.policy_version_id,
+              routingPolicyScopeKind:
+                normalizedContext.modelSelection.policy_scope_kind,
+              routingPolicyScopeValue:
+                normalizedContext.modelSelection.policy_scope_value,
+              resolvedModelId: normalizedContext.modelSelection.model.id,
+              knowledgeItemIds: normalizedContext.knowledgeHits.map(
+                (selection) => selection.knowledgeItemId,
+              ),
+              verificationCheckProfileIds:
+                normalizedContext.verificationCheckProfileIds,
+              evaluationSuiteIds: normalizedContext.evaluationSuiteIds,
+              releaseCheckProfileId: normalizedContext.releaseCheckProfileId,
+            });
 
       const queuedJob: JobRecord = {
         id: jobId,
@@ -260,20 +356,45 @@ export class ScreeningService {
         status: "queued",
         requested_by: input.requestedBy,
         payload: {
-          templateId: moduleContext.moduleTemplate.id,
-          executionProfileId: governedContext.executionProfile.id,
-          promptTemplateId: moduleContext.promptTemplate.id,
-          skillPackageIds: moduleContext.skillPackages.map((record) => record.id),
-          knowledgeItemIds: moduleContext.knowledgeSelections.map(
-            (selection) => selection.knowledgeItem.id,
+          templateId: normalizedContext.templateId,
+          executionProfileId: normalizedContext.executionProfileId,
+          promptTemplateId: normalizedContext.promptTemplateId,
+          skillPackageIds: normalizedContext.skillPackageIds,
+          knowledgeItemIds: normalizedContext.knowledgeHits.map(
+            (selection) => selection.knowledgeItemId,
           ),
-          modelId: moduleContext.modelSelection.model.id,
-          agentRuntimeId: governedContext.runtime.id,
-          sandboxProfileId: governedContext.sandboxProfile.id,
-          agentProfileId: governedContext.agentProfile.id,
-          runtimeBindingId: governedContext.runtimeBinding.id,
-          toolPermissionPolicyId: governedContext.toolPolicy.id,
-          agentExecutionLogId: executionLog.id,
+          modelId: normalizedContext.modelSelection.model.id,
+          ...(executionMode === "bare" ? { executionMode } : {}),
+          ...(normalizedContext.agentRuntimeId
+            ? {
+                agentRuntimeId: normalizedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(normalizedContext.sandboxProfileId
+            ? {
+                sandboxProfileId: normalizedContext.sandboxProfileId,
+              }
+            : {}),
+          ...(normalizedContext.agentProfileId
+            ? {
+                agentProfileId: normalizedContext.agentProfileId,
+              }
+            : {}),
+          ...(normalizedContext.runtimeBindingId
+            ? {
+                runtimeBindingId: normalizedContext.runtimeBindingId,
+              }
+            : {}),
+          ...(normalizedContext.toolPermissionPolicyId
+            ? {
+                toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId,
+              }
+            : {}),
+          ...(executionLog
+            ? {
+                agentExecutionLogId: executionLog.id,
+              }
+            : {}),
           parentAssetId: input.parentAssetId,
         },
         attempt_count: 0,
@@ -297,8 +418,7 @@ export class ScreeningService {
         manuscriptId: input.manuscriptId,
         assetId: input.parentAssetId,
         tableSnapshots: documentStructureSnapshot?.tables ?? [],
-        qualityPackageVersionIds:
-          governedContext.runtimeBinding.quality_package_version_ids,
+        qualityPackageVersionIds: normalizedContext.qualityPackageVersionIds,
       });
       const medicalReviewSignals = buildMedicalReviewSignals(qualityRun?.issues);
 
@@ -317,35 +437,35 @@ export class ScreeningService {
         manuscriptId: input.manuscriptId,
         module: "screening",
         jobId,
-        executionProfileId: governedContext.executionProfile.id,
-        moduleTemplateId: moduleContext.moduleTemplate.id,
-        moduleTemplateVersionNo: moduleContext.moduleTemplate.version_no,
-        promptTemplateId: moduleContext.promptTemplate.id,
-        promptTemplateVersion: moduleContext.promptTemplate.version,
-        skillPackageIds: moduleContext.skillPackages.map((record) => record.id),
-        skillPackageVersions: moduleContext.skillPackages.map(
-          (record) => record.version,
-        ),
-        modelId: moduleContext.modelSelection.model.id,
-        modelVersion: moduleContext.modelSelection.model.model_version,
+        executionProfileId: normalizedContext.executionProfileId,
+        moduleTemplateId: normalizedContext.templateId,
+        moduleTemplateVersionNo: normalizedContext.moduleTemplateVersionNo,
+        promptTemplateId: normalizedContext.promptTemplateId,
+        promptTemplateVersion: normalizedContext.promptTemplateVersion,
+        skillPackageIds: normalizedContext.skillPackageIds,
+        skillPackageVersions: normalizedContext.skillPackageVersions,
+        modelId: normalizedContext.modelSelection.model.id,
+        modelVersion: normalizedContext.modelSelection.model.model_version,
         qualityPackages: qualityRun?.resolved_quality_packages,
         createdAssetIds: [asset.id],
-        agentExecutionLogId: executionLog.id,
+        agentExecutionLogId: executionLog?.id,
         qualityFindingsSummary: qualityRun
           ? structuredClone(qualityRun.quality_findings_summary)
           : undefined,
-        knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
-          knowledgeItemId: selection.knowledgeItem.id,
+        knowledgeHits: normalizedContext.knowledgeHits.map((selection) => ({
+          knowledgeItemId: selection.knowledgeItemId,
           matchSourceId: selection.matchSourceId,
           bindingRuleId: selection.bindingRuleId,
           matchSource: selection.matchSource,
           matchReasons: selection.matchReasons,
         })),
       });
-      await this.agentExecutionService.completeLog({
-        logId: executionLog.id,
-        executionSnapshotId: snapshot.id,
-      });
+      if (executionLog) {
+        await this.agentExecutionService.completeLog({
+          logId: executionLog.id,
+          executionSnapshotId: snapshot.id,
+        });
+      }
 
       const completedJob: JobRecord = {
         ...queuedJob,
@@ -381,22 +501,34 @@ export class ScreeningService {
       await jobRepository.save(completedJob);
 
       return {
-        agentExecutionLogId: executionLog.id,
+        agentExecutionLogId: executionLog?.id,
         response: {
           job: completedJob,
           asset,
-          template_id: moduleContext.moduleTemplate.id,
-          execution_profile_id: governedContext.executionProfile.id,
-          prompt_template_id: moduleContext.promptTemplate.id,
-          skill_package_ids: moduleContext.skillPackages.map((record) => record.id),
+          template_id: normalizedContext.templateId,
+          execution_profile_id: normalizedContext.executionProfileId,
+          prompt_template_id: normalizedContext.promptTemplateId,
+          skill_package_ids: normalizedContext.skillPackageIds,
           snapshot_id: snapshot.id,
-          knowledge_item_ids: moduleContext.knowledgeSelections.map(
-            (selection) => selection.knowledgeItem.id,
+          knowledge_item_ids: normalizedContext.knowledgeHits.map(
+            (selection) => selection.knowledgeItemId,
           ),
-          model_id: moduleContext.modelSelection.model.id,
-          agent_runtime_id: governedContext.runtime.id,
-          agent_profile_id: governedContext.agentProfile.id,
-          agent_execution_log_id: executionLog.id,
+          model_id: normalizedContext.modelSelection.model.id,
+          ...(normalizedContext.agentRuntimeId
+            ? {
+                agent_runtime_id: normalizedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(normalizedContext.agentProfileId
+            ? {
+                agent_profile_id: normalizedContext.agentProfileId,
+              }
+            : {}),
+          ...(executionLog
+            ? {
+                agent_execution_log_id: executionLog.id,
+              }
+            : {}),
         },
       };
     });

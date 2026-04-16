@@ -1,3 +1,4 @@
+import type { GovernedExecutionContextSummary } from "@medical/contracts";
 import {
   DocumentAssetService,
   ManuscriptNotFoundError,
@@ -24,6 +25,7 @@ import type {
 import type { ManuscriptRecord, ManuscriptViewRecord } from "./manuscript-record.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { ExecutionGovernanceRepository } from "../execution-governance/execution-governance-repository.ts";
+import type { ExecutionResolutionService } from "../execution-resolution/execution-resolution-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
 import type {
@@ -47,6 +49,7 @@ import {
   type ExecutionTrackingSnapshotViewOptions,
 } from "../execution-tracking/execution-tracking-api.ts";
 import { DEFAULT_RUNNING_ATTEMPT_STALE_AFTER_MS } from "../agent-execution/agent-execution-view.ts";
+import { GOVERNED_MANUSCRIPT_MAINLINE_MODULES } from "../shared/module-run-support.ts";
 
 const MAINLINE_ATTEMPT_LEDGER_VISIBLE_LIMIT = 9;
 
@@ -73,6 +76,10 @@ export interface CreateManuscriptApiOptions {
     ExecutionGovernanceRepository,
     "findProfileById"
   >;
+  executionResolutionService?: Pick<
+    ExecutionResolutionService,
+    "resolveOperatorSummary"
+  >;
   runtimeBindingReadinessService?: Pick<
     RuntimeBindingReadinessService,
     "getActiveBindingReadinessForScope"
@@ -98,7 +105,13 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
 
       return {
         status: 201,
-        body: result,
+        body: {
+          ...result,
+          manuscript: await withGovernedExecutionContextSummary(
+            result.manuscript,
+            options.executionResolutionService,
+          ),
+        },
       };
     },
 
@@ -111,7 +124,18 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
 
       return {
         status: 201,
-        body: result,
+        body: {
+          ...result,
+          items: await Promise.all(
+            result.items.map(async (item) => ({
+              ...item,
+              manuscript: await withGovernedExecutionContextSummary(
+                item.manuscript,
+                options.executionResolutionService,
+              ),
+            })),
+          ),
+        },
       };
     },
 
@@ -131,6 +155,7 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
         body: await enrichManuscriptView(manuscript, {
           manuscriptService,
           assetService,
+          executionResolutionService: options.executionResolutionService,
           executionTrackingService: options.executionTrackingService,
           executionTrackingViewOptions: {
             executionGovernanceRepository: options.executionGovernanceRepository,
@@ -145,13 +170,16 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
 
     async updateTemplateSelection({
       manuscriptId,
+      templateFamilyId,
       journalTemplateId,
     }: {
       manuscriptId: string;
+      templateFamilyId?: string | null;
       journalTemplateId?: string | null;
     }): Promise<RouteResponse<ManuscriptViewRecord>> {
       const manuscript = await manuscriptService.updateTemplateSelection({
         manuscriptId,
+        templateFamilyId,
         journalTemplateId,
       });
 
@@ -160,6 +188,7 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
         body: await enrichManuscriptView(manuscript, {
           manuscriptService,
           assetService,
+          executionResolutionService: options.executionResolutionService,
           executionTrackingService: options.executionTrackingService,
           executionTrackingViewOptions: {
             executionGovernanceRepository: options.executionGovernanceRepository,
@@ -224,6 +253,10 @@ async function enrichManuscriptView(
   input: {
     manuscriptService: Pick<ManuscriptLifecycleService, "listJobsByManuscriptId">;
     assetService: Pick<DocumentAssetService, "listAssets">;
+    executionResolutionService?: Pick<
+      ExecutionResolutionService,
+      "resolveOperatorSummary"
+    >;
     executionTrackingService?: Pick<
       ExecutionTrackingService,
       "listSnapshotsByManuscriptId"
@@ -262,7 +295,7 @@ async function enrichManuscriptView(
     const readinessSummary = deriveManuscriptMainlineReadinessSummary(overview);
     const attemptLedger = buildFailedOpenMainlineAttemptLedger(message);
 
-    return {
+    return withGovernedExecutionContextSummary({
       ...manuscript,
       result_asset_matrix: resultAssetMatrix,
       ...(currentExportSelection
@@ -277,7 +310,7 @@ async function enrichManuscriptView(
           attemptLedger,
         }),
       mainline_attempt_ledger: attemptLedger,
-    };
+    }, input.executionResolutionService);
   }
 
   let snapshotViews: ModuleExecutionSnapshotViewRecord[] = [];
@@ -389,7 +422,7 @@ async function enrichManuscriptView(
 
   const readinessSummary = deriveManuscriptMainlineReadinessSummary(overview);
 
-  return {
+  return withGovernedExecutionContextSummary({
     ...manuscript,
     result_asset_matrix: resultAssetMatrix,
     ...(currentExportSelection
@@ -403,7 +436,7 @@ async function enrichManuscriptView(
       attemptLedger,
     }),
     mainline_attempt_ledger: attemptLedger,
-  };
+  }, input.executionResolutionService);
 }
 
 async function enrichJobView(
@@ -815,4 +848,95 @@ function formatMainlineModuleLabel(module: MainlineSettlementModule): string {
   }
 
   return "Proofreading";
+}
+
+async function withGovernedExecutionContextSummary<
+  TManuscript extends ManuscriptRecord,
+>(
+  manuscript: TManuscript,
+  executionResolutionService?: Pick<
+    ExecutionResolutionService,
+    "resolveOperatorSummary"
+  >,
+): Promise<TManuscript> {
+  return {
+    ...manuscript,
+    governed_execution_context_summary:
+      await buildGovernedExecutionContextSummary(
+        manuscript,
+        executionResolutionService,
+      ),
+  } as TManuscript;
+}
+
+async function buildGovernedExecutionContextSummary(
+  manuscript: ManuscriptRecord,
+  executionResolutionService?: Pick<
+    ExecutionResolutionService,
+    "resolveOperatorSummary"
+  >,
+): Promise<GovernedExecutionContextSummary> {
+  if (!executionResolutionService) {
+    return buildFallbackGovernedExecutionContextSummary(
+      manuscript,
+      manuscript.current_template_family_id
+        ? "Execution resolution service is unavailable."
+        : undefined,
+    );
+  }
+
+  try {
+    return await executionResolutionService.resolveOperatorSummary({
+      manuscriptType: manuscript.manuscript_type,
+      baseTemplateFamilyId: manuscript.current_template_family_id,
+      journalTemplateId: manuscript.current_journal_template_id,
+    });
+  } catch (error) {
+    return buildFallbackGovernedExecutionContextSummary(
+      manuscript,
+      error instanceof Error
+        ? error.message
+        : "Unknown governed execution summary error.",
+    );
+  }
+}
+
+function buildFallbackGovernedExecutionContextSummary(
+  manuscript: ManuscriptRecord,
+  error?: string,
+): GovernedExecutionContextSummary {
+  if (!manuscript.current_template_family_id) {
+    return {
+      observation_status: "reported",
+      manuscript_type: manuscript.manuscript_type,
+      journal_template_selection_state: manuscript.current_journal_template_id
+        ? "selected"
+        : "base_family_only",
+      ...(manuscript.current_journal_template_id
+        ? { journal_template_id: manuscript.current_journal_template_id }
+        : {}),
+      modules: GOVERNED_MANUSCRIPT_MAINLINE_MODULES.map((module) => ({
+        module,
+        status: "not_configured",
+      })),
+    };
+  }
+
+  return {
+    observation_status: "failed_open",
+    manuscript_type: manuscript.manuscript_type,
+    base_template_family_id: manuscript.current_template_family_id,
+    journal_template_selection_state: manuscript.current_journal_template_id
+      ? "selected"
+      : "base_family_only",
+    ...(manuscript.current_journal_template_id
+      ? { journal_template_id: manuscript.current_journal_template_id }
+      : {}),
+    modules: GOVERNED_MANUSCRIPT_MAINLINE_MODULES.map((module) => ({
+      module,
+      status: "failed_open",
+      ...(error ? { error } : {}),
+    })),
+    ...(error ? { error } : {}),
+  };
 }

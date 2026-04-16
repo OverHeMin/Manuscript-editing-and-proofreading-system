@@ -62,13 +62,28 @@ export function KnowledgeLibrarySemanticSection({
         </div>
 
         <div className="knowledge-library-semantic-section__actions">
-          <button type="button" onClick={onGenerate} disabled={isBusy || !canGenerate}>
+          <button
+            type="button"
+            data-semantic-action="generate"
+            onClick={onGenerate}
+            disabled={isBusy || !canGenerate}
+          >
             生成AI语义
           </button>
-          <button type="button" onClick={onGenerate} disabled={isBusy || !canGenerate}>
+          <button
+            type="button"
+            data-semantic-action="regenerate"
+            onClick={onGenerate}
+            disabled={isBusy || !canGenerate}
+          >
             重新生成
           </button>
-          <button type="button" onClick={onApply} disabled={isBusy || !canApply}>
+          <button
+            type="button"
+            data-semantic-action="apply"
+            onClick={onApply}
+            disabled={isBusy || !canApply}
+          >
             应用建议
           </button>
         </div>
@@ -87,9 +102,13 @@ export function KnowledgeLibrarySemanticSection({
         </ul>
       ) : null}
 
-      <label className="knowledge-library-semantic-section__field">
+      <label
+        className="knowledge-library-semantic-section__field"
+        data-semantic-field="page-summary"
+      >
         <span>语义摘要</span>
         <textarea
+          data-semantic-field="page-summary"
           rows={4}
           value={pageSummary}
           onChange={(event) => onPageSummaryChange(event.target.value)}
@@ -99,6 +118,7 @@ export function KnowledgeLibrarySemanticSection({
 
       <RepeatableFieldEditor
         title="检索词"
+        fieldKey="retrieval-terms"
         values={retrievalTerms}
         addLabel="新增检索词"
         onAdd={onAddRetrievalTerm}
@@ -108,6 +128,7 @@ export function KnowledgeLibrarySemanticSection({
 
       <RepeatableFieldEditor
         title="别名 / 同义词"
+        fieldKey="aliases"
         values={aliases}
         addLabel="新增别名"
         onAdd={onAddAlias}
@@ -117,6 +138,7 @@ export function KnowledgeLibrarySemanticSection({
 
       <RepeatableFieldEditor
         title="适用场景"
+        fieldKey="scenarios"
         values={scenarios}
         addLabel="新增场景"
         onAdd={onAddScenario}
@@ -126,6 +148,7 @@ export function KnowledgeLibrarySemanticSection({
 
       <RepeatableFieldEditor
         title="风险标签"
+        fieldKey="risk-tags"
         values={riskTags}
         addLabel="新增风险标签"
         onAdd={onAddRiskTag}
@@ -138,6 +161,7 @@ export function KnowledgeLibrarySemanticSection({
 
 interface RepeatableFieldEditorProps {
   title: string;
+  fieldKey: string;
   values: readonly string[];
   addLabel: string;
   onAdd: () => void;
@@ -147,6 +171,7 @@ interface RepeatableFieldEditorProps {
 
 function RepeatableFieldEditor({
   title,
+  fieldKey,
   values,
   addLabel,
   onAdd,
@@ -154,7 +179,10 @@ function RepeatableFieldEditor({
   onRemove,
 }: RepeatableFieldEditorProps) {
   return (
-    <section className="knowledge-library-semantic-section__repeatable">
+    <section
+      className="knowledge-library-semantic-section__repeatable"
+      data-semantic-field={fieldKey}
+    >
       <div className="knowledge-library-semantic-section__repeatable-header">
         <span>{title}</span>
         <button type="button" onClick={onAdd}>
@@ -164,8 +192,12 @@ function RepeatableFieldEditor({
 
       <div className="knowledge-library-semantic-section__repeatable-list">
         {values.map((value, index) => (
-          <div key={`${title}-${index}`} className="knowledge-library-semantic-section__repeatable-row">
+          <div
+            key={`${fieldKey}-${index}`}
+            className="knowledge-library-semantic-section__repeatable-row"
+          >
             <input
+              data-semantic-value={`${fieldKey}-${index}`}
               value={value}
               onChange={(event) => onChange(index, event.target.value)}
             />

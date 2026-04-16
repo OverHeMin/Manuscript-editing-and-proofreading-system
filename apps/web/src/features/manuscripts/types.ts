@@ -1,4 +1,5 @@
 import type {
+  GovernedExecutionContextSummary,
   ManuscriptType as SharedManuscriptType,
   ManuscriptTypeDetectionSummary,
 } from "@medical/contracts";
@@ -324,6 +325,7 @@ export interface ManuscriptViewModel {
   title: string;
   manuscript_type: ManuscriptType;
   manuscript_type_detection_summary?: ManuscriptTypeDetectionSummary;
+  governed_execution_context_summary?: GovernedExecutionContextSummary;
   status: ManuscriptStatus;
   created_by: string;
   current_screening_asset_id?: string;

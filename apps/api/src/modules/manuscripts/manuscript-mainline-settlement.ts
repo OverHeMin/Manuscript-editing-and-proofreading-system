@@ -212,6 +212,17 @@ export function deriveModuleMainlineSettlement(input: {
 
   const observation = latestSnapshot.agent_execution;
   if (observation.observation_status !== "reported" || !observation.log) {
+    if (isBareExecutionSettledCandidate({ latestJob, latestSnapshot })) {
+      return {
+        derived_status: "business_completed_settled",
+        business_completed: true,
+        orchestration_completed: true,
+        attention_required: false,
+        reason:
+          "Business execution completed in one-time bare mode without governed follow-up.",
+      };
+    }
+
     return {
       derived_status: "business_completed_unlinked",
       business_completed: true,
@@ -314,10 +325,7 @@ export function deriveManuscriptMainlineReadinessSummary(
         observation_status: "reported",
         derived_status: "ready_for_next_step",
         next_module: module,
-        reason: `The manuscript is ready for governed ${module}ing.`.replace(
-          "proofreadinging",
-          "proofreading",
-        ),
+        reason: formatReadyForGovernedModuleReason(module),
       };
     }
 
@@ -427,6 +435,48 @@ function formatMainlineModuleLabel(module: MainlineSettlementModule): string {
   }
 
   return "Proofreading";
+}
+
+function isBareExecutionSettledCandidate(input: {
+  latestJob?: JobRecord;
+  latestSnapshot?: ModuleExecutionSnapshotViewRecord;
+}): boolean {
+  if (
+    !input.latestJob ||
+    !input.latestSnapshot ||
+    input.latestJob.status !== "completed"
+  ) {
+    return false;
+  }
+
+  if (input.latestJob.payload?.executionMode !== "bare") {
+    return false;
+  }
+
+  const outputAssetId =
+    typeof input.latestJob.payload?.outputAssetId === "string"
+      ? input.latestJob.payload.outputAssetId
+      : undefined;
+
+  if (!outputAssetId) {
+    return false;
+  }
+
+  return input.latestSnapshot.created_asset_ids.includes(outputAssetId);
+}
+
+function formatReadyForGovernedModuleReason(
+  module: MainlineSettlementModule,
+): string {
+  if (module === "screening") {
+    return "The manuscript is ready for governed screening.";
+  }
+
+  if (module === "editing") {
+    return "The manuscript is ready for governed editing.";
+  }
+
+  return "The manuscript is ready for governed proofreading.";
 }
 
 function deriveManuscriptMainlineAttentionHandoffPackUnsafe(input: {

@@ -1,3 +1,5 @@
+import type { LearningCandidateViewModel } from "../learning-review/index.ts";
+
 export type TemplateGovernanceLedgerDensity = "compact" | "comfortable";
 
 export type TemplateGovernanceRuleLedgerAssetKind =
@@ -22,6 +24,7 @@ export interface TemplateGovernanceRuleLedgerRow {
   publish_status: string;
   contributor_label: string;
   updated_at?: string;
+  learning_candidate?: LearningCandidateViewModel;
 }
 
 export interface TemplateGovernanceRuleLedgerSummary {

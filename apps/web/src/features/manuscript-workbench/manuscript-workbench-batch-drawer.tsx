@@ -9,11 +9,15 @@ export interface ManuscriptWorkbenchBatchDrawerProps {
 
 export function ManuscriptWorkbenchBatchDrawer({
   mode,
-  sectionCount,
+  sectionCount: _sectionCount,
   children,
 }: ManuscriptWorkbenchBatchDrawerProps) {
   return (
-    <aside className="manuscript-workbench-batch-drawer">
+    <aside
+      className="manuscript-workbench-batch-drawer"
+      data-batch-slab="bounded"
+      data-batch-mode={mode}
+    >
       <header className="manuscript-workbench-batch-drawer-header">
         <div>
           <span className="manuscript-workbench-section-eyebrow">辅助抽屉</span>
@@ -21,13 +25,6 @@ export function ManuscriptWorkbenchBatchDrawer({
           <p>{resolveDrawerDescription(mode)}</p>
         </div>
       </header>
-
-      <div className="manuscript-workbench-batch-drawer-trigger">
-        <button type="button" aria-expanded="true">
-          批量处理
-        </button>
-        <span>{sectionCount > 0 ? `已收纳 ${sectionCount} 组辅助动作` : "选择稿件后在此展开更多动作"}</span>
-      </div>
 
       <div className="manuscript-workbench-batch-drawer-body">
         {children}

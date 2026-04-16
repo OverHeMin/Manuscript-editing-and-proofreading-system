@@ -1,10 +1,14 @@
 import type {
   RuleWizardBindingFormState,
+  RuleWizardConfirmFormState,
+  RuleWizardEntryFormState,
   RuleWizardPublishFormState,
 } from "./template-governance-rule-wizard-api.ts";
 
 export interface TemplateGovernanceRuleWizardStepPublishProps {
   value: RuleWizardPublishFormState;
+  entryState: RuleWizardEntryFormState;
+  confirmState: RuleWizardConfirmFormState;
   bindingState: RuleWizardBindingFormState;
   isBusy?: boolean;
   errorMessage?: string | null;
@@ -13,11 +17,15 @@ export interface TemplateGovernanceRuleWizardStepPublishProps {
 
 export function TemplateGovernanceRuleWizardStepPublish({
   value,
+  entryState,
+  confirmState,
   bindingState,
   isBusy = false,
   errorMessage = null,
   onChange,
 }: TemplateGovernanceRuleWizardStepPublishProps) {
+  const checklist = buildChecklist(entryState, confirmState, bindingState);
+
   return (
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
@@ -40,6 +48,54 @@ export function TemplateGovernanceRuleWizardStepPublish({
               : "尚未选择模板族"}
           </p>
         </div>
+      </div>
+
+      <div className="template-governance-rule-impact-grid">
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>最终摘要</h3>
+              <p>把规则内容、语义结论和绑定去向压成最终确认页，避免提交前来回切步骤。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-impact-list">
+            <div>
+              <span>规则名称</span>
+              <strong>{entryState.title || "未填写规则名称"}</strong>
+            </div>
+            <div>
+              <span>语义摘要</span>
+              <strong>{confirmState.semanticSummary || "未确认语义摘要"}</strong>
+            </div>
+            <div>
+              <span>规则类型</span>
+              <strong>{formatRuleTypeLabel(confirmState.ruleType)}</strong>
+            </div>
+            <div>
+              <span>绑定去向</span>
+              <strong>{bindingState.selectedPackageLabel || "待选择规则包"}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>提交前检查</h3>
+              <p>用最小检查单确认录入、语义和绑定都已经闭环。</p>
+            </div>
+          </header>
+          <ul className="template-governance-list">
+            {checklist.map((item) => (
+              <li key={item.label}>
+                <div className="template-governance-list-button">
+                  <span>{item.label}</span>
+                  <small>{item.done ? "已完成" : "待补充"}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
 
       <div className="template-governance-detail-grid">
@@ -97,4 +153,46 @@ export function TemplateGovernanceRuleWizardStepPublish({
       </div>
     </article>
   );
+}
+
+function buildChecklist(
+  entryState: RuleWizardEntryFormState,
+  confirmState: RuleWizardConfirmFormState,
+  bindingState: RuleWizardBindingFormState,
+): Array<{ label: string; done: boolean }> {
+  return [
+    {
+      label: "基础录入已补齐正文或来源依据",
+      done:
+        entryState.ruleBody.trim().length > 0 || entryState.sourceBasis.trim().length > 0,
+    },
+    {
+      label: "语义摘要已人工确认",
+      done: confirmState.semanticSummary.trim().length > 0,
+    },
+    {
+      label: "规则包去向已选择",
+      done: bindingState.selectedPackageLabel.trim().length > 0,
+    },
+    {
+      label: "模板族绑定已确认",
+      done: bindingState.selectedTemplateFamilies.length > 0,
+    },
+  ];
+}
+
+function formatRuleTypeLabel(value: RuleWizardConfirmFormState["ruleType"]): string {
+  switch (value) {
+    case "terminology_consistency":
+      return "术语统一";
+    case "format_normalization":
+      return "格式规范";
+    case "content_requirement":
+      return "内容要求";
+    case "citation_requirement":
+      return "引文要求";
+    case "other":
+    default:
+      return "其他规则";
+  }
 }

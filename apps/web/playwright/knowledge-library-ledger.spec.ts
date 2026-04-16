@@ -14,55 +14,43 @@ test("knowledge library ledger flow supports draft authoring, AI semantic assist
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Knowledge Ledger" })).toBeVisible();
-  await page.getByRole("button", { name: "New Record" }).click();
+  await expect(page.getByRole("heading", { name: "多维知识台账" })).toBeVisible();
+  await page.locator('[data-toolbar-action="create"]').click();
 
-  await page.getByLabel("Title").fill(title);
+  await page.getByLabel("标题").fill(title);
   await page
-    .getByLabel("Canonical Text")
+    .getByLabel("简要说明或标准答案")
     .fill(
       "Ledger smoke guidance: flag the interim endpoint wording before routing to specialist review.",
     );
-  await page.getByRole("button", { name: "Save Draft" }).click();
+  await page.locator('[data-board-action="confirm-entry"]').click();
 
-  await expect(page.getByText("Draft saved.")).toBeVisible();
+  await expect(page.getByText("知识已录入台账。")).toBeVisible();
 
+  await page.locator('[data-row-action="edit"]').first().click();
+  await page.locator('[data-board-tab="materials"]').click();
+  await page.locator('[data-block-action="add-text"]').click();
   await page
-    .getByLabel("Workspace Tabs")
-    .getByRole("button", { name: "Content Blocks" })
-    .click();
-  await page.getByRole("button", { name: "Add Text Block" }).click();
-  await page
-    .locator(".knowledge-library-rich-block")
+    .locator(".knowledge-library-rich-content-editor__item textarea")
     .last()
-    .getByLabel("Text Content")
     .fill("Ledger smoke rich content block for interim endpoint handling.");
-  await page.getByRole("button", { name: "Save Rich Content" }).click();
+  await page.locator('[data-board-action="save-draft"]').click();
 
-  await expect(page.getByText("Rich content saved.")).toBeVisible();
+  await expect(page.getByText("草稿已保存。")).toBeVisible();
 
-  await page
-    .getByLabel("Workspace Tabs")
-    .getByRole("button", { name: "Semantic" })
-    .click();
-  await page
-    .getByLabel("Semantic instruction")
-    .fill("Expand recall terms for interim endpoint review without changing title ownership.");
-  await page.getByRole("button", { name: "Suggest Semantic Patch" }).click();
-  await expect(page.getByText("Suggested semantic patch")).toBeVisible();
-  await page.getByRole("button", { name: "Apply Suggestion" }).click();
-  await page.getByRole("button", { name: "Confirm Semantic Layer" }).click();
-
-  await expect(page.getByText("AI semantic layer confirmed.")).toBeVisible();
-  await page.getByRole("button", { name: "Submit To Review" }).click();
-
-  await expect(page.getByText("Draft submitted to knowledge review.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Update Draft" })).toBeVisible();
+  await page.locator('[data-board-tab="semantic"]').click();
+  await page.locator('[data-semantic-action="generate"]').click();
   await expect(
-    page.getByRole("row", {
-      name: new RegExp(`${escapeRegExp(title)}.*confirmed`, "i"),
-    }),
+    page.getByText("AI 语义建议已生成，请核对后点击“应用建议”。"),
   ).toBeVisible();
+  await page.locator('[data-semantic-action="apply"]').click();
+
+  await expect(page.getByText("AI 语义已确认，可录入台账。")).toBeVisible();
+  await page.locator('[data-board-action="submit-review"]').click();
+
+  await expect(page.getByText("知识已提交审核。")).toBeVisible();
+  await expect(page.getByText(title)).toBeVisible();
+  await expect(page.getByText("待审核")).toBeVisible();
 });
 
 async function loginApiSession(
@@ -102,8 +90,4 @@ async function loginBrowserSession(
       url: `${apiBaseUrl}/`,
     },
   ]);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

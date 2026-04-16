@@ -7,6 +7,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
 
 const {
+  applyTemplateGovernanceRuleLedgerClientFilters,
+  buildTemplateGovernanceRuleLedgerSearchState,
   TemplateGovernanceRuleLedgerPage,
 } = await import(
   "../src/features/template-governance/template-governance-rule-ledger-page.tsx"
@@ -75,4 +77,90 @@ test("rule ledger page can expose a guided action for the selected item", () => 
   );
 
   assert.match(markup, /编辑规则/u);
+});
+
+test("rule ledger page can render search, filter, and bulk command panels", () => {
+  const Page = TemplateGovernanceRuleLedgerPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const rows = [
+    {
+      id: "rule-1",
+      asset_kind: "rule" as const,
+      title: "术语统一规则",
+      module_label: "编辑",
+      manuscript_type_label: "论著",
+      semantic_status: "待确认",
+      publish_status: "草稿",
+      contributor_label: "editor.zh",
+      updated_at: "2026-04-14T09:00:00.000Z",
+    },
+  ];
+  const markup = renderToStaticMarkup(
+    <Page
+      initialViewModel={{
+        category: "all",
+        rows,
+      }}
+      searchState={buildTemplateGovernanceRuleLedgerSearchState(rows, "术语")}
+      filterState={{
+        isOpen: true,
+        moduleOptions: ["编辑"],
+        publishStatusOptions: ["草稿"],
+        semanticStatusOptions: ["待确认"],
+        moduleValue: "编辑",
+        publishStatusValue: "草稿",
+        semanticStatusValue: "待确认",
+      }}
+      bulkState={{
+        isOpen: true,
+        selectedRowIds: ["rule-1"],
+        showSelectedOnly: false,
+      }}
+    />,
+  );
+
+  assert.match(markup, /当前搜索词/u);
+  assert.match(markup, /筛选面板/u);
+  assert.match(markup, /发布状态/u);
+  assert.match(markup, /语义状态/u);
+  assert.match(markup, /批量操作面板/u);
+  assert.match(markup, /全选当前结果/u);
+  assert.match(markup, /仅看已选/u);
+});
+
+test("rule ledger client filters can narrow rows by module and publish status", () => {
+  const rows = [
+    {
+      id: "rule-1",
+      asset_kind: "rule" as const,
+      title: "术语统一规则",
+      module_label: "编辑",
+      manuscript_type_label: "论著",
+      semantic_status: "待确认",
+      publish_status: "草稿",
+      contributor_label: "editor.zh",
+      updated_at: "2026-04-14T09:00:00.000Z",
+    },
+    {
+      id: "rule-2",
+      asset_kind: "medical_package" as const,
+      title: "医学专业校对包",
+      module_label: "校对",
+      manuscript_type_label: "临床研究",
+      semantic_status: "已确认",
+      publish_status: "已发布",
+      contributor_label: "chief.zh",
+      updated_at: "2026-04-14T10:00:00.000Z",
+    },
+  ];
+
+  assert.deepEqual(
+    applyTemplateGovernanceRuleLedgerClientFilters(rows, {
+      moduleValue: "编辑",
+      publishStatusValue: "草稿",
+      semanticStatusValue: "all",
+    }).map((row) => row.id),
+    ["rule-1"],
+  );
 });

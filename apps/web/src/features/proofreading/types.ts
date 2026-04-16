@@ -1,4 +1,5 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { ModuleExecutionMode } from "@medical/contracts";
 import type {
   DocumentAssetViewModel,
   ModuleJobViewModel,
@@ -19,6 +20,7 @@ export interface CreateProofreadingDraftInput {
   actorRole: AuthRole;
   storageKey: string;
   fileName?: string;
+  executionMode?: ModuleExecutionMode;
 }
 
 export interface ConfirmProofreadingFinalInput {

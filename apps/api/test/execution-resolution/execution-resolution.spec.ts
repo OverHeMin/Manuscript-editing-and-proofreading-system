@@ -314,6 +314,166 @@ test("execution resolution expands the active profile into a concrete runtime bu
   assert.equal(resolved.runtime_binding_readiness.report, undefined);
 });
 
+test("execution resolution summarizes the operator-facing governed context across the three manuscript desks", async () => {
+  const {
+    executionGovernanceService,
+    editorialRuleRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    modelRoutingGovernanceRepository,
+    runtimeBindingRepository,
+    retrievalPresetRepository,
+    manualReviewPolicyRepository,
+    executionResolutionService,
+  } = createExecutionResolutionHarness();
+
+  await moduleTemplateRepository.save({
+    id: "template-editing-1",
+    template_family_id: "family-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 1,
+    status: "published",
+    prompt: "Editing template",
+  });
+  await promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-1",
+    name: "editing_mainline",
+    version: "1.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
+  await savePublishedRuleSet({
+    repository: editorialRuleRepository,
+    id: "rule-set-editing-1",
+    module: "editing",
+  });
+  await modelRegistryRepository.save({
+    id: "model-editing-1",
+    provider: "openai",
+    model_name: "gpt-5.4",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
+  await modelRoutingPolicyRepository.save({
+    module_defaults: {
+      editing: "model-editing-1",
+    },
+    template_overrides: {},
+  });
+  await saveActivePolicy({
+    repository: modelRoutingGovernanceRepository,
+    policyId: "policy-scope-editing-1",
+    versionId: "policy-version-editing-1",
+    scopeKind: "template_family",
+    scopeValue: "family-1",
+    primaryModelId: "model-editing-1",
+  });
+
+  const createdProfile = await executionGovernanceService.createProfile("admin", {
+    module: "editing",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "family-1",
+    moduleTemplateId: "template-editing-1",
+    ruleSetId: "rule-set-editing-1",
+    promptTemplateId: "prompt-editing-1",
+    skillPackageIds: [],
+    knowledgeBindingMode: "profile_only",
+  });
+  await executionGovernanceService.publishProfile(createdProfile.id, "admin");
+
+  await runtimeBindingRepository.save({
+    id: "binding-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    runtime_id: "runtime-editing-1",
+    sandbox_profile_id: "sandbox-editing-1",
+    agent_profile_id: "agent-editing-1",
+    tool_permission_policy_id: "tool-policy-editing-1",
+    prompt_template_id: "prompt-editing-1",
+    skill_package_ids: [],
+    execution_profile_id: createdProfile.id,
+    verification_check_profile_ids: [],
+    evaluation_suite_ids: [],
+    release_check_profile_id: undefined,
+    status: "active",
+    version: 1,
+  });
+  await retrievalPresetRepository.save({
+    id: "retrieval-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    name: "Editing retrieval",
+    top_k: 6,
+    rerank_enabled: true,
+    citation_required: true,
+    status: "active",
+    version: 1,
+  });
+  await manualReviewPolicyRepository.save({
+    id: "manual-review-editing-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-1",
+    name: "Editing review policy",
+    min_confidence_threshold: 0.8,
+    high_risk_force_review: true,
+    conflict_force_review: true,
+    insufficient_knowledge_force_review: true,
+    status: "active",
+    version: 1,
+  });
+
+  const summary = await executionResolutionService.resolveOperatorSummary({
+    manuscriptType: "clinical_study",
+    baseTemplateFamilyId: "family-1",
+  });
+
+  assert.equal(summary.observation_status, "reported");
+  assert.equal(summary.base_template_family_id, "family-1");
+  assert.equal(summary.journal_template_selection_state, "base_family_only");
+  assert.deepEqual(
+    summary.modules.map((module) => ({
+      module: module.module,
+      status: module.status,
+    })),
+    [
+      {
+        module: "screening",
+        status: "not_configured",
+      },
+      {
+        module: "editing",
+        status: "resolved",
+      },
+      {
+        module: "proofreading",
+        status: "not_configured",
+      },
+    ],
+  );
+  assert.deepEqual(summary.modules.find((module) => module.module === "editing"), {
+    module: "editing",
+    status: "resolved",
+    execution_profile_id: createdProfile.id,
+    module_template_id: "template-editing-1",
+    runtime_binding_id: "binding-editing-1",
+    retrieval_preset_id: "retrieval-editing-1",
+    manual_review_policy_id: "manual-review-editing-1",
+    model_routing_policy_version_id: "policy-version-editing-1",
+    resolved_model_id: "model-editing-1",
+    model_source: "template_family_policy",
+    provider_readiness_status: "warning",
+    warning_codes: ["legacy_unbound"],
+  });
+});
+
 test("execution resolution reads the approved revision when a bound asset has a newer draft revision", async () => {
   const {
     executionGovernanceService,

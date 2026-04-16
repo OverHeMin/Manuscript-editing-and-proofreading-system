@@ -1,10 +1,10 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ManuscriptWorkbenchControls } from "../src/features/manuscript-workbench/manuscript-workbench-controls.tsx";
 
-test("manuscript workbench controls render compact intake, lookup, actions, and utilities without a manual type selector", () => {
+test("drawer layout surfaces intake controls without extra intro scaffolding above them", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="proofreading"
@@ -24,7 +24,6 @@ test("manuscript workbench controls render compact intake, lookup, actions, and 
         attachedFileNames: ["case-report.docx", "case-report-supplement.docx"],
         canSubmit: true,
         onTitleChange: () => {},
-        onManuscriptTypeChange: () => {},
         onStorageKeyChange: () => {},
         onFilesSelect: () => {},
         onSubmit: () => {},
@@ -34,32 +33,49 @@ test("manuscript workbench controls render compact intake, lookup, actions, and 
         onChange: () => {},
         onLoad: () => {},
       }}
-      moduleAction={{
-        title: "Proofreading Draft",
-        selectedAssetId: "asset-edited-1",
-        emptyLabel: "Select asset",
-        actionLabel: "Create Draft",
-        options: [
+      templateSelection={{
+        title: "Journal Template",
+        resolvedManuscriptTypeLabel: "Clinical Study",
+        confidenceLabel: "Low confidence",
+        confidenceLevel: "low",
+        requiresOperatorReview: true,
+        showManualManuscriptTypeSelect: true,
+        manualManuscriptTypeValue: "clinical_study",
+        manualManuscriptTypeOptions: [
           {
-            value: "asset-edited-1",
-            label: "edited_docx 路 asset-edited-1",
+            value: "clinical_study",
+            label: "临床研究",
+          },
+          {
+            value: "review",
+            label: "综述",
           },
         ],
-        onSelect: () => {},
-        onRun: () => {},
-      }}
-      finalizeAction={{
-        selectedAssetId: "asset-draft-1",
-        emptyLabel: "Select draft",
-        actionLabel: "Finalize Proofreading",
-        options: [
+        baseTemplateLabel: "Clinical Study Family",
+        selectedTemplateFamilyId: "family-clinical",
+        templateFamilyOptions: [
           {
-            value: "asset-draft-1",
-            label: "asset-draft-1",
+            value: "family-clinical",
+            label: "Clinical Study Family",
+          },
+          {
+            value: "family-review",
+            label: "Review Family",
           },
         ],
+        selectedJournalTemplateId: "",
+        currentAppliedLabel: "Base family only",
+        hasPendingChange: false,
+        options: [
+          {
+            value: "journal-template-1",
+            label: "Journal Template One",
+          },
+        ],
+        onManualManuscriptTypeSelect: () => {},
+        onTemplateFamilySelect: () => {},
         onSelect: () => {},
-        onRun: () => {},
+        onApply: () => {},
       }}
       utilities={{
         canExport: true,
@@ -70,70 +86,61 @@ test("manuscript workbench controls render compact intake, lookup, actions, and 
     />,
   );
 
-  assert.match(markup, /manuscript-workbench-controls/);
-  assert.match(markup, /manuscript-workbench-batch-drawer-trigger/);
+  assert.match(markup, /manuscript-workbench-controls--drawer/);
   assert.match(markup, /type="file"/);
   assert.match(markup, /multiple/);
-  assert.match(markup, /manuscript-workbench-panel/);
-  assert.match(markup, /10/);
-  assert.doesNotMatch(markup, /clinical_study/);
+  assert.match(markup, /上传稿件/u);
+  assert.match(markup, /data-dropzone="manuscript-upload"/);
+  assert.match(markup, /拖拽稿件到这里/u);
+  assert.match(markup, /人工确认稿件类型/u);
+  assert.match(markup, /期刊模板（小期刊\/场景）/u);
+  assert.match(markup, /低置信度时请先人工确认稿件类型/u);
+  assert.doesNotMatch(markup, /manuscript-workbench-controls-intro/);
+  assert.doesNotMatch(markup, /manuscript-workbench-batch-drawer-trigger/);
+  assert.doesNotMatch(markup, /manuscript-workbench-batch-slab-meta/);
 });
 
-test("manuscript workbench controls show inline guidance when required operator inputs are still missing", () => {
+test("full layout keeps execution context read only with localized execution status copy", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="editing"
       busy={false}
-      intake={{
-        uploadForm: {
-          title: "",
-          manuscriptType: "review",
-          createdBy: "web-workbench",
-          fileName: "editing-sample.docx",
-          mimeType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        },
-        attachedFileCount: 0,
-        attachedFileNames: [],
-        canSubmit: false,
-        onTitleChange: () => {},
-        onManuscriptTypeChange: () => {},
-        onStorageKeyChange: () => {},
-        onFilesSelect: () => {},
-        onSubmit: () => {},
-      }}
       lookup={{
-        manuscriptId: "",
+        manuscriptId: "manuscript-1",
         onChange: () => {},
         onLoad: () => {},
       }}
-      moduleAction={{
-        title: "Editing Run",
-        selectedAssetId: "",
-        emptyLabel: "Select asset",
-        actionLabel: "Run Editing",
-        options: [],
-        onSelect: () => {},
-        onRun: () => {},
-      }}
-      utilities={{
-        canExport: true,
-        canRefreshLatestJob: false,
-        onExport: () => {},
-        onRefreshLatestJob: () => {},
+      executionContext={{
+        mode: "editing",
+        executionProfileId: "profile-editing-1",
+        modelRoutingPolicyVersionId: "policy-editing-v2",
+        resolvedModelId: "model-editing-1",
+        modelSource: "template_family_policy",
+        providerReadinessStatus: "warning",
+        runtimeBindingReadinessStatus: "degraded",
       }}
     />,
   );
 
-  assert.match(markup, /manuscript-workbench-validation-list/);
-  assert.match(markup, /class="manuscript-workbench-field is-invalid"/);
-  assert.match(markup, /disabled=""/);
+  assert.match(markup, /data-execution-context="readonly"/);
+  assert.match(markup, /data-execution-mode="editing"/);
+  assert.match(markup, /AI 接入/u);
+  assert.match(markup, /model-editing-1/);
+  assert.match(markup, /policy-editing-v2/);
+  assert.match(markup, /模板族策略/u);
+  assert.match(markup, /需关注/u);
+  assert.match(markup, /已降级/u);
+  assert.doesNotMatch(markup, /template_family_policy/);
+  assert.doesNotMatch(markup, /warning/);
+  assert.doesNotMatch(markup, /degraded/);
+  assert.doesNotMatch(markup, /name="provider"/);
+  assert.doesNotMatch(markup, /name="temperature"/);
 });
 
-test("manuscript workbench controls surface the currently selected asset context for operators", () => {
+test("module action panels expose a one-time bare AI secondary action without changing the primary governed action", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
-      mode="proofreading"
+      mode="screening"
       busy={false}
       lookup={{
         manuscriptId: "manuscript-1",
@@ -141,89 +148,26 @@ test("manuscript workbench controls surface the currently selected asset context
         onLoad: () => {},
       }}
       moduleAction={{
-        title: "Proofreading Draft",
-        selectedAssetId: "asset-edited-1",
-        emptyLabel: "Select asset",
-        actionLabel: "Create Draft",
+        title: "Screening Run",
+        selectedAssetId: "asset-original-1",
+        emptyLabel: "请选择资产",
+        actionLabel: "Run Screening",
+        secondaryActionLabel: "Run Bare AI Once",
         options: [
           {
-            value: "asset-edited-1",
-            label: "editing-final.docx 路 edited_docx 路 asset-edited-1",
+            value: "asset-original-1",
+            label: "original.docx · original · asset-original-1",
           },
         ],
         selectedContextLabel: "Selected Parent Asset",
         onSelect: () => {},
         onRun: () => {},
-      }}
-      finalizeAction={{
-        selectedAssetId: "asset-draft-1",
-        emptyLabel: "Select draft",
-        actionLabel: "Finalize Proofreading",
-        options: [
-          {
-            value: "asset-draft-1",
-            label: "proofreading-draft.docx 路 proofreading_draft_report 路 asset-draft-1",
-          },
-        ],
-        selectedContextLabel: "Selected Draft Asset",
-        onSelect: () => {},
-        onRun: () => {},
+        onSecondaryRun: () => {},
       }}
     />,
   );
 
-  assert.match(markup, /editing-final\.docx/);
-  assert.match(markup, /proofreading-draft\.docx/);
-  assert.match(markup, /manuscript-workbench-selection-context/);
-});
-
-test("manuscript workbench controls render a journal template selector beside module actions", () => {
-  const markup = renderToStaticMarkup(
-    <ManuscriptWorkbenchControls
-      mode="editing"
-      busy={false}
-      lookup={{
-        manuscriptId: "manuscript-1",
-        onChange: () => {},
-        onLoad: () => {},
-      }}
-      templateSelection={{
-        title: "Journal Template",
-        baseTemplateLabel: "Clinical Study Family",
-        selectedJournalTemplateId: "journal-template-1",
-        currentAppliedLabel: "Current Journal Template",
-        hasPendingChange: false,
-        options: [
-          {
-            value: "journal-template-1",
-            label: "Journal Template One",
-          },
-          {
-            value: "journal-template-2",
-            label: "Journal Template Two",
-          },
-        ],
-        onSelect: () => {},
-        onApply: () => {},
-      }}
-      moduleAction={{
-        title: "Editing Run",
-        selectedAssetId: "asset-edited-1",
-        emptyLabel: "Select asset",
-        actionLabel: "Run Editing",
-        options: [
-          {
-            value: "asset-edited-1",
-            label: "editing-final.docx 路 edited_docx 路 asset-edited-1",
-          },
-        ],
-        onSelect: () => {},
-        onRun: () => {},
-      }}
-    />,
-  );
-
-  assert.match(markup, /Clinical Study Family/);
-  assert.match(markup, /Journal Template One/);
-  assert.match(markup, /Journal Template Two/);
+  assert.match(markup, /执行初筛/u);
+  assert.match(markup, /AI 自动处理（本次）/u);
+  assert.match(markup, /data-secondary-action="available"/);
 });

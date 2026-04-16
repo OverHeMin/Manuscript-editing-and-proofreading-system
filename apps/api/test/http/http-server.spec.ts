@@ -1079,6 +1079,46 @@ test("http server answers preflight and health checks", async () => {
   }
 });
 
+test("http server accepts loopback origins on arbitrary local ports when configured port-agnostic", async () => {
+  const server = createApiHttpServer({
+    appEnv: "local",
+    allowedOrigins: ["http://127.0.0.1", "http://localhost"],
+    seedDemoKnowledgeReviewData: true,
+  });
+  const { baseUrl } = await startHttpTestServer(server);
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      headers: {
+        Origin: "http://127.0.0.1:5202",
+      },
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(
+      response.headers.get("access-control-allow-origin"),
+      "http://127.0.0.1:5202",
+    );
+    assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+
+    const optionsResponse = await fetch(`${baseUrl}/api/v1/knowledge/review-queue`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5203",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    assert.equal(optionsResponse.status, 204);
+    assert.equal(
+      optionsResponse.headers.get("access-control-allow-origin"),
+      "http://localhost:5203",
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server creates and approves a governed learning candidate", async () => {
   const { server, baseUrl } = await startServer();
 

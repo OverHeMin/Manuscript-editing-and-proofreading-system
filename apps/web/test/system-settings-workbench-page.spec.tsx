@@ -276,12 +276,15 @@ test("system settings workbench page renders ai provider controls alongside mask
   assert.match(markup, /sk-\*\*\*a562/);
   assert.match(markup, /Qwen/);
   assert.match(markup, /DeepSeek/);
+  assert.match(markup, /OpenAI 兼容/u);
   assert.match(markup, /openai_chat_compatible/);
   assert.match(markup, /\u63d0\u4f9b\u65b9\u7c7b\u578b/);
-  assert.match(markup, /Base URL/);
+  assert.match(markup, /基础 URL/u);
   assert.match(markup, /\u6d4b\u8bd5\u6a21\u578b/);
   assert.match(markup, /\u542f\u7528\u72b6\u6001/);
   assert.match(markup, /\u8fde\u63a5\u6d4b\u8bd5/);
+  assert.doesNotMatch(markup, /OpenAI Compatible/u);
+  assert.doesNotMatch(markup, /Base URL/u);
 });
 
 test("system settings workbench page renders registered models and editable module defaults with localized temperature copy", () => {

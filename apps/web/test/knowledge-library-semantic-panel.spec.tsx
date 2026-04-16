@@ -6,43 +6,55 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
 
-const {
-  KnowledgeLibrarySemanticPanel,
-  formatKnowledgeSemanticStatusLabel,
-} = await import("../src/features/knowledge-library/knowledge-library-semantic-panel.tsx");
+const { KnowledgeLibrarySemanticSection } = await import(
+  "../src/features/knowledge-library/knowledge-library-semantic-section.tsx"
+);
 
-test("knowledge library semantic panel renders editable AI understanding fields and actions", () => {
+function noop() {}
+
+test("knowledge library semantic section exposes editable semantic fields and explicit action markers", () => {
   const markup = renderToStaticMarkup(
-    <KnowledgeLibrarySemanticPanel
-      semanticLayer={{
-        revision_id: "knowledge-1-revision-2",
-        status: "pending_confirmation",
-        page_summary: "Prefer this rule when endpoint reporting requirements are unclear.",
-        retrieval_terms: ["primary endpoint", "screening"],
-        retrieval_snippets: ["Use for endpoint gating questions."],
-      }}
-      onChange={() => undefined}
-      onRegenerate={() => undefined}
-      onConfirm={() => undefined}
+    <KnowledgeLibrarySemanticSection
+      semanticStatusLabel="待确认"
+      semanticNotes={["请确认检索词覆盖范围。"]}
+      pageSummary="用于初筛主终点定义。"
+      retrievalTerms={["主终点", "endpoint"]}
+      aliases={["primary endpoint"]}
+      scenarios={["方法学初筛"]}
+      riskTags={["终点一致性"]}
+      isBusy={false}
+      canGenerate={true}
+      canApply={true}
+      onPageSummaryChange={noop}
+      onGenerate={noop}
+      onApply={noop}
+      onAddRetrievalTerm={noop}
+      onChangeRetrievalTerm={noop}
+      onRemoveRetrievalTerm={noop}
+      onAddAlias={noop}
+      onChangeAlias={noop}
+      onRemoveAlias={noop}
+      onAddScenario={noop}
+      onChangeScenario={noop}
+      onRemoveScenario={noop}
+      onAddRiskTag={noop}
+      onChangeRiskTag={noop}
+      onRemoveRiskTag={noop}
     />,
   );
 
-  assert.match(markup, /Semantic Layer/);
-  assert.match(markup, /Pending Confirmation/);
-  assert.match(markup, /Page Summary/);
-  assert.match(markup, /Retrieval Terms/);
-  assert.match(markup, /Retrieval Snippets/);
-  assert.match(markup, /Regenerate Semantics/);
-  assert.match(markup, /Confirm Semantic Layer/);
-  assert.match(markup, /Prefer this rule when endpoint reporting requirements are unclear\./);
-  assert.match(markup, /primary endpoint, screening/);
-});
-
-test("knowledge library semantic status labels cover stale, pending, and confirmed states", () => {
-  assert.equal(formatKnowledgeSemanticStatusLabel("stale"), "Stale");
-  assert.equal(
-    formatKnowledgeSemanticStatusLabel("pending_confirmation"),
-    "Pending Confirmation",
-  );
-  assert.equal(formatKnowledgeSemanticStatusLabel("confirmed"), "Confirmed");
+  assert.match(markup, /data-semantic-action="generate"/u);
+  assert.match(markup, /data-semantic-action="regenerate"/u);
+  assert.match(markup, /data-semantic-action="apply"/u);
+  assert.match(markup, /data-semantic-field="page-summary"/u);
+  assert.match(markup, /data-semantic-field="retrieval-terms"/u);
+  assert.match(markup, /data-semantic-field="aliases"/u);
+  assert.match(markup, /data-semantic-field="scenarios"/u);
+  assert.match(markup, /data-semantic-field="risk-tags"/u);
+  assert.match(markup, /data-semantic-value="retrieval-terms-0"/u);
+  assert.match(markup, /data-semantic-value="aliases-0"/u);
+  assert.match(markup, /data-semantic-value="scenarios-0"/u);
+  assert.match(markup, /data-semantic-value="risk-tags-0"/u);
+  assert.match(markup, /用于初筛主终点定义/u);
+  assert.match(markup, /请确认检索词覆盖范围/u);
 });

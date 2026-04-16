@@ -37,75 +37,104 @@ export function TemplateGovernanceRuleWizardStepConfirm({
         </button>
       </div>
 
-      <div className="template-governance-detail-grid">
-        <label className="template-governance-field">
-          <span>规则类型</span>
-          <small>AI 建议：{formatRuleTypeLabel(suggestion.ruleType)}</small>
-          <select
-            value={value.ruleType}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                ruleType: event.target.value as RuleWizardConfirmFormState["ruleType"],
-              })
-            }
-          >
-            <option value="terminology_consistency">术语统一</option>
-            <option value="format_normalization">格式规范</option>
-            <option value="content_requirement">内容要求</option>
-            <option value="citation_requirement">引文要求</option>
-            <option value="other">其他规则</option>
-          </select>
-        </label>
+      <div className="template-governance-rule-decision-grid">
+        <section className="template-governance-card template-governance-rule-decision-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>规则类型判断</h3>
+              <p>先确认这条规则到底属于哪一种治理判断。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-decision-meta">
+            <span>AI 建议</span>
+            <strong>{formatRuleTypeLabel(suggestion.ruleType)}</strong>
+          </div>
+          <label className="template-governance-field">
+            <span>人工确认</span>
+            <select
+              value={value.ruleType}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  ruleType: event.target.value as RuleWizardConfirmFormState["ruleType"],
+                })
+              }
+            >
+              <option value="terminology_consistency">术语统一</option>
+              <option value="format_normalization">格式规范</option>
+              <option value="content_requirement">内容要求</option>
+              <option value="citation_requirement">引文要求</option>
+              <option value="other">其他规则</option>
+            </select>
+          </label>
+        </section>
 
-        <label className="template-governance-field">
-          <span>风险等级</span>
-          <small>AI 建议：{formatRiskLevelLabel(suggestion.riskLevel)}</small>
-          <select
-            value={value.riskLevel}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                riskLevel: event.target.value as RuleWizardConfirmFormState["riskLevel"],
-              })
-            }
-          >
-            <option value="high">高风险</option>
-            <option value="medium">中风险</option>
-            <option value="low">低风险</option>
-          </select>
-        </label>
+        <section className="template-governance-card template-governance-rule-decision-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>风险等级判断</h3>
+              <p>风险越高，后续发布和审核路径越要谨慎。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-decision-meta">
+            <span>AI 建议</span>
+            <strong>{formatRiskLevelLabel(suggestion.riskLevel)}</strong>
+          </div>
+          <label className="template-governance-field">
+            <span>人工确认</span>
+            <select
+              value={value.riskLevel}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  riskLevel: event.target.value as RuleWizardConfirmFormState["riskLevel"],
+                })
+              }
+            >
+              <option value="high">高风险</option>
+              <option value="medium">中风险</option>
+              <option value="low">低风险</option>
+            </select>
+          </label>
+        </section>
 
-        <label className="template-governance-field">
-          <span>适用执行模块</span>
-          <small>AI 建议：{formatModuleLabel(suggestion.moduleScope)}</small>
-          <select
-            value={value.moduleScope}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                moduleScope: event.target.value as RuleWizardConfirmFormState["moduleScope"],
-              })
-            }
-          >
-            <option value="any">全部模块</option>
-            <option value="screening">初筛</option>
-            <option value="editing">编辑</option>
-            <option value="proofreading">校对</option>
-          </select>
-        </label>
-
-        <label className="template-governance-field">
-          <span>适用稿件类型</span>
-          <small>AI 建议：{suggestion.manuscriptTypes || "any"}</small>
-          <input
-            value={value.manuscriptTypes}
-            onChange={(event) =>
-              onChange({ ...value, manuscriptTypes: event.target.value })
-            }
-            placeholder="clinical_study, review"
-          />
-        </label>
+        <section className="template-governance-card template-governance-rule-decision-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>业务适用范围</h3>
+              <p>这里决定规则会在哪个业务模块和稿件类型里被调用。</p>
+            </div>
+          </header>
+          <div className="template-governance-rule-decision-meta">
+            <span>AI 建议</span>
+            <strong>{formatModuleLabel(suggestion.moduleScope)}</strong>
+          </div>
+          <label className="template-governance-field">
+            <span>人工确认</span>
+            <select
+              value={value.moduleScope}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  moduleScope: event.target.value as RuleWizardConfirmFormState["moduleScope"],
+                })
+              }
+            >
+              <option value="any">全部模块</option>
+              <option value="screening">初筛</option>
+              <option value="editing">编辑</option>
+              <option value="proofreading">校对</option>
+            </select>
+          </label>
+          <label className="template-governance-field">
+            <span>人工确认</span>
+            <input
+              value={value.manuscriptTypes}
+              onChange={(event) => onChange({ ...value, manuscriptTypes: event.target.value })}
+              placeholder="clinical_study, review"
+            />
+          </label>
+        </section>
       </div>
 
       <div className="template-governance-detail-grid">
@@ -175,24 +204,24 @@ function buildChangeSummary(
 
   if (value.ruleType !== suggestion.ruleType) {
     items.push(
-      `规则类型：${formatRuleTypeLabel(suggestion.ruleType)} → ${formatRuleTypeLabel(value.ruleType)}`,
+      `规则类型：${formatRuleTypeLabel(suggestion.ruleType)} -> ${formatRuleTypeLabel(value.ruleType)}`,
     );
   }
 
   if (value.riskLevel !== suggestion.riskLevel) {
     items.push(
-      `风险等级：${formatRiskLevelLabel(suggestion.riskLevel)} → ${formatRiskLevelLabel(value.riskLevel)}`,
+      `风险等级：${formatRiskLevelLabel(suggestion.riskLevel)} -> ${formatRiskLevelLabel(value.riskLevel)}`,
     );
   }
 
   if (value.moduleScope !== suggestion.moduleScope) {
     items.push(
-      `适用执行模块：${formatModuleLabel(suggestion.moduleScope)} → ${formatModuleLabel(value.moduleScope)}`,
+      `适用执行模块：${formatModuleLabel(suggestion.moduleScope)} -> ${formatModuleLabel(value.moduleScope)}`,
     );
   }
 
   if (value.manuscriptTypes.trim() !== suggestion.manuscriptTypes.trim()) {
-    items.push(`适用稿件类型：${suggestion.manuscriptTypes || "any"} → ${value.manuscriptTypes || "any"}`);
+    items.push(`适用稿件类型：${suggestion.manuscriptTypes || "any"} -> ${value.manuscriptTypes || "any"}`);
   }
 
   if (value.semanticSummary.trim() !== suggestion.semanticSummary.trim()) {

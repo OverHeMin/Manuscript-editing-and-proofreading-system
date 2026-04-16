@@ -2,6 +2,7 @@ import type { PromptTemplate, SkillPackage } from "./agent-tooling.js";
 import type { KnowledgeItemId } from "./knowledge.js";
 import type {
   DocumentAssetId,
+  JournalTemplateId,
   ManuscriptId,
   ManuscriptType,
   TemplateFamilyId,
@@ -22,6 +23,13 @@ export type ModuleExecutionSnapshotId = string;
 export type KnowledgeHitLogId = string;
 export type HumanFeedbackRecordId = string;
 export type LearningCandidateSourceLinkId = string;
+export type ModuleExecutionMode = "governed" | "bare";
+export type GovernedExecutionContextObservationStatus = "reported" | "failed_open";
+export type GovernedExecutionModuleSummaryStatus =
+  | "resolved"
+  | "not_configured"
+  | "failed_open";
+export type JournalTemplateSelectionState = "base_family_only" | "selected";
 
 export type KnowledgeBindingMode = "profile_only" | "profile_plus_dynamic";
 export type ExecutionProfileStatus = "draft" | "active" | "archived";
@@ -35,6 +43,33 @@ export type HumanFeedbackType =
   | "manual_confirmation"
   | "manual_correction"
   | "manual_rejection";
+
+export interface GovernedExecutionModuleSummary {
+  module: ModuleType;
+  status: GovernedExecutionModuleSummaryStatus;
+  execution_profile_id?: ModuleExecutionProfileId;
+  module_template_id?: ModuleTemplateId;
+  runtime_binding_id?: string;
+  model_routing_policy_version_id?: string;
+  retrieval_preset_id?: string;
+  manual_review_policy_id?: string;
+  resolved_model_id?: string;
+  model_source?: string;
+  provider_readiness_status?: "ok" | "warning";
+  runtime_binding_readiness_status?: "ready" | "degraded" | "missing";
+  warning_codes?: string[];
+  error?: string;
+}
+
+export interface GovernedExecutionContextSummary {
+  observation_status: GovernedExecutionContextObservationStatus;
+  manuscript_type: ManuscriptType;
+  base_template_family_id?: TemplateFamilyId;
+  journal_template_selection_state: JournalTemplateSelectionState;
+  journal_template_id?: JournalTemplateId;
+  modules: GovernedExecutionModuleSummary[];
+  error?: string;
+}
 
 export interface ModuleTemplateVersionRef {
   id: ModuleTemplateId;

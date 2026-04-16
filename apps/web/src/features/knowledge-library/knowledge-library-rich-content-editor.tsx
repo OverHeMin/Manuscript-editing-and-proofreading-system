@@ -19,40 +19,89 @@ export function KnowledgeLibraryRichContentEditor({
   onUploadImage,
 }: KnowledgeLibraryRichContentEditorProps) {
   return (
-    <section className="knowledge-library-panel knowledge-library-rich-content">
-      <header className="knowledge-library-panel-header">
+    <section
+      className="knowledge-library-rich-content-editor"
+      data-material-editor="blocks"
+    >
+      <header className="knowledge-library-rich-content-editor__header">
         <div>
-          <h2>Rich Content</h2>
-          <p>
-            Compose text, paste tables, and attach image understanding blocks in one
-            semantic editing flow.
-          </p>
+          <h3>内容材料</h3>
+          <p>按块组织正文、表格与图片，保持录入板短而清晰。</p>
         </div>
       </header>
 
-      <div className="knowledge-library-rich-content-actions">
-        <button type="button" onClick={() => onChange(addBlock(blocks, "text_block"))}>
-          Add Text Block
+      <div className="knowledge-library-rich-content-editor__actions">
+        <button
+          type="button"
+          data-block-action="add-text"
+          onClick={() => onChange(addBlock(blocks, "text_block"))}
+        >
+          添加文字块
         </button>
-        <button type="button" onClick={() => onChange(addBlock(blocks, "table_block"))}>
-          Add Table Block
+        <button
+          type="button"
+          data-block-action="add-table"
+          onClick={() => onChange(addBlock(blocks, "table_block"))}
+        >
+          添加表格块
         </button>
-        <button type="button" onClick={() => onChange(addBlock(blocks, "image_block"))}>
-          Add Image Block
+        <button
+          type="button"
+          data-block-action="add-image"
+          onClick={() => onChange(addBlock(blocks, "image_block"))}
+        >
+          添加图片块
         </button>
       </div>
 
-      <div className="knowledge-library-rich-content-list">
-        {blocks.map((block) => (
-          <article key={block.id} className="knowledge-library-rich-block">
-            <header className="knowledge-library-rich-block-header">
-              <h3>{formatBlockTitle(block.block_type)}</h3>
-              <small>Order {block.order_no}</small>
+      <div className="knowledge-library-rich-content-editor__list">
+        {blocks.length === 0 ? (
+          <p className="knowledge-library-rich-content-editor__empty">
+            暂无内容块，可先添加文字、表格或图片材料。
+          </p>
+        ) : null}
+
+        {blocks.map((block, index) => (
+          <article
+            key={block.id}
+            className="knowledge-library-rich-content-editor__item"
+            data-block-type={block.block_type}
+          >
+            <header className="knowledge-library-rich-content-editor__item-header">
+              <div>
+                <strong>{formatBlockTitle(block.block_type)}</strong>
+                <small>第 {index + 1} 块</small>
+              </div>
+              <div className="knowledge-library-rich-content-editor__item-actions">
+                <button
+                  type="button"
+                  data-block-action="move-up"
+                  onClick={() => onChange(moveBlock(blocks, index, -1))}
+                  disabled={index === 0}
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  data-block-action="move-down"
+                  onClick={() => onChange(moveBlock(blocks, index, 1))}
+                  disabled={index === blocks.length - 1}
+                >
+                  下移
+                </button>
+                <button
+                  type="button"
+                  data-block-action="remove"
+                  onClick={() => onChange(removeBlock(blocks, block.id))}
+                >
+                  删除
+                </button>
+              </div>
             </header>
 
             {block.block_type === "text_block" ? (
-              <label className="knowledge-library-block-editor">
-                <span>Text Content</span>
+              <label className="knowledge-library-rich-content-editor__field">
+                <span>文字内容</span>
                 <textarea
                   rows={5}
                   value={
@@ -71,7 +120,7 @@ export function KnowledgeLibraryRichContentEditor({
                       }),
                     )
                   }
-                  placeholder="Type or paste knowledge text"
+                  placeholder="输入或粘贴正文材料"
                 />
               </label>
             ) : null}
@@ -114,7 +163,7 @@ function addBlock(
       status: "active",
       content_payload:
         blockType === "table_block"
-          ? { rows: [["Column 1", "Column 2"]] }
+          ? { rows: [["列 1", "列 2"]] }
           : blockType === "image_block"
             ? {}
             : { text: "" },
@@ -129,14 +178,46 @@ function replaceBlock(
   return blocks.map((block) => (block.id === nextBlock.id ? nextBlock : block));
 }
 
+function removeBlock(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+  blockId: string,
+): KnowledgeContentBlockViewModel[] {
+  return normalizeOrder(blocks.filter((block) => block.id !== blockId));
+}
+
+function moveBlock(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+  index: number,
+  offset: -1 | 1,
+): KnowledgeContentBlockViewModel[] {
+  const nextIndex = index + offset;
+  if (nextIndex < 0 || nextIndex >= blocks.length) {
+    return [...blocks];
+  }
+
+  const reordered = [...blocks];
+  const [current] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, current);
+  return normalizeOrder(reordered);
+}
+
+function normalizeOrder(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+): KnowledgeContentBlockViewModel[] {
+  return blocks.map((block, index) => ({
+    ...block,
+    order_no: index,
+  }));
+}
+
 function formatBlockTitle(blockType: KnowledgeContentBlockType): string {
   switch (blockType) {
     case "text_block":
-      return "Text Block";
+      return "文字块";
     case "table_block":
-      return "Table Block";
+      return "表格块";
     case "image_block":
-      return "Image Block";
+      return "图片块";
     default:
       return blockType;
   }

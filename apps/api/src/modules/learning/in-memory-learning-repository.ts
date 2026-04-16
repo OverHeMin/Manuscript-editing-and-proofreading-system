@@ -18,6 +18,7 @@ function cloneCandidateRecord(
 ): LearningCandidateRecord {
   return {
     ...record,
+    review_actions: record.review_actions?.map((action) => ({ ...action })),
     ...(record.candidate_payload
       ? {
           candidate_payload: JSON.parse(

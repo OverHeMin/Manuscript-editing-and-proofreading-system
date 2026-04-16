@@ -1,4 +1,5 @@
 import type {
+  GovernedExecutionContextSummary,
   ManuscriptType as SharedManuscriptType,
   ManuscriptTypeDetectionSummary,
 } from "@medical/contracts";
@@ -25,6 +26,7 @@ export interface ManuscriptRecord {
   current_proofreading_asset_id?: string;
   current_template_family_id?: string;
   current_journal_template_id?: string;
+  governed_execution_context_summary?: GovernedExecutionContextSummary;
   created_at: string;
   updated_at: string;
 }

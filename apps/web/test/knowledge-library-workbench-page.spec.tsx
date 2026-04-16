@@ -3,6 +3,10 @@ import { register } from "node:module";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  buildAuthSessionViewModel,
+  type AuthRole,
+} from "../src/features/auth/index.ts";
 
 register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.meta.url);
 
@@ -17,6 +21,65 @@ const {
   resolveDuplicateSubmitDecision,
   shouldInvalidateDuplicateSubmitConfirmation,
 } = await import("../src/features/knowledge-library/knowledge-library-workbench-page.tsx");
+
+function buildSession(role: AuthRole) {
+  return buildAuthSessionViewModel({
+    userId: `${role}-1`,
+    username: `${role}.user`,
+    displayName: `${role} display`,
+    role,
+  });
+}
+
+async function renderWorkbenchHostAtHash(hash: string): Promise<string> {
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    location: { hash } as Location,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    matchMedia: () =>
+      ({
+        matches: false,
+        media: "(max-width: 1024px)",
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }) as MediaQueryList,
+  } as unknown as Window & typeof globalThis;
+
+  try {
+    const hostModule = await import("../src/app/workbench-host.tsx");
+    return renderToStaticMarkup(
+      <hostModule.WorkbenchHost session={buildSession("admin")} />,
+    );
+  } finally {
+    if (typeof previousWindow === "undefined") {
+      delete (globalThis as { window?: Window }).window;
+    } else {
+      globalThis.window = previousWindow;
+    }
+  }
+}
+
+test("bare knowledge library route now lands on the ledger page instead of the legacy workbench", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#knowledge-library?assetId=knowledge-1&revisionId=knowledge-1-revision-2",
+  );
+
+  assert.match(markup, /knowledge-library-ledger-page/u);
+  assert.match(markup, /knowledge-library-ledger-grid/u);
+  assert.doesNotMatch(markup, /knowledge-library-workbench-page/u);
+  assert.doesNotMatch(markup, /knowledge-library-record-drawer/u);
+});
+
+test("explicit classic knowledge library hashes stay on the legacy workbench for compatibility", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#knowledge-library?knowledgeView=classic&assetId=knowledge-1&revisionId=knowledge-1-revision-2",
+  );
+
+  assert.match(markup, /knowledge-library-workbench-page/u);
+  assert.match(markup, /knowledge-library-record-drawer/u);
+  assert.doesNotMatch(markup, /knowledge-library-ledger-page/u);
+});
 
 test("knowledge library workbench page renders the ledger grid shell and record drawer", () => {
   const markup = renderToStaticMarkup(

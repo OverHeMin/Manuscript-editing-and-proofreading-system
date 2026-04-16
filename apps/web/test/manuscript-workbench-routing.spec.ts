@@ -61,6 +61,13 @@ test("workbench routing formats and resolves sample-context manuscript handoff h
   });
 });
 
+test("workbench routing keeps submission as a compatibility hash inside the manuscript desk family", () => {
+  assert.equal(formatWorkbenchHash("submission"), "#submission");
+  assert.deepEqual(resolveWorkbenchLocation("#submission"), {
+    workbenchId: "submission",
+  });
+});
+
 test("workbench routing formats and resolves knowledge library handoff hashes", () => {
   const hash = formatWorkbenchHash("knowledge-library", {
     assetId: "knowledge-42",

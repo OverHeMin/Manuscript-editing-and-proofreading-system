@@ -4,7 +4,10 @@ import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
 } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
-import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
+import {
+  KnowledgeService,
+  type KnowledgeAssetDetailRecord,
+} from "../../src/modules/knowledge/knowledge-service.ts";
 
 function createKnowledgeLibraryHarness() {
   const repository = new InMemoryKnowledgeRepository();
@@ -35,6 +38,18 @@ function createKnowledgeLibraryHarness() {
     reviewActionRepository,
     service,
   };
+}
+
+function assertKnowledgeAssetDetailRecord(
+  value: KnowledgeAssetDetailRecord | unknown,
+): asserts value is KnowledgeAssetDetailRecord {
+  assert.ok(
+    value != null &&
+      typeof value === "object" &&
+      "asset" in value &&
+      "selected_revision" in value,
+    "Expected a knowledge asset detail record.",
+  );
 }
 
 test("knowledge library creates a draft asset with revision detail and structured bindings", async () => {
@@ -381,5 +396,65 @@ test("updating a draft revision marks a confirmed semantic layer stale", async (
   assert.equal(
     detail.selected_revision.semantic_layer?.page_summary,
     "AI extracted a screening rule about dose adjustments.",
+  );
+});
+
+test("archived knowledge assets can be restored into a safe draft recovery state", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Recoverable endpoint rule",
+    canonicalText: "Clinical studies must disclose the primary endpoint.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.submitRevisionForReview(created.selected_revision.id);
+  await service.approveRevision(created.selected_revision.id, "knowledge_reviewer");
+  await service.archive(created.asset.id);
+
+  const restored = await service.restore(created.asset.id);
+  assertKnowledgeAssetDetailRecord(restored);
+
+  assert.equal(restored.asset.status, "active");
+  assert.equal(restored.asset.current_revision_id, created.selected_revision.id);
+  assert.equal(restored.asset.current_approved_revision_id, undefined);
+  assert.equal(restored.selected_revision.id, created.selected_revision.id);
+  assert.equal(restored.selected_revision.status, "draft");
+  assert.equal(restored.current_approved_revision, undefined);
+});
+
+test("archive and restore actions are recorded for recycle-bin visibility", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Recoverable terminology rule",
+    canonicalText: "Review manuscripts should use standardized terminology.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  await service.archive(created.asset.id);
+  await service.restore(created.asset.id);
+
+  const history = await service.listReviewActions(created.asset.id);
+
+  assert.deepEqual(
+    history.map((record) => ({
+      action: record.action,
+      actor_role: record.actor_role,
+    })),
+    [
+      {
+        action: "archived",
+        actor_role: "user",
+      },
+      {
+        action: "restored",
+        actor_role: "user",
+      },
+    ],
   );
 });

@@ -144,7 +144,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     navGroup: "governance",
     placement: "admin",
     surfaces: ["web"],
-    roles: ["admin"],
+    roles: ["admin", "knowledge_reviewer"],
   },
   {
     id: "system-settings",
@@ -201,17 +201,10 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     group: "collaboration-recovery",
   },
   {
-    key: "support-learning-review",
-    workbenchId: "learning-review",
-    label: "质量优化",
-    description: "学习回收与质量复核",
-    group: "collaboration-recovery",
-  },
-  {
     key: "support-rule-center",
     workbenchId: "template-governance",
     label: "规则中心",
-    description: "模板、规则与提示词治理",
+    description: "规则台账、回流候选与规则包协作入口",
     group: "collaboration-recovery",
   },
   {
@@ -254,7 +247,6 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "proofreading",
     "knowledge-library",
     "knowledge-review",
-    "learning-review",
     "admin-console",
     "evaluation-workbench",
     "harness-datasets",
@@ -264,7 +256,7 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
   screener: ["screening"],
   editor: ["editing"],
   proofreader: ["proofreading"],
-  knowledge_reviewer: ["knowledge-library", "knowledge-review", "learning-review"],
+  knowledge_reviewer: ["knowledge-library", "knowledge-review", "template-governance"],
   user: ["submission"],
 };
 

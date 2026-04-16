@@ -1,13 +1,12 @@
 .admin-governance-workbench {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
-.admin-governance-hero,
+.admin-governance-heading,
 .admin-governance-link-card,
 .admin-governance-summary-card,
-.admin-governance-panel,
-.admin-governance-detail-shell {
+.admin-governance-panel {
   border: 1px solid rgba(126, 101, 51, 0.14);
   border-radius: 18px;
   background:
@@ -17,78 +16,76 @@
     0 14px 28px rgba(40, 30, 12, 0.06);
 }
 
-.admin-governance-hero,
+.admin-governance-heading,
 .admin-governance-link-card,
 .admin-governance-panel {
-  padding: 18px;
+  padding: 16px 18px;
 }
 
-.admin-governance-hero {
+.admin-governance-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
   background:
-    radial-gradient(circle at top right, rgba(216, 190, 132, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(247, 241, 230, 0.97));
+    radial-gradient(circle at top right, rgba(216, 190, 132, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 241, 230, 0.98));
 }
 
-.admin-governance-hero-copy {
-  display: grid;
-  gap: 10px;
-}
-
-.admin-governance-eyebrow,
-.admin-governance-link-kicker {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(216, 190, 132, 0.12);
-  color: #866833;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.admin-governance-hero h2,
-.admin-governance-link-card h3,
-.admin-governance-panel h3 {
-  margin: 0;
-  color: #2b2215;
-}
-
-.admin-governance-hero h2 {
-  font-size: 1.28rem;
-}
-
-.admin-governance-hero p,
-.admin-governance-link-card p,
-.admin-governance-panel-header span,
-.admin-governance-empty,
-.admin-governance-asset-row small {
-  margin: 0;
-  color: #625648;
-  line-height: 1.6;
-}
-
-.admin-governance-error {
-  color: #8f3b2d;
-}
-
-.admin-governance-entry-grid,
-.admin-governance-snapshot-grid,
-.admin-governance-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.admin-governance-link-card,
+.admin-governance-heading-copy,
 .admin-governance-link-copy,
 .admin-governance-link-actions,
 .admin-governance-panel,
 .admin-governance-snapshot-stack,
 .admin-governance-summary-card {
   display: grid;
+  gap: 10px;
+}
+
+.admin-governance-kicker,
+.admin-governance-link-kicker {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(216, 190, 132, 0.12);
+  color: #866833;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.admin-governance-heading h2,
+.admin-governance-link-card h3,
+.admin-governance-panel h3 {
+  margin: 0;
+  color: #2b2215;
+}
+
+.admin-governance-heading h2 {
+  font-size: 1.18rem;
+}
+
+.admin-governance-heading p,
+.admin-governance-link-card p,
+.admin-governance-panel-header span,
+.admin-governance-empty,
+.admin-governance-asset-row small {
+  margin: 0;
+  color: #625648;
+  line-height: 1.55;
+}
+
+.admin-governance-error {
+  margin: 0;
+  color: #8f3b2d;
+}
+
+.admin-governance-entry-grid,
+.admin-governance-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -110,17 +107,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 5px 10px;
   border-radius: 999px;
   border: 1px solid rgba(126, 101, 51, 0.14);
   background: #fffaf2;
   color: #5f4b2c;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   text-decoration: none;
 }
 
 .admin-governance-link-actions {
-  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -131,7 +127,7 @@
 
 .admin-governance-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -147,7 +143,7 @@
 .admin-governance-summary-card strong,
 .admin-governance-snapshot-row strong {
   color: #2b2215;
-  font-size: 1.32rem;
+  font-size: 1.18rem;
 }
 
 .admin-governance-panel-header {
@@ -173,7 +169,7 @@
 .admin-governance-snapshot-row span,
 .admin-governance-asset-row span {
   color: #7a6a54;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
 }
 
 .admin-governance-list {
@@ -185,36 +181,23 @@
   gap: 8px;
 }
 
-.admin-governance-detail-shell {
-  padding: 0;
-  overflow: hidden;
-}
-
-.admin-governance-detail-shell summary {
-  cursor: pointer;
-  padding: 16px 18px;
-  color: #2b2215;
-  font-weight: 700;
-  list-style: none;
-}
-
-.admin-governance-detail-shell summary::-webkit-details-marker {
-  display: none;
-}
-
-.admin-governance-detail-shell[open] summary {
-  border-bottom: 1px solid rgba(126, 101, 51, 0.12);
-  background: rgba(216, 190, 132, 0.08);
-}
-
-.admin-governance-detail-grid {
-  padding: 16px 18px 18px;
-}
-
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .admin-governance-entry-grid,
   .admin-governance-snapshot-grid,
-  .admin-governance-detail-grid {
+  .admin-governance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .admin-governance-heading {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .admin-governance-entry-grid,
+  .admin-governance-snapshot-grid,
+  .admin-governance-summary {
     grid-template-columns: 1fr;
   }
 }

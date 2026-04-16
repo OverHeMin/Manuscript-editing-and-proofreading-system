@@ -1593,6 +1593,153 @@ test("workbench http screening route runs with the authenticated screener contex
   }
 });
 
+test("workbench http bare screening run becomes current while keeping earlier governed output in history", async () => {
+  const { server, baseUrl, runtime } = await startWorkbenchServerWithRuntime();
+  const { seededIds } = runtime;
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.screener");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const governedResponse = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/screening/governed-report.md",
+        fileName: "screening-governed-report.md",
+      }),
+    });
+    const governed = (await governedResponse.json()) as {
+      job: { id: string };
+      asset: { id: string };
+    };
+    assert.equal(governedResponse.status, 201);
+
+    const storedManuscript = await runtime.manuscriptRepository.findById(
+      seededIds.manuscriptId,
+    );
+    assert.ok(storedManuscript);
+    await runtime.manuscriptRepository.save({
+      ...storedManuscript,
+      current_template_family_id: undefined,
+    });
+
+    const bareResponse = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/screening/bare-report.md",
+        fileName: "screening-bare-report.md",
+        executionMode: "bare",
+      }),
+    });
+    const bare = (await bareResponse.json()) as {
+      job: { id: string; requested_by: string };
+      asset: { id: string; asset_type: string; parent_asset_id?: string };
+      knowledge_item_ids: string[];
+      model_id: string;
+      agent_execution_log_id?: string;
+      snapshot_id?: string;
+    };
+
+    assert.equal(bareResponse.status, 201);
+    assert.equal(bare.job.requested_by, "dev-screener");
+    assert.equal(bare.asset.asset_type, "screening_report");
+    assert.equal(bare.asset.parent_asset_id, seededIds.originalAssetId);
+    assert.deepEqual(bare.knowledge_item_ids, []);
+    assert.equal(bare.model_id, seededIds.screeningModelId);
+    assert.equal(bare.agent_execution_log_id, undefined);
+    assert.ok(bare.snapshot_id);
+
+    const manuscriptResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const manuscript = (await manuscriptResponse.json()) as {
+      current_screening_asset_id?: string;
+    };
+
+    const assetsResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/assets`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const assets = (await assetsResponse.json()) as Array<{ id: string }>;
+
+    const bareJobResponse = await fetch(`${baseUrl}/api/v1/jobs/${bare.job.id}`, {
+      headers: { Cookie: cookie },
+    });
+    const bareJob = (await bareJobResponse.json()) as {
+      payload?: Record<string, unknown>;
+      execution_tracking?: {
+        settlement?: { derived_status: string };
+      };
+    };
+
+    const exportResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/export-current-asset`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          preferredAssetType: "screening_report",
+        }),
+      },
+    );
+    const exported = (await exportResponse.json()) as {
+      asset: { id: string };
+      download: { url: string };
+    };
+
+    const runsResponse = await fetch(
+      `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.screeningSuiteId}/runs`,
+      {
+        headers: { Cookie: adminCookie },
+      },
+    );
+    const runs = (await runsResponse.json()) as Array<{ id: string }>;
+
+    assert.equal(manuscriptResponse.status, 200);
+    assert.equal(assetsResponse.status, 200);
+    assert.equal(bareJobResponse.status, 200);
+    assert.equal(exportResponse.status, 200);
+    assert.equal(runsResponse.status, 200);
+    assert.equal(manuscript.current_screening_asset_id, bare.asset.id);
+    assert.deepEqual(
+      [...assets.map((asset) => asset.id)].sort(),
+      [seededIds.originalAssetId, governed.asset.id, bare.asset.id].sort(),
+    );
+    assert.equal(bareJob.payload?.executionMode, "bare");
+    assert.equal(bareJob.payload?.outputAssetId, bare.asset.id);
+    assert.equal(exported.asset.id, bare.asset.id);
+    assert.ok(exported.download.url);
+    assert.equal(runs.length, 1);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http editing route runs with the authenticated editor context", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 

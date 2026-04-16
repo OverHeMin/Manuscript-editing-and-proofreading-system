@@ -188,7 +188,12 @@ export interface KnowledgeReviewActionRecord {
   id: string;
   knowledge_item_id: string;
   revision_id?: string;
-  action: "submitted_for_review" | "approved" | "rejected";
+  action:
+    | "submitted_for_review"
+    | "approved"
+    | "rejected"
+    | "archived"
+    | "restored";
   actor_role: "admin" | "screener" | "editor" | "proofreader" | "knowledge_reviewer" | "user";
   review_note?: string;
   created_at: string;

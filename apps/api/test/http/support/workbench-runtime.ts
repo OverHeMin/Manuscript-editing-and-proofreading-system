@@ -94,6 +94,7 @@ export interface WorkbenchSeededIds {
 export interface WorkbenchRuntimeBundle {
   authRuntime: DemoHttpAuthRuntime;
   permissionGuard: PermissionGuard;
+  manuscriptRepository: InMemoryManuscriptRepository;
   manuscriptApi: ReturnType<typeof createManuscriptApi>;
   documentPipelineApi: {
     exportCurrentAsset: (input: {
@@ -416,6 +417,7 @@ export function createWorkbenchRuntime(input: {
   return {
     authRuntime,
     permissionGuard,
+    manuscriptRepository,
     manuscriptApi,
     documentPipelineApi: {
       async exportCurrentAsset(input) {

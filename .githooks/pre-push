@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+if [ "${SKIP_LOCAL_PR_GATE:-0}" = "1" ]; then
+  echo "[pre-push] Skipping local PR gate because SKIP_LOCAL_PR_GATE=1."
+  exit 0
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "[pre-push] pnpm is required but was not found in PATH." >&2
+  exit 1
+fi
+
+echo "[pre-push] Running local PR gate..."
+pnpm verify:pr-gate

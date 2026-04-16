@@ -18,7 +18,20 @@ export type LearningCandidateStatus =
 
 export type LearningCandidateGovernedProvenanceKind =
   | "human_feedback"
-  | "evaluation_experiment";
+  | "evaluation_experiment"
+  | "reviewed_case_snapshot";
+
+export type LearningCandidateReviewAction =
+  | "submitted_for_review"
+  | "approved"
+  | "rejected";
+
+export interface LearningCandidateReviewActionViewModel {
+  action: LearningCandidateReviewAction;
+  actor_role: AuthRole;
+  review_note?: string;
+  created_at: string;
+}
 
 export interface ReviewedCaseSnapshotViewModel {
   id: string;
@@ -55,6 +68,7 @@ export interface LearningCandidateViewModel {
   created_by: string;
   created_at: string;
   updated_at: string;
+  review_actions?: readonly LearningCandidateReviewActionViewModel[];
   // Admin workbench can render approval state and governed writebacks from one payload.
   writeback_summaries?: LearningWritebackViewModel[];
 }
@@ -93,4 +107,11 @@ export interface CreateGovernedLearningCandidateInput
 export interface ApproveLearningCandidateInput {
   candidateId: string;
   actorRole: AuthRole;
+  reviewNote?: string;
+}
+
+export interface RejectLearningCandidateInput {
+  candidateId: string;
+  actorRole: AuthRole;
+  reviewNote?: string;
 }

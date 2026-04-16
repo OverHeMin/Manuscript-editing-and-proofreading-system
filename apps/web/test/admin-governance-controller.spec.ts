@@ -126,6 +126,208 @@ test("admin governance controller loads families, prompts, skills, and the selec
   );
 });
 
+test("admin governance controller derives a compact landing summary even when rule-center authoring endpoints are unavailable", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createAdminGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.url === "/api/v1/templates/families" ||
+        input.url === "/api/v1/prompt-skill-registry/prompt-templates" ||
+        input.url === "/api/v1/prompt-skill-registry/skill-packages" ||
+        input.url === "/api/v1/execution-governance/profiles" ||
+        input.url === qualityPackagesOverviewUrl
+      ) {
+        throw new Error("authoring endpoints unavailable");
+      }
+
+      if (input.url === "/api/v1/model-registry") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "model-primary-1",
+              provider: "openai",
+              model_name: "gpt-5.4",
+              model_version: "2026-04-01",
+              allowed_modules: ["screening", "editing", "proofreading"],
+              is_prod_allowed: true,
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/model-registry/routing-policy") {
+        return {
+          status: 200,
+          body: {
+            system_default_model_id: "model-primary-1",
+            module_defaults: {},
+            template_overrides: {},
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/system-settings/ai-providers") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "connection-qwen-1",
+              name: "Qwen Production",
+              provider_kind: "qwen",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: true,
+              last_test_status: "unknown",
+              credential_summary: {
+                mask: "sk-***a562",
+                version: 1,
+              },
+            },
+            {
+              id: "connection-backup-1",
+              name: "Backup Provider",
+              provider_kind: "deepseek",
+              compatibility_mode: "openai_chat_compatible",
+              enabled: false,
+              last_test_status: "passed",
+              credential_summary: {
+                mask: "sk-***b101",
+                version: 1,
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/verification-ops/evaluation-suites") {
+        return {
+          status: 200,
+          body: [{ id: "suite-1" }, { id: "suite-2" }] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/runtime-bindings") {
+        return {
+          status: 200,
+          body: [{ id: "binding-1" }] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "adapter-promptfoo-1",
+              kind: "promptfoo",
+              display_name: "Promptfoo local suite",
+              execution_mode: "local_cli",
+              fail_open: true,
+              redaction_profile_id: "profile-1",
+              feature_flag_keys: ["harness.promptfoo.enabled"],
+              result_envelope_version: "1.0.0",
+              created_at: "2026-04-04T12:00:00.000Z",
+              updated_at: "2026-04-04T12:00:00.000Z",
+            },
+            {
+              id: "adapter-judge-1",
+              kind: "judge_reliability_local",
+              display_name: "Judge calibration runner",
+              execution_mode: "local_cli",
+              fail_open: true,
+              redaction_profile_id: "profile-3",
+              feature_flag_keys: ["harness.judge.enabled"],
+              result_envelope_version: "1.0.0",
+              created_at: "2026-04-04T12:10:00.000Z",
+              updated_at: "2026-04-04T12:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters/adapter-promptfoo-1/executions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "exec-promptfoo-1",
+              adapter_id: "adapter-promptfoo-1",
+              trigger_kind: "api_requested",
+              input_reference: "run-input://promptfoo/suite-1",
+              dataset_id: "gold-set-1",
+              status: "succeeded",
+              result_summary: {},
+              created_at: "2026-04-04T13:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/harness-integrations/adapters/adapter-judge-1/executions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "judge-batch-1",
+              adapter_id: "adapter-judge-1",
+              trigger_kind: "operator_requested",
+              input_reference: "run-input://judge/batch-1",
+              status: "succeeded",
+              result_summary: {
+                exact_match_rate: 0.91,
+                agreement_count: 10,
+                disagreement_count: 1,
+              },
+              created_at: "2026-04-04T13:10:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      const emptyAgentToolingResponse = createEmptyAgentToolingListResponse<TResponse>(input.url);
+      if (emptyAgentToolingResponse) {
+        return emptyAgentToolingResponse;
+      }
+
+      return {
+        status: 200,
+        body: [] as TResponse,
+      };
+    },
+  });
+
+  const overview = await controller.loadOverview();
+
+  assert.equal(overview.selectedTemplateFamilyId, null);
+  assert.deepEqual(overview.templateFamilies, []);
+  assert.deepEqual(overview.promptTemplates, []);
+  assert.deepEqual(overview.skillPackages, []);
+  assert.deepEqual(overview.executionProfiles, []);
+  assert.deepEqual(overview.qualityPackages, []);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.aiAccess.totalConnections, 2);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.aiAccess.enabledConnections, 1);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.aiAccess.prodReadyModels, 1);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.harness.evaluationSuiteCount, 2);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.harness.runtimeBindingCount, 1);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.harness.adapterHealthCount, 2);
+  assert.equal((overview as { landing: { aiAccess: { totalConnections: number; enabledConnections: number; prodReadyModels: number }; harness: { evaluationSuiteCount: number; runtimeBindingCount: number; adapterHealthCount: number; latestJudgeCalibrationBatchOutcome: { execution_id: string } | null }; warnings: string[] } }).landing.harness.latestJudgeCalibrationBatchOutcome?.execution_id, "judge-batch-1");
+  assert.ok(
+    (overview as { landing: { warnings: string[] } }).landing.warnings.some((warning) =>
+      warning.includes("AI 连接"),
+    ),
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("/module-templates")),
+    false,
+  );
+});
+
 test("admin governance controller creates a family and reloads the overview around the new selection", async () => {
   const controller = createAdminGovernanceWorkbenchController({
     request: async <TResponse>(input: {

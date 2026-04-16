@@ -394,6 +394,7 @@ model LearningCandidate {
   suggestedRuleObject String?               @map("suggested_rule_object") @db.Text
   suggestedTemplateFamilyId String?         @map("suggested_template_family_id") @db.Uuid
   suggestedJournalTemplateId String?        @map("suggested_journal_template_id") @db.Uuid
+  reviewActions     Json?                   @map("review_actions")
   createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
   humanFinalAsset   DocumentAsset?          @relation("HumanFinalAsset", fields: [humanFinalAssetId], references: [id], onDelete: SetNull)

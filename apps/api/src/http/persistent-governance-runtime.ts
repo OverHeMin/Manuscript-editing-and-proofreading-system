@@ -203,6 +203,7 @@ import {
   PostgresUserAdminRepository,
   UserAdminService,
 } from "../users/index.ts";
+import { ensurePersistentWorkbenchReviewBaseline } from "./persistent-workbench-review-baseline.ts";
 
 type QueryableClient = {
   query: <TRow = Record<string, unknown>>(
@@ -337,6 +338,22 @@ export function createPersistentGovernanceRuntime(
     new PostgresPromptSkillRegistryRepository({
       client: options.client,
     });
+  const runtimeBootstrap = ensurePersistentWorkbenchReviewBaseline({
+    templateFamilyRepository,
+    moduleTemplateRepository,
+    promptSkillRegistryRepository,
+    editorialRuleRepository,
+    executionGovernanceRepository,
+    sandboxProfileRepository,
+    agentRuntimeRepository,
+    agentProfileRepository,
+    runtimeBindingRepository,
+    toolPermissionPolicyRepository,
+    modelRegistryRepository,
+    modelRoutingPolicyRepository,
+    retrievalPresetRepository,
+    manualReviewPolicyRepository,
+  });
   const manuscriptQualityPackageRepository =
     new PostgresManuscriptQualityPackageRepository({
       client: options.client,
@@ -807,7 +824,8 @@ export function createPersistentGovernanceRuntime(
       new OpenAiChatCompatibleConnectivityProbe(),
   });
 
-  return {
+  return withRuntimeBootstrap(
+    {
     authRuntime: options.authRuntime,
     agentExecutionApi: createAgentExecutionApi({
       agentExecutionService,
@@ -833,6 +851,7 @@ export function createPersistentGovernanceRuntime(
       assetService: documentAssetService,
       executionTrackingService,
       executionGovernanceRepository,
+      executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
     }),
@@ -944,5 +963,49 @@ export function createPersistentGovernanceRuntime(
       aiProviderConnectionService,
     }),
     permissionGuard,
-  };
+    },
+    runtimeBootstrap,
+  );
+}
+
+function withRuntimeBootstrap(
+  runtime: ApiServerRuntime,
+  bootstrap: Promise<void>,
+): ApiServerRuntime {
+  const bootstrappedRuntime = { ...runtime } as ApiServerRuntime;
+
+  for (const key of Object.keys(runtime) as Array<keyof ApiServerRuntime>) {
+    if (key === "authRuntime" || key === "permissionGuard") {
+      continue;
+    }
+
+    const value = runtime[key];
+    if (value && typeof value === "object") {
+      (bootstrappedRuntime[key] as unknown) = gateApiWithBootstrap(
+        value as Record<string, unknown>,
+        bootstrap,
+      );
+    }
+  }
+
+  return bootstrappedRuntime;
+}
+
+function gateApiWithBootstrap<TApi extends object>(
+  api: TApi,
+  bootstrap: Promise<void>,
+): TApi {
+  return new Proxy(api, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") {
+        return value;
+      }
+
+      return async (...args: unknown[]) => {
+        await bootstrap;
+        return Reflect.apply(value, target, args);
+      };
+    },
+  }) as TApi;
 }

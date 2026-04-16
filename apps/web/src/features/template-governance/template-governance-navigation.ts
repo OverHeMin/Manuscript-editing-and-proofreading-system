@@ -12,6 +12,7 @@ export interface TemplateGovernanceNavigationItem {
   key: TemplateGovernanceNavigationTarget;
   label: string;
   isActive: boolean;
+  priority: "primary" | "secondary";
   onClick?: () => void;
 }
 
@@ -44,6 +45,8 @@ export function createTemplateGovernanceNavigationItems(
     key,
     label: navigationLabels[key],
     isActive: key === activeKey,
+    priority:
+      key === "overview" || key === "rule-ledger" ? "primary" : "secondary",
     ...(onNavigate ? { onClick: () => onNavigate(key) } : {}),
   }));
 }

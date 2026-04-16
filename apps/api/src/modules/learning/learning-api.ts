@@ -63,15 +63,37 @@ export function createLearningApi(options: CreateLearningApiOptions) {
     async approveLearningCandidate({
       candidateId,
       actorRole,
+      reviewNote,
     }: {
       candidateId: string;
       actorRole: RoleKey;
+      reviewNote?: string;
     }): Promise<RouteResponse<LearningCandidateRecord>> {
       return {
         status: 200,
         body: await learningService.approveLearningCandidate(
           candidateId,
           actorRole,
+          reviewNote,
+        ),
+      };
+    },
+
+    async rejectLearningCandidate({
+      candidateId,
+      actorRole,
+      reviewNote,
+    }: {
+      candidateId: string;
+      actorRole: RoleKey;
+      reviewNote?: string;
+    }): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 200,
+        body: await learningService.rejectLearningCandidate(
+          candidateId,
+          actorRole,
+          reviewNote,
         ),
       };
     },
