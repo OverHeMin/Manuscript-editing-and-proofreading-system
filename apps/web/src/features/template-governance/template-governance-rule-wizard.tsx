@@ -392,9 +392,9 @@ export function TemplateGovernanceRuleWizard({
     <section className="template-governance-rule-wizard">
       <header className="template-governance-ledger-toolbar">
         <div className="template-governance-ledger-toolbar-copy">
-          <p className="template-governance-eyebrow">规则向导</p>
+          <p className="template-governance-eyebrow">规则草稿向导</p>
           <h1>{resolveWizardTitle(state.mode, title)}</h1>
-          <p>用统一五步完成录入、语义确认、绑定和发布，不再把复杂编辑留在台账页里。</p>
+          <p>先带入候选并整理规则草稿，确认规则意图与适用范围后再提交发布。</p>
         </div>
         <div className="template-governance-ledger-toolbar-actions template-governance-ledger-toolbar-actions--comfortable">
           <button type="button" onClick={onBack}>
@@ -569,12 +569,12 @@ function resolveWizardTitle(mode: RuleWizardState["mode"], title: string | undef
 
   switch (mode) {
     case "edit":
-      return "编辑规则";
+      return "编辑规则草稿";
     case "candidate":
-      return "回流候选转规则";
+      return "回流候选转规则草稿";
     case "create":
     default:
-      return "新建规则";
+      return "规则草稿向导";
   }
 }
 

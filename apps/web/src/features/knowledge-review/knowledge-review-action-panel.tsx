@@ -31,13 +31,13 @@ export function KnowledgeReviewActionPanel({
     <section className="knowledge-review-panel knowledge-review-action-panel">
       <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
         <div>
-          <h2>审核动作</h2>
-          <p>备注与决策保持同区处理，减少来回滚动。</p>
+          <h2>审核结论</h2>
+          <p>在审核站里完成通过或驳回，决定这条知识修订如何进入下游治理。</p>
         </div>
 
         <div className="knowledge-review-inline-actions">
           <button type="button" disabled={isDisabled} onClick={onApprove}>
-            {isSubmitting ? "提交中..." : "通过"}
+            {isSubmitting ? "提交中..." : "审核通过"}
           </button>
           <button
             type="button"
@@ -45,7 +45,7 @@ export function KnowledgeReviewActionPanel({
             className="knowledge-review-reject-button"
             onClick={onReject}
           >
-            {isSubmitting ? "提交中..." : "驳回"}
+            {isSubmitting ? "提交中..." : "驳回修订"}
           </button>
         </div>
       </header>
@@ -56,14 +56,14 @@ export function KnowledgeReviewActionPanel({
           <textarea
             value={reviewNote}
             disabled={!hasSelection || isSubmitting}
-            placeholder="通过时可选填写；若要驳回，强烈建议说明原因。"
+            placeholder="通过时可选填写；若驳回修订，建议说明原因。"
             onChange={(event) => onReviewNoteChange(event.target.value)}
           />
         </label>
 
         {isRejectNoteMissing ? (
           <p className="knowledge-review-note-hint">
-            建议补充简短审核说明，便于后续修改与追踪。
+            建议补充简短审核说明，便于后续修订与追踪。
           </p>
         ) : null}
 

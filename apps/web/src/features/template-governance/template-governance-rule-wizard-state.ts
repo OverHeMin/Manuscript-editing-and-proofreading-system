@@ -23,11 +23,11 @@ const ruleWizardStepOrder: readonly RuleWizardStep[] = [
 ];
 
 const ruleWizardStepLabels: Record<RuleWizardStep, string> = {
-  entry: "基础录入与证据补充",
-  semantic: "AI 识别语义层",
-  confirm: "人工确认 AI 结果",
-  binding: "放入模板 / 规则包",
-  publish: "保存与发布",
+  entry: "带入候选",
+  semantic: "整理草稿",
+  confirm: "确认规则意图",
+  binding: "绑定适用范围",
+  publish: "提交发布",
 };
 
 export function createRuleWizardState(

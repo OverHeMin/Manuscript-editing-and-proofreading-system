@@ -383,10 +383,15 @@ test("summary routes the quality recovery handoff into the rule center workspace
     />,
   );
 
-  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(markup, /\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3/u);
+  assert.match(
+    markup,
+    /\u5f53\u524d\u9636\u6bb5\uff1a\u5ba1\u6838\u3002\u4e0b\u4e00\u6b65\uff1a\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3\u5b8c\u6210\u5ba1\u6838\uff0c\u5e76\u7ee7\u7eed\u8f6c\u6210\u89c4\u5219\u8349\u7a3f\u3002/u,
+  );
   assert.match(markup, /#template-governance\?[^"]*templateGovernanceView=rule-ledger/u);
   assert.match(markup, /ruleCenterMode=learning/u);
   assert.match(markup, /manuscriptId=manuscript-recovery-1/u);
+  assert.doesNotMatch(markup, /\u524d\u5f80\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.doesNotMatch(markup, /#learning-review/u);
 });
 

@@ -9,10 +9,10 @@ const {
 
 test("rule wizard state exposes the approved five-step labels", () => {
   assert.deepEqual(getRuleWizardStepLabels(), [
-    "基础录入与证据补充",
-    "AI 识别语义层",
-    "人工确认 AI 结果",
-    "放入模板 / 规则包",
-    "保存与发布",
+    "带入候选",
+    "整理草稿",
+    "确认规则意图",
+    "绑定适用范围",
+    "提交发布",
   ]);
 });

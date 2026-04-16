@@ -30,8 +30,8 @@ export function KnowledgeReviewDetailPane({
       <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
         {item == null ? (
           <div>
-            <h2>知识详情</h2>
-            <p>详情区保持在中间列，用于快速核对当前待审修订的上下文。</p>
+            <h2>知识修订详情</h2>
+            <p>详情区集中展示当前待审修订的上下文、证据和审核轨迹。</p>
           </div>
         ) : (
           <div>
@@ -39,7 +39,7 @@ export function KnowledgeReviewDetailPane({
             <p>
               {isUsingStableSnapshot
                 ? "实时队列暂时不可用，当前保留最近一次稳定选择供继续核对。"
-                : "围绕当前修订集中核对规范文本、适用范围与审核轨迹。"}
+                : "在审核站里集中核对规范文本、适用范围与审核轨迹。"}
             </p>
           </div>
         )}
@@ -48,7 +48,7 @@ export function KnowledgeReviewDetailPane({
       <div className="knowledge-review-detail-scroll" data-scroll-owner="detail">
         {item == null ? (
           <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-            请选择一条队列记录，以加载对应资产、修订上下文与审核历史。
+            请选择一条待审修订，以加载对应资产、修订上下文与审核历史。
           </div>
         ) : (
           <>
@@ -110,7 +110,7 @@ export function KnowledgeReviewDetailPane({
             <section className="knowledge-review-history">
               <header>
                 <h3>审核历史</h3>
-                <p>按修订维度追踪审核事件与审核备注。</p>
+                <p>按修订维度追踪审核结论与审核备注。</p>
               </header>
 
               {historyScopeNote ? (
@@ -211,7 +211,7 @@ function renderStatus(status: KnowledgeReviewQueueItemViewModel["status"]): stri
     case "pending_review":
       return "待审核";
     case "approved":
-      return "已通过";
+      return "审核通过";
     case "draft":
       return "草稿";
     case "deprecated":
@@ -232,7 +232,7 @@ function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
     case "approved":
       return "审核通过";
     case "rejected":
-      return "已驳回";
+      return "驳回修订";
     default:
       return action;
   }

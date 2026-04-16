@@ -92,11 +92,14 @@ test("rule center learning mode renders a recovery workspace inside the rule cen
     }),
   );
 
-  assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
-  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
+  assert.match(markup, /\u8f6c\u89c4\u5219\u7ad9/u);
+  assert.match(markup, /\u5148\u5b8c\u6210\u5ba1\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /data-mode="rule-center-recovery"/);
   assert.match(markup, /manuscript-42/);
   assert.match(markup, /snapshot-42/);
+  assert.doesNotMatch(markup, /\u89c4\u5219\u53f0\u8d26/u);
+  assert.doesNotMatch(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
   assert.doesNotMatch(markup, /\u7edf\u4e00\u89c4\u5219\u8d44\u4ea7\u8868/u);
 });
@@ -200,12 +203,15 @@ test("rule center recovery workspace shows evidence, destination context, and go
   assert.match(markup, /\u8bc1\u636e\u6458\u8981/u);
   assert.match(markup, /\u5efa\u8bae\u6a21\u677f\u65cf/u);
   assert.match(markup, /\u5efa\u8bae\u671f\u520a\u6a21\u677f/u);
-  assert.match(markup, /\u8f6c\u6210\u89c4\u5219/u);
+  assert.match(markup, /\u5ba1\u6838\u901a\u8fc7/u);
+  assert.match(markup, /\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /\u9a73\u56de\u5019\u9009/u);
+  assert.match(markup, /\u5148\u5b8c\u6210\u5ba1\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /Human-reviewed abstract heading normalization\./);
   assert.match(markup, /Abstract heading normalization/);
   assert.match(markup, /\u7f16\u8f91/u);
   assert.match(markup, /\u4e34\u5e8a\u7814\u7a76/u);
+  assert.doesNotMatch(markup, /\u6279\u51c6\u5019\u9009/u);
   assert.doesNotMatch(markup, /RulePackageAuthoringShell/);
 });
 
@@ -296,8 +302,9 @@ test("rule center recovery workspace replaces legacy learning-review copy and sh
     }),
   );
 
-  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.doesNotMatch(markup, /\u5b66\u4e60\u56de\u6d41/u);
+  assert.doesNotMatch(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.match(markup, /\u5ba1\u6838\u5386\u53f2/u);
   assert.match(markup, /Need stronger evidence before reuse\./u);
 });

@@ -2628,15 +2628,13 @@ function TemplateGovernanceLearningRecoveryRoute({
     >
       <header className="template-governance-ledger-toolbar template-governance-recovery-toolbar">
         <div className="template-governance-ledger-toolbar-copy">
-          <p className="template-governance-eyebrow">规则中心 · 回流工作区</p>
-          <h1>规则台账</h1>
-          <p>
-            在规则中心内处理 AI 提取或人工复核后的回流候选，完成批准、驳回与转成规则草稿。
-          </p>
+          <p className="template-governance-eyebrow">规则中心 · 转规则站</p>
+          <h1>回流候选转规则</h1>
+          <p>先完成审核结论，再转成规则草稿。</p>
         </div>
 
         <div className="template-governance-chip-row">
-          <span className="template-governance-chip">回流工作区</span>
+          <span className="template-governance-chip">转规则站</span>
           <span className="template-governance-chip template-governance-chip-secondary">
             待处理 {initialLearningCandidates.length}
           </span>
@@ -2975,7 +2973,7 @@ function TemplateGovernanceRuleLedgerRoute({
         onEntryFormChange={handleRuleWizardEntryFormChange}
         onBack={() => {
           setWizardState(null);
-          setStatusMessage("已返回规则台账。");
+          setStatusMessage("已返回转规则站。");
         }}
         onPrevious={() => {
           setWizardState((current) =>
@@ -3073,7 +3071,7 @@ function TemplateGovernanceRuleLedgerRoute({
       onOpenCreateRule={handleOpenCreateRule}
       onOpenSelectedItem={handleOpenSelectedItem}
       selectedItemActionLabel={
-        ledger.selectedRow?.asset_kind === "recycled_candidate" ? "转成规则" : "编辑规则"
+        ledger.selectedRow?.asset_kind === "recycled_candidate" ? "转成规则草稿" : "编辑规则"
       }
       onOpenSearch={() => {
         setSearchQuery(searchValue.trim());
@@ -3450,13 +3448,13 @@ function resolveRuleWizardCompletionMessage(
 ): string {
   switch (releaseAction) {
     case "save_draft":
-      return "规则草稿已回写到规则台账。";
+      return "规则草稿已回写到转规则站。";
     case "submit_review":
-      return "规则已提交审核并返回规则台账。";
+      return "规则已提交审核并返回转规则站。";
     case "publish_now":
-      return "规则已发布并返回规则台账。";
+      return "规则已发布并返回转规则站。";
     default:
-      return "规则向导已关闭，请继续在规则台账完成后续治理。";
+      return "规则草稿向导已关闭，请继续在转规则站完成后续治理。";
   }
 }
 

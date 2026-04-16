@@ -29,7 +29,13 @@ test("rule wizard shell renders shared step navigation and closeout actions", ()
     />,
   );
 
-  assert.match(markup, /下一步：AI 识别语义层/u);
+  assert.match(markup, /规则草稿向导/u);
+  assert.match(markup, /带入候选/u);
+  assert.match(markup, /整理草稿/u);
+  assert.match(markup, /确认规则意图/u);
+  assert.match(markup, /绑定适用范围/u);
+  assert.match(markup, /提交发布/u);
+  assert.match(markup, /下一步：整理草稿/u);
   assert.match(markup, /保存草稿/u);
   assert.match(markup, /完成并返回规则中心/u);
   assert.match(markup, /录入画布/u);
@@ -209,6 +215,7 @@ test("rule wizard binding and publish steps render package and release controls"
   assert.match(publishMarkup, /\u63d0\u4ea4\u5ba1\u6838/u);
   assert.match(publishMarkup, /最终摘要/u);
   assert.match(publishMarkup, /提交前检查/u);
+  assert.match(publishMarkup, /提交发布/u);
   assert.match(publishMarkup, /\u5b8c\u6210\u5e76\u8fd4\u56de\u89c4\u5219\u4e2d\u5fc3/u);
 });
 

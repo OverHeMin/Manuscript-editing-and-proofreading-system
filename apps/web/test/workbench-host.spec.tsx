@@ -200,15 +200,12 @@ test("workbench host routes legacy learning-review hashes into the rule-center l
 
   assert.match(markup, /template-governance-recovery-route/u);
   assert.match(markup, /data-mode="rule-center-recovery"/u);
-  assert.match(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
+  assert.match(markup, /\u8f6c\u89c4\u5219\u7ad9/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.match(
     markup,
     /workbench-header-focus-card[\s\S]*?\u89c4\u5219\u4e2d\u5fc3/u,
   );
-  assert.doesNotMatch(markup, /learning-review-workbench/u);
-  return;
-  assert.match(markup, /回流工作区/u);
-  assert.match(markup, /workbench-header-focus-card[\s\S]*?规则中心/u);
   assert.doesNotMatch(markup, /learning-review-workbench/u);
 });
 
@@ -244,7 +241,7 @@ test("workbench host defaults bare rule center hashes to the overview page", asy
   const markup = await renderWorkbenchHostAtHash("#template-governance");
 
   assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /template-governance-overview-panels/u);
+  assert.match(markup, /template-governance-overview-main/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 

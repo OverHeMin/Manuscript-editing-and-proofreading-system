@@ -83,7 +83,7 @@ export function RuleLearningPane({
     startTransition(() => {
       setResolvedCandidate(null);
       setWorkbenchState((current) => selectLearningReviewCandidate(current, candidateId));
-      setStatusMessage(`已切换到回流候选：${candidateId}`);
+      setStatusMessage(`已切换到转规则候选：${candidateId}`);
       setErrorMessage(null);
     });
   }
@@ -107,14 +107,14 @@ export function RuleLearningPane({
         setWorkbenchState((current) =>
           applyLearningReviewApprovalSuccess(current, response.body.id),
         );
-        setStatusMessage(`已批准回流候选：${response.body.id}`);
+        setStatusMessage(`已审核通过回流候选：${response.body.id}`);
       });
     });
   }
 
   function handleConvertSelectedCandidateToRuleDraft() {
     if (!selectedCandidate || selectedCandidate.status !== "approved") {
-      setErrorMessage("请先批准候选，再转成规则草稿。");
+      setErrorMessage("请先完成审核通过，再转成规则草稿。");
       return;
     }
 
@@ -129,7 +129,7 @@ export function RuleLearningPane({
 
   async function handleRejectCandidateRequest() {
     if (!workbenchState.selectedCandidate) {
-      setErrorMessage("璇峰厛浠庡洖娴佸€欓€夐槦鍒椾腑閫夋嫨涓€椤广€?");
+      setErrorMessage("请先从回流候选队列中选择一项。");
       return;
     }
 
@@ -146,7 +146,7 @@ export function RuleLearningPane({
         setWorkbenchState((current) =>
           applyLearningReviewApprovalSuccess(current, response.body.id),
         );
-        setStatusMessage(`宸查┏鍥炲洖娴佸€欓€夛細${response.body.id}`);
+        setStatusMessage(`已驳回回流候选：${response.body.id}`);
       });
     });
   }
@@ -189,7 +189,7 @@ export function RuleLearningPane({
           <div className="template-governance-panel-header">
             <div>
               <h3>回流候选</h3>
-              <p>先看证据与差异，再决定批准、驳回或转成规则草稿。</p>
+              <p>先看证据与差异，完成审核结论后再转成规则草稿。</p>
             </div>
 
             <div className="template-governance-chip-row">
@@ -295,5 +295,5 @@ function formatLearningManuscriptType(value: string): string {
 }
 
 function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "规则回流工作区发生未知错误。";
+  return error instanceof Error ? error.message : "转规则站发生未知错误。";
 }

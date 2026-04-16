@@ -10,6 +10,22 @@
 
 ---
 
+## Revision Note (2026-04-16, accepted scope)
+
+This plan originally assumed the knowledge review page itself would become `回流候选审核`.
+
+That assumption is not accurate for the current product behavior and is superseded by this note.
+
+The accepted truthful scope is:
+
+- the knowledge review page remains a real `知识审核` station; it should feel like an `审核站`, but it must not be renamed to `回流候选审核`
+- manuscript summary copy should only explain the current stage plus the next station
+- the rule center recovery workspace should read as the downstream `回流候选转规则` station
+- because the rule center recovery workspace still owns approve / reject actions in the current workflow, the copy must explicitly say `先完成审核结论，再转成规则草稿`
+- the rule wizard is renamed to `规则草稿向导`
+
+If older steps below imply that the knowledge review page itself is the recovery-candidate approval station, follow this revision note instead.
+
 ### Task 1: Lock the new stage-flow language in focused web tests
 
 **Files:**

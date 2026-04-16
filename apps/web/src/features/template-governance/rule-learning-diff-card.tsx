@@ -24,7 +24,7 @@ export function RuleLearningDiffCard({ candidate }: RuleLearningDiffCardProps) {
       <div className="template-governance-panel-header">
         <div>
           <h3>回流候选详情</h3>
-          <p>核对证据、差异、建议去向后，再决定是否沉淀为规则。</p>
+          <p>核对证据、差异和建议去向后，先完成审核结论，再决定如何沉淀为规则草稿。</p>
         </div>
       </div>
 
@@ -122,7 +122,7 @@ export function RuleLearningDiffCard({ candidate }: RuleLearningDiffCardProps) {
         </div>
       ) : (
         <p className="template-governance-empty">
-          先从回流候选队列中选择一项，再查看它的证据与建议治理上下文。
+          先从回流候选队列中选择一项，再查看它的证据与转规则上下文。
         </p>
       )}
     </article>
@@ -134,9 +134,9 @@ function formatCandidateStatus(value: string): string {
     case "pending_review":
       return "待审核";
     case "approved":
-      return "已批准";
+      return "审核通过";
     case "rejected":
-      return "已驳回";
+      return "已驳回候选";
     default:
       return value;
   }
@@ -160,9 +160,9 @@ function formatReviewAction(value: string): string {
     case "submitted_for_review":
       return "提交审核";
     case "approved":
-      return "已批准";
+      return "审核通过";
     case "rejected":
-      return "已驳回";
+      return "驳回候选";
     default:
       return value;
   }

@@ -279,8 +279,8 @@ export function KnowledgeReviewWorkbenchPage({
       status: "loading",
       message:
         actionType === "approve"
-          ? "正在提交通过结果..."
-          : "正在提交驳回并退回草稿...",
+          ? "正在提交审核通过结果..."
+          : "正在提交驳回修订结果...",
     });
 
     const result =
@@ -346,7 +346,7 @@ export function KnowledgeReviewWorkbenchPage({
 
     setActionFeedback({
       status: "success",
-      message: actionType === "approve" ? "知识条目已通过审核。" : "知识条目已驳回。",
+      message: actionType === "approve" ? "知识修订已审核通过。" : "知识修订已驳回。",
     });
   }
 
@@ -392,12 +392,12 @@ export function KnowledgeReviewWorkbenchPage({
       <header className="knowledge-review-compact-header">
         <div className="knowledge-review-header-main">
           <div className="knowledge-review-header-copy">
-            <span className="knowledge-review-eyebrow">知识审核</span>
-            <h1>知识审核工作台</h1>
-            <p>队列、详情、决策保持同屏，优先支持高频审核流。</p>
+            <span className="knowledge-review-eyebrow">审核站</span>
+            <h1>知识审核</h1>
+            <p>当前先在审核站完成知识修订结论，通过后再转入规则中心继续治理。</p>
           </div>
 
-          <div className="knowledge-review-header-summary" aria-label="当前审核摘要">
+          <div className="knowledge-review-header-summary" aria-label="当前审核站摘要">
             <span className="knowledge-review-summary-chip">
               审核角色：{formatActorRole(actorRole)}
             </span>

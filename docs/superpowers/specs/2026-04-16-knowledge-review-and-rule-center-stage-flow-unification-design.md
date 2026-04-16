@@ -12,6 +12,22 @@ Approved in conversation, draft for written review
 
 Turn the current `知识审核 -> 规则中心回流工作区 -> 规则向导` chain into one Chinese-first, stage-led operator flow with clear station boundaries.
 
+## Revision Note (2026-04-16, accepted scope)
+
+During implementation review we confirmed a workflow boundary that the first draft described too aggressively:
+
+- the current `知识审核页` reviews knowledge revisions
+- the current rule-center recovery workspace still owns recovery-candidate approve / reject actions before draft conversion
+
+Therefore the approved truthful direction is:
+
+- `知识审核页` stays `知识审核`; it can gain `审核站` wording, but it must not be renamed to `回流候选审核`
+- `规则中心` recovery mode becomes the downstream `转规则站`
+- `规则向导` becomes `规则草稿向导`
+- manuscript summary copy only explains current stage and next station
+
+If later sections in this document imply that the knowledge review page itself is already the `回流候选审核` station, this revision note overrides those references.
+
 This document locks four product outcomes:
 
 - the shared four-stage narrative for the full recovery-governance chain

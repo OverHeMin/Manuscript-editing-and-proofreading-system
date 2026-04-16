@@ -1956,8 +1956,8 @@ function buildRecommendedNextStep(
 
   if (workspace.currentAsset?.asset_type === "human_final_docx") {
     return {
-      focus: "将该稿件移交回流工作区",
-      guidance: "人工终稿已就绪，可进入规则中心的回流工作区。",
+      focus: "前往规则中心",
+      guidance: "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
       details: [
         {
           label: "稿件",
@@ -1968,7 +1968,7 @@ function buildRecommendedNextStep(
           value: describeAsset(workspace.currentAsset),
         },
       ],
-      targetLabel: canOpenLearningReview ? "前往回流工作区" : undefined,
+      targetLabel: canOpenLearningReview ? "前往规则中心" : undefined,
       targetHref: canOpenLearningReview
         ? formatWorkbenchHash("template-governance", {
             manuscriptId: workspace.manuscript.id,
