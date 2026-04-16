@@ -78,7 +78,7 @@ test("template governance authoring route opens the five-step rule wizard", asyn
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "新建规则" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "规则草稿向导" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "五步流" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "基础录入与证据补充" })).toBeVisible();
   await expect(page.getByRole("button", { name: "返回规则台账" })).toBeVisible();
@@ -93,7 +93,7 @@ test("template governance authoring route opens the five-step rule wizard", asyn
   await expect(ruleNameField).toHaveValue(ruleName);
   await expect(page.getByRole("combobox", { name: "适用模块" })).toBeVisible();
   await expect(page.getByRole("button", { name: "保存草稿" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "下一步：AI 识别语义层" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下一步：整理草稿" })).toBeVisible();
   await expect(page.getByRole("button", { name: "完成并返回规则中心" })).toBeVisible();
 });
 

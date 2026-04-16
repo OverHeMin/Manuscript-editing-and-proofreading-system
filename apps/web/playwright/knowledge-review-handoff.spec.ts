@@ -9,12 +9,12 @@ import {
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
-const queueHeading = "待审核队列";
+const queueHeading = "待审修订队列";
 const reviewNoteLabel = "审核备注";
-const approveLabel = "通过";
-const rejectLabel = "驳回";
-const approvedMessage = "知识条目已通过审核。";
-const rejectedMessage = "知识条目已驳回。";
+const approveLabel = "审核通过";
+const rejectLabel = "驳回修订";
+const approvedMessage = "知识修订已审核通过。";
+const rejectedMessage = "知识修订已驳回。";
 const seededReviewedCaseSnapshotId = "reviewed-case-snapshot-demo-1";
 const seededHumanFinalAssetId = "human-final-demo-1";
 

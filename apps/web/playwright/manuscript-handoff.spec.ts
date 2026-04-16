@@ -146,9 +146,9 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await page.getByRole("button", { name: "发布人工终稿" }).click();
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
   await expect(page.locator("body")).toContainText(
-    "人工终稿已就绪，可进入规则中心的回流工作区。",
+    "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
   );
-  const learningReviewLink = page.getByRole("link", { name: "前往回流工作区" });
+  const learningReviewLink = page.getByRole("link", { name: "前往规则中心" });
   await expect(learningReviewLink).toBeVisible();
   await expect(learningReviewLink).toHaveAttribute(
     "href",
@@ -182,10 +182,8 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   );
 
   await navigateViaHashLink(page, learningReviewLink);
-  await expect(page.getByRole("heading", { name: "规则台账" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(
-    "规则中心 · 回流工作区",
-  );
+  await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("规则中心 · 转规则站");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");

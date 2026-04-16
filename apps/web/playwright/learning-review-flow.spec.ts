@@ -12,7 +12,6 @@ const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09"
 const screeningHeading = "当前稿件初筛判断";
 const editingHeading = "当前稿件编辑工作区";
 const proofreadingHeading = "当前稿件校对工作区";
-const ruleCenterHeading = "规则台账";
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
 const createDraftLabel = "生成校对草稿";
@@ -123,9 +122,9 @@ test("admin can complete the governed learning review flow from manuscript hando
   await page.getByRole("button", { name: publishHumanFinalLabel }).click();
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
   await expect(page.locator("body")).toContainText(
-    "人工终稿已就绪，可进入规则中心的回流工作区。",
+    "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
   );
-  const learningReviewLink = page.getByRole("link", { name: "前往回流工作区" });
+  const learningReviewLink = page.getByRole("link", { name: "前往规则中心" });
   await expect(learningReviewLink).toBeVisible();
   await expect(learningReviewLink).toHaveAttribute(
     "href",
@@ -192,8 +191,8 @@ test("admin can complete the governed learning review flow from manuscript hando
   const candidateListLabel = extractedCandidate.title ?? extractedCandidate.id;
 
   await navigateViaHashLink(page, learningReviewLink);
-  await expect(page.getByRole("heading", { name: ruleCenterHeading })).toBeVisible();
-  await expect(page.locator("body")).toContainText("规则中心 · 回流工作区");
+  await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("规则中心 · 转规则站");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");
@@ -206,15 +205,15 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
   await expect(page.locator("body")).toContainText("family-seeded-1");
 
-  await expect(page.getByRole("button", { name: "批准候选" })).toBeEnabled();
-  await page.getByRole("button", { name: "批准候选" }).click();
+  await expect(page.getByRole("button", { name: "审核通过" })).toBeEnabled();
+  await page.getByRole("button", { name: "审核通过" }).click();
   await expect(page.locator("body")).toContainText(
-    `已批准回流候选：${extractedCandidate.id}`,
+    `已审核通过回流候选：${extractedCandidate.id}`,
   );
-  await expect(page.getByRole("button", { name: "转成规则" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "转成规则" }).click();
-  await expect(page.locator("body")).toContainText("规则向导");
+  await page.getByRole("button", { name: "转成规则草稿" }).click();
+  await expect(page.locator("body")).toContainText("规则草稿向导");
   await expect(page.locator("body")).toContainText("返回规则台账");
   await expect(page.locator("body")).toContainText(candidateListLabel);
   await expect(page.locator("body")).toContainText(evidenceSummary);
