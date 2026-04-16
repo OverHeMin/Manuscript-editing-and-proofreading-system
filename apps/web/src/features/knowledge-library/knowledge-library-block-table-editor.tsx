@@ -23,23 +23,28 @@ export function KnowledgeLibraryBlockTableEditor({
     .join("\n");
 
   return (
-    <label className="knowledge-library-block-editor">
-      <span>Table Data</span>
-      <textarea
-        rows={6}
-        value={value}
-        onChange={(event) =>
-          onChange({
-            ...block,
-            content_payload: {
-              ...block.content_payload,
-              rows: parseTableRows(event.target.value),
-            },
-          })
-        }
-        placeholder="Paste TSV data here"
-      />
-    </label>
+    <div className="knowledge-library-block-editor knowledge-library-block-table-editor">
+      <label className="knowledge-library-rich-content-editor__field">
+        <span>表格内容（支持直接粘贴 Excel / WPS）</span>
+        <textarea
+          rows={6}
+          value={value}
+          onChange={(event) =>
+            onChange({
+              ...block,
+              content_payload: {
+                ...block.content_payload,
+                rows: parseTableRows(event.target.value),
+              },
+            })
+          }
+          placeholder="直接粘贴表格内容，列之间用 Tab 分隔，换行会自动变成下一行"
+        />
+      </label>
+      <p className="knowledge-library-block-editor__hint">
+        如果来自 Excel 或 WPS，直接复制整块表格后粘贴到这里就可以。
+      </p>
+    </div>
   );
 }
 

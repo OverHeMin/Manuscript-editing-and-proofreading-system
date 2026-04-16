@@ -26,9 +26,15 @@ export function KnowledgeLibraryRichContentEditor({
       <header className="knowledge-library-rich-content-editor__header">
         <div>
           <h3>内容材料</h3>
-          <p>按块组织正文、表格与图片，保持录入板短而清晰。</p>
+          <p>按块组织正文、表格与图片，先选块类型再录入，避免把图表挤进正文里。</p>
         </div>
       </header>
+
+      <div className="knowledge-library-rich-content-editor__guidance">
+        <p>表格支持直接粘贴 Excel / WPS，每一行会自动拆分为多列。</p>
+        <p>图片块可以上传截图、图表或扫描件，上传后再补充图片说明。</p>
+        <p>如果只想补充图注、表注或规则备注，用“添加补充文字”就可以。</p>
+      </div>
 
       <div className="knowledge-library-rich-content-editor__actions">
         <button
@@ -36,28 +42,28 @@ export function KnowledgeLibraryRichContentEditor({
           data-block-action="add-text"
           onClick={() => onChange(addBlock(blocks, "text_block"))}
         >
-          添加文字块
+          添加补充文字
         </button>
         <button
           type="button"
           data-block-action="add-table"
           onClick={() => onChange(addBlock(blocks, "table_block"))}
         >
-          添加表格块
+          添加表格
         </button>
         <button
           type="button"
           data-block-action="add-image"
           onClick={() => onChange(addBlock(blocks, "image_block"))}
         >
-          添加图片块
+          添加图片或截图
         </button>
       </div>
 
       <div className="knowledge-library-rich-content-editor__list">
         {blocks.length === 0 ? (
           <p className="knowledge-library-rich-content-editor__empty">
-            暂无内容块，可先添加文字、表格或图片材料。
+            还没有证据材料，可以先添加表格、图片或补充文字。
           </p>
         ) : null}
 

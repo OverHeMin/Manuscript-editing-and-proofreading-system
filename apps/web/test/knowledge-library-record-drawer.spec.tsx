@@ -179,4 +179,11 @@ test("knowledge library rich content editor renders text, table, and image block
   assert.match(markup, /Primary endpoint/);
   assert.match(markup, /endpoint-figure\.png/);
   assert.match(markup, /knowledge\/rich-space\/endpoint-figure\.png/);
+  assert.match(markup, /添加补充文字/u);
+  assert.match(markup, /添加表格/u);
+  assert.match(markup, /添加图片或截图/u);
+  assert.match(markup, /表格支持直接粘贴 Excel \/ WPS/u);
+  assert.match(markup, /上传图片或截图/u);
+  assert.match(markup, /图片说明/u);
+  assert.match(markup, /表格内容（支持直接粘贴 Excel \/ WPS）/u);
 });
