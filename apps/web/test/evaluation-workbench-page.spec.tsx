@@ -310,6 +310,239 @@ function renderLoadedPage(
   );
 }
 
+function createHarnessGovernanceOverviewFixture() {
+  const routingVersion = {
+    id: "routing-version-1",
+    policy_scope_id: "routing-policy-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 1,
+    primary_model_id: "model-primary-1",
+    fallback_model_ids: ["model-fallback-1"],
+    evidence_links: [],
+    status: "active",
+    created_at: "2026-04-12T08:00:00.000Z",
+    updated_at: "2026-04-12T08:00:00.000Z",
+  };
+
+  return {
+    templateFamilies: [
+      {
+        id: "family-ops-1",
+        manuscript_type: "clinical_study",
+        name: "Editing Clinical Family",
+        status: "active",
+      },
+    ],
+    selectedTemplateFamilyId: "family-ops-1",
+    moduleTemplates: [],
+    promptTemplates: [],
+    skillPackages: [],
+    executionProfiles: [
+      {
+        id: "profile-ops-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "family-ops-1",
+        module_template_id: "template-ops-1",
+        prompt_template_id: "prompt-ops-1",
+        skill_package_ids: [],
+        knowledge_binding_mode: "profile_only",
+        status: "active",
+        version: 1,
+      },
+    ],
+    qualityPackages: [
+      {
+        id: "quality-package-version-1",
+        package_name: "Editing Quality",
+        version: 1,
+        status: "published",
+      },
+    ],
+    modelRegistryEntries: [],
+    modelRoutingPolicy: {
+      policy_id: "routing-policy-1",
+      scope_kind: "module",
+      scope_value: "editing",
+      active_version: routingVersion,
+      versions: [routingVersion],
+      decisions: [],
+    },
+    routingPolicies: [],
+    toolGatewayTools: [],
+    sandboxProfiles: [],
+    agentProfiles: [],
+    agentRuntimes: [],
+    toolPermissionPolicies: [],
+    verificationCheckProfiles: [
+      {
+        id: "check-profile-1",
+        name: "Editing Browser QA",
+        check_type: "browser_qa",
+        status: "published",
+        admin_only: true,
+      },
+    ],
+    releaseCheckProfiles: [
+      {
+        id: "release-profile-1",
+        name: "Editing Release Gate",
+        check_type: "deploy_verification",
+        status: "published",
+        verification_check_profile_ids: ["check-profile-1"],
+        admin_only: true,
+      },
+    ],
+    evaluationSuites: [
+      {
+        id: "suite-ops-1",
+        name: "Editing Delta Suite",
+        suite_type: "governed_evaluation",
+        status: "active",
+        verification_check_profile_ids: ["check-profile-1"],
+        module_scope: ["editing"],
+        admin_only: true,
+      },
+    ],
+    runtimeBindings: [
+      {
+        id: "binding-ops-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "family-ops-1",
+        runtime_id: "runtime-ops-1",
+        sandbox_profile_id: "sandbox-ops-1",
+        agent_profile_id: "agent-profile-1",
+        tool_permission_policy_id: "tool-policy-1",
+        prompt_template_id: "prompt-ops-1",
+        skill_package_ids: [],
+        quality_package_version_ids: ["quality-package-version-1"],
+        execution_profile_id: "profile-ops-1",
+        verification_check_profile_ids: ["check-profile-1"],
+        evaluation_suite_ids: ["suite-ops-1"],
+        release_check_profile_id: "release-profile-1",
+        status: "active",
+        version: 1,
+      },
+    ],
+    harnessAdapters: [],
+    harnessAdapterHealth: [],
+    latestJudgeCalibrationBatchOutcome: null,
+    agentExecutionLogs: [],
+    aiProviderConnections: [],
+    landing: {
+      aiAccess: {
+        totalConnections: 0,
+        enabledConnections: 0,
+        prodReadyModels: 0,
+        connections: [],
+      },
+      harness: {
+        evaluationSuiteCount: 1,
+        runtimeBindingCount: 1,
+        adapterHealthCount: 0,
+        adapterHealth: [],
+        latestJudgeCalibrationBatchOutcome: null,
+      },
+      warnings: [],
+    },
+  };
+}
+
+function createHarnessScopeFixture() {
+  return {
+    activeEnvironment: {
+      execution_profile: {
+        id: "profile-ops-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "family-ops-1",
+        module_template_id: "template-ops-1",
+        prompt_template_id: "prompt-ops-1",
+        skill_package_ids: [],
+        knowledge_binding_mode: "profile_only",
+        status: "active",
+        version: 1,
+      },
+      runtime_binding: {
+        id: "binding-ops-1",
+        module: "editing",
+        manuscript_type: "clinical_study",
+        template_family_id: "family-ops-1",
+        runtime_id: "runtime-ops-1",
+        sandbox_profile_id: "sandbox-ops-1",
+        agent_profile_id: "agent-profile-1",
+        tool_permission_policy_id: "tool-policy-1",
+        prompt_template_id: "prompt-ops-1",
+        skill_package_ids: [],
+        quality_package_version_ids: ["quality-package-version-1"],
+        execution_profile_id: "profile-ops-1",
+        verification_check_profile_ids: ["check-profile-1"],
+        evaluation_suite_ids: ["suite-ops-1"],
+        release_check_profile_id: "release-profile-1",
+        status: "active",
+        version: 1,
+      },
+      model_routing_policy_version: {
+        id: "routing-version-1",
+        policy_scope_id: "routing-policy-1",
+        scope_kind: "module",
+        scope_value: "editing",
+        version_no: 1,
+        primary_model_id: "model-primary-1",
+        fallback_model_ids: ["model-fallback-1"],
+        evidence_links: [],
+        status: "active",
+        created_at: "2026-04-12T08:00:00.000Z",
+        updated_at: "2026-04-12T08:00:00.000Z",
+      },
+      retrieval_preset: {
+        id: "retrieval-preset-1",
+        name: "Editing Retrieval Preset",
+      },
+      manual_review_policy: {
+        id: "manual-review-policy-1",
+        name: "Senior Operator Review",
+      },
+    },
+    retrievalPresets: [
+      {
+        id: "retrieval-preset-1",
+        name: "Editing Retrieval Preset",
+      },
+    ],
+    manualReviewPolicies: [
+      {
+        id: "manual-review-policy-1",
+        name: "Senior Operator Review",
+      },
+    ],
+  };
+}
+
+function createHarnessPreviewFixture() {
+  const scope = createHarnessScopeFixture();
+
+  return {
+    active_environment: scope.activeEnvironment,
+    candidate_environment: {
+      ...scope.activeEnvironment,
+      runtime_binding: {
+        ...scope.activeEnvironment.runtime_binding,
+        id: "binding-ops-2",
+      },
+      manual_review_policy: {
+        id: "manual-review-policy-2",
+        name: "Release Candidate Review",
+      },
+    },
+    diff: {
+      changed_components: ["runtime_binding", "manual_review_policy"],
+    },
+  };
+}
+
 test("evaluation workbench page renders an explicit loading state for server-side shell output", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchPage
@@ -399,6 +632,44 @@ test("evaluation workbench page lands on different first-view emphasis for overv
   assert.match(overviewMarkup, /默认聚焦总体评测状态与风险分布。/u);
   assert.match(runsMarkup, /Harness 运行记录/u);
   assert.match(runsMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
+});
+
+test("evaluation workbench page renders the real harness control plane inside the owned workbench", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      section="datasets"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+      initialDatasetsOverview={{
+        exportRootDir: ".local-data/harness-exports/development",
+        rubrics: [],
+        draftVersions: [],
+        publishedVersions: [],
+        archivedVersions: [],
+      } as never}
+    />,
+  );
+
+  assert.match(markup, /Harness 控制/u);
+  assert.match(markup, /Environment Editor/u);
+  assert.match(markup, /Execution Profile/u);
+  assert.match(markup, /Runtime Binding/u);
+  assert.match(markup, /Routing Version/u);
+  assert.match(markup, /Retrieval Preset/u);
+  assert.match(markup, /Manual Review Policy/u);
+  assert.match(markup, /Preview Candidate Environment/u);
+  assert.match(markup, /Quality Lab/u);
+  assert.match(markup, /Launch Candidate Run/u);
+  assert.match(markup, /Activation Gate/u);
+  assert.match(markup, /Activate Candidate Environment/u);
+  assert.match(markup, /Roll Back Scope/u);
+  assert.match(markup, /待整理队列/u);
+  assert.match(markup, /已发布版本/u);
 });
 
 test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {

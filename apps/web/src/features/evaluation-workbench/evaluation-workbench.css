@@ -107,6 +107,58 @@
   gap: 14px;
 }
 
+.evaluation-workbench-harness-shell {
+  gap: 14px;
+}
+
+.evaluation-workbench-harness-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.evaluation-workbench-harness-nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 101, 51, 0.14);
+  background: #fffaf2;
+  color: #625648;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.evaluation-workbench-harness-nav-link.is-active {
+  border-color: rgba(134, 104, 51, 0.34);
+  background: rgba(216, 190, 132, 0.18);
+  color: #5f4b2c;
+  font-weight: 600;
+}
+
+.evaluation-workbench-harness-datasets-entry {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8f3e7;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+}
+
+.evaluation-workbench-harness-copy {
+  margin: 0;
+  color: #625648;
+  line-height: 1.7;
+}
+
+.evaluation-workbench-harness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
 .evaluation-workbench-panel {
   padding: 16px;
   border: 1px solid rgba(126, 101, 51, 0.14);

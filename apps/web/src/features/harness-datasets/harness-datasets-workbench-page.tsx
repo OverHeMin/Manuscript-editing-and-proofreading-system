@@ -22,11 +22,13 @@ const defaultController = createHarnessDatasetsWorkbenchController(
 export interface HarnessDatasetsWorkbenchPageProps {
   controller?: HarnessDatasetsWorkbenchController;
   initialOverview?: HarnessDatasetsWorkbenchOverview | null;
+  embedded?: boolean;
 }
 
 export function HarnessDatasetsWorkbenchPage({
   controller = defaultController,
   initialOverview = null,
+  embedded = false,
 }: HarnessDatasetsWorkbenchPageProps) {
   const [overview, setOverview] = useState<HarnessDatasetsWorkbenchOverview | null>(
     initialOverview,
@@ -66,21 +68,29 @@ export function HarnessDatasetsWorkbenchPage({
 
   return (
     <section className="harness-datasets-workbench">
-      <header className="harness-datasets-hero">
-        <div className="harness-datasets-hero-copy">
-          <p className="harness-datasets-eyebrow">Harness 控制</p>
-          <h2>Harness 控制 / 数据与样本</h2>
-          <p>
-            统一整理高质量样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
-          </p>
-          <WorkbenchCoreStrip variant="secondary" />
-        </div>
-        {statusMessage ? (
-          <p className="harness-datasets-status" role="status">
-            {statusMessage}
-          </p>
-        ) : null}
-      </header>
+      {embedded ? null : (
+        <header className="harness-datasets-hero">
+          <div className="harness-datasets-hero-copy">
+            <p className="harness-datasets-eyebrow">Harness 控制</p>
+            <h2>Harness 控制 / 数据与样本</h2>
+            <p>
+              统一整理高质量样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
+            </p>
+            <WorkbenchCoreStrip variant="secondary" />
+          </div>
+          {statusMessage ? (
+            <p className="harness-datasets-status" role="status">
+              {statusMessage}
+            </p>
+          ) : null}
+        </header>
+      )}
+
+      {embedded && statusMessage ? (
+        <p className="harness-datasets-status" role="status">
+          {statusMessage}
+        </p>
+      ) : null}
 
       {errorMessage ? (
         <p className="harness-datasets-error" role="alert">

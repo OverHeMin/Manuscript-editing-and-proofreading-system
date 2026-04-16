@@ -142,7 +142,9 @@ export function AdminGovernanceWorkbenchPage({
             },
             {
               label: "数据/样本",
-              href: formatWorkbenchHash("harness-datasets"),
+              href: formatWorkbenchHash("evaluation-workbench", {
+                harnessSection: "datasets",
+              }),
             },
           ]}
         />

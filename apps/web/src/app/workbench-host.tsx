@@ -6,7 +6,6 @@ import type {
 } from "../features/auth/index.ts";
 import { AdminGovernanceWorkbenchPage } from "../features/admin-governance/index.ts";
 import { EvaluationWorkbenchPage } from "../features/evaluation-workbench/index.ts";
-import { HarnessDatasetsWorkbenchPage } from "../features/harness-datasets/index.ts";
 import {
   KnowledgeLibraryLedgerPage,
   KnowledgeLibraryWorkbenchPage,
@@ -294,10 +293,6 @@ export function WorkbenchHost({
       case "admin-governance":
         return <AdminGovernanceWorkbenchPage actorRole={session.role} />;
       case "evaluation-workbench":
-        if (routeState.harnessSection === "datasets") {
-          return <HarnessDatasetsWorkbenchPage />;
-        }
-
         return (
           <EvaluationWorkbenchPage
             actorRole={session.role}
@@ -306,7 +301,13 @@ export function WorkbenchHost({
           />
         );
       case "harness-datasets":
-        return <HarnessDatasetsWorkbenchPage />;
+        return (
+          <EvaluationWorkbenchPage
+            actorRole={session.role}
+            section="datasets"
+            prefilledManuscriptId={routeState.manuscriptId}
+          />
+        );
       case "template-governance":
         return (
           <TemplateGovernanceWorkbenchPage
