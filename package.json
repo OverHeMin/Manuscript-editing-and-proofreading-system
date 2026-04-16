@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
+    "inspect:codex-logs": "node ./scripts/codex-log-cleanup.mjs",
+    "cleanup:codex-logs": "node ./scripts/codex-log-cleanup.mjs --apply",
     "lint": "pnpm --parallel lint",
+    "test:codex-log-cleanup": "node --test scripts/codex-log-cleanup.spec.mjs",
     "test:production-release-contract": "node --test scripts/production-release-contract.spec.mjs",
     "test:local-pr-gate": "node --test scripts/local-pr-gate.spec.mjs",
     "verify:production-postdeploy": "node ./scripts/production-release-contract.mjs postdeploy",
