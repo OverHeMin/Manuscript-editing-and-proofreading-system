@@ -280,7 +280,7 @@ export function KnowledgeReviewWorkbenchPage({
       message:
         actionType === "approve"
           ? "正在提交审核通过结果..."
-          : "正在提交驳回修订结果...",
+          : "正在提交驳回结果...",
     });
 
     const result =
@@ -346,7 +346,7 @@ export function KnowledgeReviewWorkbenchPage({
 
     setActionFeedback({
       status: "success",
-      message: actionType === "approve" ? "知识修订已审核通过。" : "知识修订已驳回。",
+      message: actionType === "approve" ? "知识条目已审核通过。" : "知识条目已驳回。",
     });
   }
 
@@ -394,7 +394,7 @@ export function KnowledgeReviewWorkbenchPage({
           <div className="knowledge-review-header-copy">
             <span className="knowledge-review-eyebrow">审核站</span>
             <h1>知识审核</h1>
-            <p>当前先在审核站完成知识修订结论，通过后再转入规则中心继续治理。</p>
+            <p>当前在审核站处理待审知识条目，完成审批后会刷新队列与审核历史，便于继续核对。</p>
           </div>
 
           <div className="knowledge-review-header-summary" aria-label="当前审核站摘要">
@@ -405,7 +405,7 @@ export function KnowledgeReviewWorkbenchPage({
               当前资产：{effectiveSelectedItem?.asset_id ?? "等待选择"}
             </span>
             <span className="knowledge-review-summary-chip">
-              当前修订：{effectiveSelectedItem?.revision_id ?? "等待选择"}
+              当前对象：{effectiveSelectedItem?.revision_id ?? "等待选择"}
             </span>
             <span className="knowledge-review-summary-chip is-muted">
               队列状态：{resolveQueueStatusLabel(queueLoadStatus, queueErrorMessage)}
@@ -528,7 +528,7 @@ function resolveDisplayedHistory(
       actions: [],
       errorMessage: null,
     },
-    scopeNote: "当前历史属于另一条修订，刷新后可查看选中修订的审核轨迹。",
+    scopeNote: "当前历史属于另一条待审记录，刷新后可查看选中条目的审核轨迹。",
   };
 }
 

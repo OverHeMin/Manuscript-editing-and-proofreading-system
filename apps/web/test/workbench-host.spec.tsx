@@ -204,6 +204,14 @@ test("workbench host defaults bare knowledge library hashes to the final ledger 
   assert.match(markup, /workbench-nav/u);
 });
 
+test("workbench host describes knowledge review with neutral pending-item wording", async () => {
+  const markup = await renderWorkbenchHostAtHash("#knowledge-review");
+
+  assert.match(markup, /知识审核/u);
+  assert.match(markup, /处理待审知识条目的审核队列与审批动作。/u);
+  assert.doesNotMatch(markup, /知识修订版本/u);
+});
+
 test("workbench host routes legacy learning-review hashes into the rule-center learning compatibility path", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#learning-review?manuscriptId=manuscript-42&reviewedCaseSnapshotId=snapshot-42",

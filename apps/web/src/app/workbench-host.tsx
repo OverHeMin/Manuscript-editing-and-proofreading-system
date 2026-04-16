@@ -444,7 +444,7 @@ function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
     case "knowledge-library":
       return "管理知识资产录入、修订与结构化治理。";
     case "knowledge-review":
-      return "处理知识修订版本的审核队列与审批动作。";
+      return "处理待审知识条目的审核队列与审批动作。";
     case "learning-review":
       return "承接学习回收与质量复核工作。";
     case "admin-console":

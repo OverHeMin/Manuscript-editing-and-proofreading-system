@@ -30,8 +30,8 @@ export function KnowledgeReviewDetailPane({
       <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
         {item == null ? (
           <div>
-            <h2>知识修订详情</h2>
-            <p>详情区集中展示当前待审修订的上下文、证据和审核轨迹。</p>
+            <h2>知识审核详情</h2>
+            <p>详情区集中展示当前待审条目的上下文、证据和审核轨迹。</p>
           </div>
         ) : (
           <div>
@@ -48,7 +48,7 @@ export function KnowledgeReviewDetailPane({
       <div className="knowledge-review-detail-scroll" data-scroll-owner="detail">
         {item == null ? (
           <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-            请选择一条待审修订，以加载对应资产、修订上下文与审核历史。
+            请选择一条待审条目，以加载对应资产、审核上下文与审核历史。
           </div>
         ) : (
           <>
@@ -58,11 +58,11 @@ export function KnowledgeReviewDetailPane({
                 <dd>{item.asset_id}</dd>
               </div>
               <div>
-                <dt>修订 ID</dt>
+                <dt>审核对象 ID</dt>
                 <dd>{item.revision_id}</dd>
               </div>
               <div>
-                <dt>修订状态</dt>
+                <dt>审核状态</dt>
                 <dd>{renderStatus(item.status)}</dd>
               </div>
               <div>
@@ -110,7 +110,7 @@ export function KnowledgeReviewDetailPane({
             <section className="knowledge-review-history">
               <header>
                 <h3>审核历史</h3>
-                <p>按修订维度追踪审核结论与审核备注。</p>
+                <p>按当前审核对象追踪审核结论与审核备注。</p>
               </header>
 
               {historyScopeNote ? (
@@ -144,7 +144,7 @@ export function KnowledgeReviewDetailPane({
                         {eventLabel(action.action)} · {actorLabel(action.actor_role)}
                       </p>
                       <p className="knowledge-review-history-event">
-                        修订 {action.revision_id ?? action.knowledge_item_id}
+                        对象 {action.revision_id ?? action.knowledge_item_id}
                       </p>
                       <p className="knowledge-review-history-time">
                         {formatTimestamp(action.created_at)}
@@ -232,7 +232,7 @@ function eventLabel(action: KnowledgeReviewActionViewModel["action"]): string {
     case "approved":
       return "审核通过";
     case "rejected":
-      return "驳回修订";
+      return "驳回";
     default:
       return action;
   }

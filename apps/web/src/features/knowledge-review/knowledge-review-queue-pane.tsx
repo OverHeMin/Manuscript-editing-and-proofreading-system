@@ -65,8 +65,8 @@ export function KnowledgeReviewQueuePane({
     <section className="knowledge-review-panel knowledge-review-queue-pane">
       <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
         <div>
-          <h2>待审修订队列</h2>
-          <p>在审核站里按队列处理知识修订，减少跨区来回切换。</p>
+          <h2>待审条目队列</h2>
+          <p>在审核站里按队列处理待审知识条目，减少跨区来回切换。</p>
         </div>
         <div className="knowledge-review-queue-summary">
           <span className="knowledge-review-summary-chip is-muted">当前 {queue.length}</span>
@@ -124,7 +124,7 @@ export function KnowledgeReviewQueuePane({
         </div>
 
         <p className="knowledge-review-filter-note">
-          当前仅展示待审核修订，审核通过后再进入规则中心继续治理。
+          当前仅展示待审核条目，可在此完成审批并继续处理后续队列。
         </p>
       </div>
 
@@ -140,12 +140,12 @@ export function KnowledgeReviewQueuePane({
 
         {isLoading && totalQueueCount === 0 ? (
           <div className="knowledge-review-empty-state" role="status">
-            正在加载待审修订...
+            正在加载待审条目...
           </div>
         ) : null}
 
         {!isLoading && isQueueEmpty ? (
-          <div className="knowledge-review-empty-state">当前没有待审修订。</div>
+          <div className="knowledge-review-empty-state">当前没有待审条目。</div>
         ) : null}
 
         {!isLoading && !isQueueEmpty && isNoResults ? (
