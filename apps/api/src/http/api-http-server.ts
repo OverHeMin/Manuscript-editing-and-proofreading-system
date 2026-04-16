@@ -2034,6 +2034,83 @@ function seedDemoKnowledgeReviewData(input: {
   }
 }
 
+function seedGovernedKnowledgeAsset(input: {
+  repository: InMemoryKnowledgeRepository;
+  assetId: string;
+  title: string;
+  canonicalText: string;
+  summary?: string;
+  knowledgeKind: KnowledgeRecord["knowledge_kind"];
+  status?: KnowledgeRevisionRecord["status"];
+  moduleScope: KnowledgeRecord["routing"]["module_scope"];
+  manuscriptTypes: KnowledgeRecord["routing"]["manuscript_types"];
+  sections?: string[];
+  riskTags?: string[];
+  disciplineTags?: string[];
+  evidenceLevel?: KnowledgeRecord["evidence_level"];
+  sourceType?: KnowledgeRecord["source_type"];
+  sourceLink?: string;
+  aliases?: string[];
+  bindings?: ReadonlyArray<{
+    bindingKind: "module_template" | "general_package" | "medical_package";
+    bindingTargetId: string;
+    bindingTargetLabel: string;
+  }>;
+  createdAt: string;
+  updatedAt?: string;
+  revisionNo?: number;
+}): void {
+  const revisionNo = input.revisionNo ?? 1;
+  const revisionId = `${input.assetId}-revision-${revisionNo}`;
+  const revisionStatus = input.status ?? "approved";
+  const timestamp = input.updatedAt ?? input.createdAt;
+
+  void input.repository.saveAsset({
+    id: input.assetId,
+    status: "active",
+    current_revision_id: revisionId,
+    ...(revisionStatus === "approved"
+      ? { current_approved_revision_id: revisionId }
+      : {}),
+    created_at: input.createdAt,
+    updated_at: timestamp,
+  });
+  void input.repository.saveRevision({
+    id: revisionId,
+    asset_id: input.assetId,
+    revision_no: revisionNo,
+    status: revisionStatus,
+    title: input.title,
+    canonical_text: input.canonicalText,
+    ...(input.summary ? { summary: input.summary } : {}),
+    knowledge_kind: input.knowledgeKind,
+    routing: {
+      module_scope: input.moduleScope,
+      manuscript_types: input.manuscriptTypes,
+      ...(input.sections ? { sections: input.sections } : {}),
+      ...(input.riskTags ? { risk_tags: input.riskTags } : {}),
+      ...(input.disciplineTags ? { discipline_tags: input.disciplineTags } : {}),
+    },
+    ...(input.evidenceLevel ? { evidence_level: input.evidenceLevel } : {}),
+    ...(input.sourceType ? { source_type: input.sourceType } : {}),
+    ...(input.sourceLink ? { source_link: input.sourceLink } : {}),
+    ...(input.aliases ? { aliases: input.aliases } : {}),
+    created_at: input.createdAt,
+    updated_at: timestamp,
+  });
+  void input.repository.replaceRevisionBindings(
+    revisionId,
+    (input.bindings ?? []).map((binding, index) => ({
+      id: `${revisionId}-binding-${index + 1}`,
+      revision_id: revisionId,
+      binding_kind: binding.bindingKind,
+      binding_target_id: binding.bindingTargetId,
+      binding_target_label: binding.bindingTargetLabel,
+      created_at: timestamp,
+    })),
+  );
+}
+
 function seedDemoLearningData(input: {
   manuscriptRepository: InMemoryManuscriptRepository;
   assetRepository: InMemoryDocumentAssetRepository;
@@ -2616,43 +2693,136 @@ function seedDemoWorkbenchData(input: {
     applies_to_modules: ["proofreading"],
   });
 
-  void input.knowledgeRepository.save({
-    id: "knowledge-screening-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-screening-1",
     title: "Screening knowledge",
-    canonical_text: "Check endpoint definitions.",
-    knowledge_kind: "rule",
-    status: "approved",
-    routing: {
-      module_scope: "screening",
-      manuscript_types: ["clinical_study"],
-    },
-    template_bindings: ["template-screening-1"],
+    canonicalText: "Check endpoint definitions.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-screening-1",
+        bindingTargetLabel: "Seeded screening prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:05.000Z",
   });
-  void input.knowledgeRepository.save({
-    id: "knowledge-editing-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-editing-1",
     title: "Editing knowledge",
-    canonical_text: "Normalize manuscript terminology.",
-    knowledge_kind: "rule",
-    status: "approved",
-    routing: {
-      module_scope: "editing",
-      manuscript_types: ["clinical_study"],
-      sections: ["discussion"],
-      risk_tags: ["grounding"],
-    },
-    template_bindings: ["template-editing-1"],
+    canonicalText: "Normalize manuscript terminology.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["discussion"],
+    riskTags: ["grounding"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-editing-1",
+        bindingTargetLabel: "Seeded editing prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:10.000Z",
   });
-  void input.knowledgeRepository.save({
-    id: "knowledge-proofreading-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-proofreading-1",
     title: "Proofreading knowledge",
-    canonical_text: "Confirm punctuation consistency.",
-    knowledge_kind: "checklist",
-    status: "approved",
-    routing: {
-      module_scope: "proofreading",
-      manuscript_types: ["clinical_study"],
-    },
-    template_bindings: ["template-proofreading-1"],
+    canonicalText: "Confirm punctuation consistency.",
+    knowledgeKind: "checklist",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-proofreading-1",
+        bindingTargetLabel: "Seeded proofreading prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:15.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-general-reference-1",
+    title: "参考文献著录顺序统一",
+    canonicalText: "参考文献应按作者、题名、期刊名、年份的标准顺序统一呈现。",
+    summary: "默认绑定到通用包“参考文献格式统一”，供编辑与校对复用。",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study", "review"],
+    sections: ["references"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-1",
+        bindingTargetLabel: "参考文献格式统一",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:40.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-general-abbreviation-1",
+    title: "缩略语首次释义规则",
+    canonicalText: "英文缩略语首次出现时应补全称，并保证后文缩略语写法一致。",
+    summary: "默认绑定到通用包“缩略语首次释义”，覆盖摘要与引言常见问题。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study", "systematic_review"],
+    sections: ["abstract", "introduction"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-2",
+        bindingTargetLabel: "缩略语首次释义",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:05.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-ethics-1",
+    title: "伦理声明完整性核查",
+    canonicalText: "涉及人体研究时，伦理审批号、伦理委员会名称与知情同意说明必须齐全。",
+    summary: "默认绑定到医学专用包“伦理声明核查”，用于高风险筛查。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study", "case_report"],
+    sections: ["ethics", "methods"],
+    riskTags: ["ethics"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-1",
+        bindingTargetLabel: "伦理声明核查",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:35.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-endpoint-1",
+    title: "终点与统计口径一致性核对",
+    canonicalText: "主要终点名称、统计方法、P 值与结果表述必须在摘要、方法、结果之间保持一致。",
+    summary: "默认绑定到医学专用包“终点与统计口径核对”，用于临床研究稿件。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["abstract", "methods", "results"],
+    riskTags: ["statistics"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-2",
+        bindingTargetLabel: "终点与统计口径核对",
+      },
+    ],
+    createdAt: "2026-03-31T07:58:05.000Z",
   });
   void input.editorialRuleRepository.saveRuleSet({
     id: "rule-set-screening-1",

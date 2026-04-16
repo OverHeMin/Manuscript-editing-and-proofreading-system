@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { BrowserHttpClientError, createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import { uploadKnowledgeImage } from "../knowledge-library/knowledge-library-api.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import {
   createRuleWizardBindingFormState,
@@ -60,6 +62,10 @@ export function TemplateGovernanceRuleWizard({
 }: TemplateGovernanceRuleWizardProps) {
   const nextStep = getNextRuleWizardStep(state.step);
   const previousStep = getPreviousRuleWizardStep(state.step);
+  const advancedEditorHref = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "classic",
+    ruleCenterMode: "authoring",
+  });
   const [semanticRevision, setSemanticRevision] = useState<
     Awaited<ReturnType<typeof regenerateRuleWizardSemanticLayer>>["revision"] | undefined
   >();
@@ -397,6 +403,9 @@ export function TemplateGovernanceRuleWizard({
           <p>先带入候选并整理规则草稿，确认规则意图与适用范围后再提交发布。</p>
         </div>
         <div className="template-governance-ledger-toolbar-actions template-governance-ledger-toolbar-actions--comfortable">
+          <a className="template-governance-link-button" href={advancedEditorHref}>
+            打开旧版高级工作台
+          </a>
           <button type="button" onClick={onBack}>
             返回规则台账
           </button>
@@ -509,6 +518,9 @@ function renderWizardBody(input: {
         <TemplateGovernanceRuleWizardStepEntry
           value={input.entryFormState}
           onChange={(nextValue) => input.onEntryFormChange?.(nextValue)}
+          onUploadImage={async (payload) =>
+            (await uploadKnowledgeImage(defaultRuleWizardClient, payload)).body
+          }
         />
       );
     case "semantic":

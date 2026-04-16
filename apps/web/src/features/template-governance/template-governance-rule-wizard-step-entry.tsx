@@ -1,10 +1,21 @@
 import type { KnowledgeSourceType } from "../knowledge/index.ts";
+import { KnowledgeLibraryRichContentEditor } from "../knowledge-library/knowledge-library-rich-content-editor.tsx";
+import type {
+  KnowledgeUploadInput,
+  KnowledgeUploadViewModel,
+} from "../knowledge-library/types.ts";
 import type { ManuscriptModule } from "../manuscripts/types.ts";
 import type { RuleWizardEntryFormState } from "./template-governance-rule-wizard-api.ts";
+
+if (typeof document !== "undefined") {
+  void import("../knowledge-library/knowledge-library-ledger-page.css");
+  void import("../knowledge-library/knowledge-library-workbench.css");
+}
 
 export interface TemplateGovernanceRuleWizardStepEntryProps {
   value: RuleWizardEntryFormState;
   onChange: (nextValue: RuleWizardEntryFormState) => void;
+  onUploadImage?: (input: KnowledgeUploadInput) => Promise<KnowledgeUploadViewModel | void>;
 }
 
 const moduleOptions: Array<ManuscriptModule | "any"> = [
@@ -26,12 +37,13 @@ const sourceTypeOptions: KnowledgeSourceType[] = [
 export function TemplateGovernanceRuleWizardStepEntry({
   value,
   onChange,
+  onUploadImage,
 }: TemplateGovernanceRuleWizardStepEntryProps) {
   return (
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>基础录入与证据补充</h2>
-        <p>先把规则正文、示例、图证和来源依据补齐，再进入 AI 语义理解。</p>
+        <p>先把规则正文、示例、图表证据和来源依据补齐，再进入 AI 语义理解。</p>
       </header>
 
       <div className="template-governance-rule-entry-layout">
@@ -130,18 +142,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
                 placeholder="错误用法示例"
               />
             </label>
-            <label className="template-governance-field">
-              <span>图片 / 图表 / 截图</span>
-              <textarea
-                rows={4}
-                value={value.imageEvidence}
-                onChange={(event) =>
-                  onChange({ ...value, imageEvidence: event.target.value })
-                }
-                placeholder="可补充图证说明或截图备注"
-              />
-            </label>
-            <label className="template-governance-field">
+            <label className="template-governance-field template-governance-field-full">
               <span>来源依据</span>
               <textarea
                 rows={4}
@@ -153,6 +154,18 @@ export function TemplateGovernanceRuleWizardStepEntry({
               />
             </label>
           </div>
+
+          <section className="template-governance-card template-governance-ledger-section">
+            <header className="template-governance-ledger-section-header">
+              <h2>图片 / 图表 / 截图</h2>
+              <p>这里支持上传真实图片、录入表格，或补充额外文字块作为证据材料。</p>
+            </header>
+            <KnowledgeLibraryRichContentEditor
+              blocks={value.supplementalBlocks ?? []}
+              onChange={(supplementalBlocks) => onChange({ ...value, supplementalBlocks })}
+              onUploadImage={onUploadImage}
+            />
+          </section>
 
           <div className="template-governance-actions">
             <button
@@ -234,12 +247,30 @@ export function TemplateGovernanceRuleWizardStepEntry({
               <p>至少补充正文、一个示例和来源依据，AI 识别的可信度会明显更高。</p>
             </div>
             <div className="template-governance-rule-hint-card">
-              <strong>同义词和缩写要写进正文</strong>
-              <p>术语、缩写、中英文别名尽量一起录入，方便后续自动生成检索词。</p>
+              <strong>图片和表格直接上传或录入</strong>
+              <p>不要再把图表写成备注，直接添加图片块或表格块，后续查看和编辑会更清晰。</p>
             </div>
             <div className="template-governance-rule-hint-card">
               <strong>复杂标签放到高级区</strong>
               <p>先完成主画布录入，再展开高级标签补章节、风险和规则包提示，避免首屏过载。</p>
+            </div>
+          </div>
+          <div className="template-governance-rule-hint-list">
+            <div className="template-governance-rule-hint-card">
+              <strong>这版向导只开放高频治理参数</strong>
+              <p>先把规则正文、证据、适用范围和发布动作做对，避免首次录入时被低频参数打断。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>低频运行参数继续放在旧工作台</strong>
+              <p>当前向导优先解决建立和修订，结构化运行细节仍保留在旧版高级工作台，按需再进去补。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>适用模块决定规则在哪个执行环节被调用</strong>
+              <p>如果一条规则只对编辑或校对生效，尽量在这里提前收窄，不要全部都挂到“全模块”。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>章节标签和风险标签放到高级标签里补充</strong>
+              <p>先完成主画布录入，再补章节、风险、规则包提示和冲突边界，首屏会更清楚。</p>
             </div>
           </div>
         </aside>

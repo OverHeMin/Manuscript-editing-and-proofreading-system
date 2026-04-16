@@ -14,6 +14,13 @@ export type TemplateGovernanceRuleLedgerCategory =
   | "all"
   | TemplateGovernanceRuleLedgerAssetKind;
 
+export interface TemplateGovernanceRuleLedgerRelatedRule {
+  id: string;
+  title: string;
+  publish_status: string;
+  module_label: string;
+}
+
 export interface TemplateGovernanceRuleLedgerRow {
   id: string;
   asset_kind: TemplateGovernanceRuleLedgerAssetKind;
@@ -24,6 +31,8 @@ export interface TemplateGovernanceRuleLedgerRow {
   publish_status: string;
   contributor_label: string;
   updated_at?: string;
+  default_rule_count?: number;
+  related_rules?: TemplateGovernanceRuleLedgerRelatedRule[];
   learning_candidate?: LearningCandidateViewModel;
 }
 

@@ -1389,6 +1389,115 @@ test("default in-memory http runtime exposes knowledge ai intake and semantic as
   }
 });
 
+test("default in-memory http runtime exposes resolvable package default-rule assets", async () => {
+  const { server, baseUrl } = await startDefaultDemoServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const libraryResponse = await fetch(`${baseUrl}/api/v1/knowledge/library`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const library = (await libraryResponse.json()) as {
+      items: Array<{
+        asset_id: string;
+        selected_revision_id?: string;
+      }>;
+    };
+
+    const generalModulesResponse = await fetch(
+      `${baseUrl}/api/v1/templates/content-modules?moduleClass=general`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const generalModules = (await generalModulesResponse.json()) as Array<{
+      id: string;
+    }>;
+    const medicalModulesResponse = await fetch(
+      `${baseUrl}/api/v1/templates/content-modules?moduleClass=medical_specialized`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const medicalModules = (await medicalModulesResponse.json()) as Array<{
+      id: string;
+    }>;
+
+    const generalRuleDetailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/knowledge-general-reference-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const generalRuleDetail = (await generalRuleDetailResponse.json()) as {
+      selected_revision: {
+        id: string;
+        bindings: Array<{
+          binding_kind: string;
+          binding_target_id: string;
+        }>;
+      };
+    };
+    const medicalRuleDetailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/knowledge-medical-ethics-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const medicalRuleDetail = (await medicalRuleDetailResponse.json()) as {
+      selected_revision: {
+        id: string;
+        bindings: Array<{
+          binding_kind: string;
+          binding_target_id: string;
+        }>;
+      };
+    };
+
+    assert.equal(libraryResponse.status, 200);
+    assert.equal(
+      library.items.find((item) => item.asset_id === "knowledge-screening-1")
+        ?.selected_revision_id,
+      "knowledge-screening-1-revision-1",
+    );
+    assert.equal(
+      library.items.find((item) => item.asset_id === "knowledge-general-reference-1")
+        ?.selected_revision_id,
+      "knowledge-general-reference-1-revision-1",
+    );
+    assert.equal(generalModulesResponse.status, 200);
+    assert.equal(medicalModulesResponse.status, 200);
+    assert.equal(generalModules.length, 2);
+    assert.equal(medicalModules.length, 2);
+    assert.equal(generalRuleDetailResponse.status, 200);
+    assert.equal(generalRuleDetail.selected_revision.id, "knowledge-general-reference-1-revision-1");
+    assert.equal(generalRuleDetail.selected_revision.bindings[0]?.binding_kind, "general_package");
+    assert.equal(
+      generalRuleDetail.selected_revision.bindings[0]?.binding_target_id,
+      "general-module-seeded-1",
+    );
+    assert.equal(medicalRuleDetailResponse.status, 200);
+    assert.equal(medicalRuleDetail.selected_revision.id, "knowledge-medical-ethics-1-revision-1");
+    assert.equal(medicalRuleDetail.selected_revision.bindings[0]?.binding_kind, "medical_package");
+    assert.equal(
+      medicalRuleDetail.selected_revision.bindings[0]?.binding_target_id,
+      "medical-module-seeded-1",
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http module routes reject operators outside the assigned public-beta desk", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 

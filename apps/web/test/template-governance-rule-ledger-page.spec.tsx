@@ -14,6 +14,27 @@ const {
   "../src/features/template-governance/template-governance-rule-ledger-page.tsx"
 );
 
+test("rule ledger page explains how to create modify and manage rules", () => {
+  const Page = TemplateGovernanceRuleLedgerPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      initialViewModel={{
+        category: "all",
+        rows: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /规则中心操作说明/u);
+  assert.match(markup, /建立规则/u);
+  assert.match(markup, /修改规则/u);
+  assert.match(markup, /管理规则/u);
+  assert.match(markup, /打开旧版高级工作台/u);
+  assert.match(markup, /templateGovernanceView=classic/u);
+});
+
 test("rule ledger page renders unified categories and command bar actions", () => {
   const Page = TemplateGovernanceRuleLedgerPage as unknown as (
     props: Record<string, unknown>,

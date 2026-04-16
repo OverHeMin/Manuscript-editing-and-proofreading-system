@@ -39,6 +39,21 @@ export function TemplateGovernanceRuleWizardStepBinding({
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
 
+      <div className="template-governance-rule-hint-list">
+        <div className="template-governance-rule-hint-card">
+          <strong>规则包决定这条规则先落到哪个复用容器</strong>
+          <p>先选通用包还是医学专用包，再决定挂到哪个已有包条目，后续模板复用都会沿着这个容器走。</p>
+        </div>
+        <div className="template-governance-rule-hint-card">
+          <strong>模板族决定哪些稿件默认看见这条规则</strong>
+          <p>规则包解决“放哪里复用”，模板族解决“哪类稿件默认拿到这条规则”，两者不要混成同一层。</p>
+        </div>
+        <div className="template-governance-rule-hint-card">
+          <strong>复用策略只处理挂到现有包还是新建绑定</strong>
+          <p>它不是创建新规则，而是决定这条已经确认好的规则，优先复用现有容器还是单独挂载。</p>
+        </div>
+      </div>
+
       <div className="template-governance-detail-grid">
         <label className="template-governance-field">
           <span>进入哪个规则包</span>

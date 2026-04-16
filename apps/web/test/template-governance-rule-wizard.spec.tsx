@@ -11,9 +11,88 @@ const {
 } = await import("../src/features/template-governance/template-governance-rule-wizard.tsx");
 const {
   createRuleDraftInput,
+  createRuleDraftContentBlocks,
+  createRuleWizardEntryFormState,
+  createRuleWizardEntryFormStateFromDetail,
   createRuleWizardBindingInputs,
   confirmSemanticLayerInput,
+  saveRuleWizardEntryDraft,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
+
+test("rule wizard entry step explains high-frequency parameters and advanced tags", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "entry",
+        dirty: true,
+      }}
+    />,
+  );
+
+  assert.match(markup, /这版向导只开放高频治理参数/u);
+  assert.match(markup, /低频运行参数继续放在旧工作台/u);
+  assert.match(markup, /适用模块决定规则在哪个执行环节被调用/u);
+  assert.match(markup, /章节标签和风险标签放到高级标签里补充/u);
+  assert.match(markup, /打开旧版高级工作台/u);
+  assert.match(markup, /templateGovernanceView=classic/u);
+});
+
+test("rule wizard confirm step explains semantic confirmation parameters", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "confirm",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+
+  assert.match(markup, /规则类型决定这条规则按什么治理判断复用/u);
+  assert.match(markup, /风险等级决定后续审核和发布要多谨慎/u);
+  assert.match(markup, /稿件类型填写这条规则默认命中的稿件范围/u);
+});
+
+test("rule wizard binding and publish steps explain package and release choices", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const bindingMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "binding",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+  const publishMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "publish",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+
+  assert.match(bindingMarkup, /规则包决定这条规则先落到哪个复用容器/u);
+  assert.match(bindingMarkup, /模板族决定哪些稿件默认看见这条规则/u);
+  assert.match(bindingMarkup, /复用策略只处理挂到现有包还是新建绑定/u);
+  assert.match(publishMarkup, /保存草稿适合先留给当前编辑人继续补充/u);
+  assert.match(publishMarkup, /提交审核会进入规则治理审核队列/u);
+  assert.match(publishMarkup, /直接发布只适合已经确认无误的场景/u);
+});
 
 test("rule wizard shell renders shared step navigation and closeout actions", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
@@ -76,6 +155,402 @@ test("rule wizard step entry maps form state into a governed rule draft input", 
       manuscriptTypes: ["clinical_study"],
       sourceType: "guideline",
     },
+  );
+});
+
+test("rule wizard preserves uploaded images and table blocks when creating content blocks", () => {
+  assert.deepEqual(
+    createRuleDraftContentBlocks(
+      createRuleWizardEntryFormState({
+        title: "图表规范",
+        moduleScope: "editing",
+        manuscriptTypes: "clinical_study",
+        sourceType: "guideline",
+        contributor: "editor.zh",
+        ruleBody: "表格与图片需要保留可核查证据。",
+        positiveExample: "图 1 需要保留完整标题。",
+        negativeExample: "缺失表题或只保留截图备注。",
+        imageEvidence: "",
+        sourceBasis: "期刊模板要求保留图表上下文。",
+        advancedTagsExpanded: false,
+        sections: "",
+        riskTags: "",
+        packageHints: "",
+        candidateOnly: false,
+        conflictNotes: "",
+        supplementalBlocks: [
+          {
+            id: "table-block-1",
+            revision_id: "knowledge-1-revision-2",
+            block_type: "table_block",
+            order_no: 0,
+            status: "active",
+            content_payload: {
+              rows: [
+                ["字段", "要求"],
+                ["表题", "位于表上"],
+              ],
+            },
+          },
+          {
+            id: "image-block-1",
+            revision_id: "knowledge-1-revision-2",
+            block_type: "image_block",
+            order_no: 1,
+            status: "active",
+            content_payload: {
+              upload_id: "upload-1",
+              storage_key: "knowledge/rule-image-1.png",
+              file_name: "rule-image-1.png",
+              mime_type: "image/png",
+              byte_length: 2048,
+              caption: "图 1 保留完整图题与脚注",
+            },
+          },
+        ],
+      }),
+      "knowledge-1-revision-2",
+    ),
+    [
+      {
+        id: "rule-entry-1",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "text_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          label: "规则正文",
+          text: "表格与图片需要保留可核查证据。",
+        },
+      },
+      {
+        id: "rule-entry-2",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "text_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          label: "正例示例",
+          text: "图 1 需要保留完整标题。",
+        },
+      },
+      {
+        id: "rule-entry-3",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "text_block",
+        order_no: 2,
+        status: "active",
+        content_payload: {
+          label: "反例示例",
+          text: "缺失表题或只保留截图备注。",
+        },
+      },
+      {
+        id: "rule-entry-4",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "text_block",
+        order_no: 3,
+        status: "active",
+        content_payload: {
+          label: "来源依据",
+          text: "期刊模板要求保留图表上下文。",
+        },
+      },
+      {
+        id: "table-block-1",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "table_block",
+        order_no: 4,
+        status: "active",
+        content_payload: {
+          rows: [
+            ["字段", "要求"],
+            ["表题", "位于表上"],
+          ],
+        },
+      },
+      {
+        id: "image-block-1",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "image_block",
+        order_no: 5,
+        status: "active",
+        content_payload: {
+          upload_id: "upload-1",
+          storage_key: "knowledge/rule-image-1.png",
+          file_name: "rule-image-1.png",
+          mime_type: "image/png",
+          byte_length: 2048,
+          caption: "图 1 保留完整图题与脚注",
+        },
+      },
+    ],
+  );
+});
+
+test("rule wizard can hydrate an existing rule detail back into editable entry fields", () => {
+  const form = createRuleWizardEntryFormStateFromDetail({
+    asset: {
+      id: "knowledge-asset-1",
+      status: "active",
+      current_revision_id: "knowledge-revision-2",
+      current_approved_revision_id: "knowledge-revision-1",
+      contributor_label: "editor.zh",
+      created_at: "2026-04-15T08:00:00.000Z",
+      updated_at: "2026-04-16T09:00:00.000Z",
+    },
+    selected_revision: {
+      id: "knowledge-revision-2",
+      asset_id: "knowledge-asset-1",
+      revision_no: 2,
+      status: "draft",
+      title: "图表引用完整性",
+      canonical_text: "图表需要保留完整标题、单位和来源。",
+      summary: "保证图表证据可核查。",
+      knowledge_kind: "rule",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["clinical_study"],
+        sections: ["results"],
+        risk_tags: ["table", "image"],
+      },
+      source_type: "guideline",
+      content_blocks: [
+        {
+          id: "block-1",
+          revision_id: "knowledge-revision-2",
+          block_type: "text_block",
+          order_no: 0,
+          status: "active",
+          content_payload: {
+            label: "规则正文",
+            text: "图表需要保留完整标题、单位和来源。",
+          },
+        },
+        {
+          id: "block-2",
+          revision_id: "knowledge-revision-2",
+          block_type: "text_block",
+          order_no: 1,
+          status: "active",
+          content_payload: {
+            label: "正例示例",
+            text: "表 1 总例数（n=120）",
+          },
+        },
+        {
+          id: "block-3",
+          revision_id: "knowledge-revision-2",
+          block_type: "table_block",
+          order_no: 2,
+          status: "active",
+          content_payload: {
+            rows: [
+              ["字段", "要求"],
+              ["图题", "完整保留"],
+            ],
+          },
+        },
+        {
+          id: "block-4",
+          revision_id: "knowledge-revision-2",
+          block_type: "image_block",
+          order_no: 3,
+          status: "active",
+          content_payload: {
+            storage_key: "knowledge/figure-proof.png",
+            file_name: "figure-proof.png",
+            mime_type: "image/png",
+            byte_length: 1024,
+            caption: "截图保留图题与脚注",
+          },
+        },
+        {
+          id: "block-5",
+          revision_id: "knowledge-revision-2",
+          block_type: "text_block",
+          order_no: 4,
+          status: "active",
+          content_payload: {
+            label: "来源依据",
+            text: "按投稿模板保留图表证据。",
+          },
+        },
+      ],
+      semantic_layer: {
+        revision_id: "knowledge-revision-2",
+        status: "confirmed",
+      },
+      bindings: [],
+      contributor_label: "editor.zh",
+      created_at: "2026-04-15T08:00:00.000Z",
+      updated_at: "2026-04-16T09:00:00.000Z",
+    },
+    current_approved_revision: undefined,
+    revisions: [],
+  });
+
+  assert.equal(form.title, "图表引用完整性");
+  assert.equal(form.ruleBody, "图表需要保留完整标题、单位和来源。");
+  assert.equal(form.positiveExample, "表 1 总例数（n=120）");
+  assert.equal(form.sourceBasis, "按投稿模板保留图表证据。");
+  assert.equal(form.moduleScope, "editing");
+  assert.equal(form.manuscriptTypes, "clinical_study");
+  assert.equal(form.sections, "results");
+  assert.equal(form.riskTags, "table, image");
+  assert.equal(form.supplementalBlocks.length, 2);
+  assert.equal(form.supplementalBlocks[0]?.block_type, "table_block");
+  assert.equal(form.supplementalBlocks[1]?.block_type, "image_block");
+});
+
+test("rule wizard creates a draft revision before saving edits to an approved rule", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const result = await saveRuleWizardEntryDraft(
+    {
+      request: async function <TResponse>(input: {
+        method: "GET" | "POST";
+        url: string;
+        body?: unknown;
+      }) {
+        requests.push(input);
+
+        if (
+          input.method === "POST" &&
+          input.url === "/api/v1/knowledge/assets/knowledge-asset-1/revisions"
+        ) {
+          return {
+            status: 200,
+            body: {
+              asset: {
+                id: "knowledge-asset-1",
+                status: "active",
+                current_revision_id: "knowledge-asset-1-revision-2",
+                current_approved_revision_id: "knowledge-asset-1-revision-1",
+                created_at: "2026-04-15T08:00:00.000Z",
+                updated_at: "2026-04-16T09:00:00.000Z",
+              },
+              selected_revision: {
+                id: "knowledge-asset-1-revision-2",
+                asset_id: "knowledge-asset-1",
+                revision_no: 2,
+                status: "draft",
+                title: "图表引用完整性",
+                canonical_text: "旧规则正文",
+                knowledge_kind: "rule",
+                routing: {
+                  module_scope: "editing",
+                  manuscript_types: ["clinical_study"],
+                },
+                content_blocks: [],
+                bindings: [],
+                created_at: "2026-04-15T08:00:00.000Z",
+                updated_at: "2026-04-16T09:00:00.000Z",
+              },
+              revisions: [],
+            } as TResponse,
+          };
+        }
+
+        if (
+          input.method === "POST" &&
+          input.url === "/api/v1/knowledge/revisions/knowledge-asset-1-revision-2/draft"
+        ) {
+          return {
+            status: 200,
+            body: {
+              asset: {
+                id: "knowledge-asset-1",
+                status: "active",
+                current_revision_id: "knowledge-asset-1-revision-2",
+                current_approved_revision_id: "knowledge-asset-1-revision-1",
+                created_at: "2026-04-15T08:00:00.000Z",
+                updated_at: "2026-04-16T09:00:00.000Z",
+              },
+              selected_revision: {
+                id: "knowledge-asset-1-revision-2",
+                asset_id: "knowledge-asset-1",
+                revision_no: 2,
+                status: "draft",
+                title: "图表引用完整性",
+                canonical_text: "图表需要保留完整标题、单位和来源。",
+                knowledge_kind: "rule",
+                routing: {
+                  module_scope: "editing",
+                  manuscript_types: ["clinical_study"],
+                },
+                content_blocks: [],
+                bindings: [],
+                created_at: "2026-04-15T08:00:00.000Z",
+                updated_at: "2026-04-16T09:00:00.000Z",
+              },
+              revisions: [],
+            } as TResponse,
+          };
+        }
+
+        if (
+          input.method === "POST" &&
+          input.url ===
+            "/api/v1/knowledge/revisions/knowledge-asset-1-revision-2/content-blocks/replace"
+        ) {
+          return {
+            status: 200,
+            body: {
+              id: "knowledge-asset-1-revision-2",
+              asset_id: "knowledge-asset-1",
+              revision_no: 2,
+              status: "draft",
+              title: "图表引用完整性",
+              canonical_text: "图表需要保留完整标题、单位和来源。",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["clinical_study"],
+              },
+              content_blocks: [],
+              bindings: [],
+              created_at: "2026-04-15T08:00:00.000Z",
+              updated_at: "2026-04-16T09:00:00.000Z",
+            } as TResponse,
+          };
+        }
+
+        throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+      },
+    },
+    {
+      draftAssetId: "knowledge-asset-1",
+      form: createRuleWizardEntryFormState({
+        title: "图表引用完整性",
+        moduleScope: "editing",
+        manuscriptTypes: "clinical_study",
+        sourceType: "guideline",
+        contributor: "editor.zh",
+        ruleBody: "图表需要保留完整标题、单位和来源。",
+        positiveExample: "",
+        negativeExample: "",
+        imageEvidence: "",
+        sourceBasis: "按投稿模板保留图表证据。",
+        advancedTagsExpanded: false,
+        sections: "",
+        riskTags: "",
+        packageHints: "",
+        candidateOnly: false,
+        conflictNotes: "",
+        supplementalBlocks: [],
+      }),
+    },
+  );
+
+  assert.equal(result.draftAssetId, "knowledge-asset-1");
+  assert.equal(result.draftRevisionId, "knowledge-asset-1-revision-2");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/knowledge/assets/knowledge-asset-1/revisions",
+      "POST /api/v1/knowledge/revisions/knowledge-asset-1-revision-2/draft",
+      "POST /api/v1/knowledge/revisions/knowledge-asset-1-revision-2/content-blocks/replace",
+    ],
   );
 });
 

@@ -1,6 +1,15 @@
 import { BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import {
+  getKnowledgeAssetDetail,
+  listKnowledgeLibraryAssets,
+  type KnowledgeAssetDetailViewModel,
+  type KnowledgeContentBlockViewModel,
+  type KnowledgeRevisionBindingKind,
+  type KnowledgeRevisionBindingViewModel,
+  type KnowledgeRevisionStatus,
+} from "../knowledge-library/index.ts";
+import {
   archiveKnowledgeItem,
   createKnowledgeDraft,
   listKnowledgeItems,
@@ -412,10 +421,30 @@ export interface TemplateGovernanceContentModuleLedgerSummary {
   publishedCount: number;
 }
 
+export interface TemplateGovernanceContentModuleRuleSummary {
+  assetId: string;
+  revisionId: string;
+  title: string;
+  summary?: string;
+  canonicalText?: string;
+  detail?: KnowledgeAssetDetailViewModel;
+  status: KnowledgeRevisionStatus;
+  moduleScope: string;
+  manuscriptTypes: string[] | "any";
+  contentBlocks: KnowledgeContentBlockViewModel[];
+  bindings: KnowledgeRevisionBindingViewModel[];
+  bindingKind: Extract<
+    KnowledgeRevisionBindingKind,
+    "general_package" | "medical_package"
+  >;
+  updatedAt: string;
+}
+
 export interface TemplateGovernanceContentModuleLedgerViewModel {
   modules: GovernedContentModuleViewModel[];
   selectedModuleId: string | null;
   selectedModule: GovernedContentModuleViewModel | null;
+  selectedModuleRules: TemplateGovernanceContentModuleRuleSummary[];
   summary: TemplateGovernanceContentModuleLedgerSummary;
 }
 
@@ -962,6 +991,8 @@ async function loadTemplateGovernanceRuleLedger(
     generalModulesResponse,
     medicalModulesResponse,
     learningCandidatesResponse,
+    generalRuleInventory,
+    medicalRuleInventory,
   ] = await Promise.all([
     listKnowledgeItems(client),
     listTemplateFamilies(client),
@@ -969,6 +1000,8 @@ async function loadTemplateGovernanceRuleLedger(
     listContentModules(client, "general"),
     listContentModules(client, "medical_specialized"),
     listLearningCandidates(client),
+    loadContentModuleRuleInventory(client, { moduleClass: "general" }),
+    loadContentModuleRuleInventory(client, { moduleClass: "medical_specialized" }),
   ]);
 
   const journalTemplateEntries = (
@@ -996,10 +1029,18 @@ async function loadTemplateGovernanceRuleLedger(
       mapJournalTemplateToRuleLedgerRow(journalTemplate, family),
     ),
     ...generalModulesResponse.body.map((module) =>
-      mapContentModuleToRuleLedgerRow(module, "general_package"),
+      mapContentModuleToRuleLedgerRow(
+        module,
+        "general_package",
+        generalRuleInventory.rulesByModuleId.get(module.id) ?? [],
+      ),
     ),
     ...medicalModulesResponse.body.map((module) =>
-      mapContentModuleToRuleLedgerRow(module, "medical_package"),
+      mapContentModuleToRuleLedgerRow(
+        module,
+        "medical_package",
+        medicalRuleInventory.rulesByModuleId.get(module.id) ?? [],
+      ),
     ),
     ...learningCandidatesResponse.body
       .filter((candidate) => candidate.type === "rule_candidate")
@@ -1056,24 +1097,195 @@ async function loadTemplateGovernanceContentModuleLedger(
   },
 ): Promise<TemplateGovernanceContentModuleLedgerViewModel> {
   const modules = (await listContentModules(client, input.moduleClass)).body;
+  const ruleInventory = await loadContentModuleRuleInventory(client, {
+    moduleClass: input.moduleClass,
+  });
+  const modulesWithRuleCounts = modules.map((module) => ({
+    ...module,
+    default_rule_count: ruleInventory.rulesByModuleId.get(module.id)?.length ?? 0,
+  }));
   const selectedModuleId = resolveSelectedId(
-    modules.map((module) => module.id),
+    modulesWithRuleCounts.map((module) => module.id),
     input.selectedModuleId,
   );
   const selectedModule =
-    modules.find((module) => module.id === selectedModuleId) ?? null;
+    modulesWithRuleCounts.find((module) => module.id === selectedModuleId) ?? null;
+  const selectedModuleRules = selectedModule
+    ? ruleInventory.rulesByModuleId.get(selectedModule.id) ?? []
+    : [];
 
   return {
-    modules,
+    modules: modulesWithRuleCounts,
     selectedModuleId,
     selectedModule,
+    selectedModuleRules,
     summary: {
-      totalCount: modules.length,
-      draftCount: modules.filter((module) => module.status === "draft").length,
-      publishedCount: modules.filter((module) => module.status === "published")
+      totalCount: modulesWithRuleCounts.length,
+      draftCount: modulesWithRuleCounts.filter((module) => module.status === "draft")
         .length,
+      publishedCount: modulesWithRuleCounts.filter(
+        (module) => module.status === "published",
+      ).length,
     },
   };
+}
+
+async function loadContentModuleRules(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    moduleClass: GovernedContentModuleClass;
+    moduleId: string;
+  },
+): Promise<TemplateGovernanceContentModuleRuleSummary[]> {
+  const bindingKind =
+    input.moduleClass === "general" ? "general_package" : "medical_package";
+  const details = await loadGovernedRuleAssetDetails(client);
+
+  return details
+    .flatMap((detail) =>
+      mapContentModuleRuleSummaries(detail, {
+        bindingKind,
+        moduleId: input.moduleId,
+      }),
+    )
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+async function loadContentModuleRuleInventory(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    moduleClass: GovernedContentModuleClass;
+  },
+): Promise<{
+  rulesByModuleId: Map<string, TemplateGovernanceContentModuleRuleSummary[]>;
+}> {
+  const bindingKind =
+    input.moduleClass === "general" ? "general_package" : "medical_package";
+  const details = await loadGovernedRuleAssetDetails(client);
+  const rulesByModuleId = new Map<string, TemplateGovernanceContentModuleRuleSummary[]>();
+
+  for (const detail of details) {
+    for (const entry of mapContentModuleRuleSummaryEntries(detail, bindingKind)) {
+      const currentRules = rulesByModuleId.get(entry.moduleId) ?? [];
+      currentRules.push(entry.summary);
+      rulesByModuleId.set(entry.moduleId, currentRules);
+    }
+  }
+
+  for (const rules of rulesByModuleId.values()) {
+    rules.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  return {
+    rulesByModuleId,
+  };
+}
+
+async function loadGovernedRuleAssetDetails(
+  client: TemplateGovernanceHttpClient,
+): Promise<KnowledgeAssetDetailViewModel[]> {
+  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
+    (item) =>
+      item.knowledge_kind === "rule" &&
+      typeof item.selected_revision_id === "string" &&
+      item.selected_revision_id.trim().length > 0,
+  );
+  const details = await Promise.all(
+    knowledgeItems.map(async (item) => {
+      try {
+        return (
+          await getKnowledgeAssetDetail(
+            client,
+            item.asset_id,
+            item.selected_revision_id,
+          )
+        ).body;
+      } catch (error) {
+        if (isNotFoundHttpError(error)) {
+          return null;
+        }
+
+        throw error;
+      }
+    }),
+  );
+
+  return details.filter(
+    (detail): detail is KnowledgeAssetDetailViewModel => detail != null,
+  );
+}
+
+function mapContentModuleRuleSummaryEntries(
+  detail: KnowledgeAssetDetailViewModel,
+  bindingKind: Extract<
+    KnowledgeRevisionBindingKind,
+    "general_package" | "medical_package"
+  >,
+): Array<{
+  moduleId: string;
+  summary: TemplateGovernanceContentModuleRuleSummary;
+}> {
+  const selectedRevision = detail.selected_revision;
+  const matchingBindings = selectedRevision.bindings.filter(
+    (binding) => binding.binding_kind === bindingKind,
+  );
+
+  return matchingBindings.map((binding) => ({
+    moduleId: binding.binding_target_id,
+    summary: {
+      assetId: detail.asset.id,
+      revisionId: selectedRevision.id,
+      title: selectedRevision.title,
+      ...(selectedRevision.summary ? { summary: selectedRevision.summary } : {}),
+      ...(selectedRevision.canonical_text
+        ? { canonicalText: selectedRevision.canonical_text }
+        : {}),
+      detail,
+      status: selectedRevision.status,
+      moduleScope: selectedRevision.routing.module_scope,
+      manuscriptTypes: selectedRevision.routing.manuscript_types,
+      contentBlocks: selectedRevision.content_blocks,
+      bindings: selectedRevision.bindings,
+      bindingKind,
+      updatedAt: selectedRevision.updated_at,
+    },
+  }));
+}
+
+function mapContentModuleRuleSummaries(
+  detail: KnowledgeAssetDetailViewModel,
+  input: {
+    bindingKind: Extract<
+      KnowledgeRevisionBindingKind,
+      "general_package" | "medical_package"
+    >;
+    moduleId: string;
+  },
+): TemplateGovernanceContentModuleRuleSummary[] {
+  const selectedRevision = detail.selected_revision;
+  const matchingBindings = selectedRevision.bindings.filter(
+    (binding) =>
+      binding.binding_kind === input.bindingKind &&
+      binding.binding_target_id === input.moduleId,
+  );
+
+  return matchingBindings.map((binding) => ({
+    assetId: detail.asset.id,
+    revisionId: selectedRevision.id,
+    title: selectedRevision.title,
+    ...(selectedRevision.summary ? { summary: selectedRevision.summary } : {}),
+    ...(selectedRevision.canonical_text
+      ? { canonicalText: selectedRevision.canonical_text }
+      : {}),
+    detail,
+    status: selectedRevision.status,
+    moduleScope: selectedRevision.routing.module_scope,
+    manuscriptTypes: selectedRevision.routing.manuscript_types,
+    contentBlocks: selectedRevision.content_blocks,
+    bindings: selectedRevision.bindings,
+    bindingKind: input.bindingKind,
+    updatedAt: selectedRevision.updated_at,
+  }));
 }
 
 async function loadTemplateGovernanceTemplateLedger(
@@ -1595,6 +1807,7 @@ function mapJournalTemplateToRuleLedgerRow(
 function mapContentModuleToRuleLedgerRow(
   module: GovernedContentModuleViewModel,
   assetKind: "general_package" | "medical_package",
+  relatedRules: readonly TemplateGovernanceContentModuleRuleSummary[] = [],
 ): TemplateGovernanceRuleLedgerRow {
   return {
     id: module.id,
@@ -1610,7 +1823,20 @@ function mapContentModuleToRuleLedgerRow(
     publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(module.status),
     contributor_label: module.category,
     updated_at: module.updated_at,
+    default_rule_count: relatedRules.length,
+    related_rules: mapRuleLedgerPackageRelatedRules(relatedRules),
   };
+}
+
+function mapRuleLedgerPackageRelatedRules(
+  rules: readonly TemplateGovernanceContentModuleRuleSummary[],
+): NonNullable<TemplateGovernanceRuleLedgerRow["related_rules"]> {
+  return rules.map((rule) => ({
+    id: rule.assetId,
+    title: rule.title,
+    publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(rule.status),
+    module_label: formatTemplateGovernanceModuleLabel(rule.moduleScope),
+  }));
 }
 
 function mapLearningCandidateToRuleLedgerRow(

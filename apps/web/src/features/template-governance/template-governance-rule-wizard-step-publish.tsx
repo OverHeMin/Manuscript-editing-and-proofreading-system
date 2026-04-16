@@ -35,6 +35,21 @@ export function TemplateGovernanceRuleWizardStepPublish({
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
 
+      <div className="template-governance-rule-hint-list">
+        <div className="template-governance-rule-hint-card">
+          <strong>保存草稿适合先留给当前编辑人继续补充</strong>
+          <p>当正文、语义或绑定还没完全稳定时，先留在草稿状态，后面可以回到向导继续完善。</p>
+        </div>
+        <div className="template-governance-rule-hint-card">
+          <strong>提交审核会进入规则治理审核队列</strong>
+          <p>适合内容已经基本确认，但还需要治理负责人或管理员再看一眼的场景。</p>
+        </div>
+        <div className="template-governance-rule-hint-card">
+          <strong>直接发布只适合已经确认无误的场景</strong>
+          <p>只有在规则正文、包绑定和模板族覆盖都确认清楚后，才建议直接走发布闭环。</p>
+        </div>
+      </div>
+
       <div className="template-governance-detail-grid">
         <div>
           <span>当前规则包</span>

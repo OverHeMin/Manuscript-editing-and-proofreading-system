@@ -18,19 +18,19 @@ export function KnowledgeLibraryBlockImageEditor({
   const fileName =
     typeof block.content_payload.file_name === "string"
       ? block.content_payload.file_name
-      : "No image uploaded";
+      : "尚未上传图片";
   const mimeType =
     typeof block.content_payload.mime_type === "string"
       ? block.content_payload.mime_type
-      : "image/*";
+      : "图片类型待识别";
   const byteLength =
     typeof block.content_payload.byte_length === "number"
       ? `${block.content_payload.byte_length} bytes`
-      : "Unknown size";
+      : "大小待上传";
   const storageKey =
     typeof block.content_payload.storage_key === "string"
       ? block.content_payload.storage_key
-      : "Storage key pending upload";
+      : "存储位置会在上传后生成";
 
   return (
     <div className="knowledge-library-block-editor knowledge-library-block-image-editor">
@@ -41,8 +41,12 @@ export function KnowledgeLibraryBlockImageEditor({
         <small>{storageKey}</small>
       </div>
 
-      <label>
-        Upload Image
+      <p className="knowledge-library-block-editor__hint">
+        支持上传截图、图表或扫描件，上传后可以继续补充图片说明。
+      </p>
+
+      <label className="knowledge-library-rich-content-editor__field">
+        <span>上传图片或截图</span>
         <input
           type="file"
           accept="image/*"
@@ -62,8 +66,8 @@ export function KnowledgeLibraryBlockImageEditor({
         />
       </label>
 
-      <label>
-        Image Caption
+      <label className="knowledge-library-rich-content-editor__field">
+        <span>图片说明</span>
         <input
           value={
             typeof block.content_payload.caption === "string"
@@ -79,7 +83,7 @@ export function KnowledgeLibraryBlockImageEditor({
               },
             })
           }
-          placeholder="Describe what the image explains"
+          placeholder="简单说明图片想证明什么"
         />
       </label>
     </div>

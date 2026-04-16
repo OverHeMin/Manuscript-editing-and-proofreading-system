@@ -1,6 +1,7 @@
 import {
   assistKnowledgeRevisionSemanticLayer,
   confirmKnowledgeSemanticLayer,
+  createKnowledgeDraftRevision,
   createKnowledgeLibraryDraft,
   submitKnowledgeRevisionForReview,
   regenerateKnowledgeSemanticLayer,
@@ -40,6 +41,7 @@ export interface RuleWizardEntryFormState {
   packageHints: string;
   candidateOnly: boolean;
   conflictNotes: string;
+  supplementalBlocks?: KnowledgeContentBlockViewModel[];
 }
 
 export interface SaveRuleWizardEntryDraftInput {
@@ -163,6 +165,11 @@ export function createRuleWizardEntryFormState(
     packageHints: input.packageHints ?? "",
     candidateOnly: input.candidateOnly ?? false,
     conflictNotes: input.conflictNotes ?? "",
+    supplementalBlocks: normalizeSupplementalBlocks(
+      input.supplementalBlocks ?? [],
+      "draft-revision",
+      0,
+    ),
   };
 }
 
@@ -485,7 +492,7 @@ export async function publishRuleWizardRevision(
   ).body;
 }
 
-export function createRuleDraftContentBlocks(
+function createLegacyRuleDraftContentBlocks(
   form: RuleWizardEntryFormState,
   revisionId: string,
 ): KnowledgeContentBlockViewModel[] {
@@ -512,7 +519,7 @@ export function createRuleDraftContentBlocks(
   );
 }
 
-export async function saveRuleWizardEntryDraft(
+async function saveLegacyRuleWizardEntryDraft(
   client: KnowledgeLibraryHttpClient,
   input: SaveRuleWizardEntryDraftInput,
 ): Promise<SaveRuleWizardEntryDraftResult> {
@@ -544,6 +551,176 @@ export async function saveRuleWizardEntryDraft(
       ),
     },
     draftAssetId: detail.asset.id,
+    draftRevisionId,
+  };
+}
+
+export function createRuleDraftContentBlocks(
+  form: RuleWizardEntryFormState,
+  revisionId: string,
+): KnowledgeContentBlockViewModel[] {
+  const blockDrafts: KnowledgeContentBlockViewModel[] = [];
+
+  if (form.ruleBody.trim().length > 0) {
+    blockDrafts.push(createTextBlock(revisionId, blockDrafts.length, "规则正文", form.ruleBody));
+  }
+
+  if (form.positiveExample.trim().length > 0) {
+    blockDrafts.push(
+      createTextBlock(revisionId, blockDrafts.length, "正例示例", form.positiveExample),
+    );
+  }
+
+  if (form.negativeExample.trim().length > 0) {
+    blockDrafts.push(
+      createTextBlock(revisionId, blockDrafts.length, "反例示例", form.negativeExample),
+    );
+  }
+
+  if (form.sourceBasis.trim().length > 0) {
+    blockDrafts.push(createTextBlock(revisionId, blockDrafts.length, "来源依据", form.sourceBasis));
+  }
+
+  if (form.imageEvidence.trim().length > 0) {
+    blockDrafts.push(createImageBlock(revisionId, blockDrafts.length, form.imageEvidence));
+  }
+
+  return blockDrafts.concat(
+    normalizeSupplementalBlocks(
+      form.supplementalBlocks ?? [],
+      revisionId,
+      blockDrafts.length,
+    ),
+  );
+}
+
+export function createRuleWizardEntryFormStateFromDetail(
+  detail: KnowledgeAssetDetailViewModel,
+): RuleWizardEntryFormState {
+  const selectedRevision = detail.selected_revision;
+  const recognizedText = {
+    ruleBody: selectedRevision.canonical_text,
+    positiveExample: "",
+    negativeExample: "",
+    imageEvidence: "",
+    sourceBasis: "",
+  };
+  const supplementalBlocks: KnowledgeContentBlockViewModel[] = [];
+
+  for (const block of [...selectedRevision.content_blocks].sort((left, right) => left.order_no - right.order_no)) {
+    if (block.block_type === "text_block") {
+      const label =
+        typeof block.content_payload.label === "string"
+          ? block.content_payload.label.trim()
+          : "";
+      const text =
+        typeof block.content_payload.text === "string"
+          ? block.content_payload.text
+          : "";
+
+      if (assignRecognizedTextBlock(recognizedText, label, text)) {
+        continue;
+      }
+
+      if (label.length === 0 && recognizedText.ruleBody.trim().length === 0 && text.trim().length > 0) {
+        recognizedText.ruleBody = text;
+        continue;
+      }
+    }
+
+    if (isLegacyImageEvidenceBlock(block)) {
+      recognizedText.imageEvidence =
+        typeof block.content_payload.note === "string"
+          ? block.content_payload.note
+          : recognizedText.imageEvidence;
+      continue;
+    }
+
+    supplementalBlocks.push(block);
+  }
+
+  const packageHints = selectedRevision.bindings
+    .filter(
+      (binding) =>
+        binding.binding_kind === "general_package" ||
+        binding.binding_kind === "medical_package",
+    )
+    .map((binding) => binding.binding_target_label)
+    .join(", ");
+
+  return createRuleWizardEntryFormState({
+    title: selectedRevision.title,
+    moduleScope: selectedRevision.routing.module_scope,
+    manuscriptTypes: formatRuleWizardManuscriptTypes(
+      selectedRevision.routing.manuscript_types,
+    ),
+    sourceType: selectedRevision.source_type ?? "guideline",
+    contributor:
+      selectedRevision.contributor_label ?? detail.asset.contributor_label ?? "",
+    ruleBody: recognizedText.ruleBody,
+    positiveExample: recognizedText.positiveExample,
+    negativeExample: recognizedText.negativeExample,
+    imageEvidence: recognizedText.imageEvidence,
+    sourceBasis: recognizedText.sourceBasis,
+    advancedTagsExpanded:
+      Boolean(selectedRevision.routing.sections?.length) ||
+      Boolean(selectedRevision.routing.risk_tags?.length) ||
+      packageHints.trim().length > 0,
+    sections: joinCommaSeparated(selectedRevision.routing.sections),
+    riskTags: joinCommaSeparated(selectedRevision.routing.risk_tags),
+    packageHints,
+    candidateOnly: false,
+    conflictNotes: "",
+    supplementalBlocks,
+  });
+}
+
+export async function saveRuleWizardEntryDraft(
+  client: KnowledgeLibraryHttpClient,
+  input: SaveRuleWizardEntryDraftInput,
+): Promise<SaveRuleWizardEntryDraftResult> {
+  const detail =
+    input.draftRevisionId == null
+      ? input.draftAssetId
+        ? (
+            await createKnowledgeDraftRevision(client, input.draftAssetId)
+          ).body
+        : (
+            await createKnowledgeLibraryDraft(client, createRuleDraftInput(input.form))
+          ).body
+      : (
+          await updateKnowledgeRevisionDraft(
+            client,
+            input.draftRevisionId,
+            createRuleDraftUpdateInput(input.form),
+          )
+        ).body;
+  const draftRevisionId = detail.selected_revision.id;
+  const updatedDetail =
+    input.draftRevisionId == null
+      ? (
+          await updateKnowledgeRevisionDraft(
+            client,
+            draftRevisionId,
+            createRuleDraftUpdateInput(input.form),
+          )
+        ).body
+      : detail;
+  const nextRevision = (
+    await replaceKnowledgeRevisionContentBlocks(client, draftRevisionId, {
+      blocks: createRuleDraftContentBlocks(input.form, draftRevisionId),
+    })
+  ).body;
+
+  return {
+    detail: {
+      ...updatedDetail,
+      selected_revision: nextRevision,
+      revisions: updatedDetail.revisions.map((revision) =>
+        revision.id === nextRevision.id ? nextRevision : revision,
+      ),
+    },
+    draftAssetId: updatedDetail.asset.id,
     draftRevisionId,
   };
 }
@@ -583,6 +760,64 @@ function createImageBlock(
       note: note.trim(),
     },
   };
+}
+
+function normalizeSupplementalBlocks(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+  revisionId: string,
+  startOrderNo: number,
+): KnowledgeContentBlockViewModel[] {
+  return blocks.map((block, index) => ({
+    ...block,
+    revision_id: revisionId,
+    order_no: startOrderNo + index,
+  }));
+}
+
+function assignRecognizedTextBlock(
+  state: {
+    ruleBody: string;
+    positiveExample: string;
+    negativeExample: string;
+    imageEvidence: string;
+    sourceBasis: string;
+  },
+  label: string,
+  text: string,
+): boolean {
+  switch (label) {
+    case "规则正文":
+    case "瑙勫垯姝ｆ枃":
+      state.ruleBody = text;
+      return true;
+    case "正例示例":
+    case "姝ｄ緥绀轰緥":
+      state.positiveExample = text;
+      return true;
+    case "反例示例":
+    case "鍙嶄緥绀轰緥":
+      state.negativeExample = text;
+      return true;
+    case "来源依据":
+    case "鏉ユ簮渚濇嵁":
+      state.sourceBasis = text;
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isLegacyImageEvidenceBlock(block: KnowledgeContentBlockViewModel): boolean {
+  if (block.block_type !== "image_block") {
+    return false;
+  }
+
+  return (
+    typeof block.content_payload.note === "string" &&
+    typeof block.content_payload.storage_key !== "string" &&
+    typeof block.content_payload.upload_id !== "string" &&
+    typeof block.content_payload.file_name !== "string"
+  );
 }
 
 function parseRuleWizardManuscriptTypes(value: string): ManuscriptType[] | "any" {
@@ -722,6 +957,27 @@ function collectRuleWizardEvidencePreview(
     form.positiveExample.trim(),
     form.negativeExample.trim(),
     form.sourceBasis.trim(),
+    ...(form.supplementalBlocks ?? [])
+      .map((block) => {
+        if (block.block_type === "text_block") {
+          return typeof block.content_payload.text === "string"
+            ? block.content_payload.text.trim()
+            : "";
+        }
+
+        if (block.block_type === "image_block") {
+          return typeof block.content_payload.caption === "string"
+            ? block.content_payload.caption.trim()
+            : "";
+        }
+
+        if (block.block_type === "table_block") {
+          return Array.isArray(block.content_payload.rows) ? "表格证据" : "";
+        }
+
+        return "";
+      })
+      .filter((value) => value.length > 0),
     ...(semanticLayer?.retrieval_snippets ?? []),
   ].filter((value) => value.length > 0);
 
@@ -735,6 +991,7 @@ function resolveRuleWizardConfidenceScore(form: RuleWizardEntryFormState): numbe
     form.negativeExample,
     form.imageEvidence,
     form.sourceBasis,
+    ...(form.supplementalBlocks ?? []).map((block) => block.block_type),
   ].filter((value) => value.trim().length > 0).length;
 
   if (evidenceCount >= 4) {

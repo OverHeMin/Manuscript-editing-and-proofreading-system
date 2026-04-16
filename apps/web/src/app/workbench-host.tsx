@@ -316,6 +316,7 @@ export function WorkbenchHost({
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
             initialView={routeState.templateGovernanceView ?? "overview"}
+            initialSelectedRuleLedgerRowId={routeState.assetId}
           />
         );
       case "system-settings":

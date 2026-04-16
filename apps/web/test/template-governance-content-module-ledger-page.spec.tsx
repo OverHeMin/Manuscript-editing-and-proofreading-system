@@ -8,7 +8,33 @@ import {
 } from "../src/features/template-governance/index.ts";
 import type { TemplateGovernanceLedgerSearchState } from "../src/features/template-governance/template-governance-ledger-types.ts";
 
-test("general package ledger renders reusable package table", () => {
+test("package ledger explains the relationship between packages and default rules", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceContentModuleLedgerPage
+      ledgerKind="general"
+      viewModel={{
+        modules: [],
+        selectedModuleId: null,
+        selectedModule: null,
+        summary: {
+          totalCount: 0,
+          draftCount: 0,
+          publishedCount: 0,
+        },
+        selectedModuleRules: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /规则包使用说明/u);
+  assert.match(markup, /规则包是复用容器/u);
+  assert.match(markup, /默认规则是包里的具体规则/u);
+  assert.match(markup, /先选规则包，再看默认规则，再决定是否编辑/u);
+  assert.match(markup, /打开旧版高级工作台/u);
+  assert.match(markup, /templateGovernanceView=classic/u);
+});
+
+test("general package ledger renders reusable package table and default rule details", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceContentModuleLedgerPage
       ledgerKind="general"
@@ -47,6 +73,56 @@ test("general package ledger renders reusable package table", () => {
           draftCount: 1,
           publishedCount: 0,
         },
+        selectedModuleRules: [
+          {
+            assetId: "knowledge-asset-1",
+            revisionId: "knowledge-revision-1",
+            title: "参考文献著录顺序",
+            summary: "统一作者、题名、期刊名与年份顺序。",
+            status: "approved",
+            moduleScope: "editing",
+            manuscriptTypes: ["review"],
+            bindingKind: "general_package",
+            updatedAt: "2026-04-15T12:00:00.000Z",
+            canonicalText: "作者、题名、期刊名与年份顺序应统一。",
+            contentBlocks: [
+              {
+                id: "block-1",
+                revision_id: "knowledge-revision-1",
+                block_type: "text_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  label: "规则正文",
+                  text: "作者、题名、期刊名与年份顺序应统一。",
+                },
+              },
+              {
+                id: "block-2",
+                revision_id: "knowledge-revision-1",
+                block_type: "table_block",
+                order_no: 1,
+                status: "active",
+                content_payload: {
+                  rows: [
+                    ["字段", "顺序"],
+                    ["参考文献", "作者 > 题名 > 期刊 > 年份"],
+                  ],
+                },
+              },
+            ],
+            bindings: [
+              {
+                id: "binding-1",
+                revision_id: "knowledge-revision-1",
+                binding_kind: "general_package",
+                binding_target_id: "general-module-1",
+                binding_target_label: "参考文献格式统一",
+                created_at: "2026-04-15T12:00:00.000Z",
+              },
+            ],
+          },
+        ],
       }}
     />,
   );
@@ -57,6 +133,11 @@ test("general package ledger renders reusable package table", () => {
   assert.match(markup, /template-governance-ledger-kpi-strip/u);
   assert.match(markup, /加入大模板/u);
   assert.match(markup, /参考文献格式统一/u);
+  assert.match(markup, /默认规则/u);
+  assert.match(markup, /规则详情/u);
+  assert.match(markup, /作者、题名、期刊名与年份顺序应统一。/u);
+  assert.match(markup, /作者 &gt; 题名 &gt; 期刊 &gt; 年份/u);
+  assert.match(markup, /编辑默认规则/u);
 });
 
 test("medical package ledger renders inline edit form and search results when requested", () => {
@@ -116,6 +197,7 @@ test("medical package ledger renders inline edit form and search results when re
           draftCount: 1,
           publishedCount: 0,
         },
+        selectedModuleRules: [],
       }}
       formMode="edit"
       formValues={{
@@ -125,7 +207,7 @@ test("medical package ledger renders inline edit form and search results when re
         executionModuleScope: "screening, editing",
         applicableSections: "ethics",
         summary: "核对伦理审批号与知情同意表述。",
-        guidance: "缺失审批号时转人工复核",
+        guidance: "缺失审批号时转人工复核。",
         examples: "",
         evidenceLevel: "high",
         riskLevel: "high",
