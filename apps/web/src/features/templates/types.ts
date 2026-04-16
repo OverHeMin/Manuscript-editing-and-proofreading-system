@@ -67,6 +67,7 @@ export interface GovernedContentModuleViewModel {
   source_task_id?: string;
   source_candidate_id?: string;
   template_usage_count: number;
+  default_rule_count?: number;
   status: GovernedLedgerStatus;
   created_at: string;
   updated_at: string;

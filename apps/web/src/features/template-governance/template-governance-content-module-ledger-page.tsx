@@ -81,8 +81,14 @@ export function TemplateGovernanceContentModuleLedgerPage({
   const selectedModule = viewModel.selectedModule;
   const resolvedSelectedRule =
     resolveSelectedRule(viewModel.selectedModuleRules, selectedRuleKey) ?? null;
+  const selectedModuleRuleCount =
+    selectedModule?.default_rule_count ?? viewModel.selectedModuleRules.length;
   const advancedEditorHref = formatWorkbenchHash("template-governance", {
     templateGovernanceView: "classic",
+    ruleCenterMode: "authoring",
+  });
+  const ruleLedgerHref = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "rule-ledger",
     ruleCenterMode: "authoring",
   });
 
@@ -179,6 +185,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
                 <th>适用稿件</th>
                 <th>适用模块</th>
                 {ledgerKind === "medical_specialized" ? <th>证据/风险</th> : null}
+                <th>默认规则数</th>
                 <th>大模板使用数</th>
                 <th>状态</th>
               </tr>
@@ -219,6 +226,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
                         {module.evidence_level ?? "未知"} / {module.risk_level ?? "未设定"}
                       </td>
                     ) : null}
+                    <td>{module.default_rule_count ?? 0} 条</td>
                     <td>{module.template_usage_count}</td>
                     <td>
                       {formatTemplateGovernanceGovernedAssetStatusLabel(module.status)}
@@ -227,7 +235,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={ledgerKind === "medical_specialized" ? 7 : 6}>
+                  <td colSpan={ledgerKind === "medical_specialized" ? 8 : 7}>
                     当前还没有规则包记录。
                   </td>
                 </tr>
@@ -253,6 +261,10 @@ export function TemplateGovernanceContentModuleLedgerPage({
               <span>类别</span>
               <p>{selectedModule.category}</p>
             </div>
+            <div>
+              <span>默认规则数</span>
+              <p>{selectedModuleRuleCount} 条</p>
+            </div>
             <div className="template-governance-field-full">
               <span>摘要</span>
               <p>{selectedModule.summary}</p>
@@ -270,11 +282,22 @@ export function TemplateGovernanceContentModuleLedgerPage({
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
               <h2>默认规则</h2>
-              <p>这里展示当前规则包已绑定的规则，先把包内默认规则看清楚再决定后续修改。</p>
+              <p>
+                这里展示当前规则包已绑定的默认规则，当前共绑定 {selectedModuleRuleCount} 条，
+                先把包内规则看清楚，再决定是否进入规则台账继续补齐或修改。
+              </p>
             </header>
 
             {viewModel.selectedModuleRules.length ? (
               <>
+                <div className="template-governance-actions">
+                  <a className="template-governance-link-button" href={ruleLedgerHref}>
+                    在规则台账查看全部默认规则
+                  </a>
+                  <a className="template-governance-link-button" href={advancedEditorHref}>
+                    打开旧版高级工作台
+                  </a>
+                </div>
                 <ul className="template-governance-list">
                   {viewModel.selectedModuleRules.map((rule) => {
                     const ruleKey = `${rule.assetId}:${rule.revisionId}`;
@@ -365,9 +388,19 @@ export function TemplateGovernanceContentModuleLedgerPage({
                 ) : null}
               </>
             ) : (
-              <p className="template-governance-empty">
-                当前规则包还没有绑定默认规则。
-              </p>
+              <>
+                <p className="template-governance-empty">
+                  当前规则包还没有绑定默认规则。
+                </p>
+                <div className="template-governance-actions">
+                  <a className="template-governance-link-button" href={ruleLedgerHref}>
+                    前往规则台账补齐默认规则
+                  </a>
+                  <a className="template-governance-link-button" href={advancedEditorHref}>
+                    打开旧版高级工作台
+                  </a>
+                </div>
+              </>
             )}
           </section>
         </article>

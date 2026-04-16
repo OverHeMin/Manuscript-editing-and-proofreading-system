@@ -1085,29 +1085,35 @@ async function loadTemplateGovernanceContentModuleLedger(
   },
 ): Promise<TemplateGovernanceContentModuleLedgerViewModel> {
   const modules = (await listContentModules(client, input.moduleClass)).body;
+  const ruleInventory = await loadContentModuleRuleInventory(client, {
+    moduleClass: input.moduleClass,
+  });
+  const modulesWithRuleCounts = modules.map((module) => ({
+    ...module,
+    default_rule_count: ruleInventory.rulesByModuleId.get(module.id)?.length ?? 0,
+  }));
   const selectedModuleId = resolveSelectedId(
-    modules.map((module) => module.id),
+    modulesWithRuleCounts.map((module) => module.id),
     input.selectedModuleId,
   );
   const selectedModule =
-    modules.find((module) => module.id === selectedModuleId) ?? null;
+    modulesWithRuleCounts.find((module) => module.id === selectedModuleId) ?? null;
   const selectedModuleRules = selectedModule
-    ? await loadContentModuleRules(client, {
-        moduleClass: input.moduleClass,
-        moduleId: selectedModule.id,
-      })
+    ? ruleInventory.rulesByModuleId.get(selectedModule.id) ?? []
     : [];
 
   return {
-    modules,
+    modules: modulesWithRuleCounts,
     selectedModuleId,
     selectedModule,
     selectedModuleRules,
     summary: {
-      totalCount: modules.length,
-      draftCount: modules.filter((module) => module.status === "draft").length,
-      publishedCount: modules.filter((module) => module.status === "published")
+      totalCount: modulesWithRuleCounts.length,
+      draftCount: modulesWithRuleCounts.filter((module) => module.status === "draft")
         .length,
+      publishedCount: modulesWithRuleCounts.filter(
+        (module) => module.status === "published",
+      ).length,
     },
   };
 }
@@ -1144,6 +1150,86 @@ async function loadContentModuleRules(
       }),
     )
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+async function loadContentModuleRuleInventory(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    moduleClass: GovernedContentModuleClass;
+  },
+): Promise<{
+  rulesByModuleId: Map<string, TemplateGovernanceContentModuleRuleSummary[]>;
+}> {
+  const bindingKind =
+    input.moduleClass === "general" ? "general_package" : "medical_package";
+  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
+    (item) => item.knowledge_kind === "rule",
+  );
+  const details = await Promise.all(
+    knowledgeItems.map(async (item) =>
+      (
+        await getKnowledgeAssetDetail(
+          client,
+          item.asset_id,
+          item.selected_revision_id,
+        )
+      ).body,
+    ),
+  );
+  const rulesByModuleId = new Map<string, TemplateGovernanceContentModuleRuleSummary[]>();
+
+  for (const detail of details) {
+    for (const entry of mapContentModuleRuleSummaryEntries(detail, bindingKind)) {
+      const currentRules = rulesByModuleId.get(entry.moduleId) ?? [];
+      currentRules.push(entry.summary);
+      rulesByModuleId.set(entry.moduleId, currentRules);
+    }
+  }
+
+  for (const rules of rulesByModuleId.values()) {
+    rules.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  return {
+    rulesByModuleId,
+  };
+}
+
+function mapContentModuleRuleSummaryEntries(
+  detail: KnowledgeAssetDetailViewModel,
+  bindingKind: Extract<
+    KnowledgeRevisionBindingKind,
+    "general_package" | "medical_package"
+  >,
+): Array<{
+  moduleId: string;
+  summary: TemplateGovernanceContentModuleRuleSummary;
+}> {
+  const selectedRevision = detail.selected_revision;
+  const matchingBindings = selectedRevision.bindings.filter(
+    (binding) => binding.binding_kind === bindingKind,
+  );
+
+  return matchingBindings.map((binding) => ({
+    moduleId: binding.binding_target_id,
+    summary: {
+      assetId: detail.asset.id,
+      revisionId: selectedRevision.id,
+      title: selectedRevision.title,
+      ...(selectedRevision.summary ? { summary: selectedRevision.summary } : {}),
+      ...(selectedRevision.canonical_text
+        ? { canonicalText: selectedRevision.canonical_text }
+        : {}),
+      detail,
+      status: selectedRevision.status,
+      moduleScope: selectedRevision.routing.module_scope,
+      manuscriptTypes: selectedRevision.routing.manuscript_types,
+      contentBlocks: selectedRevision.content_blocks,
+      bindings: selectedRevision.bindings,
+      bindingKind,
+      updatedAt: selectedRevision.updated_at,
+    },
+  }));
 }
 
 function mapContentModuleRuleSummaries(
