@@ -26,7 +26,7 @@ interface PreparedEvaluationOperationsScenario {
   rejectedRunId: string;
 }
 
-test("admin can inspect the delta-first evaluation operations surface without legacy write controls", async ({
+test("admin can inspect the delta-first evaluation operations surface with harness-owned controls", async ({
   page,
   request,
 }) => {
@@ -145,8 +145,11 @@ test("admin can inspect the delta-first evaluation operations surface without le
   await expect(signalPanel).toContainText("复发信号");
   await expect(signalPanel).toContainText("1 次回归提及 / 1 次失败提及 / 1 次运行被标记");
 
-  await expect(page.getByRole("button", { name: "Activate" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Run Launch" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Environment Editor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Quality Lab" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activation Gate" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Launch Candidate Run" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Activate Candidate Environment" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete And Finalize Run" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Finalize Recommendation" })).toHaveCount(0);
 });

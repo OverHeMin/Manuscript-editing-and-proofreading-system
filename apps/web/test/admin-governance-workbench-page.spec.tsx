@@ -242,7 +242,7 @@ test("admin governance workbench page renders a compact gateway with only core m
   assert.match(markup, /#system-settings\?settingsSection=accounts/);
   assert.match(markup, /#evaluation-workbench\?harnessSection=overview/);
   assert.match(markup, /#evaluation-workbench\?harnessSection=runs/);
-  assert.match(markup, /#harness-datasets/);
+  assert.match(markup, /#evaluation-workbench\?harnessSection=datasets/);
   assert.equal(countMatches(markup, /admin-governance-link-card/g), 3);
   assert.doesNotMatch(markup, /admin-governance-hero/);
   assert.doesNotMatch(markup, /admin-governance-detail-shell/);

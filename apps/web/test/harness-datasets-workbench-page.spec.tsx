@@ -244,6 +244,25 @@ test("harness datasets workbench page renders a loading state for server-side sh
   assert.match(markup, /正在载入金标准草稿、已发布版本与评分规则关联/u);
 });
 
+test("harness datasets workbench page can render in an embedded harness-owned mode", () => {
+  const markup = renderToStaticMarkup(
+    <HarnessDatasetsWorkbenchPage
+      embedded
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={createHarnessDatasetsOverviewFixture() as never}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /harness-datasets-hero/u);
+  assert.doesNotMatch(markup, /workbench-core-strip is-secondary/u);
+  assert.match(markup, /待整理队列/u);
+  assert.match(markup, /已发布版本/u);
+});
+
 test("harness datasets workbench page renders curation queue, published exports, and provenance detail", () => {
   const markup = renderLoadedPage();
 

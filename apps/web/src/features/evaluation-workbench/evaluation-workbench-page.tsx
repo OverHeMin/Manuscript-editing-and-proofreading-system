@@ -2,8 +2,16 @@
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
+import type {
+  AdminGovernanceOverview,
+  AdminGovernanceWorkbenchController,
+  AdminHarnessScopeViewModel,
+  HarnessEnvironmentPreviewViewModel,
+} from "../admin-governance/admin-governance-controller.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
+import { HarnessOperatorSection } from "./harness-operator-section.tsx";
+import type { HarnessDatasetsWorkbenchOverview } from "../harness-datasets/types.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
   FinalizeEvaluationRunResultViewModel,
@@ -36,17 +44,28 @@ export type EvaluationWorkbenchHistorySortMode = "newest" | "failures_first";
 
 export interface EvaluationWorkbenchPageProps {
   controller?: EvaluationWorkbenchController;
+  harnessController?: AdminGovernanceWorkbenchController;
   actorRole?: AuthRole;
   section?: WorkbenchHarnessSection;
   prefilledManuscriptId?: string;
   initialOverview?: EvaluationWorkbenchOverview | null;
+  initialHarnessOverview?: AdminGovernanceOverview | null;
+  initialHarnessScope?: AdminHarnessScopeViewModel | null;
+  initialHarnessPreview?: HarnessEnvironmentPreviewViewModel | null;
+  initialDatasetsOverview?: HarnessDatasetsWorkbenchOverview | null;
 }
 
 export function EvaluationWorkbenchPage({
   controller = defaultController,
+  harnessController,
+  actorRole,
   section = "overview",
   prefilledManuscriptId,
   initialOverview = null,
+  initialHarnessOverview = null,
+  initialHarnessScope = null,
+  initialHarnessPreview = null,
+  initialDatasetsOverview = null,
 }: EvaluationWorkbenchPageProps) {
   const landingCopy = resolveEvaluationLandingCopy(section);
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
@@ -117,10 +136,17 @@ export function EvaluationWorkbenchPage({
 
   return (
     <EvaluationWorkbenchOperationsView
+      actorRole={actorRole}
+      harnessController={harnessController}
+      section={section}
       sectionTitle={landingCopy.title}
       sectionSummary={landingCopy.summary}
       overview={overview}
       prefilledManuscriptId={normalizedPrefilledManuscriptId}
+      initialHarnessOverview={initialHarnessOverview}
+      initialHarnessScope={initialHarnessScope}
+      initialHarnessPreview={initialHarnessPreview}
+      initialDatasetsOverview={initialDatasetsOverview}
       statusMessage={statusMessage}
       errorMessage={errorMessage}
       historyFilter={historyFilter}
@@ -192,10 +218,17 @@ export function EvaluationWorkbenchPage({
 }
 
 function EvaluationWorkbenchOperationsView(props: {
+  actorRole?: AuthRole;
+  harnessController?: AdminGovernanceWorkbenchController;
+  section: WorkbenchHarnessSection;
   sectionTitle: string;
   sectionSummary: string;
   overview: EvaluationWorkbenchOverview;
   prefilledManuscriptId?: string;
+  initialHarnessOverview?: AdminGovernanceOverview | null;
+  initialHarnessScope?: AdminHarnessScopeViewModel | null;
+  initialHarnessPreview?: HarnessEnvironmentPreviewViewModel | null;
+  initialDatasetsOverview?: HarnessDatasetsWorkbenchOverview | null;
   statusMessage?: string | null;
   errorMessage?: string | null;
   historyFilter: EvaluationWorkbenchHistoryFilter;
@@ -596,6 +629,16 @@ function EvaluationWorkbenchOperationsView(props: {
           )}
         </section>
       </div>
+
+      <HarnessOperatorSection
+        actorRole={props.actorRole}
+        harnessController={props.harnessController}
+        section={props.section}
+        initialHarnessOverview={props.initialHarnessOverview}
+        initialHarnessScope={props.initialHarnessScope}
+        initialHarnessPreview={props.initialHarnessPreview}
+        initialDatasetsOverview={props.initialDatasetsOverview}
+      />
     </section>
   );
 }

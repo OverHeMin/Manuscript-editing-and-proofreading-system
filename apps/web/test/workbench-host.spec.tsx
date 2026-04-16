@@ -127,14 +127,16 @@ test("workbench host runtime render forwards harnessSection=runs into evaluation
   assert.match(markup, /workbench-nav-button is-active[\s\S]*?Harness/u);
 });
 
-test("workbench host runtime render keeps datasets alias on datasets surface while governance nav stays at four entries", async () => {
+test("workbench host runtime render keeps datasets alias inside the unified harness first-view shell while governance nav stays at four entries", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#evaluation-workbench?harnessSection=datasets",
   );
 
   const governanceSection = extractGovernanceNavSection(markup);
 
-  assert.match(markup, /Harness 控制 \/ 数据与样本/u);
+  assert.match(markup, /Harness 数据集视图/u);
+  assert.match(markup, /默认聚焦数据集快照与导出链路核对。/u);
+  assert.doesNotMatch(markup, /Harness 控制 \/ 数据与样本/u);
   assert.match(governanceSection, /workbench-nav-button is-active[\s\S]*?Harness/u);
   assert.equal(
     countOccurrences(governanceSection, "workbench-nav-button-label"),
@@ -144,11 +146,20 @@ test("workbench host runtime render keeps datasets alias on datasets surface whi
 
 test("workbench host runtime render keeps direct harness-datasets focus card label", async () => {
   const markup = await renderWorkbenchHostAtHash("#harness-datasets");
+  const governanceSection = extractGovernanceNavSection(markup);
 
   assert.match(markup, /Harness 数据集/u);
+  assert.match(markup, /Harness 数据集视图/u);
+  assert.match(markup, /默认聚焦数据集快照与导出链路核对。/u);
+  assert.doesNotMatch(markup, /Harness 控制 \/ 数据与样本/u);
   assert.match(
     markup,
     /workbench-header-focus-card[\s\S]*?<strong>Harness \u6570\u636e\u96c6<\/strong>/u,
+  );
+  assert.match(governanceSection, /workbench-nav-button is-active[\s\S]*?Harness/u);
+  assert.equal(
+    countOccurrences(governanceSection, "workbench-nav-button-label"),
+    4,
   );
 });
 
