@@ -1,4 +1,5 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type {
   TemplateGovernanceContentModuleLedgerViewModel,
   TemplateGovernanceContentModuleRuleSummary,
@@ -80,6 +81,10 @@ export function TemplateGovernanceContentModuleLedgerPage({
   const selectedModule = viewModel.selectedModule;
   const resolvedSelectedRule =
     resolveSelectedRule(viewModel.selectedModuleRules, selectedRuleKey) ?? null;
+  const advancedEditorHref = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "classic",
+    ruleCenterMode: "authoring",
+  });
 
   return (
     <section className="template-governance-content-module-ledger-page">
@@ -152,6 +157,11 @@ export function TemplateGovernanceContentModuleLedgerPage({
             <strong>先选规则包，再看默认规则，再决定是否编辑</strong>
             <p>这样能先确认当前包的复用范围，再避免把规则内容和包级摘要、适用边界混在一起修改。</p>
           </article>
+        </div>
+        <div className="template-governance-actions">
+          <a className="template-governance-link-button" href={advancedEditorHref}>
+            打开旧版高级工作台
+          </a>
         </div>
       </article>
 

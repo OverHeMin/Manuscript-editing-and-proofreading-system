@@ -30,6 +30,8 @@ test("package ledger explains the relationship between packages and default rule
   assert.match(markup, /规则包是复用容器/u);
   assert.match(markup, /默认规则是包里的具体规则/u);
   assert.match(markup, /先选规则包，再看默认规则，再决定是否编辑/u);
+  assert.match(markup, /打开旧版高级工作台/u);
+  assert.match(markup, /templateGovernanceView=classic/u);
 });
 
 test("general package ledger renders reusable package table and default rule details", () => {

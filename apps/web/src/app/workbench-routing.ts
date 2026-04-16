@@ -161,7 +161,7 @@ export function formatWorkbenchHash(
     params.set("knowledgeView", knowledgeView);
   }
 
-  if (templateGovernanceView && templateGovernanceView !== "classic") {
+  if (templateGovernanceView) {
     params.set("templateGovernanceView", templateGovernanceView);
   }
 
