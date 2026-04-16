@@ -686,6 +686,147 @@ test("template governance controller loads rules bound to the selected content m
   );
 });
 
+test("template governance controller skips legacy and orphaned rule-library entries when loading content modules", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/content-modules?moduleClass=general") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "general-module-1",
+              module_class: "general",
+              name: "General package",
+              category: "reference",
+              manuscript_type_scope: ["review"],
+              execution_module_scope: ["editing"],
+              status: "published",
+              created_at: "2026-04-13T12:00:00.000Z",
+              updated_at: "2026-04-13T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-asset-1",
+                title: "Valid governed rule",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-revision-1",
+                content_block_count: 1,
+              },
+              {
+                asset_id: "knowledge-legacy-1",
+                title: "Legacy rule without revision",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                content_block_count: 0,
+              },
+              {
+                asset_id: "knowledge-orphan-1",
+                title: "Orphaned governed rule",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-orphan-revision-1",
+                content_block_count: 1,
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-asset-1",
+              status: "active",
+              current_revision_id: "knowledge-revision-1",
+              current_approved_revision_id: "knowledge-revision-1",
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-revision-1",
+              asset_id: "knowledge-asset-1",
+              revision_no: 1,
+              status: "approved",
+              title: "Valid governed rule",
+              canonical_text: "Keep the valid package rule.",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [
+                {
+                  id: "binding-1",
+                  revision_id: "knowledge-revision-1",
+                  binding_kind: "general_package",
+                  binding_target_id: "general-module-1",
+                  binding_target_label: "General package",
+                  created_at: "2026-04-15T12:00:00.000Z",
+                },
+              ],
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/knowledge/assets/knowledge-orphan-1?revisionId=knowledge-orphan-revision-1"
+      ) {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadContentModuleLedger({
+    moduleClass: "general",
+  });
+
+  assert.equal(ledger.selectedModuleId, "general-module-1");
+  assert.equal(ledger.selectedModuleRules.length, 1);
+  assert.equal(ledger.selectedModuleRules[0]?.assetId, "knowledge-asset-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/templates/content-modules?moduleClass=general",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1",
+      "GET /api/v1/knowledge/assets/knowledge-orphan-1?revisionId=knowledge-orphan-revision-1",
+    ],
+  );
+});
+
 test("template governance controller loads rule authoring and instruction authoring assets for the selected family", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createTemplateGovernanceWorkbenchController({

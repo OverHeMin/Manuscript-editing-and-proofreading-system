@@ -39,6 +39,10 @@ import {
   InMemoryKnowledgeReviewActionRepository,
 } from "../../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { createKnowledgeApi } from "../../../src/modules/knowledge/knowledge-api.ts";
+import type {
+  KnowledgeRecord,
+  KnowledgeRevisionRecord,
+} from "../../../src/modules/knowledge/knowledge-record.ts";
 import {
   KnowledgeAiAssistService,
   type KnowledgeAiAssistGenerator,
@@ -559,6 +563,75 @@ export function createWorkbenchRuntime(input: {
   };
 }
 
+function seedGovernedKnowledgeAsset(input: {
+  repository: InMemoryKnowledgeRepository;
+  assetId: string;
+  title: string;
+  canonicalText: string;
+  summary?: string;
+  knowledgeKind: KnowledgeRecord["knowledge_kind"];
+  status?: KnowledgeRevisionRecord["status"];
+  moduleScope: KnowledgeRecord["routing"]["module_scope"];
+  manuscriptTypes: KnowledgeRecord["routing"]["manuscript_types"];
+  sections?: string[];
+  riskTags?: string[];
+  disciplineTags?: string[];
+  bindings?: ReadonlyArray<{
+    bindingKind: "module_template" | "general_package" | "medical_package";
+    bindingTargetId: string;
+    bindingTargetLabel: string;
+  }>;
+  createdAt: string;
+  updatedAt?: string;
+  revisionNo?: number;
+}): void {
+  const revisionNo = input.revisionNo ?? 1;
+  const revisionId = `${input.assetId}-revision-${revisionNo}`;
+  const revisionStatus = input.status ?? "approved";
+  const timestamp = input.updatedAt ?? input.createdAt;
+
+  void input.repository.saveAsset({
+    id: input.assetId,
+    status: "active",
+    current_revision_id: revisionId,
+    ...(revisionStatus === "approved"
+      ? { current_approved_revision_id: revisionId }
+      : {}),
+    created_at: input.createdAt,
+    updated_at: timestamp,
+  });
+  void input.repository.saveRevision({
+    id: revisionId,
+    asset_id: input.assetId,
+    revision_no: revisionNo,
+    status: revisionStatus,
+    title: input.title,
+    canonical_text: input.canonicalText,
+    ...(input.summary ? { summary: input.summary } : {}),
+    knowledge_kind: input.knowledgeKind,
+    routing: {
+      module_scope: input.moduleScope,
+      manuscript_types: input.manuscriptTypes,
+      ...(input.sections ? { sections: input.sections } : {}),
+      ...(input.riskTags ? { risk_tags: input.riskTags } : {}),
+      ...(input.disciplineTags ? { discipline_tags: input.disciplineTags } : {}),
+    },
+    created_at: input.createdAt,
+    updated_at: timestamp,
+  });
+  void input.repository.replaceRevisionBindings(
+    revisionId,
+    (input.bindings ?? []).map((binding, index) => ({
+      id: `${revisionId}-binding-${index + 1}`,
+      revision_id: revisionId,
+      binding_kind: binding.bindingKind,
+      binding_target_id: binding.bindingTargetId,
+      binding_target_label: binding.bindingTargetLabel,
+      created_at: timestamp,
+    })),
+  );
+}
+
 function seedWorkbenchGovernance(input: {
   manuscriptRepository: InMemoryManuscriptRepository;
   assetRepository: InMemoryDocumentAssetRepository;
@@ -713,43 +786,58 @@ function seedWorkbenchGovernance(input: {
     applies_to_modules: ["editing"],
   });
 
-  void input.knowledgeRepository.save({
-    id: "knowledge-screening-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-screening-1",
     title: "Screening knowledge",
-    canonical_text: "Check endpoint definitions.",
-    knowledge_kind: "rule",
-    status: "approved",
-    routing: {
-      module_scope: "screening",
-      manuscript_types: ["clinical_study"],
-    },
-    template_bindings: ["template-screening-1"],
+    canonicalText: "Check endpoint definitions.",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-screening-1",
+        bindingTargetLabel: "Seeded screening prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:05.000Z",
   });
-  void input.knowledgeRepository.save({
-    id: "knowledge-editing-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-editing-1",
     title: "Editing knowledge",
-    canonical_text: "Normalize manuscript terminology.",
-    knowledge_kind: "rule",
-    status: "approved",
-    routing: {
-      module_scope: "editing",
-      manuscript_types: ["clinical_study"],
-      sections: ["discussion"],
-      risk_tags: ["grounding"],
-    },
-    template_bindings: ["template-editing-1"],
+    canonicalText: "Normalize manuscript terminology.",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["discussion"],
+    riskTags: ["grounding"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-editing-1",
+        bindingTargetLabel: "Seeded editing prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:10.000Z",
   });
-  void input.knowledgeRepository.save({
-    id: "knowledge-proofreading-1",
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-proofreading-1",
     title: "Proofreading knowledge",
-    canonical_text: "Confirm punctuation consistency.",
-    knowledge_kind: "checklist",
-    status: "approved",
-    routing: {
-      module_scope: "proofreading",
-      manuscript_types: ["clinical_study"],
-    },
-    template_bindings: ["template-proofreading-1"],
+    canonicalText: "Confirm punctuation consistency.",
+    knowledgeKind: "checklist",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+    bindings: [
+      {
+        bindingKind: "module_template",
+        bindingTargetId: "template-proofreading-1",
+        bindingTargetLabel: "Seeded proofreading prompt",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:15.000Z",
   });
 
   void input.editorialRuleRepository.saveRuleSet({

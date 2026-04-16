@@ -1139,20 +1139,7 @@ async function loadContentModuleRules(
 ): Promise<TemplateGovernanceContentModuleRuleSummary[]> {
   const bindingKind =
     input.moduleClass === "general" ? "general_package" : "medical_package";
-  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
-    (item) => item.knowledge_kind === "rule",
-  );
-  const details = await Promise.all(
-    knowledgeItems.map(async (item) =>
-      (
-        await getKnowledgeAssetDetail(
-          client,
-          item.asset_id,
-          item.selected_revision_id,
-        )
-      ).body,
-    ),
-  );
+  const details = await loadGovernedRuleAssetDetails(client);
 
   return details
     .flatMap((detail) =>
@@ -1174,20 +1161,7 @@ async function loadContentModuleRuleInventory(
 }> {
   const bindingKind =
     input.moduleClass === "general" ? "general_package" : "medical_package";
-  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
-    (item) => item.knowledge_kind === "rule",
-  );
-  const details = await Promise.all(
-    knowledgeItems.map(async (item) =>
-      (
-        await getKnowledgeAssetDetail(
-          client,
-          item.asset_id,
-          item.selected_revision_id,
-        )
-      ).body,
-    ),
-  );
+  const details = await loadGovernedRuleAssetDetails(client);
   const rulesByModuleId = new Map<string, TemplateGovernanceContentModuleRuleSummary[]>();
 
   for (const detail of details) {
@@ -1205,6 +1179,40 @@ async function loadContentModuleRuleInventory(
   return {
     rulesByModuleId,
   };
+}
+
+async function loadGovernedRuleAssetDetails(
+  client: TemplateGovernanceHttpClient,
+): Promise<KnowledgeAssetDetailViewModel[]> {
+  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
+    (item) =>
+      item.knowledge_kind === "rule" &&
+      typeof item.selected_revision_id === "string" &&
+      item.selected_revision_id.trim().length > 0,
+  );
+  const details = await Promise.all(
+    knowledgeItems.map(async (item) => {
+      try {
+        return (
+          await getKnowledgeAssetDetail(
+            client,
+            item.asset_id,
+            item.selected_revision_id,
+          )
+        ).body;
+      } catch (error) {
+        if (isNotFoundHttpError(error)) {
+          return null;
+        }
+
+        throw error;
+      }
+    }),
+  );
+
+  return details.filter(
+    (detail): detail is KnowledgeAssetDetailViewModel => detail != null,
+  );
 }
 
 function mapContentModuleRuleSummaryEntries(
