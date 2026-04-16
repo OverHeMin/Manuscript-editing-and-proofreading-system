@@ -412,9 +412,9 @@ test("template governance workbench page opens the shared rule wizard when autho
     />,
   );
 
-  assert.match(markup, /\u89c4\u5219\u5411\u5bfc/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5411\u5bfc/u);
   assert.match(markup, /\u57fa\u7840\u5f55\u5165\u4e0e\u8bc1\u636e\u8865\u5145/u);
-  assert.match(markup, /\u4e0b\u4e00\u6b65\uff1aAI \u8bc6\u522b\u8bed\u4e49\u5c42/u);
+  assert.match(markup, /\u4e0b\u4e00\u6b65\uff1a\u6574\u7406\u8349\u7a3f/u);
 });
 
 test("template governance workbench page renders the unified rule ledger when rule-ledger is the selected view", () => {
@@ -494,10 +494,11 @@ test("template governance workbench page folds learning candidates into the rule
     />,
   );
 
-  assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
+  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3 · \u8f6c\u89c4\u5219\u7ad9/u);
+  assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
   assert.match(markup, /Abstract heading normalization/);
-  assert.match(markup, /\u8f6c\u6210\u89c4\u5219/u);
+  assert.match(markup, /\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.doesNotMatch(markup, /RulePackageAuthoringShell/);
 });
 

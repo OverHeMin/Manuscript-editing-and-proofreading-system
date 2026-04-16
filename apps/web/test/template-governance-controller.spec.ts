@@ -320,6 +320,372 @@ test("template governance controller keeps the workbench fail-open when retrieva
   assert.equal(overview.retrievalInsights.signals.length, 0);
 });
 
+/*
+test("template governance controller loads rules bound to the selected content module", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/content-modules?moduleClass=general") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "general-module-1",
+              module_class: "general",
+              name: "参考文献格式统一",
+              category: "reference",
+              manuscript_type_scope: ["review"],
+              execution_module_scope: ["editing"],
+              summary: "统一参考文献著录顺序与标点。",
+              template_usage_count: 2,
+              status: "draft",
+              created_at: "2026-04-13T12:00:00.000Z",
+              updated_at: "2026-04-13T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-asset-1",
+                title: "参考文献著录顺序",
+                summary: "统一作者、题名、期刊名与年份顺序。",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-revision-1",
+                content_block_count: 2,
+                updated_at: "2026-04-15T12:00:00.000Z",
+              },
+              {
+                asset_id: "knowledge-asset-2",
+                title: "术语统一提示",
+                summary: "保持专业术语一致。",
+                knowledge_kind: "rule",
+                status: "draft",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-revision-2",
+                content_block_count: 1,
+                updated_at: "2026-04-15T12:30:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-asset-1",
+              status: "active",
+              current_revision_id: "knowledge-revision-1",
+              current_approved_revision_id: "knowledge-revision-1",
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-revision-1",
+              asset_id: "knowledge-asset-1",
+              revision_no: 1,
+              status: "approved",
+              title: "参考文献著录顺序",
+              canonical_text: "作者、题名、期刊名与年份顺序应统一。",
+              summary: "统一作者、题名、期刊名与年份顺序。",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [
+                {
+                  id: "binding-1",
+                  revision_id: "knowledge-revision-1",
+                  binding_kind: "general_package",
+                  binding_target_id: "general-module-1",
+                  binding_target_label: "参考文献格式统一",
+                  created_at: "2026-04-15T12:00:00.000Z",
+                },
+              ],
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-asset-2?revisionId=knowledge-revision-2") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-asset-2",
+              status: "active",
+              current_revision_id: "knowledge-revision-2",
+              created_at: "2026-04-15T11:30:00.000Z",
+              updated_at: "2026-04-15T12:30:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-revision-2",
+              asset_id: "knowledge-asset-2",
+              revision_no: 1,
+              status: "draft",
+              title: "术语统一提示",
+              canonical_text: "专业术语应全文统一。",
+              summary: "保持专业术语一致。",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [
+                {
+                  id: "binding-2",
+                  revision_id: "knowledge-revision-2",
+                  binding_kind: "medical_package",
+                  binding_target_id: "medical-module-1",
+                  binding_target_label: "术语核查",
+                  created_at: "2026-04-15T12:30:00.000Z",
+                },
+              ],
+              created_at: "2026-04-15T11:30:00.000Z",
+              updated_at: "2026-04-15T12:30:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadContentModuleLedger({
+    moduleClass: "general",
+  });
+
+  assert.equal(ledger.selectedModuleId, "general-module-1");
+  assert.equal(ledger.selectedModuleRules.length, 1);
+  assert.equal(ledger.selectedModuleRules[0]?.title, "参考文献著录顺序");
+  assert.equal(ledger.selectedModuleRules[0]?.bindingKind, "general_package");
+  assert.equal(
+    ledger.selectedModuleRules[0]?.canonicalText,
+    "浣滆€呫€侀鍚嶃€佹湡鍒婂悕涓庡勾浠介『搴忓簲缁熶竴銆?,
+  );
+  assert.deepEqual(ledger.selectedModuleRules[0]?.contentBlocks, []);
+  assert.equal(ledger.selectedModuleRules[0]?.bindings.length, 1);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/templates/content-modules?moduleClass=general",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1",
+      "GET /api/v1/knowledge/assets/knowledge-asset-2?revisionId=knowledge-revision-2",
+    ],
+  );
+});
+*/
+
+test("template governance controller loads rules bound to the selected content module", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/content-modules?moduleClass=general") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "general-module-1",
+              module_class: "general",
+              name: "参考文献格式统一",
+              category: "reference",
+              manuscript_type_scope: ["review"],
+              execution_module_scope: ["editing"],
+              summary: "统一参考文献著录顺序与标点。",
+              template_usage_count: 2,
+              status: "draft",
+              created_at: "2026-04-13T12:00:00.000Z",
+              updated_at: "2026-04-13T12:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-asset-1",
+                title: "参考文献著录顺序",
+                summary: "统一作者、题名、期刊名与年份顺序。",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-revision-1",
+                content_block_count: 2,
+                updated_at: "2026-04-15T12:00:00.000Z",
+              },
+              {
+                asset_id: "knowledge-asset-2",
+                title: "术语统一提示",
+                summary: "保持专业术语一致。",
+                knowledge_kind: "rule",
+                status: "draft",
+                module_scope: "editing",
+                manuscript_types: ["review"],
+                selected_revision_id: "knowledge-revision-2",
+                content_block_count: 1,
+                updated_at: "2026-04-15T12:30:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-asset-1",
+              status: "active",
+              current_revision_id: "knowledge-revision-1",
+              current_approved_revision_id: "knowledge-revision-1",
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-revision-1",
+              asset_id: "knowledge-asset-1",
+              revision_no: 1,
+              status: "approved",
+              title: "参考文献著录顺序",
+              canonical_text: "作者、题名、期刊名与年份顺序应统一。",
+              summary: "统一作者、题名、期刊名与年份顺序。",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [
+                {
+                  id: "binding-1",
+                  revision_id: "knowledge-revision-1",
+                  binding_kind: "general_package",
+                  binding_target_id: "general-module-1",
+                  binding_target_label: "参考文献格式统一",
+                  created_at: "2026-04-15T12:00:00.000Z",
+                },
+              ],
+              created_at: "2026-04-15T11:00:00.000Z",
+              updated_at: "2026-04-15T12:00:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/assets/knowledge-asset-2?revisionId=knowledge-revision-2") {
+        return {
+          status: 200,
+          body: {
+            asset: {
+              id: "knowledge-asset-2",
+              status: "active",
+              current_revision_id: "knowledge-revision-2",
+              created_at: "2026-04-15T11:30:00.000Z",
+              updated_at: "2026-04-15T12:30:00.000Z",
+            },
+            selected_revision: {
+              id: "knowledge-revision-2",
+              asset_id: "knowledge-asset-2",
+              revision_no: 1,
+              status: "draft",
+              title: "术语统一提示",
+              canonical_text: "专业术语应全文统一。",
+              summary: "保持专业术语一致。",
+              knowledge_kind: "rule",
+              routing: {
+                module_scope: "editing",
+                manuscript_types: ["review"],
+              },
+              content_blocks: [],
+              bindings: [
+                {
+                  id: "binding-2",
+                  revision_id: "knowledge-revision-2",
+                  binding_kind: "medical_package",
+                  binding_target_id: "medical-module-1",
+                  binding_target_label: "术语核查",
+                  created_at: "2026-04-15T12:30:00.000Z",
+                },
+              ],
+              created_at: "2026-04-15T11:30:00.000Z",
+              updated_at: "2026-04-15T12:30:00.000Z",
+            },
+            revisions: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadContentModuleLedger({
+    moduleClass: "general",
+  });
+
+  assert.equal(ledger.selectedModuleId, "general-module-1");
+  assert.equal(ledger.selectedModuleRules.length, 1);
+  assert.equal(ledger.selectedModuleRules[0]?.title, "参考文献著录顺序");
+  assert.equal(ledger.selectedModuleRules[0]?.bindingKind, "general_package");
+  assert.equal(
+    ledger.selectedModuleRules[0]?.canonicalText,
+    "作者、题名、期刊名与年份顺序应统一。",
+  );
+  assert.deepEqual(ledger.selectedModuleRules[0]?.contentBlocks, []);
+  assert.equal(ledger.selectedModuleRules[0]?.bindings.length, 1);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/templates/content-modules?moduleClass=general",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-asset-1?revisionId=knowledge-revision-1",
+      "GET /api/v1/knowledge/assets/knowledge-asset-2?revisionId=knowledge-revision-2",
+    ],
+  );
+});
+
 test("template governance controller loads rule authoring and instruction authoring assets for the selected family", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createTemplateGovernanceWorkbenchController({

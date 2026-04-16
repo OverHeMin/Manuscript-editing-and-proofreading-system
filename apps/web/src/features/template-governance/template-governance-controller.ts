@@ -1,6 +1,15 @@
 import { BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import {
+  getKnowledgeAssetDetail,
+  listKnowledgeLibraryAssets,
+  type KnowledgeAssetDetailViewModel,
+  type KnowledgeContentBlockViewModel,
+  type KnowledgeRevisionBindingKind,
+  type KnowledgeRevisionBindingViewModel,
+  type KnowledgeRevisionStatus,
+} from "../knowledge-library/index.ts";
+import {
   archiveKnowledgeItem,
   createKnowledgeDraft,
   listKnowledgeItems,
@@ -412,10 +421,30 @@ export interface TemplateGovernanceContentModuleLedgerSummary {
   publishedCount: number;
 }
 
+export interface TemplateGovernanceContentModuleRuleSummary {
+  assetId: string;
+  revisionId: string;
+  title: string;
+  summary?: string;
+  canonicalText?: string;
+  detail?: KnowledgeAssetDetailViewModel;
+  status: KnowledgeRevisionStatus;
+  moduleScope: string;
+  manuscriptTypes: string[] | "any";
+  contentBlocks: KnowledgeContentBlockViewModel[];
+  bindings: KnowledgeRevisionBindingViewModel[];
+  bindingKind: Extract<
+    KnowledgeRevisionBindingKind,
+    "general_package" | "medical_package"
+  >;
+  updatedAt: string;
+}
+
 export interface TemplateGovernanceContentModuleLedgerViewModel {
   modules: GovernedContentModuleViewModel[];
   selectedModuleId: string | null;
   selectedModule: GovernedContentModuleViewModel | null;
+  selectedModuleRules: TemplateGovernanceContentModuleRuleSummary[];
   summary: TemplateGovernanceContentModuleLedgerSummary;
 }
 
@@ -1062,11 +1091,18 @@ async function loadTemplateGovernanceContentModuleLedger(
   );
   const selectedModule =
     modules.find((module) => module.id === selectedModuleId) ?? null;
+  const selectedModuleRules = selectedModule
+    ? await loadContentModuleRules(client, {
+        moduleClass: input.moduleClass,
+        moduleId: selectedModule.id,
+      })
+    : [];
 
   return {
     modules,
     selectedModuleId,
     selectedModule,
+    selectedModuleRules,
     summary: {
       totalCount: modules.length,
       draftCount: modules.filter((module) => module.status === "draft").length,
@@ -1074,6 +1110,76 @@ async function loadTemplateGovernanceContentModuleLedger(
         .length,
     },
   };
+}
+
+async function loadContentModuleRules(
+  client: TemplateGovernanceHttpClient,
+  input: {
+    moduleClass: GovernedContentModuleClass;
+    moduleId: string;
+  },
+): Promise<TemplateGovernanceContentModuleRuleSummary[]> {
+  const bindingKind =
+    input.moduleClass === "general" ? "general_package" : "medical_package";
+  const knowledgeItems = (await listKnowledgeLibraryAssets(client)).body.items.filter(
+    (item) => item.knowledge_kind === "rule",
+  );
+  const details = await Promise.all(
+    knowledgeItems.map(async (item) =>
+      (
+        await getKnowledgeAssetDetail(
+          client,
+          item.asset_id,
+          item.selected_revision_id,
+        )
+      ).body,
+    ),
+  );
+
+  return details
+    .flatMap((detail) =>
+      mapContentModuleRuleSummaries(detail, {
+        bindingKind,
+        moduleId: input.moduleId,
+      }),
+    )
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function mapContentModuleRuleSummaries(
+  detail: KnowledgeAssetDetailViewModel,
+  input: {
+    bindingKind: Extract<
+      KnowledgeRevisionBindingKind,
+      "general_package" | "medical_package"
+    >;
+    moduleId: string;
+  },
+): TemplateGovernanceContentModuleRuleSummary[] {
+  const selectedRevision = detail.selected_revision;
+  const matchingBindings = selectedRevision.bindings.filter(
+    (binding) =>
+      binding.binding_kind === input.bindingKind &&
+      binding.binding_target_id === input.moduleId,
+  );
+
+  return matchingBindings.map((binding) => ({
+    assetId: detail.asset.id,
+    revisionId: selectedRevision.id,
+    title: selectedRevision.title,
+    ...(selectedRevision.summary ? { summary: selectedRevision.summary } : {}),
+    ...(selectedRevision.canonical_text
+      ? { canonicalText: selectedRevision.canonical_text }
+      : {}),
+    detail,
+    status: selectedRevision.status,
+    moduleScope: selectedRevision.routing.module_scope,
+    manuscriptTypes: selectedRevision.routing.manuscript_types,
+    contentBlocks: selectedRevision.content_blocks,
+    bindings: selectedRevision.bindings,
+    bindingKind: input.bindingKind,
+    updatedAt: selectedRevision.updated_at,
+  }));
 }
 
 async function loadTemplateGovernanceTemplateLedger(

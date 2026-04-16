@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BrowserHttpClientError, createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import { uploadKnowledgeImage } from "../knowledge-library/knowledge-library-api.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import {
   createRuleWizardBindingFormState,
@@ -509,6 +510,9 @@ function renderWizardBody(input: {
         <TemplateGovernanceRuleWizardStepEntry
           value={input.entryFormState}
           onChange={(nextValue) => input.onEntryFormChange?.(nextValue)}
+          onUploadImage={async (payload) =>
+            (await uploadKnowledgeImage(defaultRuleWizardClient, payload)).body
+          }
         />
       );
     case "semantic":

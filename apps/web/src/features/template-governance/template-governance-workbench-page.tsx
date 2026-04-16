@@ -14,6 +14,7 @@ import {
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
+import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import type { LearningCandidateViewModel } from "../learning-review/index.ts";
 import type { RuleAuthoringPrefillFromLearningCandidate } from "../learning-review/index.ts";
 import type {
@@ -146,6 +147,7 @@ import {
 } from "./template-governance-rule-wizard-state.ts";
 import {
   createRuleWizardEntryFormState,
+  createRuleWizardEntryFormStateFromDetail,
   type RuleWizardEntryFormState,
   type RuleWizardReleaseAction,
 } from "./template-governance-rule-wizard-api.ts";
@@ -173,6 +175,7 @@ if (typeof document !== "undefined") {
 const defaultController = createTemplateGovernanceWorkbenchController(
   createBrowserHttpClient(),
 );
+const defaultRuleWizardAssetClient = createBrowserHttpClient();
 const manuscriptTypes: ManuscriptType[] = [
   "clinical_study",
   "review",
@@ -2839,7 +2842,7 @@ function TemplateGovernanceRuleLedgerRoute({
     setActiveCommandPanel(null);
   }
 
-  function handleOpenSelectedItem(rowId: string) {
+  async function handleOpenSelectedItem(rowId: string) {
     const selectedRow = ledger.rows.find((row) => row.id === rowId) ?? null;
     if (!selectedRow) {
       return;
@@ -2852,23 +2855,52 @@ function TemplateGovernanceRuleLedgerRoute({
           null
         : null;
 
-    setWizardState(
-      createRuleWizardState(
-        selectedRow.asset_kind === "recycled_candidate" ? "candidate" : "edit",
-        {
+    if (selectedLearningCandidate) {
+      setWizardState(
+        createRuleWizardState("candidate", {
           sourceRowId: selectedRow.id,
-        },
-      ),
-    );
-    setWizardTitle(selectedRow.title);
-    setWizardEntryForm(
-      selectedLearningCandidate
-        ? createRuleWizardEntryFormStateFromLearningCandidate(selectedLearningCandidate)
-        : createRuleWizardEntryFormState({
-            title: selectedRow.title,
-          }),
-    );
-    setActiveCommandPanel(null);
+        }),
+      );
+      setWizardTitle(selectedRow.title);
+      setWizardEntryForm(
+        createRuleWizardEntryFormStateFromLearningCandidate(selectedLearningCandidate),
+      );
+      setActiveCommandPanel(null);
+      return;
+    }
+
+    if (selectedRow.asset_kind !== "rule") {
+      setErrorMessage("当前条目暂不支持通过规则向导编辑。");
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const detail = (
+        await getKnowledgeAssetDetail(defaultRuleWizardAssetClient, selectedRow.id)
+      ).body;
+      const selectedRevision = detail.selected_revision;
+      setWizardState(
+        createRuleWizardState("edit", {
+          sourceRowId: selectedRow.id,
+          draftAssetId: detail.asset.id,
+          draftRevisionId:
+            selectedRevision.status === "draft" ||
+            selectedRevision.status === "pending_review"
+              ? selectedRevision.id
+              : undefined,
+        }),
+      );
+      setWizardTitle(selectedRevision.title);
+      setWizardEntryForm(createRuleWizardEntryFormStateFromDetail(detail));
+      setActiveCommandPanel(null);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则详情加载失败"));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function handleSaveRuleWizardDraft() {
@@ -3069,7 +3101,9 @@ function TemplateGovernanceRuleLedgerRoute({
       onSelectCategory={handleSelectCategory}
       onSelectRow={handleSelectRow}
       onOpenCreateRule={handleOpenCreateRule}
-      onOpenSelectedItem={handleOpenSelectedItem}
+      onOpenSelectedItem={(rowId) => {
+        void handleOpenSelectedItem(rowId);
+      }}
       selectedItemActionLabel={
         ledger.selectedRow?.asset_kind === "recycled_candidate" ? "转成规则草稿" : "编辑规则"
       }
@@ -3522,6 +3556,12 @@ function TemplateGovernanceContentModuleLedgerRoute({
   const [isBusy, setIsBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedRuleKey, setSelectedRuleKey] = useState<string | null>(null);
+  const [wizardState, setWizardState] = useState<RuleWizardState | null>(null);
+  const [wizardTitle, setWizardTitle] = useState<string | undefined>(undefined);
+  const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
+    createRuleWizardEntryFormState(),
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -3533,6 +3573,7 @@ function TemplateGovernanceContentModuleLedgerRoute({
       .then((nextLedger) => {
         if (!isCancelled) {
           setLedger(nextLedger);
+          setSelectedRuleKey(resolveContentModuleRuleKey(nextLedger.selectedModuleRules[0]));
         }
       })
       .catch((error) => {
@@ -3554,6 +3595,20 @@ function TemplateGovernanceContentModuleLedgerRoute({
     );
   }, [formMode, ledger.selectedModule]);
 
+  useEffect(() => {
+    setSelectedRuleKey((current) => {
+      if (ledger.selectedModuleRules.length === 0) {
+        return null;
+      }
+
+      return ledger.selectedModuleRules.some(
+        (rule) => resolveContentModuleRuleKey(rule) === current,
+      )
+        ? current
+        : resolveContentModuleRuleKey(ledger.selectedModuleRules[0]);
+    });
+  }, [ledger.selectedModuleRules]);
+
   function resetFeedback() {
     setStatusMessage(null);
     setErrorMessage(null);
@@ -3574,10 +3629,23 @@ function TemplateGovernanceContentModuleLedgerRoute({
     handleSearchAction();
   }
 
-  function handleSelectModule(moduleId: string) {
+  async function handleSelectModule(moduleId: string) {
     resetFeedback();
     setFormMode(null);
-    setLedger((current) => selectContentModule(current, moduleId));
+    setIsBusy(true);
+
+    try {
+      const nextLedger = await controller.loadContentModuleLedger({
+        moduleClass,
+        selectedModuleId: moduleId,
+      });
+      setLedger(nextLedger);
+      setSelectedRuleKey(resolveContentModuleRuleKey(nextLedger.selectedModuleRules[0]));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "模块切换失败"));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function handleOpenCreateForm() {
@@ -3664,6 +3732,154 @@ function TemplateGovernanceContentModuleLedgerRoute({
     }
   }
 
+  async function handleOpenSelectedRuleEdit() {
+    const selectedRule = resolveSelectedContentModuleRule(
+      ledger.selectedModuleRules,
+      selectedRuleKey,
+    );
+    if (!selectedRule) {
+      setErrorMessage("请先在默认规则中选择一条规则。");
+      return;
+    }
+
+    try {
+      const detail =
+        selectedRule.detail ??
+        (
+          await getKnowledgeAssetDetail(defaultRuleWizardAssetClient, selectedRule.assetId)
+        ).body;
+      const selectedRevision = detail.selected_revision;
+      resetFeedback();
+      setWizardState(
+        createRuleWizardState("edit", {
+          sourceRowId: selectedRule.assetId,
+          draftAssetId: detail.asset.id,
+          draftRevisionId:
+            selectedRevision.status === "draft" ||
+            selectedRevision.status === "pending_review"
+              ? selectedRevision.id
+              : undefined,
+        }),
+      );
+      setWizardTitle(selectedRevision.title);
+      setWizardEntryForm(createRuleWizardEntryFormStateFromDetail(detail));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则详情加载失败"));
+    }
+  }
+
+  async function handleSaveRuleWizardDraft() {
+    if (!wizardState) {
+      return;
+    }
+
+    if (wizardState.step !== "entry") {
+      setWizardState((current) =>
+        current == null ? current : { ...current, dirty: false },
+      );
+      setStatusMessage("规则草稿已暂存。");
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await controller.saveRuleWizardEntryDraft({
+        form: wizardEntryForm,
+        draftAssetId: wizardState.draftAssetId,
+        draftRevisionId: wizardState.draftRevisionId,
+      });
+      setWizardState((current) =>
+        current == null
+          ? current
+          : {
+              ...current,
+              dirty: false,
+              draftAssetId: result.draftAssetId,
+              draftRevisionId: result.draftRevisionId,
+            },
+      );
+      setStatusMessage("规则草稿已暂存。");
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则录入草稿保存失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function handleRuleWizardEntryFormChange(nextValue: RuleWizardEntryFormState) {
+    setWizardEntryForm(nextValue);
+    setWizardState((current) =>
+      current == null ? current : { ...current, dirty: true },
+    );
+  }
+
+  async function handleCompleteRuleWizard(releaseAction?: RuleWizardReleaseAction) {
+    if (!wizardState) {
+      return;
+    }
+
+    const completedWizardState = wizardState;
+    setWizardState(null);
+    setWizardTitle(undefined);
+    setIsBusy(true);
+    resetFeedback();
+
+    try {
+      const nextLedger = await controller.loadContentModuleLedger({
+        moduleClass,
+        selectedModuleId: ledger.selectedModuleId,
+      });
+      setLedger(nextLedger);
+      setSelectedRuleKey(
+        nextLedger.selectedModuleRules.find(
+          (rule) => rule.assetId === (completedWizardState.draftAssetId ?? completedWizardState.sourceRowId),
+        )
+          ? `${completedWizardState.draftAssetId ?? completedWizardState.sourceRowId}:${nextLedger.selectedModuleRules.find(
+              (rule) => rule.assetId === (completedWizardState.draftAssetId ?? completedWizardState.sourceRowId),
+            )?.revisionId ?? ""}`
+          : resolveContentModuleRuleKey(nextLedger.selectedModuleRules[0]),
+      );
+      setStatusMessage(resolvePackageRuleWizardCompletionMessage(releaseAction));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "规则台账刷新失败"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  if (wizardState) {
+    return (
+      <TemplateGovernanceRuleWizard
+        state={wizardState}
+        title={wizardTitle}
+        entryFormState={wizardEntryForm}
+        onEntryFormChange={handleRuleWizardEntryFormChange}
+        onBack={() => {
+          setWizardState(null);
+          setStatusMessage("已返回规则包台账。");
+        }}
+        onPrevious={() => {
+          setWizardState((current) =>
+            current == null ? current : rewindRuleWizardState(current),
+          );
+        }}
+        onNext={() => {
+          setWizardState((current) =>
+            current == null ? current : advanceRuleWizardState(current),
+          );
+        }}
+        onSaveDraft={() => {
+          void handleSaveRuleWizardDraft();
+        }}
+        onComplete={(input) => {
+          void handleCompleteRuleWizard(input?.releaseAction);
+        }}
+      />
+    );
+  }
+
   return (
     <TemplateGovernanceContentModuleLedgerPage
       ledgerKind={moduleClass}
@@ -3690,8 +3906,15 @@ function TemplateGovernanceContentModuleLedgerRoute({
       onJoinTemplate={() => {
         navigateToTemplateGovernanceSection("large-template-ledger");
       }}
-      onSelectModule={handleSelectModule}
+      selectedRuleKey={selectedRuleKey}
+      onSelectModule={(moduleId) => {
+        void handleSelectModule(moduleId);
+      }}
+      onSelectRule={setSelectedRuleKey}
       onOpenEditForm={handleOpenEditForm}
+      onOpenSelectedRuleEdit={() => {
+        void handleOpenSelectedRuleEdit();
+      }}
       onFormChange={setFormValues}
       onFormCancel={() => {
         setFormMode(null);
@@ -4272,6 +4495,7 @@ function createEmptyContentModuleLedgerViewModel(): TemplateGovernanceContentMod
     modules: [],
     selectedModuleId: null,
     selectedModule: null,
+    selectedModuleRules: [],
     summary: {
       totalCount: 0,
       draftCount: 0,
@@ -4441,6 +4665,46 @@ function selectContentModule(
     selectedModule:
       ledger.modules.find((module) => module.id === selectedModuleId) ?? null,
   };
+}
+
+function resolveSelectedContentModuleRule(
+  rules: TemplateGovernanceContentModuleLedgerViewModel["selectedModuleRules"],
+  selectedRuleKey: string | null,
+) {
+  if (!rules.length) {
+    return null;
+  }
+
+  if (!selectedRuleKey) {
+    return rules[0] ?? null;
+  }
+
+  return (
+    rules.find((rule) => resolveContentModuleRuleKey(rule) === selectedRuleKey) ??
+    rules[0] ??
+    null
+  );
+}
+
+function resolveContentModuleRuleKey(
+  rule: TemplateGovernanceContentModuleLedgerViewModel["selectedModuleRules"][number] | undefined,
+): string | null {
+  return rule ? `${rule.assetId}:${rule.revisionId}` : null;
+}
+
+function resolvePackageRuleWizardCompletionMessage(
+  releaseAction: RuleWizardReleaseAction | undefined,
+): string {
+  switch (releaseAction) {
+    case "save_draft":
+      return "规则草稿已回写到规则包。";
+    case "submit_review":
+      return "规则已提交审核并返回规则包台账。";
+    case "publish_now":
+      return "规则已发布并返回规则包台账。";
+    default:
+      return "规则向导已关闭，请继续在规则包台账中确认细节。";
+  }
 }
 
 function selectTemplateComposition(
