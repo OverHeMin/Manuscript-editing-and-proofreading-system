@@ -114,6 +114,7 @@
    - `VITE_APP_ENV=local`：走 demo bootstrap shell，仅用于本地 Vite 开发联调
    - `VITE_APP_ENV=dev|staging|prod`：走 persistent login shell，调用后端真实会话接口
    - 可选：设置 `UPLOAD_ROOT_DIR` 为独立磁盘/目录，用于保存 submission workbench 的本地直传文件
+   - 如果本地验收或 Codex 调试遗留了 repo 内部的 `.codex-logs` 与后台 API/Web 进程，可先运行 `pnpm inspect:codex-logs` 查看计划，再用 `pnpm cleanup:codex-logs` 停掉 repo-local 监听进程并清理这些日志目录
 8. 验证 Web 基线
    `pnpm --filter @medsys/web run smoke:boot`
 9. 验证 Worker 基线
