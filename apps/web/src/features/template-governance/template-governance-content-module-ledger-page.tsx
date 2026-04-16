@@ -87,6 +87,10 @@ export function TemplateGovernanceContentModuleLedgerPage({
     templateGovernanceView: "classic",
     ruleCenterMode: "authoring",
   });
+  const authoringCreateHref = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "authoring",
+    ruleCenterMode: "authoring",
+  });
   const ruleLedgerHref = formatWorkbenchHash("template-governance", {
     templateGovernanceView: "rule-ledger",
     ruleCenterMode: "authoring",
@@ -278,6 +282,49 @@ export function TemplateGovernanceContentModuleLedgerPage({
               编辑规则包
             </button>
           </div>
+
+          <section className="template-governance-card template-governance-ledger-section">
+            <header className="template-governance-ledger-section-header">
+              <h2>给这个包补规则的常用路径</h2>
+              <p>
+                规则包本身不直接录正文。新增、补齐或修改规则时，都从新建规则或规则台账进入，
+                再在绑定步骤里把规则挂到当前包。
+              </p>
+            </header>
+            <div className="template-governance-rule-hint-list">
+              <article className="template-governance-rule-hint-card">
+                <strong>路径 1：去新建规则</strong>
+                <p>
+                  适合补全一条新规则。进入五步向导后，在“绑定与发布”步骤选择当前规则包，
+                  再决定是否一起挂到模板族。
+                </p>
+              </article>
+              <article className="template-governance-rule-hint-card">
+                <strong>路径 2：去规则台账找已有规则</strong>
+                <p>
+                  适合已有规则只差绑定或正文补齐的情况。先在规则台账找到对应规则，再补正文、
+                  表格、图片证据或包绑定。
+                </p>
+              </article>
+              <article className="template-governance-rule-hint-card">
+                <strong>路径 3：打开旧版高级工作台</strong>
+                <p>
+                  适合集中核对老规则、对照旧布局批量检查，尤其是你已经熟悉旧工作台的时候。
+                </p>
+              </article>
+            </div>
+            <div className="template-governance-actions">
+              <a className="template-governance-link-button" href={authoringCreateHref}>
+                去新建规则
+              </a>
+              <a className="template-governance-link-button" href={ruleLedgerHref}>
+                去规则台账找已有规则
+              </a>
+              <a className="template-governance-link-button" href={advancedEditorHref}>
+                打开旧版高级工作台
+              </a>
+            </div>
+          </section>
 
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
