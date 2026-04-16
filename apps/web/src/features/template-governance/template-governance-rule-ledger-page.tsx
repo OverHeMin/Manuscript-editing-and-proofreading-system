@@ -135,6 +135,27 @@ export function TemplateGovernanceRuleLedgerPage({
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
       <TemplateGovernanceLedgerSearchPage searchState={searchState} />
 
+      <article className="template-governance-card template-governance-ledger-section">
+        <header className="template-governance-ledger-section-header">
+          <h2>规则中心操作说明</h2>
+          <p>先分清规则本体、规则包和模板族各自负责什么，再进入具体台账或规则向导。</p>
+        </header>
+        <div className="template-governance-rule-hint-list">
+          <article className="template-governance-rule-hint-card">
+            <strong>建立规则</strong>
+            <p>从“新建规则”进入五步向导，先录正文和证据，再确认语义、绑定规则包与模板族，最后提交发布。</p>
+          </article>
+          <article className="template-governance-rule-hint-card">
+            <strong>修改规则</strong>
+            <p>从规则台账或规则包里的默认规则进入编辑。已批准规则会先派生修订草稿，不直接覆盖当前已发布版本。</p>
+          </article>
+          <article className="template-governance-rule-hint-card">
+            <strong>管理规则</strong>
+            <p>规则台账管理规则本体，规则包负责复用组合，模板族决定默认适用稿件范围，三者配合完成治理。</p>
+          </article>
+        </div>
+      </article>
+
       {filterState.isOpen ? (
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">

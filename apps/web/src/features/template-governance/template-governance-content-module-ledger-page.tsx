@@ -136,6 +136,27 @@ export function TemplateGovernanceContentModuleLedgerPage({
 
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
+          <h2>规则包使用说明</h2>
+          <p>规则包负责沉淀可复用的治理组合，默认规则才是包里真正会被查看、编辑和挂载的具体规则。</p>
+        </header>
+        <div className="template-governance-rule-hint-list">
+          <article className="template-governance-rule-hint-card">
+            <strong>规则包是复用容器</strong>
+            <p>它负责把同一类规则归在一起，方便后续统一挂到大模板或不同稿件族场景里复用。</p>
+          </article>
+          <article className="template-governance-rule-hint-card">
+            <strong>默认规则是包里的具体规则</strong>
+            <p>查看、校对、修改正文、图表证据和绑定范围时，真正编辑的是默认规则，而不是规则包标题本身。</p>
+          </article>
+          <article className="template-governance-rule-hint-card">
+            <strong>先选规则包，再看默认规则，再决定是否编辑</strong>
+            <p>这样能先确认当前包的复用范围，再避免把规则内容和包级摘要、适用边界混在一起修改。</p>
+          </article>
+        </div>
+      </article>
+
+      <article className="template-governance-card template-governance-ledger-section">
+        <header className="template-governance-ledger-section-header">
           <h2>{pageTitle}</h2>
           <p>表格优先展示所有录入的规则包，再决定是否进入编辑表单。</p>
         </header>

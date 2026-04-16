@@ -255,6 +255,24 @@ export function TemplateGovernanceRuleWizardStepEntry({
               <p>先完成主画布录入，再展开高级标签补章节、风险和规则包提示，避免首屏过载。</p>
             </div>
           </div>
+          <div className="template-governance-rule-hint-list">
+            <div className="template-governance-rule-hint-card">
+              <strong>这版向导只开放高频治理参数</strong>
+              <p>先把规则正文、证据、适用范围和发布动作做对，避免首次录入时被低频参数打断。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>低频运行参数继续放在旧工作台</strong>
+              <p>当前向导优先解决建立和修订，结构化运行细节仍保留在旧版高级工作台，按需再进去补。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>适用模块决定规则在哪个执行环节被调用</strong>
+              <p>如果一条规则只对编辑或校对生效，尽量在这里提前收窄，不要全部都挂到“全模块”。</p>
+            </div>
+            <div className="template-governance-rule-hint-card">
+              <strong>章节标签和风险标签放到高级标签里补充</strong>
+              <p>先完成主画布录入，再补章节、风险、规则包提示和冲突边界，首屏会更清楚。</p>
+            </div>
+          </div>
         </aside>
       </div>
     </article>

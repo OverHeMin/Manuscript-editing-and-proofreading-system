@@ -8,6 +8,30 @@ import {
 } from "../src/features/template-governance/index.ts";
 import type { TemplateGovernanceLedgerSearchState } from "../src/features/template-governance/template-governance-ledger-types.ts";
 
+test("package ledger explains the relationship between packages and default rules", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceContentModuleLedgerPage
+      ledgerKind="general"
+      viewModel={{
+        modules: [],
+        selectedModuleId: null,
+        selectedModule: null,
+        summary: {
+          totalCount: 0,
+          draftCount: 0,
+          publishedCount: 0,
+        },
+        selectedModuleRules: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /规则包使用说明/u);
+  assert.match(markup, /规则包是复用容器/u);
+  assert.match(markup, /默认规则是包里的具体规则/u);
+  assert.match(markup, /先选规则包，再看默认规则，再决定是否编辑/u);
+});
+
 test("general package ledger renders reusable package table and default rule details", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceContentModuleLedgerPage

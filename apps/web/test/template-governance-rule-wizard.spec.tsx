@@ -19,6 +19,79 @@ const {
   saveRuleWizardEntryDraft,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
 
+test("rule wizard entry step explains high-frequency parameters and advanced tags", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "entry",
+        dirty: true,
+      }}
+    />,
+  );
+
+  assert.match(markup, /这版向导只开放高频治理参数/u);
+  assert.match(markup, /低频运行参数继续放在旧工作台/u);
+  assert.match(markup, /适用模块决定规则在哪个执行环节被调用/u);
+  assert.match(markup, /章节标签和风险标签放到高级标签里补充/u);
+});
+
+test("rule wizard confirm step explains semantic confirmation parameters", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "confirm",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+
+  assert.match(markup, /规则类型决定这条规则按什么治理判断复用/u);
+  assert.match(markup, /风险等级决定后续审核和发布要多谨慎/u);
+  assert.match(markup, /稿件类型填写这条规则默认命中的稿件范围/u);
+});
+
+test("rule wizard binding and publish steps explain package and release choices", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const bindingMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "binding",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+  const publishMarkup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "publish",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+    />,
+  );
+
+  assert.match(bindingMarkup, /规则包决定这条规则先落到哪个复用容器/u);
+  assert.match(bindingMarkup, /模板族决定哪些稿件默认看见这条规则/u);
+  assert.match(bindingMarkup, /复用策略只处理挂到现有包还是新建绑定/u);
+  assert.match(publishMarkup, /保存草稿适合先留给当前编辑人继续补充/u);
+  assert.match(publishMarkup, /提交审核会进入规则治理审核队列/u);
+  assert.match(publishMarkup, /直接发布只适合已经确认无误的场景/u);
+});
+
 test("rule wizard shell renders shared step navigation and closeout actions", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
