@@ -991,6 +991,8 @@ async function loadTemplateGovernanceRuleLedger(
     generalModulesResponse,
     medicalModulesResponse,
     learningCandidatesResponse,
+    generalRuleInventory,
+    medicalRuleInventory,
   ] = await Promise.all([
     listKnowledgeItems(client),
     listTemplateFamilies(client),
@@ -998,6 +1000,8 @@ async function loadTemplateGovernanceRuleLedger(
     listContentModules(client, "general"),
     listContentModules(client, "medical_specialized"),
     listLearningCandidates(client),
+    loadContentModuleRuleInventory(client, { moduleClass: "general" }),
+    loadContentModuleRuleInventory(client, { moduleClass: "medical_specialized" }),
   ]);
 
   const journalTemplateEntries = (
@@ -1025,10 +1029,18 @@ async function loadTemplateGovernanceRuleLedger(
       mapJournalTemplateToRuleLedgerRow(journalTemplate, family),
     ),
     ...generalModulesResponse.body.map((module) =>
-      mapContentModuleToRuleLedgerRow(module, "general_package"),
+      mapContentModuleToRuleLedgerRow(
+        module,
+        "general_package",
+        generalRuleInventory.rulesByModuleId.get(module.id) ?? [],
+      ),
     ),
     ...medicalModulesResponse.body.map((module) =>
-      mapContentModuleToRuleLedgerRow(module, "medical_package"),
+      mapContentModuleToRuleLedgerRow(
+        module,
+        "medical_package",
+        medicalRuleInventory.rulesByModuleId.get(module.id) ?? [],
+      ),
     ),
     ...learningCandidatesResponse.body
       .filter((candidate) => candidate.type === "rule_candidate")
@@ -1787,6 +1799,7 @@ function mapJournalTemplateToRuleLedgerRow(
 function mapContentModuleToRuleLedgerRow(
   module: GovernedContentModuleViewModel,
   assetKind: "general_package" | "medical_package",
+  relatedRules: readonly TemplateGovernanceContentModuleRuleSummary[] = [],
 ): TemplateGovernanceRuleLedgerRow {
   return {
     id: module.id,
@@ -1802,7 +1815,20 @@ function mapContentModuleToRuleLedgerRow(
     publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(module.status),
     contributor_label: module.category,
     updated_at: module.updated_at,
+    default_rule_count: relatedRules.length,
+    related_rules: mapRuleLedgerPackageRelatedRules(relatedRules),
   };
+}
+
+function mapRuleLedgerPackageRelatedRules(
+  rules: readonly TemplateGovernanceContentModuleRuleSummary[],
+): NonNullable<TemplateGovernanceRuleLedgerRow["related_rules"]> {
+  return rules.map((rule) => ({
+    id: rule.assetId,
+    title: rule.title,
+    publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(rule.status),
+    module_label: formatTemplateGovernanceModuleLabel(rule.moduleScope),
+  }));
 }
 
 function mapLearningCandidateToRuleLedgerRow(

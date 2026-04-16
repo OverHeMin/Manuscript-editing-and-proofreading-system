@@ -98,6 +98,9 @@ export function TemplateGovernanceRuleLedgerPage({
     searchQuery: initialViewModel.searchQuery,
     selectedRowId: initialViewModel.selectedRowId ?? initialViewModel.selectedRow?.id ?? null,
   });
+  const selectedPackageRules = isPackageRuleLedgerRow(viewModel.selectedRow)
+    ? viewModel.selectedRow.related_rules ?? []
+    : [];
   const advancedEditorHref = formatWorkbenchHash("template-governance", {
     templateGovernanceView: "classic",
     ruleCenterMode: "authoring",
@@ -394,17 +397,52 @@ export function TemplateGovernanceRuleLedgerPage({
               <p>{formatRuleLedgerTimestamp(viewModel.selectedRow.updated_at)}</p>
             </div>
           </div>
+          {isPackageRuleLedgerRow(viewModel.selectedRow) ? (
+            <section className="template-governance-card template-governance-ledger-section">
+              <header className="template-governance-ledger-section-header">
+                <h2>包内默认规则</h2>
+                <p>
+                  已绑定 {viewModel.selectedRow.default_rule_count ?? selectedPackageRules.length} 条默认规则。
+                  点击规则名切到规则本体，再继续编辑或审核。
+                </p>
+              </header>
+              {selectedPackageRules.length ? (
+                <ul className="template-governance-list">
+                  {selectedPackageRules.map((rule) => (
+                    <li key={rule.id}>
+                      <button
+                        type="button"
+                        className="template-governance-list-button"
+                        onClick={() => onSelectRow?.(rule.id)}
+                      >
+                        <span>{rule.title}</span>
+                        <small>
+                          {rule.publish_status} 路 {rule.module_label}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="template-governance-empty">
+                  当前规则包还没有绑定默认规则。
+                </p>
+              )}
+            </section>
+          ) : null}
           <div className="template-governance-actions">
             <button type="button" onClick={onOpenCreateRule} disabled={isBusy}>
               {isBusy ? "处理中..." : "新建规则"}
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenSelectedItem?.(viewModel.selectedRow!.id)}
-              disabled={isBusy}
-            >
-              {selectedItemActionLabel}
-            </button>
+            {canOpenSelectedRuleLedgerRow(viewModel.selectedRow) ? (
+              <button
+                type="button"
+                onClick={() => onOpenSelectedItem?.(viewModel.selectedRow!.id)}
+                disabled={isBusy}
+              >
+                {selectedItemActionLabel}
+              </button>
+            ) : null}
           </div>
         </article>
       ) : null}
@@ -501,6 +539,20 @@ function createClosedRuleLedgerBulkState(): TemplateGovernanceRuleLedgerBulkStat
     selectedRowIds: [],
     showSelectedOnly: false,
   };
+}
+
+function isPackageRuleLedgerRow(
+  row: TemplateGovernanceRuleLedgerRow | null | undefined,
+): row is TemplateGovernanceRuleLedgerRow & {
+  asset_kind: "general_package" | "medical_package";
+} {
+  return row?.asset_kind === "general_package" || row?.asset_kind === "medical_package";
+}
+
+function canOpenSelectedRuleLedgerRow(
+  row: TemplateGovernanceRuleLedgerRow | null | undefined,
+): boolean {
+  return row?.asset_kind === "rule" || row?.asset_kind === "recycled_candidate";
 }
 
 function collectUniqueValues(values: readonly string[]): string[] {

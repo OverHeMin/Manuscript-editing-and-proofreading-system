@@ -92,6 +92,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
     ruleCenterMode: "authoring",
   });
   const ruleLedgerHref = formatWorkbenchHash("template-governance", {
+    assetId: selectedModule?.id,
     templateGovernanceView: "rule-ledger",
     ruleCenterMode: "authoring",
   });

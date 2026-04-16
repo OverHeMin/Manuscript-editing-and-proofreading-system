@@ -325,6 +325,7 @@ export interface TemplateGovernanceWorkbenchPageProps {
   initialOverview?: TemplateGovernanceWorkbenchOverview | null;
   initialMode?: TemplateGovernanceWorkbenchMode;
   initialView?: TemplateGovernanceView;
+  initialSelectedRuleLedgerRowId?: string;
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   initialRulePackageWorkspace?: RulePackageWorkspaceViewModel | null;
@@ -338,6 +339,7 @@ export function TemplateGovernanceWorkbenchPage({
   initialOverview = null,
   initialMode = "authoring",
   initialView = "classic",
+  initialSelectedRuleLedgerRowId,
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   initialRulePackageWorkspace = null,
@@ -367,6 +369,7 @@ export function TemplateGovernanceWorkbenchPage({
         prefilledManuscriptId={prefilledManuscriptId}
         prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
         initialCategory={initialMode === "learning" ? "recycled_candidate" : "all"}
+        initialSelectedRowId={initialSelectedRuleLedgerRowId}
         initialLearningCandidates={initialLearningCandidates}
         initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
         initialWizardMode={initialView === "authoring" ? "create" : null}
@@ -2683,6 +2686,7 @@ function TemplateGovernanceRuleLedgerRoute({
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   initialCategory = "all",
+  initialSelectedRowId,
   initialLearningCandidates = [],
   initialSelectedLearningCandidateId,
   initialWizardMode = null,
@@ -2693,6 +2697,7 @@ function TemplateGovernanceRuleLedgerRoute({
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   initialCategory?: TemplateGovernanceRuleLedgerCategory;
+  initialSelectedRowId?: string;
   initialLearningCandidates?: readonly LearningCandidateViewModel[];
   initialSelectedLearningCandidateId?: string;
   initialWizardMode?: RuleWizardState["mode"] | null;
@@ -2730,6 +2735,7 @@ function TemplateGovernanceRuleLedgerRoute({
   const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
     () => createRuleWizardEntryFormState(),
   );
+  const initialSelectedRowIdRef = useRef(initialSelectedRowId ?? null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -2740,6 +2746,7 @@ function TemplateGovernanceRuleLedgerRoute({
       .loadRuleLedger({
         category: selectedCategory,
         searchQuery,
+        selectedRowId: initialSelectedRowIdRef.current,
       })
       .then((nextLedger) => {
         if (!isCancelled) {
@@ -2751,6 +2758,7 @@ function TemplateGovernanceRuleLedgerRoute({
               initialSelectedLearningCandidateId,
             ),
           );
+          initialSelectedRowIdRef.current = null;
         }
       })
       .catch((error) => {
