@@ -1,3 +1,13 @@
+import {
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+} from "../shared/editorial-taxonomy.ts";
+import type { ManuscriptType } from "../manuscripts/types.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import type {
   RuleWizardConfirmFormState,
   RuleWizardSemanticViewModel,
@@ -143,12 +153,32 @@ export function TemplateGovernanceRuleWizardStepConfirm({
           </label>
           <label className="template-governance-field">
             <span>人工确认</span>
-            <input
-              value={value.manuscriptTypes}
-              onChange={(event) => onChange({ ...value, manuscriptTypes: event.target.value })}
-              placeholder="clinical_study, review"
-            />
           </label>
+          <RuleWizardMultiSelectField
+            label="稿件类型"
+            value={value.manuscriptTypes}
+            options={manuscriptTypeOptions.map((option) => ({
+              value: option,
+              label: formatManuscriptTypeLabel(option),
+            }))}
+            dataKey="confirm-manuscript-types"
+            includeAnyOption
+            onToggleValue={(nextValue) =>
+              onChange({
+                ...value,
+                manuscriptTypes: toggleManuscriptTypeSelection(
+                  value.manuscriptTypes,
+                  nextValue as ManuscriptType,
+                ),
+              })
+            }
+            onSelectAny={() =>
+              onChange({
+                ...value,
+                manuscriptTypes: "any",
+              })
+            }
+          />
         </section>
       </div>
 
@@ -165,16 +195,33 @@ export function TemplateGovernanceRuleWizardStepConfirm({
           />
         </label>
 
-        <label className="template-governance-field">
-          <span>检索词</span>
-          <input
-            value={value.retrievalTerms}
-            onChange={(event) =>
-              onChange({ ...value, retrievalTerms: event.target.value })
-            }
-            placeholder="术语统一, 缩写释义"
-          />
-        </label>
+        <RuleWizardTagListField
+          label="检索词"
+          values={value.retrievalTerms}
+          dataKey="confirm-retrieval-terms"
+          addActionKey="add-confirm-retrieval-term"
+          addLabel="添加检索词"
+          emptyText="暂未添加检索词。"
+          placeholder="例如：术语统一"
+          onAdd={() =>
+            onChange({
+              ...value,
+              retrievalTerms: [...value.retrievalTerms, ""],
+            })
+          }
+          onChangeValue={(index, nextValue) =>
+            onChange({
+              ...value,
+              retrievalTerms: updateStringListValue(value.retrievalTerms, index, nextValue),
+            })
+          }
+          onRemove={(index) =>
+            onChange({
+              ...value,
+              retrievalTerms: removeStringListValue(value.retrievalTerms, index),
+            })
+          }
+        />
 
         <label className="template-governance-field">
           <span>检索片段</span>
@@ -235,15 +282,17 @@ function buildChangeSummary(
     );
   }
 
-  if (value.manuscriptTypes.trim() !== suggestion.manuscriptTypes.trim()) {
-    items.push(`适用稿件类型：${suggestion.manuscriptTypes || "any"} -> ${value.manuscriptTypes || "any"}`);
+  if (!areManuscriptTypesEqual(value.manuscriptTypes, suggestion.manuscriptTypes)) {
+    items.push(
+      `适用稿件类型：${formatManuscriptTypesLabel(suggestion.manuscriptTypes)} -> ${formatManuscriptTypesLabel(value.manuscriptTypes)}`,
+    );
   }
 
   if (value.semanticSummary.trim() !== suggestion.semanticSummary.trim()) {
     items.push("语义摘要已人工修订。");
   }
 
-  if (value.retrievalTerms.trim() !== suggestion.retrievalTerms.trim()) {
+  if (!areStringListsEqual(value.retrievalTerms, suggestion.retrievalTerms)) {
     items.push("检索词已人工修订。");
   }
 
@@ -279,15 +328,160 @@ function formatRiskLevelLabel(value: RuleWizardSemanticViewModel["riskLevel"]): 
 }
 
 function formatModuleLabel(value: RuleWizardSemanticViewModel["moduleScope"]): string {
-  switch (value) {
-    case "screening":
-      return "初筛";
-    case "editing":
-      return "编辑";
-    case "proofreading":
-      return "校对";
-    case "any":
-    default:
-      return "全部模块";
+  return formatEditorialModuleLabel(value);
+}
+
+const manuscriptTypeOptions: readonly ManuscriptType[] = EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
+
+function RuleWizardMultiSelectField(props: {
+  label: string;
+  value: RuleWizardConfirmFormState["manuscriptTypes"];
+  options: ReadonlyArray<SearchableMultiSelectOption>;
+  dataKey: string;
+  includeAnyOption?: boolean;
+  onToggleValue(value: string): void;
+  onSelectAny?: () => void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={
+        props.includeAnyOption ? "支持“全部/任意”和多选切换。" : "支持结构化多选。"
+      }
+      value={props.value}
+      options={props.options}
+      dataKey={props.dataKey}
+      rootDataAttributeName="data-rule-wizard-multi-select"
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      headerClassName="knowledge-library-structured-field-header"
+      searchFieldClassName="knowledge-library-grid-search"
+      searchPlaceholder={
+        props.dataKey === "confirm-manuscript-types"
+          ? "\u93bc\u6ec5\u50a8\u7ecb\u5938\u6b22\u7eeb\u8bf2\u7037"
+          : `搜索${props.label}`
+      }
+      optionsClassName="knowledge-library-toggle-group"
+      optionClassName="knowledge-library-toggle-chip"
+      emptyClassName="knowledge-library-structured-empty"
+      includeAnyOption={props.includeAnyOption}
+      noResultsText="未找到匹配的选项。"
+      onToggleValue={props.onToggleValue}
+      onSelectAny={props.onSelectAny}
+    />
+  );
+}
+
+function RuleWizardTagListField(props: {
+  label: string;
+  values: string[];
+  dataKey: string;
+  addActionKey: string;
+  addLabel: string;
+  emptyText: string;
+  placeholder: string;
+  onAdd(): void;
+  onChangeValue(index: number, value: string): void;
+  onRemove(index: number): void;
+}) {
+  return (
+    <div
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      data-rule-wizard-tag-list={props.dataKey}
+    >
+      <div className="knowledge-library-structured-field-header">
+        <span>{props.label}</span>
+        <small>一行一个检索词，可逐条补充和删除。</small>
+      </div>
+      <div className="knowledge-library-tag-editor-list">
+        {props.values.length > 0 ? (
+          props.values.map((item, index) => (
+            <div key={`${props.dataKey}-${index}`} className="knowledge-library-tag-editor-row">
+              <input
+                value={item}
+                onChange={(event) => props.onChangeValue(index, event.target.value)}
+                placeholder={props.placeholder}
+              />
+              <button type="button" onClick={() => props.onRemove(index)}>
+                删除
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="knowledge-library-structured-empty">{props.emptyText}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        className="knowledge-library-secondary-button"
+        data-rule-wizard-tag-action={props.addActionKey}
+        onClick={props.onAdd}
+      >
+        {props.addLabel}
+      </button>
+    </div>
+  );
+}
+
+function toggleManuscriptTypeSelection(
+  current: RuleWizardConfirmFormState["manuscriptTypes"],
+  value: ManuscriptType,
+): RuleWizardConfirmFormState["manuscriptTypes"] {
+  const currentValues = current === "any" ? [] : current;
+  const nextValues = toggleStringSelection(currentValues, value) as ManuscriptType[];
+  return nextValues.length > 0 ? nextValues : "any";
+}
+
+function toggleStringSelection(current: string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((item) => item !== value)
+    : [...current, value];
+}
+
+function updateStringListValue(values: string[], index: number, value: string): string[] {
+  return values.map((currentValue, currentIndex) =>
+    currentIndex === index ? value : currentValue,
+  );
+}
+
+function removeStringListValue(values: string[], index: number): string[] {
+  return values.filter((_, currentIndex) => currentIndex !== index);
+}
+
+function areStringListsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return normalizeStringList(left).join("\u0000") === normalizeStringList(right).join("\u0000");
+}
+
+function normalizeStringList(values: readonly string[]): string[] {
+  return values.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+}
+
+function areManuscriptTypesEqual(
+  left: RuleWizardConfirmFormState["manuscriptTypes"],
+  right: RuleWizardSemanticViewModel["manuscriptTypes"],
+): boolean {
+  return serializeManuscriptTypes(left) === serializeManuscriptTypes(right);
+}
+
+function serializeManuscriptTypes(
+  value: RuleWizardConfirmFormState["manuscriptTypes"] | RuleWizardSemanticViewModel["manuscriptTypes"],
+): string {
+  if (value === "any") {
+    return "any";
   }
+
+  return [...value].sort().join("\u0000");
+}
+
+function formatManuscriptTypesLabel(
+  value: RuleWizardConfirmFormState["manuscriptTypes"] | RuleWizardSemanticViewModel["manuscriptTypes"],
+): string {
+  if (value === "any") {
+    return "全部 / 任意";
+  }
+
+  return value.map((item) => formatManuscriptTypeLabel(item)).join("、");
+}
+
+function formatManuscriptTypeLabel(value: ManuscriptType): string {
+  return formatEditorialManuscriptTypeLabel(value);
 }

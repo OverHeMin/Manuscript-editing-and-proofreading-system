@@ -46,7 +46,11 @@ import type { ModuleTemplateRecord, TemplateModule } from "../templates/template
 
 export interface GovernedKnowledgeSelection {
   knowledgeItem: KnowledgeRecord;
-  matchSource: "binding_rule" | "template_binding" | "dynamic_routing";
+  matchSource:
+    | "binding_rule"
+    | "template_binding"
+    | "dynamic_routing"
+    | "knowledge_item_binding";
   matchSourceId?: string;
   bindingRuleId?: string;
   matchReasons: string[];
@@ -237,6 +241,11 @@ export async function resolveGovernedModuleContext(
     }
   }
 
+  await expandLinkedKnowledgeSelections({
+    knowledgeSelectionsById,
+    knowledgeRepository: input.knowledgeRepository,
+  });
+
   const modelSelection = await input.aiGatewayService.resolveModelSelection({
     module: input.module,
     templateFamilyId: manuscript.current_template_family_id,
@@ -264,6 +273,55 @@ export async function resolveGovernedModuleContext(
 
 export { ActiveExecutionProfileNotFoundError };
 
+async function expandLinkedKnowledgeSelections(input: {
+  knowledgeSelectionsById: Map<string, GovernedKnowledgeSelection>;
+  knowledgeRepository: KnowledgeRepository;
+}): Promise<void> {
+  const queuedIds = new Set(input.knowledgeSelectionsById.keys());
+  const processedIds = new Set<string>();
+  const queue = [...input.knowledgeSelectionsById.values()];
+
+  while (queue.length > 0) {
+    const parentSelection = queue.shift();
+    if (!parentSelection || processedIds.has(parentSelection.knowledgeItem.id)) {
+      continue;
+    }
+
+    processedIds.add(parentSelection.knowledgeItem.id);
+
+    for (const linkedKnowledgeItemId of parentSelection.knowledgeItem
+      .linked_knowledge_item_ids ?? []) {
+      const existingSelection = input.knowledgeSelectionsById.get(linkedKnowledgeItemId);
+      if (existingSelection) {
+        existingSelection.matchReasons = dedupeMatchReasons([
+          ...existingSelection.matchReasons,
+          "knowledge_item_binding",
+        ]);
+        continue;
+      }
+
+      const linkedKnowledgeItem =
+        await input.knowledgeRepository.findApprovedById(linkedKnowledgeItemId);
+      if (!linkedKnowledgeItem || linkedKnowledgeItem.status !== "approved") {
+        continue;
+      }
+
+      const linkedSelection: GovernedKnowledgeSelection = {
+        knowledgeItem: linkedKnowledgeItem,
+        matchSource: "knowledge_item_binding",
+        matchSourceId: `knowledge_item:${parentSelection.knowledgeItem.id}`,
+        matchReasons: ["knowledge_item_binding"],
+      };
+      input.knowledgeSelectionsById.set(linkedKnowledgeItem.id, linkedSelection);
+
+      if (!queuedIds.has(linkedKnowledgeItem.id)) {
+        queuedIds.add(linkedKnowledgeItem.id);
+        queue.push(linkedSelection);
+      }
+    }
+  }
+}
+
 async function resolveActiveRetrievalPreset(
   input: ResolveGovernedModuleContextInput,
   scope: {
@@ -285,6 +343,22 @@ async function resolveActiveRetrievalPreset(
 
     throw error;
   }
+}
+
+function dedupeMatchReasons(reasons: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const reason of reasons) {
+    if (seen.has(reason)) {
+      continue;
+    }
+
+    seen.add(reason);
+    result.push(reason);
+  }
+
+  return result;
 }
 
 async function resolveActiveManualReviewPolicy(

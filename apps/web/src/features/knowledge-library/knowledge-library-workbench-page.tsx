@@ -2,9 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import type { AuthRole } from "../auth/index.ts";
 import type { KnowledgeKind } from "../knowledge/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
+import {
+  EDITORIAL_EVIDENCE_LEVEL_OPTIONS,
+  EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS,
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
+  EDITORIAL_SECTION_OPTIONS,
+  KNOWLEDGE_ENTRY_KIND_OPTIONS,
+  KNOWLEDGE_MODULE_SCOPE_OPTIONS,
+  type KnowledgeKindRuleLabelVariant,
+  formatEditorialEvidenceLevelLabel,
+  formatEditorialKnowledgeKindLabel,
+  formatEditorialKnowledgeSourceTypeLabel,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+  formatEditorialSectionLabel,
+} from "../shared/editorial-taxonomy.ts";
 import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
@@ -56,11 +75,11 @@ interface KnowledgeLibraryFormState {
   summary: string;
   knowledgeKind: KnowledgeKind;
   moduleScope: ManuscriptModule | "any";
-  manuscriptTypes: string;
-  sections: string;
-  riskTags: string;
-  disciplineTags: string;
-  aliases: string;
+  manuscriptTypes: ManuscriptType[] | "any";
+  sections: string[];
+  riskTags: string[];
+  disciplineTags: string[];
+  aliases: string[];
   evidenceLevel: string;
   sourceType: string;
   sourceLink: string;
@@ -75,11 +94,11 @@ interface DuplicateCheckDraftFields {
   summary: string;
   knowledgeKind: KnowledgeKind;
   moduleScope: ManuscriptModule | "any";
-  manuscriptTypes: string;
-  sections: string;
-  riskTags: string;
-  disciplineTags: string;
-  aliases: string;
+  manuscriptTypes: ManuscriptType[] | "any";
+  sections: string[];
+  riskTags: string[];
+  disciplineTags: string[];
+  aliases: string[];
   bindingsText: string;
 }
 
@@ -92,36 +111,30 @@ const defaultController = createKnowledgeLibraryWorkbenchController(
   createBrowserHttpClient(),
 );
 
-const knowledgeKinds: Array<KnowledgeKind | "all"> = [
-  "all",
-  "rule",
-  "case_pattern",
-  "checklist",
-  "prompt_snippet",
-  "reference",
-  "other",
-];
+const knowledgeKindEntryOptions: readonly KnowledgeKind[] = KNOWLEDGE_ENTRY_KIND_OPTIONS;
 
-const moduleOptions: Array<ManuscriptModule | "any"> = [
-  "any",
-  "screening",
-  "editing",
-  "proofreading",
-  "manual",
-  "learning",
-];
+const moduleOptions: ReadonlyArray<ManuscriptModule | "any"> =
+  KNOWLEDGE_MODULE_SCOPE_OPTIONS;
+
+const evidenceLevelOptions = EDITORIAL_EVIDENCE_LEVEL_OPTIONS;
+
+const sourceTypeOptions = EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS;
+
+const manuscriptTypeOptions: readonly ManuscriptType[] = EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
+
+const sectionOptions = EDITORIAL_SECTION_OPTIONS;
 
 const defaultFormState: KnowledgeLibraryFormState = {
   title: "",
   canonicalText: "",
   summary: "",
-  knowledgeKind: "rule",
+  knowledgeKind: "reference",
   moduleScope: "any",
   manuscriptTypes: "any",
-  sections: "",
-  riskTags: "",
-  disciplineTags: "",
-  aliases: "",
+  sections: [],
+  riskTags: [],
+  disciplineTags: [],
+  aliases: [],
   evidenceLevel: "unknown",
   sourceType: "other",
   sourceLink: "",
@@ -137,7 +150,7 @@ export function KnowledgeLibraryWorkbenchPage({
   prefilledAssetId,
   prefilledRevisionId,
 }: KnowledgeLibraryWorkbenchPageProps) {
-  const initialFormState = toFormState(initialViewModel?.detail ?? null);
+  const initialFormState = createKnowledgeLibraryFormState(initialViewModel?.detail ?? null);
   const latestFormStateRef = useRef(initialFormState);
   const [viewModel, setViewModel] = useState<KnowledgeLibraryWorkbenchViewModel | null>(
     initialViewModel,
@@ -190,7 +203,7 @@ export function KnowledgeLibraryWorkbenchPage({
 
   useEffect(() => {
     if (initialViewModel) {
-      const nextFormState = toFormState(initialViewModel.detail);
+      const nextFormState = createKnowledgeLibraryFormState(initialViewModel.detail);
       setViewModel(initialViewModel);
       latestFormStateRef.current = nextFormState;
       latestFormDraftSignatureRef.current = serializeConfirmationDraftSignature(nextFormState);
@@ -210,7 +223,7 @@ export function KnowledgeLibraryWorkbenchPage({
   }, [controller, initialViewModel, normalizedPrefilledAssetId, normalizedPrefilledRevisionId]);
 
   useEffect(() => {
-    const nextFormState = toFormState(viewModel?.detail ?? null);
+    const nextFormState = createKnowledgeLibraryFormState(viewModel?.detail ?? null);
     latestFormStateRef.current = nextFormState;
     latestFormDraftSignatureRef.current = serializeConfirmationDraftSignature(nextFormState);
     setFormState(nextFormState);
@@ -775,18 +788,16 @@ export function KnowledgeLibraryWorkbenchPage({
 
   return (
     <main className="knowledge-library-workbench knowledge-library-workbench-page">
-      <header className="knowledge-library-hero">
-        <div className="knowledge-library-hero-copy">
-          <span className="knowledge-library-eyebrow">协作与回收区</span>
-          <h1>知识库</h1>
+      <header className="knowledge-library-hero">        <div className="knowledge-library-hero-copy">
+          <span className="knowledge-library-eyebrow">{"\u534f\u4f5c\u4e0e\u56de\u6536\u533a"}</span>
+          <h1>{"\u77e5\u8bc6\u5e93"}</h1>
           <p>
-            用一张可搜索、可筛选、可展开抽屉的知识台账来管理规则、案例、图文说明和 AI 语义层，
-            让录入与复用都更像工作台，而不是长表单。
+            {"\u7528\u4e00\u5f20\u53ef\u641c\u7d22\u3001\u53ef\u7b5b\u9009\u3001\u53ef\u5c55\u5f00\u62bd\u5c49\u7684\u77e5\u8bc6\u53f0\u8d26\u6765\u7ba1\u7406\u89c4\u5219\u3001\u6848\u4f8b\u3001\u56fe\u6587\u8bf4\u660e\u548c AI \u8bed\u4e49\u5c42\uff0c\u8ba9\u5f55\u5165\u4e0e\u590d\u7528\u90fd\u66f4\u50cf\u5de5\u4f5c\u53f0\uff0c\u800c\u4e0d\u662f\u957f\u8868\u5355\u3002"}
           </p>
           <WorkbenchCoreStrip
             activePillarId="knowledge"
-            heading="知识沉淀链路"
-            description="在同一条工作链路里完成搜索、录入、结构绑定和审核交接。"
+            heading="\u77e5\u8bc6\u6c89\u6dc0\u94fe\u8def"
+            description="\u5728\u540c\u4e00\u6761\u5de5\u4f5c\u94fe\u8def\u91cc\u5b8c\u6210\u641c\u7d22\u3001\u5f55\u5165\u3001\u7ed3\u6784\u7ed1\u5b9a\u548c\u5ba1\u6838\u4ea4\u63a5\u3002"
           />
         </div>
         <dl className="knowledge-library-hero-stats">
@@ -831,7 +842,7 @@ export function KnowledgeLibraryWorkbenchPage({
 
           {loadStatus === "loading" && (viewModel?.library.length ?? 0) === 0 ? (
             <section className="knowledge-library-panel">
-              <p className="knowledge-library-empty">正在加载知识库...</p>
+              <p className="knowledge-library-empty">正在加载知识�?..</p>
             </section>
           ) : null}
 
@@ -883,7 +894,7 @@ export function KnowledgeLibraryWorkbenchPage({
 
             <div className="knowledge-library-form-grid">
               <label>
-                Title
+                标题
                 <input
                   value={formState.title}
                   onChange={(event) =>
@@ -892,11 +903,11 @@ export function KnowledgeLibraryWorkbenchPage({
                       title: event.target.value,
                     }))
                   }
-                  placeholder="Knowledge title"
+                  placeholder={"\u4f8b\u5982\uff1a\u8868\u683c\u6821\u5bf9\u4f9d\u636e"}
                 />
               </label>
               <label>
-                Knowledge Kind
+                知识类型
                 <select
                   value={formState.knowledgeKind}
                   onChange={(event) =>
@@ -906,17 +917,21 @@ export function KnowledgeLibraryWorkbenchPage({
                     }))
                   }
                 >
-                  {knowledgeKinds
-                    .filter((kind): kind is KnowledgeKind => kind !== "all")
-                    .map((kind) => (
-                      <option key={kind} value={kind}>
-                        {kind}
-                      </option>
-                    ))}
+                  {[
+                    ...(formState.knowledgeKind === "rule" ? (["rule"] as KnowledgeKind[]) : []),
+                    ...knowledgeKindEntryOptions,
+                  ].map((kind) => (
+                    <option key={kind} value={kind}>
+                      {formatKnowledgeLibraryKnowledgeKind(
+                        kind,
+                        kind === "rule" ? "projection_legacy" : "projection",
+                      )}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="knowledge-library-form-full">
-                Canonical Text
+                规范文本
                 <textarea
                   rows={6}
                   value={formState.canonicalText}
@@ -926,11 +941,11 @@ export function KnowledgeLibraryWorkbenchPage({
                       canonicalText: event.target.value,
                     }))
                   }
-                  placeholder="Canonical knowledge text"
+                  placeholder={"\u586b\u5199\u9700\u8981\u88ab\u590d\u7528\u3001\u68c0\u7d22\u6216\u4f5c\u4e3a\u4f9d\u636e\u5f15\u7528\u7684\u6807\u51c6\u6587\u672c\u3002"}
                 />
               </label>
               <label className="knowledge-library-form-full">
-                Summary
+                摘要说明
                 <textarea
                   rows={3}
                   value={formState.summary}
@@ -940,11 +955,11 @@ export function KnowledgeLibraryWorkbenchPage({
                       summary: event.target.value,
                     }))
                   }
-                  placeholder="Short operator summary"
+                  placeholder={"\u7528\u4e00\u53e5\u8bdd\u8bf4\u660e\u8fd9\u6761\u77e5\u8bc6\u9002\u5408\u5728\u4ec0\u4e48\u60c5\u51b5\u4e0b\u4f7f\u7528\u3002"}
                 />
               </label>
               <label>
-                Module Scope
+                适用模块
                 <select
                   value={formState.moduleScope}
                   onChange={(event) =>
@@ -956,79 +971,136 @@ export function KnowledgeLibraryWorkbenchPage({
                 >
                   {moduleOptions.map((option) => (
                     <option key={option} value={option}>
-                      {option}
+                      {formatKnowledgeLibraryModuleScope(option)}
                     </option>
                   ))}
                 </select>
               </label>
+              <KnowledgeLibraryMultiSelectField
+                label="稿件类型"
+                value={formState.manuscriptTypes}
+                options={manuscriptTypeOptions.map((option) => ({
+                  value: option,
+                  label: formatKnowledgeLibraryManuscriptType(option),
+                }))}
+                dataKey="manuscript-types"
+                includeAnyOption
+                onToggleValue={(value) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    manuscriptTypes: toggleManuscriptTypeSelection(
+                      current.manuscriptTypes,
+                      value as ManuscriptType,
+                    ),
+                  }))
+                }
+                onSelectAny={() =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    manuscriptTypes: "any",
+                  }))
+                }
+              />
+              <KnowledgeLibraryMultiSelectField
+                label="章节标签"
+                value={formState.sections}
+                options={sectionOptions.map((option) => ({
+                  value: option,
+                  label: formatKnowledgeLibrarySection(option),
+                }))}
+                dataKey="sections"
+                onToggleValue={(value) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    sections: toggleStringSelection(current.sections, value),
+                  }))
+                }
+              />
+              <KnowledgeLibraryTagListField
+                label="风险标签"
+                values={formState.riskTags}
+                dataKey="risk-tags"
+                addLabel="添加风险标签"
+                emptyText={"\u6682\u672a\u6dfb\u52a0\u98ce\u9669\u6807\u7b7e\u3002"}
+                onAdd={() =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    riskTags: [...current.riskTags, ""],
+                  }))
+                }
+                onChange={(index, value) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    riskTags: updateStringListValue(current.riskTags, index, value),
+                  }))
+                }
+                onRemove={(index) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    riskTags: removeStringListValue(current.riskTags, index),
+                  }))
+                }
+              />
+              <KnowledgeLibraryTagListField
+                label="学科标签"
+                values={formState.disciplineTags}
+                dataKey="discipline-tags"
+                addLabel="添加学科标签"
+                emptyText={"\u6682\u672a\u6dfb\u52a0\u5b66\u79d1\u6807\u7b7e\u3002"}
+                onAdd={() =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    disciplineTags: [...current.disciplineTags, ""],
+                  }))
+                }
+                onChange={(index, value) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    disciplineTags: updateStringListValue(
+                      current.disciplineTags,
+                      index,
+                      value,
+                    ),
+                  }))
+                }
+                onRemove={(index) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    disciplineTags: removeStringListValue(
+                      current.disciplineTags,
+                      index,
+                    ),
+                  }))
+                }
+              />
+              <KnowledgeLibraryTagListField
+                label="别名"
+                values={formState.aliases}
+                dataKey="aliases"
+                addLabel="添加别名"
+                emptyText={"\u6682\u672a\u6dfb\u52a0\u522b\u540d\u3002"}
+                onAdd={() =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    aliases: [...current.aliases, ""],
+                  }))
+                }
+                onChange={(index, value) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    aliases: updateStringListValue(current.aliases, index, value),
+                  }))
+                }
+                onRemove={(index) =>
+                  updateDraftFormState((current) => ({
+                    ...current,
+                    aliases: removeStringListValue(current.aliases, index),
+                  }))
+                }
+              />
               <label>
-                Manuscript Types
-                <input
-                  value={formState.manuscriptTypes}
-                  onChange={(event) =>
-                    updateDraftFormState((current) => ({
-                      ...current,
-                      manuscriptTypes: event.target.value,
-                    }))
-                  }
-                  placeholder="any or comma-separated types"
-                />
-              </label>
-              <label>
-                Sections
-                <input
-                  value={formState.sections}
-                  onChange={(event) =>
-                    updateDraftFormState((current) => ({
-                      ...current,
-                      sections: event.target.value,
-                    }))
-                  }
-                  placeholder="methods, discussion"
-                />
-              </label>
-              <label>
-                Risk Tags
-                <input
-                  value={formState.riskTags}
-                  onChange={(event) =>
-                    updateDraftFormState((current) => ({
-                      ...current,
-                      riskTags: event.target.value,
-                    }))
-                  }
-                  placeholder="consistency, statistics"
-                />
-              </label>
-              <label>
-                Discipline Tags
-                <input
-                  value={formState.disciplineTags}
-                  onChange={(event) =>
-                    updateDraftFormState((current) => ({
-                      ...current,
-                      disciplineTags: event.target.value,
-                    }))
-                  }
-                  placeholder="cardiology, oncology"
-                />
-              </label>
-              <label>
-                Aliases
-                <input
-                  value={formState.aliases}
-                  onChange={(event) =>
-                    updateDraftFormState((current) => ({
-                      ...current,
-                      aliases: event.target.value,
-                    }))
-                  }
-                  placeholder="endpoint, primary endpoint"
-                />
-              </label>
-              <label>
-                Evidence Level
-                <input
+                证据级别
+                <select
                   value={formState.evidenceLevel}
                   onChange={(event) =>
                     updateDraftFormState((current) => ({
@@ -1036,12 +1108,17 @@ export function KnowledgeLibraryWorkbenchPage({
                       evidenceLevel: event.target.value,
                     }))
                   }
-                  placeholder="high"
-                />
+                >
+                  {evidenceLevelOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {formatKnowledgeLibraryEvidenceLevel(option)}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
-                Source Type
-                <input
+                来源类型
+                <select
                   value={formState.sourceType}
                   onChange={(event) =>
                     updateDraftFormState((current) => ({
@@ -1049,11 +1126,16 @@ export function KnowledgeLibraryWorkbenchPage({
                       sourceType: event.target.value,
                     }))
                   }
-                  placeholder="guideline"
-                />
+                >
+                  {sourceTypeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {formatKnowledgeLibrarySourceType(option)}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="knowledge-library-form-full">
-                Source Link
+                来源链接
                 <input
                   value={formState.sourceLink}
                   onChange={(event) =>
@@ -1062,11 +1144,11 @@ export function KnowledgeLibraryWorkbenchPage({
                       sourceLink: event.target.value,
                     }))
                   }
-                  placeholder="https://..."
+                  placeholder={"\u586b\u5199\u6307\u5357\u3001\u8bba\u6587\u6216\u7f51\u9875\u7684\u53ef\u8ffd\u6eaf\u94fe\u63a5\u3002"}
                 />
               </label>
               <label>
-                Effective At
+                生效时间
                 <input
                   value={formState.effectiveAt}
                   onChange={(event) =>
@@ -1079,7 +1161,7 @@ export function KnowledgeLibraryWorkbenchPage({
                 />
               </label>
               <label>
-                Expires At
+                失效时间
                 <input
                   value={formState.expiresAt}
                   onChange={(event) =>
@@ -1088,7 +1170,7 @@ export function KnowledgeLibraryWorkbenchPage({
                       expiresAt: event.target.value,
                     }))
                   }
-                  placeholder="Optional ISO timestamp"
+                  placeholder={"\u53ef\u9009\uff0cISO \u65f6\u95f4\u6233"}
                 />
               </label>
             </div>
@@ -1461,9 +1543,17 @@ export function getStrongDuplicateMatches(
   return matches.filter((match) => match.severity === "exact" || match.severity === "high");
 }
 
-function toFormState(detail: KnowledgeLibraryWorkbenchViewModel["detail"]): KnowledgeLibraryFormState {
+export function createKnowledgeLibraryFormState(
+  detail: KnowledgeLibraryWorkbenchViewModel["detail"],
+): KnowledgeLibraryFormState {
   if (!detail) {
-    return defaultFormState;
+    return {
+      ...defaultFormState,
+      sections: [...defaultFormState.sections],
+      riskTags: [...defaultFormState.riskTags],
+      disciplineTags: [...defaultFormState.disciplineTags],
+      aliases: [...defaultFormState.aliases],
+    };
   }
 
   const revision = detail.selected_revision;
@@ -1473,14 +1563,11 @@ function toFormState(detail: KnowledgeLibraryWorkbenchViewModel["detail"]): Know
     summary: revision.summary ?? "",
     knowledgeKind: revision.knowledge_kind,
     moduleScope: revision.routing.module_scope,
-    manuscriptTypes:
-      revision.routing.manuscript_types === "any"
-        ? "any"
-        : revision.routing.manuscript_types.join(", "),
-    sections: (revision.routing.sections ?? []).join(", "),
-    riskTags: (revision.routing.risk_tags ?? []).join(", "),
-    disciplineTags: (revision.routing.discipline_tags ?? []).join(", "),
-    aliases: (revision.aliases ?? []).join(", "),
+    manuscriptTypes: normalizeManuscriptTypes(revision.routing.manuscript_types),
+    sections: normalizeStringArray(revision.routing.sections) ?? [],
+    riskTags: normalizeStringArray(revision.routing.risk_tags) ?? [],
+    disciplineTags: normalizeStringArray(revision.routing.discipline_tags) ?? [],
+    aliases: normalizeStringArray(revision.aliases) ?? [],
     evidenceLevel: revision.evidence_level ?? "unknown",
     sourceType: revision.source_type ?? "other",
     sourceLink: revision.source_link ?? "",
@@ -1502,11 +1589,11 @@ function toCreateInput(formState: KnowledgeLibraryFormState): CreateKnowledgeLib
     summary: optionalTrimmedValue(formState.summary),
     knowledgeKind: formState.knowledgeKind,
     moduleScope: formState.moduleScope,
-    manuscriptTypes: parseManuscriptTypes(formState.manuscriptTypes),
-    sections: splitCommaSeparated(formState.sections),
-    riskTags: splitCommaSeparated(formState.riskTags),
-    disciplineTags: splitCommaSeparated(formState.disciplineTags),
-    aliases: splitCommaSeparated(formState.aliases),
+    manuscriptTypes: normalizeManuscriptTypes(formState.manuscriptTypes),
+    sections: normalizeStringArray(formState.sections),
+    riskTags: normalizeStringArray(formState.riskTags),
+    disciplineTags: normalizeStringArray(formState.disciplineTags),
+    aliases: normalizeStringArray(formState.aliases),
     evidenceLevel: optionalTrimmedValue(formState.evidenceLevel) as
       | CreateKnowledgeLibraryDraftInput["evidenceLevel"]
       | undefined,
@@ -1533,11 +1620,11 @@ function toDuplicateCheckDraftFields(
     summary: formState.summary,
     knowledgeKind: formState.knowledgeKind,
     moduleScope: formState.moduleScope,
-    manuscriptTypes: formState.manuscriptTypes,
-    sections: formState.sections,
-    riskTags: formState.riskTags,
-    disciplineTags: formState.disciplineTags,
-    aliases: formState.aliases,
+    manuscriptTypes: normalizeManuscriptTypes(formState.manuscriptTypes),
+    sections: normalizeStringArray(formState.sections) ?? [],
+    riskTags: normalizeStringArray(formState.riskTags) ?? [],
+    disciplineTags: normalizeStringArray(formState.disciplineTags) ?? [],
+    aliases: normalizeStringArray(formState.aliases) ?? [],
     bindingsText: formState.bindingsText,
   };
 }
@@ -1560,11 +1647,11 @@ function createDuplicateCheckInput(
     summary: optionalTrimmedValue(formState.summary),
     knowledgeKind: formState.knowledgeKind,
     moduleScope: formState.moduleScope,
-    manuscriptTypes: parseManuscriptTypes(formState.manuscriptTypes),
-    sections: splitCommaSeparated(formState.sections),
-    riskTags: splitCommaSeparated(formState.riskTags),
-    disciplineTags: splitCommaSeparated(formState.disciplineTags),
-    aliases: splitCommaSeparated(formState.aliases),
+    manuscriptTypes: normalizeManuscriptTypes(formState.manuscriptTypes),
+    sections: normalizeStringArray(formState.sections),
+    riskTags: normalizeStringArray(formState.riskTags),
+    disciplineTags: normalizeStringArray(formState.disciplineTags),
+    aliases: normalizeStringArray(formState.aliases),
     bindings: parseBindings(formState.bindingsText),
     currentAssetId: input.currentAssetId?.trim() || undefined,
     currentRevisionId: input.currentRevisionId?.trim() || undefined,
@@ -1667,25 +1754,146 @@ function normalizeManuscriptTypes(
   return normalized.length > 0 ? normalized : "any";
 }
 
-function splitCommaSeparated(value: string): string[] | undefined {
-  const parts = value
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-
-  return parts.length > 0 ? parts : undefined;
+function toggleManuscriptTypeSelection(
+  current: KnowledgeLibraryFormState["manuscriptTypes"],
+  value: ManuscriptType,
+): KnowledgeLibraryFormState["manuscriptTypes"] {
+  const currentValues = current === "any" ? [] : current;
+  const nextValues = toggleStringSelection(currentValues, value) as ManuscriptType[];
+  return nextValues.length > 0 ? nextValues : "any";
 }
 
-function parseManuscriptTypes(value: string): ManuscriptType[] | "any" {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || trimmed.toLowerCase() === "any") {
-    return "any";
-  }
+function toggleStringSelection(current: string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((item) => item !== value)
+    : [...current, value];
+}
 
-  return trimmed
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part): part is ManuscriptType => Boolean(part));
+function updateStringListValue(values: string[], index: number, value: string): string[] {
+  return values.map((currentValue, currentIndex) =>
+    currentIndex === index ? value : currentValue,
+  );
+}
+
+function removeStringListValue(values: string[], index: number): string[] {
+  return values.filter((_, currentIndex) => currentIndex !== index);
+}
+
+function formatKnowledgeLibraryManuscriptType(value: ManuscriptType): string {
+  return formatEditorialManuscriptTypeLabel(value);
+}
+
+function formatKnowledgeLibrarySection(value: (typeof sectionOptions)[number]): string {
+  return formatEditorialSectionLabel(value);
+}
+
+function formatKnowledgeLibraryKnowledgeKind(
+  value: KnowledgeKind,
+  ruleVariant: KnowledgeKindRuleLabelVariant = "projection",
+): string {
+  return formatEditorialKnowledgeKindLabel(
+    value,
+    value === "rule" ? ruleVariant : "rule",
+  );
+}
+
+function formatKnowledgeLibraryModuleScope(value: ManuscriptModule | "any"): string {
+  return formatEditorialModuleLabel(value);
+}
+
+function formatKnowledgeLibraryEvidenceLevel(value: string): string {
+  return formatEditorialEvidenceLevelLabel(value as typeof evidenceLevelOptions[number]);
+}
+
+function formatKnowledgeLibrarySourceType(value: string): string {
+  return formatEditorialKnowledgeSourceTypeLabel(
+    value as typeof sourceTypeOptions[number],
+    "full",
+  );
+}
+
+function KnowledgeLibraryMultiSelectField(props: {
+  label: string;
+  value: string[] | "any";
+  options: ReadonlyArray<{ value: string; label: string }>;
+  dataKey: string;
+  includeAnyOption?: boolean;
+  onToggleValue(value: string): void;
+  onSelectAny?: () => void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={
+        props.includeAnyOption
+          ? "\u652f\u6301\u201c\u5168\u90e8/\u4efb\u610f\u201d\u548c\u591a\u9009\u5207\u6362\u3002"
+          : "\u652f\u6301\u7ed3\u6784\u5316\u591a\u9009\u3002"
+      }
+      value={props.value}
+      options={props.options as readonly SearchableMultiSelectOption[]}
+      dataKey={props.dataKey}
+      rootDataAttributeName="data-knowledge-multi-select"
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      headerClassName="knowledge-library-structured-field-header"
+      searchFieldClassName="knowledge-library-grid-search"
+      searchPlaceholder={`\u641c\u7d22${props.label}`}
+      optionsClassName="knowledge-library-toggle-group"
+      optionClassName="knowledge-library-toggle-chip"
+      emptyClassName="knowledge-library-structured-empty"
+      includeAnyOption={props.includeAnyOption}
+      onToggleValue={props.onToggleValue}
+      onSelectAny={props.onSelectAny}
+      noResultsText="\u672a\u627e\u5230\u5339\u914d\u7684\u9009\u9879\u3002"
+    />
+  );
+}
+
+function KnowledgeLibraryTagListField(props: {
+  label: string;
+  values: string[];
+  dataKey: string;
+  addLabel: string;
+  emptyText: string;
+  onAdd(): void;
+  onChange(index: number, value: string): void;
+  onRemove(index: number): void;
+}) {
+  return (
+    <div
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      data-knowledge-tag-list={props.dataKey}
+    >
+      <div className="knowledge-library-structured-field-header">
+        <span>{props.label}</span>
+        <small>{"\u4e00\u884c\u4e00\u4e2a\u8bcd\u6761\uff0c\u53ef\u9010\u6761\u8865\u5145\u548c\u5220\u9664\u3002"}</small>
+      </div>
+      <div className="knowledge-library-tag-editor-list">
+        {props.values.length > 0 ? (
+          props.values.map((value, index) => (
+            <div key={`${props.dataKey}-${index}`} className="knowledge-library-tag-editor-row">
+              <input
+                value={value}
+                onChange={(event) => props.onChange(index, event.target.value)}
+                placeholder={props.label}
+              />
+              <button type="button" onClick={() => props.onRemove(index)}>
+                {"\u5220\u9664"}
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="knowledge-library-structured-empty">{props.emptyText}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        className="knowledge-library-secondary-button"
+        onClick={props.onAdd}
+      >
+        {props.addLabel}
+      </button>
+    </div>
+  );
 }
 
 function optionalTrimmedValue(value: string): string | undefined {
@@ -1696,18 +1904,18 @@ function optionalTrimmedValue(value: string): string | undefined {
 function formatActorRole(role: AuthRole): string {
   switch (role) {
     case "admin":
-      return "管理员";
+      return "\u7ba1\u7406\u5458";
     case "knowledge_reviewer":
-      return "知识审核";
+      return "\u77e5\u8bc6\u5ba1\u6838";
     case "editor":
-      return "编辑";
+      return "\u7f16\u8f91";
     case "proofreader":
-      return "校对";
+      return "\u6821\u5bf9";
     case "screener":
-      return "初筛";
+      return "\u521d\u7b5b";
     case "user":
     default:
-      return "普通用户";
+      return "\u666e\u901a\u7528\u6237";
   }
 }
 

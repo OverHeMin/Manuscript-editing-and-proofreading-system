@@ -1,4 +1,5 @@
 import type { KnowledgeLibrarySummaryViewModel } from "./types.ts";
+import { formatEditorialKnowledgeKindLabel } from "../shared/editorial-taxonomy.ts";
 
 export interface KnowledgeLibraryGridTableProps {
   items: readonly KnowledgeLibrarySummaryViewModel[];
@@ -78,21 +79,10 @@ export function KnowledgeLibraryGridTable({
 }
 
 function formatKnowledgeKind(kind: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
-  switch (kind) {
-    case "rule":
-      return "规则";
-    case "case_pattern":
-      return "案例模式";
-    case "checklist":
-      return "核查清单";
-    case "prompt_snippet":
-      return "提示片段";
-    case "reference":
-      return "参考资料";
-    case "other":
-    default:
-      return "其他";
-  }
+  return formatEditorialKnowledgeKindLabel(
+    kind,
+    kind === "rule" ? "projection" : "rule",
+  );
 }
 
 function formatModuleScope(

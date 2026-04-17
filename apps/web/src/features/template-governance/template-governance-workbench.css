@@ -220,6 +220,55 @@
   color: #866833;
 }
 
+.template-governance-inline-empty {
+  margin: 0;
+  color: #6c5734;
+}
+
+.template-governance-linked-knowledge {
+  gap: 12px;
+}
+
+.template-governance-linked-knowledge-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.template-governance-linked-knowledge-header small {
+  color: #6c5734;
+  font-weight: 500;
+}
+
+.template-governance-linked-knowledge-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.template-governance-linked-knowledge-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid rgba(105, 80, 31, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #352513;
+  font: inherit;
+  text-align: left;
+}
+
+.template-governance-linked-knowledge-option.is-active {
+  border-color: rgba(136, 104, 51, 0.78);
+  background: #f3ead9;
+}
+
+.template-governance-linked-knowledge-option small {
+  color: #6c5734;
+}
+
 .template-governance-actions {
   display: flex;
   flex-wrap: wrap;
@@ -442,6 +491,26 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.template-governance-proofreading-guidance-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.template-governance-proofreading-guidance-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 252, 247, 0.86);
+}
+
+.template-governance-proofreading-guidance-card p {
+  margin: 0;
+  color: #2b2215;
 }
 
 .template-governance-learning-diff-grid {

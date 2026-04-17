@@ -1,49 +1,21 @@
+import {
+  formatEditorialEvidenceLevelLabel,
+  formatEditorialKnowledgeKindLabel,
+  formatEditorialKnowledgeSourceTypeLabel,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+} from "../shared/editorial-taxonomy.ts";
+
 export function formatTemplateGovernanceManuscriptTypeLabel(value: string): string {
-  switch (value) {
-    case "clinical_study":
-      return "临床研究";
-    case "review":
-      return "综述";
-    case "systematic_review":
-      return "系统综述";
-    case "meta_analysis":
-      return "Meta 分析";
-    case "case_report":
-      return "病例报告";
-    case "guideline_interpretation":
-      return "指南解读";
-    case "expert_consensus":
-      return "专家共识";
-    case "diagnostic_study":
-      return "诊断研究";
-    case "basic_research":
-      return "基础研究";
-    case "nursing_study":
-      return "护理研究";
-    case "methodology_paper":
-      return "方法学论文";
-    case "brief_report":
-      return "简报";
-    case "other":
-      return "其他";
-    default:
-      return value;
-  }
+  return formatEditorialManuscriptTypeLabel(value as Parameters<
+    typeof formatEditorialManuscriptTypeLabel
+  >[0]);
 }
 
 export function formatTemplateGovernanceModuleLabel(value: string): string {
-  switch (value) {
-    case "screening":
-      return "初筛";
-    case "editing":
-      return "编辑";
-    case "proofreading":
-      return "校对";
-    case "knowledge":
-      return "知识";
-    default:
-      return value;
-  }
+  return value === "knowledge"
+    ? "知识"
+    : formatEditorialModuleLabel(value as Parameters<typeof formatEditorialModuleLabel>[0]);
 }
 
 export function formatTemplateGovernanceFamilyStatusLabel(value: string): string {
@@ -146,22 +118,22 @@ export function formatTemplateGovernanceGovernedAssetStatusLabel(value: string):
 }
 
 export function formatTemplateGovernanceKnowledgeKindLabel(value: string): string {
-  switch (value) {
-    case "rule":
-      return "规则";
-    case "case_pattern":
-      return "案例模式";
-    case "checklist":
-      return "检查清单";
-    case "prompt_snippet":
-      return "提示片段";
-    case "reference":
-      return "参考资料";
-    case "other":
-      return "其他";
-    default:
-      return value;
-  }
+  return formatEditorialKnowledgeKindLabel(
+    value as Parameters<typeof formatEditorialKnowledgeKindLabel>[0],
+    value === "rule" ? "projection" : "rule",
+  );
+}
+
+export function formatTemplateGovernanceKnowledgeSourceTypeLabel(value: string): string {
+  return formatEditorialKnowledgeSourceTypeLabel(
+    value as Parameters<typeof formatEditorialKnowledgeSourceTypeLabel>[0],
+  );
+}
+
+export function formatTemplateGovernanceEvidenceLevelLabel(value: string): string {
+  return formatEditorialEvidenceLevelLabel(
+    value as Parameters<typeof formatEditorialEvidenceLevelLabel>[0],
+  );
 }
 
 export function formatTemplateGovernanceExtractionTaskStatusLabel(value: string): string {
@@ -202,6 +174,40 @@ export function formatTemplateGovernanceExtractionDestinationLabel(value: string
       return "医学专用模块";
     case "template":
       return "模板台账";
+    default:
+      return value;
+  }
+}
+
+export function formatTemplateGovernanceRetrievalSignalKindLabel(value: string): string {
+  switch (value) {
+    case "retrieval_drift":
+      return "检索漂移";
+    case "missing_knowledge":
+      return "缺少知识依据";
+    case "coverage_gap":
+      return "覆盖缺口";
+    case "rule_conflict":
+      return "规则冲突";
+    default:
+      return value;
+  }
+}
+
+export function formatTemplateGovernanceInstructionOperationLabel(value: string): string {
+  switch (value) {
+    case "sentence_rewrite":
+      return "改写句式";
+    case "change_medical_meaning":
+      return "改变医学含义";
+    case "issue_explanation":
+      return "输出问题说明";
+    case "rewrite_manuscript":
+      return "直接改写正文";
+    case "format_normalization":
+      return "规范格式";
+    case "table_alignment":
+      return "调整表格对齐";
     default:
       return value;
   }

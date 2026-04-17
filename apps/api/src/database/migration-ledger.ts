@@ -64,6 +64,10 @@ const migrationDescriptions = new Map<string, string>([
     "0041_manuscript_type_detection_summary.sql",
     "Persist upload-time manuscript type detection summaries on manuscripts.",
   ],
+  [
+    "0043_rule_wizard_knowledge_item_binding_kind.sql",
+    "Allow rule-wizard knowledge revisions to bind linked knowledge items explicitly.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

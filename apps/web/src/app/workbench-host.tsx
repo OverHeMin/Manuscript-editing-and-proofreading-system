@@ -266,6 +266,7 @@ export function WorkbenchHost({
             actorRole={session.role}
             prefilledAssetId={routeState.assetId}
             prefilledRevisionId={routeState.revisionId}
+            prefilledKnowledgeTemplateId={routeState.knowledgePrefillTemplateId}
           />
         );
       case "knowledge-review":

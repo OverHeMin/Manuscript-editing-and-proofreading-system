@@ -141,13 +141,16 @@ export function selectApprovedDynamicKnowledge(
       (record) =>
         !record.template_bindings ||
         record.template_bindings.length === 0 ||
-        record.template_bindings.includes(input.template.id),
+        record.template_bindings.includes(input.template.id) ||
+        record.template_bindings.includes(input.manuscript.current_template_family_id ?? ""),
     )
     .reduce<DynamicKnowledgeSelection[]>((result, knowledgeItem) => {
-      const usesTemplateBinding =
-        !!knowledgeItem.template_bindings &&
-        knowledgeItem.template_bindings.length > 0 &&
-        knowledgeItem.template_bindings.includes(input.template.id);
+      const templateBindingSourceId = resolveTemplateBindingSourceId({
+        manuscript: input.manuscript,
+        template: input.template,
+        knowledgeItem,
+      });
+      const usesTemplateBinding = templateBindingSourceId != null;
       const retrievalScore = input.retrievalPreset
         ? scoreKnowledgeForPreset({
             knowledgeItem,
@@ -162,9 +165,7 @@ export function selectApprovedDynamicKnowledge(
       result.push({
         knowledgeItem,
         matchSource: usesTemplateBinding ? "template_binding" : "dynamic_routing",
-        ...(usesTemplateBinding
-          ? { matchSourceId: `template:${input.template.id}` }
-          : {}),
+        ...(templateBindingSourceId ? { matchSourceId: templateBindingSourceId } : {}),
         matchReasons: [
           ...(knowledgeItem.routing.module_scope === input.module ? ["module"] : []),
           ...(
@@ -196,6 +197,28 @@ export function selectApprovedDynamicKnowledge(
         left.knowledgeItem.id.localeCompare(right.knowledgeItem.id),
     )
     .slice(0, input.retrievalPreset.top_k);
+}
+
+function resolveTemplateBindingSourceId(input: {
+  manuscript: ManuscriptRecord;
+  template: ModuleTemplateRecord;
+  knowledgeItem: KnowledgeRecord;
+}): string | undefined {
+  const bindings = input.knowledgeItem.template_bindings;
+  if (!bindings || bindings.length === 0) {
+    return undefined;
+  }
+
+  if (bindings.includes(input.template.id)) {
+    return `template:${input.template.id}`;
+  }
+
+  const templateFamilyId = input.manuscript.current_template_family_id;
+  if (templateFamilyId && bindings.includes(templateFamilyId)) {
+    return `template_family:${templateFamilyId}`;
+  }
+
+  return undefined;
 }
 
 export async function prepareModuleExecution(

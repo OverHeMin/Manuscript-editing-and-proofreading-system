@@ -93,6 +93,7 @@ export interface KnowledgeRecord {
   source_link?: string;
   aliases?: string[];
   template_bindings?: string[];
+  linked_knowledge_item_ids?: string[];
   source_learning_candidate_id?: string;
   projection_source?: KnowledgeProjectionSourceRecord;
 }
@@ -135,7 +136,8 @@ export type KnowledgeRevisionBindingKind =
   | "section"
   | "journal_template"
   | "general_package"
-  | "medical_package";
+  | "medical_package"
+  | "knowledge_item";
 
 export type KnowledgeContentBlockType =
   | "text_block"

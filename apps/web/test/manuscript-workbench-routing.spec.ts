@@ -104,6 +104,23 @@ test("workbench routing formats and resolves knowledge library ledger hashes", (
   });
 });
 
+test("workbench routing preserves knowledge-entry prefill template hashes", () => {
+  const hash = formatWorkbenchHash("knowledge-library", {
+    knowledgeView: "ledger",
+    knowledgePrefillTemplateId: "journal_table_style_basis",
+  });
+
+  assert.equal(
+    hash,
+    "#knowledge-library?knowledgeView=ledger&knowledgePrefillTemplateId=journal_table_style_basis",
+  );
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "knowledge-library",
+    knowledgeView: "ledger",
+    knowledgePrefillTemplateId: "journal_table_style_basis",
+  });
+});
+
 test("workbench routing formats and resolves knowledge review revision hashes", () => {
   const hash = formatWorkbenchHash("knowledge-review", {
     revisionId: "knowledge-42-revision-2",

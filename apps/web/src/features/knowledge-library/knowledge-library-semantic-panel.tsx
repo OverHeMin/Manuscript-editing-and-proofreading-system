@@ -25,7 +25,7 @@ export function KnowledgeLibrarySemanticPanel({
   actionLabels,
 }: KnowledgeLibrarySemanticPanelProps) {
   const pageSummary = semanticLayer?.page_summary ?? "";
-  const retrievalTerms = (semanticLayer?.retrieval_terms ?? []).join(", ");
+  const retrievalTerms = semanticLayer?.retrieval_terms ?? [];
   const retrievalSnippets = (semanticLayer?.retrieval_snippets ?? []).join("\n");
   const status = semanticLayer?.status ?? "not_generated";
 
@@ -33,10 +33,9 @@ export function KnowledgeLibrarySemanticPanel({
     <section className="knowledge-library-panel knowledge-library-semantic-panel">
       <header className="knowledge-library-panel-header">
         <div>
-          <h2>Semantic Layer</h2>
+          <h2>语义层</h2>
           <p>
-            Review AI-generated retrieval phrasing, adjust it manually, then confirm
-            the semantic layer when it is ready.
+            审看 AI 生成的召回表达，补充人工确认后的检索词和检索片段，再确认语义层。
           </p>
         </div>
         <span className={`knowledge-library-semantic-status is-${status}`}>
@@ -45,30 +44,76 @@ export function KnowledgeLibrarySemanticPanel({
       </header>
 
       <label className="knowledge-library-block-editor">
-        <span>Page Summary</span>
+        <span>页面摘要</span>
         <textarea
           rows={4}
           value={pageSummary}
           onChange={(event) => onChange({ pageSummary: event.target.value })}
-          placeholder="Summarize when this record should be recalled."
+          placeholder="概括这条知识在什么场景下应该被召回。"
         />
       </label>
 
-      <label className="knowledge-library-block-editor">
-        <span>Retrieval Terms</span>
-        <input
-          value={retrievalTerms}
-          onChange={(event) =>
+      <div
+        className="knowledge-library-structured-field knowledge-library-form-full"
+        data-knowledge-semantic-tag-list="retrieval-terms"
+      >
+        <div className="knowledge-library-structured-field-header">
+          <span>检索词条</span>
+          <small>一行一个检索词条，可逐条补充和删除。</small>
+        </div>
+        <div className="knowledge-library-tag-editor-list">
+          {retrievalTerms.length > 0 ? (
+            retrievalTerms.map((term, index) => (
+              <div
+                key={`retrieval-term-${index}`}
+                className="knowledge-library-tag-editor-row"
+              >
+                <input
+                  value={term}
+                  onChange={(event) =>
+                    onChange({
+                      retrievalTerms: updateStringListValue(
+                        retrievalTerms,
+                        index,
+                        event.target.value,
+                      ),
+                    })
+                  }
+                  placeholder="例如：表格校对"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      retrievalTerms: removeStringListValue(retrievalTerms, index),
+                    })
+                  }
+                >
+                  删除
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="knowledge-library-structured-empty">
+              暂未添加检索词条。
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          className="knowledge-library-secondary-button"
+          onClick={() =>
             onChange({
-              retrievalTerms: splitCommaSeparated(event.target.value),
+              retrievalTerms: [...retrievalTerms, ""],
             })
           }
-          placeholder="Comma-separated retrieval terms"
-        />
-      </label>
+        >
+          添加检索词条
+        </button>
+      </div>
 
       <label className="knowledge-library-block-editor">
-        <span>Retrieval Snippets</span>
+        <span>检索片段</span>
         <textarea
           rows={4}
           value={retrievalSnippets}
@@ -77,16 +122,16 @@ export function KnowledgeLibrarySemanticPanel({
               retrievalSnippets: splitLineSeparated(event.target.value),
             })
           }
-          placeholder="One retrieval snippet per line"
+          placeholder="每行一个检索片段"
         />
       </label>
 
       <div className="knowledge-library-actions">
         <button type="button" disabled={isBusy} onClick={onRegenerate}>
-          {actionLabels?.regenerate ?? "Regenerate Semantics"}
+          {actionLabels?.regenerate ?? "重新生成语义层"}
         </button>
         <button type="button" disabled={isBusy} onClick={onConfirm}>
-          {actionLabels?.confirm ?? "Confirm Semantic Layer"}
+          {actionLabels?.confirm ?? "确认语义层"}
         </button>
       </div>
     </section>
@@ -98,22 +143,15 @@ export function formatKnowledgeSemanticStatusLabel(
 ): string {
   switch (status) {
     case "pending_confirmation":
-      return "Pending Confirmation";
+      return "待确认";
     case "confirmed":
-      return "Confirmed";
+      return "已确认";
     case "stale":
-      return "Stale";
+      return "已过期";
     case "not_generated":
     default:
-      return "Not Generated";
+      return "未生成";
   }
-}
-
-function splitCommaSeparated(value: string): string[] {
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
 }
 
 function splitLineSeparated(value: string): string[] {
@@ -121,4 +159,14 @@ function splitLineSeparated(value: string): string[] {
     .split(/\r?\n/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
+}
+
+function updateStringListValue(values: readonly string[], index: number, value: string): string[] {
+  return values.map((currentValue, currentIndex) =>
+    currentIndex === index ? value : currentValue,
+  );
+}
+
+function removeStringListValue(values: readonly string[], index: number): string[] {
+  return values.filter((_, currentIndex) => currentIndex !== index);
 }

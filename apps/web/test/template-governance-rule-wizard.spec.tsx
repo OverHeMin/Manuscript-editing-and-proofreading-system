@@ -12,10 +12,12 @@ const {
 const {
   createRuleDraftInput,
   createRuleDraftContentBlocks,
+  createRuleWizardBindingFormState,
   createRuleWizardEntryFormState,
   createRuleWizardEntryFormStateFromDetail,
   createRuleWizardBindingInputs,
   confirmSemanticLayerInput,
+  loadRuleWizardBindingOptions,
   saveRuleWizardEntryDraft,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
 
@@ -59,6 +61,48 @@ test("rule wizard confirm step explains semantic confirmation parameters", () =>
   assert.match(markup, /规则类型决定这条规则按什么治理判断复用/u);
   assert.match(markup, /风险等级决定后续审核和发布要多谨慎/u);
   assert.match(markup, /稿件类型填写这条规则默认命中的稿件范围/u);
+});
+
+test("rule wizard confirm step uses structured manuscript-type and retrieval-term controls", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "confirm",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+      entryFormState={createRuleWizardEntryFormState({
+        title: "鏈缁熶竴瑙勫垯",
+        moduleScope: "editing",
+        manuscriptTypes: ["clinical_study", "review"],
+        sourceType: "guideline",
+        contributor: "editor.zh",
+        ruleBody: "缁熶竴鍖诲鏈鍜岀缉鍐欒В閲娿€?",
+        positiveExample: "",
+        negativeExample: "",
+        imageEvidence: "",
+        sourceBasis: "",
+        advancedTagsExpanded: false,
+        sections: "",
+        riskTags: "terminology, abbreviation",
+        packageHints: "",
+        candidateOnly: false,
+        conflictNotes: "",
+      })}
+    />,
+  );
+
+  assert.match(markup, /data-rule-wizard-multi-select="confirm-manuscript-types"/u);
+  assert.match(markup, /data-searchable-multi-select-input="confirm-manuscript-types"/u);
+  assert.match(markup, /placeholder="鎼滅储绋夸欢绫诲瀷"/u);
+  assert.match(markup, /data-rule-wizard-tag-list="confirm-retrieval-terms"/u);
+  assert.match(markup, /data-rule-wizard-tag-action="add-confirm-retrieval-term"/u);
+  assert.doesNotMatch(markup, /placeholder="clinical_study, review"/u);
+  assert.doesNotMatch(markup, /placeholder="鏈缁熶竴, 缂╁啓閲婁箟"/u);
 });
 
 test("rule wizard binding and publish steps explain package and release choices", () => {
@@ -125,6 +169,48 @@ test("rule wizard shell renders shared step navigation and closeout actions", ()
   assert.match(markup, /图片 \/ 图表 \/ 截图/u);
   assert.match(markup, /来源依据/u);
   assert.match(markup, /展开高级标签/u);
+});
+
+test("rule wizard entry form state normalizes advanced tags into structured selections", () => {
+  const state = createRuleWizardEntryFormState({
+    manuscriptTypes: "clinical_study, review",
+    sections: "abstract, discussion",
+    riskTags: "terminology, consistency",
+    packageHints: "general-package, medical-package",
+  });
+
+  assert.deepEqual(state.manuscriptTypes, ["clinical_study", "review"]);
+  assert.deepEqual(state.sections, ["abstract", "discussion"]);
+  assert.deepEqual(state.riskTags, ["terminology", "consistency"]);
+  assert.deepEqual(state.packageHints, ["general-package", "medical-package"]);
+});
+
+test("rule wizard entry step renders structured advanced routing controls", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "entry",
+        dirty: true,
+      }}
+      entryFormState={createRuleWizardEntryFormState({
+        advancedTagsExpanded: true,
+      })}
+    />,
+  );
+
+  assert.match(markup, /data-rule-wizard-multi-select="manuscript-types"/u);
+  assert.match(markup, /data-rule-wizard-multi-select="sections"/u);
+  assert.match(markup, /data-searchable-multi-select-input="manuscript-types"/u);
+  assert.match(markup, /data-searchable-multi-select-input="sections"/u);
+  assert.match(markup, /placeholder="搜索稿件类型"/u);
+  assert.match(markup, /placeholder="搜索章节标签"/u);
+  assert.match(markup, /data-rule-wizard-tag-list="risk-tags"/u);
+  assert.match(markup, /data-rule-wizard-tag-list="package-hints"/u);
+  assert.doesNotMatch(markup, /placeholder="abstract, discussion"/u);
 });
 
 test("rule wizard step entry maps form state into a governed rule draft input", () => {
@@ -395,9 +481,9 @@ test("rule wizard can hydrate an existing rule detail back into editable entry f
   assert.equal(form.positiveExample, "表 1 总例数（n=120）");
   assert.equal(form.sourceBasis, "按投稿模板保留图表证据。");
   assert.equal(form.moduleScope, "editing");
-  assert.equal(form.manuscriptTypes, "clinical_study");
-  assert.equal(form.sections, "results");
-  assert.equal(form.riskTags, "table, image");
+  assert.deepEqual(form.manuscriptTypes, ["clinical_study"]);
+  assert.deepEqual(form.sections, ["results"]);
+  assert.deepEqual(form.riskTags, ["table", "image"]);
   assert.equal(form.supplementalBlocks.length, 2);
   assert.equal(form.supplementalBlocks[0]?.block_type, "table_block");
   assert.equal(form.supplementalBlocks[1]?.block_type, "image_block");
@@ -640,12 +726,12 @@ test("rule wizard confirm input keeps semantic summary and retrieval terms align
     confirmSemanticLayerInput({
       semanticSummary:
         "\u8be5\u89c4\u5219\u7528\u4e8e\u68c0\u67e5\u533b\u5b66\u672f\u8bed\u3001\u7f29\u7565\u8bed\u548c\u4e2d\u82f1\u6587\u540d\u79f0\u662f\u5426\u7edf\u4e00\u3002",
-      retrievalTerms: "\u672f\u8bed\u7edf\u4e00, \u7f29\u5199\u91ca\u4e49",
+      retrievalTerms: ["\u672f\u8bed\u7edf\u4e00", "\u7f29\u5199\u91ca\u4e49"],
       retrievalSnippets: "",
       ruleType: "terminology_consistency",
       riskLevel: "medium",
       moduleScope: "editing",
-      manuscriptTypes: "clinical_study",
+      manuscriptTypes: ["clinical_study"],
     }),
     {
       pageSummary:
@@ -720,4 +806,299 @@ test("rule wizard binding selections map into package and template family bindin
       },
     ],
   );
+});
+
+test("rule wizard binding step renders an explicit linked knowledge selector", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "binding",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+      bindingOptions={{
+        generalPackages: [
+          {
+            id: "pkg-general",
+            label: "General Package",
+          },
+        ],
+        medicalPackages: [
+          {
+            id: "pkg-medical",
+            label: "Medical Package",
+          },
+        ],
+        templateFamilies: [
+          {
+            id: "family-clinical",
+            name: "Clinical Family",
+            manuscriptType: "clinical_study",
+          },
+        ],
+        knowledgeItems: [
+          {
+            id: "knowledge-asset-1",
+            label: "Table checklist",
+            knowledgeKind: "reference",
+            status: "approved",
+            moduleScope: "proofreading",
+            manuscriptTypes: ["clinical_study"],
+          },
+        ],
+      }}
+      bindingFormState={{
+        selectedPackageKind: "medical_package",
+        selectedPackageId: "pkg-medical",
+        selectedPackageLabel: "Medical Package",
+        reuseStrategy: "reuse_existing",
+        selectedTemplateFamilies: [],
+        selectedKnowledgeItems: [
+          {
+            id: "knowledge-asset-1",
+            title: "Table checklist",
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-rule-wizard-linked-knowledge="list"/u);
+  assert.match(markup, /data-searchable-multi-select-input="rule-wizard-linked-knowledge"/u);
+  assert.match(markup, /placeholder="搜索关联知识条目"/u);
+  assert.match(markup, /Table checklist/u);
+  assert.match(markup, /关联知识只展示已批准且非“规则投影”的条目/u);
+  assert.match(markup, /参考资料（1）/u);
+  assert.match(markup, /参考资料 \/ 已通过 \/ 校对/u);
+  assert.doesNotMatch(markup, /reference \/ approved/u);
+});
+
+test("rule wizard binding options load approved knowledge items for linking", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const result = await loadRuleWizardBindingOptions({
+    request: async function <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/templates/content-modules?moduleClass=general"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "pkg-general",
+              name: "General Package",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/templates/content-modules?moduleClass=medical_specialized"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "pkg-medical",
+              name: "Medical Package",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-clinical",
+              name: "Clinical Family",
+              manuscript_type: "clinical_study",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-asset-1",
+                title: "Table checklist",
+                knowledge_kind: "reference",
+                status: "approved",
+                module_scope: "proofreading",
+                manuscript_types: ["clinical_study"],
+                selected_revision_id: "knowledge-revision-1",
+                content_block_count: 2,
+              },
+              {
+                asset_id: "knowledge-asset-2",
+                title: "Draft knowledge",
+                knowledge_kind: "reference",
+                status: "draft",
+                module_scope: "proofreading",
+                manuscript_types: ["clinical_study"],
+                selected_revision_id: "knowledge-revision-2",
+                content_block_count: 1,
+              },
+              {
+                asset_id: "knowledge-asset-3",
+                title: "Executable rule",
+                knowledge_kind: "rule",
+                status: "approved",
+                module_scope: "proofreading",
+                manuscript_types: ["clinical_study"],
+                selected_revision_id: "knowledge-revision-3",
+                content_block_count: 1,
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  assert.deepEqual(requests.map((request) => `${request.method} ${request.url}`), [
+    "GET /api/v1/templates/content-modules?moduleClass=general",
+    "GET /api/v1/templates/content-modules?moduleClass=medical_specialized",
+    "GET /api/v1/templates/families",
+    "GET /api/v1/knowledge/library",
+  ]);
+  assert.deepEqual(
+    (result as { knowledgeItems?: unknown }).knowledgeItems,
+    [
+      {
+        id: "knowledge-asset-1",
+        label: "Table checklist",
+        knowledgeKind: "reference",
+        status: "approved",
+        moduleScope: "proofreading",
+        manuscriptTypes: ["clinical_study"],
+      },
+    ],
+  );
+});
+
+test("rule wizard binding selections map linked knowledge items into knowledge item bindings", () => {
+  assert.deepEqual(
+    createRuleWizardBindingInputs({
+      selectedPackageKind: "medical_package",
+      selectedPackageId: "pkg-medical",
+      selectedPackageLabel: "Medical Package",
+      reuseStrategy: "reuse_existing",
+      selectedTemplateFamilies: [
+        {
+          id: "family-clinical",
+          name: "Clinical Family",
+        },
+      ],
+      selectedKnowledgeItems: [
+        {
+          id: "knowledge-asset-1",
+          title: "Table checklist",
+        },
+      ],
+    } as never),
+    [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "pkg-medical",
+        bindingTargetLabel: "Medical Package",
+      },
+      {
+        bindingKind: "template_family",
+        bindingTargetId: "family-clinical",
+        bindingTargetLabel: "Clinical Family",
+      },
+      {
+        bindingKind: "knowledge_item",
+        bindingTargetId: "knowledge-asset-1",
+        bindingTargetLabel: "Table checklist",
+      },
+    ],
+  );
+});
+
+test("rule wizard binding form state restores linked knowledge selections from detail bindings", () => {
+  const state = createRuleWizardBindingFormState({
+    options: {
+      generalPackages: [],
+      medicalPackages: [
+        {
+          id: "pkg-medical",
+          label: "Medical Package",
+        },
+      ],
+      templateFamilies: [
+        {
+          id: "family-clinical",
+          name: "Clinical Family",
+          manuscriptType: "clinical_study",
+        },
+      ],
+      knowledgeItems: [
+        {
+          id: "knowledge-asset-1",
+          label: "Table checklist",
+          knowledgeKind: "reference",
+          status: "approved",
+        },
+      ],
+    },
+    detail: {
+      selected_revision: {
+        bindings: [
+          {
+            id: "binding-1",
+            revision_id: "knowledge-1-revision-1",
+            binding_kind: "medical_package",
+            binding_target_id: "pkg-medical",
+            binding_target_label: "Medical Package",
+            created_at: "2026-04-16T08:00:00.000Z",
+          },
+          {
+            id: "binding-2",
+            revision_id: "knowledge-1-revision-1",
+            binding_kind: "template_family",
+            binding_target_id: "family-clinical",
+            binding_target_label: "Clinical Family",
+            created_at: "2026-04-16T08:00:00.000Z",
+          },
+          {
+            id: "binding-3",
+            revision_id: "knowledge-1-revision-1",
+            binding_kind: "knowledge_item",
+            binding_target_id: "knowledge-asset-1",
+            binding_target_label: "Table checklist",
+            created_at: "2026-04-16T08:00:00.000Z",
+          },
+        ],
+      },
+    },
+  } as never);
+
+  assert.deepEqual((state as { selectedKnowledgeItems?: unknown }).selectedKnowledgeItems, [
+    {
+      id: "knowledge-asset-1",
+      title: "Table checklist",
+    },
+  ]);
 });

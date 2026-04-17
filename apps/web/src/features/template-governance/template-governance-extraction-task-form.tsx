@@ -1,22 +1,9 @@
 import type { BrowserUploadFile } from "../manuscript-workbench/manuscript-upload-file.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
+import { EDITORIAL_MANUSCRIPT_TYPE_OPTIONS } from "../shared/editorial-taxonomy.ts";
 import { formatTemplateGovernanceManuscriptTypeLabel } from "./template-governance-display.ts";
 
-const manuscriptTypes: ManuscriptType[] = [
-  "clinical_study",
-  "review",
-  "systematic_review",
-  "meta_analysis",
-  "case_report",
-  "guideline_interpretation",
-  "expert_consensus",
-  "diagnostic_study",
-  "basic_research",
-  "nursing_study",
-  "methodology_paper",
-  "brief_report",
-  "other",
-];
+const manuscriptTypes: readonly ManuscriptType[] = EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
 
 export interface TemplateGovernanceExtractionTaskFormDraft {
   taskName: string;

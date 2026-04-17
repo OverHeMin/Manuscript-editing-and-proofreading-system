@@ -18,7 +18,8 @@ export type KnowledgeRevisionBindingKind =
   | "section"
   | "journal_template"
   | "general_package"
-  | "medical_package";
+  | "medical_package"
+  | "knowledge_item";
 
 export interface KnowledgeRevisionBindingViewModel {
   id: string;

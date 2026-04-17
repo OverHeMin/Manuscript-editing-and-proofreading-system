@@ -44,6 +44,7 @@ export interface RuleAuthoringDraftBase<
   evidenceLevel: EditorialRuleEvidenceLevel;
   journalTemplateId?: string | null;
   manualReviewReasonTemplate?: string;
+  linkedKnowledgeItemIds?: string[];
   payload: TPayload;
 }
 

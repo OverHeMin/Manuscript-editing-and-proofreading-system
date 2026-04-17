@@ -1,14 +1,25 @@
 import type { ManuscriptModule } from "../manuscripts/types.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import type {
   RuleWizardBindingFormState,
   RuleWizardBindingOptions,
+  RuleWizardConfirmFormState,
 } from "./template-governance-rule-wizard-api.ts";
+import {
+  formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceKnowledgeKindLabel,
+  formatTemplateGovernanceManuscriptTypeLabel,
+  formatTemplateGovernanceModuleLabel,
+} from "./template-governance-display.ts";
 
 export interface TemplateGovernanceRuleWizardStepBindingProps {
   value: RuleWizardBindingFormState;
   options?: RuleWizardBindingOptions;
   moduleScope?: ManuscriptModule | "any";
-  manuscriptTypes?: string;
+  manuscriptTypes?: RuleWizardConfirmFormState["manuscriptTypes"];
   semanticSummary?: string;
   isBusy?: boolean;
   errorMessage?: string | null;
@@ -19,7 +30,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
   value,
   options,
   moduleScope = "editing",
-  manuscriptTypes = "clinical_study",
+  manuscriptTypes = ["clinical_study"],
   semanticSummary = "",
   isBusy = false,
   errorMessage = null,
@@ -29,6 +40,39 @@ export function TemplateGovernanceRuleWizardStepBinding({
     value.selectedPackageKind === "medical_package"
       ? options?.medicalPackages ?? []
       : options?.generalPackages ?? [];
+  const knowledgeGroupCounts = buildKnowledgeGroupCounts(options?.knowledgeItems ?? []);
+  const knowledgeItemOptions: SearchableMultiSelectOption[] = (options?.knowledgeItems ?? []).map(
+    (item) => {
+      const knowledgeKindLabel = formatTemplateGovernanceKnowledgeKindLabel(item.knowledgeKind);
+      const moduleLabel = formatTemplateGovernanceModuleLabel(item.moduleScope);
+      const manuscriptKeywords =
+        item.manuscriptTypes === "any"
+          ? ["全部 / 任意"]
+          : item.manuscriptTypes.map((type) => formatTemplateGovernanceManuscriptTypeLabel(type));
+
+      return {
+        value: item.id,
+        label: item.label,
+        keywords: [
+          item.knowledgeKind,
+          item.status,
+          item.moduleScope,
+          knowledgeKindLabel,
+          moduleLabel,
+          ...manuscriptKeywords,
+        ],
+        meta: `${knowledgeKindLabel} / ${formatTemplateGovernanceGovernedAssetStatusLabel(item.status)} / ${moduleLabel}`,
+        group: `${knowledgeKindLabel}（${knowledgeGroupCounts.get(knowledgeKindLabel) ?? 0}）`,
+      };
+    },
+  );
+  const selectedKnowledgeIds = value.selectedKnowledgeItems.map((item) => item.id);
+  const selectedKnowledgeOptions: SearchableMultiSelectOption[] = value.selectedKnowledgeItems.map(
+    (item) => ({
+      value: item.id,
+      label: item.title,
+    }),
+  );
 
   return (
     <article className="template-governance-card template-governance-ledger-section">
@@ -125,7 +169,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
               return (
                 <label key={family.id} className="template-governance-field">
                   <span>{family.name}</span>
-                  <small>{family.manuscriptType}</small>
+                  <small>{formatTemplateGovernanceManuscriptTypeLabel(family.manuscriptType)}</small>
                   <input
                     type="checkbox"
                     checked={checked}
@@ -153,6 +197,59 @@ export function TemplateGovernanceRuleWizardStepBinding({
         </div>
       </div>
 
+      <div className="template-governance-detail-grid">
+        <div className="template-governance-field template-governance-field-full">
+          <div data-rule-wizard-linked-knowledge="list">
+            <SearchableMultiSelectField
+              label={"\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
+              helpText={
+                "\u5173\u8054\u77e5\u8bc6\u53ea\u5c55\u793a\u5df2\u6279\u51c6\u4e14\u975e\u201c\u89c4\u5219\u6295\u5f71\u201d\u7684\u6761\u76ee\uff0c\u7528\u6765\u628a\u89c4\u5219\u4f9d\u8d56\u7684\u4f9d\u636e\u3001\u51c6\u5219\u6216\u89e3\u91ca\u6027\u77e5\u8bc6\u663e\u5f0f\u6302\u5230\u8fd9\u6761\u89c4\u5219\u4e0a\u3002"
+              }
+              value={selectedKnowledgeIds}
+              options={knowledgeItemOptions}
+              dataKey="rule-wizard-linked-knowledge"
+              className="template-governance-linked-knowledge"
+              headerClassName="template-governance-linked-knowledge-header"
+              searchFieldClassName="knowledge-library-grid-search"
+              searchPlaceholder={"\u641c\u7d22\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
+              optionsClassName="template-governance-linked-knowledge-list"
+              optionClassName="template-governance-linked-knowledge-option"
+              emptyClassName="template-governance-inline-empty"
+              showSelectedSummary
+              selectedOptions={selectedKnowledgeOptions}
+              selectedListClassName="template-governance-chip-row"
+              selectedChipClassName="template-governance-chip"
+              selectedEmptyText={"\u5f53\u524d\u8fd8\u6ca1\u6709\u5173\u8054\u77e5\u8bc6\u6761\u76ee\u3002"}
+              emptyOptionsText={
+                "\u5f53\u524d\u6ca1\u6709\u53ef\u5173\u8054\u7684\u5df2\u6279\u51c6\u77e5\u8bc6\u6761\u76ee\u3002"
+              }
+              noResultsText={"\u672a\u627e\u5230\u5339\u914d\u7684\u77e5\u8bc6\u6761\u76ee\u3002"}
+              disabled={isBusy}
+              onToggleValue={(nextKnowledgeId) => {
+                const isActive = value.selectedKnowledgeItems.some(
+                  (selected) => selected.id === nextKnowledgeId,
+                );
+                const matchedKnowledgeItem =
+                  options?.knowledgeItems?.find((item) => item.id === nextKnowledgeId) ?? null;
+                const nextKnowledgeItems = isActive
+                  ? value.selectedKnowledgeItems.filter(
+                      (selected) => selected.id !== nextKnowledgeId,
+                    )
+                  : value.selectedKnowledgeItems.concat({
+                      id: nextKnowledgeId,
+                      title: matchedKnowledgeItem?.label ?? nextKnowledgeId,
+                    });
+
+                onChange({
+                  ...value,
+                  selectedKnowledgeItems: nextKnowledgeItems,
+                });
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="template-governance-rule-impact-grid">
         <section className="template-governance-card template-governance-rule-impact-card">
           <header className="template-governance-rule-section-heading">
@@ -168,7 +265,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
             </div>
             <div>
               <span>稿件类型</span>
-              <strong>{manuscriptTypes || "any"}</strong>
+              <strong>{formatManuscriptTypesSummary(manuscriptTypes)}</strong>
             </div>
           </div>
         </section>
@@ -219,6 +316,14 @@ export function TemplateGovernanceRuleWizardStepBinding({
               </strong>
             </div>
             <div>
+              <span>关联知识</span>
+              <strong>
+                {value.selectedKnowledgeItems.length
+                  ? value.selectedKnowledgeItems.map((item) => item.title).join("、")
+                  : "待选择知识条目"}
+              </strong>
+            </div>
+            <div>
               <span>规则摘要</span>
               <strong>{semanticSummary || "语义确认后会显示摘要"}</strong>
             </div>
@@ -229,16 +334,31 @@ export function TemplateGovernanceRuleWizardStepBinding({
   );
 }
 
-function formatModuleScopeLabel(value: TemplateGovernanceRuleWizardStepBindingProps["moduleScope"]): string {
-  switch (value) {
-    case "screening":
-      return "初筛";
-    case "proofreading":
-      return "校对";
-    case "editing":
-      return "编辑";
-    case "any":
-    default:
-      return "全部模块";
+function formatModuleScopeLabel(
+  value: TemplateGovernanceRuleWizardStepBindingProps["moduleScope"],
+): string {
+  return formatTemplateGovernanceModuleLabel(value ?? "any");
+}
+
+function buildKnowledgeGroupCounts(
+  items: RuleWizardBindingOptions["knowledgeItems"],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const item of items) {
+    const label = formatTemplateGovernanceKnowledgeKindLabel(item.knowledgeKind);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
   }
+
+  return counts;
+}
+
+function formatManuscriptTypesSummary(
+  value: TemplateGovernanceRuleWizardStepBindingProps["manuscriptTypes"],
+): string {
+  if (value == null || value === "any") {
+    return "全部 / 任意";
+  }
+
+  return value.map((item) => formatTemplateGovernanceManuscriptTypeLabel(item)).join("、");
 }

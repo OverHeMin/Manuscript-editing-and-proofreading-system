@@ -55,6 +55,9 @@ function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
     template_bindings: record.template_bindings
       ? [...record.template_bindings]
       : undefined,
+    linked_knowledge_item_ids: record.linked_knowledge_item_ids
+      ? [...record.linked_knowledge_item_ids]
+      : undefined,
     projection_source: record.projection_source
       ? JSON.parse(JSON.stringify(record.projection_source))
       : undefined,
@@ -479,6 +482,9 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     revision: KnowledgeRevisionRecord,
   ): KnowledgeRecord {
     const bindings = this.bindingsByRevisionId.get(revision.id) ?? [];
+    const linkedKnowledgeItemIds = bindings
+      .filter((binding) => binding.binding_kind === "knowledge_item")
+      .map((binding) => binding.binding_target_id);
 
     return {
       id: revision.asset_id,
@@ -510,6 +516,11 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
       ...(bindings.length > 0
         ? {
             template_bindings: bindings.map((binding) => binding.binding_target_id),
+          }
+        : {}),
+      ...(linkedKnowledgeItemIds.length > 0
+        ? {
+            linked_knowledge_item_ids: [...linkedKnowledgeItemIds],
           }
         : {}),
       ...(revision.source_learning_candidate_id != null

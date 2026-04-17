@@ -34,7 +34,8 @@ export function createRuleAuthoringDraft<TObject extends RuleAuthoringObject>(
 export function serializeRuleAuthoringDraft(
   draft: RuleAuthoringDraft,
 ): SerializedRuleAuthoringDraft {
-  switch (draft.ruleObject) {
+  const serialized = (() => {
+    switch (draft.ruleObject) {
     case "abstract":
       return serializeAbstractRule(draft);
     case "heading_hierarchy":
@@ -65,7 +66,10 @@ export function serializeRuleAuthoringDraft(
       return serializeManuscriptStructureRule(draft);
     case "journal_column":
       return serializeJournalColumnRule(draft);
-  }
+    }
+  })();
+
+  return mergeLinkedKnowledgePayload(serialized, draft.linkedKnowledgeItemIds);
 }
 
 export function hydrateRuleAuthoringDraft(
@@ -82,6 +86,7 @@ export function hydrateRuleAuthoringDraft(
         severity: rule.severity,
         enabled: rule.enabled,
         evidenceLevel: rule.evidence_level ?? draft.evidenceLevel,
+        linkedKnowledgeItemIds: extractLinkedKnowledgeItemIds(rule),
         payload: {
           ...draft.payload,
           labelRole:
@@ -1031,8 +1036,41 @@ function applyCommonHydration<TDraft extends RuleAuthoringDraft>(
     evidenceLevel: rule.evidence_level ?? draft.evidenceLevel,
     manualReviewReasonTemplate:
       rule.manual_review_reason_template ?? draft.manualReviewReasonTemplate,
+    linkedKnowledgeItemIds: extractLinkedKnowledgeItemIds(rule),
     payload,
   };
+}
+
+function mergeLinkedKnowledgePayload(
+  serialized: SerializedRuleAuthoringDraft,
+  linkedKnowledgeItemIds: string[] | undefined,
+): SerializedRuleAuthoringDraft {
+  const normalizedIds = normalizeLinkedKnowledgeItemIds(linkedKnowledgeItemIds);
+  if (normalizedIds.length === 0) {
+    return serialized;
+  }
+
+  return {
+    ...serialized,
+    linkagePayload: {
+      ...serialized.linkagePayload,
+      projected_knowledge_item_ids: normalizedIds,
+    },
+  };
+}
+
+function extractLinkedKnowledgeItemIds(rule: EditorialRuleViewModel): string[] {
+  return normalizeLinkedKnowledgeItemIds(
+    asStringArray(rule.linkage_payload?.["projected_knowledge_item_ids"]),
+  );
+}
+
+function normalizeLinkedKnowledgeItemIds(value: string[] | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return [...new Set(value.map((item) => item.trim()).filter((item) => item.length > 0))];
 }
 
 function describeSelector(selector: Record<string, unknown>): string {
