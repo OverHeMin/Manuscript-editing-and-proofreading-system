@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REQUIRED_NODE_MAJOR = 22;
@@ -45,7 +46,8 @@ export function evaluateRuntimeAlignment({
 }
 
 function main() {
-  const pnpmVersionResult = runCommand("pnpm", ["-v"], {
+  const pnpmCommand = resolvePnpmCommand();
+  const pnpmVersionResult = runCommand(pnpmCommand.command, pnpmCommand.args.concat("-v"), {
     captureOutput: true,
   });
 
@@ -85,8 +87,41 @@ function main() {
     );
   }
 
-  const gateResult = runCommand("pnpm", ["verify:manuscript-workbench"]);
+  const gateResult = runCommand(
+    pnpmCommand.command,
+    pnpmCommand.args.concat("verify:manuscript-workbench"),
+  );
   return gateResult.status ?? 1;
+}
+
+function resolvePnpmCommand() {
+  const nodeDir = dirname(process.execPath);
+  const candidates =
+    process.platform === "win32"
+      ? [
+          { command: join(nodeDir, "pnpm.cmd"), args: [] },
+          { command: join(nodeDir, "pnpm.ps1"), args: [] },
+          { command: "pnpm", args: [] },
+        ]
+      : [
+          { command: join(nodeDir, "pnpm"), args: [] },
+          { command: "pnpm", args: [] },
+        ];
+
+  for (const candidate of candidates) {
+    const probe = runCommand(candidate.command, candidate.args.concat("-v"), {
+      captureOutput: true,
+      allowCommandFailure: true,
+    });
+    if (probe.status === 0) {
+      return candidate;
+    }
+  }
+
+  return {
+    command: "pnpm",
+    args: [],
+  };
 }
 
 function runCommand(command, args, options = {}) {
@@ -106,7 +141,7 @@ function runCommand(command, args, options = {}) {
 
   if (result.error) {
     return {
-      status: 1,
+      status: options.allowCommandFailure ? 1 : 1,
       stdout: result.stdout ?? "",
       stderr: result.error.message,
     };

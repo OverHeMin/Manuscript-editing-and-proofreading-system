@@ -141,6 +141,18 @@ export function hydrateRuleAuthoringDraft(
         reportingRequirement:
           asString(rule.authoring_payload["reporting_requirement"]) ??
           draft.payload.reportingRequirement,
+        metricFamily:
+          asStatisticsMetricFamily(rule.authoring_payload["metric_family"]) ??
+          draft.payload.metricFamily,
+        supportedMetrics:
+          asString(rule.authoring_payload["supported_metrics"]) ??
+          draft.payload.supportedMetrics,
+        requiredCompanionEvidence:
+          asString(rule.authoring_payload["required_companion_evidence"]) ??
+          draft.payload.requiredCompanionEvidence,
+        recalculationPolicy:
+          asString(rule.authoring_payload["recalculation_policy"]) ??
+          draft.payload.recalculationPolicy,
       });
     }
     case "table": {
@@ -519,15 +531,21 @@ function serializeStatisticalExpressionRule(
     trigger: {
       kind: "statistical_expression",
       pattern: draft.payload.expressionPattern,
+      metric_family: draft.payload.metricFamily,
     },
     action: {
       kind: "normalize_statistical_expression",
       requirement: draft.payload.reportingRequirement,
+      recalculation_policy: draft.payload.recalculationPolicy,
     },
     authoringPayload: {
       target_section: draft.payload.targetSection,
       expression_pattern: draft.payload.expressionPattern,
       reporting_requirement: draft.payload.reportingRequirement,
+      metric_family: draft.payload.metricFamily,
+      supported_metrics: draft.payload.supportedMetrics,
+      required_companion_evidence: draft.payload.requiredCompanionEvidence,
+      recalculation_policy: draft.payload.recalculationPolicy,
     },
     evidenceLevel: draft.evidenceLevel,
     confidencePolicy: draft.confidencePolicy,
@@ -1236,6 +1254,15 @@ function describeSemanticHit(draft: RuleAuthoringDraft): string {
 }
 
 function describeExpectedEvidence(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject === "statistical_expression") {
+    return [
+      `metric_family=${draft.payload.metricFamily}`,
+      `supported_metrics=${draft.payload.supportedMetrics}`,
+      `companion_evidence=${draft.payload.requiredCompanionEvidence}`,
+      `recalculation_policy=${draft.payload.recalculationPolicy}`,
+    ].join(" | ");
+  }
+
   if (draft.ruleObject !== "table") {
     return "运行证据会基于解析后的选择器和文本变换路径生成。";
   }
@@ -1328,6 +1355,17 @@ function asStatisticsTarget(
   value: unknown,
 ): StatisticalExpressionRuleAuthoringDraft["payload"]["targetSection"] | undefined {
   return value === "results" || value === "body" ? value : undefined;
+}
+
+function asStatisticsMetricFamily(
+  value: unknown,
+): StatisticalExpressionRuleAuthoringDraft["payload"]["metricFamily"] | undefined {
+  return value === "basic" ||
+    value === "diagnostic" ||
+    value === "regression" ||
+    value === "inferential"
+    ? value
+    : undefined;
 }
 
 function asTableKind(

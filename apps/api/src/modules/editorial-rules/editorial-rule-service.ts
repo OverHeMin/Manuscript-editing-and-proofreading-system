@@ -131,7 +131,7 @@ export class EditorialRuleService {
     actorRole: RoleKey,
     input: CreateEditorialRuleSetInput,
   ): Promise<EditorialRuleSetRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     const templateFamily = await this.templateFamilyRepository.findById(
       input.templateFamilyId,
@@ -183,7 +183,7 @@ export class EditorialRuleService {
     actorRole: RoleKey,
     ruleSetId: string,
   ): Promise<EditorialRuleSetRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     const ruleSet = await this.repository.findRuleSetById(ruleSetId);
     if (!ruleSet) {
@@ -235,7 +235,7 @@ export class EditorialRuleService {
     actorRole: RoleKey,
     input: CreateEditorialRuleInput,
   ): Promise<EditorialRuleRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     const ruleSet = await this.repository.findRuleSetById(input.ruleSetId);
     if (!ruleSet) {

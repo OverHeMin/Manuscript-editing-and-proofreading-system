@@ -170,7 +170,7 @@ export class PromptSkillRegistryService {
     actorRole: RoleKey,
     input: CreatePromptTemplateInput,
   ): Promise<PromptTemplateRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     const record: PromptTemplateRecord = {
       id: this.createId(),
@@ -243,7 +243,7 @@ export class PromptSkillRegistryService {
     actorRole: RoleKey,
     input: CreatePromptTemplateFromLearningCandidateInput,
   ): Promise<PromptTemplateRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
     await requireApprovedLearningCandidate(
       this.learningCandidateRepository,
       input.sourceLearningCandidateId,
@@ -259,7 +259,7 @@ export class PromptSkillRegistryService {
     actorRole: RoleKey,
     promptTemplateId: string,
   ): Promise<PromptTemplateRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     const record = await this.repository.findPromptTemplateById(promptTemplateId);
     if (!record) {

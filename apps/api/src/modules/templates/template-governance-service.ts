@@ -1081,7 +1081,7 @@ export class TemplateGovernanceService {
     templateFamilyId: string,
     actorRole: RoleKey,
   ): Promise<KnowledgeRetrievalQualityRunRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
 
     if (!this.knowledgeRetrievalRepository) {
       throw new TemplateRetrievalQualityDependencyError();

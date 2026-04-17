@@ -567,3 +567,60 @@ test("template governance controller preserves journal template selection in rul
     },
   });
 });
+
+test("statistical expression authoring serializes governed medical-statistics metadata", () => {
+  const draft = createRuleAuthoringDraft("statistical_expression");
+
+  draft.payload.targetSection = "results";
+  draft.payload.expressionPattern = "AUC, beta, chi-square, t, F, P";
+  draft.payload.reportingRequirement = "统计量、P值与区间格式需统一";
+  draft.payload.metricFamily = "inferential";
+  draft.payload.supportedMetrics = "chi-square, t, F, P, mean±SD";
+  draft.payload.requiredCompanionEvidence = "样本量、自由度、均值±标准差、列联表计数";
+  draft.payload.recalculationPolicy = "recheck_from_counts_when_possible";
+
+  const serialized = serializeRuleAuthoringDraft(draft);
+  const preview = buildRuleAuthoringPreview(draft);
+
+  assert.equal(serialized.authoringPayload.metric_family, "inferential");
+  assert.equal(
+    serialized.authoringPayload.supported_metrics,
+    "chi-square, t, F, P, mean±SD",
+  );
+  assert.equal(
+    serialized.authoringPayload.required_companion_evidence,
+    "样本量、自由度、均值±标准差、列联表计数",
+  );
+  assert.equal(
+    serialized.authoringPayload.recalculation_policy,
+    "recheck_from_counts_when_possible",
+  );
+  assert.match(preview.expectedEvidenceSummary, /mean±SD/u);
+  assert.match(preview.expectedEvidenceSummary, /自由度/u);
+});
+
+test("statistical expression authoring form renders governed statistic configuration fields", () => {
+  const draft = createRuleAuthoringDraft("statistical_expression");
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-statistics-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "proofreading",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(markup, /指标家族/u);
+  assert.match(markup, /支持指标/u);
+  assert.match(markup, /配套证据/u);
+  assert.match(markup, /重算策略/u);
+});

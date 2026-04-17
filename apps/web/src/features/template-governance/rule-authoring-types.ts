@@ -68,10 +68,20 @@ export interface NumericUnitRuleAuthoringPayload {
   decimalPlaces: string;
 }
 
+export type StatisticalExpressionMetricFamily =
+  | "basic"
+  | "diagnostic"
+  | "regression"
+  | "inferential";
+
 export interface StatisticalExpressionRuleAuthoringPayload {
   targetSection: "results" | "body";
   expressionPattern: string;
   reportingRequirement: string;
+  metricFamily: StatisticalExpressionMetricFamily;
+  supportedMetrics: string;
+  requiredCompanionEvidence: string;
+  recalculationPolicy: string;
 }
 
 export interface TableRuleAuthoringPayload {

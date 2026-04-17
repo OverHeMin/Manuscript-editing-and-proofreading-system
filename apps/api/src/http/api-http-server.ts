@@ -4294,15 +4294,15 @@ async function handleRoute(
         snapshotId: routeMatch.snapshotId,
       });
     case "templates-create-family":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createTemplateFamily(
         (await readJsonBody(req)) as Parameters<typeof runtime.templateApi.createTemplateFamily>[0],
       );
     case "templates-list-families":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.listTemplateFamilies();
     case "templates-update-family":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.updateTemplateFamily({
         templateFamilyId: routeMatch.templateFamilyId,
         input: (await readJsonBody(req)) as Parameters<
@@ -4310,49 +4310,49 @@ async function handleRoute(
         >[0]["input"],
       });
     case "templates-create-module-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createModuleTemplateDraft(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createModuleTemplateDraft
         >[0],
       );
     case "templates-create-content-module-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createContentModuleDraft(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createContentModuleDraft
         >[0],
       );
     case "templates-create-content-module-draft-from-candidate":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createContentModuleDraftFromCandidate(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createContentModuleDraftFromCandidate
         >[0],
       );
     case "templates-create-journal-template":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createJournalTemplateProfile(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createJournalTemplateProfile
         >[0],
       );
     case "templates-create-template-composition-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createTemplateCompositionDraft(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createTemplateCompositionDraft
         >[0],
       );
     case "templates-create-template-composition-draft-from-candidate":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createTemplateCompositionDraftFromCandidate(
         (await readJsonBody(req)) as Parameters<
           typeof runtime.templateApi.createTemplateCompositionDraftFromCandidate
         >[0],
       );
     case "templates-update-module-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.updateModuleTemplateDraft({
         moduleTemplateId: routeMatch.moduleTemplateId,
         input: (await readJsonBody(req)) as Parameters<
@@ -4360,7 +4360,7 @@ async function handleRoute(
         >[0]["input"],
       });
     case "templates-update-content-module-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.updateContentModuleDraft({
         contentModuleId: routeMatch.contentModuleId,
         input: (await readJsonBody(req)) as Parameters<
@@ -4368,12 +4368,12 @@ async function handleRoute(
         >[0]["input"],
       });
     case "templates-list-module-templates":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.listModuleTemplatesByTemplateFamilyId({
         templateFamilyId: routeMatch.templateFamilyId,
       });
     case "templates-list-content-modules":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.listContentModules({
         moduleClass: routeMatch.moduleClass as
           | "general"
@@ -4381,10 +4381,10 @@ async function handleRoute(
           | undefined,
       });
     case "templates-list-template-compositions":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.listTemplateCompositions();
     case "templates-list-journal-templates":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.listJournalTemplateProfilesByTemplateFamilyId({
         templateFamilyId: routeMatch.templateFamilyId,
       });
@@ -4414,7 +4414,7 @@ async function handleRoute(
       });
     }
     case "templates-update-template-composition-draft":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.updateTemplateCompositionDraft({
         templateCompositionId: routeMatch.templateCompositionId,
         input: (await readJsonBody(req)) as Parameters<
@@ -4436,7 +4436,11 @@ async function handleRoute(
       });
     }
     case "editorial-rules-create-rule-set": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         templateFamilyId: string;
@@ -4456,13 +4460,13 @@ async function handleRoute(
       });
     }
     case "editorial-rules-list-rule-sets":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.editorialRuleApi.listRuleSets();
     case "editorial-rules-list-extraction-tasks":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.editorialRuleApi.listExtractionTasks();
     case "editorial-rules-create-extraction-task": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.createExtractionTask
       >[0];
@@ -4472,12 +4476,12 @@ async function handleRoute(
       });
     }
     case "editorial-rules-get-extraction-task":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.editorialRuleApi.getExtractionTask({
         taskId: routeMatch.taskId,
       });
     case "editorial-rules-update-extraction-task-candidate": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.updateExtractionTaskCandidate
       >[0];
@@ -4489,14 +4493,22 @@ async function handleRoute(
       });
     }
     case "editorial-rules-publish-rule-set": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
       return runtime.editorialRuleApi.publishRuleSet({
         actorRole: session.user.role,
         ruleSetId: routeMatch.ruleSetId,
       });
     }
     case "editorial-rules-create-rule": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         orderNo: number;
@@ -4569,12 +4581,12 @@ async function handleRoute(
       });
     }
     case "editorial-rules-list-rules":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.editorialRuleApi.listRules({
         ruleSetId: routeMatch.ruleSetId,
       });
     case "editorial-rules-generate-rule-package-candidates": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.generateRulePackageCandidates
       >[0];
@@ -4584,7 +4596,7 @@ async function handleRoute(
       });
     }
     case "editorial-rules-create-rule-package-example-source-session": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.createRulePackageExampleSourceSession
       >[0];
@@ -4594,7 +4606,7 @@ async function handleRoute(
       });
     }
     case "editorial-rules-load-rule-package-workspace": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.loadRulePackageWorkspace
       >[0];
@@ -4604,7 +4616,7 @@ async function handleRoute(
       });
     }
     case "editorial-rules-preview-rule-package": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.previewRulePackage
       >[0];
@@ -4612,7 +4624,7 @@ async function handleRoute(
       return runtime.editorialRuleApi.previewRulePackage(body);
     }
     case "editorial-rules-preview-rule-package-compile": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.previewRulePackageCompile
       >[0];
@@ -4622,7 +4634,7 @@ async function handleRoute(
       });
     }
     case "editorial-rules-compile-rule-packages-to-draft": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.compileRulePackagesToDraft
       >[0];
@@ -4632,7 +4644,7 @@ async function handleRoute(
       });
     }
     case "editorial-rules-generate-rule-package-candidates-from-reviewed-case": {
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       const body = (await readJsonBody(req)) as Parameters<
         typeof runtime.editorialRuleApi.generateRulePackageCandidatesFromReviewedCase
       >[0];
@@ -4674,7 +4686,11 @@ async function handleRoute(
       });
     }
     case "prompt-skill-create-prompt-template": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         name: string;
@@ -4720,10 +4736,14 @@ async function handleRoute(
       });
     }
     case "prompt-skill-list-prompt-templates":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "template-governance.manage");
       return runtime.promptSkillRegistryApi.listPromptTemplates();
     case "prompt-skill-publish-prompt-template": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
       return runtime.promptSkillRegistryApi.publishPromptTemplate({
         actorRole: session.user.role,
         promptTemplateId: routeMatch.promptTemplateId,
@@ -5157,7 +5177,11 @@ async function handleRoute(
       });
     }
     case "templates-get-latest-retrieval-quality-run": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
 
       return runtime.templateApi.getLatestRetrievalQualityRun({
         templateFamilyId: routeMatch.templateFamilyId,

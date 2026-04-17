@@ -230,9 +230,12 @@ export function formatRulePackageSuggestedLayerLabel(value: string): string {
 
 export function formatRulePackageAutomationPostureLabel(value: string): string {
   switch (value) {
+    case "safe_auto":
+      return "直接自动";
     case "guarded_auto":
       return "谨慎自动";
     case "inspect":
+    case "inspect_only":
       return "仅检查";
     case "manual_only":
       return "人工处理";
@@ -249,8 +252,14 @@ export function formatRulePackageKindLabel(value: string): string {
       return "前置信息";
     case "abstract_keywords":
       return "摘要与关键词";
+    case "terminology":
+      return "术语规范";
     case "heading_hierarchy":
       return "标题层级";
+    case "statement":
+      return "声明规则";
+    case "manuscript_structure":
+      return "稿件结构";
     case "numeric_statistics":
       return "数值统计";
     case "three_line_table":
@@ -264,6 +273,8 @@ export function formatRulePackageKindLabel(value: string): string {
 
 export function formatRulePackageTargetLabel(value: string): string {
   switch (value) {
+    case "template_family":
+      return "模板族";
     case "front_matter":
       return "前置信息块";
     case "author_line":
@@ -278,8 +289,18 @@ export function formatRulePackageTargetLabel(value: string): string {
       return "关键词";
     case "heading":
       return "标题";
+    case "heading_hierarchy":
+      return "标题层级";
     case "title":
       return "题名";
+    case "statistical_expression":
+      return "统计表达";
+    case "terminology":
+      return "术语";
+    case "statement":
+      return "声明";
+    case "manuscript_structure":
+      return "稿件结构";
     case "table":
       return "表格";
     case "reference":
