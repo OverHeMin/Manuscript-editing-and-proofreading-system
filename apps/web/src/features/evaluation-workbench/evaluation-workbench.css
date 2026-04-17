@@ -107,6 +107,33 @@
   gap: 14px;
 }
 
+.evaluation-workbench-unified-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(280px, 360px);
+  gap: 14px;
+  align-items: start;
+}
+
+.evaluation-workbench-workspace-sidebar,
+.evaluation-workbench-workspace-main,
+.evaluation-workbench-workspace-rail,
+.evaluation-workbench-operator-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.evaluation-workbench-workspace-main {
+  min-width: 0;
+}
+
+.evaluation-workbench-workspace-main.is-datasets {
+  align-content: start;
+}
+
+.evaluation-workbench-workspace-rail {
+  min-width: 0;
+}
+
 .evaluation-workbench-harness-shell {
   gap: 14px;
 }
@@ -416,6 +443,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
+}
+
+@media (max-width: 1180px) {
+  .evaluation-workbench-unified-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .evaluation-workbench-check {

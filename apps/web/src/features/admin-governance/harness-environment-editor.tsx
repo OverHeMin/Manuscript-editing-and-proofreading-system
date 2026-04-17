@@ -6,6 +6,7 @@ import type { ModelRoutingPolicyVersionViewModel } from "../model-routing-govern
 import type { ModuleExecutionProfileViewModel } from "../execution-governance/index.ts";
 import type { ManuscriptType } from "../manuscripts/index.ts";
 import type { RuntimeBindingViewModel } from "../runtime-bindings/index.ts";
+import { formatEditorialManuscriptTypeLabel } from "../shared/editorial-taxonomy.ts";
 import type { TemplateModule } from "../templates/index.ts";
 import type {
   ManuscriptQualityPackageViewModel,
@@ -14,6 +15,9 @@ import type {
 export interface HarnessEnvironmentEditorProps {
   module: TemplateModule;
   manuscriptType: ManuscriptType;
+  availableManuscriptTypes: readonly ManuscriptType[];
+  templateFamilyName: string | null;
+  templateFamilyId: string | null;
   activeScope: AdminHarnessScopeViewModel | null;
   preview: HarnessEnvironmentPreviewViewModel | null;
   qualityPackages: readonly ManuscriptQualityPackageViewModel[];
@@ -28,6 +32,7 @@ export interface HarnessEnvironmentEditorProps {
     manualReviewPolicyId: string;
   };
   onModuleChange: (module: TemplateModule) => void;
+  onManuscriptTypeChange: (manuscriptType: ManuscriptType) => void;
   onSelectionChange: (
     patch: Partial<HarnessEnvironmentEditorProps["selection"]>,
   ) => void;
@@ -66,7 +71,34 @@ export function HarnessEnvironmentEditor(
 
         <label className="admin-governance-field">
           <span>Manuscript Type</span>
-          <input type="text" value={props.manuscriptType} readOnly />
+          <select
+            value={props.manuscriptType}
+            onChange={(event) =>
+              props.onManuscriptTypeChange(event.target.value as ManuscriptType)
+            }
+            disabled={props.isMutating || props.availableManuscriptTypes.length === 0}
+          >
+            {props.availableManuscriptTypes.map((manuscriptType) => (
+              <option key={manuscriptType} value={manuscriptType}>
+                {formatEditorialManuscriptTypeLabel(manuscriptType)} ({manuscriptType})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="admin-governance-field">
+          <span>Template Family</span>
+          <input
+            type="text"
+            value={
+              props.templateFamilyId == null
+                ? "No resolved scope"
+                : props.templateFamilyName
+                  ? `${props.templateFamilyName} (${props.templateFamilyId})`
+                  : props.templateFamilyId
+            }
+            readOnly
+          />
         </label>
 
         <label className="admin-governance-field">

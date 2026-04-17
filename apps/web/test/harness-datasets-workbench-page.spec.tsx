@@ -257,6 +257,8 @@ test("harness datasets workbench page can render in an embedded harness-owned mo
     />,
   );
 
+  assert.match(markup, /harness-datasets-workbench is-embedded/u);
+  assert.match(markup, /harness-datasets-embedded-banner/u);
   assert.doesNotMatch(markup, /harness-datasets-hero/u);
   assert.doesNotMatch(markup, /workbench-core-strip is-secondary/u);
   assert.match(markup, /待整理队列/u);

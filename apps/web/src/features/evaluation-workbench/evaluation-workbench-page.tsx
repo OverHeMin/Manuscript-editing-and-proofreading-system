@@ -11,6 +11,7 @@ import type {
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
 import { HarnessOperatorSection } from "./harness-operator-section.tsx";
+import { HarnessDatasetsWorkbenchPage } from "../harness-datasets/harness-datasets-workbench-page.tsx";
 import type { HarnessDatasetsWorkbenchOverview } from "../harness-datasets/types.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
 import type {
@@ -271,6 +272,9 @@ function EvaluationWorkbenchOperationsView(props: {
     selectedRun != null && !visibleHistory.some((entry) => entry.run.id === selectedRun.id);
   const selectedInspectionFinalization =
     selectedRunHistoryEntry?.finalized ?? props.overview.selectedRunFinalization;
+  const datasetDraftCount = props.initialDatasetsOverview?.draftVersions.length ?? 0;
+  const datasetPublishedCount = props.initialDatasetsOverview?.publishedVersions.length ?? 0;
+  const datasetVersionCount = datasetDraftCount + datasetPublishedCount;
 
   return (
     <section className="evaluation-workbench">
@@ -394,10 +398,55 @@ function EvaluationWorkbenchOperationsView(props: {
         <SummaryCard label="评测套件" value={props.overview.suites.length} />
         <SummaryCard label="运行记录" value={props.overview.runs.length} />
         <SummaryCard label="样本条目" value={props.overview.runItems.length} />
+        <SummaryCard label="数据集版本" value={datasetVersionCount} />
       </section>
 
-      <div className="evaluation-workbench-layout">
-        <section className="evaluation-workbench-panel">
+      <div className="evaluation-workbench-unified-layout">
+        <aside className="evaluation-workbench-workspace-sidebar">
+          <section className="evaluation-workbench-panel">
+            <div className="evaluation-workbench-panel-header">
+              <h3>Harness 工作区</h3>
+              <span>Unified operator loop</span>
+            </div>
+            <nav className="evaluation-workbench-harness-nav" aria-label="Harness 工作区">
+              <a
+                className={buildHarnessWorkspaceNavLinkClassName(props.section === "overview")}
+                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "overview" })}
+              >
+                总览
+              </a>
+              <a
+                className={buildHarnessWorkspaceNavLinkClassName(props.section === "runs")}
+                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "runs" })}
+              >
+                运行记录
+              </a>
+              <a
+                className={buildHarnessWorkspaceNavLinkClassName(props.section === "datasets")}
+                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
+              >
+                数据与样本
+              </a>
+            </nav>
+            <article className="evaluation-workbench-harness-datasets-entry">
+              <strong>数据与样本</strong>
+              <p className="evaluation-workbench-harness-copy">
+                数据集入口仍然留在当前 Harness 工作区里，方便和最近运行、证据、治理控制放在同一个操作链里。
+              </p>
+              <div className="evaluation-workbench-history-compare">
+                <span>草稿 {datasetDraftCount} 个</span>
+                <span>已发布 {datasetPublishedCount} 个</span>
+              </div>
+              <a
+                className="workbench-secondary-action"
+                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
+              >
+                打开数据与样本
+              </a>
+            </article>
+          </section>
+          <div className="evaluation-workbench-layout">
+            <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
             <h3>历史结果</h3>
             <span>{visibleHistory.length} 条可见 / {props.overview.finalizedRunHistory.length} 条总计</span>
@@ -494,9 +543,19 @@ function EvaluationWorkbenchOperationsView(props: {
               <strong>当前筛选条件下没有符合的已定稿运行。</strong>
             </div>
           )}
-        </section>
+            </section>
+          </div>
+        </aside>
 
-        <section className="evaluation-workbench-panel">
+        <main className={`evaluation-workbench-workspace-main${props.section === "datasets" ? " is-datasets" : ""}`}>
+          {props.section === "datasets" ? (
+            <HarnessDatasetsWorkbenchPage
+              embedded
+              initialOverview={props.initialDatasetsOverview}
+            />
+          ) : null}
+
+          <section className="evaluation-workbench-panel">
           <div className="evaluation-workbench-panel-header">
             <h3>套件信号摘要</h3>
             <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
@@ -628,19 +687,24 @@ function EvaluationWorkbenchOperationsView(props: {
             </>
           )}
         </section>
-      </div>
+        </main>
 
-      <HarnessOperatorSection
-        actorRole={props.actorRole}
-        harnessController={props.harnessController}
-        section={props.section}
-        initialHarnessOverview={props.initialHarnessOverview}
-        initialHarnessScope={props.initialHarnessScope}
-        initialHarnessPreview={props.initialHarnessPreview}
-        initialDatasetsOverview={props.initialDatasetsOverview}
-      />
+        <aside className="evaluation-workbench-workspace-rail">
+          <HarnessOperatorSection
+            actorRole={props.actorRole}
+            harnessController={props.harnessController}
+            initialHarnessOverview={props.initialHarnessOverview}
+            initialHarnessScope={props.initialHarnessScope}
+            initialHarnessPreview={props.initialHarnessPreview}
+          />
+        </aside>
+      </div>
     </section>
   );
+}
+
+function buildHarnessWorkspaceNavLinkClassName(isActive: boolean) {
+  return `evaluation-workbench-harness-nav-link${isActive ? " is-active" : ""}`;
 }
 
 function resolveEvaluationLandingCopy(section: WorkbenchHarnessSection): {
