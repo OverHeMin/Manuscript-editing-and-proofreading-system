@@ -287,7 +287,7 @@ async function createResolverHarness(input?: {
       compatibility_mode:
         input.providerConnection.compatibilityMode ?? "openai_chat_compatible",
       base_url: "https://resolver.example.com/v1",
-      enabled: input.providerConnection.enabled ?? true,
+      enabled: true,
     });
 
     if (input.providerConnection.apiKey) {
@@ -323,6 +323,17 @@ async function createResolverHarness(input?: {
       editing: systemModel.id,
     },
   });
+
+  if (input?.providerConnection?.enabled === false) {
+    const connection = await aiProviderConnectionRepository.findById(
+      input.providerConnection.id ?? "connection-1",
+    );
+    assert.ok(connection, "Expected the provider connection fixture.");
+    await aiProviderConnectionRepository.save({
+      ...connection,
+      enabled: false,
+    });
+  }
 
   const tool = await toolGatewayService.createTool("admin", {
     name: "knowledge.search",
