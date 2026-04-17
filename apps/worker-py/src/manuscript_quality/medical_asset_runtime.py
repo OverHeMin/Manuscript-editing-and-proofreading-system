@@ -25,6 +25,37 @@ DEFAULT_MEDICAL_ASSETS = {
     "count_constraints": {
         "percent": {"max_percent": 100},
     },
+    "diagnostic_metrics": {
+        "metric_aliases": {
+            "AUC": ["AUC", "area under the curve"],
+            "sensitivity": ["sensitivity", "sens"],
+            "specificity": ["specificity", "spec"],
+        },
+        "metric_ranges": {
+            "AUC": {"min": 0.5, "max": 1.0},
+            "sensitivity": {"min": 0.0, "max": 1.0},
+            "specificity": {"min": 0.0, "max": 1.0},
+        },
+        "confusion_matrix_aliases": {
+            "tp": ["TP", "true positive"],
+            "fp": ["FP", "false positive"],
+            "fn": ["FN", "false negative"],
+            "tn": ["TN", "true negative"],
+        },
+        "ci_confidence_levels": [95],
+    },
+    "regression_metrics": {
+        "field_aliases": {
+            "beta": ["beta", "β"],
+            "SE": ["SE", "standard error"],
+            "p_value": ["P", "P value"],
+            "confidence_interval": ["95% CI", "confidence interval"],
+            "odds_ratio": ["OR", "odds ratio"],
+            "risk_ratio": ["RR", "risk ratio"],
+            "hazard_ratio": ["HR", "hazard ratio"],
+        },
+        "ci_confidence_levels": [95],
+    },
     "issue_policy": {
         "table_text_direction_conflict": {
             "severity": "high",
@@ -34,11 +65,39 @@ DEFAULT_MEDICAL_ASSETS = {
             "severity": "high",
             "action": "manual_review",
         },
+        "diagnostic_metric_out_of_range": {
+            "severity": "medium",
+            "action": "manual_review",
+        },
+        "diagnostic_metric_mismatch": {
+            "severity": "high",
+            "action": "manual_review",
+        },
+        "auc_confidence_interval_conflict": {
+            "severity": "high",
+            "action": "manual_review",
+        },
+        "regression_coefficient_conflict": {
+            "severity": "high",
+            "action": "manual_review",
+        },
+        "test_statistic_conflict": {
+            "severity": "high",
+            "action": "manual_review",
+        },
+        "statistical_information_incomplete": {
+            "severity": "medium",
+            "action": "manual_review",
+        },
     },
     "analyzer_toggles": {
         "table_text_consistency": True,
         "numeric_consistency": True,
         "medical_logic": True,
+        "diagnostic_metric_consistency": True,
+        "regression_consistency": True,
+        "statistical_recheck": True,
+        "inferential_statistic_consistency": True,
     },
 }
 
@@ -58,6 +117,8 @@ def load_medical_assets(quality_packages: list[dict] | None) -> dict[str, Any]:
         "unit_ranges",
         "comparison_templates",
         "count_constraints",
+        "diagnostic_metrics",
+        "regression_metrics",
         "issue_policy",
         "analyzer_toggles",
     ):
@@ -151,6 +212,94 @@ def resolve_count_constraint(constraint_key: str, assets: dict[str, Any]) -> dic
 
     constraint = count_constraints.get(constraint_key)
     return constraint if isinstance(constraint, dict) else {}
+
+
+def resolve_diagnostic_metric_aliases(assets: dict[str, Any]) -> dict[str, list[str]]:
+    diagnostic_metrics = assets.get("diagnostic_metrics", {})
+    if not isinstance(diagnostic_metrics, dict):
+        return {}
+
+    metric_aliases = diagnostic_metrics.get("metric_aliases", {})
+    if not isinstance(metric_aliases, dict):
+        return {}
+
+    return {
+        key: [alias for alias in value if isinstance(alias, str)]
+        for key, value in metric_aliases.items()
+        if isinstance(key, str) and isinstance(value, list)
+    }
+
+
+def resolve_diagnostic_metric_range(
+    metric_key: str,
+    assets: dict[str, Any],
+) -> dict[str, Any]:
+    diagnostic_metrics = assets.get("diagnostic_metrics", {})
+    if not isinstance(diagnostic_metrics, dict):
+        return {}
+
+    metric_ranges = diagnostic_metrics.get("metric_ranges", {})
+    if not isinstance(metric_ranges, dict):
+        return {}
+
+    metric_range = metric_ranges.get(metric_key)
+    return metric_range if isinstance(metric_range, dict) else {}
+
+
+def resolve_confusion_matrix_aliases(assets: dict[str, Any]) -> dict[str, list[str]]:
+    diagnostic_metrics = assets.get("diagnostic_metrics", {})
+    if not isinstance(diagnostic_metrics, dict):
+        return {}
+
+    aliases = diagnostic_metrics.get("confusion_matrix_aliases", {})
+    if not isinstance(aliases, dict):
+        return {}
+
+    return {
+        key: [alias for alias in value if isinstance(alias, str)]
+        for key, value in aliases.items()
+        if isinstance(key, str) and isinstance(value, list)
+    }
+
+
+def resolve_diagnostic_confidence_levels(assets: dict[str, Any]) -> list[float]:
+    diagnostic_metrics = assets.get("diagnostic_metrics", {})
+    if not isinstance(diagnostic_metrics, dict):
+        return []
+
+    confidence_levels = diagnostic_metrics.get("ci_confidence_levels", [])
+    if not isinstance(confidence_levels, list):
+        return []
+
+    return [float(value) for value in confidence_levels if isinstance(value, (int, float))]
+
+
+def resolve_regression_field_aliases(assets: dict[str, Any]) -> dict[str, list[str]]:
+    regression_metrics = assets.get("regression_metrics", {})
+    if not isinstance(regression_metrics, dict):
+        return {}
+
+    field_aliases = regression_metrics.get("field_aliases", {})
+    if not isinstance(field_aliases, dict):
+        return {}
+
+    return {
+        key: [alias for alias in value if isinstance(alias, str)]
+        for key, value in field_aliases.items()
+        if isinstance(key, str) and isinstance(value, list)
+    }
+
+
+def resolve_regression_confidence_levels(assets: dict[str, Any]) -> list[float]:
+    regression_metrics = assets.get("regression_metrics", {})
+    if not isinstance(regression_metrics, dict):
+        return []
+
+    confidence_levels = regression_metrics.get("ci_confidence_levels", [])
+    if not isinstance(confidence_levels, list):
+        return []
+
+    return [float(value) for value in confidence_levels if isinstance(value, (int, float))]
 
 
 def resolve_comparison_template_pairs(

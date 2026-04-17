@@ -105,6 +105,185 @@ test("http server keeps harness dataset governance routes admin-only during publ
   }
 });
 
+test("http server grants knowledge reviewers scoped rule-center access without global admin power", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
+      method: "POST",
+      headers: {
+        Cookie: reviewerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptType: "review",
+        name: "Knowledge reviewer family",
+      }),
+    });
+    const family = (await familyResponse.json()) as { id: string };
+
+    assert.equal(familyResponse.status, 201);
+
+    const moduleDraftResponse = await fetch(`${baseUrl}/api/v1/templates/module-drafts`, {
+      method: "POST",
+      headers: {
+        Cookie: reviewerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        templateFamilyId: family.id,
+        module: "editing",
+        manuscriptType: "review",
+        prompt: "Keep terminology and structure aligned.",
+      }),
+    });
+
+    assert.equal(moduleDraftResponse.status, 201);
+
+    const contentModuleResponse = await fetch(
+      `${baseUrl}/api/v1/templates/content-modules`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          moduleClass: "general",
+          name: "Knowledge reviewer package",
+          category: "reference",
+          manuscriptTypeScope: ["review"],
+          executionModuleScope: ["editing"],
+          summary: "Reusable governed package for review manuscripts.",
+        }),
+      },
+    );
+    const contentModule = (await contentModuleResponse.json()) as { id: string };
+
+    assert.equal(contentModuleResponse.status, 201);
+
+    const templateCompositionResponse = await fetch(
+      `${baseUrl}/api/v1/templates/template-compositions`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Knowledge reviewer large template",
+          manuscriptType: "review",
+          generalModuleIds: [contentModule.id],
+          executionModuleScope: ["editing"],
+        }),
+      },
+    );
+
+    assert.equal(templateCompositionResponse.status, 201);
+
+    const journalTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/templates/journal-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          templateFamilyId: family.id,
+          manuscriptType: "review",
+          journalKey: "reviewer-journal",
+          journalName: "Reviewer Journal",
+        }),
+      },
+    );
+
+    assert.equal(journalTemplateResponse.status, 201);
+
+    const ruleSetResponse = await fetch(`${baseUrl}/api/v1/editorial-rules/rule-sets`, {
+      method: "POST",
+      headers: {
+        Cookie: reviewerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        templateFamilyId: family.id,
+        module: "editing",
+      }),
+    });
+
+    assert.equal(ruleSetResponse.status, 201);
+
+    const promptTemplateResponse = await fetch(
+      `${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "knowledge_reviewer_prompt",
+          version: "1.0.0",
+          module: "editing",
+          manuscriptTypes: ["review"],
+        }),
+      },
+    );
+
+    assert.equal(promptTemplateResponse.status, 201);
+
+    const listResponses = await Promise.all([
+      fetch(`${baseUrl}/api/v1/templates/families`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/templates/families/${family.id}/module-templates`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/templates/families/${family.id}/journal-templates`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/templates/content-modules?moduleClass=general`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/templates/content-modules?moduleClass=medical_specialized`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/templates/template-compositions`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/editorial-rules/rule-sets`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/editorial-rules/extraction-tasks`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/prompt-skill-registry/prompt-templates`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+      fetch(`${baseUrl}/api/v1/knowledge/library`, {
+        headers: { Cookie: reviewerCookie },
+      }),
+    ]);
+
+    for (const response of listResponses) {
+      assert.equal(response.status, 200);
+    }
+
+    const harnessResponse = await fetch(`${baseUrl}/api/v1/harness-datasets/workbench`, {
+      headers: {
+        Cookie: reviewerCookie,
+      },
+    });
+
+    assert.equal(harnessResponse.status, 403);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server returns 401 for invalid login credentials", async () => {
   const { server, baseUrl } = await startServer();
 

@@ -12,7 +12,10 @@ export class ExamplePairDiffService {
     return [
       ...extractFrontMatterSignals(input),
       ...extractAbstractKeywordSignals(input),
+      ...extractTerminologySignals(input),
       ...extractHeadingSignals(input),
+      ...extractManuscriptStructureSignals(input),
+      ...extractStatementSignals(input),
       ...extractNumericSignals(input),
       ...extractTableSignals(input),
       ...extractReferenceSignals(input),
@@ -41,9 +44,25 @@ function extractAbstractKeywordSignals(input: {
   return extractBlockChangeSignals({
     ...input,
     package_hint: "abstract_keywords",
-    include: (block) => block.section_key === "abstract",
+    include: (block) =>
+      block.section_key === "abstract" &&
+      (block.semantic_role === "abstract_heading" ||
+        block.semantic_role === "keyword_line"),
     classifySignalType: () => "label_normalization",
     rationale: "摘要与关键词标签的标点或分隔样式发生了统一。",
+  });
+}
+
+function extractTerminologySignals(input: {
+  original: ExampleDocumentSnapshot;
+  edited: ExampleDocumentSnapshot;
+}): EditIntentSignal[] {
+  return extractBlockChangeSignals({
+    ...input,
+    package_hint: "terminology",
+    include: (block) => isTerminologyBlock(block),
+    classifySignalType: () => "text_style_normalization",
+    rationale: "术语表达在编后稿中被统一为偏好的医学写法。",
   });
 }
 
@@ -59,6 +78,49 @@ function extractHeadingSignals(input: {
       (block.section_key === "body" && matchesHeadingPattern(block.text)),
     classifySignalType: () => "text_style_normalization",
     rationale: "标题层级的编号与空格格式被统一。",
+  });
+}
+
+function extractManuscriptStructureSignals(input: {
+  original: ExampleDocumentSnapshot;
+  edited: ExampleDocumentSnapshot;
+}): EditIntentSignal[] {
+  const originalOutline = extractTopLevelStructureHeadings(input.original);
+  const editedOutline = extractTopLevelStructureHeadings(input.edited);
+  if (
+    originalOutline.length === 0 ||
+    editedOutline.length === 0 ||
+    areStringArraysEqual(originalOutline, editedOutline)
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      id: "manuscript_structure:top_level_outline",
+      package_hint: "manuscript_structure",
+      signal_type: "text_style_normalization",
+      object_hint: "manuscript_structure",
+      before: originalOutline.join(" > "),
+      after: editedOutline.join(" > "),
+      rationale: "稿件的一级章节结构在编后稿中被补齐或重排。",
+      confidence: 0.9,
+      risk_flags: ["manual_confirmation"],
+    },
+  ];
+}
+
+function extractStatementSignals(input: {
+  original: ExampleDocumentSnapshot;
+  edited: ExampleDocumentSnapshot;
+}): EditIntentSignal[] {
+  return extractBlockChangeSignals({
+    ...input,
+    package_hint: "statement",
+    include: (block) => block.section_key === "back_matter" || isStatementBlock(block),
+    classifySignalType: (change) =>
+      change.kind === "inserted" ? "inserted_block" : "text_style_normalization",
+    rationale: "稿件补入或规范了必需声明语句与落位。",
   });
 }
 
@@ -210,4 +272,33 @@ function matchesHeadingPattern(text: string): boolean {
 function hasNumericStatisticPattern(text: string): boolean {
   const normalized = text.trim();
   return /\d/u.test(normalized) && /(%|P<|P>|mg|cm|mm|~|d\b)/iu.test(normalized);
+}
+
+function isTerminologyBlock(block: ExampleDocumentBlockSnapshot): boolean {
+  return block.semantic_role === "terminology";
+}
+
+function isStatementBlock(block: ExampleDocumentBlockSnapshot): boolean {
+  return block.semantic_role === "statement" || block.semantic_role.endsWith("_statement");
+}
+
+function extractTopLevelStructureHeadings(
+  snapshot: ExampleDocumentSnapshot,
+): string[] {
+  return snapshot.sections
+    .filter((section) => section.level == null || section.level <= 1)
+    .map((section) => normalizeStructureHeading(section.heading))
+    .filter((heading) => heading.length > 0);
+}
+
+function normalizeStructureHeading(heading: string): string {
+  return heading
+    .trim()
+    .replace(/[()（）【】\[\]<>《》［］「」『』]/gu, "")
+    .replace(/^[\d\s.,、，．]+/u, "")
+    .replace(/[\s\u3000]/gu, "");
+}
+
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

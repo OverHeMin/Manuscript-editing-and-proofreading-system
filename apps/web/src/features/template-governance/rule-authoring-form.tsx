@@ -485,6 +485,68 @@ function ObjectSpecificRuleFields({
               })
             }
           />
+          <label className="template-governance-field">
+            <span>指标家族</span>
+            <select
+              value={draft.payload.metricFamily}
+              onChange={(event) =>
+                onDraftChange({
+                  ...draft,
+                  payload: {
+                    ...draft.payload,
+                    metricFamily:
+                      event.target.value as typeof draft.payload.metricFamily,
+                  },
+                })
+              }
+            >
+              <option value="basic">基础统计</option>
+              <option value="diagnostic">诊断学统计</option>
+              <option value="regression">回归统计</option>
+              <option value="inferential">推断统计</option>
+            </select>
+          </label>
+          <TextField
+            label="支持指标"
+            value={draft.payload.supportedMetrics}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  supportedMetrics: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="配套证据"
+            value={draft.payload.requiredCompanionEvidence}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  requiredCompanionEvidence: value,
+                },
+              })
+            }
+            fullWidth
+          />
+          <TextField
+            label="重算策略"
+            value={draft.payload.recalculationPolicy}
+            onChange={(value) =>
+              onDraftChange({
+                ...draft,
+                payload: {
+                  ...draft.payload,
+                  recalculationPolicy: value,
+                },
+              })
+            }
+          />
         </>
       );
     case "table":

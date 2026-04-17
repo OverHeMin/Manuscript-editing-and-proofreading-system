@@ -11,7 +11,10 @@ import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in
 import { buildRealDocxGoldCase } from "./fixtures/real-docx-rule-package-gold-case.ts";
 import {
   buildMiniFrontMatterFixture,
+  buildMiniManuscriptStructureFixture,
+  buildMiniStatementFixture,
   buildMiniTableReferenceFixture,
+  buildMiniTerminologyFixture,
   findCandidate,
   buildRealGoldSnapshots,
   buildRealSampleFixture,
@@ -179,6 +182,57 @@ test("mini table and reference fixture keeps the table package inspect_only", as
   );
   assert.equal(
     findCandidate(response.body, "reference")?.suggested_layer,
+    "template_family",
+  );
+});
+
+test("mini terminology fixture isolates the terminology package", async () => {
+  const api = createRulePackageHarness();
+
+  const response = await api.generateRulePackageCandidates({
+    input: buildMiniTerminologyFixture(),
+  });
+
+  assert.deepEqual(
+    response.body.map((candidate) => candidate.package_kind),
+    ["terminology"],
+  );
+  assert.equal(
+    findCandidate(response.body, "terminology")?.suggested_layer,
+    "template_family",
+  );
+});
+
+test("mini statement fixture isolates the statement package", async () => {
+  const api = createRulePackageHarness();
+
+  const response = await api.generateRulePackageCandidates({
+    input: buildMiniStatementFixture(),
+  });
+
+  assert.deepEqual(
+    response.body.map((candidate) => candidate.package_kind),
+    ["statement"],
+  );
+  assert.equal(
+    findCandidate(response.body, "statement")?.automation_posture,
+    "inspect_only",
+  );
+});
+
+test("mini manuscript structure fixture isolates the manuscript structure package", async () => {
+  const api = createRulePackageHarness();
+
+  const response = await api.generateRulePackageCandidates({
+    input: buildMiniManuscriptStructureFixture(),
+  });
+
+  assert.deepEqual(
+    response.body.map((candidate) => candidate.package_kind),
+    ["manuscript_structure"],
+  );
+  assert.equal(
+    findCandidate(response.body, "manuscript_structure")?.suggested_layer,
     "template_family",
   );
 });

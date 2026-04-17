@@ -60,26 +60,24 @@ export function TemplateGovernanceContentModuleForm({
 
   const formTitle =
     mode === "edit"
-      ? ledgerKind === "general"
-        ? "编辑通用模块"
-        : "编辑医学专用模块"
+      ? "编辑规则包"
       : ledgerKind === "general"
-        ? "新建通用模块"
-        : "新建医学专用模块";
-  const submitLabel = mode === "edit" ? "保存模块修改" : "保存模块草稿";
+        ? "新建通用包"
+        : "新建医学专用包";
+  const submitLabel = mode === "edit" ? "保存规则包修改" : "保存规则包草稿";
 
   return (
     <section className="template-governance-form-layer">
       <article className="template-governance-card template-governance-content-module-form">
         <header className="template-governance-form-header">
           <h2>{formTitle}</h2>
-          <p>在同一张表单里完成模块录入，取消即可关闭，不保留右侧抽屉。</p>
+          <p>在同一张表单里完成规则包录入，取消即可关闭，不保留右侧抽屉。</p>
         </header>
         {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
         {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
         <div className="template-governance-form-grid">
           <label className="template-governance-field">
-            <span>模块名称</span>
+            <span>包名称</span>
             <input
               value={values.name}
               readOnly={!onChange}
@@ -92,7 +90,7 @@ export function TemplateGovernanceContentModuleForm({
             />
           </label>
           <label className="template-governance-field">
-            <span>{ledgerKind === "general" ? "模块分类" : "医学场景"}</span>
+            <span>{ledgerKind === "general" ? "包分类" : "医学场景"}</span>
             <input
               value={values.category}
               readOnly={!onChange}

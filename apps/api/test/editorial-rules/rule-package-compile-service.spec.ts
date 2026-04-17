@@ -165,6 +165,183 @@ function buildKnowledgeProjectionPackageDraft(): RulePackageDraft {
   };
 }
 
+function buildTerminologyPackageDraft(): RulePackageDraft {
+  return {
+    package_id: "package-terminology",
+    package_kind: "terminology",
+    title: "Terminology package",
+    rule_object: "terminology",
+    suggested_layer: "template_family",
+    automation_posture: "guarded_auto",
+    status: "draft",
+    cards: {
+      rule_what: {
+        title: "Terminology package",
+        object: "terminology",
+        publish_layer: "template_family",
+      },
+      ai_understanding: {
+        summary: "Normalize preferred medical terminology in the abstract.",
+        hit_objects: ["terminology"],
+        hit_locations: ["abstract"],
+      },
+      applicability: {
+        manuscript_types: ["clinical_study"],
+        modules: ["editing"],
+        sections: ["abstract"],
+        table_targets: [],
+      },
+      evidence: {
+        examples: [
+          {
+            before: "中性粒细胞明胶酶相关脂质运载蛋白",
+            after: "NGAL",
+          },
+        ],
+      },
+      exclusions: {
+        not_applicable_when: ["Term replacement changes the manuscript meaning."],
+        human_review_required_when: ["Review abbreviations before publish."],
+        risk_posture: "guarded_auto",
+      },
+    },
+    semantic_draft: {
+      semantic_summary: "Normalize preferred medical terminology in the abstract.",
+      hit_scope: ["terminology:text_style_normalization"],
+      applicability: ["abstract"],
+      evidence_examples: [
+        {
+          before: "中性粒细胞明胶酶相关脂质运载蛋白",
+          after: "NGAL",
+        },
+      ],
+      failure_boundaries: ["Term replacement changes the manuscript meaning."],
+      normalization_recipe: ["Replace non-preferred variants with approved terms."],
+      review_policy: ["Review abbreviations before publish."],
+      confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+    },
+    supporting_signals: [],
+  };
+}
+
+function buildStatementPackageDraft(): RulePackageDraft {
+  return {
+    package_id: "package-statement",
+    package_kind: "statement",
+    title: "Statement package",
+    rule_object: "statement",
+    suggested_layer: "template_family",
+    automation_posture: "inspect_only",
+    status: "draft",
+    cards: {
+      rule_what: {
+        title: "Statement package",
+        object: "statement",
+        publish_layer: "template_family",
+      },
+      ai_understanding: {
+        summary: "Inspect required back-matter statements for completeness.",
+        hit_objects: ["statement"],
+        hit_locations: ["back_matter"],
+      },
+      applicability: {
+        manuscript_types: ["clinical_study"],
+        modules: ["editing"],
+        sections: ["back_matter"],
+        table_targets: [],
+      },
+      evidence: {
+        examples: [
+          {
+            before: "",
+            after: "伦理声明：本研究已通过医院伦理委员会审批。",
+          },
+        ],
+      },
+      exclusions: {
+        not_applicable_when: ["The manuscript type does not require the statement."],
+        human_review_required_when: ["Review statement wording before release."],
+        risk_posture: "inspect_only",
+      },
+    },
+    semantic_draft: {
+      semantic_summary: "Inspect required back-matter statements for completeness.",
+      hit_scope: ["statement:inserted_block"],
+      applicability: ["back_matter"],
+      evidence_examples: [
+        {
+          before: "",
+          after: "伦理声明：本研究已通过医院伦理委员会审批。",
+        },
+      ],
+      failure_boundaries: ["The manuscript type does not require the statement."],
+      normalization_recipe: ["Check required statement presence and placement."],
+      review_policy: ["Review statement wording before release."],
+      confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+    },
+    supporting_signals: [],
+  };
+}
+
+function buildManuscriptStructurePackageDraft(): RulePackageDraft {
+  return {
+    package_id: "package-manuscript-structure",
+    package_kind: "manuscript_structure",
+    title: "Manuscript structure package",
+    rule_object: "manuscript_structure",
+    suggested_layer: "template_family",
+    automation_posture: "inspect_only",
+    status: "draft",
+    cards: {
+      rule_what: {
+        title: "Manuscript structure package",
+        object: "manuscript_structure",
+        publish_layer: "template_family",
+      },
+      ai_understanding: {
+        summary: "Inspect required section completeness and order.",
+        hit_objects: ["manuscript_structure"],
+        hit_locations: ["section_outline"],
+      },
+      applicability: {
+        manuscript_types: ["clinical_study"],
+        modules: ["editing"],
+        sections: ["body"],
+        table_targets: [],
+      },
+      evidence: {
+        examples: [
+          {
+            before: "摘要 > 结果 > 讨论",
+            after: "摘要 > 材料与方法 > 结果 > 讨论",
+          },
+        ],
+      },
+      exclusions: {
+        not_applicable_when: ["The article type does not follow a fixed IMRAD structure."],
+        human_review_required_when: ["Review section order before publish."],
+        risk_posture: "inspect_only",
+      },
+    },
+    semantic_draft: {
+      semantic_summary: "Inspect required section completeness and order.",
+      hit_scope: ["manuscript_structure:text_style_normalization"],
+      applicability: ["body"],
+      evidence_examples: [
+        {
+          before: "摘要 > 结果 > 讨论",
+          after: "摘要 > 材料与方法 > 结果 > 讨论",
+        },
+      ],
+      failure_boundaries: ["The article type does not follow a fixed IMRAD structure."],
+      normalization_recipe: ["Check section completeness and expected order."],
+      review_policy: ["Review section order before publish."],
+      confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+    },
+    supporting_signals: [],
+  };
+}
+
 async function seedCompileContext(
   harness: ReturnType<typeof createRulePackageCompileHarness>,
 ) {
@@ -183,7 +360,7 @@ async function seedCompileContext(
   });
 }
 
-test("ready rule packages compile into deterministic editorial-rule seeds with override explanations", async () => {
+test("ready front-matter packages compile into title and author-line seeds with override explanations", async () => {
   const harness = createRulePackageCompileHarness();
 
   await harness.templateFamilyRepository.save({
@@ -249,7 +426,10 @@ test("ready rule packages compile into deterministic editorial-rule seeds with o
 
   assert.equal(preview.packages.length, 1);
   assert.equal(preview.packages[0]?.readiness.status, "ready");
-  assert.equal(preview.packages[0]?.draft_rule_seeds[0]?.rule_object, "author_line");
+  assert.deepEqual(
+    preview.packages[0]?.draft_rule_seeds.map((seed) => seed.rule_object),
+    ["title", "author_line"],
+  );
   assert.equal(preview.packages[0]?.overrides_published_coverage_keys.length, 1);
   assert.match(preview.packages[0]?.warnings.join(" ") ?? "", /guarded|review/i);
 });
@@ -283,7 +463,7 @@ test("compile-to-draft writes compiled rules into a draft rule set without mutat
     module: "editing",
   });
 
-  assert.equal(result.created_rule_ids.length, 1);
+  assert.equal(result.created_rule_ids.length, 2);
   assert.equal(result.replaced_rule_ids.length, 0);
   assert.equal(result.skipped_packages.length, 0);
 
@@ -292,11 +472,13 @@ test("compile-to-draft writes compiled rules into a draft rule set without mutat
   assert.equal(createdRuleSet?.status, "draft");
 
   const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
-  assert.equal(rules.length, 1);
-  assert.equal(rules[0]?.rule_object, "author_line");
-  assert.equal(
-    rules[0]?.authoring_payload["source"],
-    "rule_package_compile",
+  assert.equal(rules.length, 2);
+  assert.deepEqual(
+    rules.map((rule) => rule.rule_object),
+    ["title", "author_line"],
+  );
+  assert.ok(
+    rules.every((rule) => rule.authoring_payload["source"] === "rule_package_compile"),
   );
   assert.equal(
     ruleSets.filter((ruleSet) => ruleSet.status === "published").length,
@@ -396,7 +578,7 @@ test("compile-to-draft writes confirmed semantic fields into explanation, projec
   });
 
   const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
-  assert.equal(rules.length, 1);
+  assert.equal(rules.length, 2);
   assert.deepEqual(result.projection_readiness.projected_kinds, [
     "rule",
     "checklist",
@@ -409,32 +591,41 @@ test("compile-to-draft writes confirmed semantic fields into explanation, projec
     "boundaries",
   ]);
   assert.deepEqual(result.projection_readiness.withheld_semantic_fields, []);
-  assert.equal(
-    rules[0]?.projection_payload?.summary,
-    "Normalize author and corresponding-author blocks.",
+  assert.ok(
+    rules.every(
+      (rule) =>
+        rule.projection_payload?.summary ===
+        "Normalize author and corresponding-author blocks.",
+    ),
   );
-  assert.equal(rules[0]?.projection_payload?.standard_example, "Author: Zhang San");
-  assert.equal(
-    rules[0]?.projection_payload?.incorrect_example,
-    "First author: Zhang San",
+  assert.ok(
+    rules.every((rule) => rule.projection_payload?.standard_example === "Author: Zhang San"),
   );
-  assert.equal(
-    rules[0]?.explanation_payload?.incorrect_example,
-    "First author: Zhang San",
+  assert.ok(
+    rules.every((rule) => rule.projection_payload?.incorrect_example === "First author: Zhang San"),
   );
-  assert.equal(rules[0]?.explanation_payload?.correct_example, "Author: Zhang San");
-  assert.deepEqual(rules[0]?.explanation_payload?.not_applies_when, [
-    "Source metadata is missing.",
-  ]);
-  assert.equal(
-    rules[0]?.linkage_payload?.source_learning_candidate_id,
-    "package-front-matter-knowledge",
+  assert.ok(
+    rules.every((rule) => rule.explanation_payload?.incorrect_example === "First author: Zhang San"),
   );
-  assert.equal(
-    rules[0]?.linkage_payload?.source_snapshot_asset_id,
-    "session-demo-1",
+  assert.ok(
+    rules.every((rule) => rule.explanation_payload?.correct_example === "Author: Zhang San"),
   );
-  assert.equal(rules[0]?.evidence_level, "low");
+  for (const rule of rules) {
+    assert.deepEqual(rule.explanation_payload?.not_applies_when, [
+      "Source metadata is missing.",
+    ]);
+  }
+  assert.ok(
+    rules.every(
+      (rule) =>
+        rule.linkage_payload?.source_learning_candidate_id ===
+        "package-front-matter-knowledge",
+    ),
+  );
+  assert.ok(
+    rules.every((rule) => rule.linkage_payload?.source_snapshot_asset_id === "session-demo-1"),
+  );
+  assert.ok(rules.every((rule) => rule.evidence_level === "low"));
 });
 
 test("compile-to-draft keeps unconfirmed boundaries out of high-confidence projection metadata", async () => {
@@ -460,7 +651,7 @@ test("compile-to-draft keeps unconfirmed boundaries out of high-confidence proje
   });
 
   const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
-  assert.equal(rules.length, 1);
+  assert.equal(rules.length, 2);
   assert.deepEqual(result.projection_readiness.projected_kinds, [
     "rule",
     "checklist",
@@ -474,9 +665,13 @@ test("compile-to-draft keeps unconfirmed boundaries out of high-confidence proje
   assert.deepEqual(result.projection_readiness.withheld_semantic_fields, [
     "boundaries",
   ]);
-  assert.equal(rules[0]?.projection_payload?.incorrect_example, "First author: Zhang San");
-  assert.equal(rules[0]?.explanation_payload?.not_applies_when, undefined);
-  assert.equal(rules[0]?.evidence_level, "unknown");
+  assert.ok(
+    rules.every((rule) => rule.projection_payload?.incorrect_example === "First author: Zhang San"),
+  );
+  assert.ok(
+    rules.every((rule) => rule.explanation_payload?.not_applies_when === undefined),
+  );
+  assert.ok(rules.every((rule) => rule.evidence_level === "unknown"));
 });
 
 test("editorial rule api exposes compile preview and compile-to-draft through the existing governance surface", async () => {
@@ -522,5 +717,56 @@ test("editorial rule api exposes compile preview and compile-to-draft through th
   });
 
   assert.equal(compile.status, 200);
-  assert.equal(compile.body.created_rule_ids.length, 1);
+  assert.equal(compile.body.created_rule_ids.length, 2);
+});
+
+test("terminology, statement, and manuscript-structure packages compile into dedicated rule objects", async () => {
+  const harness = createRulePackageCompileHarness();
+  await seedCompileContext(harness);
+
+  const preview = await harness.service.previewCompile({
+    source: {
+      sourceKind: "uploaded_example_pair",
+      exampleSourceSessionId: "session-demo-1",
+    },
+    packageDrafts: [
+      buildTerminologyPackageDraft(),
+      buildStatementPackageDraft(),
+      buildManuscriptStructurePackageDraft(),
+    ],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  assert.deepEqual(
+    preview.packages.map((entry) => entry.readiness.status),
+    ["ready", "ready_with_downgrade", "ready_with_downgrade"],
+  );
+
+  const result = await harness.service.compileToDraft({
+    actorRole: "admin",
+    source: {
+      sourceKind: "uploaded_example_pair",
+      exampleSourceSessionId: "session-demo-1",
+    },
+    packageDrafts: [
+      buildTerminologyPackageDraft(),
+      buildStatementPackageDraft(),
+      buildManuscriptStructurePackageDraft(),
+    ],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
+  assert.equal(result.created_rule_ids.length, 3);
+  assert.deepEqual(
+    rules.map((rule) => rule.rule_object),
+    ["terminology", "statement", "manuscript_structure"],
+  );
+  assert.equal(rules[0]?.execution_mode, "apply_and_inspect");
+  assert.equal(rules[1]?.execution_mode, "inspect");
+  assert.equal(rules[2]?.execution_mode, "inspect");
 });

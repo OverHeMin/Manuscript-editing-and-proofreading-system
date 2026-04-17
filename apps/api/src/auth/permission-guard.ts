@@ -7,6 +7,7 @@ export const PERMISSIONS = [
   "system-settings.manage-users",
   "knowledge.review",
   "learning.review",
+  "template-governance.manage",
   "templates.publish",
   "permissions.manage",
   "manuscripts.submit",
@@ -19,7 +20,11 @@ const PERMISSIONS_BY_ROLE: Record<RoleKey, readonly Permission[]> = {
   screener: ["workbench.screening"],
   editor: ["workbench.editing"],
   proofreader: ["workbench.proofreading"],
-  knowledge_reviewer: ["knowledge.review", "learning.review"],
+  knowledge_reviewer: [
+    "knowledge.review",
+    "learning.review",
+    "template-governance.manage",
+  ],
   user: ["manuscripts.submit"],
 };
 

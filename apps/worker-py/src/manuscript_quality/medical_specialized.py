@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from collections import defaultdict
 
@@ -17,9 +18,15 @@ from .medical_asset_runtime import (
     load_medical_assets,
     resolve_comparison_template_pairs,
     resolve_count_constraint,
+    resolve_confusion_matrix_aliases,
+    resolve_diagnostic_confidence_levels,
+    resolve_diagnostic_metric_aliases,
+    resolve_diagnostic_metric_range,
     resolve_group_comparison_groups,
     resolve_indicator_unit_ranges,
     resolve_issue_policy,
+    resolve_regression_confidence_levels,
+    resolve_regression_field_aliases,
 )
 from .text_normalization import build_normalized_document
 
@@ -275,6 +282,28 @@ SECTION_PREFIX_PATTERN = re.compile(
 )
 GROUP_COMPARISON_REFERENCE_GROUPS = ("treatment group", "control group")
 METRIC_TOKEN_PATTERN = re.compile(r"\b[A-Z]{2,10}\b")
+CHI_SQUARE_PATTERN = re.compile(
+    r"(?:χ2|χ²|chi-square|chi square)\s*(?:\(\s*(?P<df>\d+(?:\.\d+)?)\s*\))?\s*[=:]?\s*(?P<value>\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+T_VALUE_PATTERN = re.compile(
+    r"\bt\s*(?:\(\s*(?P<df>\d+(?:\.\d+)?)\s*\))?\s*[=:]?\s*(?P<value>-?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+F_VALUE_PATTERN = re.compile(
+    r"\bf\s*\(\s*(?P<df1>\d+(?:\.\d+)?)\s*,\s*(?P<df2>\d+(?:\.\d+)?)\s*\)\s*[=:]?\s*(?P<value>-?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+GROUP_MEAN_SD_N_PATTERN = re.compile(
+    r"(?P<group>treatment group|control group)\s+(?P<mean>-?\d+(?:\.\d+)?)\s*(?:卤|\+/-)\s*(?P<sd>\d+(?:\.\d+)?)\s*\(\s*n\s*[=:]?\s*(?P<n>\d+)\s*\)",
+    re.IGNORECASE,
+)
+CONFIDENCE_LEVEL_Z_SCORES = {
+    90.0: 1.645,
+    95.0: 1.96,
+    99.0: 2.576,
+}
+STATISTICAL_RECHECK_TOLERANCE = 0.01
 
 
 def run_medical_specialized(
@@ -2019,9 +2048,487 @@ def check_statistical_expression(
             )
             break
 
+        issues.extend(
+            _check_sentence_diagnostic_metric_ranges(
+                sentence,
+                sentence_text,
+                medical_assets,
+            )
+        )
+
+    for paragraph in normalized["paragraph_blocks"]:
+        paragraph_text = str(paragraph.get("normalized_text", ""))
+
+        auc_issue = _check_sentence_auc_confidence_interval(
+            paragraph,
+            paragraph_text,
+            medical_assets,
+        )
+        if auc_issue:
+            issues.append(auc_issue)
+
+        diagnostic_metric_issue = _check_sentence_diagnostic_metric_recheck(
+            paragraph,
+            paragraph_text,
+            medical_assets,
+        )
+        if diagnostic_metric_issue:
+            issues.append(diagnostic_metric_issue)
+
+        regression_issue = _check_sentence_regression_coefficient_recheck(
+            paragraph,
+            paragraph_text,
+            medical_assets,
+        )
+        if regression_issue:
+            issues.append(regression_issue)
+
+        inferential_issue = _check_paragraph_test_statistic_consistency(
+            paragraph,
+            paragraph_text,
+            medical_assets,
+        )
+        if inferential_issue:
+            issues.append(inferential_issue)
+
     issues.extend(check_table_statistical_boundaries(normalized, table_snapshots))
     issues.extend(check_table_p_value_conflicts(normalized, medical_assets, table_snapshots))
     return issues
+
+
+def _check_sentence_diagnostic_metric_ranges(
+    sentence: dict[str, object],
+    sentence_text: str,
+    medical_assets: dict[str, object],
+) -> list[QualityIssue]:
+    if not is_analyzer_enabled("diagnostic_metric_consistency", medical_assets):
+        return []
+
+    issues: list[QualityIssue] = []
+    metric_claims = _read_metric_value_claims(
+        sentence_text,
+        resolve_diagnostic_metric_aliases(medical_assets),
+    )
+    for metric_key, metric_value in metric_claims.items():
+        metric_range = resolve_diagnostic_metric_range(metric_key, medical_assets)
+        if not metric_range:
+            continue
+
+        min_value = metric_range.get("min")
+        max_value = metric_range.get("max")
+        if _value_matches_unit_range(metric_value, min_value, max_value):
+            continue
+
+        policy = resolve_issue_policy("diagnostic_metric_out_of_range", medical_assets)
+        issues.append(
+            _build_issue(
+                issue_type="statistical_expression.diagnostic_metric_out_of_range",
+                category="medical_calculation_and_parsing",
+                severity=policy["severity"],
+                action=policy["action"],
+                confidence=0.9,
+                paragraph_index=_as_int(sentence.get("paragraph_index")),
+                sentence_index=_as_int(sentence.get("sentence_index")),
+                text_excerpt=sentence_text,
+                normalized_excerpt=metric_key,
+                explanation=(
+                    f"{metric_key} is reported as {metric_value:g}, which falls outside the "
+                    f"governed range {_format_numeric_range_summary(min_value, max_value)}."
+                ),
+                source_kind="deterministic_rule",
+                source_id="statistics/diagnostic-metric-out-of-range",
+            )
+        )
+
+    return issues
+
+
+def _check_sentence_auc_confidence_interval(
+    sentence: dict[str, object],
+    sentence_text: str,
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    if not (
+        is_analyzer_enabled("diagnostic_metric_consistency", medical_assets)
+        and is_analyzer_enabled("statistical_recheck", medical_assets)
+    ):
+        return None
+
+    metric_claims = _read_metric_value_claims(
+        sentence_text,
+        resolve_diagnostic_metric_aliases(medical_assets),
+    )
+    auc_value = _read_metric_claim(metric_claims, "AUC")
+    if auc_value is None:
+        return None
+
+    interval = _read_confidence_interval(sentence_text, sentence_text)
+    if not interval:
+        return None
+
+    min_value, max_value = _read_metric_range_bounds(
+        resolve_diagnostic_metric_range("AUC", medical_assets)
+    )
+    lower_bound, upper_bound = interval
+    if (
+        _metric_value_within_bounds(auc_value, min_value, max_value)
+        and _metric_value_within_bounds(lower_bound, min_value, max_value)
+        and _metric_value_within_bounds(upper_bound, min_value, max_value)
+    ):
+        return None
+
+    policy = resolve_issue_policy("auc_confidence_interval_conflict", medical_assets)
+    return _build_issue(
+        issue_type="statistical_expression.auc_confidence_interval_conflict",
+        category="medical_calculation_and_parsing",
+        severity=policy["severity"],
+        action=policy["action"],
+        confidence=0.91,
+        paragraph_index=_as_int(sentence.get("paragraph_index")),
+        sentence_index=_as_int(sentence.get("sentence_index")),
+        text_excerpt=sentence_text,
+        normalized_excerpt="AUC",
+        explanation=(
+            f"AUC is reported as {auc_value:g} with CI {lower_bound:g} to {upper_bound:g}, "
+            f"but the governed range is {_format_numeric_range_summary(min_value, max_value)}."
+        ),
+        source_kind="deterministic_rule",
+        source_id="statistics/auc-confidence-interval-conflict",
+    )
+
+
+def _check_sentence_diagnostic_metric_recheck(
+    sentence: dict[str, object],
+    sentence_text: str,
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    if not (
+        is_analyzer_enabled("diagnostic_metric_consistency", medical_assets)
+        and is_analyzer_enabled("statistical_recheck", medical_assets)
+    ):
+        return None
+
+    metric_claims = _read_metric_value_claims(
+        sentence_text,
+        resolve_diagnostic_metric_aliases(medical_assets),
+    )
+    if not metric_claims:
+        return None
+
+    confusion_counts = _read_confusion_matrix_counts(sentence_text, medical_assets)
+    if not confusion_counts:
+        return None
+
+    sensitivity_value = _read_metric_claim(metric_claims, "sensitivity")
+    if sensitivity_value is not None:
+        denominator = confusion_counts["tp"] + confusion_counts["fn"]
+        if denominator > 0:
+            recalculated = confusion_counts["tp"] / denominator
+            if abs(recalculated - sensitivity_value) > STATISTICAL_RECHECK_TOLERANCE:
+                policy = resolve_issue_policy("diagnostic_metric_mismatch", medical_assets)
+                return _build_issue(
+                    issue_type="statistical_expression.diagnostic_metric_mismatch",
+                    category="medical_calculation_and_parsing",
+                    severity=policy["severity"],
+                    action=policy["action"],
+                    confidence=0.93,
+                    paragraph_index=_as_int(sentence.get("paragraph_index")),
+                    sentence_index=_as_int(sentence.get("sentence_index")),
+                    text_excerpt=sentence_text,
+                    normalized_excerpt="sensitivity",
+                    explanation=(
+                        f"Sensitivity is reported as {sensitivity_value:g}, but TP={confusion_counts['tp']:g} "
+                        f"and FN={confusion_counts['fn']:g} imply {recalculated:.2f}."
+                    ),
+                    source_kind="deterministic_rule",
+                    source_id="statistics/diagnostic-metric-mismatch",
+                )
+
+    specificity_value = _read_metric_claim(metric_claims, "specificity")
+    if specificity_value is not None:
+        denominator = confusion_counts["tn"] + confusion_counts["fp"]
+        if denominator > 0:
+            recalculated = confusion_counts["tn"] / denominator
+            if abs(recalculated - specificity_value) > STATISTICAL_RECHECK_TOLERANCE:
+                policy = resolve_issue_policy("diagnostic_metric_mismatch", medical_assets)
+                return _build_issue(
+                    issue_type="statistical_expression.diagnostic_metric_mismatch",
+                    category="medical_calculation_and_parsing",
+                    severity=policy["severity"],
+                    action=policy["action"],
+                    confidence=0.93,
+                    paragraph_index=_as_int(sentence.get("paragraph_index")),
+                    sentence_index=_as_int(sentence.get("sentence_index")),
+                    text_excerpt=sentence_text,
+                    normalized_excerpt="specificity",
+                    explanation=(
+                        f"Specificity is reported as {specificity_value:g}, but TN={confusion_counts['tn']:g} "
+                        f"and FP={confusion_counts['fp']:g} imply {recalculated:.2f}."
+                    ),
+                    source_kind="deterministic_rule",
+                    source_id="statistics/diagnostic-metric-mismatch",
+                )
+
+    return None
+
+
+def _check_sentence_regression_coefficient_recheck(
+    sentence: dict[str, object],
+    sentence_text: str,
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    if not (
+        is_analyzer_enabled("regression_consistency", medical_assets)
+        and is_analyzer_enabled("statistical_recheck", medical_assets)
+    ):
+        return None
+
+    field_claims = _read_metric_value_claims(
+        sentence_text,
+        resolve_regression_field_aliases(medical_assets),
+    )
+    beta_value = _read_metric_claim(field_claims, "beta")
+    se_value = _read_metric_claim(field_claims, "SE")
+    interval = _read_confidence_interval(sentence_text, sentence_text)
+    if beta_value is None or se_value is None or interval is None or se_value < 0:
+        return None
+
+    confidence_levels = resolve_regression_confidence_levels(medical_assets)
+    z_score = _resolve_z_score(confidence_levels or [95.0])
+    expected_low = beta_value - z_score * se_value
+    expected_high = beta_value + z_score * se_value
+    lower_bound, upper_bound = interval
+
+    if (
+        abs(expected_low - lower_bound) <= 0.05
+        and abs(expected_high - upper_bound) <= 0.05
+    ):
+        return None
+
+    policy = resolve_issue_policy("regression_coefficient_conflict", medical_assets)
+    return _build_issue(
+        issue_type="statistical_expression.regression_coefficient_conflict",
+        category="medical_calculation_and_parsing",
+        severity=policy["severity"],
+        action=policy["action"],
+        confidence=0.92,
+        paragraph_index=_as_int(sentence.get("paragraph_index")),
+        sentence_index=_as_int(sentence.get("sentence_index")),
+        text_excerpt=sentence_text,
+        normalized_excerpt="beta/SE",
+        explanation=(
+            f"beta={beta_value:g} and SE={se_value:g} imply an approximate CI of "
+            f"{expected_low:.2f} to {expected_high:.2f}, but the manuscript reports "
+            f"{lower_bound:g} to {upper_bound:g}."
+        ),
+        source_kind="deterministic_rule",
+        source_id="statistics/regression-coefficient-conflict",
+    )
+
+
+def _check_paragraph_test_statistic_consistency(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    if not is_analyzer_enabled("inferential_statistic_consistency", medical_assets):
+        return None
+
+    mean_sd_issue = _check_mean_sd_t_value_consistency(paragraph, paragraph_text, medical_assets)
+    if mean_sd_issue:
+        return mean_sd_issue
+
+    p_value_claim = _read_p_value_claim(paragraph_text)
+    if not p_value_claim:
+        return None
+
+    chi_square_issue = _check_chi_square_p_value_consistency(
+        paragraph,
+        paragraph_text,
+        p_value_claim,
+        medical_assets,
+    )
+    if chi_square_issue:
+        return chi_square_issue
+
+    t_value_issue = _check_t_value_p_value_consistency(
+        paragraph,
+        paragraph_text,
+        p_value_claim,
+        medical_assets,
+    )
+    if t_value_issue:
+        return t_value_issue
+
+    return _check_f_value_p_value_consistency(
+        paragraph,
+        paragraph_text,
+        p_value_claim,
+        medical_assets,
+    )
+
+
+def _check_mean_sd_t_value_consistency(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    group_summaries = _read_group_mean_sd_summaries(paragraph_text)
+    if len(group_summaries) < 2:
+        return None
+
+    t_match = T_VALUE_PATTERN.search(_normalize_numeric_text(paragraph_text))
+    if not t_match:
+        return None
+
+    first_group = group_summaries[0]
+    second_group = group_summaries[1]
+    reported_t = abs(float(t_match.group("value")))
+    expected_t = _calculate_welch_t_value(first_group, second_group)
+    if expected_t is None or abs(expected_t - reported_t) <= 0.2:
+        return None
+
+    policy = resolve_issue_policy("test_statistic_conflict", medical_assets)
+    return _build_issue(
+        issue_type="statistical_expression.test_statistic_conflict",
+        category="medical_calculation_and_parsing",
+        severity=policy["severity"],
+        action=policy["action"],
+        confidence=0.9,
+        paragraph_index=_as_int(paragraph.get("paragraph_index")),
+        sentence_index=_as_int(paragraph.get("sentence_index")),
+        text_excerpt=paragraph_text,
+        normalized_excerpt="t value",
+        explanation=(
+            f"The reported t value is {reported_t:g}, but the two-group mean±SD summaries "
+            f"imply approximately {expected_t:.2f}."
+        ),
+        source_kind="deterministic_rule",
+        source_id="statistics/test-statistic-conflict",
+    )
+
+
+def _check_chi_square_p_value_consistency(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    p_value_claim: tuple[str, float],
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    match = CHI_SQUARE_PATTERN.search(_normalize_numeric_text(paragraph_text))
+    if not match or match.group("df") is None:
+        return None
+
+    chi_square_value = float(match.group("value"))
+    degrees_of_freedom = float(match.group("df"))
+    expected_p = _chi_square_upper_tail_p(chi_square_value, degrees_of_freedom)
+    if expected_p is None:
+        return None
+
+    return _build_test_statistic_p_value_issue(
+        paragraph,
+        paragraph_text,
+        medical_assets,
+        statistic_label="chi-square",
+        statistic_value=chi_square_value,
+        expected_p=expected_p,
+        reported_p=p_value_claim,
+    )
+
+
+def _check_t_value_p_value_consistency(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    p_value_claim: tuple[str, float],
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    match = T_VALUE_PATTERN.search(_normalize_numeric_text(paragraph_text))
+    if not match or match.group("df") is None:
+        return None
+
+    t_value = abs(float(match.group("value")))
+    degrees_of_freedom = float(match.group("df"))
+    expected_p = _student_t_two_tailed_p(t_value, degrees_of_freedom)
+    if expected_p is None:
+        return None
+
+    return _build_test_statistic_p_value_issue(
+        paragraph,
+        paragraph_text,
+        medical_assets,
+        statistic_label="t",
+        statistic_value=t_value,
+        expected_p=expected_p,
+        reported_p=p_value_claim,
+    )
+
+
+def _check_f_value_p_value_consistency(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    p_value_claim: tuple[str, float],
+    medical_assets: dict[str, object],
+) -> QualityIssue | None:
+    match = F_VALUE_PATTERN.search(_normalize_numeric_text(paragraph_text))
+    if not match:
+        return None
+
+    f_value = float(match.group("value"))
+    degrees_of_freedom_1 = float(match.group("df1"))
+    degrees_of_freedom_2 = float(match.group("df2"))
+    expected_p = _f_upper_tail_p(
+        f_value,
+        degrees_of_freedom_1,
+        degrees_of_freedom_2,
+    )
+    if expected_p is None:
+        return None
+
+    return _build_test_statistic_p_value_issue(
+        paragraph,
+        paragraph_text,
+        medical_assets,
+        statistic_label="F",
+        statistic_value=f_value,
+        expected_p=expected_p,
+        reported_p=p_value_claim,
+    )
+
+
+def _build_test_statistic_p_value_issue(
+    paragraph: dict[str, object],
+    paragraph_text: str,
+    medical_assets: dict[str, object],
+    *,
+    statistic_label: str,
+    statistic_value: float,
+    expected_p: float,
+    reported_p: tuple[str, float],
+) -> QualityIssue | None:
+    reported_operator, reported_value = reported_p
+    if (
+        abs(expected_p - reported_value) <= 0.05
+        and _p_value_significance("=", expected_p) == _p_value_significance(reported_operator, reported_value)
+    ):
+        return None
+
+    policy = resolve_issue_policy("test_statistic_conflict", medical_assets)
+    return _build_issue(
+        issue_type="statistical_expression.test_statistic_conflict",
+        category="medical_calculation_and_parsing",
+        severity=policy["severity"],
+        action=policy["action"],
+        confidence=0.9,
+        paragraph_index=_as_int(paragraph.get("paragraph_index")),
+        sentence_index=_as_int(paragraph.get("sentence_index")),
+        text_excerpt=paragraph_text,
+        normalized_excerpt=statistic_label,
+        explanation=(
+            f"{statistic_label}={statistic_value:g} implies an approximate P value of "
+            f"{expected_p:.3f}, but the manuscript reports P {reported_operator} {reported_value:g}."
+        ),
+        source_kind="deterministic_rule",
+        source_id="statistics/test-statistic-conflict",
+    )
 
 
 def check_evidence_alignment(normalized: NormalizedDocument) -> list[QualityIssue]:
@@ -2377,6 +2884,316 @@ def _read_confidence_interval(
         return None
 
     return float(pair_match.group("low")), float(pair_match.group("high"))
+
+
+def _read_metric_value_claims(
+    text: str,
+    aliases_by_metric: dict[str, list[str]],
+) -> dict[str, float]:
+    normalized = _normalize_numeric_text(text)
+    metric_claims: dict[str, float] = {}
+
+    for metric_key, aliases in aliases_by_metric.items():
+        candidates = [metric_key, *aliases]
+        for alias in candidates:
+            if not alias:
+                continue
+
+            pattern = re.compile(
+                rf"(?<!\w){re.escape(alias)}(?!\w)\s*(?:=|:|was|is|of)?\s*(?P<value>-?\d+(?:\.\d+)?)",
+                re.IGNORECASE,
+            )
+            match = pattern.search(normalized)
+            if not match:
+                continue
+
+            metric_claims[metric_key] = float(match.group("value"))
+            break
+
+    return metric_claims
+
+
+def _read_metric_claim(metric_claims: dict[str, float], metric_key: str) -> float | None:
+    target = metric_key.lower()
+    for key, value in metric_claims.items():
+        if key.lower() == target:
+            return value
+    return None
+
+
+def _read_confusion_matrix_counts(
+    text: str,
+    medical_assets: dict[str, object],
+) -> dict[str, float]:
+    aliases_by_label = resolve_confusion_matrix_aliases(medical_assets)
+    counts: dict[str, float] = {}
+    normalized = _normalize_numeric_text(text)
+
+    for label in ("tp", "fp", "fn", "tn"):
+        aliases = aliases_by_label.get(label, [])
+        candidates = [label.upper(), label, *aliases]
+        for alias in candidates:
+            if not alias:
+                continue
+
+            pattern = re.compile(
+                rf"(?<!\w){re.escape(alias)}(?!\w)\s*(?:=|:)\s*(?P<value>-?\d+(?:\.\d+)?)",
+                re.IGNORECASE,
+            )
+            match = pattern.search(normalized)
+            if not match:
+                continue
+
+            counts[label] = float(match.group("value"))
+            break
+
+    return counts if all(key in counts for key in ("tp", "fp", "fn", "tn")) else {}
+
+
+def _resolve_z_score(confidence_levels: list[float]) -> float:
+    for confidence_level in confidence_levels:
+        rounded_level = round(confidence_level, 1)
+        if rounded_level in CONFIDENCE_LEVEL_Z_SCORES:
+            return CONFIDENCE_LEVEL_Z_SCORES[rounded_level]
+
+    return CONFIDENCE_LEVEL_Z_SCORES[95.0]
+
+
+def _read_metric_range_bounds(metric_range: dict[str, object]) -> tuple[float | None, float | None]:
+    min_value = metric_range.get("min")
+    max_value = metric_range.get("max")
+    return (
+        float(min_value) if isinstance(min_value, (int, float)) else None,
+        float(max_value) if isinstance(max_value, (int, float)) else None,
+    )
+
+
+def _metric_value_within_bounds(
+    value: float,
+    min_value: float | None,
+    max_value: float | None,
+) -> bool:
+    if min_value is not None and value < min_value:
+        return False
+    if max_value is not None and value > max_value:
+        return False
+    return True
+
+
+def _format_numeric_range_summary(
+    min_value: float | None,
+    max_value: float | None,
+) -> str:
+    if min_value is not None and max_value is not None:
+        return f"{min_value:g} to {max_value:g}"
+    if min_value is not None:
+        return f">= {min_value:g}"
+    if max_value is not None:
+        return f"<= {max_value:g}"
+    return "the configured limits"
+
+
+def _read_group_mean_sd_summaries(text: str) -> list[dict[str, float | str]]:
+    summaries: list[dict[str, float | str]] = []
+
+    for match in GROUP_MEAN_SD_N_PATTERN.finditer(text):
+        summaries.append(
+            {
+                "group": str(match.group("group")).strip(),
+                "mean": float(match.group("mean")),
+                "sd": float(match.group("sd")),
+                "n": float(match.group("n")),
+            }
+        )
+
+    return summaries
+
+
+def _calculate_welch_t_value(
+    first_group: dict[str, float | str],
+    second_group: dict[str, float | str],
+) -> float | None:
+    mean_1 = float(first_group["mean"])
+    mean_2 = float(second_group["mean"])
+    sd_1 = float(first_group["sd"])
+    sd_2 = float(second_group["sd"])
+    n_1 = float(first_group["n"])
+    n_2 = float(second_group["n"])
+
+    if n_1 <= 0 or n_2 <= 0:
+        return None
+
+    denominator = math.sqrt((sd_1**2) / n_1 + (sd_2**2) / n_2)
+    if denominator == 0:
+        return None
+
+    return abs((mean_1 - mean_2) / denominator)
+
+
+def _chi_square_upper_tail_p(
+    chi_square_value: float,
+    degrees_of_freedom: float,
+) -> float | None:
+    if chi_square_value < 0 or degrees_of_freedom <= 0:
+        return None
+
+    return _regularized_gamma_q(degrees_of_freedom / 2.0, chi_square_value / 2.0)
+
+
+def _student_t_two_tailed_p(t_value: float, degrees_of_freedom: float) -> float | None:
+    if t_value < 0 or degrees_of_freedom <= 0:
+        return None
+
+    x = degrees_of_freedom / (degrees_of_freedom + t_value * t_value)
+    return _regularized_incomplete_beta(degrees_of_freedom / 2.0, 0.5, x)
+
+
+def _f_upper_tail_p(
+    f_value: float,
+    degrees_of_freedom_1: float,
+    degrees_of_freedom_2: float,
+) -> float | None:
+    if f_value < 0 or degrees_of_freedom_1 <= 0 or degrees_of_freedom_2 <= 0:
+        return None
+
+    x = degrees_of_freedom_2 / (degrees_of_freedom_2 + degrees_of_freedom_1 * f_value)
+    return _regularized_incomplete_beta(
+        degrees_of_freedom_2 / 2.0,
+        degrees_of_freedom_1 / 2.0,
+        x,
+    )
+
+
+def _regularized_incomplete_beta(a: float, b: float, x: float) -> float | None:
+    if a <= 0 or b <= 0 or x < 0 or x > 1:
+        return None
+
+    if x == 0:
+        return 0.0
+    if x == 1:
+        return 1.0
+
+    log_beta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    front = math.exp(log_beta + a * math.log(x) + b * math.log(1.0 - x))
+
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _beta_continued_fraction(a, b, x) / a
+
+    return 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
+
+
+def _beta_continued_fraction(a: float, b: float, x: float) -> float:
+    max_iterations = 200
+    epsilon = 3.0e-7
+    fpmin = 1.0e-30
+
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < fpmin:
+        d = fpmin
+    d = 1.0 / d
+    h = d
+
+    for iteration in range(1, max_iterations + 1):
+        double_iteration = 2 * iteration
+
+        aa = (
+            iteration
+            * (b - iteration)
+            * x
+            / ((qam + double_iteration) * (a + double_iteration))
+        )
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        h *= d * c
+
+        aa = (
+            -(a + iteration)
+            * (qab + iteration)
+            * x
+            / ((a + double_iteration) * (qap + double_iteration))
+        )
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+
+        if abs(delta - 1.0) < epsilon:
+            break
+
+    return h
+
+
+def _regularized_gamma_q(a: float, x: float) -> float | None:
+    if a <= 0 or x < 0:
+        return None
+    if x == 0:
+        return 1.0
+
+    if x < a + 1.0:
+        return 1.0 - _regularized_gamma_p_series(a, x)
+
+    return _regularized_gamma_q_continued_fraction(a, x)
+
+
+def _regularized_gamma_p_series(a: float, x: float) -> float:
+    max_iterations = 200
+    epsilon = 3.0e-7
+
+    term = 1.0 / a
+    total = term
+    ap = a
+
+    for _ in range(max_iterations):
+        ap += 1.0
+        term *= x / ap
+        total += term
+        if abs(term) < abs(total) * epsilon:
+            break
+
+    return total * math.exp(-x + a * math.log(x) - math.lgamma(a))
+
+
+def _regularized_gamma_q_continued_fraction(a: float, x: float) -> float:
+    max_iterations = 200
+    epsilon = 3.0e-7
+    fpmin = 1.0e-30
+
+    b = x + 1.0 - a
+    c = 1.0 / fpmin
+    d = 1.0 / b
+    h = d
+
+    for iteration in range(1, max_iterations + 1):
+        an = -iteration * (iteration - a)
+        b += 2.0
+        d = an * d + b
+        if abs(d) < fpmin:
+            d = fpmin
+        c = b + an / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < epsilon:
+            break
+
+    return math.exp(-x + a * math.log(x) - math.lgamma(a)) * h
 
 
 def _extract_numeric_expression(text: str) -> str | None:

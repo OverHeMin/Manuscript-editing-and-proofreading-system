@@ -359,7 +359,10 @@ function compileRulePackageKindIsUnsupported(
   return ![
     "front_matter",
     "abstract_keywords",
+    "terminology",
     "heading_hierarchy",
+    "statement",
+    "manuscript_structure",
     "numeric_statistics",
     "three_line_table",
     "reference",
@@ -372,11 +375,20 @@ function compileRulePackageDraft(
 ): CompiledEditorialRuleSeed[] {
   switch (packageDraft.package_kind) {
     case "front_matter":
-      return [buildAuthorLineSeed(packageDraft, source)];
+      return [
+        buildTitleSeed(packageDraft, source),
+        buildAuthorLineSeed(packageDraft, source),
+      ];
     case "abstract_keywords":
       return [buildAbstractSeed(packageDraft, source), buildKeywordSeed(packageDraft, source)];
+    case "terminology":
+      return [buildTerminologySeed(packageDraft, source)];
     case "heading_hierarchy":
       return [buildHeadingHierarchySeed(packageDraft, source)];
+    case "statement":
+      return [buildStatementSeed(packageDraft, source)];
+    case "manuscript_structure":
+      return [buildManuscriptStructureSeed(packageDraft, source)];
     case "numeric_statistics":
       return [buildStatisticalExpressionSeed(packageDraft, source)];
     case "three_line_table":
@@ -386,6 +398,55 @@ function compileRulePackageDraft(
     default:
       return [];
   }
+}
+
+function buildTitleSeed(
+  packageDraft: RulePackageDraft,
+  source: RulePackageWorkspaceSourceInput,
+): CompiledEditorialRuleSeed {
+  const titlePattern = "journal_managed";
+  const casingRule = "journal_managed";
+  const subtitleHandling = "journal_managed";
+  const seed: CompiledRuleSeedDraft = {
+    package_id: packageDraft.package_id,
+    rule_object: "title",
+    rule_type: "format",
+    execution_mode: mapExecutionMode(packageDraft.automation_posture, "title"),
+    confidence_policy: mapConfidencePolicy(packageDraft.automation_posture),
+    severity: "warning",
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "title",
+    },
+    selector: {
+      section_selector: "front_matter",
+      block_selector: "title",
+    },
+    trigger: {
+      kind: "title_pattern",
+      pattern: titlePattern,
+    },
+    action: {
+      kind: "normalize_title",
+      casing_rule: casingRule,
+      subtitle_handling: subtitleHandling,
+    },
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      title_pattern: titlePattern,
+      casing_rule: casingRule,
+      subtitle_handling: subtitleHandling,
+    }),
+    manual_review_reason_template: firstReviewReason(packageDraft),
+  };
+
+  return {
+    ...seed,
+    coverage_key: createEditorialRuleCoverageKey({
+      rule_object: seed.rule_object,
+      selector: seed.selector,
+      trigger: seed.trigger,
+    }),
+  };
 }
 
 function buildAuthorLineSeed(
@@ -416,7 +477,11 @@ function buildAuthorLineSeed(
       affiliation_format: "superscript_marker",
       corresponding_author_rule: "required",
     },
-    authoring_payload: buildCompileTracePayload(packageDraft, source),
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      separator: "、",
+      affiliation_format: "superscript_marker",
+      corresponding_author_rule: "required",
+    }),
     example_before: firstBeforeExample(packageDraft),
     example_after: firstAfterExample(packageDraft),
     manual_review_reason_template: firstReviewReason(packageDraft),
@@ -551,6 +616,156 @@ function buildHeadingHierarchySeed(
       sequence: "journal_managed",
     },
     authoring_payload: buildCompileTracePayload(packageDraft, source),
+    manual_review_reason_template: firstReviewReason(packageDraft),
+  };
+
+  return {
+    ...seed,
+    coverage_key: createEditorialRuleCoverageKey({
+      rule_object: seed.rule_object,
+      selector: seed.selector,
+      trigger: seed.trigger,
+    }),
+  };
+}
+
+function buildTerminologySeed(
+  packageDraft: RulePackageDraft,
+  source: RulePackageWorkspaceSourceInput,
+): CompiledEditorialRuleSeed {
+  const targetSection = resolveTerminologyTargetSection(packageDraft);
+  const preferredTerm = firstAfterExample(packageDraft) || "journal_preferred_term";
+  const disallowedVariant = firstBeforeExample(packageDraft) || "journal_variant";
+  const seed: CompiledRuleSeedDraft = {
+    package_id: packageDraft.package_id,
+    rule_object: "terminology",
+    rule_type: "format",
+    execution_mode: mapExecutionMode(packageDraft.automation_posture, "terminology"),
+    confidence_policy: mapConfidencePolicy(packageDraft.automation_posture),
+    severity: "warning",
+    scope: {
+      sections: [targetSection],
+      block_kind: "paragraph",
+    },
+    selector: {
+      section_selector: targetSection,
+      pattern_selector: {
+        content_class: "terminology",
+      },
+    },
+    trigger: {
+      kind: "terminology_variant",
+      disallowed_variant: disallowedVariant,
+    },
+    action: {
+      kind: "replace_terminology",
+      preferred_term: preferredTerm,
+    },
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      target_section: targetSection,
+      preferred_term: preferredTerm,
+      disallowed_variant: disallowedVariant,
+    }),
+    example_before: disallowedVariant,
+    example_after: preferredTerm,
+    manual_review_reason_template: firstReviewReason(packageDraft),
+  };
+
+  return {
+    ...seed,
+    coverage_key: createEditorialRuleCoverageKey({
+      rule_object: seed.rule_object,
+      selector: seed.selector,
+      trigger: seed.trigger,
+    }),
+  };
+}
+
+function buildStatementSeed(
+  packageDraft: RulePackageDraft,
+  source: RulePackageWorkspaceSourceInput,
+): CompiledEditorialRuleSeed {
+  const statementKind = inferStatementKind(packageDraft);
+  const requiredStatement =
+    firstAfterExample(packageDraft) || "Provide the required statement.";
+  const placement = "back_matter";
+  const seed: CompiledRuleSeedDraft = {
+    package_id: packageDraft.package_id,
+    rule_object: "statement",
+    rule_type: "content",
+    execution_mode: "inspect",
+    confidence_policy: "manual_only",
+    severity: "warning",
+    scope: {
+      sections: ["back_matter"],
+      block_kind: "statement",
+    },
+    selector: {
+      statement_selector: {
+        statement_kind: statementKind,
+      },
+    },
+    trigger: {
+      kind: "required_statement",
+      statement_kind: statementKind,
+    },
+    action: {
+      kind: "inspect_required_statement",
+      placement,
+    },
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      statement_kind: statementKind,
+      required_statement: requiredStatement,
+      placement,
+    }),
+    manual_review_reason_template: firstReviewReason(packageDraft),
+  };
+
+  return {
+    ...seed,
+    coverage_key: createEditorialRuleCoverageKey({
+      rule_object: seed.rule_object,
+      selector: seed.selector,
+      trigger: seed.trigger,
+    }),
+  };
+}
+
+function buildManuscriptStructureSeed(
+  packageDraft: RulePackageDraft,
+  source: RulePackageWorkspaceSourceInput,
+): CompiledEditorialRuleSeed {
+  const manuscriptType = resolvePrimaryManuscriptType(packageDraft);
+  const structureRecipe = firstAfterExample(packageDraft) || "journal_managed";
+  const seed: CompiledRuleSeedDraft = {
+    package_id: packageDraft.package_id,
+    rule_object: "manuscript_structure",
+    rule_type: "content",
+    execution_mode: "inspect",
+    confidence_policy: "manual_only",
+    severity: "warning",
+    scope: {
+      block_kind: "manuscript_structure",
+    },
+    selector: {
+      manuscript_structure_selector: {
+        manuscript_type: manuscriptType,
+      },
+    },
+    trigger: {
+      kind: "section_order",
+      manuscript_type: manuscriptType,
+    },
+    action: {
+      kind: "inspect_manuscript_structure",
+      required_sections: structureRecipe,
+      section_order: structureRecipe,
+    },
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      manuscript_type: manuscriptType,
+      required_sections: structureRecipe,
+      section_order: structureRecipe,
+    }),
     manual_review_reason_template: firstReviewReason(packageDraft),
   };
 
@@ -909,6 +1124,17 @@ function buildCompileTracePayload(
   };
 }
 
+function buildCompiledAuthoringPayload(
+  packageDraft: RulePackageDraft,
+  source: RulePackageWorkspaceSourceInput,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...buildCompileTracePayload(packageDraft, source),
+    ...fields,
+  };
+}
+
 function createSemanticHash(packageDraft: RulePackageDraft): string {
   return createHash("sha1")
     .update(
@@ -944,6 +1170,49 @@ function firstReviewReason(packageDraft: RulePackageDraft): string | undefined {
     packageDraft.semantic_draft?.review_policy[0] ??
     packageDraft.cards.exclusions.human_review_required_when[0]
   );
+}
+
+function resolveTerminologyTargetSection(packageDraft: RulePackageDraft): string {
+  const candidates = [
+    ...packageDraft.cards.applicability.sections,
+    ...(packageDraft.semantic_draft?.applicability ?? []),
+  ];
+  return (
+    candidates.find((section) =>
+      ["title", "abstract", "body", "global"].includes(section),
+    ) ?? "body"
+  );
+}
+
+function inferStatementKind(packageDraft: RulePackageDraft): string {
+  const corpus = [
+    packageDraft.title,
+    packageDraft.cards.ai_understanding.summary,
+    firstAfterExample(packageDraft),
+    firstBeforeExample(packageDraft),
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  if (corpus.includes("注册") || corpus.includes("trial")) {
+    return "trial_registration";
+  }
+  if (corpus.includes("基金") || corpus.includes("funding")) {
+    return "funding";
+  }
+  if (corpus.includes("利益冲突") || corpus.includes("conflict")) {
+    return "conflict_of_interest";
+  }
+  if (corpus.includes("作者贡献") || corpus.includes("contribution")) {
+    return "author_contribution";
+  }
+
+  return "ethics";
+}
+
+function resolvePrimaryManuscriptType(packageDraft: RulePackageDraft): string {
+  return packageDraft.cards.applicability.manuscript_types[0] ?? "clinical_study";
 }
 
 async function loadTargetDraftRuleSet(

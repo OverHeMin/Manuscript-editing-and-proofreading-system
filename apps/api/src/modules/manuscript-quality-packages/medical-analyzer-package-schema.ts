@@ -33,6 +33,23 @@ export interface MedicalAnalyzerIssuePolicy {
   action: ManuscriptQualityAction;
 }
 
+export interface MedicalAnalyzerMetricRange {
+  min?: number;
+  max?: number;
+}
+
+export interface MedicalAnalyzerDiagnosticMetrics {
+  metric_aliases: Record<string, string[]>;
+  metric_ranges: Record<string, MedicalAnalyzerMetricRange>;
+  confusion_matrix_aliases: Record<string, string[]>;
+  ci_confidence_levels: number[];
+}
+
+export interface MedicalAnalyzerRegressionMetrics {
+  field_aliases: Record<string, string[]>;
+  ci_confidence_levels: number[];
+}
+
 export interface MedicalAnalyzerPackageManifest {
   indicator_dictionary: Record<string, MedicalAnalyzerIndicatorDefinition>;
   unit_ranges: Record<string, MedicalAnalyzerUnitRange[]>;
@@ -41,6 +58,8 @@ export interface MedicalAnalyzerPackageManifest {
     group_comparison: string[];
   };
   count_constraints: Record<string, { max_percent?: number }>;
+  diagnostic_metrics: MedicalAnalyzerDiagnosticMetrics;
+  regression_metrics: MedicalAnalyzerRegressionMetrics;
   issue_policy: Record<string, MedicalAnalyzerIssuePolicy>;
   analyzer_toggles: Record<string, boolean>;
 }
@@ -69,6 +88,14 @@ export function parseMedicalAnalyzerPackageManifest(
   const countConstraints = readRecord(
     manifest.count_constraints,
     "medical_analyzer_package.count_constraints must be an object.",
+  );
+  const diagnosticMetrics = readRecord(
+    manifest.diagnostic_metrics ?? {},
+    "medical_analyzer_package.diagnostic_metrics must be an object.",
+  );
+  const regressionMetrics = readRecord(
+    manifest.regression_metrics ?? {},
+    "medical_analyzer_package.regression_metrics must be an object.",
   );
   const issuePolicy = readRecord(
     manifest.issue_policy,
@@ -178,6 +205,34 @@ export function parseMedicalAnalyzerPackageManifest(
         ];
       }),
     ),
+    diagnostic_metrics: {
+      metric_aliases: readStringArrayDictionary(
+        diagnosticMetrics.metric_aliases ?? {},
+        "medical_analyzer_package.diagnostic_metrics.metric_aliases",
+      ),
+      metric_ranges: readMetricRangeDictionary(
+        diagnosticMetrics.metric_ranges ?? {},
+        "medical_analyzer_package.diagnostic_metrics.metric_ranges",
+      ),
+      confusion_matrix_aliases: readStringArrayDictionary(
+        diagnosticMetrics.confusion_matrix_aliases ?? {},
+        "medical_analyzer_package.diagnostic_metrics.confusion_matrix_aliases",
+      ),
+      ci_confidence_levels: readNumberArray(
+        diagnosticMetrics.ci_confidence_levels ?? [],
+        "medical_analyzer_package.diagnostic_metrics.ci_confidence_levels must be a number array.",
+      ),
+    },
+    regression_metrics: {
+      field_aliases: readStringArrayDictionary(
+        regressionMetrics.field_aliases ?? {},
+        "medical_analyzer_package.regression_metrics.field_aliases",
+      ),
+      ci_confidence_levels: readNumberArray(
+        regressionMetrics.ci_confidence_levels ?? [],
+        "medical_analyzer_package.regression_metrics.ci_confidence_levels must be a number array.",
+      ),
+    },
     issue_policy: Object.fromEntries(
       Object.entries(issuePolicy).map(([issueKey, rawPolicy]) => {
         const policy = readRecord(
@@ -240,12 +295,61 @@ function readStringArray(value: unknown, message: string): string[] {
   return [...value];
 }
 
+function readStringArrayDictionary(
+  value: unknown,
+  path: string,
+): Record<string, string[]> {
+  const record = readRecord(value, `${path} must be an object.`);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, rawAliases]) => [
+      key,
+      readStringArray(rawAliases, `${path}.${key} must be a string array.`),
+    ]),
+  );
+}
+
+function readMetricRangeDictionary(
+  value: unknown,
+  path: string,
+): Record<string, MedicalAnalyzerMetricRange> {
+  const record = readRecord(value, `${path} must be an object.`);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, rawRange]) => {
+      const range = readRecord(rawRange, `${path}.${key} must be an object.`);
+      const normalizedRange: MedicalAnalyzerMetricRange = {};
+
+      if (range.min !== undefined) {
+        normalizedRange.min = readNumber(
+          range.min,
+          `${path}.${key}.min must be a number.`,
+        );
+      }
+      if (range.max !== undefined) {
+        normalizedRange.max = readNumber(
+          range.max,
+          `${path}.${key}.max must be a number.`,
+        );
+      }
+
+      return [key, normalizedRange];
+    }),
+  );
+}
+
 function readNonEmptyStringArray(value: unknown, message: string): string[] {
   const result = readStringArray(value, message);
   if (result.length === 0) {
     throw new ManuscriptQualityPackageValidationError(message);
   }
   return result;
+}
+
+function readNumberArray(value: unknown, message: string): number[] {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "number" || Number.isNaN(entry))) {
+    throw new ManuscriptQualityPackageValidationError(message);
+  }
+
+  return [...value];
 }
 
 function readString(value: unknown, message: string): string {

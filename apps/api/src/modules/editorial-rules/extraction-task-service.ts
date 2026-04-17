@@ -246,7 +246,10 @@ function inferSuggestedDestination(
     case "front_matter":
     case "abstract_keywords":
     case "heading_hierarchy":
+    case "statement":
+    case "manuscript_structure":
       return "template";
+    case "terminology":
     case "numeric_statistics":
       return manuscriptType === "clinical_study" ||
         manuscriptType === "diagnostic_study" ||

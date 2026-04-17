@@ -1,7 +1,29 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-const apiBaseUrl =
-  process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
+const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
+const cancelLabel = "\u53d6\u6d88";
+const searchSubmitLabel = "\u67e5\u627e";
+
+const medicalPackageLedgerTitle = "\u533b\u5b66\u4e13\u7528\u5305\u53f0\u8d26";
+const medicalPackageSearchLabel = "\u641c\u7d22\u533b\u5b66\u4e13\u7528\u5305\u53f0\u8d26";
+const addMedicalPackageLabel = "\u65b0\u589e\u533b\u5b66\u5305";
+const createMedicalPackageHeading = "\u65b0\u5efa\u533b\u5b66\u4e13\u7528\u5305";
+const editRulePackageLabel = "\u7f16\u8f91\u89c4\u5219\u5305";
+const medicalPackageSearchResultHeading = "\u533b\u5b66\u4e13\u7528\u5305\u67e5\u627e\u7ed3\u679c";
+
+const largeTemplateLedgerTitle = "\u5927\u6a21\u677f\u53f0\u8d26";
+const largeTemplateSearchLabel = "\u641c\u7d22\u5927\u6a21\u677f";
+const addLargeTemplateLabel = "\u65b0\u589e\u5927\u6a21\u677f";
+const createLargeTemplateHeading = "\u65b0\u5efa\u5927\u6a21\u677f";
+const largeTemplateSearchResultHeading = "\u5927\u6a21\u677f\u67e5\u627e\u7ed3\u679c";
+
+const extractionLedgerTitle = "\u539f\u7a3f/\u7f16\u8f91\u7a3f\u63d0\u53d6\u53f0\u8d26";
+const extractionSearchLabel = "\u641c\u7d22\u4efb\u52a1\u6216\u5019\u9009";
+const createExtractionTaskLabel = "\u65b0\u5efa\u63d0\u53d6\u4efb\u52a1";
+const aiSemanticConfirmationHeading = "AI \u8bed\u4e49\u786e\u8ba4";
+const extractionSearchResultHeading =
+  "\u539f\u7a3f/\u7f16\u8f91\u7a3f\u63d0\u53d6\u67e5\u627e\u7ed3\u679c";
+const batchProcessLabel = "\u6279\u91cf\u5904\u7406";
 
 test("template governance ledgers open inline forms and search surfaces from toolbar actions", async ({
   page,
@@ -9,49 +31,66 @@ test("template governance ledgers open inline forms and search surfaces from too
 }) => {
   await loginBrowserSession(page, request, "dev.admin");
 
-  await page.goto("/#template-governance?templateGovernanceView=medical-module-ledger", {
+  await page.goto("/#template-governance?templateGovernanceView=medical-package-ledger", {
     waitUntil: "domcontentloaded",
   });
-
   await expect(
-    page.getByRole("heading", { name: "医学专用模块台账", level: 1 }),
+    page.getByRole("heading", { name: medicalPackageLedgerTitle, level: 1 }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "新增模块" }).click();
-  await expect(page.getByRole("heading", { name: "新建医学专用模块" })).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: addMedicalPackageLabel }).click();
+  await expect(
+    page.getByRole("heading", { name: createMedicalPackageHeading }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: cancelLabel }).click();
 
-  await page.getByRole("button", { name: "编辑模块" }).click();
-  await expect(page.getByRole("heading", { name: "编辑医学专用模块" })).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: editRulePackageLabel }).click();
+  await expect(page.getByRole("heading", { name: editRulePackageLabel })).toBeVisible();
+  await page.getByRole("button", { name: cancelLabel }).click();
 
-  await page.getByLabel("搜索医学专用模块").fill("伦理");
-  await page.getByRole("button", { name: "查找" }).click();
-  await expect(page.getByRole("heading", { name: "医学专用模块查找结果" })).toBeVisible();
+  await page.getByLabel(medicalPackageSearchLabel).fill("\u4f26\u7406");
+  await page.getByRole("button", { name: searchSubmitLabel }).click();
+  await expect(
+    page.getByRole("heading", { name: medicalPackageSearchResultHeading }),
+  ).toBeVisible();
 
-  await page.goto("/#template-governance?templateGovernanceView=template-ledger", {
+  await page.goto("/#template-governance?templateGovernanceView=large-template-ledger", {
     waitUntil: "domcontentloaded",
   });
+  await expect(
+    page.getByRole("heading", { name: largeTemplateLedgerTitle, level: 1 }),
+  ).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "模板台账", level: 1 })).toBeVisible();
-  await page.getByRole("button", { name: "新增模板" }).click();
-  await expect(page.getByRole("heading", { name: "新建模板" })).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: addLargeTemplateLabel }).click();
+  await expect(page.getByRole("heading", { name: createLargeTemplateHeading })).toBeVisible();
+  await page.getByRole("button", { name: cancelLabel }).click();
+
+  await page.getByLabel(largeTemplateSearchLabel).fill("\u4e34\u5e8a");
+  await page.getByRole("button", { name: searchSubmitLabel }).click();
+  await expect(
+    page.getByRole("heading", { name: largeTemplateSearchResultHeading }),
+  ).toBeVisible();
 
   await page.goto("/#template-governance?templateGovernanceView=extraction-ledger", {
     waitUntil: "domcontentloaded",
   });
+  await expect(page.getByRole("heading", { name: extractionLedgerTitle, level: 1 })).toBeVisible();
 
+  await page.getByRole("button", { name: createExtractionTaskLabel }).click();
+  await expect(page.getByRole("heading", { name: createExtractionTaskLabel })).toBeVisible();
+  await page.getByRole("button", { name: cancelLabel }).click();
+
+  await page.getByRole("button", { name: batchProcessLabel }).click();
   await expect(
-    page.getByRole("heading", { name: "原稿/编辑稿提取台账", level: 1 }),
+    page.getByRole("heading", { name: aiSemanticConfirmationHeading }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "新建提取任务" }).click();
-  await expect(page.getByRole("heading", { name: "新建提取任务" })).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: cancelLabel }).click();
 
-  await page.getByRole("button", { name: "批量处理" }).click();
-  await expect(page.getByRole("heading", { name: "AI 语义确认" })).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByLabel(extractionSearchLabel).fill("\u63d0\u53d6");
+  await page.getByRole("button", { name: searchSubmitLabel }).click();
+  await expect(
+    page.getByRole("heading", { name: extractionSearchResultHeading }),
+  ).toBeVisible();
 });
 
 async function loginApiSession(

@@ -6,10 +6,54 @@ if [ "${SKIP_LOCAL_PR_GATE:-0}" = "1" ]; then
   exit 0
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "[pre-push] pnpm is required but was not found in PATH." >&2
+resolve_node() {
+  if [ -n "${MEDSYS_NODE_DIR:-}" ]; then
+    for candidate in \
+      "${MEDSYS_NODE_DIR}/node.exe" \
+      "${MEDSYS_NODE_DIR}/node"
+    do
+      if [ -x "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  if [ -x "$HOME/.medsys-runtime/node-v22.22.2/node.exe" ]; then
+    printf '%s\n' "$HOME/.medsys-runtime/node-v22.22.2/node.exe"
+    return 0
+  fi
+
+  if command -v node.exe >/dev/null 2>&1; then
+    command -v node.exe
+    return 0
+  fi
+
+  for candidate in \
+    "/c/Program Files/nodejs/node.exe" \
+    "/mnt/c/Program Files/nodejs/node.exe"
+  do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return 0
+  fi
+
+  return 1
+}
+
+ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+if ! NODE_BIN=$(resolve_node); then
+  echo "[pre-push] Node.js is required but no working node executable was found." >&2
   exit 1
 fi
 
 echo "[pre-push] Running local PR gate..."
-pnpm verify:pr-gate
+cd "$ROOT_DIR"
+"$NODE_BIN" ./scripts/local-pr-gate.mjs

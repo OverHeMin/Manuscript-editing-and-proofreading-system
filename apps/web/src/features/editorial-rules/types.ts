@@ -146,7 +146,10 @@ export interface CreateEditorialRuleInput {
 export type RulePackageKind =
   | "front_matter"
   | "abstract_keywords"
+  | "terminology"
   | "heading_hierarchy"
+  | "statement"
+  | "manuscript_structure"
   | "numeric_statistics"
   | "three_line_table"
   | "reference";

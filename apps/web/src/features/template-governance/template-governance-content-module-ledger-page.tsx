@@ -275,6 +275,49 @@ export function TemplateGovernanceContentModuleLedgerPage({
               <p>{selectedModule.summary}</p>
             </div>
           </div>
+          {ledgerKind === "medical_specialized" ? (
+            <section className="template-governance-card template-governance-ledger-section">
+              <header className="template-governance-ledger-section-header">
+                <h2>
+                  {isMedicalStatisticsModule(selectedModule)
+                    ? "当前包已声明的统计治理要点"
+                    : "当前包已声明的治理要点"}
+                </h2>
+                <p>这里优先展示当前规则包自己录入的摘要与 guidance，避免把平台通用能力误当成当前包已经启用的配置。</p>
+              </header>
+              <div className="template-governance-rule-hint-list">
+                {buildDeclaredModuleCards(selectedModule).map((card) => (
+                  <article
+                    key={card.title}
+                    className="template-governance-rule-hint-card"
+                  >
+                    <strong>{card.title}</strong>
+                    <p>{card.description}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {ledgerKind === "medical_specialized" &&
+          isMedicalStatisticsModule(selectedModule) ? (
+            <section className="template-governance-card template-governance-ledger-section">
+              <header className="template-governance-ledger-section-header">
+                <h2>平台当前支持的医学统计校验能力</h2>
+                <p>这部分说明系统运行层已支持的医学统计校验边界，用来帮助判断当前包后续还能接入哪些治理能力。</p>
+              </header>
+              <div className="template-governance-rule-hint-list">
+                {buildMedicalStatisticCapabilityCards().map((card) => (
+                  <article
+                    key={card.title}
+                    className="template-governance-rule-hint-card"
+                  >
+                    <strong>{card.title}</strong>
+                    <p>{card.description}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
           <div className="template-governance-actions">
             <button type="button" onClick={onJoinTemplate}>
               加入大模板
@@ -579,4 +622,94 @@ function formatRuleStatusLabel(value: string): string {
     default:
       return value;
   }
+}
+
+function buildDeclaredModuleCards(
+  module: TemplateGovernanceContentModuleLedgerViewModel["selectedModule"],
+): Array<{
+  title: string;
+  description: string;
+}> {
+  if (!module) {
+    return [];
+  }
+
+  const cards: Array<{ title: string; description: string }> = [
+    {
+      title: "包摘要",
+      description: module.summary,
+    },
+  ];
+
+  for (const [index, guidance] of (module.guidance ?? []).entries()) {
+    const normalized = guidance.trim();
+    if (!normalized) {
+      continue;
+    }
+
+    cards.push({
+      title: `治理要点 ${index + 1}`,
+      description: normalized,
+    });
+  }
+
+  return cards;
+}
+
+function isMedicalStatisticsModule(
+  module: TemplateGovernanceContentModuleLedgerViewModel["selectedModule"],
+): boolean {
+  if (!module) {
+    return false;
+  }
+
+  const haystack = [
+    module.category,
+    module.summary,
+    ...(module.guidance ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "statistic",
+    "statistics",
+    "chi-square",
+    "auc",
+    "beta",
+    "sensitivity",
+    "specificity",
+    "推断统计",
+    "诊断学",
+    "回归",
+    "统计",
+  ].some((keyword) => haystack.includes(keyword.toLowerCase()));
+}
+
+function buildMedicalStatisticCapabilityCards(): Array<{
+  title: string;
+  description: string;
+}> {
+  return [
+    {
+      title: "诊断学指标",
+      description:
+        "支持 AUC、sensitivity、specificity，并可结合 TP、FP、FN、TN 做一致性重算。",
+    },
+    {
+      title: "回归统计",
+      description:
+        "支持 beta、SE、95% CI、P，可检查系数、标准误与区间之间是否冲突。",
+    },
+    {
+      title: "推断统计",
+      description:
+        "支持 chi-square、t、F、P，并可对统计量与显著性描述做一致性校验。",
+    },
+    {
+      title: "重算与策略",
+      description:
+        "支持从均值±标准差、样本量、列联表计数等证据重算；发现冲突后可按包内策略配置严重级别与处理动作。",
+    },
+  ];
 }

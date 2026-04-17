@@ -116,6 +116,63 @@ export function buildMiniTableReferenceFixture(): ExamplePairUploadInput {
   };
 }
 
+export function buildMiniTerminologyFixture(): ExamplePairUploadInput {
+  return createMiniFixture({
+    originalSections: [section(1, "摘要", 1, 1)],
+    editedSections: [section(1, "摘要", 1, 1)],
+    originalBlocks: [
+      paragraph(
+        "term-1",
+        "abstract",
+        "terminology",
+        "检测中性粒细胞明胶酶相关脂质运载蛋白水平。",
+      ),
+    ],
+    editedBlocks: [
+      paragraph(
+        "term-1",
+        "abstract",
+        "terminology",
+        "检测 NGAL 水平。",
+      ),
+    ],
+  });
+}
+
+export function buildMiniStatementFixture(): ExamplePairUploadInput {
+  return createMiniFixture({
+    originalSections: [],
+    editedSections: [section(1, "伦理声明", 1, 12)],
+    originalBlocks: [],
+    editedBlocks: [
+      paragraph(
+        "statement-ethics",
+        "back_matter",
+        "statement",
+        "伦理声明：本研究已通过医院伦理委员会审批。",
+      ),
+    ],
+  });
+}
+
+export function buildMiniManuscriptStructureFixture(): ExamplePairUploadInput {
+  return createMiniFixture({
+    originalSections: [
+      section(1, "摘要", 1, 1),
+      section(2, "结果", 1, 8),
+      section(3, "讨论", 1, 14),
+    ],
+    editedSections: [
+      section(1, "摘要", 1, 1),
+      section(2, "材料与方法", 1, 5),
+      section(3, "结果", 1, 10),
+      section(4, "讨论", 1, 16),
+    ],
+    originalBlocks: [],
+    editedBlocks: [],
+  });
+}
+
 function isResultOrReferenceSectionHeading(heading: string): boolean {
   const normalized = heading.replaceAll(/[\s　]/g, "");
   return normalized.startsWith("2") || normalized.includes("参考文献");
@@ -126,4 +183,64 @@ export function findCandidate(
   packageKind: RulePackageCandidate["package_kind"],
 ): RulePackageCandidate | undefined {
   return candidates.find((candidate) => candidate.package_kind === packageKind);
+}
+
+function createMiniFixture(input: {
+  originalSections: ExamplePairUploadInput["original"]["sections"];
+  editedSections: ExamplePairUploadInput["edited"]["sections"];
+  originalBlocks: ExamplePairUploadInput["original"]["blocks"];
+  editedBlocks: ExamplePairUploadInput["edited"]["blocks"];
+}): ExamplePairUploadInput {
+  return {
+    context: {
+      manuscript_type: "clinical_study",
+      module: "editing",
+      journal_key: "journal-alpha",
+    },
+    original: {
+      source: "original",
+      parser_status: "ready",
+      sections: input.originalSections,
+      blocks: input.originalBlocks,
+      tables: [],
+      warnings: [],
+    },
+    edited: {
+      source: "edited",
+      parser_status: "ready",
+      sections: input.editedSections,
+      blocks: input.editedBlocks,
+      tables: [],
+      warnings: [],
+    },
+  };
+}
+
+function section(
+  order: number,
+  heading: string,
+  level: number,
+  paragraphIndex: number,
+) {
+  return {
+    order,
+    heading,
+    level,
+    paragraph_index: paragraphIndex,
+  };
+}
+
+function paragraph(
+  blockId: string,
+  sectionKey: string,
+  semanticRole: string,
+  text: string,
+) {
+  return {
+    block_id: blockId,
+    kind: "paragraph" as const,
+    section_key: sectionKey,
+    semantic_role: semanticRole,
+    text,
+  };
 }

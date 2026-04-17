@@ -680,6 +680,19 @@ test("template governance controller loads governed content-module and template 
         };
       }
 
+      if (
+        input.url === "/api/v1/knowledge/library" &&
+        input.method === "GET"
+      ) {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [],
+          } as TResponse,
+        };
+      }
+
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -714,6 +727,10 @@ test("template governance controller loads governed content-module and template 
     requests.some(
       (request) => request.url === "/api/v1/templates/template-compositions",
     ),
+    true,
+  );
+  assert.equal(
+    requests.some((request) => request.url === "/api/v1/knowledge/library"),
     true,
   );
 });

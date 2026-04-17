@@ -115,6 +115,10 @@ const STATISTICAL_EXPRESSION_PRESET: RuleAuthoringPreset<"statistical_expression
         targetSection: "results",
         expressionPattern: "P, 95%CI, OR, RR, HR",
         reportingRequirement: "\u7edf\u8ba1\u7b26\u53f7\u4e0e\u7f6e\u4fe1\u533a\u95f4\u683c\u5f0f\u7edf\u4e00",
+        metricFamily: "basic",
+        supportedMetrics: "P, 95% CI, mean\u00b1SD, n",
+        requiredCompanionEvidence: "\u6837\u672c\u91cf\u3001\u5206\u7ec4\u4fe1\u606f\u3001\u7f6e\u4fe1\u533a\u95f4\u4e0a\u4e0b\u9650",
+        recalculationPolicy: "recheck_from_counts_when_possible",
       },
     };
   },
