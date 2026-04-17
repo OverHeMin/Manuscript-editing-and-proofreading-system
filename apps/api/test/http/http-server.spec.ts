@@ -454,6 +454,69 @@ test("http server auto-assigns the seeded template family on upload so admins ca
   }
 });
 
+test("default demo http server exposes the seeded harness control plane scope without internal errors", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const scopeResponse = await fetch(
+      `${baseUrl}/api/v1/harness-control-plane/scopes/editing/clinical_study/family-seeded-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const scopeBody = (await scopeResponse.json()) as
+      | {
+          active_environment: {
+            execution_profile: { id: string };
+            runtime_binding: { id: string };
+            model_routing_policy_version: { id: string };
+            retrieval_preset?: { id: string };
+            manual_review_policy?: { id: string };
+          };
+        }
+      | {
+          error: string;
+          message?: string;
+        };
+
+    assert.equal(
+      scopeResponse.status,
+      200,
+      `Expected the default demo harness control plane scope to be seeded, received ${scopeResponse.status}: ${JSON.stringify(scopeBody)}`,
+    );
+    assert.equal(
+      "active_environment" in scopeBody ? scopeBody.active_environment.execution_profile.id : "",
+      "profile-editing-1",
+    );
+    assert.equal(
+      "active_environment" in scopeBody ? scopeBody.active_environment.runtime_binding.id : "",
+      "binding-editing-1",
+    );
+    assert.equal(
+      "active_environment" in scopeBody
+        ? scopeBody.active_environment.model_routing_policy_version.id
+        : "",
+      "routing-version-editing-1",
+    );
+    assert.equal(
+      "active_environment" in scopeBody ? scopeBody.active_environment.retrieval_preset?.id : "",
+      "retrieval-editing-1",
+    );
+    assert.equal(
+      "active_environment" in scopeBody
+        ? scopeBody.active_environment.manual_review_policy?.id
+        : "",
+      "manual-review-editing-1",
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server exposes harness control plane scope preview activate and rollback routes", async () => {
   const { server, baseUrl } = await startWorkbenchServer();
 
@@ -1908,19 +1971,23 @@ test("http server returns connection-aware model registry and execution preview 
       provider.id,
     );
 
-    await fetch(`${baseUrl}/api/v1/model-registry/routing-policy`, {
-      method: "POST",
-      headers: {
-        Cookie: cookie,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        actorRole: "editor",
-        moduleDefaults: {
-          editing: model.id,
+    const moduleDefaultResponse = await fetch(
+      `${baseUrl}/api/v1/system-settings/module-defaults`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          module_key: "editing",
+          primary_model_id: model.id,
+          fallback_model_id: fallbackModel.id,
+        }),
+      },
+    );
+
+    assert.equal(moduleDefaultResponse.status, 200);
 
     const familyResponse = await fetch(`${baseUrl}/api/v1/templates/families`, {
       method: "POST",
@@ -2559,7 +2626,7 @@ test("http server rejects routing governance approval without evidence links", a
         provider: "openai",
         modelName: "gpt-5-routing-without-evidence",
         modelVersion: "2026-04-02",
-        allowedModules: ["editing"],
+        allowedModules: ["proofreading"],
         isProdAllowed: true,
       }),
     });
@@ -2579,7 +2646,7 @@ test("http server rejects routing governance approval without evidence links", a
           actorRole: "editor",
           input: {
             scopeKind: "module",
-            scopeValue: "editing",
+            scopeValue: "proofreading",
             primaryModelId: createdModel.id,
             fallbackModelIds: [],
             evidenceLinks: [],
@@ -2806,19 +2873,22 @@ test("http server resolves governed execution bundles and records execution snap
     });
     const model = (await modelResponse.json()) as { id: string };
 
-    await fetch(`${baseUrl}/api/v1/model-registry/routing-policy`, {
-      method: "POST",
-      headers: {
-        Cookie: cookie,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        actorRole: "editor",
-        moduleDefaults: {
-          editing: model.id,
+    const moduleDefaultResponse = await fetch(
+      `${baseUrl}/api/v1/system-settings/module-defaults`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          module_key: "editing",
+          primary_model_id: model.id,
+        }),
+      },
+    );
+
+    assert.equal(moduleDefaultResponse.status, 200);
 
     const profileResponse = await fetch(
       `${baseUrl}/api/v1/execution-governance/profiles`,
