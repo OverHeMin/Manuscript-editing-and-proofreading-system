@@ -6,42 +6,38 @@
 
 **Status**
 
-Approved in conversation as the V1 baseline for governed self-learning in proofreading, with a shared backbone that later modules can reuse.
+Regenerated on a clean branch after the final product discussion. This is the agreed V1 baseline for governed self-learning in proofreading.
 
 **Goal**
 
-Add a first production-safe self-learning loop to the manuscript system without turning production execution into a black-box auto-evolving model system.
+Add a first production-safe self-learning loop to proofreading so the system can discover meaningful issues beyond the current rule, knowledge, and quality-package coverage, without turning the product into a black-box self-training model system.
 
-The V1 outcome is:
+**V1 Promise**
 
-- proofreading keeps its current governed execution path
-- the system adds one bounded residual-discovery pass after baseline governance execution
-- newly found residual issues become structured evidence objects
-- only validated and reviewed issues can become learning candidates
-- learned value strengthens governed assets, not model parameters
+Proofreading keeps its current governed execution path, adds one bounded residual-discovery pass after that governed pass, stores those findings as structured residual issues, validates reusable findings through Harness, and only then lets approved findings enter the existing governed learning and writeback path.
 
 ## 1. Locked Product Decisions
 
-### 1.1 Terminology
+### 1.1 System self-learning, not model self-training
 
-For this product, the following terms are locked:
+For this product:
 
-- `system self-learning` means the system discovers new residual issues during execution, validates them, and writes approved value back into governed assets such as rules, knowledge, prompts, templates, or manual-review policy
+- `system self-learning` means the system discovers residual issues during governed execution, validates them, and writes approved value back into governed assets such as rules, knowledge, prompts, templates, or manual-review policy
 - `model self-training` means feeding model outputs back into model training or automatic parameter updates
 
 V1 includes `system self-learning`.
 
 V1 explicitly excludes `model self-training`.
 
-One sentence:
+### 1.2 Proofreading only for activation, shared backbone for architecture
 
-`V1 要做的是系统经验沉淀，不是模型参数自我训练。`
+V1 activates self-learning only for `proofreading`.
 
-### 1.2 V1 ownership boundary
+V1 still builds the backbone in a shared way so `editing` and `screening` can later add their own adapters instead of forcing a rewrite.
 
-The self-learning loop sits between governed module execution and existing learning governance.
+### 1.3 Governed execution remains first-class
 
-It does not replace:
+Self-learning does not replace:
 
 - execution profiles
 - runtime bindings
@@ -49,218 +45,299 @@ It does not replace:
 - retrieval presets
 - manual review policies
 - rule center
-- knowledge review
+- knowledge library
+- learning governance writebacks
 
-It adds one bounded layer:
+It adds one bounded layer after governed execution:
 
-- detect residual issues not already covered by current governance assets
-- normalize them into structured issues
+- detect residual issues not already covered by current governed assets
+- normalize them into stable records
 - score and route them
-- validate them through Harness
-- bridge approved value into the existing learning candidate and writeback path
+- validate candidate-eligible findings through Harness
+- bridge only approved value into the existing learning-governance flow
 
-### 1.3 First-wave module scope
+### 1.4 No auto-publish to live assets
 
-V1 only activates residual self-learning for `proofreading`.
+Residual findings may produce evidence, queues, and draft candidates.
 
-However, V1 must build the shared backbone in a module-agnostic way so later `editing` and `screening` can attach dedicated adapters instead of forcing a rewrite.
+Residual findings must not:
 
-One sentence:
+- publish live rules
+- publish live knowledge
+- update live prompt templates
+- update live module templates
+- alter model parameters
 
-`V1 先在校对落地，但骨架不是校对私有实现。`
+All writeback remains review-gated.
 
-### 1.4 Runtime principle
+### 1.5 Harness is a validation gate, not a decoration layer
 
-Production execution remains two-stage:
+Harness is not only a constraint surface for runtime selection.
 
-1. run normal governed execution with current templates, rules, packages, prompt, and approved knowledge
-2. run a bounded residual-discovery pass only on what the first stage did not already cover
-
-The residual pass must not repeat already known hits as if they were new learning.
-
-### 1.5 Learning boundary
-
-Residual findings never auto-publish to live assets.
-
-The maximum V1 automation is:
-
-- create structured residual issues
-- create routed learning candidates when thresholds are met
-- prepare candidate-ready evidence for reviewers
-
-The following still require governance approval:
-
-- knowledge drafts
-- rule drafts
-- prompt or template drafts
-- any live activation
+In V1, candidate-eligible residual findings must pass through a Harness-backed validation path before the system can create governed learning candidates from them.
 
 ## 2. Why This Design Exists
 
-The product needs both governed execution and model freedom, but in different roles.
+The current system is strongest when a problem is already covered by:
 
-Current governed execution is strong at handling:
+- deterministic or authored rules
+- approved knowledge
+- governed prompts and skill packages
+- quality packages
+- manual review policy
 
-- known format rules
-- approved medical knowledge
-- bounded prompt guidance
-- package-based quality checks
-- manual review triggers
+What the product still lacks is a controlled way for the model to say:
 
-What it does not yet productize is a controlled way for the model to say:
+`There is still a meaningful proofreading problem here, and the current governed assets did not already cover it.`
 
-`I found a meaningful problem that the current governed assets did not already cover.`
+That missing lane matters because the user wants the system to do two things at once:
 
-This design adds exactly that ability while keeping:
+- stay governed and auditable
+- still benefit from the model's residual problem-finding ability outside the current asset envelope
 
-- auditability
+This design adds exactly that lane, while keeping:
+
+- traceability
 - replayability
 - rollback
-- approval gates
-- Harness-controlled validation
+- review gates
+- truthful system boundaries
 
-## 3. Final Architecture
+## 3. Existing Repo Anchors
 
-V1 adds six shared backbone components.
+This design is intentionally additive. The repo already contains the core governance building blocks we need.
 
-### 3.1 Residual Discovery Runner
+### 3.1 Governed context resolution already exists
 
-This component runs after proofreading completes its governed baseline pass.
+`apps/api/src/modules/shared/governed-agent-context-resolver.ts` already resolves:
+
+- execution profile
+- runtime binding
+- runtime
+- sandbox profile
+- agent profile
+- tool permission policy
+- retrieval snapshot
+- runtime-binding readiness
+
+V1 must reuse that governed context instead of inventing a separate self-learning runtime context.
+
+### 3.2 Proofreading already records governed execution evidence
+
+`apps/api/src/modules/proofreading/proofreading-service.ts` already:
+
+- resolves governed proofreading context
+- runs proofreading inspection and quality packages
+- records execution snapshots
+- records knowledge hits
+- links agent execution logs to execution snapshots
+
+This is the natural insertion point for the proofreading residual-learning hook.
+
+### 3.3 Execution tracking already stores the baseline snapshot
+
+`apps/api/src/modules/execution-tracking/execution-tracking-service.ts` already stores:
+
+- execution snapshot identity
+- template and prompt lineage
+- skill package lineage
+- model lineage
+- knowledge-hit logs
+- quality-finding summary
+
+Residual learning should reference this snapshot, not duplicate it.
+
+### 3.4 Learning governance already owns reviewed writeback
+
+The current learning stack already supports:
+
+- governed learning candidate creation in `apps/api/src/modules/learning/learning-service.ts`
+- governed provenance links in `apps/api/src/modules/feedback-governance/feedback-governance-service.ts`
+- review-gated writeback in `apps/api/src/modules/learning-governance/learning-governance-service.ts`
+
+V1 must bridge into this path rather than creating a second approval system.
+
+### 3.5 Harness already owns environment control and evaluation operations
+
+The current Harness stack already supports:
+
+- environment preview and activation in `apps/api/src/modules/harness-control-plane/harness-control-plane-service.ts`
+- governed evaluation seeding and evidence packs in `apps/api/src/modules/verification-ops/verification-ops-service.ts`
+
+V1 should reuse this platform, but it must honestly add the missing residual-validation capability instead of pretending current verification check types already cover proofreading residual issues.
+
+## 4. Truthful Gap Assessment
+
+The repo is close enough to support V1, but three gaps are real and must be modeled explicitly.
+
+### 4.1 There is no first-class residual-issue store yet
+
+Today the system records governed execution snapshots and learning candidates, but not the intermediate residual observations that sit between them.
+
+V1 must add a dedicated persistent residual-issue ledger.
+
+### 4.2 The current learning candidate path does not truthfully represent residual provenance
+
+Today governed learning provenance supports:
+
+- `human_feedback`
+- `evaluation_experiment`
+- `reviewed_case_snapshot`
+
+Residual issues discovered directly from live proofreading execution are none of those.
+
+V1 must add a new provenance kind for residual observations instead of pretending they were reviewed snapshots or human feedback.
+
+### 4.3 The current Harness verification types do not validate proofreading residual issues
+
+Today verification check types are oriented around:
+
+- browser QA
+- benchmark
+- deploy verification
+- retrieval quality
+
+That is not enough to validate whether a proofreading residual issue is reproducible, well-evidenced, and safe to learn from.
+
+V1 must add a dedicated residual-validation check type for Harness.
+
+## 5. Final V1 Architecture
+
+V1 adds six backbone components.
+
+### 5.1 Residual Discovery Runner
+
+Runs after the normal governed proofreading pass completes.
 
 It receives:
 
-- source manuscript fragments or resolved blocks
-- proofreading output artifacts
+- resolved source blocks
+- proofreading failed checks
+- manual-review items
+- risk items
 - quality findings
-- failed checks
-- manual review items
 - knowledge hits
-- applied or inspected rule context
+- governed context identifiers
+- execution snapshot identifiers
 
-Its only job is to ask:
+Its question is narrowly scoped:
 
-`What meaningful issues remain that were not already covered by the current governed assets?`
+`What meaningful proofreading issues remain that were not already covered by the current governed assets or baseline findings?`
 
-It must not output direct live mutations.
+It must not mutate live governed assets.
 
-### 3.2 Issue Normalizer
+### 5.2 Issue Normalizer
 
-This component converts model findings into a stable `ResidualIssue` contract.
+Converts model output into a stable `ResidualIssueRecord`.
 
-It prevents free-form suggestions from leaking directly into governance.
+This prevents free-form AI prose from flowing directly into governance.
 
-### 3.3 Confidence Engine
+### 5.3 Confidence Engine
 
-This component computes a system confidence band for every residual issue.
+Computes a system confidence band from multiple signals, not only model self-confidence.
 
-It must use more than model self-reported confidence.
+### 5.4 Issue Router
 
-It combines:
+Routes each residual issue into one of five destinations:
 
-- model confidence
-- evidence quality
-- conflict signals
-- repeatability
-- risk level
-- Harness validation result
+- `rule_candidate`
+- `knowledge_candidate`
+- `prompt_template_candidate`
+- `manual_only`
+- `evidence_only`
 
-### 3.4 Issue Router
+### 5.5 Harness Gate
 
-This component decides where a residual issue belongs:
+Runs residual validation on candidate-eligible issues and records whether the issue is reusable enough to learn from.
 
-- rule candidate
-- knowledge candidate
-- prompt or template candidate
-- manual-only handling
-- evidence-only retention
+### 5.6 Learning Bridge
 
-### 3.5 Harness Gate
+Creates governed learning candidates only after routing and Harness validation succeed.
 
-Harness becomes the validation gate for residual self-learning, not just a restriction surface.
+It reuses the current learning and writeback flow, but extends it with truthful residual provenance.
 
-It decides whether a residual issue is:
+## 6. New Core Contracts
 
-- too weak to learn from
-- reviewable but not reusable
-- reusable enough to become a governed candidate
+### 6.1 Residual issue record
 
-### 3.6 Learning Bridge
+V1 adds a dedicated persistent record instead of overloading the runtime quality issue contract or the learning candidate contract.
 
-This component bridges routed residual issues into the existing learning candidate and governed writeback path.
-
-It must reuse the current learning lifecycle instead of introducing a second approval system.
-
-## 4. Shared Backbone And Module Adapters
-
-The backbone is shared.
-
-The module logic is not.
-
-Each mainline module will eventually provide its own adapter:
-
-- `ProofreadingResidualAdapter`
-- `EditingResidualAdapter`
-- `ScreeningResidualAdapter`
-
-Each adapter defines:
-
-- issue taxonomy
-- evidence extraction rules
-- allowable routing targets
-- module-specific confidence thresholds
-- high-risk escalation rules
-
-V1 implements only `ProofreadingResidualAdapter`.
-
-## 5. Proofreading V1 End-To-End Flow
-
-The proofreading self-learning loop should be:
-
-1. resolve governed proofreading context
-2. execute normal proofreading checks and quality packages
-3. produce standard proofreading findings and artifacts
-4. collect already-known governance hits from this run
-5. invoke residual discovery with source blocks plus known-hit context
-6. normalize raw findings into `ResidualIssue[]`
-7. compute system confidence bands
-8. route each issue to manual handling, evidence retention, or candidate creation
-9. run Harness validation for candidate-eligible issues
-10. create governed learning candidates only for validated routes
-11. keep all candidate approval and writeback review-gated
-
-The system should learn from the residue, not from the entire run indiscriminately.
-
-## 6. ResidualIssue Contract
-
-V1 should add a dedicated issue contract for learning-time decisions instead of overloading the runtime quality issue model.
-
-Recommended fields:
+Recommended shape:
 
 | Field | Meaning |
 | --- | --- |
-| `id` | stable issue id |
-| `module` | proofreading in V1 |
-| `source_stage` | quality_engine / rule_residual / model_residual |
-| `snapshot_id` | execution snapshot reference |
+| `id` | stable residual issue id |
+| `module` | `proofreading` in V1 |
+| `manuscript_id` | manuscript reference |
+| `manuscript_type` | manuscript type at discovery time |
 | `job_id` | source job reference |
-| `asset_id` | output asset reference when relevant |
+| `execution_snapshot_id` | governed execution snapshot reference |
+| `agent_execution_log_id` | governed agent log reference when available |
+| `output_asset_id` | output asset tied to the governed source |
+| `execution_profile_id` | execution profile lineage |
+| `runtime_binding_id` | runtime binding lineage |
+| `prompt_template_id` | prompt template lineage |
+| `retrieval_snapshot_id` | retrieval snapshot lineage when available |
 | `issue_type` | proofreading residual taxonomy key |
-| `excerpt` | local text or table evidence |
-| `location` | paragraph / sentence / table coordinate |
-| `suggestion` | normalized fix or reviewer-facing suggestion |
+| `source_stage` | `quality_engine`, `rule_residual`, or `model_residual` |
+| `excerpt` | localized evidence text |
+| `location` | paragraph, sentence, or table coordinates |
+| `suggestion` | normalized reviewer-facing suggestion |
 | `rationale` | why the issue matters |
-| `related_hits` | already-hit rules, knowledge, quality issues |
+| `related_rule_ids` | already-hit or nearby rule ids |
+| `related_knowledge_item_ids` | already-used knowledge ids |
+| `related_quality_issue_ids` | baseline quality issue ids |
 | `novelty_key` | dedupe and recurrence grouping key |
+| `recurrence_count` | how often the same novelty key recurs |
 | `model_confidence` | raw model confidence |
-| `system_confidence_band` | L0 / L1 / L2 / L3 |
-| `risk_level` | low / medium / high / critical |
-| `recommended_route` | rule / knowledge / prompt_template / manual_only / evidence_only |
+| `signal_breakdown` | multi-signal confidence inputs |
+| `system_confidence_band` | `L0`, `L1`, `L2`, `L3` |
+| `risk_level` | `low`, `medium`, `high`, `critical` |
+| `recommended_route` | rule, knowledge, prompt template, manual only, evidence only |
+| `status` | observed lifecycle state |
+| `harness_validation_status` | not_required, queued, passed, failed |
+| `harness_run_id` | Harness run reference when used |
+| `harness_evidence_pack_id` | evidence pack reference when created |
+| `learning_candidate_id` | downstream learning candidate when created |
+| `created_at` | creation time |
+| `updated_at` | update time |
 
-### 6.1 Proofreading residual taxonomy
+### 6.2 Residual confidence bands
 
-V1 proofreading issue types should stay narrow and operator-readable.
+V1 uses four bands:
 
-Recommended initial categories:
+- `L0_observation`
+- `L1_review_pending`
+- `L2_candidate_ready`
+- `L3_strongly_reusable`
+
+These are system bands, not model-reported labels.
+
+### 6.3 Residual provenance kind
+
+V1 adds a new governed provenance kind:
+
+- `residual_issue`
+
+This is required so learning candidates created from live residual observations do not masquerade as human feedback or reviewed snapshots.
+
+### 6.4 First-class knowledge candidate type
+
+The current learning candidate model has no truthful first-class `knowledge_candidate`.
+
+Using `case_pattern_candidate` for residual knowledge writeback would blur the product boundary again.
+
+V1 therefore adds:
+
+- `knowledge_candidate`
+
+This keeps routing, review copy, and writeback targets honest.
+
+## 7. Proofreading Residual Taxonomy
+
+V1 keeps the initial taxonomy narrow and operator-readable.
+
+Recommended issue types:
 
 - `terminology_gap`
 - `table_annotation_gap`
@@ -270,105 +347,114 @@ Recommended initial categories:
 - `medical_meaning_risk`
 - `ambiguous_reviewer_escalation`
 
-These are learning-time categories, not user-facing product marketing labels.
+These are learning-time issue types, not user-facing marketing labels.
 
-## 7. Confidence Model
+## 8. Proofreading V1 End-To-End Flow
 
-### 7.1 Confidence inputs
+The end-to-end flow is:
 
-System confidence must combine multiple signals:
+1. resolve governed proofreading context
+2. run the current governed proofreading pass
+3. record the normal execution snapshot and baseline findings
+4. collect known-governed coverage from rules, knowledge hits, and quality findings
+5. run the proofreading residual discovery pass on the same governed source
+6. normalize the output into `ResidualIssueRecord[]`
+7. dedupe by `novelty_key` and update recurrence counts
+8. compute system confidence bands
+9. route each issue into rule, knowledge, prompt-template, manual-only, or evidence-only
+10. send candidate-eligible issues through Harness residual validation
+11. create governed learning candidates only for routed issues that satisfy the V1 gate
+12. leave approval and writeback on the existing review path
+
+The system learns from the residual delta, not from the entire run indiscriminately.
+
+## 9. Confidence Model
+
+### 9.1 Confidence inputs
+
+System confidence must combine:
 
 - model self-confidence
 - evidence specificity
-- whether the issue conflicts with approved rules or knowledge
-- whether the same novelty key appears across multiple runs
-- whether Harness replay confirms similar behavior
-- whether the issue affects medical meaning or high-risk scope
+- conflict with approved rules or approved knowledge
+- recurrence of the same `novelty_key`
+- whether the same issue was already covered by the baseline governed pass
+- Harness validation result
+- issue risk level
 
-### 7.2 Confidence bands
+### 9.2 High-risk override
 
-V1 should use four system bands:
+Any residual issue that may affect:
 
-- `L0 observation`
-  - weak evidence or one-off signal
-  - retain only as evidence or operator note
-- `L1 review_pending`
-  - plausible issue but not reusable enough yet
-  - route to manual review
-- `L2 candidate_ready`
-  - sufficiently evidenced and potentially reusable
-  - may become a learning candidate
-- `L3 strongly_reusable`
-  - repeated, validated, low-conflict pattern
-  - may auto-create a candidate draft, but still not auto-publish
+- medical meaning
+- numeric meaning
+- unsafe semantic change
 
-### 7.3 High-risk override
+must be forced to `manual_only` or `evidence_only`, even if the model is confident.
 
-Any proofreading residual issue that touches medical meaning, numerical meaning, or potentially unsafe semantic change must be forced upward to manual review even when model confidence is high.
+High confidence is not the same thing as safe automation.
 
-One sentence:
+## 10. Routing Rules
 
-`高置信度不等于高可自动化度。`
+### 10.1 Rule candidate
 
-## 8. Routing Rules
+Use when the issue is:
 
-Residual issues must not all be forced into rule center or knowledge review.
-
-V1 routing options:
-
-- `rule_candidate`
-  - for executable, repeatable, operationalized proofreading behaviors
-- `knowledge_candidate`
-  - for reusable evidence, terminology rationale, or reviewer guardrail knowledge
-- `prompt_or_template_candidate`
-  - for guidance improvements that should influence model behavior but not become hard rules
-- `manual_only`
-  - for one-off, contextual, or high-risk cases
-- `evidence_only`
-  - for storage, clustering, and later analysis without immediate candidate creation
-
-### 8.1 Rule candidate fit
-
-Residual issues fit rule candidates when they are:
-
-- structurally repeatable
-- low-context
+- repeatable
 - operationally checkable
+- low-context
 - likely to recur across manuscripts
 
-### 8.2 Knowledge candidate fit
+Bridge target:
 
-Residual issues fit knowledge candidates when they are:
+- learning candidate type `rule_candidate`
+- writeback target `editorial_rule_draft`
 
-- evidence-like
+### 10.2 Knowledge candidate
+
+Use when the issue is:
+
 - explanation-heavy
 - exception-sensitive
-- useful as reference or guardrail
+- better represented as reusable knowledge than as an executable rule
 
-### 8.3 Prompt or template fit
+Bridge target:
 
-Residual issues fit prompt or template candidates when they are:
+- learning candidate type `knowledge_candidate`
+- writeback target `knowledge_item`
 
-- valuable but not stable enough for executable rules
-- recurring model-behavior gaps
-- better solved through instruction framing than hard enforcement
+### 10.3 Prompt-template candidate
 
-### 8.4 Manual-only fit
+Use when the issue is:
 
-Residual issues stay manual-only when they are:
+- useful but not stable enough for a hard rule
+- a recurring model-behavior gap
+- better solved through instruction framing than through executable logic
 
-- high medical semantic risk
+Bridge target in V1:
+
+- route family `prompt_template_candidate`
+- materialized learning candidate type `prompt_optimization_candidate`
+- writeback target `prompt_template`
+
+### 10.4 Manual-only
+
+Use when the issue is:
+
+- high-risk
 - strongly case-specific
-- not repeatable
 - under-evidenced
+- not reusable enough to justify learning
 
-## 9. Harness Responsibilities
+### 10.5 Evidence-only
 
-Harness is the controlled validator for self-learning V1.
+Use when the issue should be retained for clustering and later analysis but is not ready for immediate action.
 
-### 9.1 Harness controls remain active
+## 11. Harness Responsibilities
 
-Residual self-learning must continue to respect:
+### 11.1 Harness environment governance still applies
+
+Residual self-learning continues to respect the active:
 
 - execution profile
 - runtime binding
@@ -376,75 +462,117 @@ Residual self-learning must continue to respect:
 - retrieval preset
 - manual review policy
 
-### 9.2 Harness as validator
+### 11.2 V1 adds a residual-validation check type
 
-Harness should validate candidate-eligible residual issues by:
+V1 must add one Harness verification check type dedicated to residual validation.
 
-- replaying them against bounded datasets
-- checking recurrence and stability
-- comparing outcomes under current and candidate environments
-- surfacing rollback-safe environment previews
+Its purpose is to answer:
 
-### 9.3 Harness thresholds
+- is this residual issue reproducible on the governed source?
+- is the evidence specific enough to review?
+- does the issue conflict with already-approved governed assets?
+- is the issue reusable enough to become a governed candidate?
 
-Proofreading V1 should keep conservative thresholds.
+### 11.3 Harness output in V1
 
-Examples:
+For candidate-eligible residual issues, Harness should produce:
 
-- lower confidence issues should stop at evidence-only or manual review
-- repeated low-risk issues may become rule candidates
-- medical meaning risk should remain manual-first regardless of recurrence
+- a verification run reference
+- an evidence pack or equivalent verification evidence
+- a validation outcome that the confidence engine can consume
 
-## 10. V1 Scope
+V1 does not require automatic environment cutover or automatic promotion from Harness into live governed assets.
 
-### 10.1 Included
+## 12. Learning Bridge
+
+### 12.1 Candidate creation remains review-gated
+
+The bridge may create governed learning candidates, but only after:
+
+- residual issue normalization
+- confidence scoring
+- route selection
+- Harness validation, when required by the route
+
+### 12.2 Learning candidate bridge must stay truthful
+
+The bridge must not:
+
+- fake a reviewed case snapshot
+- fake a human-feedback source
+- skip provenance links
+
+It must create candidates with:
+
+- truthful residual provenance
+- source execution snapshot reference
+- source output asset reference
+- Harness evidence pack reference when present
+
+### 12.3 Writeback remains unchanged in principle
+
+Approved learning candidates continue through:
+
+- learning review approval
+- learning-governance writeback creation
+- draft asset generation
+- existing publish gates for each governed registry
+
+V1 strengthens the existing learning loop. It does not replace it.
+
+## 13. Scope
+
+### 13.1 Included in V1
 
 V1 includes:
 
-- shared governed self-learning backbone
-- proofreading-only residual adapter
-- structured `ResidualIssue`
-- multi-signal confidence bands
-- Harness-gated validation
-- review-gated candidate creation
-- routes for rule candidate, knowledge candidate, manual-only, and evidence-only
+- shared residual-learning backbone
+- proofreading-only activation
+- persistent residual issue ledger
+- proofreading residual adapter
+- multi-signal confidence scoring
+- route families for rule, knowledge, prompt-template, manual-only, and evidence-only
+- truthful residual provenance for learning candidates
+- first-class `knowledge_candidate`
+- Harness residual validation check type
+- review-gated learning candidate creation
 
-### 10.2 Excluded
+### 13.2 Explicitly excluded from V1
 
 V1 does not include:
 
-- editing residual self-learning activation
-- screening residual self-learning activation
-- model fine-tuning or any parameter update loop
-- auto-publishing live rules or live knowledge
-- full cross-module residual sharing
-- mandatory auto-routing of every issue into a governed asset
+- editing activation
+- screening activation
+- model fine-tuning
+- model parameter updates
+- automatic live publication of rules or knowledge
+- automatic live prompt activation
+- cross-module residual sharing
+- full autonomous issue clustering and trend dashboards
 
-## 11. Growth Path After V1
-
-The expected order after V1 is:
-
-1. reuse the same backbone for `editing`
-2. add an editing-specific taxonomy and Harness thresholds
-3. later add `screening` with stricter medical-risk routing
-
-This sequence minimizes risk while preserving one learning architecture.
-
-## 12. Acceptance Criteria
+## 14. Acceptance Criteria
 
 The design is satisfied when V1 can truthfully claim:
 
-- proofreading executes normal governed behavior first
+- proofreading still executes the normal governed flow first
 - a bounded residual-discovery pass runs second
-- residual findings are stored as structured issues rather than loose prose
-- system confidence is derived from multiple signals, not model confidence alone
-- Harness can validate candidate-eligible residual findings
-- only validated and reviewed findings become governed candidates
-- no step in the loop updates model parameters
-- no step in the loop auto-publishes live governance assets
+- residual findings are stored as first-class persistent records
+- residual findings carry governed execution lineage and truthful provenance
+- system confidence is computed from multiple signals, not only model confidence
+- candidate-eligible residual findings pass through Harness validation
+- the system can create rule, knowledge, and prompt-optimization learning candidates from residual findings without faking reviewed-snapshot provenance
+- approved candidates still use the existing learning-governance writeback path
+- no part of the loop updates model parameters
+- no part of the loop auto-publishes live governed assets
 
-## 13. One-Sentence Product Definition
+## 15. Growth Path After V1
 
-`Proofreading governed self-learning V1` means:
+The next safe expansion order is:
 
-`系统在校对执行后，对现有规则、知识和质量包未覆盖的残差问题进行模型发现，经结构化提炼、组合置信度分级、Harness 验证和人工审核后，沉淀为受治理的候选资产。`
+1. harden proofreading residual validation thresholds with real operational data
+2. add `EditingResidualAdapter`
+3. add `ScreeningResidualAdapter` with stricter medical-risk routing
+4. add residual clustering and operator trend analysis
+5. later consider broader cross-module learning reuse if the evidence justifies it
+
+This sequence preserves one shared backbone while keeping activation risk controlled.
