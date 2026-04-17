@@ -12,6 +12,7 @@ import {
 import {
   buildRuleAuthoringPreview,
   createRuleAuthoringDraft,
+  hydrateRuleAuthoringDraft,
   resolveRuleAuthoringDraftForOverview,
   serializeRuleAuthoringDraft,
 } from "../src/features/template-governance/rule-authoring-serialization.ts";
@@ -215,6 +216,199 @@ test("table authoring form renders semantic selector fields", () => {
   assert.match(markup, /表头路径/);
   assert.match(markup, /列标识/);
   assert.match(markup, /预期表格形态/);
+});
+
+test("table proofreading scenarios provide dedicated proofreading starters", async () => {
+  const {
+    applyTableProofreadingScenario,
+    listTableProofreadingScenarios,
+  } = await import(
+    "../src/features/template-governance/rule-authoring-table-proofreading-scenarios.ts"
+  );
+
+  const scenarios = listTableProofreadingScenarios();
+
+  assert.deepEqual(
+    scenarios.map((scenario) => scenario.id),
+    [
+      "caption_above_table",
+      "note_below_table",
+      "three_line_layout",
+      "unit_and_stats_consistency",
+    ],
+  );
+
+  const noteDraft = applyTableProofreadingScenario(
+    createRuleAuthoringDraft("table"),
+    "note_below_table",
+  );
+  assert.equal(noteDraft.payload.semanticTarget, "footnote_item");
+  assert.equal(noteDraft.payload.noteKind, "general");
+  assert.equal(noteDraft.payload.layoutRequirement, "表注置于表下");
+  assert.equal(
+    noteDraft.manualReviewReasonTemplate,
+    "表注位置与注释顺序需要人工复核",
+  );
+  assert.equal(
+    noteDraft.payload.manualReviewReasonTemplate,
+    "表注位置与注释顺序需要人工复核",
+  );
+
+  const unitDraft = applyTableProofreadingScenario(
+    createRuleAuthoringDraft("table"),
+    "unit_and_stats_consistency",
+  );
+  assert.equal(unitDraft.payload.semanticTarget, "data_cell");
+  assert.equal(unitDraft.payload.unitContext, "header");
+  assert.equal(unitDraft.payload.layoutRequirement, "单位与统计注释一致");
+  assert.equal(
+    unitDraft.manualReviewReasonTemplate,
+    "单位标注与统计学注释需要人工交叉复核",
+  );
+});
+
+test("rule authoring form renders an explicit linked knowledge field", () => {
+  const draft = createRuleAuthoringDraft("table") as ReturnType<
+    typeof createRuleAuthoringDraft<"table">
+  > & { linkedKnowledgeItemIds: string[] };
+  draft.linkedKnowledgeItemIds = ["knowledge-1"];
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "editing",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+      knowledgeItems: [
+        {
+          id: "knowledge-1",
+          title: "Table checklist",
+          summary: "Proofreading table evidence",
+          knowledge_kind: "reference",
+          status: "approved",
+        },
+      ],
+    }),
+  );
+
+  assert.match(markup, /\u5173\u8054\u77e5\u8bc6\u6761\u76ee/);
+  assert.match(markup, /data-searchable-multi-select-input="rule-authoring-linked-knowledge"/u);
+  assert.match(markup, /placeholder="\u641c\u7d22\u5173\u8054\u77e5\u8bc6\u6761\u76ee"/u);
+  assert.match(markup, /Table checklist/u);
+});
+
+test("table authoring form renders proofreading scenario shortcuts", () => {
+  const draft = createRuleAuthoringDraft("table");
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "proofreading",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(markup, /表格校对专项模板/u);
+  assert.match(markup, /data-table-proofreading-scenarios="field"/u);
+  assert.match(markup, /data-table-proofreading-scenario="caption_above_table"/u);
+  assert.match(markup, /表题置于表上/u);
+  assert.match(markup, /表注置于表下/u);
+  assert.match(markup, /三线表与禁用竖线/u);
+  assert.match(markup, /单位与统计注释一致/u);
+});
+
+test("rule authoring form explains parameter intent and rule knowledge boundary", () => {
+  const draft = createRuleAuthoringDraft("table");
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "proofreading",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(markup, /data-rule-parameter-guide="field"/u);
+  assert.match(markup, /参数说明/u);
+  assert.match(markup, /规则中心负责可执行判断/u);
+  assert.match(markup, /知识条目只放证据、依据、范例或解释/u);
+  assert.match(markup, /执行方式决定是自动改写还是只检查/u);
+  assert.match(markup, /置信策略决定何时允许自动执行/u);
+});
+
+test("rule authoring serialization stores linked knowledge items in linkage payload", () => {
+  const draft = createRuleAuthoringDraft("table") as ReturnType<
+    typeof createRuleAuthoringDraft<"table">
+  > & { linkedKnowledgeItemIds: string[] };
+  draft.linkedKnowledgeItemIds = ["knowledge-1", "knowledge-2"];
+
+  const serialized = serializeRuleAuthoringDraft(draft);
+
+  assert.deepEqual(serialized.linkagePayload, {
+    projected_knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+  });
+});
+
+test("rule authoring hydration restores linked knowledge items from linkage payload", () => {
+  const hydrated = hydrateRuleAuthoringDraft({
+    id: "rule-1",
+    rule_set_id: "rule-set-1",
+    order_no: 30,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {},
+    selector: {
+      semantic_target: "header_cell",
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "inspect_table_semantics",
+    },
+    authoring_payload: {
+      table_kind: "three_line_table",
+      semantic_target: "header_cell",
+    },
+    linkage_payload: {
+      projected_knowledge_item_ids: ["knowledge-1", "knowledge-2"],
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never) as ReturnType<typeof hydrateRuleAuthoringDraft> & {
+    linkedKnowledgeItemIds?: string[];
+  };
+
+  assert.deepEqual(hydrated.linkedKnowledgeItemIds, ["knowledge-1", "knowledge-2"]);
 });
 
 test("statement preset serializes required statement placement as an inspect-first rule", () => {

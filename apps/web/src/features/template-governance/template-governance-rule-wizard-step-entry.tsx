@@ -4,7 +4,21 @@ import type {
   KnowledgeUploadInput,
   KnowledgeUploadViewModel,
 } from "../knowledge-library/types.ts";
-import type { ManuscriptModule } from "../manuscripts/types.ts";
+import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
+import {
+  EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS,
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
+  EDITORIAL_SECTION_OPTIONS,
+  RULE_WIZARD_MODULE_SCOPE_OPTIONS,
+  formatEditorialKnowledgeSourceTypeLabel,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+  formatEditorialSectionLabel,
+} from "../shared/editorial-taxonomy.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import type { RuleWizardEntryFormState } from "./template-governance-rule-wizard-api.ts";
 
 if (typeof document !== "undefined") {
@@ -18,21 +32,16 @@ export interface TemplateGovernanceRuleWizardStepEntryProps {
   onUploadImage?: (input: KnowledgeUploadInput) => Promise<KnowledgeUploadViewModel | void>;
 }
 
-const moduleOptions: Array<ManuscriptModule | "any"> = [
-  "any",
-  "screening",
-  "editing",
-  "proofreading",
-];
+const moduleOptions: ReadonlyArray<ManuscriptModule | "any"> =
+  RULE_WIZARD_MODULE_SCOPE_OPTIONS;
 
-const sourceTypeOptions: KnowledgeSourceType[] = [
-  "guideline",
-  "paper",
-  "book",
-  "website",
-  "internal_case",
-  "other",
-];
+const sourceTypeOptions: readonly KnowledgeSourceType[] =
+  EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS;
+
+const manuscriptTypeOptions: readonly ManuscriptType[] =
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
+
+const sectionOptions = EDITORIAL_SECTION_OPTIONS;
 
 export function TemplateGovernanceRuleWizardStepEntry({
   value,
@@ -158,7 +167,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
               <h2>图片 / 图表 / 截图</h2>
-              <p>这里支持上传真实图片、录入表格，或补充额外文字块作为证据材料。</p>
+              <p>这里支持上传真实图片、录入表格，或补充额外文本块作为证据材料。</p>
             </header>
             <KnowledgeLibraryRichContentEditor
               blocks={value.supplementalBlocks ?? []}
@@ -183,43 +192,101 @@ export function TemplateGovernanceRuleWizardStepEntry({
 
           {value.advancedTagsExpanded ? (
             <div className="template-governance-detail-grid">
-              <label className="template-governance-field">
-                <span>稿件类型</span>
-                <input
-                  value={value.manuscriptTypes}
-                  onChange={(event) =>
-                    onChange({ ...value, manuscriptTypes: event.target.value })
-                  }
-                  placeholder="clinical_study"
-                />
-              </label>
-              <label className="template-governance-field">
-                <span>章节标签</span>
-                <input
-                  value={value.sections}
-                  onChange={(event) => onChange({ ...value, sections: event.target.value })}
-                  placeholder="abstract, discussion"
-                />
-              </label>
-              <label className="template-governance-field">
-                <span>风险标签</span>
-                <input
-                  value={value.riskTags}
-                  onChange={(event) => onChange({ ...value, riskTags: event.target.value })}
-                  placeholder="terminology, consistency"
-                />
-              </label>
-              <label className="template-governance-field">
-                <span>规则包提示</span>
-                <input
-                  value={value.packageHints}
-                  onChange={(event) =>
-                    onChange({ ...value, packageHints: event.target.value })
-                  }
-                  placeholder="general-package"
-                />
-              </label>
-              <label className="template-governance-field">
+              <RuleWizardMultiSelectField
+                label="稿件类型"
+                value={value.manuscriptTypes}
+                options={manuscriptTypeOptions.map((option) => ({
+                  value: option,
+                  label: formatManuscriptTypeLabel(option),
+                }))}
+                dataKey="manuscript-types"
+                includeAnyOption
+                onToggleValue={(nextValue) =>
+                  onChange({
+                    ...value,
+                    manuscriptTypes: toggleManuscriptTypeSelection(
+                      value.manuscriptTypes,
+                      nextValue as ManuscriptType,
+                    ),
+                  })
+                }
+                onSelectAny={() =>
+                  onChange({
+                    ...value,
+                    manuscriptTypes: "any",
+                  })
+                }
+              />
+              <RuleWizardMultiSelectField
+                label="章节标签"
+                value={value.sections}
+                options={sectionOptions.map((option) => ({
+                  value: option,
+                  label: formatSectionLabel(option),
+                }))}
+                dataKey="sections"
+                onToggleValue={(nextValue) =>
+                  onChange({
+                    ...value,
+                    sections: toggleStringSelection(value.sections, nextValue),
+                  })
+                }
+              />
+              <RuleWizardTagListField
+                label="风险标签"
+                values={value.riskTags}
+                dataKey="risk-tags"
+                addLabel="添加风险标签"
+                emptyText="暂未添加风险标签。"
+                onAdd={() =>
+                  onChange({
+                    ...value,
+                    riskTags: [...value.riskTags, ""],
+                  })
+                }
+                onChangeValue={(index, nextValue) =>
+                  onChange({
+                    ...value,
+                    riskTags: updateStringListValue(value.riskTags, index, nextValue),
+                  })
+                }
+                onRemove={(index) =>
+                  onChange({
+                    ...value,
+                    riskTags: removeStringListValue(value.riskTags, index),
+                  })
+                }
+              />
+              <RuleWizardTagListField
+                label="规则包提示"
+                values={value.packageHints}
+                dataKey="package-hints"
+                addLabel="添加规则包提示"
+                emptyText="暂未添加规则包提示。"
+                onAdd={() =>
+                  onChange({
+                    ...value,
+                    packageHints: [...value.packageHints, ""],
+                  })
+                }
+                onChangeValue={(index, nextValue) =>
+                  onChange({
+                    ...value,
+                    packageHints: updateStringListValue(
+                      value.packageHints,
+                      index,
+                      nextValue,
+                    ),
+                  })
+                }
+                onRemove={(index) =>
+                  onChange({
+                    ...value,
+                    packageHints: removeStringListValue(value.packageHints, index),
+                  })
+                }
+              />
+              <label className="template-governance-field template-governance-field-full">
                 <span>冲突备注</span>
                 <textarea
                   rows={3}
@@ -270,7 +337,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
             </div>
             <div className="template-governance-rule-hint-card">
               <strong>章节标签和风险标签放到高级标签里补充</strong>
-              <p>先完成主画布录入，再补章节、风险、规则包提示和冲突边界，首屏会更清楚。</p>
+              <p>先完成主画布录入，再补章节、风险、规则包提示和冲突边界，首屏会更清晰。</p>
             </div>
           </div>
         </aside>
@@ -279,34 +346,125 @@ export function TemplateGovernanceRuleWizardStepEntry({
   );
 }
 
+function RuleWizardMultiSelectField(props: {
+  label: string;
+  value: string[] | "any";
+  options: ReadonlyArray<SearchableMultiSelectOption>;
+  dataKey: string;
+  includeAnyOption?: boolean;
+  onToggleValue(value: string): void;
+  onSelectAny?: () => void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={
+        props.includeAnyOption ? "\u652f\u6301\u201c\u5168\u90e8/\u4efb\u610f\u201d\u548c\u591a\u9009\u5207\u6362\u3002" : "\u652f\u6301\u7ed3\u6784\u5316\u591a\u9009\u3002"
+      }
+      value={props.value}
+      options={props.options}
+      dataKey={props.dataKey}
+      rootDataAttributeName="data-rule-wizard-multi-select"
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      headerClassName="knowledge-library-structured-field-header"
+      searchFieldClassName="knowledge-library-grid-search"
+      searchPlaceholder={`\u641c\u7d22${props.label}`}
+      optionsClassName="knowledge-library-toggle-group"
+      optionClassName="knowledge-library-toggle-chip"
+      emptyClassName="knowledge-library-structured-empty"
+      includeAnyOption={props.includeAnyOption}
+      noResultsText="\u672a\u627e\u5230\u5339\u914d\u7684\u9009\u9879\u3002"
+      onToggleValue={props.onToggleValue}
+      onSelectAny={props.onSelectAny}
+    />
+  );
+}
+
+function RuleWizardTagListField(props: {
+  label: string;
+  values: string[];
+  dataKey: string;
+  addLabel: string;
+  emptyText: string;
+  onAdd(): void;
+  onChangeValue(index: number, value: string): void;
+  onRemove(index: number): void;
+}) {
+  return (
+    <div
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      data-rule-wizard-tag-list={props.dataKey}
+    >
+      <div className="knowledge-library-structured-field-header">
+        <span>{props.label}</span>
+        <small>一行一个标签，可逐条补充和删除。</small>
+      </div>
+      <div className="knowledge-library-tag-editor-list">
+        {props.values.length > 0 ? (
+          props.values.map((item, index) => (
+            <div key={`${props.dataKey}-${index}`} className="knowledge-library-tag-editor-row">
+              <input
+                value={item}
+                onChange={(event) => props.onChangeValue(index, event.target.value)}
+                placeholder={props.label}
+              />
+              <button type="button" onClick={() => props.onRemove(index)}>
+                删除
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="knowledge-library-structured-empty">{props.emptyText}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        className="knowledge-library-secondary-button"
+        onClick={props.onAdd}
+      >
+        {props.addLabel}
+      </button>
+    </div>
+  );
+}
+
+function toggleManuscriptTypeSelection(
+  current: RuleWizardEntryFormState["manuscriptTypes"],
+  value: ManuscriptType,
+): RuleWizardEntryFormState["manuscriptTypes"] {
+  const currentValues = current === "any" ? [] : current;
+  const nextValues = toggleStringSelection(currentValues, value) as ManuscriptType[];
+  return nextValues.length > 0 ? nextValues : "any";
+}
+
+function toggleStringSelection(current: string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((item) => item !== value)
+    : [...current, value];
+}
+
+function updateStringListValue(values: string[], index: number, value: string): string[] {
+  return values.map((currentValue, currentIndex) =>
+    currentIndex === index ? value : currentValue,
+  );
+}
+
+function removeStringListValue(values: string[], index: number): string[] {
+  return values.filter((_, currentIndex) => currentIndex !== index);
+}
+
 function formatModuleLabel(value: ManuscriptModule | "any"): string {
-  switch (value) {
-    case "screening":
-      return "初筛";
-    case "editing":
-      return "编辑";
-    case "proofreading":
-      return "校对";
-    case "any":
-    default:
-      return "全部模块";
-  }
+  return formatEditorialModuleLabel(value);
 }
 
 function formatSourceTypeLabel(value: KnowledgeSourceType): string {
-  switch (value) {
-    case "guideline":
-      return "指南";
-    case "paper":
-      return "论文";
-    case "book":
-      return "图书";
-    case "website":
-      return "网站";
-    case "internal_case":
-      return "内部案例";
-    case "other":
-    default:
-      return "其他";
-  }
+  return formatEditorialKnowledgeSourceTypeLabel(value, "compact");
+}
+
+function formatManuscriptTypeLabel(value: ManuscriptType): string {
+  return formatEditorialManuscriptTypeLabel(value);
+}
+
+function formatSectionLabel(value: (typeof sectionOptions)[number]): string {
+  return formatEditorialSectionLabel(value);
 }

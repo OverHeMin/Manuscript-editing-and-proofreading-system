@@ -2052,7 +2052,11 @@ function seedGovernedKnowledgeAsset(input: {
   sourceLink?: string;
   aliases?: string[];
   bindings?: ReadonlyArray<{
-    bindingKind: "module_template" | "general_package" | "medical_package";
+    bindingKind:
+      | "module_template"
+      | "general_package"
+      | "medical_package"
+      | "knowledge_item";
     bindingTargetId: string;
     bindingTargetLabel: string;
   }>;

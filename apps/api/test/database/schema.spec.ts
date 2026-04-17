@@ -1053,6 +1053,7 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0041_manuscript_type_detection_summary.sql",
       "0042_rule_center_package_binding_kinds.sql",
       "0043_learning_candidate_review_actions.sql",
+      "0043_rule_wizard_knowledge_item_binding_kind.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );

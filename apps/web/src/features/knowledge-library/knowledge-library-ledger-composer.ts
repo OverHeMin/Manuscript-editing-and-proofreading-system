@@ -25,13 +25,28 @@ export function createEmptyLedgerComposer(): KnowledgeLibraryLedgerComposer {
     draft: {
       title: "",
       canonicalText: "",
-      knowledgeKind: "rule",
+      knowledgeKind: "reference",
       moduleScope: "any",
       manuscriptTypes: "any",
+      evidenceLevel: "unknown",
+      sourceType: "other",
     },
     contentBlocksDraft: [],
     semanticLayerDraft: undefined,
     warnings: [],
+  };
+}
+
+export function createLedgerComposerFromDraftPrefill(
+  draft: CreateKnowledgeLibraryDraftInput,
+): KnowledgeLibraryLedgerComposer {
+  const composer = createEmptyLedgerComposer();
+  return {
+    ...composer,
+    draft: {
+      ...composer.draft,
+      ...structuredClone(draft),
+    },
   };
 }
 

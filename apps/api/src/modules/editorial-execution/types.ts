@@ -55,7 +55,11 @@ export interface DeterministicDocxTransformResult {
 
 export interface GovernedKnowledgeSelectionInput {
   knowledgeItem: KnowledgeRecord;
-  matchSource: "binding_rule" | "template_binding" | "dynamic_routing";
+  matchSource:
+    | "binding_rule"
+    | "template_binding"
+    | "dynamic_routing"
+    | "knowledge_item_binding";
   matchSourceId?: string;
   bindingRuleId?: string;
   matchReasons: string[];

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import type { ManuscriptType } from "../manuscripts/types.ts";
+import { formatEditorialKnowledgeKindLabel } from "../shared/editorial-taxonomy.ts";
 import {
   applyAiIntakeSuggestion,
   buildCreateDraftInput,
+  createLedgerComposerFromDraftPrefill,
   createEmptyLedgerComposer,
-  formatLedgerTagText,
-  parseLedgerTagText,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
+import { buildTableProofreadingKnowledgeDraftPrefill } from "../template-governance/template-governance-table-proofreading-guidance.ts";
 import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
@@ -74,6 +76,7 @@ export interface KnowledgeLibraryLedgerPageProps {
   actorRole?: string;
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
+  prefilledKnowledgeTemplateId?: string;
   initialPriorityOrder?: string[];
   initialColumnOrder?: KnowledgeLibraryLedgerColumnKey[];
   initialColumnOrderPanelOpen?: boolean;
@@ -90,10 +93,21 @@ export function KnowledgeLibraryLedgerPage({
   actorRole = "knowledge_reviewer",
   prefilledAssetId,
   prefilledRevisionId,
+  prefilledKnowledgeTemplateId,
   initialPriorityOrder,
   initialColumnOrder,
   initialColumnOrderPanelOpen = false,
 }: KnowledgeLibraryLedgerPageProps) {
+  const prefilledTemplateDraft =
+    prefilledKnowledgeTemplateId != null
+      ? buildTableProofreadingKnowledgeDraftPrefill(prefilledKnowledgeTemplateId)
+      : null;
+  const initialPrefilledComposer =
+    initialComposer == null && prefilledTemplateDraft != null
+      ? createLedgerComposerFromDraftPrefill(prefilledTemplateDraft)
+      : null;
+  const shouldStartInCreateMode =
+    initialFormMode === "create" || initialPrefilledComposer != null;
   const [viewModel, setViewModel] = useState<KnowledgeLibraryWorkbenchViewModel | null>(
     initialViewModel,
   );
@@ -103,9 +117,15 @@ export function KnowledgeLibraryLedgerPage({
       return initialComposer;
     }
 
-    return initialFormMode === "create" ? createEmptyLedgerComposer() : null;
+    if (initialPrefilledComposer) {
+      return initialPrefilledComposer;
+    }
+
+    return shouldStartInCreateMode ? createEmptyLedgerComposer() : null;
   });
-  const [boardMode, setBoardMode] = useState<EntryFormMode>(initialFormMode);
+  const [boardMode, setBoardMode] = useState<EntryFormMode>(
+    shouldStartInCreateMode ? "create" : initialFormMode,
+  );
   const setFormMode = setBoardMode;
   const [aiAssistMode, setAiAssistMode] = useState<KnowledgeLibraryEntryAiAssistMode>(
     initialAiAssistMode,
@@ -124,7 +144,11 @@ export function KnowledgeLibraryLedgerPage({
   );
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(() =>
+    initialPrefilledComposer
+      ? `已按知识模板“${initialPrefilledComposer.draft.title}”预填草稿。`
+      : null,
+  );
   const [searchQuery, setSearchQuery] = useState(
     initialSearchQuery || initialFilters?.searchText || "",
   );
@@ -710,7 +734,6 @@ export function KnowledgeLibraryLedgerPage({
             attachments={attachments}
             contentBlocks={composer.contentBlocksDraft}
             aiIntakeSourceText={composer.aiIntakeSourceText}
-            requiredTagsText={formatLedgerTagText(composer.draft.riskTags)}
             duplicateSummary={duplicateSummary}
             semanticStatusLabel={semanticStatusLabel}
             semanticNotes={semanticNotes}
@@ -749,11 +772,42 @@ export function KnowledgeLibraryLedgerPage({
                 current ? withBaseFieldChange(current, { moduleScope: value }) : current,
               )
             }
-            onRequiredTagsChange={(value) =>
+            onEvidenceLevelChange={(value) =>
+              setComposer((current) =>
+                current ? withBaseFieldChange(current, { evidenceLevel: value }) : current,
+              )
+            }
+            onSourceTypeChange={(value) =>
+              setComposer((current) =>
+                current ? withBaseFieldChange(current, { sourceType: value }) : current,
+              )
+            }
+            onToggleManuscriptType={(value) =>
               setComposer((current) =>
                 current
-                  ? withSemanticReviewFieldChange(current, {
-                      riskTags: parseLedgerTagText(value),
+                  ? withBaseFieldChange(current, {
+                      manuscriptTypes: toggleLedgerManuscriptTypeSelection(
+                        current.draft.manuscriptTypes,
+                        value,
+                      ),
+                    })
+                  : current,
+              )
+            }
+            onSelectAnyManuscriptTypes={() =>
+              setComposer((current) =>
+                current
+                  ? withBaseFieldChange(current, {
+                      manuscriptTypes: "any",
+                    })
+                  : current,
+              )
+            }
+            onToggleSection={(value) =>
+              setComposer((current) =>
+                current
+                  ? withBaseFieldChange(current, {
+                      sections: toggleLedgerStringSelection(current.draft.sections ?? [], value),
                     })
                   : current,
               )
@@ -1531,7 +1585,7 @@ const KNOWLEDGE_KIND_FILTER_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: "all", label: "全部分类" },
-  { value: "rule", label: "规则" },
+  { value: "rule", label: "规则投影" },
   { value: "case_pattern", label: "案例模式" },
   { value: "checklist", label: "核查清单" },
   { value: "prompt_snippet", label: "提示片段" },
@@ -1709,21 +1763,10 @@ function createLedgerRow(
 }
 
 function formatKnowledgeKind(value: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
-  switch (value) {
-    case "rule":
-      return "规则";
-    case "case_pattern":
-      return "案例模式";
-    case "checklist":
-      return "核查清单";
-    case "prompt_snippet":
-      return "提示片段";
-    case "reference":
-      return "参考资料";
-    case "other":
-    default:
-      return "其他";
-  }
+  return formatEditorialKnowledgeKindLabel(
+    value,
+    value === "rule" ? "projection" : "rule",
+  );
 }
 
 function formatAttachmentLabel(blocks: readonly KnowledgeContentBlockViewModel[]): string {
@@ -1861,21 +1904,10 @@ function formatManuscriptTypeLabel(value: string): string {
 }
 
 function formatKnowledgeKind(value: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
-  switch (value) {
-    case "rule":
-      return "规则";
-    case "case_pattern":
-      return "案例模式";
-    case "checklist":
-      return "核查清单";
-    case "prompt_snippet":
-      return "提示片段";
-    case "reference":
-      return "参考资料";
-    case "other":
-    default:
-      return "其他";
-  }
+  return formatEditorialKnowledgeKindLabel(
+    value,
+    value === "rule" ? "projection" : "rule",
+  );
 }
 
 function formatAttachmentLabel(blocks: readonly KnowledgeContentBlockViewModel[]): string {
@@ -2016,21 +2048,10 @@ function formatManuscriptTypeLabel(value: string): string {
 }
 
 function formatKnowledgeKind(value: KnowledgeLibrarySummaryViewModel["knowledge_kind"]): string {
-  switch (value) {
-    case "rule":
-      return "规则";
-    case "case_pattern":
-      return "案例模式";
-    case "checklist":
-      return "核查清单";
-    case "prompt_snippet":
-      return "提示片段";
-    case "reference":
-      return "参考资料";
-    case "other":
-    default:
-      return "其他";
-  }
+  return formatEditorialKnowledgeKindLabel(
+    value,
+    value === "rule" ? "projection" : "rule",
+  );
 }
 
 function formatAttachmentLabel(blocks: readonly KnowledgeContentBlockViewModel[]): string {
@@ -2308,6 +2329,23 @@ function updateListValue(values: readonly string[], index: number, value: string
 
 function removeListValue(values: readonly string[], index: number): string[] {
   return values.filter((_, entryIndex) => entryIndex !== index);
+}
+
+function toggleLedgerManuscriptTypeSelection(
+  current: KnowledgeLibraryLedgerComposer["draft"]["manuscriptTypes"],
+  value: ManuscriptType,
+): KnowledgeLibraryLedgerComposer["draft"]["manuscriptTypes"] {
+  if (current === "any") {
+    return [value];
+  }
+
+  return toggleLedgerStringSelection(current, value) as ManuscriptType[];
+}
+
+function toggleLedgerStringSelection(current: readonly string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((entry) => entry !== value)
+    : [...current, value];
 }
 
 function hydrateBlocksForRevision(

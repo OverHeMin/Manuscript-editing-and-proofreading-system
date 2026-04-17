@@ -57,7 +57,8 @@ export type KnowledgeRevisionBindingKind =
   | "section"
   | "journal_template"
   | "general_package"
-  | "medical_package";
+  | "medical_package"
+  | "knowledge_item";
 
 export interface KnowledgeItem {
   id: KnowledgeItemId;
@@ -82,6 +83,7 @@ export interface KnowledgeItem {
 
   // Links to templates are modeled separately; keep an escape hatch for projection views.
   template_bindings?: string[];
+  linked_knowledge_item_ids?: KnowledgeItemId[];
   source_learning_candidate_id?: LearningCandidateId;
   projection_source?: KnowledgeProjectionSource;
 }

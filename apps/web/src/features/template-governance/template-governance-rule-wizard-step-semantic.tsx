@@ -1,3 +1,4 @@
+import { formatTemplateGovernanceManuscriptTypeLabel, formatTemplateGovernanceModuleLabel } from "./template-governance-display.ts";
 import type { RuleWizardSemanticViewModel } from "./template-governance-rule-wizard-api.ts";
 
 export interface TemplateGovernanceRuleWizardStepSemanticProps {
@@ -44,6 +45,14 @@ export function TemplateGovernanceRuleWizardStepSemantic({
           <p>{value.applicableScenario}</p>
         </div>
         <div>
+          <span>执行模块</span>
+          <p>{formatTemplateGovernanceModuleLabel(value.moduleScope)}</p>
+        </div>
+        <div>
+          <span>稿件类型</span>
+          <p>{formatManuscriptTypesLabel(value.manuscriptTypes)}</p>
+        </div>
+        <div>
           <span>建议规则包</span>
           <p>{value.suggestedPackage}</p>
         </div>
@@ -64,7 +73,7 @@ export function TemplateGovernanceRuleWizardStepSemantic({
         </div>
         <div>
           <span>检索词</span>
-          <p>{value.retrievalTerms || "等待生成检索词。"}</p>
+          <p>{value.retrievalTerms.length > 0 ? value.retrievalTerms.join("、") : "等待生成检索词。"}</p>
         </div>
         <div>
           <span>语义状态</span>
@@ -160,4 +169,12 @@ function formatSemanticStatusLabel(value: string | undefined): string {
     default:
       return "未生成";
   }
+}
+
+function formatManuscriptTypesLabel(value: RuleWizardSemanticViewModel["manuscriptTypes"]): string {
+  if (value === "any") {
+    return "全部 / 任意";
+  }
+
+  return value.map((item) => formatTemplateGovernanceManuscriptTypeLabel(item)).join("、");
 }

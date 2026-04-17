@@ -12,6 +12,7 @@ register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.met
 
 const {
   buildDuplicateCheckTriggerSignature,
+  createKnowledgeLibraryFormState,
   getStrongDuplicateMatches,
   isImmediateDuplicateCheckResultStale,
   KnowledgeLibraryDuplicateSubmitConfirmation,
@@ -276,6 +277,379 @@ test("knowledge library workbench page renders the ledger grid shell and record 
   assert.match(markup, /knowledge-1-revision-2/);
   assert.match(markup, /Screening Template/);
   assert.doesNotMatch(markup, /Draft Editor/);
+});
+
+test("new knowledge-library draft state defaults to reference instead of rule", () => {
+  assert.equal(typeof createKnowledgeLibraryFormState, "function");
+  assert.equal(createKnowledgeLibraryFormState(null).knowledgeKind, "reference");
+});
+
+test("legacy knowledge workbench keeps historical rule edits under a compatibility projection label", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryWorkbenchPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            summary: "Legacy rule compatibility.",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            summary: "Legacy rule compatibility.",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: "knowledge-1-revision-2",
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Primary endpoint rule",
+          summary: "Legacy rule compatibility.",
+          knowledge_kind: "rule",
+          status: "draft",
+          module_scope: "screening",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 0,
+          updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            current_approved_revision_id: "knowledge-1-revision-1",
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Primary endpoint rule draft",
+            canonical_text: "Clinical studies must define the primary endpoint.",
+            summary: "Legacy rule compatibility.",
+            knowledge_kind: "rule",
+            routing: {
+              module_scope: "screening",
+              manuscript_types: ["clinical_study"],
+            },
+            content_blocks: [],
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          revisions: [],
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /<option value="rule" selected="">规则投影（历史兼容）<\/option>/u);
+  assert.doesNotMatch(markup, /<option value="rule" selected="">规则<\/option>/u);
+});
+
+test("legacy knowledge workbench renders structured routing controls inside the record drawer", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryWorkbenchPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint reference",
+            summary: "Structured entry test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint reference",
+            summary: "Structured entry test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: "knowledge-1-revision-2",
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Primary endpoint reference",
+          summary: "Structured entry test.",
+          knowledge_kind: "reference",
+          status: "draft",
+          module_scope: "proofreading",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 0,
+          updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            current_approved_revision_id: "knowledge-1-revision-1",
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Primary endpoint reference draft",
+            canonical_text: "Table notes should stay traceable to evidence.",
+            summary: "Structured entry test.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "proofreading",
+              manuscript_types: ["clinical_study"],
+              sections: ["tables"],
+              risk_tags: ["table-proofreading"],
+              discipline_tags: ["cardiology"],
+            },
+            evidence_level: "high",
+            source_type: "guideline",
+            source_link: "https://example.test/guideline",
+            aliases: ["table endpoint"],
+            effective_at: "2026-04-08T00:00:00.000Z",
+            content_blocks: [],
+            semantic_layer: {
+              revision_id: "knowledge-1-revision-2",
+              status: "confirmed",
+              page_summary: "Operator-confirmed summary.",
+              retrieval_terms: ["table endpoint"],
+              retrieval_snippets: ["proofreading rule"],
+            },
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          current_approved_revision: {
+            id: "knowledge-1-revision-1",
+            asset_id: "knowledge-1",
+            revision_no: 1,
+            status: "approved",
+            title: "Primary endpoint reference",
+            canonical_text: "Table notes should stay traceable to evidence.",
+            summary: "Structured entry test.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "proofreading",
+              manuscript_types: ["clinical_study"],
+            },
+            bindings: [],
+            content_blocks: [],
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:10:00.000Z",
+            contributor_label: "reviewer.zh",
+          },
+          revisions: [],
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-knowledge-multi-select="manuscript-types"/);
+  assert.match(markup, /data-knowledge-multi-select="sections"/);
+  assert.match(markup, /data-searchable-multi-select-input="manuscript-types"/);
+  assert.match(markup, /data-searchable-multi-select-input="sections"/);
+  assert.match(markup, /placeholder="搜索稿件类型"/u);
+  assert.match(markup, /placeholder="搜索章节标签"/u);
+  assert.match(markup, /data-knowledge-tag-list="risk-tags"/);
+  assert.match(markup, /data-knowledge-tag-list="discipline-tags"/);
+  assert.match(markup, /data-knowledge-tag-list="aliases"/);
+  assert.doesNotMatch(markup, /any or comma-separated types/);
+  assert.doesNotMatch(markup, /methods, discussion/);
+  assert.doesNotMatch(markup, /endpoint, primary endpoint/);
+});
+
+test("legacy knowledge workbench uses business-friendly labels for controlled fields and structured semantic terms", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryWorkbenchPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Table proofreading reference",
+            summary: "Friendly labels test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Table proofreading reference",
+            summary: "Friendly labels test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 0,
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: "knowledge-1-revision-2",
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Table proofreading reference",
+          summary: "Friendly labels test.",
+          knowledge_kind: "reference",
+          status: "draft",
+          module_scope: "proofreading",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 0,
+          updated_at: "2026-04-08T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            current_approved_revision_id: "knowledge-1-revision-1",
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Table proofreading reference draft",
+            canonical_text: "Table notes should stay traceable to evidence.",
+            summary: "Friendly labels test.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "proofreading",
+              manuscript_types: ["clinical_study"],
+              sections: ["tables"],
+              risk_tags: ["table-proofreading"],
+              discipline_tags: ["cardiology"],
+            },
+            evidence_level: "high",
+            source_type: "guideline",
+            source_link: "https://example.test/guideline",
+            aliases: ["table endpoint"],
+            effective_at: "2026-04-08T00:00:00.000Z",
+            content_blocks: [],
+            semantic_layer: {
+              revision_id: "knowledge-1-revision-2",
+              status: "confirmed",
+              page_summary: "Operator-confirmed summary.",
+              retrieval_terms: ["table endpoint", "proofreading table note"],
+              retrieval_snippets: ["proofreading rule"],
+            },
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          current_approved_revision: {
+            id: "knowledge-1-revision-1",
+            asset_id: "knowledge-1",
+            revision_no: 1,
+            status: "approved",
+            title: "Table proofreading reference",
+            canonical_text: "Table notes should stay traceable to evidence.",
+            summary: "Friendly labels test.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "proofreading",
+              manuscript_types: ["clinical_study"],
+            },
+            bindings: [],
+            content_blocks: [],
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:10:00.000Z",
+            contributor_label: "reviewer.zh",
+          },
+          revisions: [],
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /知识类型/u);
+  assert.match(markup, /来源类型/u);
+  assert.match(markup, /证据级别/u);
+  assert.match(markup, /data-knowledge-semantic-tag-list="retrieval-terms"/);
+  assert.match(markup, /一行一个检索词条/u);
+  assert.doesNotMatch(markup, /Comma-separated retrieval terms/);
+  assert.doesNotMatch(markup, />guideline</);
 });
 
 test("knowledge library duplicate status row renders all inline states", () => {

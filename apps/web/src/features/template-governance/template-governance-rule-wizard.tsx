@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { BrowserHttpClientError, createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import { uploadKnowledgeImage } from "../knowledge-library/knowledge-library-api.ts";
-import type { ManuscriptType } from "../manuscripts/types.ts";
+import type { KnowledgeAssetDetailViewModel } from "../knowledge-library/types.ts";
 import {
   createRuleWizardBindingFormState,
   createRuleWizardConfirmFormState,
@@ -41,6 +41,9 @@ export interface TemplateGovernanceRuleWizardProps {
   state: RuleWizardState;
   title?: string;
   entryFormState?: RuleWizardEntryFormState;
+  bindingDetail?: Pick<KnowledgeAssetDetailViewModel, "selected_revision">;
+  bindingOptions?: RuleWizardBindingOptions;
+  bindingFormState?: RuleWizardBindingFormState;
   onEntryFormChange?: (nextValue: RuleWizardEntryFormState) => void;
   onBack?: () => void;
   onPrevious?: () => void;
@@ -53,6 +56,9 @@ export function TemplateGovernanceRuleWizard({
   state,
   title,
   entryFormState = createRuleWizardEntryFormState(),
+  bindingDetail,
+  bindingOptions: providedBindingOptions,
+  bindingFormState: providedBindingFormState,
   onEntryFormChange,
   onBack,
   onPrevious,
@@ -80,10 +86,17 @@ export function TemplateGovernanceRuleWizard({
     () => createRuleWizardConfirmFormState({ form: entryFormState }),
   );
 
-  const [bindingOptions, setBindingOptions] = useState<RuleWizardBindingOptions>();
+  const [bindingOptions, setBindingOptions] = useState<RuleWizardBindingOptions | undefined>(
+    providedBindingOptions,
+  );
   const [bindingDirty, setBindingDirty] = useState(false);
   const [bindingFormState, setBindingFormState] = useState<RuleWizardBindingFormState>(
-    () => createRuleWizardBindingFormState(),
+    () =>
+      providedBindingFormState ??
+      createRuleWizardBindingFormState({
+        options: providedBindingOptions,
+        detail: bindingDetail,
+      }),
   );
   const [publishFormState, setPublishFormState] = useState<RuleWizardPublishFormState>(
     () => createRuleWizardPublishFormState(),
@@ -104,12 +117,25 @@ export function TemplateGovernanceRuleWizard({
     setAwaitingSemanticDraft(false);
     setConfirmDirty(false);
     setConfirmFormState(createRuleWizardConfirmFormState({ form: entryFormState }));
-    setBindingOptions(undefined);
+    setBindingOptions(providedBindingOptions);
     setBindingDirty(false);
-    setBindingFormState(createRuleWizardBindingFormState());
+    setBindingFormState(
+      providedBindingFormState ??
+        createRuleWizardBindingFormState({
+          options: providedBindingOptions,
+          detail: bindingDetail,
+        }),
+    );
     setPublishFormState(createRuleWizardPublishFormState());
     setBindingErrorMessage(null);
-  }, [state.mode, state.sourceRowId, title]);
+  }, [
+    bindingDetail,
+    providedBindingFormState,
+    providedBindingOptions,
+    state.mode,
+    state.sourceRowId,
+    title,
+  ]);
 
   useEffect(() => {
     if (!confirmDirty) {
@@ -126,20 +152,24 @@ export function TemplateGovernanceRuleWizard({
   useEffect(() => {
     if (!bindingDirty) {
       setBindingFormState(
-        createRuleWizardBindingFormState({
-          semanticViewModel: createRuleWizardSemanticViewModel({
-            form: entryFormState,
-            revision: semanticRevision,
-            suggestion: semanticSuggestion,
+        providedBindingFormState ??
+          createRuleWizardBindingFormState({
+            semanticViewModel: createRuleWizardSemanticViewModel({
+              form: entryFormState,
+              revision: semanticRevision,
+              suggestion: semanticSuggestion,
+            }),
+            options: bindingOptions,
+            detail: bindingDetail,
           }),
-          options: bindingOptions,
-        }),
       );
     }
   }, [
+    bindingDetail,
     bindingDirty,
     bindingOptions,
     entryFormState,
+    providedBindingFormState,
     semanticRevision,
     semanticSuggestion,
   ]);
@@ -182,10 +212,12 @@ export function TemplateGovernanceRuleWizard({
       setBindingOptions(options);
       setBindingDirty(false);
       setBindingFormState(
-        createRuleWizardBindingFormState({
-          semanticViewModel,
-          options,
-        }),
+        providedBindingFormState ??
+          createRuleWizardBindingFormState({
+            semanticViewModel,
+            options,
+            detail: bindingDetail,
+          }),
       );
     } catch (error) {
       setBindingErrorMessage(resolveWizardErrorMessage(error, "规则绑定选项加载失败"));
@@ -250,10 +282,7 @@ export function TemplateGovernanceRuleWizard({
       setSemanticSuggestion({
         suggestedSemanticLayer: {
           pageSummary: result.semanticViewModel.semanticSummary,
-          retrievalTerms: result.semanticViewModel.retrievalTerms
-            .split(",")
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0),
+          retrievalTerms: result.semanticViewModel.retrievalTerms,
           retrievalSnippets: result.semanticViewModel.retrievalSnippets
             .split(/\r?\n/)
             .map((entry) => entry.trim())
@@ -262,9 +291,7 @@ export function TemplateGovernanceRuleWizard({
         suggestedFieldPatch: {
           summary: result.semanticViewModel.semanticSummary,
           moduleScope: result.semanticViewModel.moduleScope,
-          manuscriptTypes: parseWizardManuscriptTypes(
-            result.semanticViewModel.manuscriptTypes,
-          ),
+          manuscriptTypes: result.semanticViewModel.manuscriptTypes,
           riskTags: [result.semanticViewModel.ruleType, result.semanticViewModel.riskLevel],
         },
         warnings: [],
@@ -608,15 +635,4 @@ function resolveWizardErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
-}
-
-function parseWizardManuscriptTypes(value: string): ManuscriptType[] | "any" {
-  if (value.trim().toLowerCase() === "any" || value.trim().length === 0) {
-    return "any";
-  }
-
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry): entry is ManuscriptType => entry.length > 0);
 }

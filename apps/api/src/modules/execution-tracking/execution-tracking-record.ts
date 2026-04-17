@@ -14,6 +14,7 @@ export type KnowledgeHitMatchSource =
   | "binding_rule"
   | "template_binding"
   | "dynamic_routing"
+  | "knowledge_item_binding"
   | "draft_snapshot_reuse";
 
 export interface ModuleExecutionSnapshotRecord {

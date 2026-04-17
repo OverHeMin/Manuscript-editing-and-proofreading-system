@@ -245,6 +245,128 @@ test("knowledge library ledger page switches the board footer to save and submit
   assert.doesNotMatch(markup, /data-board-action="confirm-entry"/u);
 });
 
+test("knowledge library ledger page can open a create board from a rule-center template prefill", () => {
+  const markup = renderToStaticMarkup(
+    <AiIntakeLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      prefilledKnowledgeTemplateId="journal_table_style_basis"
+    />,
+  );
+
+  assert.match(markup, /knowledge-library-entry-form/u);
+  assert.match(markup, /data-board-action="confirm-entry"/u);
+  assert.match(markup, /value="\u671f\u520a\u8868\u683c\u6837\u5f0f\u4f9d\u636e"/u);
+  assert.match(markup, /value="reference"/u);
+  assert.match(markup, /value="proofreading"/u);
+});
+
+test("knowledge library entry board explains the knowledge-vs-rule boundary and key parameters", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={createEmptyLedgerComposer()}
+      initialFormMode="create"
+    />,
+  );
+
+  assert.match(
+    markup,
+    /\u77e5\u8bc6\u5e93\u53ea\u653e\u4f9d\u636e\u3001\u89e3\u91ca\u3001\u53c2\u8003\uff0c\u4e0d\u5728\u8fd9\u91cc\u5f55\u53ef\u6267\u884c\u89c4\u5219/u,
+  );
+  assert.match(
+    markup,
+    /\u5206\u7c7b\u51b3\u5b9a\u8fd9\u6761\u77e5\u8bc6\u4e3b\u8981\u4f5c\u4e3a\u53c2\u8003\u3001\u6838\u67e5\u6e05\u5355\u8fd8\u662f\u89e3\u91ca\u6027\u6750\u6599/u,
+  );
+  assert.match(
+    markup,
+    /\u9002\u7528\u6a21\u5757\u51b3\u5b9a\u540e\u7eed\u5728\u54ea\u4e2a\u73af\u8282\u4f18\u5148\u68c0\u7d22\u5230\u8fd9\u6761\u77e5\u8bc6/u,
+  );
+  assert.match(
+    markup,
+    /\u5fc5\u8981\u6807\u7b7e\u7528\u4e8e\u8865\u5145\u7a3f\u4ef6\u7c7b\u578b\u3001\u7ae0\u8282\u548c\u98ce\u9669\u8bcd\uff0c\u65b9\u4fbf\u540e\u7eed\u53ec\u56de/u,
+  );
+});
+
+test("knowledge library entry board uses structured required-tag rows instead of comma-separated text", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={createEmptyLedgerComposer()}
+      initialFormMode="create"
+    />,
+  );
+
+  assert.match(markup, /data-entry-tag-list="required-tags"/u);
+  assert.match(markup, /data-entry-tag-action="add-required-tag"/u);
+  assert.doesNotMatch(markup, /placeholder="用顿号、逗号或换行分隔标签"/u);
+});
+
+test("knowledge library entry board exposes manuscript-type and section multi-select controls", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={createEmptyLedgerComposer()}
+      initialFormMode="create"
+    />,
+  );
+
+  assert.match(markup, /data-entry-multi-select="manuscript-types"/u);
+  assert.match(markup, /data-entry-multi-select="sections"/u);
+  assert.match(markup, /data-searchable-multi-select-input="entry-manuscript-types"/u);
+  assert.match(markup, /data-searchable-multi-select-input="entry-sections"/u);
+  assert.match(markup, /placeholder="搜索稿件类型"/u);
+  assert.match(markup, /placeholder="搜索章节标签"/u);
+});
+
+test("knowledge library entry board exposes evidence-level and source-type selects", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={createEmptyLedgerComposer()}
+      initialFormMode="create"
+    />,
+  );
+
+  assert.match(markup, /data-entry-select="evidence-level"/u);
+  assert.match(markup, /data-entry-select="source-type"/u);
+  assert.match(markup, /<option value="unknown" selected="">证据待补充<\/option>/u);
+  assert.match(markup, /<option value="other" selected="">其他来源<\/option>/u);
+});
+
+test("knowledge library entry board does not expose rule as a normal create-time category", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={createEmptyLedgerComposer()}
+      initialFormMode="create"
+    />,
+  );
+
+  assert.doesNotMatch(markup, /<option value="rule">规则<\/option>/u);
+  assert.doesNotMatch(markup, /规则投影（历史兼容）/u);
+});
+
+test("knowledge library entry board preserves historical rule items as compatibility projections", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={buildPersistedDraftComposer()}
+      initialFormMode="edit"
+    />,
+  );
+
+  assert.match(markup, /<option value="rule" selected="">规则投影（历史兼容）<\/option>/u);
+});
+
+test("knowledge library ledger list surfaces label rule knowledge as rule projection", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage initialViewModel={buildLedgerViewModel()} />,
+  );
+
+  assert.match(markup, /规则投影/u);
+  assert.doesNotMatch(markup, /<option value="rule">规则<\/option>/u);
+});
+
 test("knowledge library ledger page exposes a column-order manager and honors a custom column order", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryLedgerPage

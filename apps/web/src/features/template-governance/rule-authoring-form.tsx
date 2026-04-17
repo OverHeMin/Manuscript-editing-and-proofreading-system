@@ -1,5 +1,10 @@
 import type { FormEvent } from "react";
 import type { EditorialRuleSetViewModel } from "../editorial-rules/index.ts";
+import type { KnowledgeItemViewModel } from "../knowledge/index.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import {
   listRuleAuthoringPresets,
 } from "./rule-authoring-presets.ts";
@@ -9,6 +14,8 @@ import {
 import {
   formatTemplateGovernanceConfidencePolicyLabel,
   formatTemplateGovernanceExecutionModeLabel,
+  formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceKnowledgeKindLabel,
   formatTemplateGovernanceModuleLabel,
   formatTemplateGovernanceSeverityLabel,
 } from "./template-governance-display.ts";
@@ -19,6 +26,7 @@ import type {
 export interface RuleAuthoringFormProps {
   selectedRuleSet: EditorialRuleSetViewModel | null;
   draft: RuleAuthoringDraft;
+  knowledgeItems?: readonly KnowledgeItemViewModel[];
   isBusy: boolean;
   onDraftChange(next: RuleAuthoringDraft): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void | Promise<void>;
@@ -27,6 +35,7 @@ export interface RuleAuthoringFormProps {
 export function RuleAuthoringForm({
   selectedRuleSet,
   draft,
+  knowledgeItems = [],
   isBusy,
   onDraftChange,
   onSubmit,
@@ -157,6 +166,14 @@ export function RuleAuthoringForm({
               </select>
             </label>
 
+            <RuleAuthoringParameterGuide />
+
+            <RuleAuthoringLinkedKnowledgeField
+              draft={draft}
+              knowledgeItems={knowledgeItems}
+              onDraftChange={onDraftChange}
+            />
+
             <ObjectSpecificRuleFields draft={draft} onDraftChange={onDraftChange} />
 
             <div className="template-governance-actions template-governance-actions-full">
@@ -172,6 +189,106 @@ export function RuleAuthoringForm({
         </p>
       )}
     </article>
+  );
+}
+
+function RuleAuthoringParameterGuide() {
+  return (
+    <section
+      className="template-governance-card template-governance-field-full"
+      data-rule-parameter-guide="field"
+    >
+      <strong>参数说明</strong>
+      <p>规则中心负责可执行判断，知识条目只放证据、依据、范例或解释。</p>
+      <div className="template-governance-chip-row">
+        <span className="template-governance-chip">
+          执行方式决定是自动改写还是只检查
+        </span>
+        <span className="template-governance-chip">
+          置信策略决定何时允许自动执行
+        </span>
+        <span className="template-governance-chip">
+          关联知识条目只挂支撑证据，不承载执行逻辑
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function RuleAuthoringLinkedKnowledgeField({
+  draft,
+  knowledgeItems,
+  onDraftChange,
+}: {
+  draft: RuleAuthoringDraft;
+  knowledgeItems: readonly KnowledgeItemViewModel[];
+  onDraftChange(next: RuleAuthoringDraft): void;
+}) {
+  const selectedIds = draft.linkedKnowledgeItemIds ?? [];
+  const selectedItemIds = new Set(selectedIds);
+  const knowledgeOptions: SearchableMultiSelectOption[] = knowledgeItems.map((item) => ({
+    value: item.id,
+    label: item.title,
+    keywords: [item.knowledge_kind, item.status],
+    meta: `${formatTemplateGovernanceKnowledgeKindLabel(item.knowledge_kind)} / ${formatTemplateGovernanceGovernedAssetStatusLabel(item.status)}`,
+  }));
+
+  const selectedItems: Array<{
+    id: string;
+    title: string;
+    knowledge_kind: KnowledgeItemViewModel["knowledge_kind"];
+    status: KnowledgeItemViewModel["status"];
+  }> = selectedIds.map((id) => {
+    const matched = knowledgeItems.find((item) => item.id === id);
+    return matched ?? {
+      id,
+      title: id,
+      knowledge_kind: "reference",
+      status: "draft",
+    };
+  });
+
+  return (
+    <div
+      className="template-governance-field template-governance-field-full template-governance-linked-knowledge"
+      data-rule-linked-knowledge="field"
+    >
+      <SearchableMultiSelectField
+        label={"\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
+        helpText={
+          "\u628a\u89c4\u5219\u4f9d\u8d56\u7684\u8bc1\u636e\u6216\u53c2\u8003\u6761\u76ee\u663e\u5f0f\u6302\u4e0a\uff0c\u907f\u514d\u89c4\u5219\u548c\u77e5\u8bc6\u6df7\u5728\u4e00\u4e2a\u5165\u53e3\u91cc\u3002"
+        }
+        value={selectedIds}
+        options={knowledgeOptions}
+        dataKey="rule-authoring-linked-knowledge"
+        className="template-governance-linked-knowledge"
+        headerClassName="template-governance-linked-knowledge-header"
+        searchFieldClassName="knowledge-library-grid-search"
+        searchPlaceholder={"\u641c\u7d22\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
+        optionsClassName="template-governance-linked-knowledge-list"
+        optionClassName="template-governance-linked-knowledge-option"
+        emptyClassName="template-governance-inline-empty"
+        showSelectedSummary
+        selectedOptions={selectedItems.map((item) => ({
+          value: item.id,
+          label: item.title,
+        }))}
+        selectedListClassName="template-governance-chip-row"
+        selectedChipClassName="template-governance-chip"
+        selectedEmptyText={"\u5f53\u524d\u8fd8\u6ca1\u6709\u5173\u8054\u77e5\u8bc6\u6761\u76ee\u3002"}
+        emptyOptionsText={"\u5f53\u524d\u6ca1\u6709\u53ef\u5173\u8054\u7684\u77e5\u8bc6\u6761\u76ee\u3002"}
+        noResultsText={"\u672a\u627e\u5230\u5339\u914d\u7684\u77e5\u8bc6\u6761\u76ee\u3002"}
+        onToggleValue={(nextKnowledgeId) => {
+          const isActive = selectedItemIds.has(nextKnowledgeId);
+          onDraftChange({
+            ...draft,
+            linkedKnowledgeItemIds: isActive
+              ? selectedIds.filter((id) => id !== nextKnowledgeId)
+              : [...selectedIds, nextKnowledgeId],
+          });
+        }}
+      />
+    </div>
   );
 }
 

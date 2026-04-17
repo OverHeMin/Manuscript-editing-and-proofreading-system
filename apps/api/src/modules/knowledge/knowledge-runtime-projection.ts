@@ -74,6 +74,11 @@ export function projectRuntimeKnowledgeRecord(input: {
       ? normalizeSemanticText(input.semanticLayer.page_summary)
       : undefined;
   const semanticRetrievalText = buildSemanticRetrievalText(input.semanticLayer);
+  const linkedKnowledgeItemIds = dedupePreserveOrder(
+    input.bindings
+      .filter((binding) => binding.binding_kind === "knowledge_item")
+      .map((binding) => binding.binding_target_id),
+  );
 
   return {
     id: input.revision.asset_id,
@@ -117,6 +122,11 @@ export function projectRuntimeKnowledgeRecord(input: {
           template_bindings: input.bindings.map(
             (binding) => binding.binding_target_id,
           ),
+        }
+      : {}),
+    ...(linkedKnowledgeItemIds.length > 0
+      ? {
+          linked_knowledge_item_ids: linkedKnowledgeItemIds,
         }
       : {}),
     ...(input.revision.source_learning_candidate_id != null

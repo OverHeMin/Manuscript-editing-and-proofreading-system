@@ -226,6 +226,169 @@ test("governed module context preserves projected knowledge provenance through d
   );
 });
 
+test("governed module context selects approved knowledge bound at the template-family level", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-family-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-family-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-family-bound-1-revision-1",
+    created_at: "2026-04-07T08:40:00.000Z",
+    updated_at: "2026-04-07T08:40:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-family-bound-1-revision-1",
+    asset_id: "knowledge-family-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Family bound knowledge",
+    canonical_text: "This knowledge should enter governed screening via the template family.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:40:00.000Z",
+    updated_at: "2026-04-07T08:40:00.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-family-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-family-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-family-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:40:00.000Z",
+      },
+    ],
+  );
+
+  const screeningContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-3",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+
+  const selected = screeningContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-family-bound-1",
+  );
+
+  assert.equal(selected?.matchSource, "template_binding");
+});
+
+test("governed module context expands approved linked knowledge items from selected governed knowledge", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-linked-parent-1",
+    status: "active",
+    current_revision_id: "knowledge-linked-parent-1-revision-1",
+    current_approved_revision_id: "knowledge-linked-parent-1-revision-1",
+    created_at: "2026-04-07T08:41:00.000Z",
+    updated_at: "2026-04-07T08:41:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-linked-parent-1-revision-1",
+    asset_id: "knowledge-linked-parent-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Linked parent governed knowledge",
+    canonical_text: "This parent knowledge should bring in its linked checklist.",
+    knowledge_kind: "rule",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:41:00.000Z",
+    updated_at: "2026-04-07T08:41:00.000Z",
+  });
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-linked-child-1",
+    status: "active",
+    current_revision_id: "knowledge-linked-child-1-revision-1",
+    current_approved_revision_id: "knowledge-linked-child-1-revision-1",
+    created_at: "2026-04-07T08:42:00.000Z",
+    updated_at: "2026-04-07T08:42:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-linked-child-1-revision-1",
+    asset_id: "knowledge-linked-child-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Linked child checklist",
+    canonical_text: "This linked checklist should enter governed screening with the parent.",
+    knowledge_kind: "checklist",
+    routing: {
+      module_scope: "proofreading",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:42:00.000Z",
+    updated_at: "2026-04-07T08:42:00.000Z",
+  });
+
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-linked-parent-1-revision-1",
+    [
+      {
+        id: "knowledge-linked-parent-1-revision-1-binding-1",
+        revision_id: "knowledge-linked-parent-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:41:00.000Z",
+      },
+      {
+        id: "knowledge-linked-parent-1-revision-1-binding-2",
+        revision_id: "knowledge-linked-parent-1-revision-1",
+        binding_kind: "knowledge_item",
+        binding_target_id: "knowledge-linked-child-1",
+        binding_target_label: "Linked child checklist",
+        created_at: "2026-04-07T08:41:30.000Z",
+      },
+    ],
+  );
+
+  const screeningContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-4",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+
+  const parentSelection = screeningContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-linked-parent-1",
+  );
+  const childSelection = screeningContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-linked-child-1",
+  );
+
+  assert.equal(parentSelection?.matchSource, "template_binding");
+  assert.equal(childSelection?.matchSource, "knowledge_item_binding");
+  assert.equal(
+    childSelection?.matchSourceId,
+    "knowledge_item:knowledge-linked-parent-1",
+  );
+});
+
 test("governed module context resolves an approved asset id even when authoring has a newer draft revision", async () => {
   const harness = await createGovernedContextHarness();
 

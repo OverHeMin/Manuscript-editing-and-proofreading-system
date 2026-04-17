@@ -3,6 +3,7 @@ import {
   confirmKnowledgeSemanticLayer,
   createKnowledgeDraftRevision,
   createKnowledgeLibraryDraft,
+  listKnowledgeLibraryAssets,
   submitKnowledgeRevisionForReview,
   regenerateKnowledgeSemanticLayer,
   replaceKnowledgeRevisionContentBlocks,
@@ -23,11 +24,20 @@ import type {
 import { listContentModules, listTemplateFamilies } from "../templates/index.ts";
 import type { KnowledgeSourceType } from "../knowledge/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
+import {
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
+  formatEditorialManuscriptTypeLabel,
+} from "../shared/editorial-taxonomy.ts";
+
+type RuleWizardStructuredManuscriptTypes = ManuscriptType[] | "any";
+type RuleWizardStringListInput = readonly string[] | string;
+const ruleWizardManuscriptTypeOptions: readonly ManuscriptType[] =
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
 
 export interface RuleWizardEntryFormState {
   title: string;
   moduleScope: ManuscriptModule | "any";
-  manuscriptTypes: string;
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes;
   sourceType: KnowledgeSourceType;
   contributor: string;
   ruleBody: string;
@@ -36,16 +46,36 @@ export interface RuleWizardEntryFormState {
   imageEvidence: string;
   sourceBasis: string;
   advancedTagsExpanded: boolean;
-  sections: string;
-  riskTags: string;
-  packageHints: string;
+  sections: string[];
+  riskTags: string[];
+  packageHints: string[];
   candidateOnly: boolean;
   conflictNotes: string;
   supplementalBlocks?: KnowledgeContentBlockViewModel[];
 }
 
+export interface RuleWizardEntryFormStateInput {
+  title?: string;
+  moduleScope?: ManuscriptModule | "any";
+  manuscriptTypes?: RuleWizardStructuredManuscriptTypes | string;
+  sourceType?: KnowledgeSourceType;
+  contributor?: string;
+  ruleBody?: string;
+  positiveExample?: string;
+  negativeExample?: string;
+  imageEvidence?: string;
+  sourceBasis?: string;
+  advancedTagsExpanded?: boolean;
+  sections?: RuleWizardStringListInput;
+  riskTags?: RuleWizardStringListInput;
+  packageHints?: RuleWizardStringListInput;
+  candidateOnly?: boolean;
+  conflictNotes?: string;
+  supplementalBlocks?: readonly KnowledgeContentBlockViewModel[];
+}
+
 export interface SaveRuleWizardEntryDraftInput {
-  form: RuleWizardEntryFormState;
+  form: RuleWizardEntryFormStateInput;
   draftAssetId?: string;
   draftRevisionId?: string;
 }
@@ -70,9 +100,9 @@ export interface RuleWizardSemanticViewModel {
   ruleType: RuleWizardSemanticRuleType;
   riskLevel: RuleWizardSemanticRiskLevel;
   moduleScope: ManuscriptModule | "any";
-  manuscriptTypes: string;
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes;
   semanticSummary: string;
-  retrievalTerms: string;
+  retrievalTerms: string[];
   retrievalSnippets: string;
   suggestedPackage: string;
   applicableScenario: string;
@@ -88,9 +118,9 @@ export interface RuleWizardConfirmFormState {
   ruleType: RuleWizardSemanticRuleType;
   riskLevel: RuleWizardSemanticRiskLevel;
   moduleScope: ManuscriptModule | "any";
-  manuscriptTypes: string;
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes;
   semanticSummary: string;
-  retrievalTerms: string;
+  retrievalTerms: string[];
   retrievalSnippets: string;
 }
 
@@ -110,6 +140,13 @@ export interface RuleWizardBindingOption {
   label: string;
 }
 
+export interface RuleWizardKnowledgeItemOption extends RuleWizardBindingOption {
+  knowledgeKind: Exclude<CreateKnowledgeLibraryDraftInput["knowledgeKind"], "rule">;
+  status: KnowledgeRevisionViewModel["status"];
+  moduleScope: ManuscriptModule | "any";
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes;
+}
+
 export interface RuleWizardTemplateFamilyOption {
   id: string;
   name: string;
@@ -120,6 +157,7 @@ export interface RuleWizardBindingOptions {
   generalPackages: RuleWizardBindingOption[];
   medicalPackages: RuleWizardBindingOption[];
   templateFamilies: RuleWizardTemplateFamilyOption[];
+  knowledgeItems: RuleWizardKnowledgeItemOption[];
 }
 
 export interface RuleWizardBindingFormState {
@@ -130,6 +168,10 @@ export interface RuleWizardBindingFormState {
   selectedTemplateFamilies: Array<{
     id: string;
     name: string;
+  }>;
+  selectedKnowledgeItems: Array<{
+    id: string;
+    title: string;
   }>;
 }
 
@@ -146,12 +188,14 @@ export interface RuleWizardBindingDraftResult {
 }
 
 export function createRuleWizardEntryFormState(
-  input: Partial<RuleWizardEntryFormState> = {},
+  input: RuleWizardEntryFormStateInput = {},
 ): RuleWizardEntryFormState {
   return {
     title: input.title ?? "",
     moduleScope: input.moduleScope ?? "editing",
-    manuscriptTypes: input.manuscriptTypes ?? "clinical_study",
+    manuscriptTypes: normalizeRuleWizardManuscriptTypes(
+      input.manuscriptTypes ?? "clinical_study",
+    ),
     sourceType: input.sourceType ?? "guideline",
     contributor: input.contributor ?? "",
     ruleBody: input.ruleBody ?? "",
@@ -160,9 +204,9 @@ export function createRuleWizardEntryFormState(
     imageEvidence: input.imageEvidence ?? "",
     sourceBasis: input.sourceBasis ?? "",
     advancedTagsExpanded: input.advancedTagsExpanded ?? false,
-    sections: input.sections ?? "",
-    riskTags: input.riskTags ?? "",
-    packageHints: input.packageHints ?? "",
+    sections: normalizeRuleWizardStringList(input.sections),
+    riskTags: normalizeRuleWizardStringList(input.riskTags),
+    packageHints: normalizeRuleWizardStringList(input.packageHints),
     candidateOnly: input.candidateOnly ?? false,
     conflictNotes: input.conflictNotes ?? "",
     supplementalBlocks: normalizeSupplementalBlocks(
@@ -174,41 +218,48 @@ export function createRuleWizardEntryFormState(
 }
 
 export function createRuleDraftInput(
-  form: RuleWizardEntryFormState,
+  form: RuleWizardEntryFormStateInput,
 ): CreateKnowledgeLibraryDraftInput {
+  const normalizedForm = createRuleWizardEntryFormState(form);
+
   return {
-    title: form.title.trim(),
-    canonicalText: form.ruleBody.trim(),
+    title: normalizedForm.title.trim(),
+    canonicalText: normalizedForm.ruleBody.trim(),
     knowledgeKind: "rule",
-    moduleScope: form.moduleScope,
-    manuscriptTypes: parseRuleWizardManuscriptTypes(form.manuscriptTypes),
-    ...(form.sourceType ? { sourceType: form.sourceType } : {}),
-    ...(toOptionalStringArray(form.sections) ? { sections: toOptionalStringArray(form.sections) } : {}),
-    ...(toOptionalStringArray(form.riskTags) ? { riskTags: toOptionalStringArray(form.riskTags) } : {}),
+    moduleScope: normalizedForm.moduleScope,
+    manuscriptTypes: normalizedForm.manuscriptTypes,
+    ...(normalizedForm.sourceType ? { sourceType: normalizedForm.sourceType } : {}),
+    ...(toOptionalStringArray(normalizedForm.sections)
+      ? { sections: toOptionalStringArray(normalizedForm.sections) }
+      : {}),
+    ...(toOptionalStringArray(normalizedForm.riskTags)
+      ? { riskTags: toOptionalStringArray(normalizedForm.riskTags) }
+      : {}),
   };
 }
 
 export function createRuleDraftUpdateInput(
-  form: RuleWizardEntryFormState,
+  form: RuleWizardEntryFormStateInput,
 ): UpdateKnowledgeLibraryDraftInput {
   return createRuleDraftInput(form);
 }
 
 export function createRuleWizardSemanticViewModel(input: {
-  form: RuleWizardEntryFormState;
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
   revision?: KnowledgeRevisionViewModel;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel;
 }): RuleWizardSemanticViewModel {
+  const normalizedForm = createRuleWizardEntryFormState(input.form);
   const semanticLayer = resolveRuleWizardSemanticLayer(input);
   const suggestedFieldPatch = input.suggestion?.suggestedFieldPatch;
   const moduleScope =
     suggestedFieldPatch?.moduleScope ??
     input.revision?.routing.module_scope ??
-    input.form.moduleScope;
-  const manuscriptTypes = formatRuleWizardManuscriptTypes(
+    normalizedForm.moduleScope;
+  const normalizedManuscriptTypes = normalizeRuleWizardManuscriptTypes(
     suggestedFieldPatch?.manuscriptTypes ??
       input.revision?.routing.manuscript_types ??
-      parseRuleWizardManuscriptTypes(input.form.manuscriptTypes),
+      normalizedForm.manuscriptTypes,
   );
   const riskLevel = resolveRuleWizardRiskLevel(input, suggestedFieldPatch?.riskTags);
   const ruleType = resolveRuleWizardRuleType(input);
@@ -216,32 +267,34 @@ export function createRuleWizardSemanticViewModel(input: {
     semanticLayer?.page_summary?.trim() ||
     suggestedFieldPatch?.summary?.trim() ||
     input.revision?.summary?.trim() ||
-    input.form.ruleBody.trim();
-  const retrievalTerms = joinCommaSeparated(
-    semanticLayer?.retrieval_terms ?? deriveRuleWizardRetrievalTerms(input.form),
-  );
+    normalizedForm.ruleBody.trim();
+  const retrievalTerms =
+    semanticLayer?.retrieval_terms ?? deriveRuleWizardRetrievalTerms(normalizedForm);
   const retrievalSnippets = joinLineSeparated(
-    semanticLayer?.retrieval_snippets ?? deriveRuleWizardRetrievalSnippets(input.form),
+    semanticLayer?.retrieval_snippets ?? deriveRuleWizardRetrievalSnippets(normalizedForm),
   );
-  const evidencePreview = collectRuleWizardEvidencePreview(input.form, semanticLayer);
-  const confidenceScore = resolveRuleWizardConfidenceScore(input.form);
+  const evidencePreview = collectRuleWizardEvidencePreview(normalizedForm, semanticLayer);
+  const confidenceScore = resolveRuleWizardConfidenceScore(normalizedForm);
 
   return {
     semanticLayer,
     ruleType,
     riskLevel,
     moduleScope,
-    manuscriptTypes,
+    manuscriptTypes: normalizedManuscriptTypes,
     semanticSummary,
     retrievalTerms,
     retrievalSnippets,
-    suggestedPackage: resolveRuleWizardSuggestedPackage(input.form, ruleType),
-    applicableScenario: formatRuleWizardApplicableScenario(moduleScope, manuscriptTypes),
+    suggestedPackage: resolveRuleWizardSuggestedPackage(normalizedForm, ruleType),
+    applicableScenario: formatRuleWizardApplicableScenario(
+      moduleScope,
+      normalizedManuscriptTypes,
+    ),
     triggerExplanation: semanticLayer?.retrieval_terms?.length
       ? `AI 基于检索词“${joinCommaSeparated(semanticLayer.retrieval_terms)}”识别该规则。`
       : "AI 主要根据规则正文、示例和来源依据抽取语义结论。",
     inapplicableConditions:
-      input.form.conflictNotes.trim() || "当前未补充明确的不适用条件。",
+      normalizedForm.conflictNotes.trim() || "当前未补充明确的不适用条件。",
     evidencePreview,
     confidenceScore,
     confidenceLabel: formatRuleWizardConfidenceLabel(confidenceScore),
@@ -250,7 +303,7 @@ export function createRuleWizardSemanticViewModel(input: {
 }
 
 export function createRuleWizardConfirmFormState(input: {
-  form: RuleWizardEntryFormState;
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
   revision?: KnowledgeRevisionViewModel;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel;
 }): RuleWizardConfirmFormState {
@@ -262,7 +315,7 @@ export function createRuleWizardConfirmFormState(input: {
     moduleScope: semanticViewModel.moduleScope,
     manuscriptTypes: semanticViewModel.manuscriptTypes,
     semanticSummary: semanticViewModel.semanticSummary,
-    retrievalTerms: semanticViewModel.retrievalTerms,
+    retrievalTerms: [...semanticViewModel.retrievalTerms],
     retrievalSnippets: semanticViewModel.retrievalSnippets,
   };
 }
@@ -270,27 +323,82 @@ export function createRuleWizardConfirmFormState(input: {
 export function createRuleWizardBindingFormState(input: {
   semanticViewModel?: RuleWizardSemanticViewModel;
   options?: RuleWizardBindingOptions;
+  detail?: Pick<KnowledgeAssetDetailViewModel, "selected_revision">;
 } = {}): RuleWizardBindingFormState {
   const packageKind =
     input.semanticViewModel?.suggestedPackage.includes("医学") ||
     input.semanticViewModel?.ruleType === "terminology_consistency"
       ? "medical_package"
       : "general_package";
+  const detailBindings = input.detail?.selected_revision.bindings ?? [];
+  const selectedPackageBinding = detailBindings.find(
+    (binding) =>
+      binding.binding_kind === "general_package" ||
+      binding.binding_kind === "medical_package",
+  );
+  const resolvedPackageKind =
+    selectedPackageBinding?.binding_kind === "medical_package"
+      ? "medical_package"
+      : selectedPackageBinding?.binding_kind === "general_package"
+        ? "general_package"
+        : packageKind;
   const packageOptions =
-    packageKind === "medical_package"
+    resolvedPackageKind === "medical_package"
       ? input.options?.medicalPackages ?? []
       : input.options?.generalPackages ?? [];
   const selectedPackage = packageOptions[0];
+  const selectedTemplateFamilies = detailBindings
+    .filter((binding) => binding.binding_kind === "template_family")
+    .map((binding) => ({
+      id: binding.binding_target_id,
+      name: binding.binding_target_label,
+    }));
+  const selectedKnowledgeItems = detailBindings
+    .filter((binding) => binding.binding_kind === "knowledge_item")
+    .map((binding) => {
+      const matched =
+        input.options?.knowledgeItems.find((item) => item.id === binding.binding_target_id) ??
+        null;
+      return {
+        id: binding.binding_target_id,
+        title: matched?.label ?? binding.binding_target_label,
+      };
+    });
+
+  if (
+    selectedPackageBinding ||
+    selectedTemplateFamilies.length > 0 ||
+    selectedKnowledgeItems.length > 0
+  ) {
+    return {
+      selectedPackageKind: resolvedPackageKind,
+      selectedPackageId:
+        selectedPackageBinding?.binding_target_id ?? selectedPackage?.id ?? "",
+      selectedPackageLabel:
+        selectedPackageBinding?.binding_target_label ?? selectedPackage?.label ?? "",
+      reuseStrategy: selectedPackageBinding ? "reuse_existing" : "new_binding",
+      selectedTemplateFamilies:
+        selectedTemplateFamilies.length > 0
+          ? selectedTemplateFamilies
+          : deriveDefaultTemplateFamilies(
+              input.options?.templateFamilies ?? [],
+              input.semanticViewModel?.manuscriptTypes,
+            ),
+      selectedKnowledgeItems,
+    };
+  }
 
   return {
-    selectedPackageKind: packageKind,
+    selectedPackageKind: resolvedPackageKind,
     selectedPackageId: selectedPackage?.id ?? "",
     selectedPackageLabel: selectedPackage?.label ?? "",
-    reuseStrategy: packageKind === "medical_package" ? "reuse_existing" : "new_binding",
+    reuseStrategy:
+      resolvedPackageKind === "medical_package" ? "reuse_existing" : "new_binding",
     selectedTemplateFamilies: deriveDefaultTemplateFamilies(
       input.options?.templateFamilies ?? [],
       input.semanticViewModel?.manuscriptTypes,
     ),
+    selectedKnowledgeItems: [],
   };
 }
 
@@ -316,17 +424,29 @@ export function createRuleWizardBindingInputs(
     });
   }
 
-  return bindings.concat(
-    form.selectedTemplateFamilies
-      .filter(
-        (family) => family.id.trim().length > 0 && family.name.trim().length > 0,
-      )
-      .map((family) => ({
-        bindingKind: "template_family" as const,
-        bindingTargetId: family.id.trim(),
-        bindingTargetLabel: family.name.trim(),
-      })),
-  );
+  return bindings
+    .concat(
+      form.selectedTemplateFamilies
+        .filter(
+          (family) => family.id.trim().length > 0 && family.name.trim().length > 0,
+        )
+        .map((family) => ({
+          bindingKind: "template_family" as const,
+          bindingTargetId: family.id.trim(),
+          bindingTargetLabel: family.name.trim(),
+        })),
+    )
+    .concat(
+      (form.selectedKnowledgeItems ?? [])
+        .filter(
+          (item) => item.id.trim().length > 0 && item.title.trim().length > 0,
+        )
+        .map((item) => ({
+          bindingKind: "knowledge_item" as const,
+          bindingTargetId: item.id.trim(),
+          bindingTargetLabel: item.title.trim(),
+        })),
+    );
 }
 
 export function confirmSemanticLayerInput(
@@ -334,7 +454,7 @@ export function confirmSemanticLayerInput(
 ): KnowledgeSemanticLayerInput {
   return {
     pageSummary: form.semanticSummary.trim(),
-    retrievalTerms: splitCommaSeparated(form.retrievalTerms),
+    retrievalTerms: normalizeRuleWizardStringList(form.retrievalTerms),
     ...(splitLineSeparated(form.retrievalSnippets)
       ? { retrievalSnippets: splitLineSeparated(form.retrievalSnippets) }
       : {}),
@@ -355,13 +475,14 @@ export function createRuleWizardSemanticDraftUpdateInput(
 export async function regenerateRuleWizardSemanticLayer(
   client: KnowledgeLibraryHttpClient,
   revisionId: string,
-  form: RuleWizardEntryFormState,
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
 ): Promise<RegenerateRuleWizardSemanticResult> {
+  const normalizedForm = createRuleWizardEntryFormState(form);
   const revision = (
     await regenerateKnowledgeSemanticLayer(client, revisionId, {
-      pageSummary: form.ruleBody.trim() || undefined,
-      retrievalTerms: deriveRuleWizardRetrievalTerms(form),
-      retrievalSnippets: deriveRuleWizardRetrievalSnippets(form),
+      pageSummary: normalizedForm.ruleBody.trim() || undefined,
+      retrievalTerms: deriveRuleWizardRetrievalTerms(normalizedForm),
+      retrievalSnippets: deriveRuleWizardRetrievalSnippets(normalizedForm),
     })
   ).body;
   const suggestion = (
@@ -376,7 +497,7 @@ export async function regenerateRuleWizardSemanticLayer(
     revision,
     suggestion,
     semanticViewModel: createRuleWizardSemanticViewModel({
-      form,
+      form: normalizedForm,
       revision,
       suggestion,
     }),
@@ -386,7 +507,7 @@ export async function regenerateRuleWizardSemanticLayer(
 export async function confirmRuleWizardSemanticLayer(
   client: KnowledgeLibraryHttpClient,
   revisionId: string,
-  entryForm: RuleWizardEntryFormState,
+  entryForm: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
   form: RuleWizardConfirmFormState,
 ): Promise<ConfirmRuleWizardSemanticResult> {
   const detail = (
@@ -413,7 +534,7 @@ export async function confirmRuleWizardSemanticLayer(
       ),
     },
     semanticViewModel: createRuleWizardSemanticViewModel({
-      form: entryForm,
+      form: createRuleWizardEntryFormState(entryForm),
       revision: confirmedRevision,
       suggestion: {
         suggestedSemanticLayer: confirmSemanticLayerInput(form),
@@ -427,10 +548,11 @@ export async function confirmRuleWizardSemanticLayer(
 export async function loadRuleWizardBindingOptions(
   client: KnowledgeLibraryHttpClient,
 ): Promise<RuleWizardBindingOptions> {
-  const [generalPackages, medicalPackages, templateFamilies] = await Promise.all([
+  const [generalPackages, medicalPackages, templateFamilies, knowledgeItems] = await Promise.all([
     listContentModules(client, "general"),
     listContentModules(client, "medical_specialized"),
     listTemplateFamilies(client),
+    listKnowledgeLibraryAssets(client),
   ]);
 
   return {
@@ -447,6 +569,16 @@ export async function loadRuleWizardBindingOptions(
       name: family.name,
       manuscriptType: family.manuscript_type,
     })),
+    knowledgeItems: knowledgeItems.body.items
+      .filter((item) => item.status === "approved" && item.knowledge_kind !== "rule")
+      .map((item) => ({
+        id: item.asset_id,
+        label: item.title,
+        knowledgeKind: item.knowledge_kind as RuleWizardKnowledgeItemOption["knowledgeKind"],
+        status: item.status,
+        moduleScope: item.module_scope,
+        manuscriptTypes: item.manuscript_types,
+      })),
   };
 }
 
@@ -493,24 +625,25 @@ export async function publishRuleWizardRevision(
 }
 
 function createLegacyRuleDraftContentBlocks(
-  form: RuleWizardEntryFormState,
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
   revisionId: string,
 ): KnowledgeContentBlockViewModel[] {
+  const normalizedForm = createRuleWizardEntryFormState(form);
   const blockDrafts = [
-    form.ruleBody.trim().length > 0
-      ? createTextBlock(revisionId, 0, "规则正文", form.ruleBody)
+    normalizedForm.ruleBody.trim().length > 0
+      ? createTextBlock(revisionId, 0, "规则正文", normalizedForm.ruleBody)
       : null,
-    form.positiveExample.trim().length > 0
-      ? createTextBlock(revisionId, 1, "正例示例", form.positiveExample)
+    normalizedForm.positiveExample.trim().length > 0
+      ? createTextBlock(revisionId, 1, "正例示例", normalizedForm.positiveExample)
       : null,
-    form.negativeExample.trim().length > 0
-      ? createTextBlock(revisionId, 2, "反例示例", form.negativeExample)
+    normalizedForm.negativeExample.trim().length > 0
+      ? createTextBlock(revisionId, 2, "反例示例", normalizedForm.negativeExample)
       : null,
-    form.imageEvidence.trim().length > 0
-      ? createImageBlock(revisionId, 3, form.imageEvidence)
+    normalizedForm.imageEvidence.trim().length > 0
+      ? createImageBlock(revisionId, 3, normalizedForm.imageEvidence)
       : null,
-    form.sourceBasis.trim().length > 0
-      ? createTextBlock(revisionId, 4, "来源依据", form.sourceBasis)
+    normalizedForm.sourceBasis.trim().length > 0
+      ? createTextBlock(revisionId, 4, "来源依据", normalizedForm.sourceBasis)
       : null,
   ];
 
@@ -556,38 +689,60 @@ async function saveLegacyRuleWizardEntryDraft(
 }
 
 export function createRuleDraftContentBlocks(
-  form: RuleWizardEntryFormState,
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
   revisionId: string,
 ): KnowledgeContentBlockViewModel[] {
+  const normalizedForm = createRuleWizardEntryFormState(form);
   const blockDrafts: KnowledgeContentBlockViewModel[] = [];
 
-  if (form.ruleBody.trim().length > 0) {
-    blockDrafts.push(createTextBlock(revisionId, blockDrafts.length, "规则正文", form.ruleBody));
-  }
-
-  if (form.positiveExample.trim().length > 0) {
+  if (normalizedForm.ruleBody.trim().length > 0) {
     blockDrafts.push(
-      createTextBlock(revisionId, blockDrafts.length, "正例示例", form.positiveExample),
+      createTextBlock(revisionId, blockDrafts.length, "规则正文", normalizedForm.ruleBody),
     );
   }
 
-  if (form.negativeExample.trim().length > 0) {
+  if (normalizedForm.positiveExample.trim().length > 0) {
     blockDrafts.push(
-      createTextBlock(revisionId, blockDrafts.length, "反例示例", form.negativeExample),
+      createTextBlock(
+        revisionId,
+        blockDrafts.length,
+        "正例示例",
+        normalizedForm.positiveExample,
+      ),
     );
   }
 
-  if (form.sourceBasis.trim().length > 0) {
-    blockDrafts.push(createTextBlock(revisionId, blockDrafts.length, "来源依据", form.sourceBasis));
+  if (normalizedForm.negativeExample.trim().length > 0) {
+    blockDrafts.push(
+      createTextBlock(
+        revisionId,
+        blockDrafts.length,
+        "反例示例",
+        normalizedForm.negativeExample,
+      ),
+    );
   }
 
-  if (form.imageEvidence.trim().length > 0) {
-    blockDrafts.push(createImageBlock(revisionId, blockDrafts.length, form.imageEvidence));
+  if (normalizedForm.sourceBasis.trim().length > 0) {
+    blockDrafts.push(
+      createTextBlock(
+        revisionId,
+        blockDrafts.length,
+        "来源依据",
+        normalizedForm.sourceBasis,
+      ),
+    );
+  }
+
+  if (normalizedForm.imageEvidence.trim().length > 0) {
+    blockDrafts.push(
+      createImageBlock(revisionId, blockDrafts.length, normalizedForm.imageEvidence),
+    );
   }
 
   return blockDrafts.concat(
     normalizeSupplementalBlocks(
-      form.supplementalBlocks ?? [],
+      normalizedForm.supplementalBlocks ?? [],
       revisionId,
       blockDrafts.length,
     ),
@@ -645,15 +800,12 @@ export function createRuleWizardEntryFormStateFromDetail(
         binding.binding_kind === "general_package" ||
         binding.binding_kind === "medical_package",
     )
-    .map((binding) => binding.binding_target_label)
-    .join(", ");
+    .map((binding) => binding.binding_target_label);
 
   return createRuleWizardEntryFormState({
     title: selectedRevision.title,
     moduleScope: selectedRevision.routing.module_scope,
-    manuscriptTypes: formatRuleWizardManuscriptTypes(
-      selectedRevision.routing.manuscript_types,
-    ),
+    manuscriptTypes: selectedRevision.routing.manuscript_types,
     sourceType: selectedRevision.source_type ?? "guideline",
     contributor:
       selectedRevision.contributor_label ?? detail.asset.contributor_label ?? "",
@@ -665,9 +817,9 @@ export function createRuleWizardEntryFormStateFromDetail(
     advancedTagsExpanded:
       Boolean(selectedRevision.routing.sections?.length) ||
       Boolean(selectedRevision.routing.risk_tags?.length) ||
-      packageHints.trim().length > 0,
-    sections: joinCommaSeparated(selectedRevision.routing.sections),
-    riskTags: joinCommaSeparated(selectedRevision.routing.risk_tags),
+      packageHints.length > 0,
+    sections: selectedRevision.routing.sections ?? [],
+    riskTags: selectedRevision.routing.risk_tags ?? [],
     packageHints,
     candidateOnly: false,
     conflictNotes: "",
@@ -820,28 +972,56 @@ function isLegacyImageEvidenceBlock(block: KnowledgeContentBlockViewModel): bool
   );
 }
 
-function parseRuleWizardManuscriptTypes(value: string): ManuscriptType[] | "any" {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || trimmed.toLowerCase() === "any") {
+function normalizeRuleWizardManuscriptTypes(
+  value: RuleWizardStructuredManuscriptTypes | string,
+): RuleWizardStructuredManuscriptTypes {
+  if (value === "any") {
     return "any";
   }
 
-  return trimmed
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry): entry is ManuscriptType => entry.length > 0);
+  const rawValues = Array.isArray(value) ? value : splitCommaSeparated(value);
+  if (
+    !Array.isArray(value) &&
+    (value.trim().length === 0 || value.trim().toLowerCase() === "any")
+  ) {
+    return "any";
+  }
+
+  const normalized = [...new Set(rawValues.map((entry) => entry.trim()))].filter(
+    (entry): entry is ManuscriptType =>
+      ruleWizardManuscriptTypeOptions.includes(entry as ManuscriptType),
+  );
+
+  return normalized.length > 0 ? normalized : "any";
 }
 
-function toOptionalStringArray(value: string): string[] | undefined {
-  const normalized = value
-    .split(",")
+function normalizeRuleWizardStringList(value: RuleWizardStringListInput | undefined): string[] {
+  if (value == null) {
+    return [];
+  }
+
+  const rawValues = typeof value === "string" ? splitCommaSeparated(value) : [...value];
+
+  return rawValues
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+}
+
+function parseRuleWizardManuscriptTypes(
+  value: RuleWizardStructuredManuscriptTypes | string,
+): ManuscriptType[] | "any" {
+  return normalizeRuleWizardManuscriptTypes(value);
+}
+
+function toOptionalStringArray(
+  value: RuleWizardStringListInput | undefined,
+): string[] | undefined {
+  const normalized = normalizeRuleWizardStringList(value);
   return normalized.length > 0 ? normalized : undefined;
 }
 
 function resolveRuleWizardSemanticLayer(input: {
-  form: RuleWizardEntryFormState;
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
   revision?: KnowledgeRevisionViewModel;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel;
 }): KnowledgeSemanticLayerViewModel | undefined {
@@ -871,14 +1051,15 @@ function resolveRuleWizardSemanticLayer(input: {
 }
 
 function resolveRuleWizardRuleType(input: {
-  form: RuleWizardEntryFormState;
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
   revision?: KnowledgeRevisionViewModel;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel;
 }): RuleWizardSemanticRuleType {
+  const normalizedForm = createRuleWizardEntryFormState(input.form);
   const joinedText = [
-    input.form.title,
-    input.form.ruleBody,
-    input.form.packageHints,
+    normalizedForm.title,
+    normalizedForm.ruleBody,
+    joinCommaSeparated(normalizedForm.packageHints),
     input.suggestion?.suggestedFieldPatch?.summary,
   ]
     .filter((value): value is string => Boolean(value))
@@ -906,18 +1087,19 @@ function resolveRuleWizardRuleType(input: {
 
 function resolveRuleWizardRiskLevel(
   input: {
-    form: RuleWizardEntryFormState;
+    form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
     revision?: KnowledgeRevisionViewModel;
   },
   suggestedRiskTags?: string[],
 ): RuleWizardSemanticRiskLevel {
+  const normalizedForm = createRuleWizardEntryFormState(input.form);
   const riskTags = [
     ...(suggestedRiskTags ?? []),
     ...(input.revision?.routing.risk_tags ?? []),
-    ...(toOptionalStringArray(input.form.riskTags) ?? []),
+    ...normalizedForm.riskTags,
   ].join(" ");
 
-  if (/high|critical|严重|高/u.test(riskTags) || /必须|不得/u.test(input.form.ruleBody)) {
+  if (/high|critical|严重|高/u.test(riskTags) || /必须|不得/u.test(normalizedForm.ruleBody)) {
     return "high";
   }
 
@@ -931,8 +1113,8 @@ function resolveRuleWizardRiskLevel(
 function deriveRuleWizardRetrievalTerms(form: RuleWizardEntryFormState): string[] {
   const inferredTerms = [
     form.title.trim(),
-    ...(toOptionalStringArray(form.riskTags) ?? []),
-    ...(toOptionalStringArray(form.packageHints) ?? []),
+    ...form.riskTags,
+    ...form.packageHints,
   ].filter((value) => value.length > 0);
 
   return inferredTerms.length > 0 ? inferredTerms : ["规则治理", "语义确认"];
@@ -1009,8 +1191,8 @@ function resolveRuleWizardSuggestedPackage(
   form: RuleWizardEntryFormState,
   ruleType: RuleWizardSemanticRuleType,
 ): string {
-  if (form.packageHints.trim().length > 0) {
-    return form.packageHints.trim();
+  if (form.packageHints.length > 0) {
+    return joinCommaSeparated(form.packageHints);
   }
 
   if (ruleType === "terminology_consistency") {
@@ -1022,7 +1204,7 @@ function resolveRuleWizardSuggestedPackage(
 
 function formatRuleWizardApplicableScenario(
   moduleScope: ManuscriptModule | "any",
-  manuscriptTypes: string,
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes,
 ): string {
   const moduleLabel =
     moduleScope === "any"
@@ -1032,7 +1214,7 @@ function formatRuleWizardApplicableScenario(
         : moduleScope === "proofreading"
           ? "校对"
           : "编辑";
-  const manuscriptLabel = manuscriptTypes.trim().length > 0 ? manuscriptTypes : "any";
+  const manuscriptLabel = formatRuleWizardManuscriptTypes(manuscriptTypes);
 
   return `${moduleLabel} / ${manuscriptLabel}`;
 }
@@ -1052,7 +1234,9 @@ function formatRuleWizardConfidenceLabel(score: number): string {
 function formatRuleWizardManuscriptTypes(
   manuscriptTypes: ManuscriptType[] | "any",
 ): string {
-  return manuscriptTypes === "any" ? "any" : manuscriptTypes.join(", ");
+  return manuscriptTypes === "any"
+    ? "全部 / 任意"
+    : manuscriptTypes.map((type) => formatEditorialManuscriptTypeLabel(type)).join("、");
 }
 
 function joinCommaSeparated(value: string[] | undefined): string {
@@ -1081,9 +1265,10 @@ function splitLineSeparated(value: string): string[] | undefined {
 
 function deriveDefaultTemplateFamilies(
   options: RuleWizardTemplateFamilyOption[],
-  manuscriptTypes: string | undefined,
+  manuscriptTypes: RuleWizardStructuredManuscriptTypes | undefined,
 ): Array<{ id: string; name: string }> {
-  const normalizedTypes = splitCommaSeparated(manuscriptTypes ?? "");
+  const normalizedTypes =
+    manuscriptTypes == null || manuscriptTypes === "any" ? [] : manuscriptTypes;
   const matchedFamily =
     normalizedTypes.length === 0
       ? options[0]

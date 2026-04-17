@@ -15,15 +15,19 @@ import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import type { AuthRole } from "../auth/index.ts";
 import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
+import type { KnowledgeAssetDetailViewModel } from "../knowledge-library/types.ts";
 import type { LearningCandidateViewModel } from "../learning-review/index.ts";
 import type { RuleAuthoringPrefillFromLearningCandidate } from "../learning-review/index.ts";
 import type {
+  CreateKnowledgeDraftInput,
   EvidenceLevel,
   KnowledgeItemStatus,
   KnowledgeKind,
   KnowledgeSourceType,
+  UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
+import { EDITORIAL_MANUSCRIPT_TYPE_OPTIONS } from "../shared/editorial-taxonomy.ts";
 import {
   createInlineUploadFields,
   type BrowserUploadFile,
@@ -157,6 +161,7 @@ import {
   formatTemplateGovernanceExecutionModeLabel,
   formatTemplateGovernanceFamilyStatusLabel,
   formatTemplateGovernanceGovernedAssetStatusLabel,
+  formatTemplateGovernanceInstructionOperationLabel,
   formatTemplateGovernanceExtractionCandidateStatusLabel,
   formatTemplateGovernanceExtractionDestinationLabel,
   formatTemplateGovernanceExtractionTaskStatusLabel,
@@ -164,6 +169,7 @@ import {
   formatTemplateGovernanceManuscriptTypeLabel,
   formatTemplateGovernanceModuleLabel,
   formatTemplateGovernancePromptTemplateKindLabel,
+  formatTemplateGovernanceRetrievalSignalKindLabel,
   formatTemplateGovernanceRuleTypeLabel,
   formatTemplateGovernanceSeverityLabel,
 } from "./template-governance-display.ts";
@@ -176,21 +182,7 @@ const defaultController = createTemplateGovernanceWorkbenchController(
   createBrowserHttpClient(),
 );
 const defaultRuleWizardAssetClient = createBrowserHttpClient();
-const manuscriptTypes: ManuscriptType[] = [
-  "clinical_study",
-  "review",
-  "systematic_review",
-  "meta_analysis",
-  "case_report",
-  "guideline_interpretation",
-  "expert_consensus",
-  "diagnostic_study",
-  "basic_research",
-  "nursing_study",
-  "methodology_paper",
-  "brief_report",
-  "other",
-];
+const manuscriptTypes: readonly ManuscriptType[] = EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
 const templateModules = ["screening", "editing", "proofreading"] as const;
 const editorialInstructionModules = ["editing", "proofreading"] as const;
 const knowledgeKinds: KnowledgeKind[] = [
@@ -270,12 +262,12 @@ interface KnowledgeDraftFormState {
   summary: string;
   knowledgeKind: KnowledgeKind;
   moduleScope: "any" | "screening" | "editing" | "proofreading";
-  manuscriptTypes: string;
-  templateBindings: string;
-  aliases: string;
-  sections: string;
-  riskTags: string;
-  disciplineTags: string;
+  manuscriptTypes: ManuscriptType[] | "any";
+  templateBindings: string[];
+  aliases: string[];
+  sections: string[];
+  riskTags: string[];
+  disciplineTags: string[];
   evidenceLevel: EvidenceLevel;
   sourceType: KnowledgeSourceType;
   sourceLink: string;
@@ -1412,7 +1404,10 @@ export function TemplateGovernanceWorkbenchPage({
       journalTemplateId: overview.selectedJournalTemplateId,
     });
     const explanationPayload = pendingRuleLearningHandoff?.explanationPayload;
-    const linkagePayload = pendingRuleLearningHandoff?.linkagePayload;
+    const linkagePayload = {
+      ...(pendingRuleLearningHandoff?.linkagePayload ?? {}),
+      ...(serializedDraft.linkagePayload ?? {}),
+    };
     const projectionPayload = pendingRuleLearningHandoff?.projectionPayload;
 
     await runBusyAction(async () => {
@@ -1430,7 +1425,7 @@ export function TemplateGovernanceWorkbenchPage({
           action: serializedDraft.action,
           authoringPayload: serializedDraft.authoringPayload,
           ...(explanationPayload ? { explanationPayload } : {}),
-          ...(linkagePayload ? { linkagePayload } : {}),
+          ...(Object.keys(linkagePayload).length > 0 ? { linkagePayload } : {}),
           ...(projectionPayload ? { projectionPayload } : {}),
           evidenceLevel: serializedDraft.evidenceLevel,
           confidencePolicy: serializedDraft.confidencePolicy,
@@ -1563,22 +1558,7 @@ export function TemplateGovernanceWorkbenchPage({
       return;
     }
 
-    const payload = {
-      title: knowledgeForm.title.trim(),
-      canonicalText: knowledgeForm.canonicalText.trim(),
-      summary: optionalTrimmedValue(knowledgeForm.summary),
-      knowledgeKind: knowledgeForm.knowledgeKind,
-      moduleScope: knowledgeForm.moduleScope,
-      manuscriptTypes: parseManuscriptTypes(knowledgeForm.manuscriptTypes),
-      sections: splitCommaSeparatedValues(knowledgeForm.sections),
-      riskTags: splitCommaSeparatedValues(knowledgeForm.riskTags),
-      disciplineTags: splitCommaSeparatedValues(knowledgeForm.disciplineTags),
-      evidenceLevel: knowledgeForm.evidenceLevel,
-      sourceType: knowledgeForm.sourceType,
-      sourceLink: optionalTrimmedValue(knowledgeForm.sourceLink),
-      aliases: splitCommaSeparatedValues(knowledgeForm.aliases),
-      templateBindings: splitCommaSeparatedValues(knowledgeForm.templateBindings),
-    } as const;
+    const payload = createKnowledgeDraftInput(knowledgeForm);
 
     await runBusyAction(async () => {
       if (!isEditingDraft || !selectedKnowledgeItem) {
@@ -1779,6 +1759,7 @@ export function TemplateGovernanceWorkbenchPage({
           <RuleAuthoringForm
             selectedRuleSet={selectedRuleSet}
             draft={ruleAuthoringDraft}
+            knowledgeItems={overview?.visibleKnowledgeItems ?? []}
             isBusy={isBusy}
             onDraftChange={setRuleAuthoringDraft}
             onSubmit={handleSubmitRule}
@@ -1803,6 +1784,9 @@ export function TemplateGovernanceWorkbenchPage({
   const proofreadingInstructionCount =
     overview?.instructionTemplates.filter((template) => template.module === "proofreading").length ??
     0;
+  const tableRuleCount = overview?.rules.filter(isTableGovernanceRule).length ?? 0;
+  const tableKnowledgeCount =
+    overview?.visibleKnowledgeItems.filter(isTableGovernanceKnowledgeItem).length ?? 0;
 
   return (
     <section className="template-governance-workbench">
@@ -2339,6 +2323,8 @@ export function TemplateGovernanceWorkbenchPage({
           proofreadingRuleSetCount={proofreadingRuleSetCount}
           proofreadingTemplateCount={proofreadingTemplateCount}
           proofreadingInstructionCount={proofreadingInstructionCount}
+          tableRuleCount={tableRuleCount}
+          tableKnowledgeCount={tableKnowledgeCount}
         />
 
         <article className="template-governance-panel">
@@ -2435,7 +2421,7 @@ export function TemplateGovernanceWorkbenchPage({
                 {retrievalInsights.signals.map((signal) => (
                   <article key={`${signal.kind}-${signal.body}`} className="template-governance-card">
                     <strong>{signal.title}</strong>
-                    <small>{signal.kind}</small>
+                    <small>{formatTemplateGovernanceRetrievalSignalKindLabel(signal.kind)}</small>
                     <p>{signal.body}</p>
                     <small>
                       证据 路 run {signal.evidence.retrieval_run_id ?? "未记录"} 路 snapshot{" "}
@@ -2735,6 +2721,9 @@ function TemplateGovernanceRuleLedgerRoute({
   const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
     () => createRuleWizardEntryFormState(),
   );
+  const [wizardBindingDetail, setWizardBindingDetail] = useState<
+    Pick<KnowledgeAssetDetailViewModel, "selected_revision"> | null
+  >(null);
   const initialSelectedRowIdRef = useRef(initialSelectedRowId ?? null);
 
   useEffect(() => {
@@ -2847,6 +2836,7 @@ function TemplateGovernanceRuleLedgerRoute({
     setWizardState(createRuleWizardState("create"));
     setWizardTitle(undefined);
     setWizardEntryForm(createRuleWizardEntryFormState());
+    setWizardBindingDetail(null);
     setActiveCommandPanel(null);
   }
 
@@ -2873,6 +2863,7 @@ function TemplateGovernanceRuleLedgerRoute({
       setWizardEntryForm(
         createRuleWizardEntryFormStateFromLearningCandidate(selectedLearningCandidate),
       );
+      setWizardBindingDetail(null);
       setActiveCommandPanel(null);
       return;
     }
@@ -2903,6 +2894,7 @@ function TemplateGovernanceRuleLedgerRoute({
       );
       setWizardTitle(selectedRevision.title);
       setWizardEntryForm(createRuleWizardEntryFormStateFromDetail(detail));
+      setWizardBindingDetail(detail);
       setActiveCommandPanel(null);
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "规则详情加载失败"));
@@ -2971,6 +2963,7 @@ function TemplateGovernanceRuleLedgerRoute({
 
     setWizardState(null);
     setWizardTitle(undefined);
+    setWizardBindingDetail(null);
     setActiveCommandPanel(null);
     setShowSelectedOnly(false);
     setBulkSelectedRowIds([]);
@@ -3010,9 +3003,11 @@ function TemplateGovernanceRuleLedgerRoute({
         state={wizardState}
         title={wizardTitle}
         entryFormState={wizardEntryForm}
+        bindingDetail={wizardBindingDetail ?? undefined}
         onEntryFormChange={handleRuleWizardEntryFormChange}
         onBack={() => {
           setWizardState(null);
+          setWizardBindingDetail(null);
           setStatusMessage("已返回转规则站。");
         }}
         onPrevious={() => {
@@ -3570,6 +3565,9 @@ function TemplateGovernanceContentModuleLedgerRoute({
   const [wizardEntryForm, setWizardEntryForm] = useState<RuleWizardEntryFormState>(
     createRuleWizardEntryFormState(),
   );
+  const [wizardBindingDetail, setWizardBindingDetail] = useState<
+    Pick<KnowledgeAssetDetailViewModel, "selected_revision"> | null
+  >(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -3771,6 +3769,7 @@ function TemplateGovernanceContentModuleLedgerRoute({
       );
       setWizardTitle(selectedRevision.title);
       setWizardEntryForm(createRuleWizardEntryFormStateFromDetail(detail));
+      setWizardBindingDetail(detail);
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "规则详情加载失败"));
     }
@@ -3831,6 +3830,7 @@ function TemplateGovernanceContentModuleLedgerRoute({
     const completedWizardState = wizardState;
     setWizardState(null);
     setWizardTitle(undefined);
+    setWizardBindingDetail(null);
     setIsBusy(true);
     resetFeedback();
 
@@ -3863,9 +3863,11 @@ function TemplateGovernanceContentModuleLedgerRoute({
         state={wizardState}
         title={wizardTitle}
         entryFormState={wizardEntryForm}
+        bindingDetail={wizardBindingDetail ?? undefined}
         onEntryFormChange={handleRuleWizardEntryFormChange}
         onBack={() => {
           setWizardState(null);
+          setWizardBindingDetail(null);
           setStatusMessage("已返回规则包台账。");
         }}
         onPrevious={() => {
@@ -5915,7 +5917,7 @@ function TemplateGovernanceInstructionPanel({
                     allowedContentOperations: event.target.value,
                   }))
                 }
-                placeholder="sentence_rewrite"
+                placeholder="例如：允许改写句式、输出问题说明"
               />
             </label>
             <label className="template-governance-field">
@@ -5928,7 +5930,7 @@ function TemplateGovernanceInstructionPanel({
                     forbiddenOperations: event.target.value,
                   }))
                 }
-                placeholder="change_medical_meaning"
+                placeholder="例如：禁止改变医学含义、禁止直接改写正文"
               />
             </label>
             <label className="template-governance-field template-governance-field-full">
@@ -6036,14 +6038,25 @@ function TemplateGovernanceInstructionPanel({
                 <div>
                   <span>允许操作</span>
                   <p>
-                    {selectedInstructionTemplate.allowed_content_operations?.join(", ") ??
-                      "未填写"}
+                    {selectedInstructionTemplate.allowed_content_operations?.length
+                      ? selectedInstructionTemplate.allowed_content_operations
+                          .map((operation) =>
+                            `允许${formatTemplateGovernanceInstructionOperationLabel(operation)}`,
+                          )
+                          .join("、")
+                      : "未填写"}
                   </p>
                 </div>
                 <div>
                   <span>禁止操作</span>
                   <p>
-                    {selectedInstructionTemplate.forbidden_operations?.join(", ") ?? "未填写"}
+                    {selectedInstructionTemplate.forbidden_operations?.length
+                      ? selectedInstructionTemplate.forbidden_operations
+                          .map((operation) =>
+                            `禁止${formatTemplateGovernanceInstructionOperationLabel(operation)}`,
+                          )
+                          .join("、")
+                      : "未填写"}
                   </p>
                 </div>
                 <div>
@@ -6078,7 +6091,7 @@ function TemplateGovernanceInstructionPanel({
   );
 }
 
-function createKnowledgeDraftFormState(input: {
+export function createKnowledgeDraftFormState(input: {
   manuscriptType?: ManuscriptType;
   templateBindings?: string[];
 } = {}): KnowledgeDraftFormState {
@@ -6086,14 +6099,14 @@ function createKnowledgeDraftFormState(input: {
     title: "",
     canonicalText: "",
     summary: "",
-    knowledgeKind: "rule",
+    knowledgeKind: "reference",
     moduleScope: "any",
-    manuscriptTypes: input.manuscriptType ?? "any",
-    templateBindings: (input.templateBindings ?? []).join(", "),
-    aliases: "",
-    sections: "",
-    riskTags: "",
-    disciplineTags: "",
+    manuscriptTypes: input.manuscriptType ? [input.manuscriptType] : "any",
+    templateBindings: [...(input.templateBindings ?? [])],
+    aliases: [],
+    sections: [],
+    riskTags: [],
+    disciplineTags: [],
     evidenceLevel: "unknown",
     sourceType: "other",
     sourceLink: "",
@@ -6128,8 +6141,8 @@ function createInstructionTemplateFormState(): InstructionTemplateFormState {
     systemInstructions: "",
     taskFrame: "",
     hardRuleSummary: "",
-    allowedContentOperations: "sentence_rewrite",
-    forbiddenOperations: "change_medical_meaning",
+    allowedContentOperations: "",
+    forbiddenOperations: "",
     manualReviewPolicy: "",
     outputContract: "",
     reportStyle: "",
@@ -6169,7 +6182,28 @@ function resolveSelectedModuleTemplate(
   return moduleTemplates.find((template) => template.id === moduleTemplateId) ?? null;
 }
 
-function toKnowledgeDraftFormState(item: {
+export function createKnowledgeDraftInput(
+  form: KnowledgeDraftFormState,
+): CreateKnowledgeDraftInput & UpdateKnowledgeDraftInput {
+  return {
+    title: form.title.trim(),
+    canonicalText: form.canonicalText.trim(),
+    summary: optionalTrimmedValue(form.summary),
+    knowledgeKind: form.knowledgeKind,
+    moduleScope: form.moduleScope,
+    manuscriptTypes: normalizeKnowledgeDraftManuscriptTypes(form.manuscriptTypes),
+    sections: optionalStringArray(form.sections),
+    riskTags: optionalStringArray(form.riskTags),
+    disciplineTags: optionalStringArray(form.disciplineTags),
+    evidenceLevel: form.evidenceLevel,
+    sourceType: form.sourceType,
+    sourceLink: optionalTrimmedValue(form.sourceLink),
+    aliases: optionalStringArray(form.aliases),
+    templateBindings: optionalStringArray(form.templateBindings),
+  };
+}
+
+export function toKnowledgeDraftFormState(item: {
   title: string;
   canonical_text: string;
   summary?: string;
@@ -6198,12 +6232,12 @@ function toKnowledgeDraftFormState(item: {
     manuscriptTypes:
       item.routing.manuscript_types === "any"
         ? "any"
-        : item.routing.manuscript_types.join(", "),
-    templateBindings: (item.template_bindings ?? []).join(", "),
-    aliases: (item.aliases ?? []).join(", "),
-    sections: (item.routing.sections ?? []).join(", "),
-    riskTags: (item.routing.risk_tags ?? []).join(", "),
-    disciplineTags: (item.routing.discipline_tags ?? []).join(", "),
+        : [...item.routing.manuscript_types],
+    templateBindings: [...(item.template_bindings ?? [])],
+    aliases: [...(item.aliases ?? [])],
+    sections: [...(item.routing.sections ?? [])],
+    riskTags: [...(item.routing.risk_tags ?? [])],
+    disciplineTags: [...(item.routing.discipline_tags ?? [])],
     evidenceLevel: item.evidence_level ?? "unknown",
     sourceType: item.source_type ?? "other",
     sourceLink: item.source_link ?? "",
@@ -6293,22 +6327,83 @@ function optionalTrimmedValue(value: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function parseManuscriptTypes(value: string): ManuscriptType[] | "any" {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || trimmed.toLowerCase() === "any") {
+function optionalStringArray(values: readonly string[]): string[] | undefined {
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeKnowledgeDraftManuscriptTypes(
+  value: KnowledgeDraftFormState["manuscriptTypes"],
+): ManuscriptType[] | "any" {
+  if (value === "any") {
     return "any";
   }
 
-  return trimmed
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry): entry is ManuscriptType => manuscriptTypes.includes(entry as ManuscriptType));
+  const normalized = value.filter((entry): entry is ManuscriptType =>
+    manuscriptTypes.includes(entry),
+  );
+
+  return normalized.length > 0 ? normalized : "any";
 }
 
 function isEditableModuleScope(
   value: string,
 ): value is KnowledgeDraftFormState["moduleScope"] {
   return value === "any" || value === "screening" || value === "editing" || value === "proofreading";
+}
+
+function isTableGovernanceRule(
+  rule: TemplateGovernanceWorkbenchOverview["rules"][number],
+): boolean {
+  const scopeSections = Array.isArray(rule.scope.sections)
+    ? rule.scope.sections.filter((section): section is string => typeof section === "string")
+    : [];
+
+  return (
+    rule.rule_object === "table" ||
+    rule.action?.kind === "inspect_table_rule" ||
+    scopeSections.includes("tables")
+  );
+}
+
+function isTableGovernanceKnowledgeItem(item: KnowledgeAssetDetailViewModel["selected_revision"] | {
+  title: string;
+  summary?: string;
+  canonical_text: string;
+  routing: {
+    sections?: string[];
+    risk_tags?: string[];
+  };
+  aliases?: string[];
+}): boolean {
+  if (item.routing.sections?.includes("tables")) {
+    return true;
+  }
+
+  const riskTags = item.routing.risk_tags ?? [];
+  if (riskTags.some((tag) => tag.toLowerCase().includes("table") || tag.includes("表"))) {
+    return true;
+  }
+
+  const searchableText = [
+    item.title,
+    item.summary ?? "",
+    item.canonical_text,
+    ...(item.aliases ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    searchableText.includes("table") ||
+    searchableText.includes("tables") ||
+    searchableText.includes("表格") ||
+    searchableText.includes("表题") ||
+    searchableText.includes("表注")
+  );
 }
 
 function formatRetrievalInsightStatus(status: NonNullable<TemplateGovernanceWorkbenchOverview["retrievalInsights"]>["status"]): string {

@@ -38,6 +38,7 @@ export type KnowledgeHitMatchSource =
   | "binding_rule"
   | "template_binding"
   | "dynamic_routing"
+  | "knowledge_item_binding"
   | "draft_snapshot_reuse";
 export type HumanFeedbackType =
   | "manual_confirmation"
@@ -151,6 +152,10 @@ export type KnowledgeHitSourceRef =
       id?: string;
     }
   | {
+      type: "knowledge_item_binding";
+      id: KnowledgeItemId;
+    }
+  | {
       type: "draft_snapshot_reuse";
       id: ModuleExecutionSnapshotId;
     };
@@ -177,6 +182,10 @@ export type KnowledgeHitLog =
   | (KnowledgeHitLogBase & {
       match_source: "dynamic_routing";
       source: Extract<KnowledgeHitSourceRef, { type: "dynamic_routing" }>;
+    })
+  | (KnowledgeHitLogBase & {
+      match_source: "knowledge_item_binding";
+      source: Extract<KnowledgeHitSourceRef, { type: "knowledge_item_binding" }>;
     })
   | (KnowledgeHitLogBase & {
       match_source: "draft_snapshot_reuse";

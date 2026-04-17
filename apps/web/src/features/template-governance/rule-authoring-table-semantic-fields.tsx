@@ -1,4 +1,12 @@
+import {
+  applyTableProofreadingScenario,
+  getTableProofreadingScenario,
+  listTableProofreadingScenarios,
+  type TableProofreadingScenarioId,
+} from "./rule-authoring-table-proofreading-scenarios.ts";
 import type { TableRuleAuthoringDraft } from "./rule-authoring-types.ts";
+
+const TABLE_PROOFREADING_SCENARIOS = listTableProofreadingScenarios();
 
 export interface RuleAuthoringTableSemanticFieldsProps {
   draft: TableRuleAuthoringDraft;
@@ -22,6 +30,36 @@ export function RuleAuthoringTableSemanticFields({
 
   return (
     <>
+      <div
+        className="template-governance-field template-governance-field-full template-governance-linked-knowledge"
+        data-table-proofreading-scenarios="field"
+      >
+        <div className="template-governance-linked-knowledge-header">
+          <span>表格校对专项模板</span>
+          <small>先选最接近的专项模板，再继续补充语义定位和人工复核说明。</small>
+        </div>
+        <div className="template-governance-linked-knowledge-list">
+          {TABLE_PROOFREADING_SCENARIOS.map((scenario) => (
+            <button
+              key={scenario.id}
+              type="button"
+              className={
+                isScenarioActive(draft, scenario.id)
+                  ? "template-governance-linked-knowledge-option is-active"
+                  : "template-governance-linked-knowledge-option"
+              }
+              data-table-proofreading-scenario={scenario.id}
+              onClick={() =>
+                onDraftChange(applyTableProofreadingScenario(draft, scenario.id))
+              }
+            >
+              <strong>{scenario.title}</strong>
+              <small>{scenario.description}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <label className="template-governance-field">
         <span>语义目标</span>
         <select
@@ -51,9 +89,7 @@ export function RuleAuthoringTableSemanticFields({
         >
           <option value="three_line_table">三线表</option>
           <option value="general_data_table">通用数据表</option>
-          <option value="baseline_characteristics_table">
-            基线特征表
-          </option>
+          <option value="baseline_characteristics_table">基线特征表</option>
           <option value="outcome_indicator_table">结局指标表</option>
         </select>
       </label>
@@ -183,6 +219,20 @@ function updatePayload(
       ...payloadPatch,
     },
   });
+}
+
+function isScenarioActive(
+  draft: TableRuleAuthoringDraft,
+  scenarioId: TableProofreadingScenarioId,
+): boolean {
+  const scenario = getTableProofreadingScenario(scenarioId);
+  const currentManualReason =
+    draft.manualReviewReasonTemplate ?? draft.payload.manualReviewReasonTemplate;
+
+  return (
+    currentManualReason === scenario.applyPatch.manualReviewReasonTemplate &&
+    draft.payload.layoutRequirement === scenario.applyPatch.layoutRequirement
+  );
 }
 
 function parseSemanticPathInput(value: string): string[] {

@@ -1,6 +1,28 @@
 import { useState } from "react";
-import type { KnowledgeKind } from "../knowledge/index.ts";
-import type { ManuscriptModule } from "../manuscripts/types.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
+import type {
+  EvidenceLevel,
+  KnowledgeKind,
+  KnowledgeSourceType,
+} from "../knowledge/index.ts";
+import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
+import {
+  EDITORIAL_EVIDENCE_LEVEL_OPTIONS,
+  EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS,
+  EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
+  EDITORIAL_SECTION_OPTIONS,
+  KNOWLEDGE_MODULE_SCOPE_OPTIONS,
+  formatEditorialEvidenceLevelLabel,
+  formatEditorialKnowledgeKindLabel,
+  formatEditorialKnowledgeSourceTypeLabel,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+  formatEditorialSectionLabel,
+  getKnowledgeEntryKindOptions,
+} from "../shared/editorial-taxonomy.ts";
 import type { KnowledgeContentBlockViewModel } from "./types.ts";
 import type { KnowledgeLibraryLedgerComposer } from "./knowledge-library-ledger-composer.ts";
 import {
@@ -20,7 +42,6 @@ export interface KnowledgeLibraryEntryFormProps {
   attachments: readonly KnowledgeLibraryLedgerAttachment[];
   contentBlocks: readonly KnowledgeContentBlockViewModel[];
   aiIntakeSourceText: string;
-  requiredTagsText: string;
   duplicateSummary: string | null;
   semanticStatusLabel: string;
   semanticNotes: readonly string[];
@@ -35,7 +56,11 @@ export interface KnowledgeLibraryEntryFormProps {
   onSummaryChange: (value: string) => void;
   onKnowledgeKindChange: (value: KnowledgeKind) => void;
   onModuleScopeChange: (value: ManuscriptModule | "any") => void;
-  onRequiredTagsChange: (value: string) => void;
+  onEvidenceLevelChange: (value: EvidenceLevel) => void;
+  onSourceTypeChange: (value: KnowledgeSourceType) => void;
+  onToggleManuscriptType: (value: ManuscriptType) => void;
+  onSelectAnyManuscriptTypes: () => void;
+  onToggleSection: (value: string) => void;
   onAiIntakeSourceTextChange: (value: string) => void;
   onRunAiPrefill: () => void;
   onContentBlocksChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
@@ -70,7 +95,6 @@ export function KnowledgeLibraryEntryForm({
   attachments,
   contentBlocks,
   aiIntakeSourceText,
-  requiredTagsText,
   duplicateSummary,
   semanticStatusLabel,
   semanticNotes,
@@ -85,7 +109,11 @@ export function KnowledgeLibraryEntryForm({
   onSummaryChange,
   onKnowledgeKindChange,
   onModuleScopeChange,
-  onRequiredTagsChange,
+  onEvidenceLevelChange,
+  onSourceTypeChange,
+  onToggleManuscriptType,
+  onSelectAnyManuscriptTypes,
+  onToggleSection,
   onAiIntakeSourceTextChange,
   onRunAiPrefill,
   onContentBlocksChange,
@@ -214,6 +242,20 @@ export function KnowledgeLibraryEntryForm({
               <p>先完成最短的录入项，再按需展开更多信息。</p>
             </div>
 
+            <div
+              className="knowledge-library-entry-form__guide"
+              data-entry-parameter-guide="knowledge"
+            >
+              <p className="knowledge-library-entry-form__guide-intro">
+                需要系统执行判断、命中或拦截时，请去规则中心；知识库主要沉淀依据、解释和参考材料。
+              </p>
+              <ul className="knowledge-library-entry-form__guide-list">
+                {KNOWLEDGE_ENTRY_GUIDE_ITEMS.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
             <label>
               <span>标题</span>
               <input
@@ -231,13 +273,18 @@ export function KnowledgeLibraryEntryForm({
                   onKnowledgeKindChange(event.target.value as KnowledgeKind)
                 }
               >
-                <option value="rule">规则</option>
-                <option value="case_pattern">案例模式</option>
-                <option value="checklist">核查清单</option>
-                <option value="prompt_snippet">提示片段</option>
-                <option value="reference">参考资料</option>
-                <option value="other">其他</option>
+                {getKnowledgeEntryKindOptions(composer.draft.knowledgeKind).map((option) => (
+                  <option key={option} value={option}>
+                    {formatEditorialKnowledgeKindLabel(
+                      option,
+                      option === "rule" ? "projection_legacy" : "rule",
+                    )}
+                  </option>
+                ))}
               </select>
+              <p className="knowledge-library-entry-form__field-help">
+                分类决定这条知识主要作为参考、核查清单还是解释性材料。
+              </p>
             </label>
 
             <label>
@@ -250,18 +297,82 @@ export function KnowledgeLibraryEntryForm({
               />
             </label>
 
-            <label>
-              <span>必要标签</span>
-              <input
-                value={requiredTagsText}
-                onChange={(event) => onRequiredTagsChange(event.target.value)}
-                placeholder="用顿号、逗号或换行分隔标签"
-              />
-            </label>
+            <section
+              className="knowledge-library-entry-form__tag-field"
+              data-entry-tag-list="required-tags"
+            >
+              <div className="knowledge-library-entry-form__tag-field-header">
+                <span>必要标签</span>
+                <button
+                  type="button"
+                  data-entry-tag-action="add-required-tag"
+                  onClick={onAddRiskTag}
+                >
+                  新增标签
+                </button>
+              </div>
+              <div className="knowledge-library-entry-form__tag-field-list">
+                {(composer.draft.riskTags ?? []).map((value, index) => (
+                  <div
+                    key={`required-tags-${index}`}
+                    className="knowledge-library-entry-form__tag-field-row"
+                  >
+                    <input
+                      data-entry-tag-value={`required-tags-${index}`}
+                      value={value}
+                      onChange={(event) => onChangeRiskTag(index, event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      data-entry-tag-action={`remove-required-tag-${index}`}
+                      onClick={() => onRemoveRiskTag(index)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+                {(composer.draft.riskTags ?? []).length === 0 ? (
+                  <p className="knowledge-library-entry-form__tag-field-empty">
+                    暂未添加必要标签。
+                  </p>
+                ) : null}
+              </div>
+              <p className="knowledge-library-entry-form__field-help">
+                必要标签用于补充稿件类型、章节和风险词，方便后续召回。
+              </p>
+            </section>
 
             <details className="knowledge-library-entry-form__more" data-entry-toggle="more-info">
               <summary>更多信息</summary>
               <div className="knowledge-library-entry-form__grid">
+                <KnowledgeLibraryEntryMultiSelectField
+                  label="稿件类型"
+                  helpText="决定这条知识默认在哪类稿件里优先被召回。"
+                  value={composer.draft.manuscriptTypes}
+                  options={EDITORIAL_MANUSCRIPT_TYPE_OPTIONS.map((option) => ({
+                    value: option,
+                    label: formatEditorialManuscriptTypeLabel(option),
+                  }))}
+                  dataKey="manuscript-types"
+                  includeAnyOption
+                  selectedEmptyText="当前按全部稿件类型召回。"
+                  onToggleValue={(value) => onToggleManuscriptType(value as ManuscriptType)}
+                  onSelectAny={onSelectAnyManuscriptTypes}
+                />
+
+                <KnowledgeLibraryEntryMultiSelectField
+                  label="章节标签"
+                  helpText="决定后续哪些章节内容更容易命中这条知识。"
+                  value={composer.draft.sections ?? []}
+                  options={EDITORIAL_SECTION_OPTIONS.map((option) => ({
+                    value: option,
+                    label: formatEditorialSectionLabel(option),
+                  }))}
+                  dataKey="sections"
+                  selectedEmptyText="当前暂未限制章节标签。"
+                  onToggleValue={onToggleSection}
+                />
+
                 <label>
                   <span>适用模块</span>
                   <select
@@ -270,13 +381,55 @@ export function KnowledgeLibraryEntryForm({
                       onModuleScopeChange(event.target.value as ManuscriptModule | "any")
                     }
                   >
-                    <option value="any">全部模块</option>
-                    <option value="screening">初筛</option>
-                    <option value="editing">编辑</option>
-                    <option value="proofreading">校对</option>
-                    <option value="manual">人工处理</option>
-                    <option value="learning">学习回流</option>
+                    {KNOWLEDGE_MODULE_SCOPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {formatEditorialModuleLabel(option)}
+                      </option>
+                    ))}
                   </select>
+                  <p className="knowledge-library-entry-form__field-help">
+                    适用模块决定后续在哪个环节优先检索到这条知识。
+                  </p>
+                </label>
+
+                <label>
+                  <span>证据等级</span>
+                  <select
+                    data-entry-select="evidence-level"
+                    value={composer.draft.evidenceLevel ?? "unknown"}
+                    onChange={(event) =>
+                      onEvidenceLevelChange(event.target.value as EvidenceLevel)
+                    }
+                  >
+                    {EDITORIAL_EVIDENCE_LEVEL_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {formatEditorialEvidenceLevelLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="knowledge-library-entry-form__field-help">
+                    证据等级帮助区分这条知识更像强依据、一般参考还是待补充说明。
+                  </p>
+                </label>
+
+                <label>
+                  <span>来源类型</span>
+                  <select
+                    data-entry-select="source-type"
+                    value={composer.draft.sourceType ?? "other"}
+                    onChange={(event) =>
+                      onSourceTypeChange(event.target.value as KnowledgeSourceType)
+                    }
+                  >
+                    {EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {formatEditorialKnowledgeSourceTypeLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="knowledge-library-entry-form__field-help">
+                    来源类型帮助区分知识来自指南、论文、内部案例还是其他补充来源。
+                  </p>
                 </label>
 
                 <label>
@@ -414,3 +567,49 @@ const ENTRY_BOARD_TABS: ReadonlyArray<{
   { id: "materials", label: "内容材料" },
   { id: "semantic", label: "AI语义层" },
 ];
+
+const KNOWLEDGE_ENTRY_GUIDE_ITEMS = [
+  "知识库只放依据、解释、参考，不在这里录可执行规则。",
+  "分类决定这条知识主要作为参考、核查清单还是解释性材料。",
+  "适用模块决定后续在哪个环节优先检索到这条知识。",
+  "必要标签用于补充稿件类型、章节和风险词，方便后续召回。",
+] as const;
+
+function KnowledgeLibraryEntryMultiSelectField(props: {
+  label: string;
+  helpText: string;
+  value: readonly string[] | "any";
+  options: readonly SearchableMultiSelectOption[];
+  dataKey: string;
+  includeAnyOption?: boolean;
+  selectedEmptyText: string;
+  onToggleValue(value: string): void;
+  onSelectAny?: () => void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={props.helpText}
+      value={props.value}
+      options={props.options}
+      dataKey={props.dataKey}
+      inputDataKey={`entry-${props.dataKey}`}
+      rootDataAttributeName="data-entry-multi-select"
+      className="knowledge-library-entry-form__multi-select"
+      headerClassName="knowledge-library-entry-form__multi-select-header"
+      searchFieldClassName="knowledge-library-entry-form__search-field"
+      searchPlaceholder={`搜索${props.label}`}
+      optionsClassName="knowledge-library-entry-form__multi-select-options"
+      optionClassName="knowledge-library-entry-form__multi-select-option"
+      emptyClassName="knowledge-library-entry-form__structured-empty"
+      includeAnyOption={props.includeAnyOption}
+      showSelectedSummary
+      selectedListClassName="knowledge-library-entry-form__selected-summary"
+      selectedChipClassName="knowledge-library-entry-form__selected-chip"
+      selectedEmptyText={props.selectedEmptyText}
+      noResultsText="未找到匹配的选项。"
+      onToggleValue={props.onToggleValue}
+      onSelectAny={props.onSelectAny}
+    />
+  );
+}
