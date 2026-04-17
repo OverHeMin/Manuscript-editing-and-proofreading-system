@@ -339,6 +339,8 @@ export class ScreeningService {
               routingPolicyScopeValue:
                 normalizedContext.modelSelection.policy_scope_value,
               resolvedModelId: normalizedContext.modelSelection.model.id,
+              fallbackModelId:
+                normalizedContext.modelSelection.fallback_chain[0]?.id,
               knowledgeItemIds: normalizedContext.knowledgeHits.map(
                 (selection) => selection.knowledgeItemId,
               ),

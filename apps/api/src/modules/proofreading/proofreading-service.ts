@@ -457,6 +457,7 @@ export class ProofreadingService {
               routingPolicyScopeKind: resolvedContext.routingPolicyScopeKind,
               routingPolicyScopeValue: resolvedContext.routingPolicyScopeValue,
               resolvedModelId: resolvedContext.modelId,
+              fallbackModelId: resolvedContext.fallbackModelId,
               knowledgeItemIds: resolvedContext.knowledgeHits.map(
                 (hit) => hit.knowledgeItemId,
               ),
@@ -755,6 +756,7 @@ export class ProofreadingService {
         matchReasons: selection.matchReasons,
       })),
       modelId: moduleContext.modelSelection.model.id,
+      fallbackModelId: moduleContext.modelSelection.fallback_chain[0]?.id,
       modelVersion: moduleContext.modelSelection.model.model_version,
       routingPolicyVersionId: moduleContext.modelSelection.policy_version_id,
       routingPolicyScopeKind: moduleContext.modelSelection.policy_scope_kind,
@@ -843,6 +845,7 @@ export class ProofreadingService {
         matchReasons: [...hit.match_reasons],
       })),
       modelId: snapshot.model_id,
+      fallbackModelId: draftExecutionLog.fallback_model_id,
       modelVersion: snapshot.model_version,
       routingPolicyVersionId: draftExecutionLog.routing_policy_version_id,
       routingPolicyScopeKind: draftExecutionLog.routing_policy_scope_kind,
@@ -965,6 +968,7 @@ interface ResolvedProofreadingExecutionContext {
   knowledgeHits: RecordKnowledgeHitInput[];
   manualReviewPolicy?: Parameters<typeof inspectProofreadingRules>[0]["manualReviewPolicy"];
   modelId: string;
+  fallbackModelId?: string;
   modelVersion?: string;
   routingPolicyVersionId?: string;
   routingPolicyScopeKind?: AgentExecutionLogRecord["routing_policy_scope_kind"];

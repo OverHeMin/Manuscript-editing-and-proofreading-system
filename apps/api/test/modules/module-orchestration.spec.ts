@@ -99,7 +99,16 @@ function createModuleHarness(input?: {
     "asset-7",
     "asset-8",
   ];
-  const modelIds = ["model-1", "model-2", "model-3", "model-4", "model-5"];
+  const modelIds = [
+    "model-1",
+    "model-2",
+    "model-3",
+    "model-4",
+    "model-5",
+    "model-6",
+    "model-7",
+    "model-8",
+  ];
   const screeningJobIds = ["job-screening-1", "job-screening-2"];
   const editingJobIds = ["job-editing-1", "job-editing-2", "job-editing-3"];
   const proofreadingJobIds = [
@@ -412,6 +421,7 @@ async function saveActivePolicy(input: {
   versionId: string;
   scopeValue: "screening" | "editing" | "proofreading";
   primaryModelId: string;
+  fallbackModelIds?: string[];
 }) {
   await input.repository.saveScope({
     id: input.policyId,
@@ -428,7 +438,7 @@ async function saveActivePolicy(input: {
     scope_value: input.scopeValue,
     version_no: 1,
     primary_model_id: input.primaryModelId,
-    fallback_model_ids: [],
+    fallback_model_ids: [...(input.fallbackModelIds ?? [])],
     evidence_links: [{ kind: "evaluation_run", id: "run-1" }],
     status: "active",
     created_at: "2026-03-27T09:00:00.000Z",
@@ -709,6 +719,30 @@ async function seedWorkflowContext(input?: {
       isProdAllowed: true,
     },
   );
+  const screeningFallbackModel =
+    await harness.modelRegistryService.createModelEntry("admin", {
+      provider: "openai",
+      modelName: "gpt-5-screening-fallback",
+      modelVersion: "2026-03",
+      allowedModules: ["screening"],
+      isProdAllowed: true,
+    });
+  const editingFallbackModel =
+    await harness.modelRegistryService.createModelEntry("admin", {
+      provider: "openai",
+      modelName: "gpt-5-editing-fallback",
+      modelVersion: "2026-03",
+      allowedModules: ["editing"],
+      isProdAllowed: true,
+    });
+  const proofreadingFallbackModel =
+    await harness.modelRegistryService.createModelEntry("admin", {
+      provider: "openai",
+      modelName: "gpt-5-proofreading-fallback",
+      modelVersion: "2026-03",
+      allowedModules: ["proofreading"],
+      isProdAllowed: true,
+    });
 
   await harness.modelRegistryService.updateRoutingPolicy("admin", {
     systemDefaultModelId: systemModel.id,
@@ -724,6 +758,7 @@ async function seedWorkflowContext(input?: {
     versionId: "policy-version-screening-1",
     scopeValue: "screening",
     primaryModelId: screeningModel.id,
+    fallbackModelIds: [screeningFallbackModel.id],
   });
   await saveActivePolicy({
     repository: harness.modelRoutingGovernanceRepository,
@@ -731,6 +766,7 @@ async function seedWorkflowContext(input?: {
     versionId: "policy-version-editing-1",
     scopeValue: "editing",
     primaryModelId: editingModel.id,
+    fallbackModelIds: [editingFallbackModel.id],
   });
   await saveActivePolicy({
     repository: harness.modelRoutingGovernanceRepository,
@@ -738,6 +774,7 @@ async function seedWorkflowContext(input?: {
     versionId: "policy-version-proofreading-1",
     scopeValue: "proofreading",
     primaryModelId: proofreadingModel.id,
+    fallbackModelIds: [proofreadingFallbackModel.id],
   });
 
   const screeningTool = await harness.toolGatewayService.createTool("admin", {
@@ -1152,6 +1189,15 @@ async function seedWorkflowContext(input?: {
 
   return {
     ...harness,
+    seededModels: {
+      systemModel,
+      screeningModel,
+      editingModel,
+      proofreadingModel,
+      screeningFallbackModel,
+      editingFallbackModel,
+      proofreadingFallbackModel,
+    },
     governedEditingFixtures: {
       baselineRetrievalPreset: editingBaselineRetrievalPreset,
       candidateRetrievalPreset: editingCandidateRetrievalPreset,
@@ -1169,6 +1215,7 @@ test("screening produces a final report asset with routed template, knowledge, a
     agentExecutionRepository,
     executionTrackingRepository,
     verificationOpsRepository,
+    seededModels,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -1214,7 +1261,10 @@ test("screening produces a final report asset with routed template, knowledge, a
   assert.equal(executionLog?.routing_policy_scope_kind, "module");
   assert.equal(executionLog?.routing_policy_scope_value, "screening");
   assert.equal(executionLog?.resolved_model_id, "model-2");
-  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(
+    executionLog?.fallback_model_id,
+    seededModels.screeningFallbackModel.id,
+  );
   assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-screening-1",
@@ -1311,6 +1361,7 @@ test("editing produces a final docx asset with routed template, knowledge, and m
     agentExecutionRepository,
     executionTrackingRepository,
     verificationOpsRepository,
+    seededModels,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -1353,7 +1404,10 @@ test("editing produces a final docx asset with routed template, knowledge, and m
   assert.equal(executionLog?.routing_policy_scope_kind, "module");
   assert.equal(executionLog?.routing_policy_scope_value, "editing");
   assert.equal(executionLog?.resolved_model_id, "model-3");
-  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(
+    executionLog?.fallback_model_id,
+    seededModels.editingFallbackModel.id,
+  );
   assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-editing-1",
@@ -1452,6 +1506,7 @@ test("proofreading produces a draft first and only advances the final pointer af
     agentExecutionRepository,
     executionTrackingRepository,
     verificationOpsRepository,
+    seededModels,
     originalAsset,
   } =
     await seedWorkflowContext();
@@ -1505,7 +1560,10 @@ test("proofreading produces a draft first and only advances the final pointer af
   assert.equal(draftExecutionLog?.routing_policy_scope_kind, "module");
   assert.equal(draftExecutionLog?.routing_policy_scope_value, "proofreading");
   assert.equal(draftExecutionLog?.resolved_model_id, "model-4");
-  assert.equal(draftExecutionLog?.fallback_model_id, undefined);
+  assert.equal(
+    draftExecutionLog?.fallback_model_id,
+    seededModels.proofreadingFallbackModel.id,
+  );
   assert.equal(draftExecutionLog?.fallback_trigger, undefined);
   assert.deepEqual(draftExecutionLog?.verification_evidence_ids, []);
   assert.deepEqual(
@@ -1597,7 +1655,10 @@ test("proofreading produces a draft first and only advances the final pointer af
   assert.equal(executionLog?.routing_policy_scope_kind, "module");
   assert.equal(executionLog?.routing_policy_scope_value, "proofreading");
   assert.equal(executionLog?.resolved_model_id, "model-4");
-  assert.equal(executionLog?.fallback_model_id, undefined);
+  assert.equal(
+    executionLog?.fallback_model_id,
+    seededModels.proofreadingFallbackModel.id,
+  );
   assert.equal(executionLog?.fallback_trigger, undefined);
   assert.deepEqual(executionLog?.verification_check_profile_ids, [
     "check-profile-proofreading-1",
