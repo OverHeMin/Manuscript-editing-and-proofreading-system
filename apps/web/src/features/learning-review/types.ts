@@ -3,6 +3,7 @@ import type { LearningWritebackViewModel } from "../learning-governance/types.ts
 
 export type LearningCandidateType =
   | "rule_candidate"
+  | "knowledge_candidate"
   | "case_pattern_candidate"
   | "template_update_candidate"
   | "prompt_optimization_candidate"
@@ -19,7 +20,8 @@ export type LearningCandidateStatus =
 export type LearningCandidateGovernedProvenanceKind =
   | "human_feedback"
   | "evaluation_experiment"
-  | "reviewed_case_snapshot";
+  | "reviewed_case_snapshot"
+  | "residual_issue";
 
 export type LearningCandidateReviewAction =
   | "submitted_for_review"
@@ -93,15 +95,35 @@ export interface CreateLearningCandidateInput {
   deidentificationPassed: boolean;
 }
 
+export type CreateGovernedLearningCandidateSourceInput =
+  | {
+      sourceKind?: "human_feedback";
+      snapshotId: string;
+      feedbackRecordId: string;
+      sourceAssetId: string;
+    }
+  | {
+      sourceKind: "evaluation_experiment";
+      reviewedCaseSnapshotId: string;
+      evaluationRunId: string;
+      evidencePackId: string;
+      sourceAssetId: string;
+    }
+  | {
+      sourceKind: "reviewed_case_snapshot";
+      reviewedCaseSnapshotId: string;
+      sourceAssetId?: string;
+    }
+  | {
+      sourceKind: "residual_issue";
+      residualIssueId: string;
+      snapshotId: string;
+      sourceAssetId: string;
+    };
+
 export interface CreateGovernedLearningCandidateInput
   extends CreateLearningCandidateInput {
-  governedSource: {
-    sourceKind: "evaluation_experiment";
-    reviewedCaseSnapshotId: string;
-    evaluationRunId: string;
-    evidencePackId: string;
-    sourceAssetId: string;
-  };
+  governedSource: CreateGovernedLearningCandidateSourceInput;
 }
 
 export interface ApproveLearningCandidateInput {

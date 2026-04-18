@@ -21,6 +21,7 @@ import {
   inspectProofreadingRules,
 } from "../editorial-execution/proofreading-rule-checker.ts";
 import type {
+  EditorialTextBlock,
   ProofreadingInspectionResult,
   ProofreadingSourceBlockResolver,
 } from "../editorial-execution/types.ts";
@@ -55,6 +56,11 @@ import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import type {
+  ObserveProofreadingResidualsInput,
+  ProofreadingResidualSourceBlock,
+  ResidualLearningService,
+} from "../residual-learning/index.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import type { ManuscriptQualityService } from "../manuscript-quality/manuscript-quality-service.ts";
@@ -122,6 +128,10 @@ export interface ProofreadingServiceOptions {
   >;
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
+  residualLearningService?: Pick<
+    ResidualLearningService,
+    "observeProofreadingResiduals"
+  >;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -206,6 +216,10 @@ export class ProofreadingService {
     "runChecks"
   >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
+  private readonly residualLearningService?: Pick<
+    ResidualLearningService,
+    "observeProofreadingResiduals"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -244,6 +258,7 @@ export class ProofreadingService {
       };
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
+    this.residualLearningService = options.residualLearningService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -419,6 +434,9 @@ export class ProofreadingService {
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
+      const manuscript = await context.manuscriptRepository.findById(
+        input.manuscriptId,
+      );
       const resolvedContext = input.pinnedContext
         ? input.pinnedContext
         : await this.resolveDraftExecutionContext({
@@ -428,7 +446,7 @@ export class ProofreadingService {
             jobId,
             executionMode: input.executionMode,
           });
-      const proofreadingFindings =
+      const proofreadingArtifacts =
         input.jobType === "proofreading_draft_run"
           ? await this.buildProofreadingFindings({
               manuscriptId: input.manuscriptId,
@@ -436,6 +454,7 @@ export class ProofreadingService {
               resolvedContext,
             })
           : undefined;
+      const proofreadingFindings = proofreadingArtifacts?.inspectionResult;
       const reportMarkdown =
         input.jobType === "proofreading_draft_run" && proofreadingFindings
           ? renderProofreadingReport(proofreadingFindings)
@@ -617,6 +636,36 @@ export class ProofreadingService {
           input.jobType === "proofreading_confirm" &&
           !!agentExecutionLogId,
         agentExecutionLogId,
+        residualObservationInput:
+          shouldObserveProofreadingResiduals({
+            residualLearningService: this.residualLearningService,
+            executionMode: resolvedContext.executionMode,
+            jobType: input.jobType,
+            manuscriptType: manuscript?.manuscript_type,
+            proofreadingArtifacts,
+          })
+            ? {
+                manuscriptId: input.manuscriptId,
+                manuscriptType: manuscript!.manuscript_type,
+                executionSnapshotId: snapshot.id,
+                jobId,
+                ...(agentExecutionLogId
+                  ? { agentExecutionLogId }
+                  : {}),
+                outputAssetId: asset.id,
+                executionProfileId: resolvedContext.executionProfileId,
+                ...(resolvedContext.runtimeBindingId
+                  ? { runtimeBindingId: resolvedContext.runtimeBindingId }
+                  : {}),
+                promptTemplateId: resolvedContext.promptTemplateId,
+                knownRuleIds: collectKnownRuleIds(resolvedContext),
+                knownKnowledgeItemIds: resolvedContext.knowledgeHits.map(
+                  (hit) => hit.knowledgeItemId,
+                ),
+                qualityIssues: proofreadingFindings?.qualityFindings,
+                sourceBlocks: proofreadingArtifacts!.sourceBlocks,
+              }
+            : undefined,
         response: {
           job: completedJob,
           asset,
@@ -647,6 +696,12 @@ export class ProofreadingService {
         },
       };
     });
+
+    if (committed.residualObservationInput) {
+      await this.residualLearningService!.observeProofreadingResiduals(
+        committed.residualObservationInput,
+      );
+    }
 
     if (committed.shouldDispatchOrchestration) {
       await dispatchGovernedOrchestrationBestEffort({
@@ -890,11 +945,12 @@ export class ProofreadingService {
     manuscriptId: string;
     parentAssetId: string;
     resolvedContext: ResolvedProofreadingExecutionContext;
-  }): Promise<ProofreadingInspectionResult> {
+  }): Promise<ProofreadingRunArtifacts> {
     const blocks = await this.proofreadingSourceBlockResolver.resolveBlocks({
       manuscriptId: input.manuscriptId,
       assetId: input.parentAssetId,
     });
+    const sourceBlocks = normalizeProofreadingSourceBlocks(blocks);
     const sourceAsset = await this.assetRepository.findById(input.parentAssetId);
     const documentStructureSnapshot = this.documentStructureService
       ? await this.documentStructureService.extract({
@@ -904,7 +960,7 @@ export class ProofreadingService {
         })
       : undefined;
     const proofreadingFindings = inspectProofreadingRules({
-      blocks,
+      blocks: sourceBlocks,
       rules: input.resolvedContext.rules ?? [],
       resolvedRules: input.resolvedContext.resolvedRules,
       tableSnapshots: documentStructureSnapshot?.tables ?? [],
@@ -933,24 +989,32 @@ export class ProofreadingService {
     );
 
     return {
-      ...proofreadingFindings,
-      ...(qualityRun
-        ? {
-            qualityFindings: qualityRun.issues.map((issue) =>
-              structuredClone(issue),
-            ),
-            qualityFindingSummary: structuredClone(
-              qualityRun.quality_findings_summary,
-            ),
-            ...(resolvedQualityPackages
-              ? {
-                  resolvedQualityPackages,
-                }
-              : {}),
-          }
-        : {}),
+      inspectionResult: {
+        ...proofreadingFindings,
+        ...(qualityRun
+          ? {
+              qualityFindings: qualityRun.issues.map((issue) =>
+                structuredClone(issue),
+              ),
+              qualityFindingSummary: structuredClone(
+                qualityRun.quality_findings_summary,
+              ),
+              ...(resolvedQualityPackages
+                ? {
+                    resolvedQualityPackages,
+                  }
+                : {}),
+            }
+          : {}),
+      },
+      sourceBlocks,
     };
   }
+}
+
+interface ProofreadingRunArtifacts {
+  inspectionResult: ProofreadingInspectionResult;
+  sourceBlocks: ProofreadingResidualSourceBlock[];
 }
 
 interface ResolvedProofreadingExecutionContext {
@@ -988,6 +1052,54 @@ interface ResolvedProofreadingExecutionContext {
 
 function extractDraftSnapshotId(draftJob: JobRecord | undefined): string | undefined {
   return extractStringPayloadValue(draftJob, "snapshotId");
+}
+
+function shouldObserveProofreadingResiduals(input: {
+  residualLearningService: Pick<
+    ResidualLearningService,
+    "observeProofreadingResiduals"
+  > | undefined;
+  executionMode: ModuleExecutionMode;
+  jobType: "proofreading_draft_run" | "proofreading_confirm";
+  manuscriptType: ObserveProofreadingResidualsInput["manuscriptType"] | undefined;
+  proofreadingArtifacts: ProofreadingRunArtifacts | undefined;
+}): input is {
+  residualLearningService: Pick<
+    ResidualLearningService,
+    "observeProofreadingResiduals"
+  >;
+  executionMode: "governed";
+  jobType: "proofreading_draft_run";
+  manuscriptType: ObserveProofreadingResidualsInput["manuscriptType"];
+  proofreadingArtifacts: ProofreadingRunArtifacts;
+} {
+  return (
+    !!input.residualLearningService &&
+    input.executionMode === "governed" &&
+    input.jobType === "proofreading_draft_run" &&
+    typeof input.manuscriptType === "string" &&
+    input.proofreadingArtifacts !== undefined
+  );
+}
+
+function collectKnownRuleIds(
+  resolvedContext: ResolvedProofreadingExecutionContext,
+): string[] {
+  return [...new Set([
+    ...(resolvedContext.rules ?? []).map((rule) => rule.id),
+    ...(resolvedContext.resolvedRules ?? []).map((entry) => entry.rule.id),
+  ])];
+}
+
+function normalizeProofreadingSourceBlocks(
+  blocks: EditorialTextBlock[],
+): ProofreadingResidualSourceBlock[] {
+  return blocks.map((block, blockIndex) => ({
+    ...structuredClone(block),
+    text: block.text,
+    ...(block.section != null ? { section: block.section } : {}),
+    blockIndex,
+  })) as ProofreadingResidualSourceBlock[];
 }
 
 function extractModuleExecutionMode(

@@ -239,3 +239,24 @@ test("experiment provenance links keep source lineage without requiring human fe
   assert.equal(link.evaluation_run_id, "evaluation-run-1");
   assert.equal(link.evidence_pack_id, "evidence-pack-1");
 });
+
+test("residual issue provenance links keep truthful governed source labels", async () => {
+  const { service, executionTrackingRepository, assetRepository } =
+    createFeedbackGovernanceHarness();
+
+  await seedSnapshot(executionTrackingRepository);
+  await seedAsset(assetRepository);
+
+  const link = await service.linkLearningCandidateSource({
+    sourceKind: "residual_issue",
+    learningCandidateId: "candidate-4",
+    residualIssueId: "residual-1",
+    snapshotId: "snapshot-1",
+    sourceAssetId: "asset-1",
+  });
+
+  assert.equal(link.source_kind, "residual_issue");
+  assert.equal(link.snapshot_kind, "execution_snapshot");
+  assert.equal(link.snapshot_id, "snapshot-1");
+  assert.equal(link.source_asset_id, "asset-1");
+});

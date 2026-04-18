@@ -2,8 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createApiHttpServer,
+  createInMemoryApiRuntime,
   type ApiHttpServer,
+  type ApiServerRuntime,
 } from "../../src/http/api-http-server.ts";
+import type { LearningCandidateRecord } from "../../src/modules/learning/learning-record.ts";
+import type { ResidualIssueRecord } from "../../src/modules/residual-learning/residual-learning-record.ts";
+import type { EvaluationRunRecord } from "../../src/modules/verification-ops/verification-ops-record.ts";
 import {
   startHttpTestServer,
   stopHttpTestServer,
@@ -14,7 +19,17 @@ import {
   loginAsDemoUser as loginWorkbenchDemoUser,
 } from "./support/workbench-runtime.ts";
 
-async function startServer(): Promise<{
+type ResidualLearningApi = ApiServerRuntime["residualLearningApi"];
+type ResidualLearningCandidateInput =
+  Parameters<ResidualLearningApi["createLearningCandidate"]>[0];
+type ResidualValidationInput =
+  Parameters<ResidualLearningApi["validateIssue"]>[0];
+
+async function startServer(
+  options: {
+    runtime?: ApiServerRuntime;
+  } = {},
+): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
 }> {
@@ -22,12 +37,76 @@ async function startServer(): Promise<{
     appEnv: "local",
     allowedOrigins: ["http://127.0.0.1:4173"],
     seedDemoKnowledgeReviewData: true,
+    runtime: options.runtime,
   });
 
   return startHttpTestServer(server);
 }
 
 const stopServer = stopHttpTestServer;
+
+function buildResidualIssueFixture(
+  overrides: Partial<ResidualIssueRecord> = {},
+): ResidualIssueRecord {
+  return {
+    id: "residual-http-demo-1",
+    module: "proofreading",
+    manuscript_id: "manuscript-http-demo-1",
+    manuscript_type: "clinical_study",
+    execution_snapshot_id: "snapshot-http-demo-1",
+    agent_execution_log_id: "execution-log-http-demo-1",
+    output_asset_id: "asset-http-demo-1",
+    issue_type: "unit_expression_gap",
+    source_stage: "model_residual",
+    excerpt: "5 mg per dL",
+    novelty_key: "proofreading:unit_expression_gap:5 mg per dL",
+    recurrence_count: 1,
+    model_confidence: 0.86,
+    system_confidence_band: "L1_review_pending",
+    risk_level: "low",
+    recommended_route: "knowledge_candidate",
+    status: "validation_pending",
+    harness_validation_status: "queued",
+    created_at: "2026-04-18T08:00:00.000Z",
+    updated_at: "2026-04-18T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildLearningCandidateFixture(
+  overrides: Partial<LearningCandidateRecord> = {},
+): LearningCandidateRecord {
+  return {
+    id: "learning-residual-http-demo-1",
+    type: "knowledge_candidate",
+    status: "pending_review",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    governed_provenance_kind: "residual_issue",
+    snapshot_asset_id: "asset-http-demo-1",
+    title: "Residual terminology normalization",
+    proposal_text: "Normalize the governed proofreading residual before approval.",
+    created_by: "dev-knowledge-reviewer",
+    created_at: "2026-04-18T08:10:00.000Z",
+    updated_at: "2026-04-18T08:10:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildEvaluationRunFixture(
+  overrides: Partial<EvaluationRunRecord> = {},
+): EvaluationRunRecord {
+  return {
+    id: "evaluation-run-http-demo-1",
+    suite_id: "suite-http-demo-1",
+    run_item_count: 1,
+    status: "passed",
+    evidence_ids: ["verification-evidence-http-demo-1"],
+    started_at: "2026-04-18T08:20:00.000Z",
+    finished_at: "2026-04-18T08:21:00.000Z",
+    ...overrides,
+  };
+}
 
 async function loginAsDemoUser(baseUrl: string, username: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/local/login`, {
@@ -46,6 +125,201 @@ async function loginAsDemoUser(baseUrl: string, username: string): Promise<strin
   assert.ok(setCookie, "Expected auth login to return a session cookie.");
   return setCookie.split(";")[0] ?? "";
 }
+
+test("http server dispatches residual learning review routes with the correct session context", async () => {
+  const runtime = createInMemoryApiRuntime({
+    appEnv: "local",
+    seedDemoData: true,
+    uploadRootDir: process.cwd(),
+  });
+  const listCalls: string[] = [];
+  const getCalls: string[] = [];
+  const createCalls: ResidualLearningCandidateInput[] = [];
+
+  runtime.residualLearningApi.listIssues = async () => {
+    listCalls.push("list");
+    return {
+      status: 200,
+      body: [buildResidualIssueFixture()],
+    };
+  };
+  runtime.residualLearningApi.getIssue = async ({ issueId }) => {
+    getCalls.push(issueId);
+    return {
+      status: 200,
+      body: buildResidualIssueFixture({ id: issueId }),
+    };
+  };
+  runtime.residualLearningApi.createLearningCandidate = async (input) => {
+    createCalls.push(input);
+    return {
+      status: 201,
+      body: buildLearningCandidateFixture({
+        id: `candidate-for-${input.issueId}`,
+        created_by: input.requestedBy,
+        title: input.title,
+        proposal_text: input.proposalText,
+      }),
+    };
+  };
+
+  const { server, baseUrl } = await startServer({ runtime });
+
+  try {
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    const listResponse = await fetch(`${baseUrl}/api/v1/residual-learning/issues`, {
+      headers: {
+        Cookie: reviewerCookie,
+      },
+    });
+    const listBody = (await listResponse.json()) as Array<{ id: string }>;
+
+    assert.equal(listResponse.status, 200);
+    assert.deepEqual(listCalls, ["list"]);
+    assert.deepEqual(listBody.map((item) => item.id), ["residual-http-demo-1"]);
+
+    const detailResponse = await fetch(
+      `${baseUrl}/api/v1/residual-learning/issues/residual-http-demo-7`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const detailBody = (await detailResponse.json()) as { id: string };
+
+    assert.equal(detailResponse.status, 200);
+    assert.deepEqual(getCalls, ["residual-http-demo-7"]);
+    assert.equal(detailBody.id, "residual-http-demo-7");
+
+    const createResponse = await fetch(
+      `${baseUrl}/api/v1/residual-learning/issues/residual-http-demo-7/create-learning-candidate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Residual candidate from route test",
+          proposalText: "Use the reviewer session to stamp candidate ownership.",
+        }),
+      },
+    );
+    const createBody = (await createResponse.json()) as {
+      id: string;
+      created_by: string;
+      governed_provenance_kind?: string;
+    };
+
+    assert.equal(createResponse.status, 201);
+    assert.deepEqual(createCalls, [
+      {
+        issueId: "residual-http-demo-7",
+        requestedBy: "dev-knowledge-reviewer",
+        requestedByRole: "knowledge_reviewer",
+        title: "Residual candidate from route test",
+        proposalText: "Use the reviewer session to stamp candidate ownership.",
+      },
+    ]);
+    assert.equal(createBody.id, "candidate-for-residual-http-demo-7");
+    assert.equal(createBody.created_by, "dev-knowledge-reviewer");
+    assert.equal(createBody.governed_provenance_kind, "residual_issue");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server keeps residual validation admin-gated and injects actor role into validation runs", async () => {
+  const runtime = createInMemoryApiRuntime({
+    appEnv: "local",
+    seedDemoData: true,
+    uploadRootDir: process.cwd(),
+  });
+  const validateCalls: ResidualValidationInput[] = [];
+
+  runtime.residualLearningApi.validateIssue = async (input) => {
+    validateCalls.push(input);
+    return {
+      status: 200,
+      body: {
+        issue: buildResidualIssueFixture({
+          id: input.issueId,
+          status: "candidate_ready",
+          harness_validation_status: "passed",
+        }),
+        run: buildEvaluationRunFixture({
+          suite_id: input.suiteIds[0] ?? "suite-http-demo-1",
+          release_check_profile_id: input.releaseCheckProfileId,
+        }),
+      },
+    };
+  };
+
+  const { server, baseUrl } = await startServer({ runtime });
+
+  try {
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    const forbiddenResponse = await fetch(
+      `${baseUrl}/api/v1/residual-learning/issues/residual-http-demo-9/validate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: reviewerCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          suiteIds: ["suite-http-demo-1"],
+        }),
+      },
+    );
+
+    assert.equal(forbiddenResponse.status, 403);
+    assert.deepEqual(validateCalls, []);
+
+    const validateResponse = await fetch(
+      `${baseUrl}/api/v1/residual-learning/issues/residual-http-demo-9/validate`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          suiteIds: ["suite-http-demo-1"],
+          releaseCheckProfileId: "release-check-http-demo-1",
+        }),
+      },
+    );
+    const validateBody = (await validateResponse.json()) as {
+      issue: { id: string; status: string; harness_validation_status: string };
+      run: { id: string; release_check_profile_id?: string };
+    };
+
+    assert.equal(validateResponse.status, 200);
+    assert.deepEqual(validateCalls, [
+      {
+        issueId: "residual-http-demo-9",
+        actorRole: "admin",
+        suiteIds: ["suite-http-demo-1"],
+        releaseCheckProfileId: "release-check-http-demo-1",
+      },
+    ]);
+    assert.equal(validateBody.issue.id, "residual-http-demo-9");
+    assert.equal(validateBody.issue.status, "candidate_ready");
+    assert.equal(validateBody.issue.harness_validation_status, "passed");
+    assert.equal(validateBody.run.id, "evaluation-run-http-demo-1");
+    assert.equal(
+      validateBody.run.release_check_profile_id,
+      "release-check-http-demo-1",
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
 
 test("http server rejects protected review routes without a trusted session", async () => {
   const { server, baseUrl } = await startServer();

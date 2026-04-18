@@ -11,6 +11,7 @@ export type LearningCandidateId = string;
 
 export type LearningCandidateType =
   | "rule_candidate"
+  | "knowledge_candidate"
   | "case_pattern_candidate"
   | "template_update_candidate"
   | "prompt_optimization_candidate"

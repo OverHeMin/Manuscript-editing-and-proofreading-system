@@ -84,15 +84,26 @@ export interface AttachReviewedSnapshotGovernedSourceInput {
   actorRole?: RoleKey;
 }
 
+export interface AttachResidualIssueGovernedSourceInput {
+  candidateId: string;
+  sourceKind: "residual_issue";
+  residualIssueId: string;
+  snapshotId: string;
+  sourceAssetId: string;
+  actorRole?: RoleKey;
+}
+
 export type AttachLearningGovernedSourceInput =
   | AttachGovernedSourceInput
   | AttachEvaluationGovernedSourceInput
-  | AttachReviewedSnapshotGovernedSourceInput;
+  | AttachReviewedSnapshotGovernedSourceInput
+  | AttachResidualIssueGovernedSourceInput;
 
 export type CreateGovernedLearningCandidateSourceInput =
   | Omit<AttachGovernedSourceInput, "candidateId">
   | Omit<AttachEvaluationGovernedSourceInput, "candidateId">
-  | Omit<AttachReviewedSnapshotGovernedSourceInput, "candidateId">;
+  | Omit<AttachReviewedSnapshotGovernedSourceInput, "candidateId">
+  | Omit<AttachResidualIssueGovernedSourceInput, "candidateId">;
 
 export interface ExtractReviewedSnapshotRuleCandidateInput {
   source: {
@@ -134,6 +145,24 @@ export type ExtractRuleCandidateInput =
 export interface CreateGovernedLearningCandidateInput
   extends CreateLearningCandidateInput {
   governedSource: CreateGovernedLearningCandidateSourceInput;
+}
+
+export interface CreateResidualGovernedLearningCandidateInput {
+  type: LearningCandidateType;
+  module: LearningCandidateRecord["module"];
+  manuscriptType: LearningCandidateRecord["manuscript_type"];
+  title?: string;
+  proposalText?: string;
+  requestedBy: string;
+  requestedByRole?: RoleKey;
+  candidatePayload?: Record<string, unknown>;
+  suggestedRuleObject?: string;
+  suggestedTemplateFamilyId?: string;
+  suggestedJournalTemplateId?: string;
+  governedSource: Omit<
+    AttachResidualIssueGovernedSourceInput,
+    "candidateId" | "actorRole"
+  >;
 }
 
 export interface LearningFeedbackGovernanceService {
@@ -472,13 +501,21 @@ export class LearningService {
               evidencePackId: input.evidencePackId,
               sourceAssetId: input.sourceAssetId,
             }
-          : "sourceKind" in input && input.sourceKind === "reviewed_case_snapshot"
+            : "sourceKind" in input && input.sourceKind === "reviewed_case_snapshot"
             ? {
                 sourceKind: "reviewed_case_snapshot",
                 learningCandidateId: input.candidateId,
                 reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
                 sourceAssetId: input.sourceAssetId,
               }
+            : "sourceKind" in input && input.sourceKind === "residual_issue"
+              ? {
+                  sourceKind: "residual_issue",
+                  learningCandidateId: input.candidateId,
+                  residualIssueId: input.residualIssueId,
+                  snapshotId: input.snapshotId,
+                  sourceAssetId: input.sourceAssetId,
+                }
             : {
                 learningCandidateId: input.candidateId,
                 snapshotId: input.snapshotId,
@@ -518,6 +555,46 @@ export class LearningService {
       candidateId: candidate.id,
       actorRole: input.requestedByRole,
       ...input.governedSource,
+    });
+
+    const updatedCandidate = await this.candidateRepository.findById(candidate.id);
+    if (!updatedCandidate) {
+      throw new LearningCandidateNotFoundError(candidate.id);
+    }
+
+    return updatedCandidate;
+  }
+
+  async createResidualGovernedLearningCandidate(
+    input: CreateResidualGovernedLearningCandidateInput,
+  ): Promise<LearningCandidateRecord> {
+    const timestamp = this.now().toISOString();
+    const candidate: LearningCandidateRecord = {
+      id: this.createId(),
+      type: input.type,
+      status: "draft",
+      module: input.module,
+      manuscript_type: input.manuscriptType,
+      title: input.title,
+      proposal_text: input.proposalText,
+      candidate_payload: input.candidatePayload,
+      suggested_rule_object: input.suggestedRuleObject,
+      suggested_template_family_id: input.suggestedTemplateFamilyId,
+      suggested_journal_template_id: input.suggestedJournalTemplateId,
+      created_by: input.requestedBy,
+      created_at: timestamp,
+      updated_at: timestamp,
+      review_actions: [],
+    };
+
+    await this.candidateRepository.save(candidate);
+    await this.attachGovernedSource({
+      candidateId: candidate.id,
+      sourceKind: "residual_issue",
+      residualIssueId: input.governedSource.residualIssueId,
+      snapshotId: input.governedSource.snapshotId,
+      sourceAssetId: input.governedSource.sourceAssetId,
+      actorRole: input.requestedByRole,
     });
 
     const updatedCandidate = await this.candidateRepository.findById(candidate.id);

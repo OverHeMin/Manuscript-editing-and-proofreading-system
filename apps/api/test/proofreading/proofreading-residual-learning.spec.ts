@@ -1,27 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ProofreadingService } from "../../src/modules/proofreading/proofreading-service.ts";
 import { InMemoryResidualIssueRepository } from "../../src/modules/residual-learning/in-memory-residual-learning-repository.ts";
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
-import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
+import { ProofreadingService } from "../../src/modules/proofreading/proofreading-service.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
-test("proofreading bare mode draft succeeds without a current template family while governed mode still fails", async () => {
+test("governed proofreading draft stores residual issues with snapshot and asset lineage", async () => {
   const harness = await seedMedicalQualityFixture();
   const residualIssueRepository = new InMemoryResidualIssueRepository();
   const residualLearningService = new ResidualLearningService({
     residualIssueRepository,
-    createId: () => "residual-proofreading-bare-1",
-    now: () => new Date("2026-04-18T10:20:00.000Z"),
-  });
-  const manuscript = await harness.manuscriptRepository.findById("manuscript-1");
-  assert.ok(manuscript);
-  await harness.manuscriptRepository.save({
-    ...manuscript,
-    current_template_family_id: undefined,
+    createId: () => "residual-proofreading-1",
+    now: () => new Date("2026-04-18T10:10:00.000Z"),
   });
 
-  let nextJobId = 0;
   const proofreadingService = new ProofreadingService({
     manuscriptRepository: harness.manuscriptRepository,
     assetRepository: harness.assetRepository,
@@ -51,7 +43,7 @@ test("proofreading bare mode draft succeeds without a current template family wh
           {
             section: "results",
             block_kind: "paragraph",
-            text: "Dose was 5 mg per dL in the bare proofreading report.",
+            text: "Dose was 5 mg per dL in the governed proofreading report.",
             residualHints: [
               {
                 issue_type: "unit_expression_gap",
@@ -65,41 +57,44 @@ test("proofreading bare mode draft succeeds without a current template family wh
         ];
       },
     } as never,
-    createId: () => `job-proofreading-bare-${++nextJobId}`,
-    now: () => new Date("2026-04-16T10:40:00.000Z"),
+    manuscriptQualityService: {
+      async runChecks() {
+        return {
+          requested_scopes: ["general_proofreading", "medical_specialized"],
+          completed_scopes: ["general_proofreading", "medical_specialized"],
+          issues: [],
+          quality_findings_summary: {
+            total_issue_count: 0,
+            issue_count_by_scope: {},
+            issue_count_by_action: {},
+            issue_count_by_severity: {},
+            representative_issue_ids: [],
+          },
+          resolved_quality_packages: [],
+        };
+      },
+    } as never,
+    now: () => new Date("2026-04-18T10:10:00.000Z"),
+    createId: () => "job-proofreading-residual-1",
   } as never);
-
-  await assert.rejects(
-    () =>
-      proofreadingService.createDraft({
-        manuscriptId: "manuscript-1",
-        parentAssetId: harness.originalAssetId,
-        requestedBy: "proofreader-1",
-        actorRole: "proofreader",
-        storageKey: "runs/manuscript-1/proofreading/governed.md",
-        fileName: "proofreading-governed.md",
-      }),
-    ModuleTemplateFamilyNotConfiguredError,
-  );
 
   const result = await proofreadingService.createDraft({
     manuscriptId: "manuscript-1",
     parentAssetId: harness.originalAssetId,
     requestedBy: "proofreader-1",
     actorRole: "proofreader",
-    storageKey: "runs/manuscript-1/proofreading/bare.md",
-    fileName: "proofreading-bare.md",
-    executionMode: "bare",
+    storageKey: "proofreading/manuscript-1/residual-draft-report.md",
+    fileName: "residual-draft-report.md",
   });
 
-  assert.equal(result.asset.asset_type, "proofreading_draft_report");
-  assert.equal(result.template_id, "bare-proofreading-template");
-  assert.equal(result.model_id, "model-1");
-  assert.equal(result.job.payload?.executionMode, "bare");
   assert.ok(result.snapshot_id);
-  assert.equal(
-    (await residualIssueRepository.listByExecutionSnapshotId(result.snapshot_id))
-      .length,
-    0,
+  const storedIssues = await residualIssueRepository.listByExecutionSnapshotId(
+    result.snapshot_id,
   );
+
+  assert.equal(result.snapshot_id, "snapshot-1");
+  assert.equal(storedIssues.length, 1);
+  assert.equal(storedIssues[0]?.execution_snapshot_id, "snapshot-1");
+  assert.equal(storedIssues[0]?.output_asset_id, result.asset.id);
+  assert.equal(storedIssues[0]?.module, "proofreading");
 });

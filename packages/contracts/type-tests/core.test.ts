@@ -35,6 +35,10 @@ import type {
   TemplateKnowledgeBindingPurpose,
   TemplateFamilyId,
   TemplateFamilyStatus,
+  ResidualConfidenceBand,
+  ResidualHarnessValidationStatus,
+  ResidualIssue,
+  ResidualIssueRoute,
   UserId,
 } from "../src/index.js";
 
@@ -199,6 +203,7 @@ type _LearningCandidateType = Assert<
   IsEqual<
     LearningCandidateType,
     | "rule_candidate"
+    | "knowledge_candidate"
     | "case_pattern_candidate"
     | "template_update_candidate"
     | "prompt_optimization_candidate"
@@ -248,6 +253,56 @@ type ExpectedLearningRun = {
 type _LearningRunNotAny = Assert<NotAny<LearningRun>>;
 type _LearningRunShapeForward = Assert<IsAssignable<LearningRun, ExpectedLearningRun>>;
 type _LearningRunShapeBackward = Assert<IsAssignable<ExpectedLearningRun, LearningRun>>;
+
+// Residual learning
+type _ResidualConfidenceBand = Assert<
+  IsEqual<
+    ResidualConfidenceBand,
+    | "L0_observation"
+    | "L1_review_pending"
+    | "L2_candidate_ready"
+    | "L3_strongly_reusable"
+  >
+>;
+
+type _ResidualIssueRoute = Assert<
+  IsEqual<
+    ResidualIssueRoute,
+    | "rule_candidate"
+    | "knowledge_candidate"
+    | "prompt_template_candidate"
+    | "manual_only"
+    | "evidence_only"
+  >
+>;
+
+type _ResidualHarnessValidationStatus = Assert<
+  IsEqual<
+    ResidualHarnessValidationStatus,
+    "not_required" | "queued" | "passed" | "failed"
+  >
+>;
+
+type ExpectedResidualIssue = {
+  id: string;
+  module: "proofreading" | "editing" | "screening";
+  manuscript_id: ManuscriptId;
+  execution_snapshot_id: string;
+  issue_type: string;
+  novelty_key: string;
+  system_confidence_band: ResidualConfidenceBand;
+  recommended_route: ResidualIssueRoute;
+  harness_validation_status: ResidualHarnessValidationStatus;
+};
+
+type _ResidualIssueNotAny = Assert<NotAny<ResidualIssue>>;
+type _ResidualIssueHasRoute = Assert<HasKey<ResidualIssue, "recommended_route">>;
+type _ResidualIssueShapeForward = Assert<
+  IsAssignable<ResidualIssue, ExpectedResidualIssue>
+>;
+type _ResidualIssueShapeBackward = Assert<
+  IsAssignable<ExpectedResidualIssue, ResidualIssue>
+>;
 
 // Templates
 type _ModuleTemplateStatus = Assert<

@@ -44,7 +44,9 @@ export type AgentExecutionOrchestrationStatus =
 export type VerificationCheckType =
   | "browser_qa"
   | "benchmark"
-  | "deploy_verification";
+  | "deploy_verification"
+  | "retrieval_quality"
+  | "residual_issue_validation";
 export type VerificationEvidenceKind = "url" | "artifact";
 export type EvaluationSuiteStatus = "draft" | "active" | "archived";
 export type EvaluationSuiteType = "regression" | "release_gate";

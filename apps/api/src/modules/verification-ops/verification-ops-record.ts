@@ -5,7 +5,8 @@ export type VerificationCheckType =
   | "browser_qa"
   | "benchmark"
   | "deploy_verification"
-  | "retrieval_quality";
+  | "retrieval_quality"
+  | "residual_issue_validation";
 export type RegistryAssetStatus = "draft" | "published" | "archived";
 export type EvaluationSuiteStatus = "draft" | "active" | "archived";
 export type EvaluationSuiteType = "regression" | "release_gate";
@@ -134,6 +135,7 @@ export interface GovernedExecutionEvaluationSourceRecord {
   agent_execution_log_id: string;
   execution_snapshot_id: string;
   output_asset_id: string;
+  residual_issue_id?: string;
 }
 
 export interface EvaluationRunRecord {
