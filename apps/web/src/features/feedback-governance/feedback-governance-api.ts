@@ -1,7 +1,9 @@
 import type {
+  CreateManualFeedbackHandoffInput,
   HumanFeedbackRecordViewModel,
   LearningCandidateSourceLinkViewModel,
   LinkLearningCandidateSourceInput,
+  ManualFeedbackHandoffViewModel,
   RecordHumanFeedbackInput,
 } from "./types.ts";
 
@@ -59,5 +61,18 @@ export function listLearningCandidateSourceLinksByCandidateId(
   return client.request<LearningCandidateSourceLinkViewModel[]>({
     method: "GET",
     url: `/api/v1/feedback-governance/learning-candidates/${learningCandidateId}/source-links`,
+  });
+}
+
+export function createManualFeedbackHandoff(
+  client: FeedbackGovernanceHttpClient,
+  input: CreateManualFeedbackHandoffInput,
+) {
+  return client.request<ManualFeedbackHandoffViewModel>({
+    method: "POST",
+    url: "/api/v1/feedback-governance/manual-feedback-handoffs",
+    body: {
+      input,
+    },
   });
 }

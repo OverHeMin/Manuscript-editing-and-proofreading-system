@@ -3,10 +3,12 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildManualFeedbackActionResult,
   buildManualManuscriptTypeOptions,
   buildJournalTemplateOptions,
   deriveUploadTitleFromFileName,
   resolveTemplateFamilyIdForManuscriptType,
+  resolveManualFeedbackContext,
   buildTemplateFamilyOptions,
   ManuscriptWorkbenchFocusCanvas,
   ManuscriptWorkbenchPage,
@@ -436,4 +438,117 @@ test("focus canvas shows the one-time bare AI action for governed module work wh
   assert.match(markup, /AI 自动处理（本次）/u);
   assert.match(markup, /确认校对定稿/u);
   assert.match(markup, /data-secondary-action="available"/);
+});
+
+test("manual feedback helpers derive the governed snapshot context and build rule-center-aware action results", () => {
+  const context = resolveManualFeedbackContext(
+    "editing",
+    {
+      manuscript: {
+        id: "manuscript-feedback-1",
+        title: "Feedback manuscript",
+        manuscript_type: "clinical_study",
+        status: "processing",
+        created_by: "editor-1",
+        module_execution_overview: {
+          screening: {
+            module: "screening",
+            observation_status: "not_started",
+          },
+          editing: {
+            module: "editing",
+            observation_status: "reported",
+            latest_snapshot: {
+              id: "snapshot-editing-1",
+              manuscript_id: "manuscript-feedback-1",
+              module: "editing",
+              job_id: "job-editing-1",
+              execution_profile_id: "execution-profile-editing-1",
+              module_template_id: "template-editing-1",
+              module_template_version_no: 2,
+              prompt_template_id: "prompt-editing-1",
+              prompt_template_version: "2026-04-01",
+              skill_package_ids: ["pkg-editing"],
+              skill_package_versions: ["2026.04"],
+              model_id: "model-editing-1",
+              knowledge_item_ids: [],
+              created_asset_ids: ["asset-edited-1"],
+              created_at: "2026-04-18T09:10:00.000Z",
+              agent_execution: {
+                observation_status: "not_linked",
+              },
+              runtime_binding_readiness: {
+                observation_status: "reported",
+                report: {
+                  status: "ready",
+                  checked_at: "2026-04-18T09:10:00.000Z",
+                  issues: [],
+                },
+              },
+            },
+          },
+          proofreading: {
+            module: "proofreading",
+            observation_status: "not_started",
+          },
+        },
+        created_at: "2026-04-18T09:00:00.000Z",
+        updated_at: "2026-04-18T09:10:00.000Z",
+      },
+      assets: [],
+      currentAsset: {
+        id: "asset-edited-1",
+        manuscript_id: "manuscript-feedback-1",
+        asset_type: "edited_docx",
+        status: "active",
+        storage_key: "runs/editing/output.docx",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        parent_asset_id: "asset-original-1",
+        source_module: "editing",
+        source_job_id: "job-editing-1",
+        created_by: "editor-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "editing-output.docx",
+        created_at: "2026-04-18T09:10:00.000Z",
+        updated_at: "2026-04-18T09:10:00.000Z",
+      },
+      currentManuscriptAsset: null,
+      suggestedParentAsset: null,
+      latestProofreadingDraftAsset: null,
+    } as never,
+  );
+
+  assert.deepEqual(context, {
+    snapshotId: "snapshot-editing-1",
+    sourceAssetId: "asset-edited-1",
+  });
+
+  assert.deepEqual(
+    buildManualFeedbackActionResult({
+      feedbackCategory: "missing_knowledge",
+      feedbackRecordId: "feedback-1",
+      learningCandidateId: "candidate-1",
+    }),
+    {
+      tone: "success",
+      actionLabel: "Submit Manual Feedback",
+      message: "Submitted manual feedback candidate candidate-1",
+      details: [
+        {
+          label: "Feedback Type",
+          value: "missing_knowledge",
+        },
+        {
+          label: "Feedback Record",
+          value: "feedback-1",
+        },
+        {
+          label: "Learning Candidate",
+          value: "candidate-1",
+        },
+      ],
+    },
+  );
 });

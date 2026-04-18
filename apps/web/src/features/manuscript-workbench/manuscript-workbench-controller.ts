@@ -1,7 +1,13 @@
 import type { AuthRole } from "../auth/index.ts";
 import type { ModuleExecutionMode } from "@medical/contracts";
+import {
+  createManualFeedbackHandoff,
+  type HumanFeedbackRecordViewModel,
+  type ManualFeedbackCategory,
+} from "../feedback-governance/index.ts";
 import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import type { KnowledgeRevisionStatus } from "../knowledge-library/types.ts";
+import type { LearningCandidateViewModel } from "../learning-review/types.ts";
 import {
   exportCurrentAsset,
   getJob,
@@ -148,6 +154,20 @@ export interface RunModuleAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface SubmitManualFeedbackAndCreateCandidateInput {
+  manuscriptId: string;
+  module: ManuscriptWorkbenchRunMode;
+  snapshotId: string;
+  sourceAssetId: string;
+  feedbackCategory: ManualFeedbackCategory;
+  feedbackText?: string;
+}
+
+export interface SubmitManualFeedbackAndCreateCandidateResult {
+  feedback: HumanFeedbackRecordViewModel;
+  learningCandidate: LearningCandidateViewModel;
+}
+
 export interface PublishHumanFinalAndLoadResult {
   runResult: ProofreadingHumanFinalPublishResultViewModel;
   workspace: ManuscriptWorkbenchWorkspace;
@@ -180,6 +200,9 @@ export interface ManuscriptWorkbenchController {
   publishHumanFinalAndLoad(
     input: PublishHumanFinalAndLoadInput,
   ): Promise<PublishHumanFinalAndLoadResult>;
+  submitManualFeedbackAndCreateCandidate(
+    input: SubmitManualFeedbackAndCreateCandidateInput,
+  ): Promise<SubmitManualFeedbackAndCreateCandidateResult>;
   loadJob(jobId: string): Promise<JobViewModel>;
   exportCurrentAsset(input: {
     manuscriptId: string;
@@ -311,6 +334,10 @@ export function createManuscriptWorkbenchController(
         },
         workspace,
       };
+    },
+    async submitManualFeedbackAndCreateCandidate(input) {
+      const response = await createManualFeedbackHandoff(client, input);
+      return response.body;
     },
     async loadJob(jobId) {
       const response = await getJob(client, jobId);

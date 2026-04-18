@@ -61,6 +61,7 @@ import {
   EditingService,
 } from "../modules/editing/index.ts";
 import {
+  createFeedbackGovernanceApi,
   FeedbackGovernanceService,
   PostgresFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
@@ -930,6 +931,9 @@ export function createPersistentGovernanceRuntime(
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,
+    }),
+    feedbackGovernanceApi: createFeedbackGovernanceApi({
+      feedbackGovernanceService,
     }),
     learningApi: createLearningApi({ learningService }),
     residualLearningApi: createResidualLearningApi({

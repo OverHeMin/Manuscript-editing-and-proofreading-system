@@ -156,3 +156,24 @@ test("workbench routing formats and resolves harness section hashes", () => {
     harnessSection: "runs",
   });
 });
+
+test("workbench routing preserves selected learning candidate ids for rule center handoffs", () => {
+  const hash = formatWorkbenchHash("template-governance", {
+    manuscriptId: "manuscript-42",
+    templateGovernanceView: "rule-ledger",
+    ruleCenterMode: "learning",
+    learningCandidateId: "candidate-42",
+  });
+
+  assert.equal(
+    hash,
+    "#template-governance?manuscriptId=manuscript-42&templateGovernanceView=rule-ledger&ruleCenterMode=learning&learningCandidateId=candidate-42",
+  );
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "template-governance",
+    manuscriptId: "manuscript-42",
+    templateGovernanceView: "rule-ledger",
+    ruleCenterMode: "learning",
+    learningCandidateId: "candidate-42",
+  });
+});

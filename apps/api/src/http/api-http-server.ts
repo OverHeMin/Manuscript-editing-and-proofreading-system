@@ -152,11 +152,16 @@ import {
   EditingService,
 } from "../modules/editing/index.ts";
 import {
+  createFeedbackGovernanceApi,
   FeedbackGovernanceService,
   FeedbackGovernanceReviewedSnapshotNotFoundError,
   FeedbackSourceAssetMismatchError,
   FeedbackSourceAssetNotFoundError,
+  HumanFeedbackRecordNotFoundError,
+  HumanFeedbackScopeMismatchError,
+  HumanFeedbackSnapshotMismatchError,
   InMemoryFeedbackGovernanceRepository,
+  ModuleExecutionSnapshotNotFoundError,
   type LearningCandidateSourceLinkRecord,
 } from "../modules/feedback-governance/index.ts";
 import {
@@ -1077,6 +1082,9 @@ type HttpRouteMatch =
       candidateId: string;
     }
   | {
+      route: "feedback-governance-create-manual-feedback-handoff";
+    }
+  | {
       route: "learning-create-reviewed-case-snapshot";
     }
   | {
@@ -1284,6 +1292,7 @@ export interface ApiServerRuntime {
   harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
+  feedbackGovernanceApi: ReturnType<typeof createFeedbackGovernanceApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   residualLearningApi: ReturnType<typeof createResidualLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
@@ -1916,6 +1925,9 @@ export function createInMemoryApiRuntime(input: {
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,
+    }),
+    feedbackGovernanceApi: createFeedbackGovernanceApi({
+      feedbackGovernanceService,
     }),
     learningApi: createLearningApi({ learningService }),
     residualLearningApi: createResidualLearningApi({
@@ -5538,6 +5550,73 @@ async function handleRoute(
       return runtime.learningApi.getLearningCandidate({
         candidateId: routeMatch.candidateId,
       });
+    case "feedback-governance-create-manual-feedback-handoff": {
+      const body = (await readJsonBody(req)) as {
+        input: {
+          manuscriptId: string;
+          module: "screening" | "editing" | "proofreading";
+          snapshotId: string;
+          sourceAssetId: string;
+          feedbackCategory: ManualFeedbackCategory;
+          feedbackText?: string;
+        };
+      };
+      const input = body.input;
+      const session = await requireManualFeedbackHandoffSession(
+        req,
+        runtime,
+        input.module,
+      );
+      const normalizedFeedbackText = normalizeOptionalText(input.feedbackText);
+      const manuscript = await runtime.manuscriptApi.getManuscript({
+        manuscriptId: input.manuscriptId,
+      });
+      const feedback =
+        await runtime.feedbackGovernanceApi.recordHumanFeedback({
+          input: {
+            manuscriptId: input.manuscriptId,
+            module: input.module,
+            snapshotId: input.snapshotId,
+            feedbackType: mapManualFeedbackCategoryToFeedbackType(
+              input.feedbackCategory,
+            ),
+            feedbackText: normalizedFeedbackText,
+            createdBy: session.user.id,
+          },
+        });
+      const learningCandidate =
+        await runtime.learningApi.createHumanFeedbackGovernedLearningCandidate({
+          snapshotId: input.snapshotId,
+          feedbackRecordId: feedback.body.id,
+          sourceAssetId: input.sourceAssetId,
+          type: mapManualFeedbackCategoryToLearningCandidateType(
+            input.feedbackCategory,
+          ),
+          module: input.module,
+          manuscriptType: manuscript.body.manuscript_type,
+          requestedBy: session.user.id,
+          requestedByRole: session.user.role,
+          title: mapManualFeedbackCategoryToLearningCandidateTitle(
+            input.feedbackCategory,
+          ),
+          proposalText:
+            normalizedFeedbackText ??
+            buildDefaultManualFeedbackProposalText(input.feedbackCategory, input.module),
+          candidatePayload: {
+            feedbackCategory: input.feedbackCategory,
+            manuscriptId: input.manuscriptId,
+            module: input.module,
+          },
+        });
+
+      return {
+        status: 201,
+        body: {
+          feedback: feedback.body,
+          learningCandidate: learningCandidate.body,
+        },
+      };
+    }
     case "learning-create-candidate": {
       const session = await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.createLearningCandidate(
@@ -7292,6 +7371,13 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-review-queue" };
   }
 
+  if (
+    method === "POST" &&
+    path === "/api/v1/feedback-governance/manual-feedback-handoffs"
+  ) {
+    return { route: "feedback-governance-create-manual-feedback-handoff" };
+  }
+
   if (method === "POST" && path === "/api/v1/learning/reviewed-case-snapshots") {
     return { route: "learning-create-reviewed-case-snapshot" };
   }
@@ -7597,6 +7683,28 @@ async function requirePermission(
   return session;
 }
 
+type ManualFeedbackCategory =
+  | "missed_hit"
+  | "incorrect_hit"
+  | "missing_knowledge";
+
+async function requireManualFeedbackHandoffSession(
+  req: IncomingMessage,
+  runtime: ApiServerRuntime,
+  module: "screening" | "editing" | "proofreading",
+): Promise<HttpAuthenticatedSession> {
+  const session = await runtime.authRuntime.requireSession(req);
+  if (runtime.permissionGuard.can(session.user.role, "learning.review")) {
+    return session;
+  }
+
+  runtime.permissionGuard.assert(
+    session.user.role,
+    resolveWorkbenchPermissionForModule(module),
+  );
+  return session;
+}
+
 async function requireManuscriptSurfaceSession(
   req: IncomingMessage,
   runtime: ApiServerRuntime,
@@ -7608,6 +7716,75 @@ async function requireManuscriptSurfaceSession(
   }
 
   return session;
+}
+
+function resolveWorkbenchPermissionForModule(
+  module: "screening" | "editing" | "proofreading",
+): Parameters<PermissionGuard["assert"]>[1] {
+  switch (module) {
+    case "screening":
+      return "workbench.screening";
+    case "editing":
+      return "workbench.editing";
+    case "proofreading":
+      return "workbench.proofreading";
+  }
+}
+
+function mapManualFeedbackCategoryToFeedbackType(
+  category: ManualFeedbackCategory,
+): "manual_confirmation" | "manual_correction" | "manual_rejection" {
+  switch (category) {
+    case "incorrect_hit":
+      return "manual_correction";
+    case "missed_hit":
+    case "missing_knowledge":
+      return "manual_rejection";
+  }
+}
+
+function mapManualFeedbackCategoryToLearningCandidateType(
+  category: ManualFeedbackCategory,
+): LearningCandidateRecord["type"] {
+  switch (category) {
+    case "missing_knowledge":
+      return "knowledge_candidate";
+    case "missed_hit":
+    case "incorrect_hit":
+      return "rule_candidate";
+  }
+}
+
+function mapManualFeedbackCategoryToLearningCandidateTitle(
+  category: ManualFeedbackCategory,
+): string {
+  switch (category) {
+    case "missed_hit":
+      return "补充漏命中规则";
+    case "incorrect_hit":
+      return "修正错误命中";
+    case "missing_knowledge":
+      return "补充知识依据";
+  }
+}
+
+function buildDefaultManualFeedbackProposalText(
+  category: ManualFeedbackCategory,
+  module: "screening" | "editing" | "proofreading",
+): string {
+  switch (category) {
+    case "missed_hit":
+      return `The ${module} output missed a governed hit that should be reviewed.`;
+    case "incorrect_hit":
+      return `The ${module} output hit the wrong governed rule and should be corrected.`;
+    case "missing_knowledge":
+      return `The ${module} output is missing reusable governed knowledge support.`;
+  }
+}
+
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function createCorsHeaders(
@@ -7786,6 +7963,8 @@ function mapErrorToHttpResponse(
     error instanceof ReviewedCaseSnapshotNotFoundError ||
     error instanceof LearningWritebackNotFoundError ||
     error instanceof FeedbackGovernanceReviewedSnapshotNotFoundError ||
+    error instanceof HumanFeedbackRecordNotFoundError ||
+    error instanceof ModuleExecutionSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
@@ -7910,6 +8089,8 @@ function mapErrorToHttpResponse(
       error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
+    error instanceof HumanFeedbackScopeMismatchError ||
+    error instanceof HumanFeedbackSnapshotMismatchError ||
     error instanceof ReviewedCaseSourceAssetPayloadError ||
     error instanceof FeedbackSourceAssetNotFoundError ||
     error instanceof FeedbackSourceAssetMismatchError ||

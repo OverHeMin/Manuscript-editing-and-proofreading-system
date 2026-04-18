@@ -37,6 +37,7 @@ export interface WorkbenchHandoff {
   knowledgeItemId?: string;
   assetId?: string;
   revisionId?: string;
+  learningCandidateId?: string;
   knowledgePrefillTemplateId?: string;
   knowledgeView?: KnowledgeLibraryView;
   templateGovernanceView?: TemplateGovernanceView;
@@ -53,6 +54,7 @@ export interface WorkbenchLocation {
   knowledgeItemId?: string;
   assetId?: string;
   revisionId?: string;
+  learningCandidateId?: string;
   knowledgePrefillTemplateId?: string;
   knowledgeView?: KnowledgeLibraryView;
   templateGovernanceView?: TemplateGovernanceView;
@@ -128,6 +130,8 @@ export function formatWorkbenchHash(
   const assetId = typeof handoff === "string" ? undefined : handoff?.assetId;
   const revisionId =
     typeof handoff === "string" ? undefined : handoff?.revisionId;
+  const learningCandidateId =
+    typeof handoff === "string" ? undefined : handoff?.learningCandidateId;
   const knowledgePrefillTemplateId =
     typeof handoff === "string" ? undefined : handoff?.knowledgePrefillTemplateId;
   const knowledgeView =
@@ -185,6 +189,10 @@ export function formatWorkbenchHash(
     params.set("ruleCenterMode", ruleCenterMode);
   }
 
+  if (learningCandidateId && learningCandidateId.trim().length > 0) {
+    params.set("learningCandidateId", learningCandidateId.trim());
+  }
+
   if (settingsSection) {
     params.set("settingsSection", settingsSection);
   }
@@ -217,6 +225,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
   const assetId = params.get("assetId")?.trim();
   const revisionId = params.get("revisionId")?.trim();
+  const learningCandidateId = params.get("learningCandidateId")?.trim();
   const knowledgePrefillTemplateId = params.get("knowledgePrefillTemplateId")?.trim();
   const knowledgeView = normalizeKnowledgeLibraryView(params.get("knowledgeView"));
   const templateGovernanceView = normalizeTemplateGovernanceView(
@@ -234,6 +243,9 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
     ...(assetId && assetId.length > 0 ? { assetId } : {}),
     ...(revisionId && revisionId.length > 0 ? { revisionId } : {}),
+    ...(learningCandidateId && learningCandidateId.length > 0
+      ? { learningCandidateId }
+      : {}),
     ...(knowledgePrefillTemplateId && knowledgePrefillTemplateId.length > 0
       ? { knowledgePrefillTemplateId }
       : {}),

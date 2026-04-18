@@ -2,6 +2,7 @@ import type { RoleKey } from "../../users/roles.ts";
 import { LearningService } from "./learning-service.ts";
 import type {
   CreateGovernedLearningCandidateInput,
+  CreateHumanFeedbackGovernedLearningCandidateInput,
   CreateLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
   ExtractRuleCandidateInput,
@@ -48,6 +49,17 @@ export function createLearningApi(options: CreateLearningApiOptions) {
       return {
         status: 201,
         body: await learningService.createGovernedLearningCandidate(input),
+      };
+    },
+
+    async createHumanFeedbackGovernedLearningCandidate(
+      input: CreateHumanFeedbackGovernedLearningCandidateInput,
+    ): Promise<RouteResponse<LearningCandidateRecord>> {
+      return {
+        status: 201,
+        body: await learningService.createHumanFeedbackGovernedLearningCandidate(
+          input,
+        ),
       };
     },
 

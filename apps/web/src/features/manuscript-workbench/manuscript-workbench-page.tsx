@@ -44,9 +44,11 @@ import {
   buildManuscriptMainlineReadinessDetails,
   formatWorkbenchActionResultMessage,
   ManuscriptWorkbenchSummary,
+  type ManuscriptWorkbenchManualFeedbackViewModel,
   type WorkbenchActionResultViewModel,
   type WorkbenchActionResultDetail,
 } from "./manuscript-workbench-summary.tsx";
+import type { ManualFeedbackCategory } from "../feedback-governance/index.ts";
 import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
@@ -59,6 +61,17 @@ import {
 } from "./manuscript-workbench-controller.ts";
 
 const BARE_AI_ACTION_LABEL = "Run Bare AI Once";
+
+export interface ManualFeedbackContext {
+  snapshotId: string;
+  sourceAssetId: string;
+}
+
+export interface BuildManualFeedbackActionResultInput {
+  feedbackCategory: ManualFeedbackCategory;
+  feedbackRecordId: string;
+  learningCandidateId: string;
+}
 
 export interface ManuscriptWorkbenchPageProps {
   mode: ManuscriptWorkbenchMode;
@@ -140,6 +153,76 @@ export function buildWorkbenchJobActionResultDetails(
     ...buildJobBatchProgressDetails(job),
     ...buildJobReviewEvidenceDetails(job),
   ];
+}
+
+export function resolveManualFeedbackContext(
+  mode: ManuscriptWorkbenchMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+): ManualFeedbackContext | null {
+  if (mode === "submission") {
+    return null;
+  }
+
+  const currentAsset = workspace.currentAsset;
+  if (!currentAsset || currentAsset.source_module !== mode) {
+    return null;
+  }
+
+  const moduleOverview = workspace.manuscript.module_execution_overview?.[mode];
+  if (!moduleOverview || moduleOverview.observation_status !== "reported") {
+    return null;
+  }
+
+  const snapshot = moduleOverview.latest_snapshot;
+  if (!snapshot?.id) {
+    return null;
+  }
+
+  if (
+    snapshot.created_asset_ids.length > 0 &&
+    !snapshot.created_asset_ids.includes(currentAsset.id)
+  ) {
+    return null;
+  }
+
+  return {
+    snapshotId: snapshot.id,
+    sourceAssetId: currentAsset.id,
+  };
+}
+
+export function buildManualFeedbackActionResult(
+  input: BuildManualFeedbackActionResultInput,
+): WorkbenchActionResultViewModel {
+  return {
+    tone: "success",
+    actionLabel: "Submit Manual Feedback",
+    message: `Submitted manual feedback candidate ${input.learningCandidateId}`,
+    details: [
+      {
+        label: "Feedback Type",
+        value: input.feedbackCategory,
+      },
+      {
+        label: "Feedback Record",
+        value: input.feedbackRecordId,
+      },
+      {
+        label: "Learning Candidate",
+        value: input.learningCandidateId,
+      },
+    ],
+  };
+}
+
+function isManualFeedbackCategory(
+  value: string,
+): value is ManualFeedbackCategory {
+  return (
+    value === "missed_hit" ||
+    value === "incorrect_hit" ||
+    value === "missing_knowledge"
+  );
 }
 
 export function resolveWorkbenchNotice(input: {
@@ -316,6 +399,15 @@ export function ManuscriptWorkbenchPage({
   >([]);
   const [parentAssetId, setParentAssetId] = useState("");
   const [draftAssetId, setDraftAssetId] = useState("");
+  const [manualFeedbackCategory, setManualFeedbackCategory] =
+    useState<ManualFeedbackCategory | "">("");
+  const [manualFeedbackNote, setManualFeedbackNote] = useState("");
+  const [isManualFeedbackSubmitting, setIsManualFeedbackSubmitting] = useState(false);
+  const [lastSubmittedManualFeedback, setLastSubmittedManualFeedback] = useState<{
+    feedbackCategory: ManualFeedbackCategory;
+    feedbackRecordId: string;
+    learningCandidateId: string;
+  } | null>(null);
   const [selectedTemplateFamilyId, setSelectedTemplateFamilyId] = useState("");
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
   const [selectedTemplateContext, setSelectedTemplateContext] =
@@ -385,10 +477,21 @@ export function ManuscriptWorkbenchPage({
     setAttachedUploadFiles([]);
     setParentAssetId("");
     setDraftAssetId("");
+    setManualFeedbackCategory("");
+    setManualFeedbackNote("");
+    setIsManualFeedbackSubmitting(false);
+    setLastSubmittedManualFeedback(null);
     setSelectedTemplateFamilyId("");
     setSelectedJournalTemplateId("");
     setSelectedTemplateContext(null);
   }, [normalizedPrefilledManuscriptId]);
+
+  useEffect(() => {
+    setManualFeedbackCategory("");
+    setManualFeedbackNote("");
+    setIsManualFeedbackSubmitting(false);
+    setLastSubmittedManualFeedback(null);
+  }, [workspace?.manuscript.id]);
 
   useEffect(() => {
     if (!workspace) {
@@ -530,6 +633,74 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitManualFeedback(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    context: ManualFeedbackContext,
+  ) {
+    if (mode === "submission") {
+      return;
+    }
+
+    if (!isManualFeedbackCategory(manualFeedbackCategory)) {
+      const message = "请选择反馈类型后再提交。";
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Submit Manual Feedback",
+        message,
+        details: [],
+      });
+      return;
+    }
+
+    const selectedFeedbackCategory = manualFeedbackCategory;
+    setIsManualFeedbackSubmitting(true);
+    setError("");
+
+    try {
+      const result = await controller.submitManualFeedbackAndCreateCandidate({
+        manuscriptId: currentWorkspace.manuscript.id,
+        module: mode,
+        snapshotId: context.snapshotId,
+        sourceAssetId: context.sourceAssetId,
+        feedbackCategory: selectedFeedbackCategory,
+        ...(normalizeOptionalText(manualFeedbackNote)
+          ? {
+              feedbackText: manualFeedbackNote.trim(),
+            }
+          : {}),
+      });
+      const actionResult = buildManualFeedbackActionResult({
+        feedbackCategory: selectedFeedbackCategory,
+        feedbackRecordId: result.feedback.id,
+        learningCandidateId: result.learningCandidate.id,
+      });
+
+      setStatus(actionResult.message);
+      setLatestActionResult(actionResult);
+      setLastSubmittedManualFeedback({
+        feedbackCategory: selectedFeedbackCategory,
+        feedbackRecordId: result.feedback.id,
+        learningCandidateId: result.learningCandidate.id,
+      });
+      setManualFeedbackCategory("");
+      setManualFeedbackNote("");
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Submit Manual Feedback",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsManualFeedbackSubmitting(false);
     }
   }
 
@@ -1164,12 +1335,30 @@ function buildTemplateContextActionResult(
   if (finalizeActionPanel) {
     focusPrimaryActions.push(finalizeActionPanel);
   }
+  const manualFeedbackContext = workspace
+    ? resolveManualFeedbackContext(mode, workspace)
+    : null;
+  const manualFeedback: ManuscriptWorkbenchManualFeedbackViewModel | undefined =
+    workspace && manualFeedbackContext
+      ? {
+          selectedCategory: manualFeedbackCategory,
+          note: manualFeedbackNote,
+          isSubmitting: isManualFeedbackSubmitting,
+          lastSubmitted: lastSubmittedManualFeedback ?? undefined,
+          onCategoryChange: setManualFeedbackCategory,
+          onNoteChange: setManualFeedbackNote,
+          onSubmit: () => {
+            void submitManualFeedback(workspace, manualFeedbackContext);
+          },
+        }
+      : undefined;
   const summaryElement = workspace ? (
     <ManuscriptWorkbenchSummary
       mode={mode}
       accessibleHandoffModes={accessibleHandoffModes}
       canOpenLearningReview={canOpenLearningReview}
       canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+      manualFeedback={manualFeedback}
       prefilledManuscriptId={normalizedPrefilledManuscriptId}
       prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
       prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}

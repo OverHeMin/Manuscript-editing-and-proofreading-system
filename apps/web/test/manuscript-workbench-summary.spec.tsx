@@ -672,3 +672,40 @@ test("summary localizes readiness guidance, attention reasons, and overview temp
   assert.match(markup, /<span>主要关注原因<\/span><strong>稿件已满足受治理初筛条件。<\/strong>/u);
   assert.match(markup, /<span>基础模板族<\/span><strong>综述基础模板族<\/strong>/u);
 });
+
+test("summary renders operator feedback choices and opens the submitted learning candidate in the rule center", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={createEditingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+      canOpenLearningReview
+      manualFeedback={{
+        selectedCategory: "incorrect_hit",
+        note: "Terminology was matched to the wrong governed rule.",
+        isSubmitting: false,
+        lastSubmitted: {
+          feedbackCategory: "incorrect_hit",
+          feedbackRecordId: "feedback-1",
+          learningCandidateId: "candidate-manual-1",
+        },
+        onCategoryChange: () => undefined,
+        onNoteChange: () => undefined,
+        onSubmit: () => undefined,
+      }}
+    />,
+  );
+
+  assert.match(markup, /人工反馈/u);
+  assert.match(markup, /这次没命中/u);
+  assert.match(markup, /命中错误/u);
+  assert.match(markup, /缺少知识/u);
+  assert.match(markup, /已提交至规则中心待审核/u);
+  assert.match(markup, /candidate-manual-1/u);
+  assert.match(
+    markup,
+    /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*learningCandidateId=candidate-manual-1/u,
+  );
+});
