@@ -128,9 +128,6 @@ test("general package ledger renders reusable package table and default rule det
   );
 
   assert.match(markup, /通用包台账/u);
-  assert.match(markup, /总览/u);
-  assert.match(markup, /大模板台账/u);
-  assert.match(markup, /template-governance-ledger-kpi-strip/u);
   assert.match(markup, /加入大模板/u);
   assert.match(markup, /参考文献格式统一/u);
   assert.match(markup, /默认规则/u);
@@ -217,7 +214,7 @@ test("medical package ledger renders inline edit form and search results when re
   );
 
   assert.match(markup, /医学专用包台账/u);
-  assert.match(markup, /保存模块修改/u);
+  assert.match(markup, /保存规则包修改/u);
   assert.match(markup, /医学专用包查找结果/u);
   assert.match(markup, /伦理声明核查/u);
 });

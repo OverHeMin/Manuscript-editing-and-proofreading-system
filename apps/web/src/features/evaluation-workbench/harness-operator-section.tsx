@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import {
   createAdminGovernanceWorkbenchController,
@@ -12,11 +11,8 @@ import { HarnessActivationGate } from "../admin-governance/harness-activation-ga
 import { HarnessEnvironmentEditor } from "../admin-governance/harness-environment-editor.tsx";
 import { HarnessQualityLab } from "../admin-governance/harness-quality-lab.tsx";
 import type { AuthRole } from "../auth/index.ts";
-import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
 import type { ManuscriptType } from "../manuscripts/index.ts";
 import type { TemplateModule } from "../templates/index.ts";
-import { HarnessDatasetsWorkbenchPage } from "../harness-datasets/harness-datasets-workbench-page.tsx";
-import type { HarnessDatasetsWorkbenchOverview } from "../harness-datasets/types.ts";
 import type {
   ModuleExecutionProfileViewModel,
   ResolveExecutionBundlePreviewInput,
@@ -44,22 +40,18 @@ interface HarnessScopeSelection {
 
 export interface HarnessOperatorSectionProps {
   actorRole?: AuthRole;
-  section: WorkbenchHarnessSection;
   harnessController?: AdminGovernanceWorkbenchController;
   initialHarnessOverview?: AdminGovernanceOverview | null;
   initialHarnessScope?: AdminHarnessScopeViewModel | null;
   initialHarnessPreview?: HarnessEnvironmentPreviewViewModel | null;
-  initialDatasetsOverview?: HarnessDatasetsWorkbenchOverview | null;
 }
 
 export function HarnessOperatorSection({
   actorRole = "admin",
-  section,
   harnessController = defaultHarnessController,
   initialHarnessOverview = null,
   initialHarnessScope = null,
   initialHarnessPreview = null,
-  initialDatasetsOverview = null,
 }: HarnessOperatorSectionProps) {
   const [overview, setOverview] = useState<AdminGovernanceOverview | null>(initialHarnessOverview);
   const [scope, setScope] = useState<AdminHarnessScopeViewModel | null>(initialHarnessScope);
@@ -117,6 +109,14 @@ export function HarnessOperatorSection({
     () => resolveScopeProfile(overview, activeScopeKey),
     [overview, activeScopeKey],
   );
+  const availableManuscriptTypes = useMemo(
+    () => resolveManuscriptTypesForModule(overview, scopeProfile?.module ?? null),
+    [overview, scopeProfile],
+  );
+  const activeTemplateFamily = useMemo(
+    () => resolveTemplateFamily(overview, scopeProfile),
+    [overview, scopeProfile],
+  );
   const scopedExecutionProfiles = useMemo(
     () => filterExecutionProfilesForScope(overview, scopeProfile),
     [overview, scopeProfile],
@@ -172,7 +172,7 @@ export function HarnessOperatorSection({
     return () => {
       disposed = true;
     };
-  }, [harnessController, scopeProfile]);
+  }, [harnessController, scope, scopeProfile]);
 
   useEffect(() => {
     if (scopedEvaluationSuites.length === 0) {
@@ -187,23 +187,51 @@ export function HarnessOperatorSection({
   }, [scopedEvaluationSuites, selectedSuiteId]);
 
   function handleModuleChange(nextModule: TemplateModule) {
-    const matchingProfile =
-      overview?.executionProfiles.find((profile) => profile.module === nextModule) ?? null;
-    if (matchingProfile == null) {
-      setErrorMessage("当前模块还没有可用的 Harness 作用域。");
+    const nextManuscriptTypes = resolveManuscriptTypesForModule(overview, nextModule);
+    const preferredManuscriptType =
+      scopeProfile && nextManuscriptTypes.includes(scopeProfile.manuscript_type)
+        ? scopeProfile.manuscript_type
+        : nextManuscriptTypes[0] ?? null;
+
+    if (preferredManuscriptType == null) {
+      setErrorMessage("No Harness scope is configured for the selected module.");
       return;
     }
 
-    setPreview(null);
-    setErrorMessage(null);
-    setStatusMessage(null);
-    setActiveScopeKey(buildScopeKey(matchingProfile));
+    selectScope(nextModule, preferredManuscriptType);
+  }
+
+  function handleManuscriptTypeChange(nextManuscriptType: ManuscriptType) {
+    const activeModule = scopeProfile?.module ?? overview?.executionProfiles[0]?.module ?? null;
+    if (activeModule == null) {
+      setErrorMessage("No Harness scope is configured yet.");
+      return;
+    }
+
+    selectScope(activeModule, nextManuscriptType);
   }
 
   function handleSelectionChange(patch: Partial<HarnessScopeSelection>) {
     setSelection((current) => ({ ...current, ...patch }));
     setPreview(null);
     setStatusMessage(null);
+  }
+
+  function selectScope(module: TemplateModule, manuscriptType: ManuscriptType) {
+    const nextProfile = resolvePreferredScopeProfile(overview, {
+      module,
+      manuscriptType,
+      preferredTemplateFamilyId: scopeProfile?.template_family_id ?? null,
+    });
+    if (nextProfile == null) {
+      setErrorMessage("No Harness scope is configured for the selected module and manuscript type.");
+      return;
+    }
+
+    setPreview(null);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    setActiveScopeKey(buildScopeKey(nextProfile));
   }
 
   async function handlePreview() {
@@ -220,7 +248,7 @@ export function HarnessOperatorSection({
         buildPreviewInput(scopeProfile, selection),
       );
       setPreview(nextPreview);
-      setStatusMessage("候选环境预览已更新。");
+      setStatusMessage("Candidate environment preview refreshed.");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -247,7 +275,7 @@ export function HarnessOperatorSection({
           preview.candidate_environment.runtime_binding.release_check_profile_id,
       });
       setLatestRun(createdRun);
-      setStatusMessage(`已创建候选运行 ${createdRun.id}。`);
+      setStatusMessage(`Created candidate run ${createdRun.id}.`);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -285,7 +313,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("候选环境已激活到当前 Harness 作用域。");
+      setStatusMessage("Candidate environment activated for the current Harness scope.");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -318,7 +346,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("当前 Harness 作用域已回滚。");
+      setStatusMessage("Harness scope rolled back to the current active environment.");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -326,116 +354,83 @@ export function HarnessOperatorSection({
     }
   }
 
-  return (
-    <>
-      <section className="evaluation-workbench-panel evaluation-workbench-harness-shell">
+  if (overview == null && isLoading) {
+    return (
+      <article className="evaluation-workbench-panel">
         <div className="evaluation-workbench-panel-header">
-          <h3>Harness 内部视图</h3>
-          <span>控制区、运行和数据入口仍然属于同一个 Harness 页面。</span>
+          <h3>Harness Control Plane</h3>
+          <span>Loading</span>
         </div>
-        <nav className="evaluation-workbench-harness-nav" aria-label="Harness 内部视图">
-          <a
-            className={buildHarnessNavLinkClassName(section === "overview")}
-            href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "overview" })}
-          >
-            总览
-          </a>
-          <a
-            className={buildHarnessNavLinkClassName(section === "runs")}
-            href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "runs" })}
-          >
-            运行记录
-          </a>
-          <a
-            className={buildHarnessNavLinkClassName(section === "datasets")}
-            href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
-          >
-            数据与样本
-          </a>
-        </nav>
-        {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
-        {errorMessage ? <p className="evaluation-workbench-error">{errorMessage}</p> : null}
-        {section === "datasets" ? (
-          <HarnessDatasetsWorkbenchPage
-            embedded
-            initialOverview={initialDatasetsOverview}
-          />
-        ) : (
-          <article className="evaluation-workbench-harness-datasets-entry">
-            <strong>数据与样本</strong>
-            <p className="evaluation-workbench-harness-copy">
-              数据集入口仍然收口在 Harness 内部。需要整理金标准、核对发布版本或导出本地数据时，
-              直接从这里进入，不再跳去一个独立产品。
-            </p>
-            <div className="evaluation-workbench-history-compare">
-              <span>
-                {initialDatasetsOverview
-                  ? `草稿 ${initialDatasetsOverview.draftVersions.length} 个`
-                  : "可查看草稿队列"}
-              </span>
-              <span>
-                {initialDatasetsOverview
-                  ? `已发布 ${initialDatasetsOverview.publishedVersions.length} 个`
-                  : "可查看已发布版本"}
-              </span>
-            </div>
-            <a
-              className="workbench-secondary-action"
-              href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
-            >
-              打开数据与样本
-            </a>
-          </article>
-        )}
-      </section>
+        <p className="evaluation-workbench-empty">
+          Loading governed scope, runtime bindings, and candidate controls...
+        </p>
+      </article>
+    );
+  }
 
-      <section className="evaluation-workbench-harness-grid">
-        {overview == null && isLoading ? (
-          <article className="evaluation-workbench-panel">
-            <div className="evaluation-workbench-panel-header">
-              <h3>Harness 控制区</h3>
-              <span>正在加载</span>
-            </div>
-            <p className="evaluation-workbench-empty">正在加载真实控制区与作用域配置...</p>
-          </article>
-        ) : (
-          <>
-            <HarnessEnvironmentEditor
-              module={scopeProfile?.module ?? "editing"}
-              manuscriptType={scopeProfile?.manuscript_type ?? "clinical_study"}
-              activeScope={scope}
-              preview={preview}
-              qualityPackages={overview?.qualityPackages ?? []}
-              executionProfiles={scopedExecutionProfiles}
-              runtimeBindings={scopedRuntimeBindings}
-              routingVersions={routingVersions}
-              selection={selection}
-              onModuleChange={handleModuleChange}
-              onSelectionChange={handleSelectionChange}
-              onPreview={() => void handlePreview()}
-              isMutating={isMutating}
-            />
-            <HarnessQualityLab
-              evaluationSuites={scopedEvaluationSuites}
-              selectedSuiteId={selectedSuiteId}
-              preview={preview}
-              latestRun={latestRun}
-              onSuiteChange={setSelectedSuiteId}
-              onLaunch={() => void handleLaunch()}
-              isMutating={isMutating}
-            />
-            <HarnessActivationGate
-              preview={preview}
-              reason={operatorReason}
-              onReasonChange={setOperatorReason}
-              onActivate={() => void handleActivate()}
-              onRollback={() => void handleRollback()}
-              isMutating={isMutating}
-            />
-          </>
-        )}
-      </section>
-    </>
+  return (
+    <section className="evaluation-workbench-operator-stack">
+      {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
+      {errorMessage ? <p className="evaluation-workbench-error">{errorMessage}</p> : null}
+
+      <article className="evaluation-workbench-panel evaluation-workbench-operator-summary">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Harness Control Plane</h3>
+          <span>Scope boundary</span>
+        </div>
+        <div className="evaluation-workbench-history-compare">
+          <span>Module: {scopeProfile?.module ?? "unresolved"}</span>
+          <span>Manuscript Type: {scopeProfile?.manuscript_type ?? "unresolved"}</span>
+          <span>
+            Template Family:{" "}
+            {scopeProfile == null
+              ? "unresolved"
+              : activeTemplateFamily
+                ? `${activeTemplateFamily.name} (${activeTemplateFamily.id})`
+                : scopeProfile.template_family_id}
+          </span>
+        </div>
+      </article>
+
+      <HarnessEnvironmentEditor
+        module={scopeProfile?.module ?? "editing"}
+        manuscriptType={scopeProfile?.manuscript_type ?? "clinical_study"}
+        availableManuscriptTypes={availableManuscriptTypes}
+        templateFamilyName={activeTemplateFamily?.name ?? null}
+        templateFamilyId={scopeProfile?.template_family_id ?? null}
+        activeScope={scope}
+        preview={preview}
+        qualityPackages={overview?.qualityPackages ?? []}
+        executionProfiles={scopedExecutionProfiles}
+        runtimeBindings={scopedRuntimeBindings}
+        routingVersions={routingVersions}
+        selection={selection}
+        onModuleChange={handleModuleChange}
+        onManuscriptTypeChange={handleManuscriptTypeChange}
+        onSelectionChange={handleSelectionChange}
+        onPreview={() => void handlePreview()}
+        isMutating={isMutating}
+      />
+
+      <HarnessQualityLab
+        evaluationSuites={scopedEvaluationSuites}
+        selectedSuiteId={selectedSuiteId}
+        preview={preview}
+        latestRun={latestRun}
+        onSuiteChange={setSelectedSuiteId}
+        onLaunch={() => void handleLaunch()}
+        isMutating={isMutating}
+      />
+
+      <HarnessActivationGate
+        preview={preview}
+        reason={operatorReason}
+        onReasonChange={setOperatorReason}
+        onActivate={() => void handleActivate()}
+        onRollback={() => void handleRollback()}
+        isMutating={isMutating}
+      />
+    </section>
   );
 }
 
@@ -468,6 +463,62 @@ function resolveScopeProfile(
   }
 
   return overview.executionProfiles.find((profile) => buildScopeKey(profile) === scopeKey) ?? null;
+}
+
+function resolveManuscriptTypesForModule(
+  overview: AdminGovernanceOverview | null,
+  module: TemplateModule | null,
+): ManuscriptType[] {
+  if (overview == null || module == null) {
+    return [];
+  }
+
+  return [...new Set(
+    overview.executionProfiles
+      .filter((profile) => profile.module === module)
+      .map((profile) => profile.manuscript_type),
+  )];
+}
+
+function resolveTemplateFamily(
+  overview: AdminGovernanceOverview | null,
+  scopeProfile: ModuleExecutionProfileViewModel | null,
+) {
+  if (overview == null || scopeProfile == null) {
+    return null;
+  }
+
+  return (
+    overview.templateFamilies.find((family) => family.id === scopeProfile.template_family_id) ??
+    null
+  );
+}
+
+function resolvePreferredScopeProfile(
+  overview: AdminGovernanceOverview | null,
+  input: {
+    module: TemplateModule;
+    manuscriptType: ManuscriptType;
+    preferredTemplateFamilyId: string | null;
+  },
+) {
+  if (overview == null) {
+    return null;
+  }
+
+  return (
+    overview.executionProfiles.find(
+      (profile) =>
+        profile.module === input.module &&
+        profile.manuscript_type === input.manuscriptType &&
+        profile.template_family_id === input.preferredTemplateFamilyId,
+    ) ??
+    overview.executionProfiles.find(
+      (profile) =>
+        profile.module === input.module && profile.manuscript_type === input.manuscriptType,
+    ) ??
+    null
+  );
 }
 
 function buildScopeKey(profile: ModuleExecutionProfileViewModel) {
@@ -599,10 +650,6 @@ function buildFrozenBinding(
   };
 }
 
-function buildHarnessNavLinkClassName(isActive: boolean) {
-  return `evaluation-workbench-harness-nav-link${isActive ? " is-active" : ""}`;
-}
-
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) {
     return error.message;
@@ -612,5 +659,5 @@ function toErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "暂时无法更新 Harness 控制区。";
+  return "Unable to update the Harness control plane right now.";
 }

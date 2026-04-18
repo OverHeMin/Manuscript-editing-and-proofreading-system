@@ -1721,6 +1721,7 @@ export function createInMemoryApiRuntime(input: {
       agentProfileRepository,
       agentRuntimeRepository,
       runtimeBindingRepository,
+      verificationOpsRepository,
       retrievalPresetRepository,
       manualReviewPolicyRepository,
       toolPermissionPolicyRepository,
@@ -2323,6 +2324,7 @@ function seedDemoWorkbenchData(input: {
   agentProfileRepository: InMemoryAgentProfileRepository;
   agentRuntimeRepository: InMemoryAgentRuntimeRepository;
   runtimeBindingRepository: InMemoryRuntimeBindingRepository;
+  verificationOpsRepository: InMemoryVerificationOpsRepository;
   retrievalPresetRepository: InMemoryRetrievalPresetRepository;
   manualReviewPolicyRepository: InMemoryManualReviewPolicyRepository;
   toolPermissionPolicyRepository: InMemoryToolPermissionPolicyRepository;
@@ -2394,6 +2396,15 @@ function seedDemoWorkbenchData(input: {
     version_no: 1,
     status: "published",
     prompt: "Seeded proofreading prompt",
+  });
+  void input.moduleTemplateRepository.save({
+    id: "template-editing-preview-2",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    version_no: 2,
+    status: "published",
+    prompt: "Seeded editing preview prompt",
   });
 
   void input.templateFamilyRepository.saveContentModule({
@@ -2672,6 +2683,14 @@ function seedDemoWorkbenchData(input: {
     module: "proofreading",
     manuscript_types: ["clinical_study"],
   });
+  void input.promptSkillRegistryRepository.savePromptTemplate({
+    id: "prompt-editing-preview-2",
+    name: "editing_preview",
+    version: "2.0.0",
+    status: "published",
+    module: "editing",
+    manuscript_types: ["clinical_study"],
+  });
   void input.promptSkillRegistryRepository.saveSkillPackage({
     id: "skill-screening-1",
     name: "screening_skills",
@@ -2695,6 +2714,14 @@ function seedDemoWorkbenchData(input: {
     scope: "admin_only",
     status: "published",
     applies_to_modules: ["proofreading"],
+  });
+  void input.promptSkillRegistryRepository.saveSkillPackage({
+    id: "skill-editing-preview-2",
+    name: "editing_preview_skills",
+    version: "2.0.0",
+    scope: "admin_only",
+    status: "published",
+    applies_to_modules: ["editing"],
   });
 
   seedGovernedKnowledgeAsset({
@@ -2943,6 +2970,137 @@ function seedDemoWorkbenchData(input: {
     status: "active",
     version: 1,
   });
+  void input.executionGovernanceRepository.saveProfile({
+    id: "profile-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    module_template_id: "template-editing-preview-2",
+    rule_set_id: "rule-set-editing-1",
+    prompt_template_id: "prompt-editing-preview-2",
+    skill_package_ids: ["skill-editing-preview-2"],
+    knowledge_binding_mode: "profile_plus_dynamic",
+    status: "draft",
+    version: 2,
+  });
+
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-screening-1",
+    name: "Screening Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-editing-1",
+    name: "Editing Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveVerificationCheckProfile({
+    id: "check-profile-proofreading-1",
+    name: "Proofreading Browser QA",
+    check_type: "browser_qa",
+    status: "published",
+    tool_ids: [],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-screening-1",
+    name: "Screening Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-editing-1",
+    name: "Editing Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveReleaseCheckProfile({
+    id: "release-profile-proofreading-1",
+    name: "Proofreading Release Gate",
+    check_type: "deploy_verification",
+    status: "published",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-screening-1",
+    name: "Screening Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    module_scope: ["screening"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-editing-1",
+    name: "Editing Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    module_scope: ["editing"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
+  void input.verificationOpsRepository.saveEvaluationSuite({
+    id: "suite-proofreading-1",
+    name: "Proofreading Governed Evaluation",
+    suite_type: "regression",
+    status: "active",
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    module_scope: ["proofreading"],
+    requires_production_baseline: false,
+    supports_ab_comparison: true,
+    hard_gate_policy: {
+      must_use_deidentified_samples: true,
+      requires_parsable_output: true,
+    },
+    score_weights: {
+      structure: 0.2,
+      terminology: 0.2,
+      knowledge_coverage: 0.2,
+      risk_detection: 0.2,
+      human_edit_burden: 0.1,
+      cost_and_latency: 0.1,
+    },
+    admin_only: true,
+  });
 
   void input.sandboxProfileRepository.save({
     id: "sandbox-screening-1",
@@ -2967,6 +3125,16 @@ function seedDemoWorkbenchData(input: {
   void input.sandboxProfileRepository.save({
     id: "sandbox-proofreading-1",
     name: "Proofreading Sandbox",
+    status: "active",
+    sandbox_mode: "workspace_write",
+    network_access: false,
+    approval_required: true,
+    allowed_tool_ids: [],
+    admin_only: true,
+  });
+  void input.sandboxProfileRepository.save({
+    id: "sandbox-editing-preview-2",
+    name: "Editing Preview Sandbox",
     status: "active",
     sandbox_mode: "workspace_write",
     network_access: false,
@@ -3005,6 +3173,16 @@ function seedDemoWorkbenchData(input: {
     runtime_slot: "proofreading",
     admin_only: true,
   });
+  void input.agentRuntimeRepository.save({
+    id: "runtime-editing-preview-2",
+    name: "Editing Preview Runtime",
+    adapter: "deepagents",
+    status: "active",
+    sandbox_profile_id: "sandbox-editing-preview-2",
+    allowed_modules: ["editing"],
+    runtime_slot: "editing",
+    admin_only: true,
+  });
 
   void input.agentProfileRepository.save({
     id: "agent-profile-screening-1",
@@ -3030,6 +3208,15 @@ function seedDemoWorkbenchData(input: {
     role_key: "subagent",
     status: "published",
     module_scope: ["proofreading"],
+    manuscript_types: ["clinical_study"],
+    admin_only: true,
+  });
+  void input.agentProfileRepository.save({
+    id: "agent-profile-editing-preview-2",
+    name: "Editing Preview Executor",
+    role_key: "subagent",
+    status: "published",
+    module_scope: ["editing"],
     manuscript_types: ["clinical_study"],
     admin_only: true,
   });
@@ -3064,6 +3251,16 @@ function seedDemoWorkbenchData(input: {
     write_requires_confirmation: false,
     admin_only: true,
   });
+  void input.toolPermissionPolicyRepository.save({
+    id: "policy-editing-preview-2",
+    name: "Editing Preview Policy",
+    status: "active",
+    default_mode: "read",
+    allowed_tool_ids: [],
+    high_risk_tool_ids: [],
+    write_requires_confirmation: false,
+    admin_only: true,
+  });
 
   void input.runtimeBindingRepository.save({
     id: "binding-screening-1",
@@ -3077,9 +3274,9 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-screening-1",
     skill_package_ids: ["skill-screening-1"],
     execution_profile_id: "profile-screening-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-screening-1"],
+    evaluation_suite_ids: ["suite-screening-1"],
+    release_check_profile_id: "release-profile-screening-1",
     status: "active",
     version: 1,
   });
@@ -3095,9 +3292,9 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-editing-1",
     skill_package_ids: ["skill-editing-1"],
     execution_profile_id: "profile-editing-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    evaluation_suite_ids: ["suite-editing-1"],
+    release_check_profile_id: "release-profile-editing-1",
     status: "active",
     version: 1,
   });
@@ -3113,11 +3310,29 @@ function seedDemoWorkbenchData(input: {
     prompt_template_id: "prompt-proofreading-1",
     skill_package_ids: ["skill-proofreading-1"],
     execution_profile_id: "profile-proofreading-1",
-    verification_check_profile_ids: [],
-    evaluation_suite_ids: [],
-    release_check_profile_id: undefined,
+    verification_check_profile_ids: ["check-profile-proofreading-1"],
+    evaluation_suite_ids: ["suite-proofreading-1"],
+    release_check_profile_id: "release-profile-proofreading-1",
     status: "active",
     version: 1,
+  });
+  void input.runtimeBindingRepository.save({
+    id: "binding-editing-preview-2",
+    module: "editing",
+    manuscript_type: "clinical_study",
+    template_family_id: "family-seeded-1",
+    runtime_id: "runtime-editing-preview-2",
+    sandbox_profile_id: "sandbox-editing-preview-2",
+    agent_profile_id: "agent-profile-editing-preview-2",
+    tool_permission_policy_id: "policy-editing-preview-2",
+    prompt_template_id: "prompt-editing-preview-2",
+    skill_package_ids: ["skill-editing-preview-2"],
+    execution_profile_id: "profile-editing-preview-2",
+    verification_check_profile_ids: ["check-profile-editing-1"],
+    evaluation_suite_ids: ["suite-editing-1"],
+    release_check_profile_id: "release-profile-editing-1",
+    status: "draft",
+    version: 2,
   });
 
   void input.modelRegistryRepository.save({
@@ -3144,6 +3359,14 @@ function seedDemoWorkbenchData(input: {
     allowed_modules: ["proofreading"],
     is_prod_allowed: true,
   });
+  void input.modelRegistryRepository.save({
+    id: "model-editing-preview-2",
+    provider: "openai",
+    model_name: "editing-preview-model",
+    model_version: "2026-04-01",
+    allowed_modules: ["editing"],
+    is_prod_allowed: true,
+  });
   void input.modelRoutingPolicyRepository.save({
     system_default_model_id: undefined,
     module_defaults: {
@@ -3152,6 +3375,40 @@ function seedDemoWorkbenchData(input: {
       proofreading: "model-proofreading-1",
     },
     template_overrides: {},
+  });
+  void input.modelRoutingGovernanceRepository.saveScope({
+    id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    active_version_id: "routing-version-editing-1",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  void input.modelRoutingGovernanceRepository.saveVersion({
+    id: "routing-version-editing-1",
+    policy_scope_id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 1,
+    primary_model_id: "model-editing-1",
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-1" }],
+    status: "active",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
+  void input.modelRoutingGovernanceRepository.saveVersion({
+    id: "routing-version-editing-preview-2",
+    policy_scope_id: "routing-policy-editing-1",
+    scope_kind: "module",
+    scope_value: "editing",
+    version_no: 2,
+    primary_model_id: "model-editing-preview-2",
+    fallback_model_ids: [],
+    evidence_links: [{ kind: "evaluation_run", id: "run-editing-2" }],
+    status: "approved",
+    created_at: "2026-03-31T08:10:00.000Z",
+    updated_at: "2026-03-31T08:10:00.000Z",
   });
 
   void input.retrievalPresetRepository.save({

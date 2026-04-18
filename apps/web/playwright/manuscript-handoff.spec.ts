@@ -135,7 +135,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     semanticTableReportTarget,
   );
   await expect(page.locator("body")).toContainText(
-    "生成校对终稿前仍需人工确认。",
+    "用已经确认的校对草稿完成定稿，准备发布或导出。",
   );
   await expect(page.getByRole("button", { name: "确认校对定稿" })).toBeEnabled();
 

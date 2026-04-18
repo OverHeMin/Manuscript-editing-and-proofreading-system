@@ -67,7 +67,7 @@ export function HarnessDatasetsWorkbenchPage({
   }
 
   return (
-    <section className="harness-datasets-workbench">
+    <section className={`harness-datasets-workbench${embedded ? " is-embedded" : ""}`}>
       {embedded ? null : (
         <header className="harness-datasets-hero">
           <div className="harness-datasets-hero-copy">
@@ -90,6 +90,15 @@ export function HarnessDatasetsWorkbenchPage({
         <p className="harness-datasets-status" role="status">
           {statusMessage}
         </p>
+      ) : null}
+
+      {embedded ? (
+        <section className="harness-datasets-embedded-banner">
+          <strong>Harness 数据与样本</strong>
+          <p className="harness-datasets-copy">
+            当前数据集视图仍然属于同一个 Harness 工作区，用于在运行治理链路里直接核对样本、规则和导出状态。
+          </p>
+        </section>
       ) : null}
 
       {errorMessage ? (

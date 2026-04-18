@@ -543,6 +543,64 @@ function createHarnessPreviewFixture() {
   };
 }
 
+function createHarnessDatasetsOverviewFixture() {
+  return {
+    exportRootDir: ".local-data/harness-exports/development",
+    rubrics: [],
+    draftVersions: [
+      {
+        id: "draft-1",
+        familyId: "family-1",
+        familyName: "Editing working set",
+        familyScope: {
+          module: "editing",
+          manuscriptTypes: ["clinical_study"],
+          measureFocus: "conformance",
+        },
+        versionNo: 1,
+        status: "draft",
+        itemCount: 2,
+        createdBy: "persistent.admin",
+        createdAt: "2026-04-16T10:00:00.000Z",
+        deidentificationGatePassed: true,
+        humanReviewGatePassed: true,
+        rubricAssignment: {
+          status: "missing",
+        },
+        sourceProvenance: [],
+        publications: [],
+      },
+    ],
+    publishedVersions: [
+      {
+        id: "published-1",
+        familyId: "family-2",
+        familyName: "Editing released set",
+        familyScope: {
+          module: "editing",
+          manuscriptTypes: ["clinical_study"],
+          measureFocus: "conformance",
+        },
+        versionNo: 2,
+        status: "published",
+        itemCount: 4,
+        createdBy: "persistent.admin",
+        createdAt: "2026-04-16T12:00:00.000Z",
+        publishedBy: "persistent.admin",
+        publishedAt: "2026-04-16T13:00:00.000Z",
+        deidentificationGatePassed: true,
+        humanReviewGatePassed: true,
+        rubricAssignment: {
+          status: "missing",
+        },
+        sourceProvenance: [],
+        publications: [],
+      },
+    ],
+    archivedVersions: [],
+  };
+}
+
 test("evaluation workbench page renders an explicit loading state for server-side shell output", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchPage
@@ -634,29 +692,31 @@ test("evaluation workbench page lands on different first-view emphasis for overv
   assert.match(runsMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
 });
 
-test("evaluation workbench page renders the real harness control plane inside the owned workbench", () => {
+test("evaluation workbench page renders the real harness control plane inside a unified harness workspace", () => {
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchPage
       controller={{
         loadOverview: async () => createOperationsOverviewFixture(),
       } as never}
-      section="datasets"
+      section="overview"
       initialOverview={createOperationsOverviewFixture() as never}
       initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
       initialHarnessScope={createHarnessScopeFixture() as never}
       initialHarnessPreview={createHarnessPreviewFixture() as never}
-      initialDatasetsOverview={{
-        exportRootDir: ".local-data/harness-exports/development",
-        rubrics: [],
-        draftVersions: [],
-        publishedVersions: [],
-        archivedVersions: [],
-      } as never}
+      initialDatasetsOverview={createHarnessDatasetsOverviewFixture() as never}
     />,
   );
 
   assert.match(markup, /Harness 控制/u);
+  assert.match(markup, /evaluation-workbench-unified-layout/u);
+  assert.match(markup, /evaluation-workbench-workspace-sidebar/u);
+  assert.match(markup, /evaluation-workbench-workspace-main/u);
+  assert.match(markup, /evaluation-workbench-workspace-rail/u);
+  assert.match(markup, /Harness 工作区/u);
   assert.match(markup, /Environment Editor/u);
+  assert.match(markup, /Manuscript Type<\/span><select/u);
+  assert.match(markup, /Template Family/u);
+  assert.match(markup, /Editing Clinical Family/u);
   assert.match(markup, /Execution Profile/u);
   assert.match(markup, /Runtime Binding/u);
   assert.match(markup, /Routing Version/u);
@@ -668,6 +728,29 @@ test("evaluation workbench page renders the real harness control plane inside th
   assert.match(markup, /Activation Gate/u);
   assert.match(markup, /Activate Candidate Environment/u);
   assert.match(markup, /Roll Back Scope/u);
+  assert.match(markup, /数据与样本/u);
+  assert.match(markup, /草稿 1 个/u);
+  assert.match(markup, /已发布 1 个/u);
+});
+
+test("evaluation workbench datasets section keeps the dataset workbench inside the same harness workspace", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      section="datasets"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+      initialDatasetsOverview={createHarnessDatasetsOverviewFixture() as never}
+    />,
+  );
+
+  assert.match(markup, /evaluation-workbench-unified-layout/u);
+  assert.match(markup, /evaluation-workbench-workspace-main is-datasets/u);
+  assert.match(markup, /harness-datasets-workbench is-embedded/u);
   assert.match(markup, /待整理队列/u);
   assert.match(markup, /已发布版本/u);
 });
