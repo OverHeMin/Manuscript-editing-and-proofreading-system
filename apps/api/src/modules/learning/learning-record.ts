@@ -5,6 +5,7 @@ import type { RoleKey } from "../../users/roles.ts";
 
 export type LearningCandidateType =
   | "rule_candidate"
+  | "knowledge_candidate"
   | "case_pattern_candidate"
   | "template_update_candidate"
   | "prompt_optimization_candidate"
@@ -20,7 +21,8 @@ export type LearningCandidateStatus =
 export type LearningCandidateProvenanceKind =
   | "human_feedback"
   | "evaluation_experiment"
-  | "reviewed_case_snapshot";
+  | "reviewed_case_snapshot"
+  | "residual_issue";
 
 export type LearningCandidateReviewAction =
   | "submitted_for_review"

@@ -7,7 +7,8 @@ export type HumanFeedbackType =
 export type LearningCandidateSourceKind =
   | "human_feedback"
   | "evaluation_experiment"
-  | "reviewed_case_snapshot";
+  | "reviewed_case_snapshot"
+  | "residual_issue";
 export type LearningCandidateSnapshotKind =
   | "execution_snapshot"
   | "reviewed_case_snapshot";

@@ -294,6 +294,17 @@ import {
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import {
+  createResidualLearningApi,
+  InMemoryResidualIssueRepository,
+  ResidualIssueCandidateRouteNotSupportedError,
+  ResidualIssueExecutionLogRequiredError,
+  ResidualIssueNotFoundError,
+  ResidualIssueNotReadyForCandidateCreationError,
+  ResidualIssueSourceAssetRequiredError,
+  ResidualLearningServiceDependencyRequiredError,
+  ResidualLearningService,
+} from "../modules/residual-learning/index.ts";
+import {
   createRetrievalPresetApi,
   InMemoryRetrievalPresetRepository,
   RetrievalPresetService,
@@ -1086,6 +1097,21 @@ type HttpRouteMatch =
       candidateId: string;
     }
   | {
+      route: "residual-learning-list-issues";
+    }
+  | {
+      route: "residual-learning-get-issue";
+      issueId: string;
+    }
+  | {
+      route: "residual-learning-validate-issue";
+      issueId: string;
+    }
+  | {
+      route: "residual-learning-create-learning-candidate";
+      issueId: string;
+    }
+  | {
       route: "learning-governance-create-writeback";
     }
   | {
@@ -1259,6 +1285,7 @@ export interface ApiServerRuntime {
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   learningApi: ReturnType<typeof createLearningApi>;
+  residualLearningApi: ReturnType<typeof createResidualLearningApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   templateApi: ReturnType<typeof createTemplateApi>;
@@ -1371,6 +1398,7 @@ export function createInMemoryApiRuntime(input: {
   const agentProfileRepository = new InMemoryAgentProfileRepository();
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
   const executionTrackingRepository = new InMemoryExecutionTrackingRepository();
+  const residualIssueRepository = new InMemoryResidualIssueRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const learningGovernanceRepository = new InMemoryLearningGovernanceRepository();
   const harnessDatasetRepository = new InMemoryHarnessDatasetRepository();
@@ -1433,10 +1461,15 @@ export function createInMemoryApiRuntime(input: {
     documentAssetService,
     feedbackGovernanceService,
   });
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    learningService,
+  });
   const verificationOpsService = new VerificationOpsService({
     repository: verificationOpsRepository,
     reviewedCaseSnapshotRepository,
     learningService,
+    residualLearningService,
     knowledgeRetrievalRepository,
     toolGatewayRepository,
   });
@@ -1793,6 +1826,7 @@ export function createInMemoryApiRuntime(input: {
     agentExecutionService,
     agentExecutionOrchestrationService,
     documentStructureService,
+    residualLearningService,
   });
 
   return {
@@ -1883,6 +1917,10 @@ export function createInMemoryApiRuntime(input: {
       harnessDatasetService,
     }),
     learningApi: createLearningApi({ learningService }),
+    residualLearningApi: createResidualLearningApi({
+      residualLearningService,
+      verificationOpsService,
+    }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
       harnessDatasetService,
@@ -5305,6 +5343,37 @@ async function handleRoute(
         reviewNote: body.reviewNote,
       });
     }
+    case "residual-learning-list-issues":
+      await requirePermission(req, runtime, "learning.review");
+      return runtime.residualLearningApi.listIssues();
+    case "residual-learning-get-issue":
+      await requirePermission(req, runtime, "learning.review");
+      return runtime.residualLearningApi.getIssue({
+        issueId: routeMatch.issueId,
+      });
+    case "residual-learning-validate-issue": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.residualLearningApi.validateIssue({
+        ...((await readJsonBody(req)) as Omit<
+          Parameters<typeof runtime.residualLearningApi.validateIssue>[0],
+          "issueId" | "actorRole"
+        >),
+        issueId: routeMatch.issueId,
+        actorRole: session.user.role,
+      });
+    }
+    case "residual-learning-create-learning-candidate": {
+      const session = await requirePermission(req, runtime, "learning.review");
+      return runtime.residualLearningApi.createLearningCandidate({
+        ...((await readJsonBody(req)) as Omit<
+          Parameters<typeof runtime.residualLearningApi.createLearningCandidate>[0],
+          "issueId" | "requestedBy" | "requestedByRole"
+        >),
+        issueId: routeMatch.issueId,
+        requestedBy: session.user.id,
+        requestedByRole: session.user.role,
+      });
+    }
     case "learning-governance-create-writeback": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -7020,6 +7089,40 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "GET" && path === "/api/v1/residual-learning/issues") {
+    return { route: "residual-learning-list-issues" };
+  }
+
+  const validateResidualIssueMatch = path.match(
+    /^\/api\/v1\/residual-learning\/issues\/([^/]+)\/validate$/,
+  );
+  if (method === "POST" && validateResidualIssueMatch) {
+    return {
+      route: "residual-learning-validate-issue",
+      issueId: validateResidualIssueMatch[1],
+    };
+  }
+
+  const createResidualLearningCandidateMatch = path.match(
+    /^\/api\/v1\/residual-learning\/issues\/([^/]+)\/create-learning-candidate$/,
+  );
+  if (method === "POST" && createResidualLearningCandidateMatch) {
+    return {
+      route: "residual-learning-create-learning-candidate",
+      issueId: createResidualLearningCandidateMatch[1],
+    };
+  }
+
+  const residualIssueMatch = path.match(
+    /^\/api\/v1\/residual-learning\/issues\/([^/]+)$/,
+  );
+  if (method === "GET" && residualIssueMatch) {
+    return {
+      route: "residual-learning-get-issue",
+      issueId: residualIssueMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/learning-governance/writebacks") {
     return { route: "learning-governance-create-writeback" };
   }
@@ -7472,7 +7575,8 @@ function mapErrorToHttpResponse(
     error instanceof VerificationEvidenceNotFoundError ||
     error instanceof EvaluationEvidencePackNotFoundError ||
     error instanceof EvaluationSampleSetSourceSnapshotNotFoundError ||
-    error instanceof KnowledgeRetrievalSnapshotNotFoundError
+    error instanceof KnowledgeRetrievalSnapshotNotFoundError ||
+    error instanceof ResidualIssueNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -7528,6 +7632,8 @@ function mapErrorToHttpResponse(
     error instanceof HarnessDatasetSourceResolutionError ||
     error instanceof HarnessGoldSetVersionExportValidationError ||
     error instanceof HarnessGovernedRunStateError ||
+    error instanceof ResidualIssueCandidateRouteNotSupportedError ||
+    error instanceof ResidualIssueNotReadyForCandidateCreationError ||
     error instanceof TemplateRetrievalGoldSetVersionValidationError ||
     error instanceof DuplicateUsernameError ||
     error instanceof LastActiveAdminDisableError ||
@@ -7568,6 +7674,9 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationSampleSetSourceEligibilityError ||
     error instanceof VerificationRetrievalDependencyError ||
     error instanceof HarnessIntegrationValidationError ||
+    error instanceof ResidualIssueExecutionLogRequiredError ||
+    error instanceof ResidualIssueSourceAssetRequiredError ||
+    error instanceof ResidualLearningServiceDependencyRequiredError ||
     error instanceof ManuscriptBatchUploadLimitExceededError
   ) {
     return [400, { error: "invalid_request", message: error.message }];

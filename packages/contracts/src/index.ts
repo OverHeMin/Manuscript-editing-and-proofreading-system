@@ -6,6 +6,7 @@ export * from "./agent-tooling.js";
 export * from "./templates.js";
 export * from "./knowledge.js";
 export * from "./learning.js";
+export * from "./residual-learning.js";
 export * from "./learning-governance.js";
 export * from "./editorial-rules.js";
 export * from "./editorial-rule-packages.js";

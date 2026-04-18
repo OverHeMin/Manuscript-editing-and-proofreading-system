@@ -68,6 +68,10 @@ const migrationDescriptions = new Map<string, string>([
     "0043_rule_wizard_knowledge_item_binding_kind.sql",
     "Allow rule-wizard knowledge revisions to bind linked knowledge items explicitly.",
   ],
+  [
+    "0044_proofreading_residual_learning_v1.sql",
+    "Add residual issue persistence and governed learning enum support for proofreading self-learning.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

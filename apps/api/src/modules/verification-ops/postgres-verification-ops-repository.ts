@@ -773,6 +773,7 @@ export class PostgresVerificationOpsRepository
           and governed_source->>'agent_execution_log_id' = $6
           and governed_source->>'execution_snapshot_id' = $7
           and governed_source->>'output_asset_id' = $8
+          and governed_source->>'residual_issue_id' is not distinct from $9
         order by id asc
         limit 1
       `,
@@ -785,6 +786,7 @@ export class PostgresVerificationOpsRepository
         input.governedSource.agent_execution_log_id,
         input.governedSource.execution_snapshot_id,
         input.governedSource.output_asset_id,
+        input.governedSource.residual_issue_id ?? null,
       ],
     );
 

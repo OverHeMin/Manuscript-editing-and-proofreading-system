@@ -157,6 +157,11 @@ import {
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import {
+  createResidualLearningApi,
+  PostgresResidualIssueRepository,
+  ResidualLearningService,
+} from "../modules/residual-learning/index.ts";
+import {
   createRetrievalPresetApi,
   PostgresRetrievalPresetRepository,
   RetrievalPresetService,
@@ -299,6 +304,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const executionTrackingRepository = new PostgresExecutionTrackingRepository({
+    client: options.client,
+  });
+  const residualIssueRepository = new PostgresResidualIssueRepository({
     client: options.client,
   });
   const modelRegistryRepository = new PostgresModelRegistryRepository({
@@ -457,10 +465,15 @@ export function createPersistentGovernanceRuntime(
     feedbackGovernanceService,
     transactionManager: learningTransactionManager,
   });
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    learningService,
+  });
   const verificationOpsService = new VerificationOpsService({
     repository: verificationOpsRepository,
     reviewedCaseSnapshotRepository,
     learningService,
+    residualLearningService,
     knowledgeRetrievalRepository,
     toolGatewayRepository,
     transactionManager: verificationOpsTransactionManager,
@@ -806,6 +819,7 @@ export function createPersistentGovernanceRuntime(
     agentExecutionService,
     agentExecutionOrchestrationService,
     documentStructureService,
+    residualLearningService,
     transactionManager: workbenchTransactionManager,
   });
   const userAdminService = new UserAdminService({
@@ -918,6 +932,10 @@ export function createPersistentGovernanceRuntime(
       harnessDatasetService,
     }),
     learningApi: createLearningApi({ learningService }),
+    residualLearningApi: createResidualLearningApi({
+      residualLearningService,
+      verificationOpsService,
+    }),
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
       harnessDatasetService,

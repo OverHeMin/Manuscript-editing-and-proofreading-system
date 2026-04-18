@@ -361,3 +361,53 @@ test("seeded governed runs reuse an existing run for the same governed source an
   const runs = await verificationOpsService.listEvaluationRunsBySuiteId(activeSuite.id);
   assert.deepEqual(runs.map((run) => run.id), [firstRun.id]);
 });
+
+test("seeded governed runs do not reuse a run across different residual issues", async () => {
+  const {
+    verificationOpsService,
+    checkProfile1,
+  } = await createPublishedCheckProfiles();
+
+  const suite = await verificationOpsService.createEvaluationSuite("admin", {
+    name: "Governed Residual Suite",
+    suiteType: "regression",
+    verificationCheckProfileIds: [checkProfile1.id],
+    moduleScope: ["proofreading"],
+  });
+  const activeSuite = await verificationOpsService.activateEvaluationSuite(
+    suite.id,
+    "admin",
+  );
+
+  const governedSourceBase = {
+    source_kind: "governed_module_execution" as const,
+    manuscript_id: "manuscript-5",
+    source_module: "proofreading" as const,
+    agent_execution_log_id: "execution-log-5",
+    execution_snapshot_id: "snapshot-5",
+    output_asset_id: "asset-5",
+  };
+
+  const [firstRun] = await verificationOpsService.seedGovernedExecutionRuns(
+    "admin",
+    {
+      suiteIds: [activeSuite.id],
+      governedSource: {
+        ...governedSourceBase,
+        residual_issue_id: "residual-1",
+      },
+    },
+  );
+  const [secondRun] = await verificationOpsService.seedGovernedExecutionRuns(
+    "admin",
+    {
+      suiteIds: [activeSuite.id],
+      governedSource: {
+        ...governedSourceBase,
+        residual_issue_id: "residual-2",
+      },
+    },
+  );
+
+  assert.notEqual(secondRun.id, firstRun.id);
+});

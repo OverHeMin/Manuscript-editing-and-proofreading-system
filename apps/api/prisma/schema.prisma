@@ -136,6 +136,7 @@ enum ManuscriptModuleScope {
 
 enum LearningCandidateType {
   rule_candidate
+  knowledge_candidate
   case_pattern_candidate
   template_update_candidate
   prompt_optimization_candidate
@@ -148,6 +149,52 @@ enum LearningCandidateStatus {
   approved
   rejected
   archived
+}
+
+enum ResidualIssueSourceStage {
+  quality_engine
+  rule_residual
+  model_residual
+}
+
+enum ResidualConfidenceBand {
+  L0_observation
+  L1_review_pending
+  L2_candidate_ready
+  L3_strongly_reusable
+}
+
+enum ResidualIssueRiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum ResidualIssueRoute {
+  rule_candidate
+  knowledge_candidate
+  prompt_template_candidate
+  manual_only
+  evidence_only
+}
+
+enum ResidualIssueStatus {
+  observed
+  validation_pending
+  candidate_ready
+  validation_failed
+  manual_only
+  evidence_only
+  candidate_created
+  archived
+}
+
+enum ResidualHarnessValidationStatus {
+  not_required
+  queued
+  passed
+  failed
 }
 
 enum ModelProvider {
@@ -402,6 +449,49 @@ model LearningCandidate {
   snapshotAsset     DocumentAsset?          @relation("SnapshotAsset", fields: [snapshotAssetId], references: [id], onDelete: SetNull)
 
   @@map("learning_candidates")
+}
+
+model ResidualIssue {
+  id                      String                          @id @db.Text
+  module                  ModuleType
+  manuscriptId            String                          @map("manuscript_id") @db.Uuid
+  manuscriptType          ManuscriptType                  @map("manuscript_type")
+  jobId                   String?                         @map("job_id") @db.Uuid
+  executionSnapshotId     String                          @map("execution_snapshot_id") @db.Text
+  agentExecutionLogId     String?                         @map("agent_execution_log_id") @db.Text
+  outputAssetId           String?                         @map("output_asset_id") @db.Uuid
+  executionProfileId      String?                         @map("execution_profile_id") @db.Text
+  runtimeBindingId        String?                         @map("runtime_binding_id") @db.Text
+  promptTemplateId        String?                         @map("prompt_template_id") @db.Text
+  retrievalSnapshotId     String?                         @map("retrieval_snapshot_id") @db.Uuid
+  issueType               String                          @map("issue_type") @db.Text
+  sourceStage             ResidualIssueSourceStage        @map("source_stage")
+  excerpt                 String?                         @db.Text
+  location                Json                            @default("{}")
+  suggestion              String?                         @db.Text
+  rationale               String?                         @db.Text
+  relatedRuleIds          String[]                        @default([]) @map("related_rule_ids")
+  relatedKnowledgeItemIds String[]                        @default([]) @map("related_knowledge_item_ids")
+  relatedQualityIssueIds  String[]                        @default([]) @map("related_quality_issue_ids")
+  noveltyKey              String                          @map("novelty_key") @db.Text
+  recurrenceCount         Int                             @default(1) @map("recurrence_count")
+  modelConfidence         Float?                          @map("model_confidence")
+  signalBreakdown         Json                            @default("{}") @map("signal_breakdown")
+  systemConfidenceBand    ResidualConfidenceBand          @map("system_confidence_band")
+  riskLevel               ResidualIssueRiskLevel          @default(low) @map("risk_level")
+  recommendedRoute        ResidualIssueRoute              @map("recommended_route")
+  status                  ResidualIssueStatus             @default(observed)
+  harnessValidationStatus ResidualHarnessValidationStatus @default(not_required) @map("harness_validation_status")
+  harnessRunId            String?                         @map("harness_run_id") @db.Text
+  harnessEvidencePackId   String?                         @map("harness_evidence_pack_id") @db.Text
+  learningCandidateId     String?                         @map("learning_candidate_id") @db.Uuid
+  createdAt               DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([executionSnapshotId, createdAt], map: "residual_issues_execution_snapshot_created_at_idx")
+  @@index([noveltyKey, createdAt], map: "residual_issues_novelty_key_created_at_idx")
+  @@index([recommendedRoute, harnessValidationStatus, updatedAt], map: "residual_issues_route_validation_updated_at_idx")
+  @@map("residual_issues")
 }
 
 model ModelRegistry {

@@ -17,6 +17,7 @@ import {
   createScopedWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import type { ResidualLearningService } from "../residual-learning/index.ts";
 import {
   InMemoryVerificationOpsRepository,
 } from "./in-memory-verification-ops-repository.ts";
@@ -180,6 +181,10 @@ export interface VerificationOpsServiceOptions {
   repository: VerificationOpsRepository;
   reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   learningService?: VerificationOpsLearningService;
+  residualLearningService?: Pick<
+    ResidualLearningService,
+    "recordHarnessValidationResult"
+  >;
   knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
   toolGatewayRepository: ToolGatewayRepository;
   governedRunCheckExecutor?: GovernedRunCheckExecutor;
@@ -343,6 +348,10 @@ export class VerificationOpsService {
   private readonly repository: VerificationOpsRepository;
   private readonly reviewedCaseSnapshotRepository?: ReviewedCaseSnapshotRepository;
   private readonly learningService?: VerificationOpsLearningService;
+  private readonly residualLearningService?: Pick<
+    ResidualLearningService,
+    "recordHarnessValidationResult"
+  >;
   private readonly knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
   private readonly toolGatewayRepository: ToolGatewayRepository;
   private readonly governedRunCheckExecutor: GovernedRunCheckExecutor;
@@ -355,6 +364,7 @@ export class VerificationOpsService {
     this.repository = options.repository;
     this.reviewedCaseSnapshotRepository = options.reviewedCaseSnapshotRepository;
     this.learningService = options.learningService;
+    this.residualLearningService = options.residualLearningService;
     this.knowledgeRetrievalRepository = options.knowledgeRetrievalRepository;
     this.toolGatewayRepository = options.toolGatewayRepository;
     this.governedRunCheckExecutor =
@@ -913,6 +923,12 @@ export class VerificationOpsService {
           checkProfileId: checkProfile.id,
         });
         evidenceIds.push(evidence.id);
+        await this.recordResidualValidationOutcome({
+          runId: running.id,
+          governedSource,
+          checkProfile,
+          outcome: result.outcome,
+        });
         if (result.outcome === "failed") {
           status = "failed";
           break;
@@ -931,6 +947,12 @@ export class VerificationOpsService {
           checkProfileId: checkProfile.id,
         });
         evidenceIds.push(evidence.id);
+        await this.recordResidualValidationOutcome({
+          runId: running.id,
+          governedSource,
+          checkProfile,
+          outcome: "failed",
+        });
         break;
       }
     }
@@ -1306,6 +1328,27 @@ export class VerificationOpsService {
       evidence_pack: evidencePack,
       recommendation,
     };
+  }
+
+  private async recordResidualValidationOutcome(input: {
+    runId: string;
+    governedSource: GovernedExecutionEvaluationSourceRecord;
+    checkProfile: VerificationCheckProfileRecord;
+    outcome: "passed" | "failed";
+  }): Promise<void> {
+    if (
+      input.checkProfile.check_type !== "residual_issue_validation" ||
+      !input.governedSource.residual_issue_id ||
+      !this.residualLearningService
+    ) {
+      return;
+    }
+
+    await this.residualLearningService.recordHarnessValidationResult({
+      issueId: input.governedSource.residual_issue_id,
+      runId: input.runId,
+      outcome: input.outcome,
+    });
   }
 }
 

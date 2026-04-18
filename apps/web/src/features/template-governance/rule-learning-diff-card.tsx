@@ -146,6 +146,8 @@ function formatGovernedProvenance(value: string | null | undefined): string {
   switch (value) {
     case "reviewed_case_snapshot":
       return "人工复核快照";
+    case "residual_issue":
+      return "校对残余问题";
     case "governed_rule":
       return "已治理规则";
     case "governed_knowledge":

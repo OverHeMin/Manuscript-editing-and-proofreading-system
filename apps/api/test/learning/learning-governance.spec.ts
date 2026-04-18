@@ -525,6 +525,90 @@ test("learning candidates stay draft until governed provenance is attached", asy
   assert.equal(approved.body.status, "approved");
 });
 
+test("knowledge candidates also require governed residual provenance before approval", async () => {
+  const {
+    learningApi,
+    learningService,
+    candidateRepository,
+    documentAssetService,
+    executionTrackingRepository,
+    originalAsset,
+  } = await seedLearningContext();
+
+  const humanFinalAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "learning/manuscript-1/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+  });
+
+  const reviewedSnapshot = await learningApi.createReviewedCaseSnapshot({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    manuscriptType: "clinical_study",
+    humanFinalAssetId: humanFinalAsset.id,
+    deidentificationPassed: true,
+    requestedBy: "editor-1",
+    storageKey: "learning/manuscript-1/snapshot.bin",
+  });
+  const candidate = await learningApi.createLearningCandidate({
+    snapshotId: reviewedSnapshot.body.id,
+    type: "knowledge_candidate",
+    title: "Residual knowledge gap",
+    proposalText: "Promote a missed proofreading pattern into governed knowledge.",
+    requestedBy: "editor-1",
+    deidentificationPassed: true,
+  });
+
+  await assert.rejects(
+    () =>
+      learningApi.approveLearningCandidate({
+        candidateId: candidate.body.id,
+        actorRole: "knowledge_reviewer",
+      }),
+    LearningCandidateGovernedProvenanceRequiredError,
+  );
+
+  await seedGovernedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/proofreading/annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "annotated.docx",
+    parentAssetId: humanFinalAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: "job-1",
+  });
+
+  await learningService.attachGovernedSource({
+    candidateId: candidate.body.id,
+    sourceKind: "residual_issue",
+    residualIssueId: "residual-1",
+    snapshotId: "execution-snapshot-1",
+    sourceAssetId: sourceAsset.id,
+  });
+
+  const storedCandidate = await candidateRepository.findById(candidate.body.id);
+  assert.equal(storedCandidate?.governed_provenance_kind, "residual_issue");
+
+  const approved = await learningApi.approveLearningCandidate({
+    candidateId: candidate.body.id,
+    actorRole: "knowledge_reviewer",
+  });
+
+  assert.equal(approved.body.type, "knowledge_candidate");
+  assert.equal(approved.body.status, "approved");
+});
+
 test("learning candidates persist structured rule payloads and suggested editorial scope", async () => {
   const { learningApi, documentAssetService, originalAsset } =
     await seedLearningContext();

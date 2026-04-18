@@ -309,6 +309,84 @@ test("rule center recovery workspace replaces legacy learning-review copy and sh
   assert.match(markup, /Need stronger evidence before reuse\./u);
 });
 
+test("rule center recovery workspace renders residual issue provenance truthfully", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "knowledge_reviewer",
+      initialMode: "learning",
+      controller: {
+        loadRuleLedger: async () => ({
+          category: "recycled_candidate",
+          rows: [],
+        }),
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      },
+      initialLearningCandidates: [
+        {
+          id: "candidate-proofreading-residual-1",
+          type: "rule_candidate",
+          status: "pending_review",
+          module: "proofreading",
+          manuscript_type: "clinical_study",
+          governed_provenance_kind: "residual_issue",
+          snapshot_asset_id: "snapshot-asset-residual-1",
+          title: "Unit normalization from governed proofreading residual",
+          proposal_text: "Normalize mg per dL to mg/dL after residual validation.",
+          candidate_payload: {
+            before_fragment: "5 mg per dL",
+            after_fragment: "5 mg/dL",
+            evidence_summary: "Residual issue surfaced after the governed proofreading pass.",
+          },
+          created_by: "reviewer-1",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+        },
+      ],
+      initialSelectedLearningCandidateId: "candidate-proofreading-residual-1",
+      initialOverview: {
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+        retrievalInsights: {
+          status: "idle",
+          latestRun: null,
+          latestSnapshot: null,
+          signals: [],
+          message: "idle",
+        },
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /\u6821\u5bf9\u6b8b\u4f59\u95ee\u9898/u);
+  assert.doesNotMatch(markup, /\u672a\u6807\u6ce8/u);
+});
+
 test("rule candidate handoff builds an authoring prefill with family journal module and provenance context", () => {
   const prefill = buildRuleAuthoringPrefillFromLearningCandidate(
     {

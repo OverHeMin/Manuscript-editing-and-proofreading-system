@@ -164,7 +164,8 @@ function governedSourcesEqual(
     left.source_module === right.source_module &&
     left.agent_execution_log_id === right.agent_execution_log_id &&
     left.execution_snapshot_id === right.execution_snapshot_id &&
-    left.output_asset_id === right.output_asset_id
+    left.output_asset_id === right.output_asset_id &&
+    left.residual_issue_id === right.residual_issue_id
   );
 }
 
