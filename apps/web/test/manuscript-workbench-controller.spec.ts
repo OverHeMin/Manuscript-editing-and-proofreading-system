@@ -2312,3 +2312,81 @@ test("manuscript workbench controller hydrates referenced knowledge titles for m
   );
 });
 
+test("manuscript workbench controller submits operator feedback and creates a governed learning candidate handoff", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/feedback-governance/manual-feedback-handoffs"
+      ) {
+        return {
+          status: 201,
+          body: {
+            feedback: {
+              id: "feedback-1",
+              manuscript_id: "manuscript-1",
+              module: "editing",
+              snapshot_id: "snapshot-editing-1",
+              feedback_type: "manual_correction",
+              feedback_text: "Terminology was matched to the wrong governed rule.",
+              created_by: "editor-1",
+              created_at: "2026-04-18T10:00:00.000Z",
+            },
+            learningCandidate: {
+              id: "candidate-1",
+              type: "rule_candidate",
+              status: "draft",
+              module: "editing",
+              manuscript_type: "clinical_study",
+              governed_provenance_kind: "human_feedback",
+              governed_feedback_record_id: "feedback-1",
+              snapshot_asset_id: "asset-edited-1",
+              title: "修正错误命中",
+              proposal_text:
+                "Terminology was matched to the wrong governed rule.",
+              created_by: "editor-1",
+              created_at: "2026-04-18T10:00:00.000Z",
+              updated_at: "2026-04-18T10:00:00.000Z",
+              review_actions: [],
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.submitManualFeedbackAndCreateCandidate({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    snapshotId: "snapshot-editing-1",
+    sourceAssetId: "asset-edited-1",
+    feedbackCategory: "incorrect_hit",
+    feedbackText: "Terminology was matched to the wrong governed rule.",
+  });
+
+  assert.equal(result.feedback.id, "feedback-1");
+  assert.equal(result.learningCandidate.id, "candidate-1");
+  assert.deepEqual(requests.map((request) => `${request.method} ${request.url}`), [
+    "POST /api/v1/feedback-governance/manual-feedback-handoffs",
+  ]);
+  assert.deepEqual(requests[0]?.body, {
+    input: {
+      manuscriptId: "manuscript-1",
+      module: "editing",
+      snapshotId: "snapshot-editing-1",
+      sourceAssetId: "asset-edited-1",
+      feedbackCategory: "incorrect_hit",
+      feedbackText: "Terminology was matched to the wrong governed rule.",
+    },
+  });
+});
+

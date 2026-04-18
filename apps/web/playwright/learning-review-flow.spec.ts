@@ -221,8 +221,136 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
 });
 
+test("admin can submit manual feedback from editing and open the selected learning candidate", async ({
+  page,
+  request,
+}) => {
+  await request.post(`${apiBaseUrl}/api/v1/auth/local/login`, {
+    data: {
+      username: "dev.admin",
+      password: "demo-password",
+    },
+  });
+
+  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
+    data: {
+      title: "Phase 8AE Manual Feedback Browser Smoke",
+      manuscriptType: "clinical_study",
+      createdBy: "ignored-by-server",
+      fileName: "phase8ae-source.docx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      fileContentBase64: semanticTableDocxBase64,
+    },
+  });
+  expect(uploadResponse.ok()).toBeTruthy();
+
+  const uploaded = (await uploadResponse.json()) as {
+    manuscript: {
+      id: string;
+    };
+  };
+  const manuscriptId = uploaded.manuscript.id;
+  const manualFeedbackNote = `Phase 8AE manual feedback ${manuscriptId}`;
+
+  await page.goto(`/#screening?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("heading", { name: screeningHeading })).toBeVisible();
+  await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
+    timeout: 10_000,
+  });
+
+  await page.getByRole("button", { name: runScreeningLabel }).click();
+  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await expect(editingLink).toBeVisible();
+
+  await navigateViaHashLink(page, editingLink);
+  await expect(page.getByRole("heading", { name: editingHeading })).toBeVisible();
+  await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
+    timeout: 10_000,
+  });
+
+  await page.getByRole("button", { name: runEditingLabel }).click();
+  const editedAsset = await waitForCurrentAsset(request, manuscriptId, "edited_docx");
+  await waitForJob(
+    request,
+    editedAsset.source_job_id ?? "",
+    (job) => (job.payload?.tableInspectionFindings?.length ?? 0) > 0,
+  );
+
+  const manualFeedbackCard = page.locator(".manuscript-workbench-manual-feedback");
+  const manualFeedbackSubmitButton = manualFeedbackCard.locator(
+    "button.manuscript-workbench-shortcut",
+  );
+  await expect(manualFeedbackCard).toBeVisible();
+  await expect(manualFeedbackSubmitButton).toBeDisabled();
+  await manualFeedbackCard.scrollIntoViewIfNeeded();
+
+  const incorrectHitRadio = manualFeedbackCard.getByRole("radio").nth(1);
+  await incorrectHitRadio.focus();
+  await incorrectHitRadio.press("Space");
+  await expect(incorrectHitRadio).toBeChecked();
+  await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
+  await expect(manualFeedbackSubmitButton).toBeEnabled();
+
+  await manualFeedbackSubmitButton.focus();
+  await manualFeedbackSubmitButton.press("Enter");
+
+  const ruleCenterLink = manualFeedbackCard.locator(
+    '.manuscript-workbench-manual-feedback-result a[href*="#template-governance?"]',
+  );
+  await expect(ruleCenterLink).toBeVisible();
+  const ruleCenterHref = await ruleCenterLink.getAttribute("href");
+  expect(ruleCenterHref).toBeTruthy();
+  expect(ruleCenterHref).toContain(`manuscriptId=${manuscriptId}`);
+  expect(ruleCenterHref).toContain("templateGovernanceView=rule-ledger");
+  expect(ruleCenterHref).toContain("ruleCenterMode=learning");
+  const learningCandidateId = parseLearningCandidateIdFromHashHref(ruleCenterHref ?? "");
+  expect(learningCandidateId).toBeTruthy();
+
+  const candidateResponse = await request.get(
+    `${apiBaseUrl}/api/v1/learning/candidates/${learningCandidateId}`,
+  );
+  expect(candidateResponse.ok()).toBeTruthy();
+  const candidate = (await candidateResponse.json()) as {
+    id: string;
+    status: string;
+    title?: string;
+    proposal_text?: string;
+    governed_provenance_kind?: string;
+    governed_feedback_record_id?: string;
+    candidate_payload?: {
+      feedbackCategory?: string;
+      manuscriptId?: string;
+      module?: string;
+    };
+  };
+  expect(candidate.status).toBe("pending_review");
+  expect(candidate.governed_provenance_kind).toBe("human_feedback");
+  expect(candidate.governed_feedback_record_id).toBeTruthy();
+  expect(candidate.proposal_text).toBe(manualFeedbackNote);
+  expect(candidate.candidate_payload?.feedbackCategory).toBe("incorrect_hit");
+  expect(candidate.candidate_payload?.manuscriptId).toBe(manuscriptId);
+  expect(candidate.candidate_payload?.module).toBe("editing");
+
+  await navigateViaHashLink(page, ruleCenterLink);
+  await expect
+    .poll(async () => page.evaluate(() => window.location.hash))
+    .toContain(`learningCandidateId=${learningCandidateId}`);
+  await expect(page.locator("body")).toContainText(manuscriptId);
+  await expect(page.locator("body")).toContainText(manualFeedbackNote);
+  await expect(page.locator("body")).toContainText(candidate.title ?? "");
+});
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseLearningCandidateIdFromHashHref(href: string): string | null {
+  const queryString = href.split("?", 2)[1] ?? "";
+  return new URLSearchParams(queryString).get("learningCandidateId");
 }
 
 async function navigateViaHashLink(

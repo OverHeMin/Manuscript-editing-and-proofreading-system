@@ -1,4 +1,5 @@
 import type { TemplateModule } from "../templates/types.ts";
+import type { LearningCandidateViewModel } from "../learning-review/types.ts";
 
 export type HumanFeedbackType =
   | "manual_confirmation"
@@ -39,4 +40,23 @@ export interface LinkLearningCandidateSourceInput {
   snapshotId: string;
   feedbackRecordId: string;
   sourceAssetId: string;
+}
+
+export type ManualFeedbackCategory =
+  | "missed_hit"
+  | "incorrect_hit"
+  | "missing_knowledge";
+
+export interface CreateManualFeedbackHandoffInput {
+  manuscriptId: string;
+  module: TemplateModule;
+  snapshotId: string;
+  sourceAssetId: string;
+  feedbackCategory: ManualFeedbackCategory;
+  feedbackText?: string;
+}
+
+export interface ManualFeedbackHandoffViewModel {
+  feedback: HumanFeedbackRecordViewModel;
+  learningCandidate: LearningCandidateViewModel;
 }

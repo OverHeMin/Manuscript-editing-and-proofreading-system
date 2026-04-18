@@ -6,6 +6,7 @@ import {
   type ApiHttpServer,
   type ApiServerRuntime,
 } from "../../src/http/api-http-server.ts";
+import type { HumanFeedbackRecord } from "../../src/modules/feedback-governance/feedback-governance-record.ts";
 import type { LearningCandidateRecord } from "../../src/modules/learning/learning-record.ts";
 import type { ResidualIssueRecord } from "../../src/modules/residual-learning/residual-learning-record.ts";
 import type { EvaluationRunRecord } from "../../src/modules/verification-ops/verification-ops-record.ts";
@@ -24,6 +25,13 @@ type ResidualLearningCandidateInput =
   Parameters<ResidualLearningApi["createLearningCandidate"]>[0];
 type ResidualValidationInput =
   Parameters<ResidualLearningApi["validateIssue"]>[0];
+type ManualFeedbackRuntime = ApiServerRuntime;
+type ManualFeedbackRecordInput =
+  Parameters<ManualFeedbackRuntime["feedbackGovernanceApi"]["recordHumanFeedback"]>[0]["input"];
+type HumanFeedbackGovernedCandidateInput =
+  Parameters<
+    ManualFeedbackRuntime["learningApi"]["createHumanFeedbackGovernedLearningCandidate"]
+  >[0];
 
 async function startServer(
   options: {
@@ -89,6 +97,22 @@ function buildLearningCandidateFixture(
     created_by: "dev-knowledge-reviewer",
     created_at: "2026-04-18T08:10:00.000Z",
     updated_at: "2026-04-18T08:10:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildHumanFeedbackFixture(
+  overrides: Partial<HumanFeedbackRecord> = {},
+): HumanFeedbackRecord {
+  return {
+    id: "human-feedback-http-demo-1",
+    manuscript_id: "manuscript-seeded-1",
+    module: "proofreading",
+    snapshot_id: "execution-snapshot-proofreading-1",
+    feedback_type: "manual_rejection",
+    feedback_text: "The proofreading run missed a governed terminology pattern.",
+    created_by: "dev-proofreader",
+    created_at: "2026-04-18T08:05:00.000Z",
     ...overrides,
   };
 }
@@ -1755,6 +1779,130 @@ test("http server preserves CORS headers on learning approval permission errors"
     );
     assert.equal(response.headers.get("access-control-allow-credentials"), "true");
     assert.equal(body.error, "forbidden");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("http server lets module operators submit manual feedback and create governed learning candidates without reviewer permissions", async () => {
+  const runtime = createInMemoryApiRuntime({
+    appEnv: "local",
+    seedDemoData: true,
+    uploadRootDir: process.cwd(),
+  }) as ManualFeedbackRuntime;
+  const feedbackCalls: ManualFeedbackRecordInput[] = [];
+  const candidateCalls: HumanFeedbackGovernedCandidateInput[] = [];
+
+  runtime.feedbackGovernanceApi = {
+    ...runtime.feedbackGovernanceApi,
+    recordHumanFeedback: async ({ input }) => {
+      feedbackCalls.push(input);
+      return {
+        status: 201,
+        body: buildHumanFeedbackFixture({
+          manuscript_id: input.manuscriptId,
+          module: input.module,
+          snapshot_id: input.snapshotId,
+          feedback_type: input.feedbackType,
+          feedback_text: input.feedbackText,
+          created_by: input.createdBy,
+        }),
+      };
+    },
+  };
+  runtime.learningApi = {
+    ...runtime.learningApi,
+    createHumanFeedbackGovernedLearningCandidate: async (
+      input: HumanFeedbackGovernedCandidateInput,
+    ) => {
+      candidateCalls.push(input);
+      return {
+        status: 201,
+        body: buildLearningCandidateFixture({
+          id: "learning-feedback-http-demo-1",
+          type: input.type,
+          module: input.module,
+          manuscript_type: input.manuscriptType as LearningCandidateRecord["manuscript_type"],
+          created_by: input.requestedBy,
+          title: input.title,
+          proposal_text: input.proposalText,
+          governed_provenance_kind: "human_feedback",
+          governed_feedback_record_id: input.feedbackRecordId,
+        }),
+      };
+    },
+  };
+
+  const { server, baseUrl } = await startServer({ runtime });
+
+  try {
+    const operatorCookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+
+    const response = await fetch(
+      `${baseUrl}/api/v1/feedback-governance/manual-feedback-handoffs`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: operatorCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            manuscriptId: "manuscript-seeded-1",
+            module: "proofreading",
+            snapshotId: "execution-snapshot-proofreading-1",
+            sourceAssetId: "proofreading-output-asset-1",
+            feedbackCategory: "missing_knowledge",
+            feedbackText:
+              "The proofreading result missed a reusable medical terminology knowledge point.",
+          },
+        }),
+      },
+    );
+    const responseBody = (await response.json()) as {
+      feedback: HumanFeedbackRecord;
+      learningCandidate: LearningCandidateRecord;
+    };
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(feedbackCalls, [
+      {
+        manuscriptId: "manuscript-seeded-1",
+        module: "proofreading",
+        snapshotId: "execution-snapshot-proofreading-1",
+        feedbackType: "manual_rejection",
+        feedbackText:
+          "The proofreading result missed a reusable medical terminology knowledge point.",
+        createdBy: "dev-proofreader",
+      },
+    ]);
+    assert.deepEqual(candidateCalls, [
+      {
+        snapshotId: "execution-snapshot-proofreading-1",
+        feedbackRecordId: "human-feedback-http-demo-1",
+        sourceAssetId: "proofreading-output-asset-1",
+        type: "knowledge_candidate",
+        module: "proofreading",
+        manuscriptType: "clinical_study",
+        requestedBy: "dev-proofreader",
+        requestedByRole: "proofreader",
+        title: "补充知识依据",
+        proposalText:
+          "The proofreading result missed a reusable medical terminology knowledge point.",
+        candidatePayload: {
+          feedbackCategory: "missing_knowledge",
+          manuscriptId: "manuscript-seeded-1",
+          module: "proofreading",
+        },
+      },
+    ]);
+    assert.equal(responseBody.feedback.created_by, "dev-proofreader");
+    assert.equal(responseBody.learningCandidate.created_by, "dev-proofreader");
+    assert.equal(responseBody.learningCandidate.governed_provenance_kind, "human_feedback");
+    assert.equal(
+      responseBody.learningCandidate.governed_feedback_record_id,
+      "human-feedback-http-demo-1",
+    );
   } finally {
     await stopServer(server);
   }

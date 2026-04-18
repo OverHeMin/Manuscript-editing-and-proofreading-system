@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
+import type { ManualFeedbackCategory } from "../feedback-governance/index.ts";
 import type {
   DocumentCurrentExportSelectionViewModel,
   DocumentAssetExportViewModel,
@@ -50,6 +51,20 @@ export interface WorkbenchActionResultViewModel {
 export interface WorkbenchStatusPillViewModel {
   tone: "neutral" | "success" | "error";
   label: string;
+}
+
+export interface ManuscriptWorkbenchManualFeedbackViewModel {
+  selectedCategory: ManualFeedbackCategory | "";
+  note: string;
+  isSubmitting: boolean;
+  lastSubmitted?: {
+    feedbackCategory: ManualFeedbackCategory;
+    feedbackRecordId: string;
+    learningCandidateId: string;
+  };
+  onCategoryChange(category: ManualFeedbackCategory): void;
+  onNoteChange(note: string): void;
+  onSubmit(): void;
 }
 
 export function buildLatestJobPostureDetails(
@@ -502,6 +517,7 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
+  manualFeedback?: ManuscriptWorkbenchManualFeedbackViewModel;
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   prefilledSampleSetItemId?: string;
@@ -516,6 +532,7 @@ export function ManuscriptWorkbenchSummary({
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
+  manualFeedback,
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   prefilledSampleSetItemId,
@@ -674,6 +691,87 @@ export function ManuscriptWorkbenchSummary({
             </a>
           ) : null}
         </SummaryCard>
+
+        {manualFeedback ? (
+          <SummaryCard title="人工反馈">
+            <div className="manuscript-workbench-manual-feedback">
+              <p className="manuscript-workbench-manual-feedback-copy">
+                这一步会把当前模块结果作为可治理证据提交到规则中心待审核，不会直接改动线上规则。
+              </p>
+              <div className="manuscript-workbench-manual-feedback-options">
+                {(
+                  [
+                    "missed_hit",
+                    "incorrect_hit",
+                    "missing_knowledge",
+                  ] as const
+                ).map((category) => (
+                  <label
+                    key={category}
+                    className="manuscript-workbench-manual-feedback-option"
+                  >
+                    <input
+                      type="radio"
+                      name={`manual-feedback-${workspace.manuscript.id}`}
+                      checked={manualFeedback.selectedCategory === category}
+                      onChange={() => manualFeedback.onCategoryChange(category)}
+                    />
+                    <span>{formatManualFeedbackCategoryLabel(category)}</span>
+                  </label>
+                ))}
+              </div>
+              <label className="manuscript-workbench-manual-feedback-note">
+                <span>补充说明</span>
+                <textarea
+                  value={manualFeedback.note}
+                  onChange={(event) => manualFeedback.onNoteChange(event.target.value)}
+                  placeholder="可补充这次没命中的位置、错误命中的原因，或缺少的知识依据。"
+                  rows={4}
+                />
+              </label>
+              <button
+                type="button"
+                className="manuscript-workbench-shortcut"
+                disabled={
+                  manualFeedback.isSubmitting ||
+                  manualFeedback.selectedCategory.length === 0
+                }
+                onClick={() => manualFeedback.onSubmit()}
+              >
+                {manualFeedback.isSubmitting ? "提交中..." : "提交到规则中心待审核"}
+              </button>
+              {manualFeedback.lastSubmitted ? (
+                <div className="manuscript-workbench-manual-feedback-result">
+                  <p>
+                    已提交至规则中心待审核：
+                    {formatManualFeedbackCategoryLabel(
+                      manualFeedback.lastSubmitted.feedbackCategory,
+                    )}
+                    ，候选 {manualFeedback.lastSubmitted.learningCandidateId}
+                  </p>
+                  {canOpenLearningReview ? (
+                    <a
+                      className="manuscript-workbench-shortcut"
+                      href={formatWorkbenchHash("template-governance", {
+                        manuscriptId: workspace.manuscript.id,
+                        templateGovernanceView: "rule-ledger",
+                        ruleCenterMode: "learning",
+                        learningCandidateId:
+                          manualFeedback.lastSubmitted.learningCandidateId,
+                      })}
+                    >
+                      前往规则中心
+                    </a>
+                  ) : (
+                    <p className="manuscript-workbench-manual-feedback-copy">
+                      当前角色无规则中心权限，候选已交由规则中心审核。
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </SummaryCard>
+        ) : null}
 
         <SummaryCard title="稿件概览">
           <SummaryMetric label="标题" value={workspace.manuscript.title} />
@@ -3148,6 +3246,17 @@ function formatAssetStatusLabel(status: string): string {
   }
 }
 
+function formatManualFeedbackCategoryLabel(category: ManualFeedbackCategory): string {
+  switch (category) {
+    case "missed_hit":
+      return "这次没命中";
+    case "incorrect_hit":
+      return "命中错误";
+    case "missing_knowledge":
+      return "缺少知识";
+  }
+}
+
 function formatActionResultActionLabel(actionLabel: string): string {
   switch (actionLabel) {
     case "Run Screening":
@@ -3174,12 +3283,20 @@ function formatActionResultActionLabel(actionLabel: string): string {
       return "导出当前资产";
     case "Publish Human Final":
       return "发布人工终稿";
+    case "Submit Manual Feedback":
+      return "提交人工反馈";
     default:
       return actionLabel;
   }
 }
 
 export function formatWorkbenchActionResultMessage(message: string): string {
+  const submittedManualFeedbackMatch =
+    /^Submitted manual feedback candidate (.+)$/u.exec(message);
+  if (submittedManualFeedbackMatch) {
+    return `已提交人工反馈并生成候选 ${submittedManualFeedbackMatch[1]}`;
+  }
+
   const createdAssetMatch = /^Created asset (.+)$/u.exec(message);
   if (createdAssetMatch) {
     return `已生成资产 ${createdAssetMatch[1]}`;
@@ -3294,12 +3411,22 @@ function formatActionResultDetailLabel(label: string): string {
       return "MIME 类型";
     case "Storage Key":
       return "存储键";
+    case "Feedback Type":
+      return "反馈类型";
+    case "Feedback Record":
+      return "反馈记录";
+    case "Learning Candidate":
+      return "学习候选";
     default:
       return label;
   }
 }
 
 function formatActionResultDetailValue(label: string, value: string): string {
+  if (label === "Feedback Type") {
+    return formatManualFeedbackCategoryLabel(value as ManualFeedbackCategory);
+  }
+
   if (label === "MIME Type" || label === "Download MIME Type") {
     return formatMimeTypeLabel(value);
   }

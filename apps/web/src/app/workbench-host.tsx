@@ -284,6 +284,7 @@ export function WorkbenchHost({
             initialMode="learning"
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+            initialSelectedLearningCandidateId={routeState.learningCandidateId}
           />
         ) : (
           <LearningReviewWorkbenchPage
@@ -316,6 +317,7 @@ export function WorkbenchHost({
             initialMode={routeState.ruleCenterMode ?? "authoring"}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
+            initialSelectedLearningCandidateId={routeState.learningCandidateId}
             initialView={routeState.templateGovernanceView ?? "overview"}
             initialSelectedRuleLedgerRowId={routeState.assetId}
           />
@@ -359,6 +361,7 @@ export function WorkbenchHost({
       knowledgeItemId: handoff?.knowledgeItemId,
       assetId: handoff?.assetId,
       revisionId: handoff?.revisionId,
+      learningCandidateId: handoff?.learningCandidateId,
       knowledgeView: handoff?.knowledgeView,
       templateGovernanceView: handoff?.templateGovernanceView,
       reviewedCaseSnapshotId: handoff?.reviewedCaseSnapshotId,
@@ -494,6 +497,7 @@ function resolveInitialWorkbenchRoute(
       knowledgeItemId: location.knowledgeItemId,
       assetId: location.assetId,
       revisionId: location.revisionId,
+      learningCandidateId: location.learningCandidateId,
       templateGovernanceView: "rule-ledger",
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,
       sampleSetItemId: location.sampleSetItemId,
@@ -513,6 +517,7 @@ function resolveInitialWorkbenchRoute(
       knowledgeItemId: location.knowledgeItemId,
       assetId: location.assetId,
       revisionId: location.revisionId,
+      learningCandidateId: location.learningCandidateId,
       knowledgeView: location.knowledgeView,
       templateGovernanceView: location.templateGovernanceView,
       reviewedCaseSnapshotId: location.reviewedCaseSnapshotId,

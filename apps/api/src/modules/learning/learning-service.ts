@@ -147,6 +147,23 @@ export interface CreateGovernedLearningCandidateInput
   governedSource: CreateGovernedLearningCandidateSourceInput;
 }
 
+export interface CreateHumanFeedbackGovernedLearningCandidateInput {
+  snapshotId: string;
+  feedbackRecordId: string;
+  sourceAssetId: string;
+  type: LearningCandidateType;
+  module: LearningCandidateRecord["module"];
+  manuscriptType: LearningCandidateRecord["manuscript_type"];
+  title?: string;
+  proposalText?: string;
+  requestedBy: string;
+  requestedByRole?: RoleKey;
+  candidatePayload?: Record<string, unknown>;
+  suggestedRuleObject?: string;
+  suggestedTemplateFamilyId?: string;
+  suggestedJournalTemplateId?: string;
+}
+
 export interface CreateResidualGovernedLearningCandidateInput {
   type: LearningCandidateType;
   module: LearningCandidateRecord["module"];
@@ -555,6 +572,45 @@ export class LearningService {
       candidateId: candidate.id,
       actorRole: input.requestedByRole,
       ...input.governedSource,
+    });
+
+    const updatedCandidate = await this.candidateRepository.findById(candidate.id);
+    if (!updatedCandidate) {
+      throw new LearningCandidateNotFoundError(candidate.id);
+    }
+
+    return updatedCandidate;
+  }
+
+  async createHumanFeedbackGovernedLearningCandidate(
+    input: CreateHumanFeedbackGovernedLearningCandidateInput,
+  ): Promise<LearningCandidateRecord> {
+    const timestamp = this.now().toISOString();
+    const candidate: LearningCandidateRecord = {
+      id: this.createId(),
+      type: input.type,
+      status: "draft",
+      module: input.module,
+      manuscript_type: input.manuscriptType,
+      title: input.title,
+      proposal_text: input.proposalText,
+      candidate_payload: input.candidatePayload,
+      suggested_rule_object: input.suggestedRuleObject,
+      suggested_template_family_id: input.suggestedTemplateFamilyId,
+      suggested_journal_template_id: input.suggestedJournalTemplateId,
+      created_by: input.requestedBy,
+      created_at: timestamp,
+      updated_at: timestamp,
+      review_actions: [],
+    };
+
+    await this.candidateRepository.save(candidate);
+    await this.attachGovernedSource({
+      candidateId: candidate.id,
+      snapshotId: input.snapshotId,
+      feedbackRecordId: input.feedbackRecordId,
+      sourceAssetId: input.sourceAssetId,
+      actorRole: input.requestedByRole,
     });
 
     const updatedCandidate = await this.candidateRepository.findById(candidate.id);

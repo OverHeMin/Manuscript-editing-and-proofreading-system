@@ -339,6 +339,107 @@ test("learning candidate approval is restricted to the dedicated learning review
   ]);
 });
 
+test("human feedback governed candidates can be created from execution snapshots without reviewed-case snapshots", async () => {
+  const {
+    learningService,
+    candidateRepository,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+  } = await seedLearningContext();
+  const governedLearningService = learningService as LearningService & {
+    createHumanFeedbackGovernedLearningCandidate: (input: {
+      snapshotId: string;
+      feedbackRecordId: string;
+      sourceAssetId: string;
+      type: "rule_candidate" | "knowledge_candidate";
+      module: "screening" | "editing" | "proofreading";
+      manuscriptType: "clinical_study" | "review" | "case_report" | "other";
+      requestedBy: string;
+      requestedByRole?: "screener" | "editor" | "proofreader" | "knowledge_reviewer" | "admin";
+      title?: string;
+      proposalText?: string;
+      candidatePayload?: Record<string, unknown>;
+    }) => Promise<{
+      id: string;
+      status: string;
+      module: string;
+      manuscript_type: string;
+      governed_provenance_kind?: string;
+      governed_feedback_record_id?: string;
+      human_final_asset_id?: string;
+      snapshot_asset_id?: string;
+    }>;
+  };
+
+  await executionTrackingRepository.saveSnapshot({
+    id: "execution-snapshot-feedback-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_id: "job-feedback-1",
+    execution_profile_id: "profile-feedback-1",
+    module_template_id: "template-feedback-1",
+    module_template_version_no: 1,
+    prompt_template_id: "prompt-feedback-1",
+    prompt_template_version: "1.0.0",
+    skill_package_ids: ["skill-feedback-1"],
+    skill_package_versions: ["1.0.0"],
+    model_id: "model-feedback-1",
+    knowledge_item_ids: ["knowledge-feedback-1"],
+    created_asset_ids: ["asset-feedback-source-1"],
+    created_at: "2026-03-27T09:59:00.000Z",
+  });
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/proofreading/final-proof-annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "proofreader-1",
+    fileName: "final-proof-annotated.docx",
+    sourceModule: "proofreading",
+    sourceJobId: "job-feedback-1",
+  });
+
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    snapshotId: "execution-snapshot-feedback-1",
+    feedbackType: "manual_correction",
+    feedbackText: "The proofreading output hit the wrong governed rule.",
+    createdBy: "proofreader-1",
+  });
+
+  const candidate =
+    await governedLearningService.createHumanFeedbackGovernedLearningCandidate({
+      snapshotId: "execution-snapshot-feedback-1",
+      feedbackRecordId: feedback.id,
+      sourceAssetId: sourceAsset.id,
+      type: "rule_candidate",
+      module: "proofreading",
+      manuscriptType: "clinical_study",
+      requestedBy: "proofreader-1",
+      requestedByRole: "proofreader",
+      title: "修正错误命中",
+      proposalText: "The proofreading output hit the wrong governed rule.",
+      candidatePayload: {
+        feedbackCategory: "incorrect_hit",
+      },
+    });
+  const storedCandidate = await candidateRepository.findById(candidate.id);
+
+  assert.equal(candidate.status, "pending_review");
+  assert.equal(candidate.module, "proofreading");
+  assert.equal(candidate.manuscript_type, "clinical_study");
+  assert.equal(candidate.governed_provenance_kind, "human_feedback");
+  assert.equal(candidate.governed_feedback_record_id, feedback.id);
+  assert.equal(candidate.human_final_asset_id, undefined);
+  assert.equal(candidate.snapshot_asset_id, undefined);
+  assert.equal(storedCandidate?.governed_provenance_kind, "human_feedback");
+  assert.equal(storedCandidate?.governed_feedback_record_id, feedback.id);
+});
+
 test("knowledge reviewers can reject governed learning candidates and keep audit notes", async () => {
   const {
     learningApi,
