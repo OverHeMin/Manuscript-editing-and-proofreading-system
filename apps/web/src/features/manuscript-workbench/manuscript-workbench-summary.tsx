@@ -696,7 +696,7 @@ export function ManuscriptWorkbenchSummary({
           <SummaryCard title="人工反馈">
             <div className="manuscript-workbench-manual-feedback">
               <p className="manuscript-workbench-manual-feedback-copy">
-                这一步会把当前模块结果作为可治理证据提交到规则中心待审核，不会直接改动线上规则。
+                这一步会把当前模块结果作为可治理证据提交到治理中心待审核，不会直接改动线上规则或知识。
               </p>
               <div className="manuscript-workbench-manual-feedback-options">
                 {(
@@ -716,7 +716,10 @@ export function ManuscriptWorkbenchSummary({
                       checked={manualFeedback.selectedCategory === category}
                       onChange={() => manualFeedback.onCategoryChange(category)}
                     />
-                    <span>{formatManualFeedbackCategoryLabel(category)}</span>
+                    <span>
+                      {formatManualFeedbackCategoryLabel(category)}
+                      <small>（{formatManualFeedbackCategoryHint(category)}）</small>
+                    </span>
                   </label>
                 ))}
               </div>
@@ -738,18 +741,24 @@ export function ManuscriptWorkbenchSummary({
                 }
                 onClick={() => manualFeedback.onSubmit()}
               >
-                {manualFeedback.isSubmitting ? "提交中..." : "提交到规则中心待审核"}
+                {manualFeedback.isSubmitting ? "提交中..." : "提交到治理中心待审核"}
               </button>
               {manualFeedback.lastSubmitted ? (
                 <div className="manuscript-workbench-manual-feedback-result">
                   <p>
-                    已提交至规则中心待审核：
+                    已生成{formatManualFeedbackCandidateLabel(
+                      manualFeedback.lastSubmitted.feedbackCategory,
+                    )}
+                    ：
                     {formatManualFeedbackCategoryLabel(
                       manualFeedback.lastSubmitted.feedbackCategory,
                     )}
                     ，候选 {manualFeedback.lastSubmitted.learningCandidateId}
                   </p>
-                  {canOpenLearningReview ? (
+                  {canOpenLearningReview &&
+                  shouldOpenManualFeedbackInRuleCenter(
+                    manualFeedback.lastSubmitted.feedbackCategory,
+                  ) ? (
                     <a
                       className="manuscript-workbench-shortcut"
                       href={formatWorkbenchHash("template-governance", {
@@ -760,11 +769,14 @@ export function ManuscriptWorkbenchSummary({
                           manualFeedback.lastSubmitted.learningCandidateId,
                       })}
                     >
-                      前往规则中心
+                      前往规则中心审核
                     </a>
                   ) : (
                     <p className="manuscript-workbench-manual-feedback-copy">
-                      当前角色无规则中心权限，候选已交由规则中心审核。
+                      {formatManualFeedbackSubmissionFollowup(
+                        manualFeedback.lastSubmitted.feedbackCategory,
+                        canOpenLearningReview,
+                      )}
                     </p>
                   )}
                 </div>
@@ -3255,6 +3267,48 @@ function formatManualFeedbackCategoryLabel(category: ManualFeedbackCategory): st
     case "missing_knowledge":
       return "缺少知识";
   }
+}
+
+function formatManualFeedbackCategoryHint(category: ManualFeedbackCategory): string {
+  switch (category) {
+    case "missed_hit":
+      return "将补充为规则候选";
+    case "incorrect_hit":
+      return "将修正为规则候选";
+    case "missing_knowledge":
+      return "将补充为知识候选";
+  }
+}
+
+function formatManualFeedbackCandidateLabel(category: ManualFeedbackCategory): string {
+  switch (category) {
+    case "missed_hit":
+    case "incorrect_hit":
+      return "规则候选";
+    case "missing_knowledge":
+      return "知识候选";
+  }
+}
+
+function shouldOpenManualFeedbackInRuleCenter(
+  category: ManualFeedbackCategory,
+): boolean {
+  return category !== "missing_knowledge";
+}
+
+function formatManualFeedbackSubmissionFollowup(
+  category: ManualFeedbackCategory,
+  canOpenLearningReview: boolean,
+): string {
+  if (category === "missing_knowledge") {
+    return "知识候选已进入知识审核队列，请在知识审核与质量回收中继续处理。";
+  }
+
+  if (canOpenLearningReview) {
+    return "规则候选已进入规则审核队列，请前往规则中心继续处理。";
+  }
+
+  return "当前角色无规则中心权限，规则候选已交由规则中心审核。";
 }
 
 function formatActionResultActionLabel(actionLabel: string): string {

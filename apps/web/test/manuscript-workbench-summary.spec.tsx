@@ -673,7 +673,7 @@ test("summary localizes readiness guidance, attention reasons, and overview temp
   assert.match(markup, /<span>基础模板族<\/span><strong>综述基础模板族<\/strong>/u);
 });
 
-test("summary renders operator feedback choices and opens the submitted learning candidate in the rule center", () => {
+test("summary renders operator feedback choices and explains rule-candidate routing after submit", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="editing"
@@ -700,12 +700,50 @@ test("summary renders operator feedback choices and opens the submitted learning
 
   assert.match(markup, /人工反馈/u);
   assert.match(markup, /这次没命中/u);
+  assert.match(markup, /将补充为规则候选/u);
   assert.match(markup, /命中错误/u);
+  assert.match(markup, /将修正为规则候选/u);
   assert.match(markup, /缺少知识/u);
-  assert.match(markup, /已提交至规则中心待审核/u);
+  assert.match(markup, /将补充为知识候选/u);
+  assert.match(markup, /提交到治理中心待审核/u);
+  assert.match(markup, /已生成规则候选/u);
   assert.match(markup, /candidate-manual-1/u);
   assert.match(
     markup,
     /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*learningCandidateId=candidate-manual-1/u,
   );
+});
+
+test("summary explains knowledge-candidate routing without sending operators to the rule center", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={createEditingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+      canOpenLearningReview
+      manualFeedback={{
+        selectedCategory: "missing_knowledge",
+        note: "The current governed set is missing a disease-specific evidence reference.",
+        isSubmitting: false,
+        lastSubmitted: {
+          feedbackCategory: "missing_knowledge",
+          feedbackRecordId: "feedback-knowledge-1",
+          learningCandidateId: "candidate-knowledge-1",
+        },
+        onCategoryChange: () => undefined,
+        onNoteChange: () => undefined,
+        onSubmit: () => undefined,
+      }}
+    />,
+  );
+
+  assert.match(markup, /已生成知识候选/u);
+  assert.match(markup, /candidate-knowledge-1/u);
+  assert.doesNotMatch(
+    markup,
+    /href="#template-governance\?[^"]*learningCandidateId=candidate-knowledge-1/u,
+  );
+  assert.doesNotMatch(markup, /前往规则中心/u);
 });
