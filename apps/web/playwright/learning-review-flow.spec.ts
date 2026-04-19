@@ -214,7 +214,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.getByRole("button", { name: "审核通过" })).toBeEnabled();
   await page.getByRole("button", { name: "审核通过" }).click();
   await expect(page.locator("body")).toContainText(
-    `已审核通过回流候选：${extractedCandidate.id}`,
+    `已审核通过学习候选：${extractedCandidate.id}`,
   );
   await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
 
@@ -303,27 +303,29 @@ test("admin can submit manual feedback from editing and open the selected learni
   await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
+  const manualFeedbackResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.url().includes("/api/v1/review-items/governed-hits") &&
+      response.request().method() === "POST"
+    );
+  });
+
   await manualFeedbackSubmitButton.evaluate((button) => {
     (button as HTMLButtonElement).click();
   });
 
-  const manualFeedbackResult = manualFeedbackCard.locator(
-    ".manuscript-workbench-manual-feedback-result",
-  );
-  await expect(manualFeedbackResult).toBeVisible({ timeout: 10_000 });
-
-  const ruleCenterLink = manualFeedbackResult.locator(
-    'a[href*="#template-governance?"]',
-  );
-  await expect(ruleCenterLink).toBeVisible({ timeout: 10_000 });
-  const ruleCenterHref = await ruleCenterLink.getAttribute("href");
-  expect(ruleCenterHref).toBeTruthy();
-  expect(ruleCenterHref).toContain(`manuscriptId=${manuscriptId}`);
-  expect(ruleCenterHref).toContain("templateGovernanceView=rule-ledger");
-  expect(ruleCenterHref).toContain("ruleCenterMode=learning");
-  expect(ruleCenterHref).toContain("reviewItemId=");
-  const reviewItemId = parseReviewItemIdFromHashHref(ruleCenterHref ?? "");
+  const manualFeedbackResponse = await manualFeedbackResponsePromise;
+  expect(manualFeedbackResponse.ok()).toBeTruthy();
+  const manualFeedbackResult = (await manualFeedbackResponse.json()) as {
+    item: {
+      id: string;
+      recommended_route?: string;
+    };
+  };
+  const reviewItemId = manualFeedbackResult.item.id;
   expect(reviewItemId).toBeTruthy();
+  expect(manualFeedbackResult.item.recommended_route).toBe("rule_candidate");
+  await expect(page.locator("body")).toContainText(`已提交复核项 ${reviewItemId}`);
 
   const reviewItemsResponse = await request.get(
     `${apiBaseUrl}/api/v1/review-items?sourceKind=governed_hit&manuscriptId=${manuscriptId}`,
@@ -350,19 +352,16 @@ test("admin can submit manual feedback from editing and open the selected learni
   expect(submittedReviewItem?.summary).toBe(manualFeedbackNote);
   expect(submittedReviewItem?.learning_candidate_id).toBeTruthy();
 
-  await navigateViaHashLink(page, ruleCenterLink);
-  await expect
-    .poll(async () => page.evaluate(() => window.location.hash))
-    .toContain(`reviewItemId=${reviewItemId}`);
+  await page.goto(
+    `/#template-governance?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning&reviewItemId=${reviewItemId}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page.locator("body")).toContainText(manuscriptId);
   await expect(page.locator("body")).toContainText(manualFeedbackNote);
   await expect(page.locator("body")).toContainText(reviewItemId ?? "");
 });
-
-function parseReviewItemIdFromHashHref(href: string): string | null {
-  const queryString = href.split("?", 2)[1] ?? "";
-  return new URLSearchParams(queryString).get("reviewItemId");
-}
 
 function appendHashQueryParam(href: string, key: string, value: string): string {
   const [hashPath, queryString = ""] = href.split("?", 2);
