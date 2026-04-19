@@ -197,9 +197,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");
 
-  await page
-    .getByRole("button", { name: new RegExp(escapeRegExp(candidateListLabel)) })
-    .click();
+  const extractedCandidateRowButton = page.locator(
+    `[data-review-item-id="${extractedCandidate.id}"]`,
+  );
+  await expect(extractedCandidateRowButton).toBeVisible();
+  await extractedCandidateRowButton.click();
   await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
@@ -280,7 +282,9 @@ test("admin can submit manual feedback from editing and open the selected learni
     (job) => (job.payload?.tableInspectionFindings?.length ?? 0) > 0,
   );
 
-  const manualFeedbackCard = page.locator(".manuscript-workbench-manual-feedback");
+  const manualFeedbackCard = page
+    .locator(".manuscript-workbench-manual-feedback")
+    .filter({ has: page.locator("textarea") });
   const manualFeedbackSubmitButton = manualFeedbackCard.locator(
     "button.manuscript-workbench-shortcut",
   );
@@ -343,10 +347,6 @@ test("admin can submit manual feedback from editing and open the selected learni
   await expect(page.locator("body")).toContainText(manualFeedbackNote);
   await expect(page.locator("body")).toContainText(candidate.title ?? "");
 });
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function parseLearningCandidateIdFromHashHref(href: string): string | null {
   const queryString = href.split("?", 2)[1] ?? "";
