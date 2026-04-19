@@ -192,7 +192,7 @@ test("admin can complete the governed learning review flow from manuscript hando
 
   await navigateViaHashLink(page, learningReviewLink);
   await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("规则中心 · 转规则站");
+  await expect(page.locator("body")).toContainText("规则中心 · 统一复核中心");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");
