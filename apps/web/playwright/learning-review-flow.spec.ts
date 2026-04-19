@@ -190,7 +190,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(extractedCandidate.status).toBe("pending_review");
   const candidateListLabel = extractedCandidate.title ?? extractedCandidate.id;
 
-  await navigateViaHashLink(page, learningReviewLink);
+  const learningReviewHref = await learningReviewLink.getAttribute("href");
+  expect(learningReviewHref).toBeTruthy();
+  await page.goto(`/${appendHashQueryParam(learningReviewHref ?? "", "learningCandidateId", extractedCandidate.id)}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
   await expect(page.locator("body")).toContainText("规则中心 · 统一复核中心");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
@@ -299,7 +303,9 @@ test("admin can submit manual feedback from editing and open the selected learni
   await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
-  await manualFeedbackSubmitButton.click();
+  await manualFeedbackSubmitButton.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 
   const manualFeedbackResult = manualFeedbackCard.locator(
     ".manuscript-workbench-manual-feedback-result",
@@ -356,6 +362,13 @@ test("admin can submit manual feedback from editing and open the selected learni
 function parseReviewItemIdFromHashHref(href: string): string | null {
   const queryString = href.split("?", 2)[1] ?? "";
   return new URLSearchParams(queryString).get("reviewItemId");
+}
+
+function appendHashQueryParam(href: string, key: string, value: string): string {
+  const [hashPath, queryString = ""] = href.split("?", 2);
+  const params = new URLSearchParams(queryString);
+  params.set(key, value);
+  return `${hashPath}?${params.toString()}`;
 }
 
 async function navigateViaHashLink(

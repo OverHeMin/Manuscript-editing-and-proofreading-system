@@ -8,7 +8,8 @@ import {
   type LearningWritebackViewModel,
 } from "../learning-governance/index.ts";
 import {
-  listLearningCandidates,
+  getLearningCandidate,
+  listPendingLearningReviewCandidates,
   type LearningCandidateViewModel,
 } from "../learning-review/index.ts";
 import {
@@ -160,12 +161,21 @@ export function RuleLearningPane({
       const [response, learningCandidates] = await Promise.all([
         listReviewItems(defaultClient, apiFilters),
         shouldLoadLearningCandidateQueue
-          ? listLearningCandidates(defaultClient).then((candidateResponse) => candidateResponse.body)
+          ? listPendingLearningReviewCandidates(defaultClient).then(
+              (candidateResponse) => candidateResponse.body,
+            )
           : Promise.resolve<LearningCandidateViewModel[]>([]),
       ]);
+      const preferredCandidate =
+        shouldLoadLearningCandidateQueue && preferredItemId
+          ? await resolvePreferredLearningCandidate(preferredItemId, learningCandidates)
+          : null;
       const mergedQueue = mergeRuleLearningQueueItems(
         response.body,
-        learningCandidates.map(toReviewItemFromLearningCandidate),
+        [
+          ...learningCandidates.map(toReviewItemFromLearningCandidate),
+          ...(preferredCandidate ? [toReviewItemFromLearningCandidate(preferredCandidate)] : []),
+        ],
       );
       const queue = ensurePreferredReviewItem(
         filterRuleLearningReviewItems(mergedQueue, reviewFilters),
@@ -692,6 +702,22 @@ function ensurePreferredReviewItem(
 
   const preferredItem = allItems.find((item) => item.id === preferredItemId);
   return preferredItem ? [preferredItem, ...queue] : [...queue];
+}
+
+async function resolvePreferredLearningCandidate(
+  preferredItemId: string,
+  queue: readonly LearningCandidateViewModel[],
+): Promise<LearningCandidateViewModel | null> {
+  const queuedCandidate = queue.find((candidate) => candidate.id === preferredItemId);
+  if (queuedCandidate) {
+    return queuedCandidate;
+  }
+
+  try {
+    return (await getLearningCandidate(defaultClient, preferredItemId)).body;
+  } catch {
+    return null;
+  }
 }
 
 function isRuleCandidateReviewItem(
