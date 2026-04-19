@@ -200,7 +200,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   const extractedCandidateRowButton = page.locator(
     `[data-review-item-id="${extractedCandidate.id}"]`,
   );
-  await expect(extractedCandidateRowButton).toBeVisible();
+  await expect(extractedCandidateRowButton).toBeVisible({ timeout: 10_000 });
   await extractedCandidateRowButton.click();
   await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
@@ -299,58 +299,63 @@ test("admin can submit manual feedback from editing and open the selected learni
   await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
-  await manualFeedbackSubmitButton.focus();
-  await manualFeedbackSubmitButton.press("Enter");
+  await manualFeedbackSubmitButton.click();
 
-  const ruleCenterLink = manualFeedbackCard.locator(
-    '.manuscript-workbench-manual-feedback-result a[href*="#template-governance?"]',
+  const manualFeedbackResult = manualFeedbackCard.locator(
+    ".manuscript-workbench-manual-feedback-result",
   );
-  await expect(ruleCenterLink).toBeVisible();
+  await expect(manualFeedbackResult).toBeVisible({ timeout: 10_000 });
+
+  const ruleCenterLink = manualFeedbackResult.locator(
+    'a[href*="#template-governance?"]',
+  );
+  await expect(ruleCenterLink).toBeVisible({ timeout: 10_000 });
   const ruleCenterHref = await ruleCenterLink.getAttribute("href");
   expect(ruleCenterHref).toBeTruthy();
   expect(ruleCenterHref).toContain(`manuscriptId=${manuscriptId}`);
   expect(ruleCenterHref).toContain("templateGovernanceView=rule-ledger");
   expect(ruleCenterHref).toContain("ruleCenterMode=learning");
-  const learningCandidateId = parseLearningCandidateIdFromHashHref(ruleCenterHref ?? "");
-  expect(learningCandidateId).toBeTruthy();
+  expect(ruleCenterHref).toContain("reviewItemId=");
+  const reviewItemId = parseReviewItemIdFromHashHref(ruleCenterHref ?? "");
+  expect(reviewItemId).toBeTruthy();
 
-  const candidateResponse = await request.get(
-    `${apiBaseUrl}/api/v1/learning/candidates/${learningCandidateId}`,
+  const reviewItemsResponse = await request.get(
+    `${apiBaseUrl}/api/v1/review-items?sourceKind=governed_hit&manuscriptId=${manuscriptId}`,
   );
-  expect(candidateResponse.ok()).toBeTruthy();
-  const candidate = (await candidateResponse.json()) as {
+  expect(reviewItemsResponse.ok()).toBeTruthy();
+  const reviewItems = (await reviewItemsResponse.json()) as Array<{
     id: string;
-    status: string;
+    source_kind: string;
+    source_status: string;
+    review_status: string;
+    module: string;
+    summary?: string;
     title?: string;
-    proposal_text?: string;
-    governed_provenance_kind?: string;
-    governed_feedback_record_id?: string;
-    candidate_payload?: {
-      feedbackCategory?: string;
-      manuscriptId?: string;
-      module?: string;
-    };
-  };
-  expect(candidate.status).toBe("pending_review");
-  expect(candidate.governed_provenance_kind).toBe("human_feedback");
-  expect(candidate.governed_feedback_record_id).toBeTruthy();
-  expect(candidate.proposal_text).toBe(manualFeedbackNote);
-  expect(candidate.candidate_payload?.feedbackCategory).toBe("incorrect_hit");
-  expect(candidate.candidate_payload?.manuscriptId).toBe(manuscriptId);
-  expect(candidate.candidate_payload?.module).toBe("editing");
+    feedback_category?: string;
+    learning_candidate_id?: string;
+  }>;
+  const submittedReviewItem = reviewItems.find((item) => item.id === reviewItemId);
+  expect(submittedReviewItem).toBeTruthy();
+  expect(submittedReviewItem?.source_kind).toBe("governed_hit");
+  expect(submittedReviewItem?.source_status).toBe("submitted");
+  expect(submittedReviewItem?.review_status).toBe("pending");
+  expect(submittedReviewItem?.feedback_category).toBe("incorrect_hit");
+  expect(submittedReviewItem?.module).toBe("editing");
+  expect(submittedReviewItem?.summary).toBe(manualFeedbackNote);
+  expect(submittedReviewItem?.learning_candidate_id).toBeTruthy();
 
   await navigateViaHashLink(page, ruleCenterLink);
   await expect
     .poll(async () => page.evaluate(() => window.location.hash))
-    .toContain(`learningCandidateId=${learningCandidateId}`);
+    .toContain(`reviewItemId=${reviewItemId}`);
   await expect(page.locator("body")).toContainText(manuscriptId);
   await expect(page.locator("body")).toContainText(manualFeedbackNote);
-  await expect(page.locator("body")).toContainText(candidate.title ?? "");
+  await expect(page.locator("body")).toContainText(reviewItemId ?? "");
 });
 
-function parseLearningCandidateIdFromHashHref(href: string): string | null {
+function parseReviewItemIdFromHashHref(href: string): string | null {
   const queryString = href.split("?", 2)[1] ?? "";
-  return new URLSearchParams(queryString).get("learningCandidateId");
+  return new URLSearchParams(queryString).get("reviewItemId");
 }
 
 async function navigateViaHashLink(

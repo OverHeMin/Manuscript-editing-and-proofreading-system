@@ -7,7 +7,10 @@ import {
   listLearningWritebacksByCandidate,
   type LearningWritebackViewModel,
 } from "../learning-governance/index.ts";
-import type { LearningCandidateViewModel } from "../learning-review/types.ts";
+import {
+  listLearningCandidates,
+  type LearningCandidateViewModel,
+} from "../learning-review/index.ts";
 import {
   createReviewItemsWorkbenchState,
   decideReviewItem,
@@ -152,8 +155,23 @@ export function RuleLearningPane({
     setQueueStatus("loading");
 
     try {
-      const response = await listReviewItems(defaultClient, apiFilters);
-      const queue = filterRuleLearningReviewItems(response.body, reviewFilters);
+      const shouldLoadLearningCandidateQueue =
+        apiFilters.sourceKind === undefined || apiFilters.sourceKind === "learning_candidate";
+      const [response, learningCandidates] = await Promise.all([
+        listReviewItems(defaultClient, apiFilters),
+        shouldLoadLearningCandidateQueue
+          ? listLearningCandidates(defaultClient).then((candidateResponse) => candidateResponse.body)
+          : Promise.resolve<LearningCandidateViewModel[]>([]),
+      ]);
+      const mergedQueue = mergeRuleLearningQueueItems(
+        response.body,
+        learningCandidates.map(toReviewItemFromLearningCandidate),
+      );
+      const queue = ensurePreferredReviewItem(
+        filterRuleLearningReviewItems(mergedQueue, reviewFilters),
+        mergedQueue,
+        preferredItemId,
+      );
       startTransition(() => {
         setResolvedItem(nextResolvedItem);
         setWorkbenchState((current) =>
@@ -609,6 +627,16 @@ export function RuleLearningPane({
 function toReviewItemFromLearningCandidate(
   candidate: LearningCandidateViewModel,
 ): LearningCandidateReviewItemViewModel {
+  const originPayload = normalizeOriginPayload(candidate.candidate_payload);
+  const payloadManuscriptId =
+    typeof originPayload?.manuscriptId === "string" ? originPayload.manuscriptId.trim() : "";
+  const payloadSnapshotId =
+    typeof originPayload?.reviewedCaseSnapshotId === "string"
+      ? originPayload.reviewedCaseSnapshotId.trim()
+      : typeof originPayload?.snapshotId === "string"
+        ? originPayload.snapshotId.trim()
+        : "";
+
   return {
     ...candidate,
     title: candidate.title ?? `学习候选 ${candidate.id}`,
@@ -617,11 +645,53 @@ function toReviewItemFromLearningCandidate(
     review_status: candidate.status === "pending_review" ? "pending" : "decided",
     available_actions: candidate.status === "pending_review" ? ["approve", "reject"] : [],
     summary: candidate.proposal_text,
-    source_asset_id: candidate.snapshot_asset_id,
+    manuscript_id:
+      candidate.manuscript_id?.trim() || (payloadManuscriptId.length > 0 ? payloadManuscriptId : undefined),
+    snapshot_id:
+      payloadSnapshotId.length > 0 ? payloadSnapshotId : undefined,
+    source_asset_id:
+      candidate.snapshot_asset_id ?? candidate.human_final_asset_id ?? candidate.annotated_asset_id,
     candidate_type: candidate.type,
     recommended_route: mapLearningCandidateRoute(candidate.type),
-    origin_payload: normalizeOriginPayload(candidate.candidate_payload),
+    origin_payload: originPayload,
   };
+}
+
+function mergeRuleLearningQueueItems(
+  primaryItems: readonly ReviewItemViewModel[],
+  supplementalItems: readonly ReviewItemViewModel[],
+): ReviewItemViewModel[] {
+  const seenKeys = new Set(primaryItems.map((item) => `${item.source_kind}:${item.id}`));
+  const merged = [...primaryItems];
+
+  for (const item of supplementalItems) {
+    const key = `${item.source_kind}:${item.id}`;
+    if (seenKeys.has(key)) {
+      continue;
+    }
+
+    seenKeys.add(key);
+    merged.push(item);
+  }
+
+  return merged;
+}
+
+function ensurePreferredReviewItem(
+  queue: readonly ReviewItemViewModel[],
+  allItems: readonly ReviewItemViewModel[],
+  preferredItemId?: string | null,
+): ReviewItemViewModel[] {
+  if (!preferredItemId) {
+    return [...queue];
+  }
+
+  if (queue.some((item) => item.id === preferredItemId)) {
+    return [...queue];
+  }
+
+  const preferredItem = allItems.find((item) => item.id === preferredItemId);
+  return preferredItem ? [preferredItem, ...queue] : [...queue];
 }
 
 function isRuleCandidateReviewItem(
