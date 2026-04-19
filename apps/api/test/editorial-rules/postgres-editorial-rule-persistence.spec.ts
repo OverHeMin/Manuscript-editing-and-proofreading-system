@@ -62,11 +62,14 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       rule_set_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       order_no: 10,
+      priority: 180,
       rule_object: "abstract",
       rule_type: "format",
       execution_mode: "apply_and_inspect",
       scope: {
+        manuscript_types: ["clinical_study"],
         sections: ["abstract"],
+        object_granularity: ["heading"],
         block_kind: "heading",
       },
       selector: {
@@ -188,6 +191,13 @@ test("postgres editorial rule repository persists journal templates, scoped rule
 
     assert.equal(loadedRule?.action.kind, "replace_heading");
     assert.equal(loadedRule?.action.to, "(Abstract Purpose)");
+    assert.equal((loadedRule as { priority?: number } | undefined)?.priority, 180);
+    assert.deepEqual(loadedRule?.scope, {
+      manuscript_types: ["clinical_study"],
+      sections: ["abstract"],
+      object_granularity: ["heading"],
+      block_kind: "heading",
+    });
     assert.deepEqual(loadedRule?.selector, {
       section_selector: "abstract",
       label_selector: { text: "Abstract Purpose" },

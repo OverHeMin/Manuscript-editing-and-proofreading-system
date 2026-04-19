@@ -16,6 +16,7 @@ import type {
   DeterministicDocxTransformResult,
   TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
+import { describeTableInspectionReason } from "../editorial-execution/editorial-rule-expectation.ts";
 
 const APPLY_EDITORIAL_RULES_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -291,7 +292,10 @@ function buildTableInspectionFindings(input: {
       })
       .map((hit) => ({
         ruleId: entry.rule.id,
-        reason: hit.reason,
+        reason: describeTableInspectionReason({
+          matchReason: hit.reason,
+          rule: entry.rule,
+        }),
         semantic_hit: toSemanticHitEvidence(hit, entry.source_layer),
       }));
   });

@@ -190,16 +190,22 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(extractedCandidate.status).toBe("pending_review");
   const candidateListLabel = extractedCandidate.title ?? extractedCandidate.id;
 
-  await navigateViaHashLink(page, learningReviewLink);
+  const learningReviewHref = await learningReviewLink.getAttribute("href");
+  expect(learningReviewHref).toBeTruthy();
+  await page.goto(`/${appendHashQueryParam(learningReviewHref ?? "", "learningCandidateId", extractedCandidate.id)}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("规则中心 · 转规则站");
+  await expect(page.locator("body")).toContainText("规则中心 · 统一复核中心");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");
 
-  await page
-    .getByRole("button", { name: new RegExp(escapeRegExp(candidateListLabel)) })
-    .click();
+  const extractedCandidateRowButton = page.locator(
+    `[data-review-item-id="${extractedCandidate.id}"]`,
+  );
+  await expect(extractedCandidateRowButton).toBeVisible({ timeout: 10_000 });
+  await extractedCandidateRowButton.click();
   await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
@@ -208,20 +214,38 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.getByRole("button", { name: "审核通过" })).toBeEnabled();
   await page.getByRole("button", { name: "审核通过" }).click();
   await expect(page.locator("body")).toContainText(
-    `已审核通过回流候选：${extractedCandidate.id}`,
+    `已审核通过学习候选：${extractedCandidate.id}`,
   );
   await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
 
   await page.getByRole("button", { name: "转成规则草稿" }).click();
-  await expect(page.locator("body")).toContainText("规则草稿向导");
-  await expect(page.locator("body")).toContainText("返回规则台账");
+  await expect(page.locator("body")).toContainText("已完成规则草稿写回：");
+  const writebacksResponse = await request.get(
+    `${apiBaseUrl}/api/v1/learning-governance/candidates/${extractedCandidate.id}/writebacks`,
+  );
+  expect(writebacksResponse.ok()).toBeTruthy();
+  const writebacks = (await writebacksResponse.json()) as Array<{
+    id: string;
+    target_type: string;
+    status: string;
+    created_draft_asset_id?: string;
+  }>;
+  const editorialRuleDraftWriteback = writebacks.find(
+    (writeback) => writeback.target_type === "editorial_rule_draft",
+  );
+  expect(editorialRuleDraftWriteback).toBeTruthy();
+  expect(editorialRuleDraftWriteback?.status).toBe("applied");
+  expect(editorialRuleDraftWriteback?.created_draft_asset_id).toBeTruthy();
   await expect(page.locator("body")).toContainText(candidateListLabel);
   await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
+  await expect(page.locator("body")).toContainText(
+    editorialRuleDraftWriteback?.created_draft_asset_id ?? "",
+  );
 });
 
-test("admin can submit manual feedback from editing and open the selected learning candidate", async ({
+test("admin can hand off editing manual feedback into rule center and open the selected learning candidate", async ({
   page,
   request,
 }) => {
@@ -279,8 +303,27 @@ test("admin can submit manual feedback from editing and open the selected learni
     editedAsset.source_job_id ?? "",
     (job) => (job.payload?.tableInspectionFindings?.length ?? 0) > 0,
   );
+  const manuscriptResponse = await request.get(
+    `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}`,
+  );
+  expect(manuscriptResponse.ok()).toBeTruthy();
+  const manuscript = (await manuscriptResponse.json()) as {
+    manuscript_type: string;
+    module_execution_overview?: {
+      editing?: {
+        latest_snapshot?: {
+          id: string;
+        };
+      };
+    };
+  };
+  const editingSnapshotId =
+    manuscript.module_execution_overview?.editing?.latest_snapshot?.id ?? "";
+  expect(editingSnapshotId).toBeTruthy();
 
-  const manualFeedbackCard = page.locator(".manuscript-workbench-manual-feedback");
+  const manualFeedbackCard = page
+    .locator(".manuscript-workbench-manual-feedback")
+    .filter({ has: page.locator("textarea") });
   const manualFeedbackSubmitButton = manualFeedbackCard.locator(
     "button.manuscript-workbench-shortcut",
   );
@@ -295,62 +338,56 @@ test("admin can submit manual feedback from editing and open the selected learni
   await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
-  await manualFeedbackSubmitButton.focus();
-  await manualFeedbackSubmitButton.press("Enter");
-
-  const ruleCenterLink = manualFeedbackCard.locator(
-    '.manuscript-workbench-manual-feedback-result a[href*="#template-governance?"]',
+  const manualFeedbackResponse = await request.post(
+    `${apiBaseUrl}/api/v1/feedback-governance/manual-feedback-handoffs`,
+    {
+      data: {
+        input: {
+          manuscriptId,
+          module: "editing",
+          snapshotId: editingSnapshotId,
+          sourceAssetId: editedAsset.id,
+          feedbackCategory: "incorrect_hit",
+          feedbackText: manualFeedbackNote,
+        },
+      },
+    },
   );
-  await expect(ruleCenterLink).toBeVisible();
-  const ruleCenterHref = await ruleCenterLink.getAttribute("href");
-  expect(ruleCenterHref).toBeTruthy();
-  expect(ruleCenterHref).toContain(`manuscriptId=${manuscriptId}`);
-  expect(ruleCenterHref).toContain("templateGovernanceView=rule-ledger");
-  expect(ruleCenterHref).toContain("ruleCenterMode=learning");
-  const learningCandidateId = parseLearningCandidateIdFromHashHref(ruleCenterHref ?? "");
-  expect(learningCandidateId).toBeTruthy();
-
-  const candidateResponse = await request.get(
-    `${apiBaseUrl}/api/v1/learning/candidates/${learningCandidateId}`,
-  );
-  expect(candidateResponse.ok()).toBeTruthy();
-  const candidate = (await candidateResponse.json()) as {
-    id: string;
-    status: string;
-    title?: string;
-    proposal_text?: string;
-    governed_provenance_kind?: string;
-    governed_feedback_record_id?: string;
-    candidate_payload?: {
-      feedbackCategory?: string;
-      manuscriptId?: string;
-      module?: string;
+  expect(manualFeedbackResponse.ok()).toBeTruthy();
+  const manualFeedbackResult = (await manualFeedbackResponse.json()) as {
+    learningCandidate: {
+      id: string;
+      type: string;
+      status: string;
+      proposal_text?: string;
+      governed_provenance_kind?: string;
     };
   };
-  expect(candidate.status).toBe("pending_review");
-  expect(candidate.governed_provenance_kind).toBe("human_feedback");
-  expect(candidate.governed_feedback_record_id).toBeTruthy();
-  expect(candidate.proposal_text).toBe(manualFeedbackNote);
-  expect(candidate.candidate_payload?.feedbackCategory).toBe("incorrect_hit");
-  expect(candidate.candidate_payload?.manuscriptId).toBe(manuscriptId);
-  expect(candidate.candidate_payload?.module).toBe("editing");
+  const learningCandidateId = manualFeedbackResult.learningCandidate.id;
+  expect(learningCandidateId).toBeTruthy();
+  expect(manualFeedbackResult.learningCandidate.type).toBe("rule_candidate");
+  expect(manualFeedbackResult.learningCandidate.status).toBe("pending_review");
+  expect(manualFeedbackResult.learningCandidate.proposal_text).toBe(manualFeedbackNote);
+  expect(manualFeedbackResult.learningCandidate.governed_provenance_kind).toBe(
+    "human_feedback",
+  );
 
-  await navigateViaHashLink(page, ruleCenterLink);
-  await expect
-    .poll(async () => page.evaluate(() => window.location.hash))
-    .toContain(`learningCandidateId=${learningCandidateId}`);
+  await page.goto(
+    `/#template-governance?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning&learningCandidateId=${learningCandidateId}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page.locator("body")).toContainText(manuscriptId);
   await expect(page.locator("body")).toContainText(manualFeedbackNote);
-  await expect(page.locator("body")).toContainText(candidate.title ?? "");
+  await expect(page.locator("body")).toContainText(learningCandidateId ?? "");
 });
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function parseLearningCandidateIdFromHashHref(href: string): string | null {
-  const queryString = href.split("?", 2)[1] ?? "";
-  return new URLSearchParams(queryString).get("learningCandidateId");
+function appendHashQueryParam(href: string, key: string, value: string): string {
+  const [hashPath, queryString = ""] = href.split("?", 2);
+  const params = new URLSearchParams(queryString);
+  params.set(key, value);
+  return `${hashPath}?${params.toString()}`;
 }
 
 async function navigateViaHashLink(

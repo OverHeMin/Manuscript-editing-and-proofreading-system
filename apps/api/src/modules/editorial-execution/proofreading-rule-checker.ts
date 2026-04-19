@@ -10,6 +10,10 @@ import {
   deriveManualReviewReason,
   shouldStageManualReviewRule,
 } from "./instruction-template-assembler.ts";
+import {
+  describeEditorialRuleExpectation,
+  matchesStructuralPresenceBlock,
+} from "./editorial-rule-expectation.ts";
 import type {
   EditorialTextBlock,
   ProofreadingCheckResult,
@@ -53,6 +57,10 @@ export function inspectProofreadingRules(input: {
         manualReviewItems.push({
           ruleId: rule.id,
           reason,
+          candidate_posture: "candidate_change",
+          evidence_pack: {
+            rationale: reason,
+          },
         });
         riskItems.push({
           ruleId: rule.id,
@@ -73,12 +81,22 @@ export function inspectProofreadingRules(input: {
         tableSnapshots: [...input.tableSnapshots],
       });
       for (const hit of tableHits) {
+        const actual = describeTableHit(hit);
+        const expected = readTableExpectation(rule);
+        const semanticEvidence = toSemanticHitEvidence(hit, entry.source_layer);
         failedChecks.push({
           ruleId: rule.id,
-          expected: readTableExpectation(rule),
-          actual: describeTableHit(hit),
+          expected,
+          actual,
           severity: rule.severity,
-          semantic_hit: toSemanticHitEvidence(hit, entry.source_layer),
+          candidate_posture: "inspect_only",
+          semantic_hit: semanticEvidence,
+          evidence_pack: {
+            location: cloneSemanticLocation(semanticEvidence),
+            excerpt: actual,
+            suggestion: expected,
+            rationale: actual,
+          },
         });
       }
       continue;
@@ -91,7 +109,7 @@ export function inspectProofreadingRules(input: {
       continue;
     }
 
-    const expected = readExpectedText(rule);
+    const expected = describeEditorialRuleExpectation(rule);
     if (!expected) {
       continue;
     }
@@ -121,6 +139,31 @@ export function inspectProofreadingRules(input: {
           actual: block.text,
           severity: rule.severity,
           blockIndex,
+          candidate_posture: "inspect_only",
+          evidence_pack: buildBlockEvidencePack({
+            block,
+            blockIndex,
+            actual: block.text,
+            expected,
+          }),
+        });
+        return;
+      }
+
+      if (matchesStructuralPresenceBlock({ block, rule })) {
+        failedChecks.push({
+          ruleId: rule.id,
+          expected,
+          actual: block.text,
+          severity: rule.severity,
+          blockIndex,
+          candidate_posture: "inspect_only",
+          evidence_pack: buildBlockEvidencePack({
+            block,
+            blockIndex,
+            actual: block.text,
+            expected,
+          }),
         });
       }
     });
@@ -155,14 +198,6 @@ function matchesRuleScope(
   return true;
 }
 
-function readExpectedText(rule: EditorialRuleRecord): string | undefined {
-  if (typeof rule.example_after === "string" && rule.example_after.length > 0) {
-    return rule.example_after;
-  }
-
-  return typeof rule.action.to === "string" ? rule.action.to : undefined;
-}
-
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -184,13 +219,7 @@ function uniqueManualReviewItems(
 }
 
 function readTableExpectation(rule: EditorialRuleRecord): string {
-  if (typeof rule.action.message === "string" && rule.action.message.length > 0) {
-    return rule.action.message;
-  }
-
-  return typeof rule.explanation_payload?.rationale === "string"
-    ? rule.explanation_payload.rationale
-    : "Matched table semantic rule.";
+  return describeEditorialRuleExpectation(rule) ?? "Matched table semantic rule.";
 }
 
 function describeTableHit(hit: EditorialRuleTableHit): string {
@@ -239,5 +268,47 @@ function toSemanticHitEvidence(
         }
       : {}),
     override_source: sourceLayer,
+  };
+}
+
+function buildBlockEvidencePack(input: {
+  block: EditorialTextBlock;
+  blockIndex: number;
+  actual: string;
+  expected: string;
+}): NonNullable<ProofreadingCheckResult["evidence_pack"]> {
+  return {
+    location: buildBlockLocation(input.block, input.blockIndex),
+    excerpt: input.actual,
+    suggestion: input.expected,
+    rationale: input.actual,
+  };
+}
+
+function buildBlockLocation(
+  block: EditorialTextBlock,
+  blockIndex: number,
+): Record<string, unknown> {
+  const location: Record<string, unknown> = {
+    block_index: blockIndex,
+  };
+  if (typeof block.section === "string" && block.section.trim().length > 0) {
+    location.section = block.section;
+  }
+  if (
+    typeof block.block_kind === "string" &&
+    block.block_kind.trim().length > 0
+  ) {
+    location.block_kind = block.block_kind;
+  }
+  return location;
+}
+
+function cloneSemanticLocation(
+  semanticHit: NonNullable<ProofreadingCheckResult["semantic_hit"]>,
+): Record<string, unknown> {
+  return {
+    ...semanticHit,
+    ...(semanticHit.header_path ? { header_path: [...semanticHit.header_path] } : {}),
   };
 }

@@ -9,7 +9,12 @@ function cloneJsonObject<T extends object>(value: T): T {
 }
 
 function cloneRuleSet(record: EditorialRuleSetRecord): EditorialRuleSetRecord {
-  return { ...record };
+  return {
+    ...record,
+    ...(record.release_scope
+      ? { release_scope: cloneJsonObject(record.release_scope) }
+      : {}),
+  };
 }
 
 function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {

@@ -13,10 +13,17 @@ export function assembleInstructionTemplate(
   const manualReviewItems = input.rules
     .filter((rule) => shouldStageManualReviewRule(rule, input.manualReviewPolicy))
     .sort((left, right) => left.order_no - right.order_no)
-    .map((rule) => ({
-      ruleId: rule.id,
-      reason: deriveManualReviewReason(rule),
-    }));
+    .map((rule) => {
+      const reason = deriveManualReviewReason(rule);
+      return {
+        ruleId: rule.id,
+        reason,
+        candidate_posture: "candidate_change" as const,
+        evidence_pack: {
+          rationale: reason,
+        },
+      };
+    });
 
   return {
     templateId: input.promptTemplate.id,
@@ -100,12 +107,19 @@ function buildContentRuleCandidates(
   return rules
     .filter((rule) => isManualReviewCandidate(rule))
     .sort((left, right) => left.order_no - right.order_no)
-    .map((rule) => ({
-      ruleId: rule.id,
-      reason: deriveManualReviewReason(rule),
-      severity: rule.severity,
-      actionKind: rule.action.kind,
-    }));
+    .map((rule) => {
+      const reason = deriveManualReviewReason(rule);
+      return {
+        ruleId: rule.id,
+        reason,
+        severity: rule.severity,
+        actionKind: rule.action.kind,
+        candidate_posture: "candidate_change" as const,
+        evidence_pack: {
+          rationale: reason,
+        },
+      };
+    });
 }
 
 function isManualReviewCandidate(rule: EditorialRuleRecord): boolean {

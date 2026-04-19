@@ -2,17 +2,23 @@ import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { TemplateFamilyRepository } from "../templates/template-repository.ts";
+import type { VerificationOpsRepository } from "../verification-ops/verification-ops-repository.ts";
 import type { EditorialRuleProjectionService } from "./editorial-rule-projection-service.ts";
 import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
+import {
+  DEFAULT_EDITORIAL_RULE_PRIORITY,
+} from "./editorial-rule-record.ts";
 import type {
   EditorialRuleAction,
   EditorialRuleConfidencePolicy,
   EditorialRuleEvidenceLevel,
   EditorialRuleExecutionMode,
   EditorialRuleRecord,
+  EditorialRuleReleaseComparisonSummary,
   EditorialRuleScope,
   EditorialRuleSeverity,
   EditorialRuleSetRecord,
+  EditorialRuleSetReleaseScope,
   EditorialRuleTrigger,
   EditorialRuleType,
 } from "./editorial-rule-record.ts";
@@ -26,6 +32,7 @@ export interface CreateEditorialRuleSetInput {
 export interface CreateEditorialRuleInput {
   ruleSetId: string;
   orderNo: number;
+  priority?: number;
   ruleObject?: string;
   ruleType: EditorialRuleType;
   executionMode: EditorialRuleExecutionMode;
@@ -46,13 +53,39 @@ export interface CreateEditorialRuleInput {
   manualReviewReasonTemplate?: string;
 }
 
+export type TransitionEditorialRuleSetTargetStatus = Extract<
+  EditorialRuleSetRecord["status"],
+  "candidate" | "canary" | "active" | "rolled_back"
+>;
+
+export interface TransitionEditorialRuleSetInput {
+  ruleSetId: string;
+  targetStatus: TransitionEditorialRuleSetTargetStatus;
+  releaseScope?: EditorialRuleSetReleaseScope;
+  candidateValidationRunId?: string;
+  candidateValidationEvidencePackId?: string;
+  onlineRegressionRunId?: string;
+  onlineRegressionEvidencePackId?: string;
+}
+
 export interface EditorialRuleServiceOptions {
   repository: EditorialRuleRepository;
   templateFamilyRepository: TemplateFamilyRepository;
+  verificationOpsRepository?: Pick<
+    VerificationOpsRepository,
+    | "findEvaluationRunById"
+    | "findEvaluationEvidencePackById"
+    | "findLatestEvaluationPromotionRecommendationByRunId"
+  >;
   projectionService?: Pick<
     EditorialRuleProjectionService,
     "archiveRuleSetProjections" | "refreshPublishedRuleSet"
   >;
+  activationMetricsService?: {
+    buildReleaseComparison: (
+      ruleSetId: string,
+    ) => Promise<EditorialRuleReleaseComparisonSummary>;
+  };
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -109,20 +142,40 @@ export class EditorialRuleSetNotEditableError extends Error {
   }
 }
 
+export class EditorialRuleSetPromotionEvidenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EditorialRuleSetPromotionEvidenceError";
+  }
+}
+
 export class EditorialRuleService {
   private readonly repository: EditorialRuleRepository;
   private readonly templateFamilyRepository: TemplateFamilyRepository;
+  private readonly verificationOpsRepository?: Pick<
+    VerificationOpsRepository,
+    | "findEvaluationRunById"
+    | "findEvaluationEvidencePackById"
+    | "findLatestEvaluationPromotionRecommendationByRunId"
+  >;
   private readonly projectionService?: Pick<
     EditorialRuleProjectionService,
     "archiveRuleSetProjections" | "refreshPublishedRuleSet"
   >;
+  private readonly activationMetricsService?: {
+    buildReleaseComparison: (
+      ruleSetId: string,
+    ) => Promise<EditorialRuleReleaseComparisonSummary>;
+  };
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
   constructor(options: EditorialRuleServiceOptions) {
     this.repository = options.repository;
     this.templateFamilyRepository = options.templateFamilyRepository;
+    this.verificationOpsRepository = options.verificationOpsRepository;
     this.projectionService = options.projectionService;
+    this.activationMetricsService = options.activationMetricsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -198,25 +251,7 @@ export class EditorialRuleService {
       );
     }
 
-    const relatedRuleSets =
-      await this.repository.listRuleSetsByTemplateFamilyAndModule(
-        ruleSet.template_family_id,
-        ruleSet.module,
-      );
-    for (const existing of relatedRuleSets) {
-      if (
-        existing.id !== ruleSet.id &&
-        existing.status === "published" &&
-        (existing.journal_template_id ?? undefined) ===
-          (ruleSet.journal_template_id ?? undefined)
-      ) {
-        await this.repository.saveRuleSet({
-          ...existing,
-          status: "archived",
-        });
-        await this.projectionService?.archiveRuleSetProjections(existing.id);
-      }
-    }
+    await this.archiveRelatedRuleSets(ruleSet, ["published", "active"]);
 
     const published: EditorialRuleSetRecord = {
       ...ruleSet,
@@ -253,6 +288,7 @@ export class EditorialRuleService {
       id: this.createId(),
       rule_set_id: input.ruleSetId,
       order_no: input.orderNo,
+      priority: normalizeRulePriority(input.priority),
       rule_object: input.ruleObject ?? "generic",
       rule_type: input.ruleType,
       execution_mode: input.executionMode,
@@ -295,6 +331,35 @@ export class EditorialRuleService {
     return record;
   }
 
+  async transitionRuleSet(
+    actorRole: RoleKey,
+    input: TransitionEditorialRuleSetInput,
+  ): Promise<EditorialRuleSetRecord> {
+    this.permissionGuard.assert(actorRole, "template-governance.manage");
+
+    const ruleSet = await this.repository.findRuleSetById(input.ruleSetId);
+    if (!ruleSet) {
+      throw new EditorialRuleSetNotFoundError(input.ruleSetId);
+    }
+
+    switch (input.targetStatus) {
+      case "candidate":
+        return this.transitionToCandidate(ruleSet, input);
+      case "canary":
+        return this.transitionToCanary(ruleSet, input);
+      case "active":
+        return this.transitionToActive(ruleSet, input);
+      case "rolled_back":
+        return this.transitionToRolledBack(ruleSet);
+      default:
+        throw new EditorialRuleSetStatusTransitionError(
+          input.ruleSetId,
+          ruleSet.status,
+          input.targetStatus,
+        );
+    }
+  }
+
   async listRules(ruleSetId: string): Promise<EditorialRuleRecord[]> {
     const ruleSet = await this.repository.findRuleSetById(ruleSetId);
     if (!ruleSet) {
@@ -303,4 +368,295 @@ export class EditorialRuleService {
 
     return this.repository.listRulesByRuleSetId(ruleSetId);
   }
+
+  private async transitionToCandidate(
+    ruleSet: EditorialRuleSetRecord,
+    input: TransitionEditorialRuleSetInput,
+  ): Promise<EditorialRuleSetRecord> {
+    if (ruleSet.status !== "draft") {
+      throw new EditorialRuleSetStatusTransitionError(
+        ruleSet.id,
+        ruleSet.status,
+        "candidate",
+      );
+    }
+
+    const next: EditorialRuleSetRecord = {
+      ...ruleSet,
+      status: "candidate",
+      ...(input.releaseScope ? { release_scope: cloneReleaseScope(input.releaseScope) } : {}),
+    };
+    await this.repository.saveRuleSet(next);
+    return next;
+  }
+
+  private async transitionToCanary(
+    ruleSet: EditorialRuleSetRecord,
+    input: TransitionEditorialRuleSetInput,
+  ): Promise<EditorialRuleSetRecord> {
+    if (ruleSet.status !== "candidate") {
+      throw new EditorialRuleSetStatusTransitionError(
+        ruleSet.id,
+        ruleSet.status,
+        "canary",
+      );
+    }
+
+    await this.assertPromotionEvidence({
+      gateLabel: "candidate validation",
+      runId: input.candidateValidationRunId,
+      evidencePackId: input.candidateValidationEvidencePackId,
+    });
+
+    const next: EditorialRuleSetRecord = {
+      ...ruleSet,
+      status: "canary",
+      candidate_validation_run_id: input.candidateValidationRunId,
+      candidate_validation_evidence_pack_id:
+        input.candidateValidationEvidencePackId,
+    };
+    await this.repository.saveRuleSet(next);
+    return next;
+  }
+
+  private async transitionToActive(
+    ruleSet: EditorialRuleSetRecord,
+    input: TransitionEditorialRuleSetInput,
+  ): Promise<EditorialRuleSetRecord> {
+    if (ruleSet.status !== "canary") {
+      throw new EditorialRuleSetStatusTransitionError(
+        ruleSet.id,
+        ruleSet.status,
+        "active",
+      );
+    }
+
+    await this.assertPromotionEvidence({
+      gateLabel: "online execution regression",
+      runId: input.onlineRegressionRunId,
+      evidencePackId: input.onlineRegressionEvidencePackId,
+    });
+    if (this.activationMetricsService) {
+      const releaseComparison =
+        await this.activationMetricsService.buildReleaseComparison(ruleSet.id);
+      if (releaseComparison.status === "degraded") {
+        throw new EditorialRuleSetPromotionEvidenceError(
+          releaseComparison.reasons.join(" "),
+        );
+      }
+    }
+
+    const rollbackTarget = await this.findLatestRollbackTarget(ruleSet);
+    await this.archiveRelatedRuleSets(ruleSet, ["published", "active"]);
+
+    const next: EditorialRuleSetRecord = {
+      ...ruleSet,
+      status: "active",
+      online_regression_run_id: input.onlineRegressionRunId,
+      online_regression_evidence_pack_id: input.onlineRegressionEvidencePackId,
+      ...(rollbackTarget ? { rollback_rule_set_id: rollbackTarget.id } : {}),
+    };
+    await this.repository.saveRuleSet(next);
+    await this.projectionService?.refreshPublishedRuleSet(next.id);
+    return next;
+  }
+
+  private async transitionToRolledBack(
+    ruleSet: EditorialRuleSetRecord,
+  ): Promise<EditorialRuleSetRecord> {
+    if (ruleSet.status !== "active") {
+      throw new EditorialRuleSetStatusTransitionError(
+        ruleSet.id,
+        ruleSet.status,
+        "rolled_back",
+      );
+    }
+
+    const rollbackTarget = await this.findRollbackTarget(ruleSet);
+    if (rollbackTarget) {
+      const restored: EditorialRuleSetRecord = {
+        ...rollbackTarget,
+        status: "active",
+      };
+      await this.repository.saveRuleSet(restored);
+      await this.projectionService?.refreshPublishedRuleSet(restored.id);
+    }
+
+    const next: EditorialRuleSetRecord = {
+      ...ruleSet,
+      status: "rolled_back",
+      ...(rollbackTarget ? { rollback_rule_set_id: rollbackTarget.id } : {}),
+    };
+    await this.repository.saveRuleSet(next);
+    await this.projectionService?.archiveRuleSetProjections(next.id);
+    return next;
+  }
+
+  private async archiveRelatedRuleSets(
+    ruleSet: EditorialRuleSetRecord,
+    statuses: EditorialRuleSetRecord["status"][],
+  ): Promise<void> {
+    const relatedRuleSets =
+      await this.repository.listRuleSetsByTemplateFamilyAndModule(
+        ruleSet.template_family_id,
+        ruleSet.module,
+      );
+    for (const existing of relatedRuleSets) {
+      if (
+        existing.id === ruleSet.id ||
+        !statuses.includes(existing.status) ||
+        !sameEditorialRuleSetScope(existing, ruleSet)
+      ) {
+        continue;
+      }
+
+      await this.repository.saveRuleSet({
+        ...existing,
+        status: "archived",
+      });
+      await this.projectionService?.archiveRuleSetProjections(existing.id);
+    }
+  }
+
+  private async findRollbackTarget(
+    ruleSet: EditorialRuleSetRecord,
+  ): Promise<EditorialRuleSetRecord | undefined> {
+    if (ruleSet.rollback_rule_set_id) {
+      const target = await this.repository.findRuleSetById(ruleSet.rollback_rule_set_id);
+      if (target) {
+        return target;
+      }
+    }
+
+    return this.findLatestRollbackTarget(ruleSet);
+  }
+
+  private async findLatestRollbackTarget(
+    ruleSet: EditorialRuleSetRecord,
+  ): Promise<EditorialRuleSetRecord | undefined> {
+    const relatedRuleSets =
+      await this.repository.listRuleSetsByTemplateFamilyAndModule(
+        ruleSet.template_family_id,
+        ruleSet.module,
+      );
+
+    return relatedRuleSets
+      .filter(
+        (candidate) =>
+          candidate.id !== ruleSet.id &&
+          sameEditorialRuleSetScope(candidate, ruleSet) &&
+          (candidate.status === "published" ||
+            candidate.status === "active" ||
+            candidate.status === "archived"),
+      )
+      .sort(compareRuleSetsDescending)[0];
+  }
+
+  private async assertPromotionEvidence(input: {
+    gateLabel: string;
+    runId: string | undefined;
+    evidencePackId: string | undefined;
+  }): Promise<void> {
+    if (!input.runId || !input.evidencePackId) {
+      throw new EditorialRuleSetPromotionEvidenceError(
+        `Missing ${input.gateLabel} evidence.`,
+      );
+    }
+
+    if (!this.verificationOpsRepository) {
+      return;
+    }
+
+    const run = await this.verificationOpsRepository.findEvaluationRunById(input.runId);
+    if (!run || run.status !== "passed") {
+      throw new EditorialRuleSetPromotionEvidenceError(
+        `Missing ${input.gateLabel} evidence.`,
+      );
+    }
+
+    const evidencePack =
+      await this.verificationOpsRepository.findEvaluationEvidencePackById(
+        input.evidencePackId,
+      );
+    if (
+      !evidencePack ||
+      evidencePack.experiment_run_id !== run.id ||
+      evidencePack.summary_status !== "recommended"
+    ) {
+      throw new EditorialRuleSetPromotionEvidenceError(
+        `Missing ${input.gateLabel} evidence.`,
+      );
+    }
+
+    const recommendation =
+      await this.verificationOpsRepository.findLatestEvaluationPromotionRecommendationByRunId(
+        run.id,
+      );
+    if (
+      !recommendation ||
+      recommendation.evidence_pack_id !== evidencePack.id ||
+      recommendation.status !== "recommended"
+    ) {
+      throw new EditorialRuleSetPromotionEvidenceError(
+        `Missing ${input.gateLabel} evidence.`,
+      );
+    }
+  }
+}
+
+function sameEditorialRuleSetScope(
+  left: EditorialRuleSetRecord,
+  right: EditorialRuleSetRecord,
+): boolean {
+  return (
+    (left.journal_template_id ?? undefined) ===
+      (right.journal_template_id ?? undefined) &&
+    stableSerializeReleaseScope(left.release_scope) ===
+      stableSerializeReleaseScope(right.release_scope)
+  );
+}
+
+function stableSerializeReleaseScope(
+  value: EditorialRuleSetReleaseScope | undefined,
+): string {
+  if (!value) {
+    return "{}";
+  }
+
+  const entries = Object.entries(value).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return JSON.stringify(
+    Object.fromEntries(
+      entries.map(([key, entryValue]) => [
+        key,
+        Array.isArray(entryValue) ? [...entryValue] : entryValue,
+      ]),
+    ),
+  );
+}
+
+function cloneReleaseScope(
+  value: EditorialRuleSetReleaseScope,
+): EditorialRuleSetReleaseScope {
+  return JSON.parse(JSON.stringify(value)) as EditorialRuleSetReleaseScope;
+}
+
+function compareRuleSetsDescending(
+  left: EditorialRuleSetRecord,
+  right: EditorialRuleSetRecord,
+): number {
+  if (left.version_no !== right.version_no) {
+    return right.version_no - left.version_no;
+  }
+
+  return right.id.localeCompare(left.id);
+}
+
+function normalizeRulePriority(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_EDITORIAL_RULE_PRIORITY;
+  }
+
+  return Math.max(0, Math.trunc(value));
 }

@@ -58,6 +58,25 @@ export function RuleAuthoringExplainability({
           <span>最终预览</span>
           <p>{preview.normalizedExample}</p>
         </div>
+        <div className="template-governance-field-full" data-rule-hit-reason="field">
+          <span>命中原因</span>
+          <p>{preview.hitReason}</p>
+        </div>
+        <div className="template-governance-field-full" data-rule-miss-reason="field">
+          <span>未命中原因</span>
+          <p>{preview.missReason}</p>
+        </div>
+        <div className="template-governance-field-full" data-rule-override-reason="field">
+          <span>覆盖原因</span>
+          <p>{preview.overrideReason}</p>
+        </div>
+        <div
+          className="template-governance-field-full"
+          data-rule-manual-review-reason="field"
+        >
+          <span>人工复核原因</span>
+          <p>{preview.manualReviewReason}</p>
+        </div>
       </div>
     </article>
   );

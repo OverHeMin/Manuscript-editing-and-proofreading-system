@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { auditDatabaseMigrations } from "../migration-audit.ts";
 import { getDatabaseUrl } from "../config.ts";
+import { resolveApiPackageRoot } from "../package-root.ts";
 import { loadAppEnvDefaults } from "../../ops/env-defaults.ts";
 
-const packageRoot = path.resolve(import.meta.dirname, "../../..");
+const packageRoot = resolveApiPackageRoot(import.meta.dirname);
 
 interface MigrationDoctorCliOptions {
   json: boolean;

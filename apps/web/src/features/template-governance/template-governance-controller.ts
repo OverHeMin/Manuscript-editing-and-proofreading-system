@@ -27,6 +27,12 @@ import {
   type LearningReviewHttpClient,
 } from "../learning-review/index.ts";
 import {
+  listReviewItems,
+  type ListReviewItemsFilters,
+  type ReviewItemsHttpClient,
+  type ReviewItemViewModel,
+} from "../review-items/index.ts";
+import {
   getLatestTemplateFamilyRetrievalQualityRun,
   getRetrievalSnapshot,
   type KnowledgeRetrievalHttpClient,
@@ -58,6 +64,7 @@ import {
   previewRulePackageCompile as requestRulePackageCompilePreview,
   previewRulePackageDraft as requestRulePackagePreview,
   publishEditorialRuleSet,
+  transitionEditorialRuleSet,
   updateExtractionTaskCandidate as requestUpdateExtractionTaskCandidate,
   type CompileRulePackagesToDraftInputViewModel,
   type CreateExtractionTaskInputViewModel,
@@ -66,6 +73,7 @@ import {
   type CreateRulePackageExampleSourceSessionInput,
   type EditorialRulesHttpClient,
   type EditorialRuleSetViewModel,
+  type TransitionEditorialRuleSetInput,
   type EditorialRuleViewModel,
   type ExtractionTaskDetailViewModel,
   type ExtractionTaskViewModel,
@@ -186,6 +194,8 @@ export interface TemplateGovernanceWorkbenchController {
   loadOverview(
     input?: TemplateGovernanceReloadContext,
   ): Promise<TemplateGovernanceWorkbenchOverview>;
+  loadLearningCandidates?(): Promise<LearningCandidateViewModel[]>;
+  loadReviewItems?(filters?: ListReviewItemsFilters): Promise<ReviewItemViewModel[]>;
   loadRuleLedger(input?: {
     category?: TemplateGovernanceRuleLedgerCategory;
     searchQuery?: string;
@@ -362,6 +372,13 @@ export interface TemplateGovernanceWorkbenchController {
     ruleSet: EditorialRuleSetViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
+  transitionRuleSetAndReload(input: {
+    ruleSetId: string;
+    transition: TransitionEditorialRuleSetInput;
+  } & TemplateGovernanceReloadContext): Promise<{
+    ruleSet: EditorialRuleSetViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
   createInstructionTemplateAndReload(
     input: CreatePromptTemplateInput & TemplateGovernanceReloadContext,
   ): Promise<{
@@ -468,6 +485,7 @@ type TemplateGovernanceHttpClient =
   TemplateHttpClient &
   KnowledgeRetrievalHttpClient &
   LearningReviewHttpClient &
+  ReviewItemsHttpClient &
   PromptSkillRegistryHttpClient &
   EditorialRulesHttpClient;
 
@@ -477,6 +495,12 @@ export function createTemplateGovernanceWorkbenchController(
   return {
     loadOverview(input) {
       return loadTemplateGovernanceOverview(client, input);
+    },
+    async loadLearningCandidates() {
+      return (await listLearningCandidates(client)).body;
+    },
+    async loadReviewItems(filters) {
+      return (await listReviewItems(client, filters)).body;
     },
     loadRuleLedger(input) {
       return loadTemplateGovernanceRuleLedger(client, input);
@@ -838,6 +862,29 @@ export function createTemplateGovernanceWorkbenchController(
         await publishEditorialRuleSet(client, input.ruleSetId, {
           actorRole: input.actorRole,
         })
+      ).body;
+
+      return {
+        ruleSet,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? ruleSet.template_family_id,
+          selectedJournalTemplateId:
+            ruleSet.journal_template_id ?? input.selectedJournalTemplateId ?? null,
+          selectedRuleSetId: input.selectedRuleSetId ?? ruleSet.id,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
+        }),
+      };
+    },
+    async transitionRuleSetAndReload(input) {
+      const ruleSet = (
+        await transitionEditorialRuleSet(
+          client,
+          input.ruleSetId,
+          input.transition,
+        )
       ).body;
 
       return {

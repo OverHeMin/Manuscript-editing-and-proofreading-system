@@ -41,16 +41,19 @@ import {
   DocumentStructureService,
   DocumentExportService,
   EditorialDocxTransformService,
+  PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
+  EditorialRuleActivationMetricsService,
   EditorialRulePackageService,
   EditorialRuleProjectionService,
   EditorialRuleResolutionService,
   EditorialRuleService,
   ExtractionTaskService,
   ExampleSourceSessionService,
+  PostgresEditorialRuleActivationMetricsRepository,
   PostgresExtractionTaskRepository,
   ReviewedCaseRulePackageSourceService,
   RulePackageCompileService,
@@ -162,6 +165,11 @@ import {
   PostgresResidualIssueRepository,
   ResidualLearningService,
 } from "../modules/residual-learning/index.ts";
+import {
+  createReviewItemsApi,
+  PostgresReviewItemsRepository,
+  ReviewItemsService,
+} from "../modules/review-items/index.ts";
 import {
   createRetrievalPresetApi,
   PostgresRetrievalPresetRepository,
@@ -295,6 +303,10 @@ export function createPersistentGovernanceRuntime(
   const editorialRuleRepository = new PostgresEditorialRuleRepository({
     client: options.client,
   });
+  const editorialRuleActivationMetricsRepository =
+    new PostgresEditorialRuleActivationMetricsRepository({
+      client: options.client,
+    });
   const extractionTaskRepository = new PostgresExtractionTaskRepository({
     client: options.client,
   });
@@ -308,6 +320,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const residualIssueRepository = new PostgresResidualIssueRepository({
+    client: options.client,
+  });
+  const reviewItemsRepository = new PostgresReviewItemsRepository({
     client: options.client,
   });
   const modelRegistryRepository = new PostgresModelRegistryRepository({
@@ -446,6 +461,10 @@ export function createPersistentGovernanceRuntime(
     assetRepository,
     rootDir: uploadRootDir,
   });
+  const docxSourceBlockResolver = new PythonDocxSourceBlockResolver({
+    assetRepository,
+    rootDir: uploadRootDir,
+  });
   const exportService = new DocumentExportService({
     assetRepository,
     manuscriptRepository,
@@ -478,6 +497,37 @@ export function createPersistentGovernanceRuntime(
     knowledgeRetrievalRepository,
     toolGatewayRepository,
     transactionManager: verificationOpsTransactionManager,
+  });
+  const learningApi = createLearningApi({ learningService });
+  const residualLearningApi = createResidualLearningApi({
+    residualLearningService,
+    verificationOpsService,
+  });
+  const editorialRuleActivationMetricsService =
+    new EditorialRuleActivationMetricsService({
+      repository: editorialRuleActivationMetricsRepository,
+      editorialRuleRepository,
+    });
+  const reviewItemsService = new ReviewItemsService({
+    reviewItemsRepository,
+    residualLearningService,
+    learningService,
+    feedbackGovernanceService,
+    activationMetricsService: editorialRuleActivationMetricsService,
+    residualReviewCoordinator: {
+      async validateIssue(input) {
+        return (await residualLearningApi.validateIssue(input)).body;
+      },
+      async createLearningCandidate(input) {
+        return (await residualLearningApi.createLearningCandidate(input)).body;
+      },
+      async resolveIssueDecision(input) {
+        return (await residualLearningApi.resolveIssueDecision(input)).body;
+      },
+    },
+  });
+  const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({
     repository: harnessDatasetRepository,
@@ -536,7 +586,9 @@ export function createPersistentGovernanceRuntime(
   const editorialRuleService = new EditorialRuleService({
     repository: editorialRuleRepository,
     templateFamilyRepository,
+    verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
+    activationMetricsService: editorialRuleActivationMetricsService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -727,6 +779,7 @@ export function createPersistentGovernanceRuntime(
     templateService,
     editorialRuleService,
     promptSkillRegistryService,
+    activationMetricsService: editorialRuleActivationMetricsService,
     transactionManager: createPostgresWriteTransactionManager({
       getClient: async () => options.client.connect(),
       createContext: (client) => ({
@@ -766,6 +819,7 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     transactionManager: workbenchTransactionManager,
   });
@@ -792,8 +846,10 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     editorialDocxTransformService,
+    reviewItemsService,
     transactionManager: workbenchTransactionManager,
   });
   const proofreadingService = new ProofreadingService({
@@ -819,7 +875,9 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    reviewItemsService,
     residualLearningService,
     transactionManager: workbenchTransactionManager,
   });
@@ -854,6 +912,7 @@ export function createPersistentGovernanceRuntime(
     }),
     editorialRuleApi: createEditorialRuleApi({
       editorialRuleService,
+      activationMetricsService: editorialRuleActivationMetricsService,
       editorialRulePackageService,
       extractionTaskService,
       rulePackageCompileService,
@@ -935,11 +994,9 @@ export function createPersistentGovernanceRuntime(
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
     }),
-    learningApi: createLearningApi({ learningService }),
-    residualLearningApi: createResidualLearningApi({
-      residualLearningService,
-      verificationOpsService,
-    }),
+    learningApi,
+    residualLearningApi,
+    reviewItemsApi,
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
       harnessDatasetService,

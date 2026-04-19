@@ -28,6 +28,24 @@ Therefore the approved truthful direction is:
 
 If later sections in this document imply that the knowledge review page itself is already the `回流候选审核` station, this revision note overrides those references.
 
+## Closure Note (2026-04-18, shipped reality)
+
+Later residual-learning and manual-feedback integration changed one important runtime truth that this document did not originally spell out clearly enough.
+
+The current shipped rule-center recovery station is no longer only a passive downstream inbox of already-approved items.
+
+The accepted truthful runtime behavior is:
+
+- the knowledge review page remains a separate knowledge-review station and is not the only upstream source for rule-center recovery
+- the rule-center recovery workspace is now a unified review station, but only for rule-governance items
+- the queue admits `residual_issue` only when `recommended_route = rule_candidate`
+- the queue admits `learning_candidate` only when `type = rule_candidate`
+- residual items routed to `knowledge_candidate` or `prompt_template_candidate` stay out of the rule-center queue
+- this station may run Harness validation for rule-routed residual issues, create the downstream learning candidate, review the resulting rule candidate, and then materialize the governed writeback target `editorial_rule_draft`
+- `杞垚瑙勫垯鑽夌` now means governed draft writeback, not only opening a temporary prefill handoff
+
+If later sections below imply that the rule-center queue contains only already-approved candidates, or that rule conversion ends at a wizard prefill instead of a governed draft writeback, follow this closure note instead.
+
 This document locks four product outcomes:
 
 - the shared four-stage narrative for the full recovery-governance chain

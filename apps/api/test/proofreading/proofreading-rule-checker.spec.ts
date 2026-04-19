@@ -124,6 +124,10 @@ test("instruction assembler combines structured template fields, hard rules, and
     {
       ruleId: "rule-discussion-reshape",
       reason: "medical_meaning_risk",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
     },
   ]);
   assert.deepEqual(instructionPayload.contentRuleCandidates, [
@@ -132,6 +136,10 @@ test("instruction assembler combines structured template fields, hard rules, and
       reason: "medical_meaning_risk",
       severity: "warning",
       actionKind: "rewrite_content",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
     },
   ]);
 });
@@ -184,6 +192,10 @@ test("instruction assembler honors governed manual review confidence thresholds"
       reason: "medical_meaning_risk",
       severity: "warning",
       actionKind: "rewrite_content",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
     },
   ]);
 });
@@ -202,11 +214,40 @@ test("proofreading checker reports failed rule checks without applying manuscrip
 
   assert.equal(findings.failedChecks[0]?.expected, AFTER_HEADING);
   assert.equal(findings.failedChecks[0]?.actual, BEFORE_HEADING);
+  assert.equal(
+    (
+      findings.failedChecks[0] as {
+        candidate_posture?: string;
+      }
+    )?.candidate_posture,
+    "inspect_only",
+  );
+  assert.deepEqual(
+    (
+      findings.failedChecks[0] as {
+        evidence_pack?: Record<string, unknown>;
+      }
+    )?.evidence_pack,
+    {
+      location: {
+        section: "abstract",
+        block_kind: "heading",
+        block_index: 0,
+      },
+      excerpt: BEFORE_HEADING,
+      suggestion: AFTER_HEADING,
+      rationale: BEFORE_HEADING,
+    },
+  );
   assert.equal(findings.appliedChanges?.length ?? 0, 0);
   assert.deepEqual(findings.manualReviewItems, [
     {
       ruleId: "rule-discussion-reshape",
       reason: "medical_meaning_risk",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
     },
   ]);
 });
@@ -320,12 +361,90 @@ test("proofreading checker reports shared table semantic hits with override meta
       expected: "Journal Beta checks the same semantic table header.",
       actual: "table-1 > Treatment group > n (%)",
       severity: "warning",
+      candidate_posture: "inspect_only",
       semantic_hit: {
         table_id: "table-1",
         semantic_target: "header_cell",
         header_path: ["Treatment group", "n (%)"],
         column_key: "Treatment group > n (%)",
         override_source: "journal",
+      },
+      evidence_pack: {
+        location: {
+          table_id: "table-1",
+          semantic_target: "header_cell",
+          header_path: ["Treatment group", "n (%)"],
+          column_key: "Treatment group > n (%)",
+          override_source: "journal",
+        },
+        excerpt: "table-1 > Treatment group > n (%)",
+        suggestion: "Journal Beta checks the same semantic table header.",
+        rationale: "table-1 > Treatment group > n (%)",
+      },
+    },
+  ]);
+});
+
+test("proofreading checker activates structural statistical-expression rules from scoped results paragraphs", () => {
+  const findings = inspectProofreadingRules({
+    blocks: [
+      {
+        section: "results",
+        block_kind: "paragraph",
+        text: "The intervention group improved significantly (P < 0.05).",
+      },
+    ],
+    rules: [
+      {
+        id: "rule-statistical-expression",
+        rule_set_id: "rule-set-1",
+        order_no: 40,
+        rule_object: "statistical_expression",
+        rule_type: "format",
+        execution_mode: "inspect",
+        scope: {
+          sections: ["results"],
+          block_kind: "paragraph",
+        },
+        selector: {
+          section_selector: "results",
+          pattern_selector: {
+            content_class: "statistical_expression",
+          },
+        },
+        trigger: {
+          kind: "structural_presence",
+          field: "statistical_expression",
+        },
+        action: {
+          kind: "normalize_statistical_expression",
+          requirement: "journal_managed",
+        },
+        authoring_payload: {},
+        confidence_policy: "manual_only",
+        severity: "warning",
+        enabled: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(findings.failedChecks, [
+    {
+      ruleId: "rule-statistical-expression",
+      expected: "Normalize statistical expression using journal_managed requirements.",
+      actual: "The intervention group improved significantly (P < 0.05).",
+      severity: "warning",
+      blockIndex: 0,
+      candidate_posture: "inspect_only",
+      evidence_pack: {
+        location: {
+          block_index: 0,
+          section: "results",
+          block_kind: "paragraph",
+        },
+        excerpt: "The intervention group improved significantly (P < 0.05).",
+        suggestion: "Normalize statistical expression using journal_managed requirements.",
+        rationale: "The intervention group improved significantly (P < 0.05).",
       },
     },
   ]);

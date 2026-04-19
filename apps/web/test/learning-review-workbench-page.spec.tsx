@@ -49,11 +49,11 @@ test("loadLearningReviewPrefill derives snapshot and candidate defaults from the
 
   const result = await loadLearningReviewPrefill(
     {
-      request: async (input: {
+      request: async <TResponse,>(input: {
         method: "GET" | "POST";
         url: string;
         body?: unknown;
-      }): Promise<{ status: number; body: unknown }> => {
+      }): Promise<{ status: number; body: TResponse }> => {
         requests.push(input);
 
         if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
@@ -68,7 +68,7 @@ test("loadLearningReviewPrefill derives snapshot and candidate defaults from the
               current_proofreading_asset_id: "asset-human-final-1",
               created_at: "2026-03-31T09:00:00.000Z",
               updated_at: "2026-03-31T10:15:00.000Z",
-            },
+            } as TResponse,
           };
         }
 
@@ -115,7 +115,7 @@ test("loadLearningReviewPrefill derives snapshot and candidate defaults from the
                 created_at: "2026-03-31T10:10:00.000Z",
                 updated_at: "2026-03-31T10:10:00.000Z",
               },
-            ],
+            ] as TResponse,
           };
         }
 
@@ -142,6 +142,9 @@ test("loadLearningReviewPrefill derives snapshot and candidate defaults from the
     result.candidateForm.governedSource.sourceAssetId,
     "asset-human-final-1",
   );
+  if (result.candidateForm.governedSource.sourceKind !== "evaluation_experiment") {
+    throw new Error("Expected evaluation experiment governed source.");
+  }
   assert.equal(
     result.candidateForm.governedSource.reviewedCaseSnapshotId,
     "",

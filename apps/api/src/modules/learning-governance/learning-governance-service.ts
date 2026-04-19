@@ -35,6 +35,7 @@ import type {
   CreateSkillPackageFromLearningCandidateInput,
   PromptSkillRegistryService,
 } from "../prompt-skill-registry/prompt-skill-service.ts";
+import type { EditorialRuleActivationMetricsService } from "../editorial-rules/editorial-rule-activation-metrics-service.ts";
 import type { EditorialRuleService } from "../editorial-rules/editorial-rule-service.ts";
 import type {
   EditorialRuleConfidencePolicy,
@@ -115,6 +116,10 @@ export interface LearningGovernanceServiceOptions {
   templateService: TemplateGovernanceService;
   editorialRuleService: Pick<EditorialRuleService, "createRuleSet" | "createRule">;
   promptSkillRegistryService: PromptSkillRegistryService;
+  activationMetricsService?: Pick<
+    EditorialRuleActivationMetricsService,
+    "recordWritebackApplied" | "recordWritebackCreated"
+  >;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager<LearningGovernanceWriteContext>;
   createId?: () => string;
@@ -183,6 +188,7 @@ export class LearningGovernanceService {
     "createRuleSet" | "createRule"
   >;
   private readonly promptSkillRegistryService: PromptSkillRegistryService;
+  private readonly activationMetricsService?: LearningGovernanceServiceOptions["activationMetricsService"];
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager<LearningGovernanceWriteContext>;
   private readonly createId: () => string;
@@ -195,6 +201,7 @@ export class LearningGovernanceService {
     this.templateService = options.templateService;
     this.editorialRuleService = options.editorialRuleService;
     this.promptSkillRegistryService = options.promptSkillRegistryService;
+    this.activationMetricsService = options.activationMetricsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -210,7 +217,7 @@ export class LearningGovernanceService {
     input: CreateLearningWritebackInput,
   ): Promise<LearningWritebackRecord> {
     this.permissionGuard.assert(actorRole, "permissions.manage");
-    await requireApprovedLearningCandidate(
+    const candidate = await requireApprovedLearningCandidate(
       this.learningCandidateRepository,
       input.learningCandidateId,
     );
@@ -238,6 +245,11 @@ export class LearningGovernanceService {
     };
 
     await this.repository.save(record);
+    if (input.targetType === "editorial_rule_draft") {
+      await this.activationMetricsService?.recordWritebackCreated(
+        readRelatedRuleIds(candidate.candidate_payload),
+      );
+    }
     return record;
   }
 
@@ -285,6 +297,15 @@ export class LearningGovernanceService {
         applied_at: this.now().toISOString(),
       };
       await repository.save(applied);
+      if (input.targetType === "editorial_rule_draft") {
+        const candidate = await requireApprovedLearningCandidate(
+          this.learningCandidateRepository,
+          writeback.learning_candidate_id,
+        );
+        await this.activationMetricsService?.recordWritebackApplied(
+          readRelatedRuleIds(candidate.candidate_payload),
+        );
+      }
       return applied;
     });
   }
@@ -458,6 +479,21 @@ function readEditorialRuleDraftPayload(
   payload: Record<string, unknown> | undefined,
 ): EditorialRuleDraftPayload {
   return (payload ?? {}) as EditorialRuleDraftPayload;
+}
+
+function readRelatedRuleIds(
+  payload: Record<string, unknown> | undefined,
+): string[] {
+  if (!payload) {
+    return [];
+  }
+
+  const value = payload["related_rule_ids"];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string");
 }
 
 function toEditorialRuleModule(

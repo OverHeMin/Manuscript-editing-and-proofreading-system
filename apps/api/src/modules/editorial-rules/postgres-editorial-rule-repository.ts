@@ -1,3 +1,6 @@
+import {
+  DEFAULT_EDITORIAL_RULE_PRIORITY,
+} from "./editorial-rule-record.ts";
 import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
@@ -18,12 +21,19 @@ interface EditorialRuleSetRow {
   module: EditorialRuleSetRecord["module"];
   version_no: number;
   status: EditorialRuleSetRecord["status"];
+  release_scope: Record<string, unknown> | string | null;
+  candidate_validation_run_id: string | null;
+  candidate_validation_evidence_pack_id: string | null;
+  online_regression_run_id: string | null;
+  online_regression_evidence_pack_id: string | null;
+  rollback_rule_set_id: string | null;
 }
 
 interface EditorialRuleRow {
   id: string;
   rule_set_id: string;
   order_no: number;
+  priority: number | null;
   rule_object: string;
   rule_type: EditorialRuleRecord["rule_type"];
   execution_mode: EditorialRuleRecord["execution_mode"];
@@ -56,9 +66,15 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           journal_template_id,
           module,
           version_no,
-          status
+          status,
+          release_scope,
+          candidate_validation_run_id,
+          candidate_validation_evidence_pack_id,
+          online_regression_run_id,
+          online_regression_evidence_pack_id,
+          rollback_rule_set_id
         )
-        values ($1, $2, $3, $4, $5, $6)
+        values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::uuid)
         on conflict (id) do update
         set
           template_family_id = excluded.template_family_id,
@@ -66,6 +82,12 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           module = excluded.module,
           version_no = excluded.version_no,
           status = excluded.status,
+          release_scope = excluded.release_scope,
+          candidate_validation_run_id = excluded.candidate_validation_run_id,
+          candidate_validation_evidence_pack_id = excluded.candidate_validation_evidence_pack_id,
+          online_regression_run_id = excluded.online_regression_run_id,
+          online_regression_evidence_pack_id = excluded.online_regression_evidence_pack_id,
+          rollback_rule_set_id = excluded.rollback_rule_set_id,
           updated_at = now()
       `,
       [
@@ -75,6 +97,12 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
         record.module,
         record.version_no,
         record.status,
+        JSON.stringify(record.release_scope ?? {}),
+        record.candidate_validation_run_id ?? null,
+        record.candidate_validation_evidence_pack_id ?? null,
+        record.online_regression_run_id ?? null,
+        record.online_regression_evidence_pack_id ?? null,
+        record.rollback_rule_set_id ?? null,
       ],
     );
   }
@@ -90,7 +118,13 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           journal_template_id,
           module,
           version_no,
-          status
+          status,
+          release_scope,
+          candidate_validation_run_id,
+          candidate_validation_evidence_pack_id,
+          online_regression_run_id,
+          online_regression_evidence_pack_id,
+          rollback_rule_set_id
         from editorial_rule_sets
         where id = $1
       `,
@@ -109,7 +143,13 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           journal_template_id,
           module,
           version_no,
-          status
+          status,
+          release_scope,
+          candidate_validation_run_id,
+          candidate_validation_evidence_pack_id,
+          online_regression_run_id,
+          online_regression_evidence_pack_id,
+          rollback_rule_set_id
         from editorial_rule_sets
         order by template_family_id asc, module asc, version_no asc, id asc
       `,
@@ -130,7 +170,13 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           journal_template_id,
           module,
           version_no,
-          status
+          status,
+          release_scope,
+          candidate_validation_run_id,
+          candidate_validation_evidence_pack_id,
+          online_regression_run_id,
+          online_regression_evidence_pack_id,
+          rollback_rule_set_id
         from editorial_rule_sets
         where template_family_id = $1
           and module = $2
@@ -180,6 +226,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           id,
           rule_set_id,
           order_no,
+          priority,
           rule_object,
           rule_type,
           execution_mode,
@@ -206,7 +253,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           $4,
           $5,
           $6,
-          $7::jsonb,
+          $7,
           $8::jsonb,
           $9::jsonb,
           $10::jsonb,
@@ -214,18 +261,20 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           $12::jsonb,
           $13::jsonb,
           $14::jsonb,
-          $15,
+          $15::jsonb,
           $16,
           $17,
           $18,
           $19,
           $20,
-          $21
+          $21,
+          $22
         )
         on conflict (id) do update
         set
           rule_set_id = excluded.rule_set_id,
           order_no = excluded.order_no,
+          priority = excluded.priority,
           rule_object = excluded.rule_object,
           rule_type = excluded.rule_type,
           execution_mode = excluded.execution_mode,
@@ -250,6 +299,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
         record.id,
         record.rule_set_id,
         record.order_no,
+        record.priority ?? DEFAULT_EDITORIAL_RULE_PRIORITY,
         record.rule_object,
         record.rule_type,
         record.execution_mode,
@@ -279,6 +329,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           id,
           rule_set_id,
           order_no,
+          priority,
           rule_object,
           rule_type,
           execution_mode,
@@ -313,6 +364,7 @@ export class PostgresEditorialRuleRepository implements EditorialRuleRepository 
           id,
           rule_set_id,
           order_no,
+          priority,
           rule_object,
           rule_type,
           execution_mode,
@@ -352,6 +404,34 @@ function mapRuleSetRow(row: EditorialRuleSetRow): EditorialRuleSetRecord {
     module: row.module,
     version_no: Number(row.version_no),
     status: row.status,
+    ...(hasObjectKeys(row.release_scope)
+      ? {
+          release_scope: parseJsonObject<NonNullable<EditorialRuleSetRecord["release_scope"]>>(
+            row.release_scope,
+          ),
+        }
+      : {}),
+    ...(row.candidate_validation_run_id
+      ? { candidate_validation_run_id: row.candidate_validation_run_id }
+      : {}),
+    ...(row.candidate_validation_evidence_pack_id
+      ? {
+          candidate_validation_evidence_pack_id:
+            row.candidate_validation_evidence_pack_id,
+        }
+      : {}),
+    ...(row.online_regression_run_id
+      ? { online_regression_run_id: row.online_regression_run_id }
+      : {}),
+    ...(row.online_regression_evidence_pack_id
+      ? {
+          online_regression_evidence_pack_id:
+            row.online_regression_evidence_pack_id,
+        }
+      : {}),
+    ...(row.rollback_rule_set_id
+      ? { rollback_rule_set_id: row.rollback_rule_set_id }
+      : {}),
   };
 }
 
@@ -370,6 +450,7 @@ function mapRuleRow(row: EditorialRuleRow): EditorialRuleRecord {
     id: row.id,
     rule_set_id: row.rule_set_id,
     order_no: Number(row.order_no),
+    priority: Number(row.priority ?? DEFAULT_EDITORIAL_RULE_PRIORITY),
     rule_object: row.rule_object,
     rule_type: row.rule_type,
     execution_mode: row.execution_mode,
@@ -416,4 +497,8 @@ function parseOptionalJsonObject<T extends object>(
 ): T | undefined {
   const parsed = parseJsonObject<T>(value);
   return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
+function hasObjectKeys(value: Record<string, unknown> | string | null): boolean {
+  return Object.keys(parseJsonObject<Record<string, unknown>>(value)).length > 0;
 }

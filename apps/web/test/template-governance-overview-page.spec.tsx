@@ -12,6 +12,12 @@ test("rule center overview renders approved A-layout shell", () => {
         moduleCount: 9,
         pendingKnowledgeCount: 3,
         extractionAwaitingConfirmationCount: 6,
+        pendingReviewCount: 5,
+        harnessQueuedCount: 2,
+        harnessPassedCount: 4,
+        harnessFailedCount: 1,
+        ruleDraftWritebackDraftCount: 2,
+        ruleDraftWritebackAppliedCount: 7,
       }}
       pendingItems={[
         {
@@ -62,6 +68,12 @@ test("rule center overview renders approved A-layout shell", () => {
   assert.match(markup, /\u8fdb\u5165\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
   assert.match(markup, /\u5f85\u5904\u7406\u4e8b\u9879/u);
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u5f85\u5904\u7406/u);
+  assert.match(markup, /Harness \u5f85\u9a8c\u8bc1/u);
+  assert.match(markup, /Harness \u5df2\u901a\u8fc7/u);
+  assert.match(markup, /Harness \u672a\u901a\u8fc7/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5f85\u5199\u56de/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5df2\u5199\u56de/u);
   assert.match(markup, /\u6700\u8fd1\u5305\s*\/\s*\u6a21\u677f\u66f4\u65b0/u);
   assert.match(markup, /\u56de\u6d41\u5019\u9009\u5f85\u786e\u8ba4/u);
   assert.match(markup, /\u4e34\u5e8a\u7814\u7a76\u5927\u6a21\u677f\u65cf/u);
@@ -79,10 +91,51 @@ test("rule center overview renders approved A-layout shell", () => {
         /template-governance-card template-governance-overview-metric"/g,
       ) ?? []
     ).length,
-    4,
+    10,
   );
   assert.equal(
     (markup.match(/template-governance-overview-metric-value/g) ?? []).length,
-    4,
+    10,
+  );
+});
+
+test("rule center overview surfaces release posture and blocked promotion metrics", () => {
+  const Page = TemplateGovernanceOverviewPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      metrics={{
+        templateCount: 4,
+        moduleCount: 9,
+        pendingKnowledgeCount: 3,
+        extractionAwaitingConfirmationCount: 6,
+        pendingReviewCount: 5,
+        harnessQueuedCount: 2,
+        harnessPassedCount: 4,
+        harnessFailedCount: 1,
+        ruleDraftWritebackDraftCount: 2,
+        ruleDraftWritebackAppliedCount: 7,
+        candidateRuleSetCount: 2,
+        canaryRuleSetCount: 1,
+        activeRuleSetCount: 4,
+        rolledBackRuleSetCount: 1,
+        blockedReleaseCount: 3,
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u5019\u9009\u89c4\u5219\u96c6/u);
+  assert.match(markup, /Canary \u89c4\u5219\u96c6/u);
+  assert.match(markup, /\u5df2\u751f\u6548\u89c4\u5219\u96c6/u);
+  assert.match(markup, /\u5df2\u56de\u6eda\u89c4\u5219\u96c6/u);
+  assert.match(markup, /\u53d1\u5e03\u963b\u585e\u9879/u);
+  assert.equal(
+    (
+      markup.match(
+        /template-governance-card template-governance-overview-metric"/g,
+      ) ?? []
+    ).length,
+    15,
   );
 });

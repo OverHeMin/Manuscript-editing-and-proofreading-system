@@ -38,6 +38,7 @@ export interface WorkbenchHandoff {
   assetId?: string;
   revisionId?: string;
   learningCandidateId?: string;
+  reviewItemId?: string;
   knowledgePrefillTemplateId?: string;
   knowledgeView?: KnowledgeLibraryView;
   templateGovernanceView?: TemplateGovernanceView;
@@ -55,6 +56,7 @@ export interface WorkbenchLocation {
   assetId?: string;
   revisionId?: string;
   learningCandidateId?: string;
+  reviewItemId?: string;
   knowledgePrefillTemplateId?: string;
   knowledgeView?: KnowledgeLibraryView;
   templateGovernanceView?: TemplateGovernanceView;
@@ -132,6 +134,8 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.revisionId;
   const learningCandidateId =
     typeof handoff === "string" ? undefined : handoff?.learningCandidateId;
+  const reviewItemId =
+    typeof handoff === "string" ? undefined : handoff?.reviewItemId;
   const knowledgePrefillTemplateId =
     typeof handoff === "string" ? undefined : handoff?.knowledgePrefillTemplateId;
   const knowledgeView =
@@ -193,6 +197,10 @@ export function formatWorkbenchHash(
     params.set("learningCandidateId", learningCandidateId.trim());
   }
 
+  if (reviewItemId && reviewItemId.trim().length > 0) {
+    params.set("reviewItemId", reviewItemId.trim());
+  }
+
   if (settingsSection) {
     params.set("settingsSection", settingsSection);
   }
@@ -226,6 +234,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const assetId = params.get("assetId")?.trim();
   const revisionId = params.get("revisionId")?.trim();
   const learningCandidateId = params.get("learningCandidateId")?.trim();
+  const reviewItemId = params.get("reviewItemId")?.trim();
   const knowledgePrefillTemplateId = params.get("knowledgePrefillTemplateId")?.trim();
   const knowledgeView = normalizeKnowledgeLibraryView(params.get("knowledgeView"));
   const templateGovernanceView = normalizeTemplateGovernanceView(
@@ -246,6 +255,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(learningCandidateId && learningCandidateId.length > 0
       ? { learningCandidateId }
       : {}),
+    ...(reviewItemId && reviewItemId.length > 0 ? { reviewItemId } : {}),
     ...(knowledgePrefillTemplateId && knowledgePrefillTemplateId.length > 0
       ? { knowledgePrefillTemplateId }
       : {}),

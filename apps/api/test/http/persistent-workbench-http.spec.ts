@@ -57,6 +57,7 @@ import {
 import {
   semanticTableColumnKey,
   semanticTableDocxBase64,
+  semanticTableResultsDocxBase64,
   semanticTableReportTarget,
   semanticTableTableId,
 } from "../../../../test-support/semantic-table-docx.ts";
@@ -986,6 +987,161 @@ test("persistent workbench proofreading routes persist semantic table evidence a
           assert.match(
             String(job.payload?.reportMarkdown),
             new RegExp(semanticTableReportTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+          );
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("persistent workbench proofreading routes persist statistical-expression findings across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(
+      path.join(os.tmpdir(), "medsys-persistent-proofreading-statistical-"),
+    );
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      const editorialRuleRepository = new PostgresEditorialRuleRepository({
+        client: seedPool,
+      });
+      await editorialRuleRepository.saveRule({
+        id: "45454545-2222-4333-8444-555555555555",
+        rule_set_id: "23232323-2222-4333-8444-555555555555",
+        order_no: 20,
+        rule_object: "statistical_expression",
+        rule_type: "format",
+        execution_mode: "inspect",
+        scope: {
+          sections: ["results"],
+          block_kind: "paragraph",
+        },
+        selector: {
+          section_selector: "results",
+          pattern_selector: {
+            content_class: "statistical_expression",
+          },
+        },
+        trigger: {
+          kind: "structural_presence",
+          field: "statistical_expression",
+        },
+        action: {
+          kind: "normalize_statistical_expression",
+          requirement: "journal_managed",
+        },
+        authoring_payload: {},
+        confidence_policy: "manual_only",
+        severity: "warning",
+        enabled: true,
+      });
+      await writeSemanticTableResultsFixtureDocx(
+        uploadRootDir,
+        "persistent/uploads/seeded-original.docx",
+      );
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.proofreader",
+        );
+        const draftResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/modules/proofreading/draft`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              parentAssetId: seededIds.originalAssetId,
+              storageKey:
+                "persistent/runs/proofreading/statistical-expression-report.md",
+              fileName: "statistical-expression-report.md",
+            }),
+          },
+        );
+        const draft = (await draftResponse.json()) as {
+          job: { id: string; status: string };
+        };
+
+        assert.equal(
+          draftResponse.status,
+          201,
+          `Expected proofreading draft to succeed, received ${draftResponse.status}: ${JSON.stringify(draft)}`,
+        );
+        assert.equal(draft.job.status, "completed");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl, {
+          uploadRootDir,
+        });
+        try {
+          const jobResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/jobs/${draft.job.id}`,
+            {
+              headers: { Cookie: cookie },
+            },
+          );
+          const job = (await jobResponse.json()) as {
+            payload?: {
+              proofreadingFindings?: {
+                failedChecks?: Array<{
+                  expected?: string;
+                  actual?: string;
+                  reviewItemId?: string;
+                }>;
+              };
+              reportMarkdown?: string;
+            };
+          };
+
+          const statisticalCheck =
+            job.payload?.proofreadingFindings?.failedChecks?.find(
+              (check) =>
+                check.expected ===
+                "Normalize statistical expression using journal_managed requirements.",
+            );
+
+          assert.equal(jobResponse.status, 200);
+          assert.ok(
+            statisticalCheck,
+            "Expected proofreading draft to persist the statistical-expression failed check after restart.",
+          );
+          assert.match(
+            String(statisticalCheck?.actual),
+            /P\s*<\s*0\.05/u,
+          );
+          assert.ok(
+            statisticalCheck?.reviewItemId,
+            "Expected persisted statistical-expression findings to keep their review item linkage.",
+          );
+          assert.match(
+            String(job.payload?.reportMarkdown),
+            /Normalize statistical expression using journal_managed requirements\./u,
+          );
+          assert.match(
+            String(job.payload?.reportMarkdown),
+            /P\s*<\s*0\.05/u,
           );
         } finally {
           await stopServer(secondServer.server);
@@ -3443,7 +3599,22 @@ async function writeSemanticTableFixtureDocx(
   rootDir: string,
   storageKey: string,
 ): Promise<void> {
+  await writeDocxFixture(rootDir, storageKey, semanticTableDocxBase64);
+}
+
+async function writeSemanticTableResultsFixtureDocx(
+  rootDir: string,
+  storageKey: string,
+): Promise<void> {
+  await writeDocxFixture(rootDir, storageKey, semanticTableResultsDocxBase64);
+}
+
+async function writeDocxFixture(
+  rootDir: string,
+  storageKey: string,
+  fileContentBase64: string,
+): Promise<void> {
   const absolutePath = path.join(rootDir, ...storageKey.split("/"));
   await mkdir(path.dirname(absolutePath), { recursive: true });
-  await writeFile(absolutePath, Buffer.from(semanticTableDocxBase64, "base64"));
+  await writeFile(absolutePath, Buffer.from(fileContentBase64, "base64"));
 }

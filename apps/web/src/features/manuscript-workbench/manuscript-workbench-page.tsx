@@ -50,6 +50,10 @@ import {
 } from "./manuscript-workbench-summary.tsx";
 import type { ManualFeedbackCategory } from "../feedback-governance/index.ts";
 import {
+  buildHighRiskReviewItemsFromJob,
+  type ManuscriptWorkbenchHighRiskReviewItemViewModel,
+} from "./manuscript-workbench-high-risk-review.ts";
+import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
   resolveWorkbenchReadOnlyExecutionContext,
@@ -62,6 +66,8 @@ import {
 
 const BARE_AI_ACTION_LABEL = "Run Bare AI Once";
 
+export { buildHighRiskReviewItemsFromJob };
+
 export interface ManualFeedbackContext {
   snapshotId: string;
   sourceAssetId: string;
@@ -70,7 +76,8 @@ export interface ManualFeedbackContext {
 export interface BuildManualFeedbackActionResultInput {
   feedbackCategory: ManualFeedbackCategory;
   feedbackRecordId: string;
-  learningCandidateId: string;
+  reviewItemId: string;
+  recommendedRoute?: "rule_candidate" | "knowledge_candidate" | "prompt_template_candidate";
 }
 
 export interface ManuscriptWorkbenchPageProps {
@@ -196,8 +203,8 @@ export function buildManualFeedbackActionResult(
 ): WorkbenchActionResultViewModel {
   return {
     tone: "success",
-    actionLabel: "Submit Manual Feedback",
-    message: `Submitted manual feedback candidate ${input.learningCandidateId}`,
+    actionLabel: "Submit Review Item",
+    message: `Submitted review item ${input.reviewItemId}`,
     details: [
       {
         label: "Feedback Type",
@@ -208,9 +215,48 @@ export function buildManualFeedbackActionResult(
         value: input.feedbackRecordId,
       },
       {
-        label: "Learning Candidate",
-        value: input.learningCandidateId,
+        label: "Review Item",
+        value: input.reviewItemId,
       },
+      ...(input.recommendedRoute
+        ? [
+            {
+              label: "Recommended Route",
+              value: input.recommendedRoute,
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+export function buildManualOnlyReviewActionResult(
+  item: Pick<
+    ManuscriptWorkbenchHighRiskReviewItemViewModel,
+    "id" | "feedbackCategory" | "recommendedRoute"
+  >,
+): WorkbenchActionResultViewModel {
+  return {
+    tone: "success",
+    actionLabel: "Record Manual Only",
+    message: `Recorded manual-only review item ${item.id}`,
+    details: [
+      {
+        label: "Feedback Type",
+        value: item.feedbackCategory,
+      },
+      {
+        label: "Review Item",
+        value: item.id,
+      },
+      ...(item.recommendedRoute
+        ? [
+            {
+              label: "Recommended Route",
+              value: item.recommendedRoute,
+            },
+          ]
+        : []),
     ],
   };
 }
@@ -406,7 +452,8 @@ export function ManuscriptWorkbenchPage({
   const [lastSubmittedManualFeedback, setLastSubmittedManualFeedback] = useState<{
     feedbackCategory: ManualFeedbackCategory;
     feedbackRecordId: string;
-    learningCandidateId: string;
+    reviewItemId: string;
+    recommendedRoute?: "rule_candidate" | "knowledge_candidate" | "prompt_template_candidate";
   } | null>(null);
   const [selectedTemplateFamilyId, setSelectedTemplateFamilyId] = useState("");
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
@@ -650,7 +697,7 @@ export function ManuscriptWorkbenchPage({
       setError(message);
       setLatestActionResult({
         tone: "error",
-        actionLabel: "Submit Manual Feedback",
+        actionLabel: "Submit Review Item",
         message,
         details: [],
       });
@@ -662,8 +709,9 @@ export function ManuscriptWorkbenchPage({
     setError("");
 
     try {
-      const result = await controller.submitManualFeedbackAndCreateCandidate({
+      const result = await controller.submitManualFeedbackForReview({
         manuscriptId: currentWorkspace.manuscript.id,
+        manuscriptType: currentWorkspace.manuscript.manuscript_type,
         module: mode,
         snapshotId: context.snapshotId,
         sourceAssetId: context.sourceAssetId,
@@ -677,7 +725,8 @@ export function ManuscriptWorkbenchPage({
       const actionResult = buildManualFeedbackActionResult({
         feedbackCategory: selectedFeedbackCategory,
         feedbackRecordId: result.feedback.id,
-        learningCandidateId: result.learningCandidate.id,
+        reviewItemId: result.item.id,
+        recommendedRoute: result.item.recommended_route,
       });
 
       setStatus(actionResult.message);
@@ -685,7 +734,8 @@ export function ManuscriptWorkbenchPage({
       setLastSubmittedManualFeedback({
         feedbackCategory: selectedFeedbackCategory,
         feedbackRecordId: result.feedback.id,
-        learningCandidateId: result.learningCandidate.id,
+        reviewItemId: result.item.id,
+        recommendedRoute: result.item.recommended_route,
       });
       setManualFeedbackCategory("");
       setManualFeedbackNote("");
@@ -695,7 +745,132 @@ export function ManuscriptWorkbenchPage({
       setError(message);
       setLatestActionResult({
         tone: "error",
-        actionLabel: "Submit Manual Feedback",
+        actionLabel: "Submit Review Item",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsManualFeedbackSubmitting(false);
+    }
+  }
+
+  async function submitHighRiskReviewItem(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    context: ManualFeedbackContext,
+    item: ManuscriptWorkbenchHighRiskReviewItemViewModel,
+  ) {
+    if (mode === "submission") {
+      return;
+    }
+
+    setIsManualFeedbackSubmitting(true);
+    setError("");
+
+    try {
+      const result = await controller.submitManualFeedbackForReview({
+        manuscriptId: currentWorkspace.manuscript.id,
+        manuscriptType: currentWorkspace.manuscript.manuscript_type,
+        module: mode,
+        snapshotId: context.snapshotId,
+        sourceAssetId: context.sourceAssetId,
+        feedbackCategory: item.feedbackCategory,
+        title: item.title,
+        excerpt: item.excerpt,
+        location: item.location,
+        riskLevel: item.riskLevel,
+        suggestion: item.suggestion,
+        rationale: item.rationale,
+        candidatePosture: item.candidate_posture,
+        decisionSource: "execution_hit",
+        evidencePack: item.evidence_pack,
+        relatedRuleIds: item.relatedRuleIds,
+        relatedKnowledgeItemIds: item.relatedKnowledgeItemIds,
+        originPayload: item.originPayload,
+      });
+
+      const actionResult = buildManualFeedbackActionResult({
+        feedbackCategory: item.feedbackCategory,
+        feedbackRecordId: result.feedback.id,
+        reviewItemId: result.item.id,
+        recommendedRoute: result.item.recommended_route,
+      });
+
+      setStatus(actionResult.message);
+      setLatestActionResult(actionResult);
+      setLastSubmittedManualFeedback({
+        feedbackCategory: item.feedbackCategory,
+        feedbackRecordId: result.feedback.id,
+        reviewItemId: result.item.id,
+        recommendedRoute: result.item.recommended_route,
+      });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Submit Review Item",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsManualFeedbackSubmitting(false);
+    }
+  }
+
+  async function recordHighRiskManualOnly(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    context: ManualFeedbackContext,
+    item: ManuscriptWorkbenchHighRiskReviewItemViewModel,
+  ) {
+    if (mode === "submission") {
+      return;
+    }
+
+    setIsManualFeedbackSubmitting(true);
+    setError("");
+
+    try {
+      const submitted = await controller.submitManualFeedbackForReview({
+        manuscriptId: currentWorkspace.manuscript.id,
+        manuscriptType: currentWorkspace.manuscript.manuscript_type,
+        module: mode,
+        snapshotId: context.snapshotId,
+        sourceAssetId: context.sourceAssetId,
+        feedbackCategory: item.feedbackCategory,
+        title: item.title,
+        excerpt: item.excerpt,
+        location: item.location,
+        riskLevel: item.riskLevel,
+        suggestion: item.suggestion,
+        rationale: item.rationale,
+        candidatePosture: item.candidate_posture,
+        decisionSource: "execution_hit",
+        evidencePack: item.evidence_pack,
+        relatedRuleIds: item.relatedRuleIds,
+        relatedKnowledgeItemIds: item.relatedKnowledgeItemIds,
+        originPayload: item.originPayload,
+      });
+
+      await controller.decideReviewItem({
+        sourceKind: "governed_hit",
+        id: submitted.item.id,
+        action: "accept_change_only",
+      });
+
+      const actionResult = buildManualOnlyReviewActionResult({
+        ...item,
+        id: submitted.item.id,
+      });
+      setStatus(actionResult.message);
+      setLatestActionResult(actionResult);
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Record Manual Only",
         message,
         details: [],
       });
@@ -1345,10 +1520,17 @@ function buildTemplateContextActionResult(
           note: manualFeedbackNote,
           isSubmitting: isManualFeedbackSubmitting,
           lastSubmitted: lastSubmittedManualFeedback ?? undefined,
+          highRiskReviewItems: buildHighRiskReviewItemsFromJob(latestJob),
           onCategoryChange: setManualFeedbackCategory,
           onNoteChange: setManualFeedbackNote,
           onSubmit: () => {
             void submitManualFeedback(workspace, manualFeedbackContext);
+          },
+          onSubmitHighRiskItem: (item) => {
+            void submitHighRiskReviewItem(workspace, manualFeedbackContext, item);
+          },
+          onRecordManualOnly: (item) => {
+            void recordHighRiskManualOnly(workspace, manualFeedbackContext, item);
           },
         }
       : undefined;

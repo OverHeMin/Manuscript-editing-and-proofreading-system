@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { getAdminDatabaseUrl, getDatabaseName, getDatabaseUrl } from "../config.ts";
 import { auditDatabaseMigrations } from "../migration-audit.ts";
+import { resolveApiPackageRoot } from "../package-root.ts";
 import {
   getRepositoryMigrationLedgerMap,
   readRepositoryMigrationSql,
@@ -12,7 +13,7 @@ import {
 import { seedRoles } from "../seeds/roles.seed.ts";
 import { loadAppEnvDefaults } from "../../ops/env-defaults.ts";
 
-const packageRoot = path.resolve(import.meta.dirname, "../../..");
+const packageRoot = resolveApiPackageRoot(import.meta.dirname);
 const prismaSchemaPath = path.join(packageRoot, "prisma", "schema.prisma");
 const MIGRATION_LOCK_KEY = "medical_api_schema_migrations";
 
@@ -190,9 +191,15 @@ async function reconcileAppliedAdditiveMigrations(client: Client): Promise<void>
   }
 }
 
-export async function runMigrationCli(): Promise<void> {
+export async function runMigrationCli(
+  options: {
+    skipPrismaValidate?: boolean;
+  } = {},
+): Promise<void> {
   loadAppEnvDefaults(packageRoot);
-  runPrismaValidate();
+  if (!options.skipPrismaValidate) {
+    runPrismaValidate();
+  }
   await ensureDatabaseExists();
 
   const client = new Client({ connectionString: getDatabaseUrl() });

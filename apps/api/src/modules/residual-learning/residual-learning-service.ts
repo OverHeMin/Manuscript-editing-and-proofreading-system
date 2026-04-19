@@ -57,6 +57,12 @@ export interface CreateLearningCandidateFromResidualIssueInput {
   requestedByRole?: RoleKey;
   title?: string;
   proposalText?: string;
+  route?: ResidualIssueRecord["recommended_route"];
+}
+
+export interface ResolveResidualIssueDecisionInput {
+  issueId: string;
+  resolution: "manual_only" | "evidence_only" | "archived";
 }
 
 export class ResidualIssueNotFoundError extends Error {
@@ -265,6 +271,7 @@ export class ResidualLearningService {
       await this.learningService.createResidualGovernedLearningCandidate({
         ...buildResidualCandidateInput({
           issue,
+          route: input.route,
           title: input.title,
           proposalText: input.proposalText,
         }),
@@ -280,6 +287,7 @@ export class ResidualLearningService {
 
     const updatedIssue: ResidualIssueRecord = {
       ...issue,
+      recommended_route: input.route ?? issue.recommended_route,
       learning_candidate_id: candidate.id,
       status: "candidate_created",
       updated_at: this.now().toISOString(),
@@ -287,6 +295,30 @@ export class ResidualLearningService {
     await this.residualIssueRepository.save(updatedIssue);
 
     return candidate;
+  }
+
+  async resolveIssueDecision(
+    input: ResolveResidualIssueDecisionInput,
+  ): Promise<ResidualIssueRecord> {
+    const issue = await this.requireIssue(input.issueId);
+    const next: ResidualIssueRecord = {
+      ...issue,
+      recommended_route:
+        input.resolution === "manual_only"
+          ? "manual_only"
+          : input.resolution === "evidence_only"
+            ? "evidence_only"
+            : issue.recommended_route,
+      harness_validation_status:
+        input.resolution === "manual_only" || input.resolution === "evidence_only"
+          ? "not_required"
+          : issue.harness_validation_status,
+      status: input.resolution,
+      updated_at: this.now().toISOString(),
+    };
+
+    await this.residualIssueRepository.save(next);
+    return next;
   }
 
   private async requireIssue(issueId: string): Promise<ResidualIssueRecord> {
@@ -335,6 +367,7 @@ function deriveValidatedResidualStatus(input: {
 
 function buildResidualCandidateInput(input: {
   issue: ResidualIssueRecord;
+  route?: ResidualIssueRecord["recommended_route"];
   title?: string;
   proposalText?: string;
 }): Omit<
@@ -344,7 +377,7 @@ function buildResidualCandidateInput(input: {
   return {
     type: mapResidualRouteToCandidateType(
       input.issue.id,
-      input.issue.recommended_route,
+      input.route ?? input.issue.recommended_route,
     ),
     module: input.issue.module,
     manuscriptType: input.issue.manuscript_type,

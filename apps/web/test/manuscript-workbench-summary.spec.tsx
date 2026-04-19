@@ -1,7 +1,8 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ManuscriptWorkbenchWorkspace } from "../src/features/manuscript-workbench/manuscript-workbench-controller.ts";
 import {
   buildJobBatchProgressDetails,
   buildJobReviewEvidenceDetails,
@@ -9,7 +10,25 @@ import {
   ManuscriptWorkbenchSummary,
 } from "../src/features/manuscript-workbench/manuscript-workbench-summary.tsx";
 
-function createEditingWorkspace() {
+function createEditingWorkspace(): ManuscriptWorkbenchWorkspace {
+  const editedAsset = {
+    id: "asset-edited-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/final.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-original-1",
+    source_module: "editing",
+    source_job_id: "job-edit-1",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "editing-final.docx",
+    created_at: "2026-03-31T09:45:00.000Z",
+    updated_at: "2026-03-31T09:45:00.000Z",
+  };
+
   return {
     manuscript: {
       id: "manuscript-1",
@@ -22,23 +41,7 @@ function createEditingWorkspace() {
       updated_at: "2026-03-31T10:00:00.000Z",
     },
     assets: [
-      {
-        id: "asset-edited-1",
-        manuscript_id: "manuscript-1",
-        asset_type: "edited_docx",
-        status: "active",
-        storage_key: "runs/editing/final.docx",
-        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        parent_asset_id: "asset-original-1",
-        source_module: "editing",
-        source_job_id: "job-edit-1",
-        created_by: "editor-1",
-        version_no: 2,
-        is_current: true,
-        file_name: "editing-final.docx",
-        created_at: "2026-03-31T09:45:00.000Z",
-        updated_at: "2026-03-31T09:45:00.000Z",
-      },
+      editedAsset,
       {
         id: "asset-original-1",
         manuscript_id: "manuscript-1",
@@ -55,62 +58,47 @@ function createEditingWorkspace() {
         updated_at: "2026-03-31T09:00:00.000Z",
       },
     ],
-    currentAsset: {
-      id: "asset-edited-1",
-      manuscript_id: "manuscript-1",
-      asset_type: "edited_docx",
-      status: "active",
-      storage_key: "runs/editing/final.docx",
-      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-original-1",
-      source_module: "editing",
-      source_job_id: "job-edit-1",
-      created_by: "editor-1",
-      version_no: 2,
-      is_current: true,
-      file_name: "editing-final.docx",
-      created_at: "2026-03-31T09:45:00.000Z",
-      updated_at: "2026-03-31T09:45:00.000Z",
-    },
-    currentManuscriptAsset: {
-      id: "asset-edited-1",
-      manuscript_id: "manuscript-1",
-      asset_type: "edited_docx",
-      status: "active",
-      storage_key: "runs/editing/final.docx",
-      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-original-1",
-      source_module: "editing",
-      source_job_id: "job-edit-1",
-      created_by: "editor-1",
-      version_no: 2,
-      is_current: true,
-      file_name: "editing-final.docx",
-      created_at: "2026-03-31T09:45:00.000Z",
-      updated_at: "2026-03-31T09:45:00.000Z",
-    },
-    suggestedParentAsset: {
-      id: "asset-edited-1",
-      manuscript_id: "manuscript-1",
-      asset_type: "edited_docx",
-      status: "active",
-      storage_key: "runs/editing/final.docx",
-      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-original-1",
-      source_module: "editing",
-      source_job_id: "job-edit-1",
-      created_by: "editor-1",
-      version_no: 2,
-      is_current: true,
-      file_name: "editing-final.docx",
-      created_at: "2026-03-31T09:45:00.000Z",
-      updated_at: "2026-03-31T09:45:00.000Z",
-    },
+    currentAsset: editedAsset,
+    currentManuscriptAsset: editedAsset,
+    suggestedParentAsset: editedAsset,
     latestProofreadingDraftAsset: null,
-  } as never;
+  } as unknown as ManuscriptWorkbenchWorkspace;
 }
 
-function createScreeningWorkspace() {
+function createScreeningWorkspace(): ManuscriptWorkbenchWorkspace {
+  const reportAsset = {
+    id: "asset-screening-report-1",
+    manuscript_id: "manuscript-2",
+    asset_type: "screening_report",
+    status: "active",
+    storage_key: "runs/screening/report.md",
+    mime_type: "text/markdown",
+    parent_asset_id: "asset-original-2",
+    source_module: "screening",
+    source_job_id: "job-screen-1",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "screening-report.md",
+    created_at: "2026-04-15T09:10:00.000Z",
+    updated_at: "2026-04-15T09:10:00.000Z",
+  };
+  const originalAsset = {
+    id: "asset-original-2",
+    manuscript_id: "manuscript-2",
+    asset_type: "original",
+    status: "active",
+    storage_key: "uploads/screening-review.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "upload",
+    created_by: "editor-1",
+    version_no: 1,
+    is_current: true,
+    file_name: "screening-review.docx",
+    created_at: "2026-04-15T09:00:00.000Z",
+    updated_at: "2026-04-15T09:00:00.000Z",
+  };
+
   return {
     manuscript: {
       id: "manuscript-2",
@@ -122,95 +110,32 @@ function createScreeningWorkspace() {
       created_at: "2026-04-15T09:00:00.000Z",
       updated_at: "2026-04-15T09:10:00.000Z",
     },
-    assets: [
-      {
-        id: "asset-screening-report-1",
-        manuscript_id: "manuscript-2",
-        asset_type: "screening_report",
-        status: "active",
-        storage_key: "runs/screening/report.md",
-        mime_type: "text/markdown",
-        parent_asset_id: "asset-original-2",
-        source_module: "screening",
-        source_job_id: "job-screen-1",
-        created_by: "editor-1",
-        version_no: 2,
-        is_current: true,
-        file_name: "screening-report.md",
-        created_at: "2026-04-15T09:10:00.000Z",
-        updated_at: "2026-04-15T09:10:00.000Z",
-      },
-      {
-        id: "asset-original-2",
-        manuscript_id: "manuscript-2",
-        asset_type: "original",
-        status: "active",
-        storage_key: "uploads/screening-review.docx",
-        mime_type:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        source_module: "upload",
-        created_by: "editor-1",
-        version_no: 1,
-        is_current: true,
-        file_name: "screening-review.docx",
-        created_at: "2026-04-15T09:00:00.000Z",
-        updated_at: "2026-04-15T09:00:00.000Z",
-      },
-    ],
-    currentAsset: {
-      id: "asset-screening-report-1",
-      manuscript_id: "manuscript-2",
-      asset_type: "screening_report",
-      status: "active",
-      storage_key: "runs/screening/report.md",
-      mime_type: "text/markdown",
-      parent_asset_id: "asset-original-2",
-      source_module: "screening",
-      source_job_id: "job-screen-1",
-      created_by: "editor-1",
-      version_no: 2,
-      is_current: true,
-      file_name: "screening-report.md",
-      created_at: "2026-04-15T09:10:00.000Z",
-      updated_at: "2026-04-15T09:10:00.000Z",
-    },
-    currentManuscriptAsset: {
-      id: "asset-original-2",
-      manuscript_id: "manuscript-2",
-      asset_type: "original",
-      status: "active",
-      storage_key: "uploads/screening-review.docx",
-      mime_type:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      source_module: "upload",
-      created_by: "editor-1",
-      version_no: 1,
-      is_current: true,
-      file_name: "screening-review.docx",
-      created_at: "2026-04-15T09:00:00.000Z",
-      updated_at: "2026-04-15T09:00:00.000Z",
-    },
-    suggestedParentAsset: {
-      id: "asset-original-2",
-      manuscript_id: "manuscript-2",
-      asset_type: "original",
-      status: "active",
-      storage_key: "uploads/screening-review.docx",
-      mime_type:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      source_module: "upload",
-      created_by: "editor-1",
-      version_no: 1,
-      is_current: true,
-      file_name: "screening-review.docx",
-      created_at: "2026-04-15T09:00:00.000Z",
-      updated_at: "2026-04-15T09:00:00.000Z",
-    },
+    assets: [reportAsset, originalAsset],
+    currentAsset: reportAsset,
+    currentManuscriptAsset: originalAsset,
+    suggestedParentAsset: originalAsset,
     latestProofreadingDraftAsset: null,
-  } as never;
+  } as unknown as ManuscriptWorkbenchWorkspace;
 }
 
-function createRecoveryWorkspace() {
+function createRecoveryWorkspace(): ManuscriptWorkbenchWorkspace {
+  const humanFinalAsset = {
+    id: "asset-human-final-1",
+    manuscript_id: "manuscript-recovery-1",
+    asset_type: "human_final_docx",
+    status: "active",
+    storage_key: "runs/proofreading/human-final.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-proof-final-1",
+    source_module: "manual",
+    created_by: "proofreader-1",
+    version_no: 1,
+    is_current: true,
+    file_name: "human-final.docx",
+    created_at: "2026-04-15T10:10:00.000Z",
+    updated_at: "2026-04-15T10:10:00.000Z",
+  };
+
   return {
     manuscript: {
       id: "manuscript-recovery-1",
@@ -222,78 +147,12 @@ function createRecoveryWorkspace() {
       created_at: "2026-04-15T09:00:00.000Z",
       updated_at: "2026-04-15T10:10:00.000Z",
     },
-    assets: [
-      {
-        id: "asset-human-final-1",
-        manuscript_id: "manuscript-recovery-1",
-        asset_type: "human_final_docx",
-        status: "active",
-        storage_key: "runs/proofreading/human-final.docx",
-        mime_type:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        parent_asset_id: "asset-proof-final-1",
-        source_module: "manual",
-        created_by: "proofreader-1",
-        version_no: 1,
-        is_current: true,
-        file_name: "human-final.docx",
-        created_at: "2026-04-15T10:10:00.000Z",
-        updated_at: "2026-04-15T10:10:00.000Z",
-      },
-    ],
-    currentAsset: {
-      id: "asset-human-final-1",
-      manuscript_id: "manuscript-recovery-1",
-      asset_type: "human_final_docx",
-      status: "active",
-      storage_key: "runs/proofreading/human-final.docx",
-      mime_type:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-proof-final-1",
-      source_module: "manual",
-      created_by: "proofreader-1",
-      version_no: 1,
-      is_current: true,
-      file_name: "human-final.docx",
-      created_at: "2026-04-15T10:10:00.000Z",
-      updated_at: "2026-04-15T10:10:00.000Z",
-    },
-    currentManuscriptAsset: {
-      id: "asset-human-final-1",
-      manuscript_id: "manuscript-recovery-1",
-      asset_type: "human_final_docx",
-      status: "active",
-      storage_key: "runs/proofreading/human-final.docx",
-      mime_type:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-proof-final-1",
-      source_module: "manual",
-      created_by: "proofreader-1",
-      version_no: 1,
-      is_current: true,
-      file_name: "human-final.docx",
-      created_at: "2026-04-15T10:10:00.000Z",
-      updated_at: "2026-04-15T10:10:00.000Z",
-    },
-    suggestedParentAsset: {
-      id: "asset-human-final-1",
-      manuscript_id: "manuscript-recovery-1",
-      asset_type: "human_final_docx",
-      status: "active",
-      storage_key: "runs/proofreading/human-final.docx",
-      mime_type:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      parent_asset_id: "asset-proof-final-1",
-      source_module: "manual",
-      created_by: "proofreader-1",
-      version_no: 1,
-      is_current: true,
-      file_name: "human-final.docx",
-      created_at: "2026-04-15T10:10:00.000Z",
-      updated_at: "2026-04-15T10:10:00.000Z",
-    },
+    assets: [humanFinalAsset],
+    currentAsset: humanFinalAsset,
+    currentManuscriptAsset: humanFinalAsset,
+    suggestedParentAsset: humanFinalAsset,
     latestProofreadingDraftAsset: null,
-  } as never;
+  } as unknown as ManuscriptWorkbenchWorkspace;
 }
 
 test("summary keeps compact cards and omits the oversized top summary strip", () => {
@@ -302,57 +161,38 @@ test("summary keeps compact cards and omits the oversized top summary strip", ()
       mode="editing"
       accessibleHandoffModes={["proofreading"]}
       workspace={createEditingWorkspace()}
-      latestJob={{
-        id: "job-edit-1",
-        module: "editing",
-        job_type: "editing_run",
-        status: "completed",
-        requested_by: "editor-1",
-        attempt_count: 1,
-        created_at: "2026-03-31T09:45:00.000Z",
-        updated_at: "2026-03-31T09:46:00.000Z",
-      } as never}
-      latestExport={{
-        manuscript_id: "manuscript-1",
-        asset: {
-          id: "asset-edited-1",
-          manuscript_id: "manuscript-1",
-          asset_type: "edited_docx",
-          status: "active",
-          storage_key: "runs/editing/final.docx",
-          mime_type:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          parent_asset_id: "asset-original-1",
-          source_module: "editing",
-          source_job_id: "job-edit-1",
-          created_by: "editor-1",
-          version_no: 2,
-          is_current: true,
-          file_name: "editing-final.docx",
+      latestJob={
+        {
+          id: "job-edit-1",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "editor-1",
+          attempt_count: 1,
           created_at: "2026-03-31T09:45:00.000Z",
-          updated_at: "2026-03-31T09:45:00.000Z",
-        },
-        download: {
-          storage_key: "exports/manuscript-1/current.docx",
-          file_name: "editing-final.docx",
-          mime_type:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          url: "/api/v1/document-assets/asset-edited-1/download",
-        },
-      } as never}
+          updated_at: "2026-03-31T09:46:00.000Z",
+        } as never
+      }
+      latestExport={
+        {
+          manuscript_id: "manuscript-1",
+          asset: createEditingWorkspace().currentAsset,
+          download: {
+            storage_key: "exports/manuscript-1/current.docx",
+            file_name: "editing-final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            url: "/api/v1/document-assets/asset-edited-1/download",
+          },
+        } as never
+      }
       latestActionResult={{
         tone: "success",
         actionLabel: "Run Editing",
         message: "Created asset asset-edited-1",
         details: [
-          {
-            label: "Asset",
-            value: "asset-edited-1",
-          },
-          {
-            label: "Job",
-            value: "job-edit-1",
-          },
+          { label: "Asset", value: "asset-edited-1" },
+          { label: "Job", value: "job-edit-1" },
         ],
       }}
     />,
@@ -360,12 +200,12 @@ test("summary keeps compact cards and omits the oversized top summary strip", ()
 
   assert.match(markup, /data-summary-layout="compact-manuscript-summary"/);
   assert.doesNotMatch(markup, /manuscript-workbench-summary-strip/);
-  assert.match(markup, /最近操作结果/u);
-  assert.match(markup, /建议下一步/u);
-  assert.match(markup, /稿件概览/u);
-  assert.match(markup, /最近任务/u);
-  assert.match(markup, /最近导出/u);
-  assert.match(markup, /资产链路/u);
+  assert.match(markup, /\u6700\u8fd1\u64cd\u4f5c\u7ed3\u679c/u);
+  assert.match(markup, /\u5efa\u8bae\u4e0b\u4e00\u6b65/u);
+  assert.match(markup, /\u7a3f\u4ef6\u6982\u89c8/u);
+  assert.match(markup, /\u6700\u8fd1\u4efb\u52a1/u);
+  assert.match(markup, /\u6700\u8fd1\u5bfc\u51fa/u);
+  assert.match(markup, /\u8d44\u4ea7\u94fe\u8def/u);
   assert.match(markup, /Cardiology review/);
   assert.match(markup, /href="#proofreading\?manuscriptId=manuscript-1"/);
 });
@@ -401,52 +241,33 @@ test("summary still exposes current asset and export metadata after the top stri
       mode="editing"
       workspace={createEditingWorkspace()}
       latestJob={null}
-      latestExport={{
-        manuscript_id: "manuscript-1",
-        asset: {
-          id: "asset-edited-1",
+      latestExport={
+        {
           manuscript_id: "manuscript-1",
-          asset_type: "edited_docx",
-          status: "active",
-          storage_key: "runs/editing/final.docx",
-          mime_type:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          parent_asset_id: "asset-original-1",
-          source_module: "editing",
-          source_job_id: "job-edit-1",
-          created_by: "editor-1",
-          version_no: 2,
-          is_current: true,
-          file_name: "editing-final.docx",
-          created_at: "2026-03-31T09:45:00.000Z",
-          updated_at: "2026-03-31T09:45:00.000Z",
-        },
-        download: {
-          storage_key: "exports/manuscript-1/current.docx",
-          file_name: "editing-final.docx",
-          mime_type:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          url: "/api/v1/document-assets/asset-edited-1/download",
-        },
-      } as never}
+          asset: createEditingWorkspace().currentAsset,
+          download: {
+            storage_key: "exports/manuscript-1/current.docx",
+            file_name: "editing-final.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            url: "/api/v1/document-assets/asset-edited-1/download",
+          },
+        } as never
+      }
       latestActionResult={null}
     />,
   );
 
-  assert.match(markup, /当前资产/u);
+  assert.match(markup, /\u5f53\u524d\u8d44\u4ea7/u);
   assert.match(markup, /editing-final\.docx/);
-  assert.match(markup, /查看当前稿件/u);
-  assert.match(markup, /下载当前稿件/u);
+  assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7a3f\u4ef6/u);
+  assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
   );
   assert.match(markup, /target="_blank"/);
   assert.match(markup, /exports\/manuscript-1\/current\.docx/);
-  assert.match(
-    markup,
-    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
-  );
 });
 
 test("summary separates current manuscript shortcuts from report-style current results", () => {
@@ -460,10 +281,10 @@ test("summary separates current manuscript shortcuts from report-style current r
     />,
   );
 
-  assert.match(markup, /查看当前稿件/u);
-  assert.match(markup, /下载当前稿件/u);
-  assert.match(markup, /查看当前结果/u);
-  assert.match(markup, /下载初筛报告/u);
+  assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7a3f\u4ef6/u);
+  assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
+  assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7ed3\u679c/u);
+  assert.match(markup, /\u4e0b\u8f7d\u521d\u7b5b\u62a5\u544a/u);
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-original-2\/download"/,
@@ -511,16 +332,24 @@ test("summary helpers localize readiness reasons and batch detail labels for ope
   } as never);
 
   assert.equal(
-    readinessDetails.find((detail) => detail.label === "就绪原因")?.value,
-    "稿件已满足受治理初筛条件。",
+    readinessDetails.find((detail) => detail.label === "\u5c31\u7eea\u539f\u56e0")?.value,
+    "\u7a3f\u4ef6\u5df2\u6ee1\u8db3\u53d7\u6cbb\u7406\u521d\u7b5b\u6761\u4ef6\u3002",
   );
   assert.deepEqual(
     batchDetails.map((detail) => detail.label),
-    ["批次进度", "批次结算", "已完成", "失败", "处理中", "待处理", "重启状态"],
+    [
+      "\u6279\u6b21\u8fdb\u5ea6",
+      "\u6279\u6b21\u7ed3\u7b97",
+      "\u5df2\u5b8c\u6210",
+      "\u5931\u8d25",
+      "\u5904\u7406\u4e2d",
+      "\u5f85\u5904\u7406",
+      "\u91cd\u542f\u72b6\u6001",
+    ],
   );
   assert.equal(
-    batchDetails.find((detail) => detail.label === "批次结算")?.value,
-    "部分成功",
+    batchDetails.find((detail) => detail.label === "\u6279\u6b21\u7ed3\u7b97")?.value,
+    "\u90e8\u5206\u6210\u529f",
   );
 });
 
@@ -537,7 +366,7 @@ test("summary renders localized latest action details instead of mixed English l
         message: "Uploaded manuscript manuscript-1",
         details: [
           {
-            label: "Job结算",
+            label: "Job\u7ed3\u7b97",
             value: "business_completed_follow_up_pending",
           },
           {
@@ -549,11 +378,11 @@ test("summary renders localized latest action details instead of mixed English l
     />,
   );
 
-  assert.match(markup, /已上传稿件 manuscript-1/u);
-  assert.match(markup, /任务结算/u);
-  assert.match(markup, /批次结算/u);
-  assert.match(markup, /部分成功/u);
-  assert.doesNotMatch(markup, /Job结算/);
+  assert.match(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6 manuscript-1/u);
+  assert.match(markup, /\u4efb\u52a1\u7ed3\u7b97/u);
+  assert.match(markup, /\u6279\u6b21\u7ed3\u7b97/u);
+  assert.match(markup, /\u90e8\u5206\u6210\u529f/u);
+  assert.doesNotMatch(markup, /Job\u7ed3\u7b97/);
   assert.doesNotMatch(markup, /Batch Settlement/);
 });
 
@@ -621,8 +450,8 @@ test("summary formats hydrated knowledge references with titles before falling b
   );
 
   assert.equal(
-    details.find((detail) => detail.label === "知识引用")?.value,
-    "Primary endpoint rule（knowledge-screening-1）; Style glossary（knowledge-editing-2）; knowledge-unresolved-3",
+    details.find((detail) => detail.label === "\u77e5\u8bc6\u5f15\u7528")?.value,
+    "Primary endpoint rule\uff08knowledge-screening-1\uff09; Style glossary\uff08knowledge-editing-2\uff09; knowledge-unresolved-3",
   );
 });
 
@@ -631,46 +460,189 @@ test("summary localizes readiness guidance, attention reasons, and overview temp
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="screening"
-      workspace={{
-        ...baseWorkspace,
-        manuscript: {
-          ...baseWorkspace.manuscript,
-          manuscript_type: "review",
-          current_template_family_id: "family-review-active",
-          mainline_readiness_summary: {
-            observation_status: "reported",
-            derived_status: "ready_for_next_step",
-            active_module: "screening",
-            next_module: "editing",
-            runtime_binding_status: "ready",
-            reason: "The manuscript is ready for governed screening.",
+      workspace={
+        {
+          ...baseWorkspace,
+          manuscript: {
+            ...baseWorkspace.manuscript,
+            manuscript_type: "review",
+            current_template_family_id: "family-review-active",
+            mainline_readiness_summary: {
+              observation_status: "reported",
+              derived_status: "ready_for_next_step",
+              active_module: "screening",
+              next_module: "editing",
+              runtime_binding_status: "ready",
+              reason: "The manuscript is ready for governed screening.",
+            },
+            mainline_attention_handoff_pack: {
+              observation_status: "reported",
+              attention_status: "clear",
+              handoff_status: "ready_now",
+              from_module: "screening",
+              to_module: "editing",
+              reason: "The manuscript is ready for governed screening.",
+              attention_items: [],
+            },
           },
-          mainline_attention_handoff_pack: {
-            observation_status: "reported",
-            attention_status: "clear",
-            handoff_status: "ready_now",
-            from_module: "screening",
-            to_module: "editing",
-            reason: "The manuscript is ready for governed screening.",
-            attention_items: [],
+          templateFamily: {
+            id: "family-review-active",
+            manuscript_type: "review",
+            name: "Review \u57fa\u7840\u6a21\u677f\u65cf",
+            status: "active",
           },
-        },
-        templateFamily: {
-          id: "family-review-active",
-          manuscript_type: "review",
-          name: "Review 基础模板族",
-          status: "active",
-        },
-      } as never}
+        } as ManuscriptWorkbenchWorkspace
+      }
       latestJob={null}
       latestExport={null}
       latestActionResult={null}
     />,
   );
 
-  assert.match(markup, /<span>执行建议<\/span><strong>稿件已满足受治理初筛条件。<\/strong>/u);
-  assert.match(markup, /<span>主要关注原因<\/span><strong>稿件已满足受治理初筛条件。<\/strong>/u);
-  assert.match(markup, /<span>基础模板族<\/span><strong>综述基础模板族<\/strong>/u);
+  assert.match(
+    markup,
+    /<span>\u6267\u884c\u5efa\u8bae<\/span><strong>\u7a3f\u4ef6\u5df2\u6ee1\u8db3\u53d7\u6cbb\u7406\u521d\u7b5b\u6761\u4ef6\u3002<\/strong>/u,
+  );
+  assert.match(
+    markup,
+    /<span>\u4e3b\u8981\u5173\u6ce8\u539f\u56e0<\/span><strong>\u7a3f\u4ef6\u5df2\u6ee1\u8db3\u53d7\u6cbb\u7406\u521d\u7b5b\u6761\u4ef6\u3002<\/strong>/u,
+  );
+  assert.match(
+    markup,
+    /<span>\u57fa\u7840\u6a21\u677f\u65cf<\/span><strong>\u7efc\u8ff0\u57fa\u7840\u6a21\u677f\u65cf<\/strong>/u,
+  );
+});
+
+test("manuscript workbench summary renders posture-aware high-risk governed review cards", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      canOpenLearningReview
+      manualFeedback={
+        {
+          selectedCategory: "",
+          note: "",
+          isSubmitting: false,
+          onCategoryChange: () => {},
+          onNoteChange: () => {},
+          onSubmit: () => {},
+          highRiskReviewItems: [
+            {
+              id: "risk-table-1",
+              title: "\u8868\u683c\u5355\u4f4d\u683c\u5f0f\u9700\u8981\u4eba\u5de5\u786e\u8ba4",
+              feedbackCategory: "incorrect_hit",
+              candidate_posture: "candidate_change",
+              riskLevel: "high",
+              summary:
+                "\u5355\u4f4d\u5199\u6cd5\u4e0e\u6cbb\u7406\u89c4\u5219\u4e0d\u4e00\u81f4\uff0c\u9700\u8981\u4eba\u5de5\u786e\u8ba4\u3002",
+              excerpt: "5 mg per dL",
+              suggestion: "5 mg/dL",
+              rationale:
+                "\u8868\u683c\u6807\u9898\u548c\u5355\u4f4d\u683c\u5f0f\u5b58\u5728\u9ad8\u98ce\u9669\u504f\u5dee\u3002",
+              locationText: "\u8868\u683c table-1 / header_cell / \u6bb5\u843d 3",
+              evidence_pack: {
+                location: {
+                  table_id: "table-1",
+                  semantic_target: "header_cell",
+                  paragraph_index: 3,
+                },
+                excerpt: "5 mg per dL",
+                suggestion: "5 mg/dL",
+                rationale:
+                  "\u8868\u683c\u6807\u9898\u548c\u5355\u4f4d\u683c\u5f0f\u5b58\u5728\u9ad8\u98ce\u9669\u504f\u5dee\u3002",
+              },
+              relatedRuleIds: ["rule-table-unit-1"],
+            },
+            {
+              id: "risk-proof-1",
+              title: "Inspect-only proofreading review item",
+              feedbackCategory: "incorrect_hit",
+              candidate_posture: "inspect_only",
+              riskLevel: "high",
+              summary: "Inspect before confirming writeback.",
+              rationale: "Proofreading evidence requires human confirmation.",
+              locationText: "Paragraph 6",
+              evidence_pack: {
+                location: {
+                  paragraph_index: 6,
+                },
+                rationale: "Proofreading evidence requires human confirmation.",
+              },
+            },
+          ],
+          onSubmitHighRiskItem: () => {},
+          onRecordManualOnly: () => {},
+        } as never
+      }
+      workspace={
+        {
+          manuscript: {
+            id: "manuscript-risk-1",
+            title: "\u8868\u683c\u6821\u5bf9\u7a3f",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "editor-1",
+            created_at: "2026-04-18T09:00:00.000Z",
+            updated_at: "2026-04-18T09:10:00.000Z",
+            result_asset_matrix: {},
+          },
+          assets: [],
+          currentAsset: null,
+          currentManuscriptAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        } as never
+      }
+      latestJob={
+        {
+          id: "job-proofreading-1",
+          manuscript_id: "manuscript-risk-1",
+          module: "proofreading",
+          job_type: "proofreading_draft_run",
+          status: "completed",
+          requested_by: "proofreader-1",
+          attempt_count: 1,
+          payload: {
+            proofreadingFindings: {
+              failedChecks: [
+                {
+                  ruleId: "rule-table-unit-1",
+                  expected: "5 mg/dL",
+                  actual: "5 mg per dL",
+                  severity: "error",
+                  blockIndex: 2,
+                  semantic_hit: {
+                    table_id: "table-1",
+                    semantic_target: "header_cell",
+                  },
+                },
+              ],
+            },
+          },
+          created_at: "2026-04-18T09:05:00.000Z",
+          updated_at: "2026-04-18T09:10:00.000Z",
+          execution_tracking: {
+            observation_status: "not_tracked",
+          },
+        } as never
+      }
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /\u9ad8\u98ce\u9669\u590d\u6838/u);
+  assert.match(markup, /\u8868\u683c\u5355\u4f4d\u683c\u5f0f\u9700\u8981\u4eba\u5de5\u786e\u8ba4/u);
+  assert.match(markup, /5 mg per dL/);
+  assert.match(markup, /5 mg\/dL/);
+  assert.match(markup, /\u63d0\u4ea4\u590d\u6838/u);
+  assert.match(markup, /\u4ec5\u8bb0\u5f55\u4eba\u5de5\u5904\u7406/u);
+  assert.match(markup, /\u67e5\u770b\u5b9a\u4f4d/u);
+  assert.match(markup, /\u8868\u683c table-1/u);
+  assert.match(markup, /\u6bb5\u843d 3/u);
+  assert.match(markup, /\u5904\u7406\u65b9\u5f0f/u);
+  assert.match(markup, /\u5019\u9009\u4fee\u6539/u);
+  assert.match(markup, /\u4ec5\u68c0\u67e5/u);
 });
 
 test("summary renders operator feedback choices and explains rule-candidate routing after submit", () => {
@@ -689,7 +661,8 @@ test("summary renders operator feedback choices and explains rule-candidate rout
         lastSubmitted: {
           feedbackCategory: "incorrect_hit",
           feedbackRecordId: "feedback-1",
-          learningCandidateId: "candidate-manual-1",
+          reviewItemId: "review-item-manual-1",
+          recommendedRoute: "rule_candidate",
         },
         onCategoryChange: () => undefined,
         onNoteChange: () => undefined,
@@ -698,19 +671,20 @@ test("summary renders operator feedback choices and explains rule-candidate rout
     />,
   );
 
-  assert.match(markup, /人工反馈/u);
-  assert.match(markup, /这次没命中/u);
-  assert.match(markup, /将补充为规则候选/u);
-  assert.match(markup, /命中错误/u);
-  assert.match(markup, /将修正为规则候选/u);
-  assert.match(markup, /缺少知识/u);
-  assert.match(markup, /将补充为知识候选/u);
-  assert.match(markup, /提交到治理中心待审核/u);
-  assert.match(markup, /已生成规则候选/u);
-  assert.match(markup, /candidate-manual-1/u);
+  assert.match(markup, /\u4eba\u5de5\u53cd\u9988/u);
+  assert.match(markup, /\u8fd9\u6b21\u6ca1\u547d\u4e2d/u);
+  assert.match(markup, /\u5c06\u8865\u5145\u4e3a\u89c4\u5219\u5019\u9009/u);
+  assert.match(markup, /\u547d\u4e2d\u9519\u8bef/u);
+  assert.match(markup, /\u5c06\u4fee\u6b63\u4e3a\u89c4\u5219\u5019\u9009/u);
+  assert.match(markup, /\u7f3a\u5c11\u77e5\u8bc6/u);
+  assert.match(markup, /\u5c06\u8865\u5145\u4e3a\u77e5\u8bc6\u5019\u9009/u);
+  assert.match(markup, /\u63d0\u4ea4\u590d\u6838\u9879/u);
+  assert.match(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-manual-1/u);
+  assert.match(markup, /\u89c4\u5219\u5019\u9009/u);
+  assert.match(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
   assert.match(
     markup,
-    /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*learningCandidateId=candidate-manual-1/u,
+    /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*reviewItemId=review-item-manual-1"/u,
   );
 });
 
@@ -730,7 +704,8 @@ test("summary explains knowledge-candidate routing without sending operators to 
         lastSubmitted: {
           feedbackCategory: "missing_knowledge",
           feedbackRecordId: "feedback-knowledge-1",
-          learningCandidateId: "candidate-knowledge-1",
+          reviewItemId: "review-item-knowledge-1",
+          recommendedRoute: "knowledge_candidate",
         },
         onCategoryChange: () => undefined,
         onNoteChange: () => undefined,
@@ -739,11 +714,77 @@ test("summary explains knowledge-candidate routing without sending operators to 
     />,
   );
 
-  assert.match(markup, /已生成知识候选/u);
-  assert.match(markup, /candidate-knowledge-1/u);
+  assert.match(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-knowledge-1/u);
+  assert.match(markup, /\u77e5\u8bc6\u5019\u9009/u);
+  assert.match(
+    markup,
+    /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5ba1\u6838\u961f\u5217/u,
+  );
   assert.doesNotMatch(
     markup,
-    /href="#template-governance\?[^"]*learningCandidateId=candidate-knowledge-1/u,
+    /href="#template-governance\?[^"]*reviewItemId=review-item-knowledge-1/u,
   );
-  assert.doesNotMatch(markup, /前往规则中心/u);
+  assert.doesNotMatch(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
+});
+
+test("job review evidence details include editing table inspection hits and nested proofreading quality reasons", () => {
+  const editingDetails = buildJobReviewEvidenceDetails({
+    id: "job-editing-1",
+    manuscript_id: "manuscript-risk-1",
+    module: "editing",
+    job_type: "editing_run",
+    status: "completed",
+    requested_by: "editor-1",
+    attempt_count: 1,
+    payload: {
+      tableInspectionFindings: [
+        {
+          ruleId: "rule-table-treatment-group",
+          reason:
+            'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+        },
+      ],
+    },
+    created_at: "2026-04-18T09:05:00.000Z",
+    updated_at: "2026-04-18T09:10:00.000Z",
+  } as never);
+  const proofreadingDetails = buildJobReviewEvidenceDetails({
+    id: "job-proofreading-2",
+    manuscript_id: "manuscript-risk-1",
+    module: "proofreading",
+    job_type: "proofreading_draft_run",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {
+      proofreadingFindings: {
+        qualityFindings: [
+          {
+            explanation:
+              "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
+          },
+        ],
+      },
+    },
+    created_at: "2026-04-18T09:05:00.000Z",
+    updated_at: "2026-04-18T09:10:00.000Z",
+  } as never);
+
+  assert.deepEqual(editingDetails, [
+    {
+      label: "\u89c4\u5219\u547d\u4e2d",
+      value: "rule-table-treatment-group",
+    },
+    {
+      label: "\u539f\u56e0\u6458\u8981",
+      value:
+        'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+    },
+  ]);
+  assert.deepEqual(proofreadingDetails, [
+    {
+      label: "\u539f\u56e0\u6458\u8981",
+      value: "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
+    },
+  ]);
 });

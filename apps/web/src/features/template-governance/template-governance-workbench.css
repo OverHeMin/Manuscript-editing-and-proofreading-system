@@ -135,6 +135,33 @@
   gap: 12px;
 }
 
+.template-governance-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-governance-detail-grid > div {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 101, 51, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 252, 246, 0.92);
+}
+
+.template-governance-detail-grid > div > span {
+  color: #6c5734;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.template-governance-detail-grid > div > p,
+.template-governance-detail-grid > div > code {
+  margin: 0;
+  color: #2b2215;
+}
+
 .template-governance-field {
   display: grid;
   gap: 6px;
@@ -485,6 +512,32 @@
 .template-governance-recovery-actions {
   display: grid;
   gap: 12px;
+}
+
+.template-governance-review-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-governance-review-row.is-active td {
+  background: rgba(244, 235, 217, 0.7);
+}
+
+.template-governance-review-row-button {
+  width: 100%;
+  min-height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  color: inherit;
+}
+
+.template-governance-review-row-button small {
+  color: #625648;
 }
 
 .template-governance-strategy-grid {
@@ -971,6 +1024,7 @@
   .rule-package-workbench-columns,
   .rule-package-definition-grid,
   .template-governance-strategy-grid,
+  .template-governance-review-filter-grid,
   .template-governance-ledger-toolbar-controls,
   .template-governance-ledger-grid,
   .template-governance-overview-main,

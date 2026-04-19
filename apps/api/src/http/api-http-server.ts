@@ -123,10 +123,12 @@ import {
   DocumentStructureService,
   DocumentExportService,
   EditorialDocxTransformService,
+  PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
   createEditorialRuleApi,
+  EditorialRuleActivationMetricsService,
   EditorialRulePackageService,
   EditorialRuleProjectionService,
   EditorialRuleResolutionService,
@@ -145,6 +147,7 @@ import {
   EditorialRuleSetNotFoundError,
   EditorialRuleSetStatusTransitionError,
   EditorialRuleTemplateFamilyNotFoundError,
+  InMemoryEditorialRuleActivationMetricsRepository,
   InMemoryEditorialRuleRepository,
 } from "../modules/editorial-rules/index.ts";
 import {
@@ -309,6 +312,15 @@ import {
   ResidualLearningServiceDependencyRequiredError,
   ResidualLearningService,
 } from "../modules/residual-learning/index.ts";
+import {
+  createReviewItemsApi,
+  InMemoryReviewItemsRepository,
+  ReviewItemDecisionActionNotSupportedError,
+  ReviewItemDecisionInputInvalidError,
+  ReviewItemNotFoundError,
+  ReviewItemsServiceDependencyRequiredError,
+  ReviewItemsService,
+} from "../modules/review-items/index.ts";
 import {
   createRetrievalPresetApi,
   InMemoryRetrievalPresetRepository,
@@ -884,6 +896,10 @@ type HttpRouteMatch =
       ruleSetId: string;
     }
   | {
+      route: "editorial-rules-transition-rule-set";
+      ruleSetId: string;
+    }
+  | {
       route: "editorial-rules-create-rule";
       ruleSetId: string;
     }
@@ -1120,6 +1136,17 @@ type HttpRouteMatch =
       issueId: string;
     }
   | {
+      route: "review-items-submit-governed-hit";
+    }
+  | {
+      route: "review-items-list";
+    }
+  | {
+      route: "review-items-decide";
+      sourceKind?: "governed_hit" | "residual_issue" | "learning_candidate";
+      id: string;
+    }
+  | {
       route: "learning-governance-create-writeback";
     }
   | {
@@ -1295,6 +1322,7 @@ export interface ApiServerRuntime {
   feedbackGovernanceApi: ReturnType<typeof createFeedbackGovernanceApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   residualLearningApi: ReturnType<typeof createResidualLearningApi>;
+  reviewItemsApi: ReturnType<typeof createReviewItemsApi>;
   learningGovernanceApi: ReturnType<typeof createLearningGovernanceApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
   templateApi: ReturnType<typeof createTemplateApi>;
@@ -1403,6 +1431,7 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
+  const reviewItemsRepository = new InMemoryReviewItemsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const agentProfileRepository = new InMemoryAgentProfileRepository();
   const agentRuntimeRepository = new InMemoryAgentRuntimeRepository();
@@ -1415,6 +1444,8 @@ export function createInMemoryApiRuntime(input: {
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const editorialRuleActivationMetricsRepository =
+    new InMemoryEditorialRuleActivationMetricsRepository();
   const extractionTaskRepository = new InMemoryExtractionTaskRepository();
   const modelRegistryRepository = new InMemoryModelRegistryRepository();
   const modelRoutingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
@@ -1456,6 +1487,10 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     rootDir: input.uploadRootDir,
   });
+  const docxSourceBlockResolver = new PythonDocxSourceBlockResolver({
+    assetRepository,
+    rootDir: input.uploadRootDir,
+  });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
     executionTrackingRepository,
@@ -1481,6 +1516,37 @@ export function createInMemoryApiRuntime(input: {
     residualLearningService,
     knowledgeRetrievalRepository,
     toolGatewayRepository,
+  });
+  const learningApi = createLearningApi({ learningService });
+  const residualLearningApi = createResidualLearningApi({
+    residualLearningService,
+    verificationOpsService,
+  });
+  const editorialRuleActivationMetricsService =
+    new EditorialRuleActivationMetricsService({
+      repository: editorialRuleActivationMetricsRepository,
+      editorialRuleRepository,
+    });
+  const reviewItemsService = new ReviewItemsService({
+    reviewItemsRepository,
+    residualLearningService,
+    learningService,
+    feedbackGovernanceService,
+    activationMetricsService: editorialRuleActivationMetricsService,
+    residualReviewCoordinator: {
+      async validateIssue(input) {
+        return (await residualLearningApi.validateIssue(input)).body;
+      },
+      async createLearningCandidate(input) {
+        return (await residualLearningApi.createLearningCandidate(input)).body;
+      },
+      async resolveIssueDecision(input) {
+        return (await residualLearningApi.resolveIssueDecision(input)).body;
+      },
+    },
+  });
+  const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({
     repository: harnessDatasetRepository,
@@ -1512,7 +1578,9 @@ export function createInMemoryApiRuntime(input: {
   const editorialRuleService = new EditorialRuleService({
     repository: editorialRuleRepository,
     templateFamilyRepository,
+    verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
+    activationMetricsService: editorialRuleActivationMetricsService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -1735,6 +1803,7 @@ export function createInMemoryApiRuntime(input: {
     templateService,
     editorialRuleService,
     promptSkillRegistryService,
+    activationMetricsService: editorialRuleActivationMetricsService,
   });
 
   if (input.seedDemoData) {
@@ -1792,6 +1861,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
   });
   const editingService = new EditingService({
@@ -1813,8 +1883,10 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     editorialDocxTransformService,
+    reviewItemsService,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -1835,7 +1907,9 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    reviewItemsService,
     residualLearningService,
   });
 
@@ -1853,6 +1927,7 @@ export function createInMemoryApiRuntime(input: {
     }),
     editorialRuleApi: createEditorialRuleApi({
       editorialRuleService,
+      activationMetricsService: editorialRuleActivationMetricsService,
       editorialRulePackageService,
       extractionTaskService,
       rulePackageCompileService,
@@ -1929,11 +2004,9 @@ export function createInMemoryApiRuntime(input: {
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
     }),
-    learningApi: createLearningApi({ learningService }),
-    residualLearningApi: createResidualLearningApi({
-      residualLearningService,
-      verificationOpsService,
-    }),
+    learningApi,
+    residualLearningApi,
+    reviewItemsApi,
     learningGovernanceApi: createLearningGovernanceApi({
       learningGovernanceService,
       harnessDatasetService,
@@ -4810,6 +4883,48 @@ async function handleRoute(
         ruleSetId: routeMatch.ruleSetId,
       });
     }
+    case "editorial-rules-transition-rule-set": {
+      const session = await requirePermission(
+        req,
+        runtime,
+        "template-governance.manage",
+      );
+      const body = (await readJsonBody(req)) as {
+        targetStatus: "candidate" | "canary" | "active" | "rolled_back";
+        releaseScope?: Record<string, unknown>;
+        candidateValidationRunId?: string;
+        candidateValidationEvidencePackId?: string;
+        onlineRegressionRunId?: string;
+        onlineRegressionEvidencePackId?: string;
+      };
+
+      return runtime.editorialRuleApi.transitionRuleSet({
+        actorRole: session.user.role,
+        input: {
+          ruleSetId: routeMatch.ruleSetId,
+          targetStatus: body.targetStatus,
+          ...(body.releaseScope ? { releaseScope: body.releaseScope } : {}),
+          ...(body.candidateValidationRunId
+            ? { candidateValidationRunId: body.candidateValidationRunId }
+            : {}),
+          ...(body.candidateValidationEvidencePackId
+            ? {
+                candidateValidationEvidencePackId:
+                  body.candidateValidationEvidencePackId,
+              }
+            : {}),
+          ...(body.onlineRegressionRunId
+            ? { onlineRegressionRunId: body.onlineRegressionRunId }
+            : {}),
+          ...(body.onlineRegressionEvidencePackId
+            ? {
+                onlineRegressionEvidencePackId:
+                  body.onlineRegressionEvidencePackId,
+              }
+            : {}),
+        },
+      });
+    }
     case "editorial-rules-create-rule": {
       const session = await requirePermission(
         req,
@@ -4819,6 +4934,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as {
         actorRole?: string;
         orderNo: number;
+        priority?: number;
         ruleObject?: string;
         ruleType: string;
         executionMode: string;
@@ -4844,6 +4960,7 @@ async function handleRoute(
         input: {
           ruleSetId: routeMatch.ruleSetId,
           orderNo: body.orderNo,
+          priority: body.priority,
           ruleObject: coalesceOptionalString(body.ruleObject),
           ruleType: body.ruleType as Parameters<
             typeof runtime.editorialRuleApi.createRule
@@ -5709,6 +5826,225 @@ async function handleRoute(
         requestedBy: session.user.id,
         requestedByRole: session.user.role,
       });
+    }
+    case "review-items-submit-governed-hit": {
+      const body = (await readJsonBody(req)) as {
+        reviewItemId?: string;
+        manuscriptId: string;
+        manuscriptType: ManuscriptType;
+        module: "screening" | "editing" | "proofreading";
+        snapshotId: string;
+        sourceAssetId: string;
+        feedbackCategory: "missed_hit" | "incorrect_hit" | "missing_knowledge";
+        feedbackText?: string;
+        title?: string;
+        excerpt?: string;
+        location?: Record<string, unknown>;
+        riskLevel?: "low" | "medium" | "high" | "critical";
+        suggestion?: string;
+        rationale?: string;
+        candidatePosture?: "candidate_change" | "inspect_only";
+        decisionSource?: "manual_feedback" | "execution_hit";
+        evidencePack?: {
+          location?: Record<string, unknown>;
+          excerpt?: string;
+          suggestion?: string;
+          rationale?: string;
+        };
+        relatedRuleIds?: string[];
+        relatedKnowledgeItemIds?: string[];
+        originPayload?: Record<string, unknown>;
+      };
+      const session = await requireManualFeedbackHandoffSession(
+        req,
+        runtime,
+        body.module,
+      );
+
+      return runtime.reviewItemsApi.submitGovernedHit({
+        ...(normalizeOptionalText(body.reviewItemId)
+          ? {
+              reviewItemId: normalizeOptionalText(body.reviewItemId),
+            }
+          : {}),
+        manuscriptId: body.manuscriptId,
+        manuscriptType: body.manuscriptType,
+        module: body.module,
+        snapshotId: body.snapshotId,
+        sourceAssetId: body.sourceAssetId,
+        feedbackCategory: body.feedbackCategory,
+        ...(normalizeOptionalText(body.feedbackText)
+          ? {
+              feedbackText: normalizeOptionalText(body.feedbackText),
+            }
+          : {}),
+        ...(normalizeOptionalText(body.title)
+          ? {
+              title: normalizeOptionalText(body.title),
+            }
+          : {}),
+        ...(normalizeOptionalText(body.excerpt)
+          ? {
+              excerpt: normalizeOptionalText(body.excerpt),
+            }
+          : {}),
+        ...(normalizeReviewItemObjectValue(body.location)
+          ? {
+              location: normalizeReviewItemObjectValue(body.location),
+            }
+          : {}),
+        ...(normalizeReviewItemRiskLevel(body.riskLevel)
+          ? {
+              riskLevel: normalizeReviewItemRiskLevel(body.riskLevel),
+            }
+          : {}),
+        ...(normalizeOptionalText(body.suggestion)
+          ? {
+              suggestion: normalizeOptionalText(body.suggestion),
+            }
+          : {}),
+        ...(normalizeOptionalText(body.rationale)
+          ? {
+              rationale: normalizeOptionalText(body.rationale),
+            }
+          : {}),
+        ...(normalizeGovernedExecutionHitPosture(body.candidatePosture)
+          ? {
+              candidatePosture: normalizeGovernedExecutionHitPosture(
+                body.candidatePosture,
+              ),
+            }
+          : {}),
+        ...(normalizeReviewItemDecisionSource(body.decisionSource)
+          ? {
+              decisionSource: normalizeReviewItemDecisionSource(
+                body.decisionSource,
+              ),
+            }
+          : {}),
+        ...(normalizeReviewItemEvidencePack(body.evidencePack)
+          ? {
+              evidencePack: normalizeReviewItemEvidencePack(body.evidencePack),
+            }
+          : {}),
+        ...(normalizeReviewItemTextArray(body.relatedRuleIds)
+          ? {
+              relatedRuleIds: normalizeReviewItemTextArray(body.relatedRuleIds),
+            }
+          : {}),
+        ...(normalizeReviewItemTextArray(body.relatedKnowledgeItemIds)
+          ? {
+              relatedKnowledgeItemIds: normalizeReviewItemTextArray(
+                body.relatedKnowledgeItemIds,
+              ),
+            }
+          : {}),
+        ...(normalizeReviewItemObjectValue(body.originPayload)
+          ? {
+              originPayload: normalizeReviewItemObjectValue(body.originPayload),
+            }
+          : {}),
+        createdBy: session.user.id,
+      });
+    }
+    case "review-items-list":
+      await requirePermission(req, runtime, "learning.review");
+      return runtime.reviewItemsApi.listReviewItems({
+        sourceKind: normalizeReviewItemSourceKind(
+          readRequestUrl(req).searchParams.get("sourceKind") ?? undefined,
+        ),
+        module: normalizeReviewItemModule(
+          readRequestUrl(req).searchParams.get("module") ?? undefined,
+        ),
+        manuscriptId:
+          coalesceOptionalString(readRequestUrl(req).searchParams.get("manuscriptId") ?? undefined),
+        riskLevel: normalizeReviewItemRiskLevel(
+          readRequestUrl(req).searchParams.get("riskLevel") ?? undefined,
+        ),
+        reviewStatus: normalizeReviewItemReviewStatus(
+          readRequestUrl(req).searchParams.get("reviewStatus") ?? undefined,
+        ),
+      });
+    case "review-items-decide": {
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      const sourceKind =
+        routeMatch.sourceKind ??
+        normalizeReviewItemSourceKind(
+          typeof body.sourceKind === "string" ? body.sourceKind : undefined,
+        );
+      const action = typeof body.action === "string" ? body.action : "";
+
+      if (
+        sourceKind === "residual_issue" &&
+        action === "validate"
+      ) {
+        const session = await requirePermission(req, runtime, "permissions.manage");
+        return runtime.reviewItemsApi.decideReviewItem({
+          sourceKind: "residual_issue",
+          id: routeMatch.id,
+          action: "validate",
+          actorRole: session.user.role,
+          suiteIds: Array.isArray(body.suiteIds)
+            ? body.suiteIds.filter((value): value is string => typeof value === "string")
+            : [],
+          releaseCheckProfileId:
+            typeof body.releaseCheckProfileId === "string"
+              ? body.releaseCheckProfileId
+              : undefined,
+        });
+      }
+
+      if (
+        (sourceKind === "governed_hit" || sourceKind === "residual_issue") &&
+        (action === "route_to_rule_candidate" ||
+          action === "route_to_knowledge_candidate" ||
+          action === "route_to_prompt_candidate")
+      ) {
+        const session = await requirePermission(req, runtime, "learning.review");
+        return runtime.reviewItemsApi.decideReviewItem({
+          sourceKind,
+          id: routeMatch.id,
+          action,
+          requestedBy: session.user.id,
+          requestedByRole: session.user.role,
+          title: typeof body.title === "string" ? body.title : undefined,
+          proposalText:
+            typeof body.proposalText === "string" ? body.proposalText : undefined,
+        });
+      }
+
+      if (
+        (sourceKind === "governed_hit" || sourceKind === "residual_issue") &&
+        (action === "accept_change_only" ||
+          action === "reject_as_false_positive" ||
+          action === "archive_as_evidence_only")
+      ) {
+        await requirePermission(req, runtime, "learning.review");
+        return runtime.reviewItemsApi.decideReviewItem({
+          sourceKind,
+          id: routeMatch.id,
+          action,
+        });
+      }
+
+      if (
+        sourceKind === "learning_candidate" &&
+        (action === "approve" || action === "reject")
+      ) {
+        const session = await requirePermission(req, runtime, "learning.review");
+        return runtime.reviewItemsApi.decideReviewItem({
+          sourceKind: "learning_candidate",
+          id: routeMatch.id,
+          action,
+          actorRole: session.user.role,
+          reviewNote: typeof body.reviewNote === "string" ? body.reviewNote : undefined,
+        });
+      }
+
+      throw new ReviewItemDecisionActionNotSupportedError(
+        sourceKind ?? "unknown",
+        action,
+      );
     }
     case "learning-governance-create-writeback": {
       const session = await requirePermission(req, runtime, "permissions.manage");
@@ -6829,6 +7165,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  const transitionEditorialRuleSetMatch = path.match(
+    /^\/api\/v1\/editorial-rules\/rule-sets\/([^/]+)\/transitions$/,
+  );
+  if (method === "POST" && transitionEditorialRuleSetMatch) {
+    return {
+      route: "editorial-rules-transition-rule-set",
+      ruleSetId: transitionEditorialRuleSetMatch[1],
+    };
+  }
+
   const editorialRulesMatch = path.match(
     /^\/api\/v1\/editorial-rules\/rule-sets\/([^/]+)\/rules$/,
   );
@@ -7466,6 +7812,38 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "GET" && path === "/api/v1/review-items") {
+    return { route: "review-items-list" };
+  }
+
+  if (method === "POST" && path === "/api/v1/review-items/governed-hits") {
+    return { route: "review-items-submit-governed-hit" };
+  }
+
+  const reviewItemDecisionMatch = path.match(
+    /^\/api\/v1\/review-items\/(governed_hit|residual_issue|learning_candidate)\/([^/]+)\/decide$/,
+  );
+  if (method === "POST" && reviewItemDecisionMatch) {
+    return {
+      route: "review-items-decide",
+      sourceKind: reviewItemDecisionMatch[1] as
+        | "governed_hit"
+        | "residual_issue"
+        | "learning_candidate",
+      id: reviewItemDecisionMatch[2],
+    };
+  }
+
+  const reviewItemCanonicalDecisionMatch = path.match(
+    /^\/api\/v1\/review-items\/([^/]+)\/decide$/,
+  );
+  if (method === "POST" && reviewItemCanonicalDecisionMatch) {
+    return {
+      route: "review-items-decide",
+      id: reviewItemCanonicalDecisionMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/learning-governance/writebacks") {
     return { route: "learning-governance-create-writeback" };
   }
@@ -7667,6 +8045,124 @@ function readRequestPath(req: IncomingMessage): string {
 
 function readRequestUrl(req: IncomingMessage): URL {
   return new URL(req.url || "/", "http://127.0.0.1");
+}
+
+function normalizeReviewItemSourceKind(
+  value: string | undefined,
+): "governed_hit" | "residual_issue" | "learning_candidate" | undefined {
+  return value === "governed_hit" ||
+      value === "residual_issue" ||
+      value === "learning_candidate"
+    ? value
+    : undefined;
+}
+
+function normalizeReviewItemModule(
+  value: string | undefined,
+): "screening" | "editing" | "proofreading" | undefined {
+  return value === "screening" || value === "editing" || value === "proofreading"
+    ? value
+    : undefined;
+}
+
+function normalizeReviewItemRiskLevel(
+  value: string | undefined,
+): "low" | "medium" | "high" | "critical" | undefined {
+  return value === "low" ||
+      value === "medium" ||
+      value === "high" ||
+      value === "critical"
+    ? value
+    : undefined;
+}
+
+function normalizeGovernedExecutionHitPosture(
+  value: string | undefined,
+): "candidate_change" | "inspect_only" | undefined {
+  return value === "candidate_change" || value === "inspect_only"
+    ? value
+    : undefined;
+}
+
+function normalizeReviewItemDecisionSource(
+  value: string | undefined,
+): "manual_feedback" | "execution_hit" | undefined {
+  return value === "manual_feedback" || value === "execution_hit"
+    ? value
+    : undefined;
+}
+
+function normalizeReviewItemReviewStatus(
+  value: string | undefined,
+): "pending" | "decided" | "routed" | undefined {
+  return value === "pending" || value === "decided" || value === "routed"
+    ? value
+    : undefined;
+}
+
+function normalizeReviewItemTextArray(
+  value: readonly string[] | undefined,
+): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = [...new Set(
+    value
+      .map((item) => coalesceOptionalString(item))
+      .filter((item): item is string => Boolean(item)),
+  )];
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeReviewItemObjectValue(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function normalizeReviewItemEvidencePack(
+  value:
+    | {
+        location?: Record<string, unknown>;
+        excerpt?: string;
+        suggestion?: string;
+        rationale?: string;
+      }
+    | undefined,
+): {
+  location?: Record<string, unknown>;
+  excerpt?: string;
+  suggestion?: string;
+  rationale?: string;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const evidencePack = {
+    ...(normalizeReviewItemObjectValue(value.location)
+      ? {
+          location: normalizeReviewItemObjectValue(value.location),
+        }
+      : {}),
+    ...(coalesceOptionalString(value.excerpt)
+      ? { excerpt: coalesceOptionalString(value.excerpt) }
+      : {}),
+    ...(coalesceOptionalString(value.suggestion)
+      ? { suggestion: coalesceOptionalString(value.suggestion) }
+      : {}),
+    ...(coalesceOptionalString(value.rationale)
+      ? { rationale: coalesceOptionalString(value.rationale) }
+      : {}),
+  };
+
+  return Object.keys(evidencePack).length > 0 ? evidencePack : undefined;
 }
 
 function readRemoteAddress(req: IncomingMessage): string | undefined {
@@ -8012,7 +8508,8 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationEvidencePackNotFoundError ||
     error instanceof EvaluationSampleSetSourceSnapshotNotFoundError ||
     error instanceof KnowledgeRetrievalSnapshotNotFoundError ||
-    error instanceof ResidualIssueNotFoundError
+    error instanceof ResidualIssueNotFoundError ||
+    error instanceof ReviewItemNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
   }
@@ -8112,6 +8609,8 @@ function mapErrorToHttpResponse(
     error instanceof EvaluationSampleSetSourceEligibilityError ||
     error instanceof VerificationRetrievalDependencyError ||
     error instanceof HarnessIntegrationValidationError ||
+    error instanceof ReviewItemDecisionActionNotSupportedError ||
+    error instanceof ReviewItemDecisionInputInvalidError ||
     error instanceof ResidualIssueExecutionLogRequiredError ||
     error instanceof ResidualIssueSourceAssetRequiredError ||
     error instanceof ResidualLearningServiceDependencyRequiredError ||
@@ -8147,7 +8646,10 @@ function mapErrorToHttpResponse(
     return [400, { error: "invalid_json", message: error.message }];
   }
 
-  if (error instanceof HarnessDatasetDependencyMissingError) {
+  if (
+    error instanceof HarnessDatasetDependencyMissingError ||
+    error instanceof ReviewItemsServiceDependencyRequiredError
+  ) {
     return [500, { error: "internal_error", message: error.message }];
   }
 

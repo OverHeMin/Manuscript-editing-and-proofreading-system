@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { InMemoryAuditService } from "../../src/audit/audit-service.ts";
 import { AiGatewayService } from "../../src/modules/ai-gateway/ai-gateway-service.ts";
 import { InMemoryAgentProfileRepository } from "../../src/modules/agent-profiles/in-memory-agent-profile-repository.ts";
@@ -7,6 +10,7 @@ import { AgentProfileService } from "../../src/modules/agent-profiles/agent-prof
 import { InMemoryAgentRuntimeRepository } from "../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
 import { AgentRuntimeService } from "../../src/modules/agent-runtime/agent-runtime-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
+import { PythonDocxSourceBlockResolver } from "../../src/modules/document-pipeline/python-docx-source-block-resolver.ts";
 import { EditingService } from "../../src/modules/editing/editing-service.ts";
 import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
@@ -142,12 +146,20 @@ test("editing service persists bounded instruction payloads and manual-review it
   );
   assert.deepEqual(result.job.payload?.manualReviewItems, [
     {
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
       ruleId: "rule-discussion-reshape-editing",
       reason: "medical_meaning_risk",
     },
   ]);
   assert.deepEqual(result.job.payload?.contentRuleCandidates, [
     {
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
       ruleId: "rule-discussion-reshape-editing",
       reason: "medical_meaning_risk",
       severity: "warning",
@@ -312,6 +324,38 @@ test("editing service attaches suggestion-focused general quality findings as ad
 test("proofreading draft reports failed checks from the same rule source and never reports applied changes", async () => {
   const harness = await seedHarness();
   let recordedQualitySummary: Record<string, unknown> | undefined;
+  const autoRecordedGovernedHits: Array<Record<string, unknown>> = [];
+
+  await harness.editorialRuleRepository.saveRule({
+    id: "rule-statistical-expression-proofreading",
+    rule_set_id: "rule-set-proofreading-1",
+    order_no: 15,
+    rule_object: "statistical_expression",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+      block_kind: "paragraph",
+    },
+    selector: {
+      section_selector: "results",
+      pattern_selector: {
+        content_class: "statistical_expression",
+      },
+    },
+    trigger: {
+      kind: "structural_presence",
+      field: "statistical_expression",
+    },
+    action: {
+      kind: "normalize_statistical_expression",
+      requirement: "journal_managed",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
 
   const proofreadingService = new ProofreadingService({
     manuscriptRepository: harness.manuscriptRepository,
@@ -381,6 +425,23 @@ test("proofreading draft reports failed checks from the same rule source and nev
         return undefined;
       },
     } as never,
+    reviewItemsService: {
+      async recordExecutionGovernedHits(input: Record<string, unknown>) {
+        autoRecordedGovernedHits.push(input);
+        const items = Array.isArray(input.items)
+          ? input.items
+          : [];
+        return items.map((item, index) => ({
+          sourceKey:
+            typeof (item as { sourceKey?: unknown }).sourceKey === "string"
+              ? (item as { sourceKey: string }).sourceKey
+              : `source-${index + 1}`,
+          item: {
+            id: `proofreading-review-item-${index + 1}`,
+          },
+        }));
+      },
+    } as never,
     proofreadingSourceBlockResolver: {
       async resolveBlocks() {
         return [
@@ -388,6 +449,11 @@ test("proofreading draft reports failed checks from the same rule source and nev
             section: "abstract",
             block_kind: "heading",
             text: BEFORE_HEADING,
+          },
+          {
+            section: "results",
+            block_kind: "paragraph",
+            text: "The intervention group improved significantly (P < 0.05).",
           },
         ];
       },
@@ -448,10 +514,101 @@ test("proofreading draft reports failed checks from the same rule source and nev
   assert.equal(
     (
       result.job.payload?.proofreadingFindings as {
-        failedChecks: Array<{ expected: string }>;
+        failedChecks: Array<{
+          expected: string;
+          candidate_posture?: string;
+          evidence_pack?: Record<string, unknown>;
+        }>;
       }
     ).failedChecks[0]?.expected,
     AFTER_HEADING,
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          candidate_posture?: string;
+        }>;
+      }
+    ).failedChecks[0]?.candidate_posture,
+    "inspect_only",
+  );
+  assert.deepEqual(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          evidence_pack?: Record<string, unknown>;
+        }>;
+      }
+    ).failedChecks[0]?.evidence_pack,
+    {
+      location: {
+        section: "abstract",
+        block_kind: "heading",
+        block_index: 0,
+      },
+      excerpt: BEFORE_HEADING,
+      suggestion: AFTER_HEADING,
+      rationale: BEFORE_HEADING,
+    },
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          expected: string;
+          candidate_posture?: string;
+          evidence_pack?: Record<string, unknown>;
+        }>;
+      }
+    ).failedChecks[1]?.expected,
+    "Normalize statistical expression using journal_managed requirements.",
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          candidate_posture?: string;
+        }>;
+      }
+    ).failedChecks[1]?.candidate_posture,
+    "inspect_only",
+  );
+  assert.deepEqual(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{
+          evidence_pack?: Record<string, unknown>;
+        }>;
+      }
+    ).failedChecks[1]?.evidence_pack,
+    {
+      location: {
+        section: "results",
+        block_kind: "paragraph",
+        block_index: 1,
+      },
+      excerpt: "The intervention group improved significantly (P < 0.05).",
+      suggestion:
+        "Normalize statistical expression using journal_managed requirements.",
+      rationale: "The intervention group improved significantly (P < 0.05).",
+    },
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{ reviewItemId?: string }>;
+      }
+    ).failedChecks[0]?.reviewItemId,
+    "proofreading-review-item-1",
+  );
+  assert.equal(
+    (
+      result.job.payload?.proofreadingFindings as {
+        failedChecks: Array<{ reviewItemId?: string }>;
+      }
+    ).failedChecks[1]?.reviewItemId,
+    "proofreading-review-item-2",
   );
   assert.equal(
     (
@@ -486,6 +643,35 @@ test("proofreading draft reports failed checks from the same rule source and nev
     /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/,
   );
   assert.equal(recordedQualitySummary?.total_issue_count, 1);
+  assert.equal(autoRecordedGovernedHits.length, 1);
+  assert.equal(autoRecordedGovernedHits[0]?.module, "proofreading");
+  assert.equal(autoRecordedGovernedHits[0]?.snapshotId, "snapshot-proofreading-1");
+  assert.equal(autoRecordedGovernedHits[0]?.sourceAssetId, "asset-original-1");
+  assert.equal(
+    Array.isArray(autoRecordedGovernedHits[0]?.items)
+      ? autoRecordedGovernedHits[0]?.items.length
+      : 0,
+    2,
+  );
+  assert.deepEqual(
+    ((autoRecordedGovernedHits[0]?.items as Array<Record<string, unknown>>) ?? []).map(
+      (item) => ({
+        candidate_posture: item.candidate_posture,
+        hasEvidencePack:
+          typeof item.evidence_pack === "object" && item.evidence_pack !== null,
+      }),
+    ),
+    [
+      {
+        candidate_posture: "inspect_only",
+        hasEvidencePack: true,
+      },
+      {
+        candidate_posture: "inspect_only",
+        hasEvidencePack: true,
+      },
+    ],
+  );
 });
 
 test("proofreading draft report includes shared table semantic coordinates for matched table rules", async () => {
@@ -660,6 +846,216 @@ test("proofreading draft report includes shared table semantic coordinates for m
     String(result.job.payload?.reportMarkdown),
     /Treatment group > n \(%\)/,
   );
+});
+
+test("proofreading draft can emit reference-entry failed checks from a live docx source block resolver", async () => {
+  const harness = await seedHarness();
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "proofreading-reference-source-blocks-"),
+  );
+
+  try {
+    await harness.editorialRuleRepository.saveRule({
+      id: "rule-reference-entry-proofreading",
+      rule_set_id: "rule-set-proofreading-1",
+      order_no: 25,
+      rule_object: "reference",
+      rule_type: "format",
+      execution_mode: "inspect",
+      scope: {
+        sections: ["reference"],
+        block_kind: "reference_entry",
+      },
+      selector: {
+        section_selector: "reference",
+        block_selector: "reference_entry",
+      },
+      trigger: {
+        kind: "structural_presence",
+        field: "reference",
+      },
+      action: {
+        kind: "normalize_reference_entry",
+        citation_style: "journal_managed",
+      },
+      authoring_payload: {},
+      confidence_policy: "manual_only",
+      severity: "warning",
+      enabled: true,
+    });
+
+    const sourcePath = path.join(rootDir, "uploads", "manuscript-1", "original.docx");
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, "fixture-docx");
+
+    const proofreadingService = new ProofreadingService({
+      manuscriptRepository: harness.manuscriptRepository,
+      assetRepository: harness.assetRepository,
+      moduleTemplateRepository: harness.moduleTemplateRepository,
+      promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+      knowledgeRepository: harness.knowledgeRepository,
+      executionGovernanceService: harness.executionGovernanceService,
+      executionTrackingService: {
+        async recordSnapshot() {
+          return {
+            id: "snapshot-proofreading-reference-1",
+          };
+        },
+      } as never,
+      jobRepository: harness.jobRepository,
+      documentAssetService: {
+        createScoped() {
+          return {
+            async createAsset(input: Record<string, unknown>) {
+              return {
+                id: "asset-proofreading-report-reference-1",
+                manuscript_id: input.manuscriptId,
+                asset_type: input.assetType,
+                status: "active",
+                storage_key: input.storageKey,
+                mime_type: input.mimeType,
+                parent_asset_id: input.parentAssetId,
+                source_module: input.sourceModule,
+                source_job_id: input.sourceJobId,
+                created_by: input.createdBy,
+                version_no: 1,
+                is_current: true,
+                file_name: input.fileName,
+                created_at: "2026-04-07T10:00:00.000Z",
+                updated_at: "2026-04-07T10:00:00.000Z",
+              };
+            },
+          };
+        },
+      } as never,
+      aiGatewayService: harness.aiGatewayService,
+      sandboxProfileService: harness.sandboxProfileService,
+      agentProfileService: harness.agentProfileService,
+      agentRuntimeService: harness.agentRuntimeService,
+      runtimeBindingService: harness.runtimeBindingService,
+      toolPermissionPolicyService: harness.toolPermissionPolicyService,
+      agentExecutionService: {
+        async createLog() {
+          return { id: "execution-log-proofreading-reference-1" };
+        },
+        async completeLog() {
+          return { id: "execution-log-proofreading-reference-1" };
+        },
+      } as never,
+      agentExecutionOrchestrationService: {
+        async dispatchBestEffort() {
+          return undefined;
+        },
+      } as never,
+      reviewItemsService: {
+        async recordExecutionGovernedHits(input: Record<string, unknown>) {
+          const items = Array.isArray(input.items) ? input.items : [];
+          return items.map((item, index) => ({
+            sourceKey:
+              typeof (item as { sourceKey?: unknown }).sourceKey === "string"
+                ? (item as { sourceKey: string }).sourceKey
+                : `source-${index + 1}`,
+            item: {
+              id: `proofreading-reference-review-item-${index + 1}`,
+            },
+          }));
+        },
+      } as never,
+      proofreadingSourceBlockResolver: new PythonDocxSourceBlockResolver({
+        assetRepository: harness.assetRepository,
+        rootDir,
+        workerRunner: async () => ({
+          status: "ready",
+          parser: "python_docx_ooxml",
+          sections: [],
+          blocks: [
+            {
+              kind: "paragraph",
+              text: "References",
+              paragraph_index: 0,
+            },
+            {
+              kind: "paragraph",
+              text: "1. Smith AB. Trial report. 2024.",
+              paragraph_index: 1,
+            },
+          ],
+          warnings: [],
+        }),
+      }),
+      now: () => new Date("2026-04-07T10:00:00.000Z"),
+      createId: () => "job-proofreading-reference-1",
+    } as never);
+
+    const result = await proofreadingService.createDraft({
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-original-1",
+      requestedBy: "proofreader-1",
+      actorRole: "proofreader",
+      storageKey: "proofreading/manuscript-1/reference-draft-report.md",
+      fileName: "reference-draft-report.md",
+    });
+
+    assert.equal(
+      (
+        result.job.payload?.proofreadingFindings as {
+          failedChecks: Array<{ expected: string }>;
+        }
+      ).failedChecks[0]?.expected,
+      "Normalize reference entry using journal_managed style rules.",
+    );
+    assert.equal(
+      (
+        result.job.payload?.proofreadingFindings as {
+          failedChecks: Array<{ actual: string }>;
+        }
+      ).failedChecks[0]?.actual,
+      "1. Smith AB. Trial report. 2024.",
+    );
+    assert.equal(
+      (
+        result.job.payload?.proofreadingFindings as {
+          failedChecks: Array<{
+            reviewItemId?: string;
+            candidate_posture?: string;
+            evidence_pack?: Record<string, unknown>;
+          }>;
+        }
+      ).failedChecks[0]?.reviewItemId,
+      "proofreading-reference-review-item-1",
+    );
+    assert.equal(
+      (
+        result.job.payload?.proofreadingFindings as {
+          failedChecks: Array<{
+            candidate_posture?: string;
+          }>;
+        }
+      ).failedChecks[0]?.candidate_posture,
+      "inspect_only",
+    );
+    assert.deepEqual(
+      (
+        result.job.payload?.proofreadingFindings as {
+          failedChecks: Array<{
+            evidence_pack?: Record<string, unknown>;
+          }>;
+        }
+      ).failedChecks[0]?.evidence_pack,
+      {
+        location: {
+          section: "reference",
+          block_kind: "reference_entry",
+          block_index: 1,
+        },
+        excerpt: "1. Smith AB. Trial report. 2024.",
+        suggestion: "Normalize reference entry using journal_managed style rules.",
+        rationale: "1. Smith AB. Trial report. 2024.",
+      },
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
 });
 
 test("screening service persists compliance quality findings without blocking governed completion", async () => {

@@ -5,6 +5,8 @@ import { InMemoryLearningCandidateRepository } from "../../src/modules/learning/
 import { InMemoryKnowledgeRepository, InMemoryKnowledgeReviewActionRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { InMemoryEditorialRuleActivationMetricsRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-activation-metrics-repository.ts";
+import { EditorialRuleActivationMetricsService } from "../../src/modules/editorial-rules/editorial-rule-activation-metrics-service.ts";
 import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import { createLearningGovernanceApi } from "../../src/modules/learning-governance/learning-governance-api.ts";
 import { InMemoryLearningGovernanceRepository } from "../../src/modules/learning-governance/in-memory-learning-governance-repository.ts";
@@ -29,6 +31,8 @@ function createLearningGovernanceHarness() {
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const activationMetricsRepository =
+    new InMemoryEditorialRuleActivationMetricsRepository();
   const knowledgeService = new KnowledgeService({
     repository: new InMemoryKnowledgeRepository(),
     reviewActionRepository: new InMemoryKnowledgeReviewActionRepository(),
@@ -69,6 +73,11 @@ function createLearningGovernanceHarness() {
       };
     })(),
   });
+  const activationMetricsService = new EditorialRuleActivationMetricsService({
+    repository: activationMetricsRepository,
+    editorialRuleRepository,
+    now: () => new Date("2026-03-28T08:05:00.000Z"),
+  });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: new InMemoryPromptSkillRegistryRepository(),
     learningCandidateRepository,
@@ -88,6 +97,7 @@ function createLearningGovernanceHarness() {
     templateService,
     editorialRuleService,
     promptSkillRegistryService,
+    activationMetricsService,
     createId: (() => {
       const ids = ["writeback-1", "writeback-2", "writeback-3", "writeback-4"];
       return () => {
@@ -103,6 +113,7 @@ function createLearningGovernanceHarness() {
   });
 
   return {
+    activationMetricsService,
     api,
     editorialRuleRepository,
     learningCandidateRepository,
@@ -276,6 +287,7 @@ test("admin can apply writebacks into governed draft assets and list them by can
 
 test("approved rule candidates can write back into editorial rule drafts with candidate provenance", async () => {
   const {
+    activationMetricsService,
     api,
     editorialRuleRepository,
     learningCandidateRepository,
@@ -294,6 +306,46 @@ test("approved rule candidates can write back into editorial rule drafts with ca
     journal_key: "journal-alpha",
     journal_name: "Journal Alpha",
     status: "active",
+  });
+  await editorialRuleRepository.saveRuleSet({
+    id: "existing-rule-set-1",
+    template_family_id: "family-1",
+    journal_template_id: "journal-template-1",
+    module: "editing",
+    version_no: 9,
+    status: "active",
+  });
+  await editorialRuleRepository.saveRule({
+    id: "existing-rule-1",
+    rule_set_id: "existing-rule-set-1",
+    order_no: 10,
+    rule_object: "abstract",
+    rule_type: "format",
+    execution_mode: "apply_and_inspect",
+    scope: {
+      sections: ["abstract"],
+      block_kind: "heading",
+    },
+    selector: {
+      section_selector: "abstract",
+      label_selector: {
+        text: BEFORE_HEADING,
+      },
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: AFTER_HEADING,
+    },
+    authoring_payload: {
+      normalized_example: AFTER_HEADING,
+    },
+    confidence_policy: "always_auto",
+    severity: "error",
+    enabled: true,
   });
   await learningCandidateRepository.save({
     id: "candidate-approved-rule",
@@ -335,6 +387,7 @@ test("approved rule candidates can write back into editorial rule drafts with ca
         standard_example: AFTER_HEADING,
         incorrect_example: BEFORE_HEADING,
       },
+      related_rule_ids: ["existing-rule-1"],
       example_before: BEFORE_HEADING,
       example_after: AFTER_HEADING,
       confidence_policy: "always_auto",
@@ -373,7 +426,7 @@ test("approved rule candidates can write back into editorial rule drafts with ca
     template_family_id: "family-1",
     journal_template_id: "journal-template-1",
     module: "editing",
-    version_no: 1,
+    version_no: 10,
     status: "draft",
   });
   assert.equal(createdRules[0]?.rule_object, "abstract");
@@ -383,4 +436,9 @@ test("approved rule candidates can write back into editorial rule drafts with ca
   );
   assert.equal(createdRules[0]?.example_before, BEFORE_HEADING);
   assert.equal(createdRules[0]?.example_after, AFTER_HEADING);
+
+  const recordedMetrics =
+    await activationMetricsService.getRuleMetrics("existing-rule-1");
+  assert.equal(recordedMetrics.totals.writeback_created_count, 1);
+  assert.equal(recordedMetrics.totals.writeback_applied_count, 1);
 });

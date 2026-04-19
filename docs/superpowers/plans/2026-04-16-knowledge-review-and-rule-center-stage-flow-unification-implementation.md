@@ -26,6 +26,22 @@ The accepted truthful scope is:
 
 If older steps below imply that the knowledge review page itself is the recovery-candidate approval station, follow this revision note instead.
 
+## Closure Note (2026-04-18, shipped reality)
+
+Later integration work around residual learning, manual feedback handoff, and governed rule writeback changed the truthful rule-center recovery behavior beyond the wording-only scope of this original plan.
+
+For current implementation and acceptance, use the following shipped rules:
+
+- rule-center recovery is a unified review queue for rule-governance items, not a queue for every residual or learning artifact
+- queue inclusion is strict:
+  - `residual_issue` enters only when `recommended_route = rule_candidate`
+  - `learning_candidate` enters only when `type = rule_candidate`
+- residual issues routed to `knowledge_candidate` or `prompt_template_candidate` are intentionally excluded from rule-center recovery
+- the recovery station may execute Harness validation, create a downstream learning candidate, approve or reject a rule candidate, and then complete governed writeback to `editorial_rule_draft`
+- the shipped `转成规则草稿` action is no longer just UI prefill handoff; it materializes a governed draft asset and records writeback state
+
+If the task list below implies that the rule-center page only receives already-approved candidates or that conversion stops at a prefilled wizard, treat that wording as superseded by this closure note.
+
 ### Task 1: Lock the new stage-flow language in focused web tests
 
 **Files:**
