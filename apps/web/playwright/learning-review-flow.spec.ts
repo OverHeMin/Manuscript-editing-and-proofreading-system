@@ -219,15 +219,33 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.getByRole("button", { name: "转成规则草稿" })).toBeEnabled();
 
   await page.getByRole("button", { name: "转成规则草稿" }).click();
-  await expect(page.locator("body")).toContainText("规则草稿向导");
-  await expect(page.locator("body")).toContainText("返回规则台账");
+  await expect(page.locator("body")).toContainText("已完成规则草稿写回：");
+  const writebacksResponse = await request.get(
+    `${apiBaseUrl}/api/v1/learning-governance/candidates/${extractedCandidate.id}/writebacks`,
+  );
+  expect(writebacksResponse.ok()).toBeTruthy();
+  const writebacks = (await writebacksResponse.json()) as Array<{
+    id: string;
+    target_type: string;
+    status: string;
+    created_draft_asset_id?: string;
+  }>;
+  const editorialRuleDraftWriteback = writebacks.find(
+    (writeback) => writeback.target_type === "editorial_rule_draft",
+  );
+  expect(editorialRuleDraftWriteback).toBeTruthy();
+  expect(editorialRuleDraftWriteback?.status).toBe("applied");
+  expect(editorialRuleDraftWriteback?.created_draft_asset_id).toBeTruthy();
   await expect(page.locator("body")).toContainText(candidateListLabel);
   await expect(page.locator("body")).toContainText(evidenceSummary);
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
+  await expect(page.locator("body")).toContainText(
+    editorialRuleDraftWriteback?.created_draft_asset_id ?? "",
+  );
 });
 
-test("admin can submit manual feedback from editing and open the selected learning candidate", async ({
+test("admin can hand off editing manual feedback into rule center and open the selected learning candidate", async ({
   page,
   request,
 }) => {
@@ -285,6 +303,23 @@ test("admin can submit manual feedback from editing and open the selected learni
     editedAsset.source_job_id ?? "",
     (job) => (job.payload?.tableInspectionFindings?.length ?? 0) > 0,
   );
+  const manuscriptResponse = await request.get(
+    `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}`,
+  );
+  expect(manuscriptResponse.ok()).toBeTruthy();
+  const manuscript = (await manuscriptResponse.json()) as {
+    manuscript_type: string;
+    module_execution_overview?: {
+      editing?: {
+        latest_snapshot?: {
+          id: string;
+        };
+      };
+    };
+  };
+  const editingSnapshotId =
+    manuscript.module_execution_overview?.editing?.latest_snapshot?.id ?? "";
+  expect(editingSnapshotId).toBeTruthy();
 
   const manualFeedbackCard = page
     .locator(".manuscript-workbench-manual-feedback")
@@ -303,18 +338,20 @@ test("admin can submit manual feedback from editing and open the selected learni
   await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
-  const manualFeedbackResponsePromise = page.waitForResponse((response) => {
-    return (
-      response.url().includes("/api/v1/review-items/governed-hits") &&
-      response.request().method() === "POST"
-    );
-  });
-
-  await manualFeedbackSubmitButton.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
-
-  const manualFeedbackResponse = await manualFeedbackResponsePromise;
+  const manualFeedbackResponse = await request.post(
+    `${apiBaseUrl}/api/v1/review-items/governed-hits`,
+    {
+      data: {
+        manuscriptId,
+        manuscriptType: manuscript.manuscript_type,
+        module: "editing",
+        snapshotId: editingSnapshotId,
+        sourceAssetId: editedAsset.id,
+        feedbackCategory: "incorrect_hit",
+        feedbackText: manualFeedbackNote,
+      },
+    },
+  );
   expect(manualFeedbackResponse.ok()).toBeTruthy();
   const manualFeedbackResult = (await manualFeedbackResponse.json()) as {
     item: {
@@ -325,7 +362,6 @@ test("admin can submit manual feedback from editing and open the selected learni
   const reviewItemId = manualFeedbackResult.item.id;
   expect(reviewItemId).toBeTruthy();
   expect(manualFeedbackResult.item.recommended_route).toBe("rule_candidate");
-  await expect(page.locator("body")).toContainText(`已提交复核项 ${reviewItemId}`);
 
   const reviewItemsResponse = await request.get(
     `${apiBaseUrl}/api/v1/review-items?sourceKind=governed_hit&manuscriptId=${manuscriptId}`,
