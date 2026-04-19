@@ -339,64 +339,48 @@ test("admin can hand off editing manual feedback into rule center and open the s
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
   const manualFeedbackResponse = await request.post(
-    `${apiBaseUrl}/api/v1/review-items/governed-hits`,
+    `${apiBaseUrl}/api/v1/feedback-governance/manual-feedback-handoffs`,
     {
       data: {
-        manuscriptId,
-        manuscriptType: manuscript.manuscript_type,
-        module: "editing",
-        snapshotId: editingSnapshotId,
-        sourceAssetId: editedAsset.id,
-        feedbackCategory: "incorrect_hit",
-        feedbackText: manualFeedbackNote,
+        input: {
+          manuscriptId,
+          module: "editing",
+          snapshotId: editingSnapshotId,
+          sourceAssetId: editedAsset.id,
+          feedbackCategory: "incorrect_hit",
+          feedbackText: manualFeedbackNote,
+        },
       },
     },
   );
   expect(manualFeedbackResponse.ok()).toBeTruthy();
   const manualFeedbackResult = (await manualFeedbackResponse.json()) as {
-    item: {
+    learningCandidate: {
       id: string;
-      recommended_route?: string;
+      type: string;
+      status: string;
+      proposal_text?: string;
+      governed_provenance_kind?: string;
     };
   };
-  const reviewItemId = manualFeedbackResult.item.id;
-  expect(reviewItemId).toBeTruthy();
-  expect(manualFeedbackResult.item.recommended_route).toBe("rule_candidate");
-
-  const reviewItemsResponse = await request.get(
-    `${apiBaseUrl}/api/v1/review-items?sourceKind=governed_hit&manuscriptId=${manuscriptId}`,
+  const learningCandidateId = manualFeedbackResult.learningCandidate.id;
+  expect(learningCandidateId).toBeTruthy();
+  expect(manualFeedbackResult.learningCandidate.type).toBe("rule_candidate");
+  expect(manualFeedbackResult.learningCandidate.status).toBe("pending_review");
+  expect(manualFeedbackResult.learningCandidate.proposal_text).toBe(manualFeedbackNote);
+  expect(manualFeedbackResult.learningCandidate.governed_provenance_kind).toBe(
+    "human_feedback",
   );
-  expect(reviewItemsResponse.ok()).toBeTruthy();
-  const reviewItems = (await reviewItemsResponse.json()) as Array<{
-    id: string;
-    source_kind: string;
-    source_status: string;
-    review_status: string;
-    module: string;
-    summary?: string;
-    title?: string;
-    feedback_category?: string;
-    learning_candidate_id?: string;
-  }>;
-  const submittedReviewItem = reviewItems.find((item) => item.id === reviewItemId);
-  expect(submittedReviewItem).toBeTruthy();
-  expect(submittedReviewItem?.source_kind).toBe("governed_hit");
-  expect(submittedReviewItem?.source_status).toBe("submitted");
-  expect(submittedReviewItem?.review_status).toBe("pending");
-  expect(submittedReviewItem?.feedback_category).toBe("incorrect_hit");
-  expect(submittedReviewItem?.module).toBe("editing");
-  expect(submittedReviewItem?.summary).toBe(manualFeedbackNote);
-  expect(submittedReviewItem?.learning_candidate_id).toBeTruthy();
 
   await page.goto(
-    `/#template-governance?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning&reviewItemId=${reviewItemId}`,
+    `/#template-governance?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning&learningCandidateId=${learningCandidateId}`,
     {
       waitUntil: "domcontentloaded",
     },
   );
   await expect(page.locator("body")).toContainText(manuscriptId);
   await expect(page.locator("body")).toContainText(manualFeedbackNote);
-  await expect(page.locator("body")).toContainText(reviewItemId ?? "");
+  await expect(page.locator("body")).toContainText(learningCandidateId ?? "");
 });
 
 function appendHashQueryParam(href: string, key: string, value: string): string {
