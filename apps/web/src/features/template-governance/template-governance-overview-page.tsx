@@ -1,4 +1,7 @@
-import type { TemplateGovernanceView } from "../../app/workbench-routing.ts";
+import type {
+  RuleCenterMode,
+  TemplateGovernanceView,
+} from "../../app/workbench-routing.ts";
 import { createTemplateGovernanceNavigationItems } from "./template-governance-navigation.ts";
 
 export interface TemplateGovernanceOverviewMetrics {
@@ -6,6 +9,17 @@ export interface TemplateGovernanceOverviewMetrics {
   moduleCount: number;
   pendingKnowledgeCount: number;
   extractionAwaitingConfirmationCount: number;
+  pendingReviewCount?: number;
+  harnessQueuedCount?: number;
+  harnessPassedCount?: number;
+  harnessFailedCount?: number;
+  ruleDraftWritebackDraftCount?: number;
+  ruleDraftWritebackAppliedCount?: number;
+  candidateRuleSetCount?: number;
+  canaryRuleSetCount?: number;
+  activeRuleSetCount?: number;
+  rolledBackRuleSetCount?: number;
+  blockedReleaseCount?: number;
 }
 
 export interface TemplateGovernanceOverviewPendingItem {
@@ -15,6 +29,7 @@ export interface TemplateGovernanceOverviewPendingItem {
   emphasis: string;
   actionLabel: string;
   targetView: TemplateGovernanceView;
+  targetMode?: RuleCenterMode;
 }
 
 export interface TemplateGovernanceOverviewRecentUpdate {
@@ -23,13 +38,14 @@ export interface TemplateGovernanceOverviewRecentUpdate {
   detail: string;
   statusLabel: string;
   targetView: TemplateGovernanceView;
+  targetMode?: RuleCenterMode;
 }
 
 export interface TemplateGovernanceOverviewPageProps {
   metrics: TemplateGovernanceOverviewMetrics;
   pendingItems?: readonly TemplateGovernanceOverviewPendingItem[];
   recentUpdates?: readonly TemplateGovernanceOverviewRecentUpdate[];
-  onOpenView?: (view: TemplateGovernanceView) => void;
+  onOpenView?: (view: TemplateGovernanceView, mode?: RuleCenterMode) => void;
 }
 
 export function TemplateGovernanceOverviewPage({
@@ -38,57 +54,64 @@ export function TemplateGovernanceOverviewPage({
   recentUpdates = buildTemplateGovernanceOverviewFallbackUpdates(metrics),
   onOpenView,
 }: TemplateGovernanceOverviewPageProps) {
+  const metricCards = [
+    { label: "大模板台账", value: metrics.templateCount },
+    { label: "规则台账", value: metrics.moduleCount },
+    { label: "待审核知识项", value: metrics.pendingKnowledgeCount },
+    { label: "回流候选待确认", value: metrics.extractionAwaitingConfirmationCount },
+    { label: "统一复核待处理", value: metrics.pendingReviewCount ?? 0 },
+    { label: "Harness 待验证", value: metrics.harnessQueuedCount ?? 0 },
+    { label: "Harness 已通过", value: metrics.harnessPassedCount ?? 0 },
+    { label: "Harness 未通过", value: metrics.harnessFailedCount ?? 0 },
+    { label: "规则草稿待写回", value: metrics.ruleDraftWritebackDraftCount ?? 0 },
+    { label: "规则草稿已写回", value: metrics.ruleDraftWritebackAppliedCount ?? 0 },
+    { label: "候选规则集", value: metrics.candidateRuleSetCount ?? 0 },
+    { label: "Canary 规则集", value: metrics.canaryRuleSetCount ?? 0 },
+    { label: "已生效规则集", value: metrics.activeRuleSetCount ?? 0 },
+    { label: "已回滚规则集", value: metrics.rolledBackRuleSetCount ?? 0 },
+    { label: "发布阻塞项", value: metrics.blockedReleaseCount ?? 0 },
+  ].filter((card, index) => index < 10 || shouldShowReleaseMetric(metrics, card.label));
+
   return (
     <section className="template-governance-overview-page">
       <div className="template-governance-overview-shell">
         <header className="template-governance-overview-hero">
           <div className="template-governance-overview-hero-copy">
-            <p className="template-governance-eyebrow">规则中心总览</p>
-            <h1>规则中心</h1>
+            <p className="template-governance-eyebrow">规则中心运营驾驶舱</p>
+            <h1>规则中心总览</h1>
             <p>
-              首页只保留规则录入、待处理事项和最新资产进展，低频子台账入口统一放在顶部导航里。
+              在同一个入口里查看规则、模板、知识、回流候选和发布轨道，先看风险，再决定去哪里处理。
             </p>
           </div>
 
           <div className="template-governance-overview-metrics">
-            <article className="template-governance-card template-governance-overview-metric">
-              <span className="template-governance-overview-metric-label">大模板数</span>
-              <strong className="template-governance-overview-metric-value">
-                {metrics.templateCount}
-              </strong>
-            </article>
-            <article className="template-governance-card template-governance-overview-metric">
-              <span className="template-governance-overview-metric-label">规则包数</span>
-              <strong className="template-governance-overview-metric-value">
-                {metrics.moduleCount}
-              </strong>
-            </article>
-            <article className="template-governance-card template-governance-overview-metric">
-              <span className="template-governance-overview-metric-label">待整理知识项</span>
-              <strong className="template-governance-overview-metric-value">
-                {metrics.pendingKnowledgeCount}
-              </strong>
-            </article>
-            <article className="template-governance-card template-governance-overview-metric">
-              <span className="template-governance-overview-metric-label">
-                待确认提取候选
-              </span>
-              <strong className="template-governance-overview-metric-value">
-                {metrics.extractionAwaitingConfirmationCount}
-              </strong>
-            </article>
+            {metricCards.map((card) => (
+              <article
+                key={card.label}
+                className="template-governance-card template-governance-overview-metric"
+              >
+                <span className="template-governance-overview-metric-label">
+                  {card.label}
+                </span>
+                <strong className="template-governance-overview-metric-value">
+                  {card.value}
+                </strong>
+              </article>
+            ))}
           </div>
 
           <nav
             className="template-governance-ledger-nav template-governance-overview-nav"
-            aria-label="规则中心切换"
+            aria-label="规则中心导航"
           >
             {createTemplateGovernanceNavigationItems("overview").map((item) => (
               <button
                 key={item.key}
                 type="button"
                 className={`template-governance-ledger-nav-item${item.isActive ? " is-active" : ""}${item.priority === "secondary" ? " is-secondary" : ""}`}
-                onClick={item.key === "overview" ? undefined : () => onOpenView?.(item.key)}
+                onClick={
+                  item.key === "overview" ? undefined : () => onOpenView?.(item.key)
+                }
               >
                 {item.label}
               </button>
@@ -100,20 +123,20 @@ export function TemplateGovernanceOverviewPage({
           <article className="template-governance-card template-governance-overview-entry template-governance-overview-primary">
             <header className="template-governance-ledger-section-header">
               <h2>规则台账</h2>
-              <p>先进入共享向导录入规则，再回到规则台账完成筛选、浏览和治理。</p>
+              <p>从这里进入规则、模板与包台账，处理写回、发布和审核运营工作。</p>
             </header>
             <div className="template-governance-actions template-governance-overview-primary-actions">
               <button
                 type="button"
                 className="template-governance-overview-primary-action"
-                onClick={() => onOpenView?.("authoring")}
+                onClick={() => onOpenView?.("authoring", "authoring")}
               >
                 新建规则
               </button>
               <button type="button" onClick={() => onOpenView?.("rule-ledger")}>
                 进入规则台账
               </button>
-              <button type="button" onClick={() => onOpenView?.("extraction-ledger")}>
+              <button type="button" onClick={() => onOpenView?.("rule-ledger", "learning")}>
                 查看待审核
               </button>
             </div>
@@ -123,7 +146,7 @@ export function TemplateGovernanceOverviewPage({
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>待处理事项</h2>
-                <p>先处理会阻塞规则沉淀的事项，让首页保持短、准、可执行。</p>
+                <p>先处理统一复核、Harness 验证和规则写回，再进入资产沉淀。</p>
               </header>
               {pendingItems.length ? (
                 <ul className="template-governance-list">
@@ -133,7 +156,10 @@ export function TemplateGovernanceOverviewPage({
                         <span>{item.title}</span>
                         <small>{item.detail}</small>
                         <strong>{item.emphasis}</strong>
-                        <button type="button" onClick={() => onOpenView?.(item.targetView)}>
+                        <button
+                          type="button"
+                          onClick={() => onOpenView?.(item.targetView, item.targetMode)}
+                        >
                           {item.actionLabel}
                         </button>
                       </div>
@@ -141,14 +167,14 @@ export function TemplateGovernanceOverviewPage({
                   ))}
                 </ul>
               ) : (
-                <p className="template-governance-empty">当前没有待首页优先处理的规则事项。</p>
+                <p className="template-governance-empty">当前没有待处理事项。</p>
               )}
             </article>
 
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>最近包 / 模板更新</h2>
-                <p>让操作者快速知道当前规则包、模板和指令资产的最新关注点。</p>
+                <p>快速进入最常用的几个治理台账，继续推进最近的改动。</p>
               </header>
               {recentUpdates.length ? (
                 <ul className="template-governance-list">
@@ -158,15 +184,18 @@ export function TemplateGovernanceOverviewPage({
                         <span>{item.title}</span>
                         <small>{item.detail}</small>
                         <strong>{item.statusLabel}</strong>
-                        <button type="button" onClick={() => onOpenView?.(item.targetView)}>
-                          打开台账
+                        <button
+                          type="button"
+                          onClick={() => onOpenView?.(item.targetView, item.targetMode)}
+                        >
+                          进入台账
                         </button>
                       </div>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="template-governance-empty">当前还没有可回看的包或模板更新。</p>
+                <p className="template-governance-empty">最近没有新的治理更新。</p>
               )}
             </article>
           </div>
@@ -181,25 +210,50 @@ export function buildTemplateGovernanceOverviewFallbackPendingItems(
 ): TemplateGovernanceOverviewPendingItem[] {
   const items: TemplateGovernanceOverviewPendingItem[] = [];
 
+  if ((metrics.pendingReviewCount ?? 0) > 0) {
+    items.push({
+      id: "pending-review-items",
+      title: "统一复核待处理",
+      detail: `${metrics.pendingReviewCount} 条高风险命中或残差问题仍在等待人工复核。`,
+      emphasis: `待处理 ${metrics.pendingReviewCount} 条`,
+      actionLabel: "进入统一复核队列",
+      targetView: "rule-ledger",
+      targetMode: "learning",
+    });
+  }
+
+  if ((metrics.harnessQueuedCount ?? 0) > 0) {
+    items.push({
+      id: "pending-harness-queued",
+      title: "Harness 待验证",
+      detail: `${metrics.harnessQueuedCount} 条规则候选正在等待 Harness 验证结果回传。`,
+      emphasis: `待验证 ${metrics.harnessQueuedCount} 条`,
+      actionLabel: "查看待审核",
+      targetView: "rule-ledger",
+      targetMode: "learning",
+    });
+  }
+
+  if ((metrics.ruleDraftWritebackDraftCount ?? 0) > 0) {
+    items.push({
+      id: "pending-rule-writebacks",
+      title: "规则草稿待写回",
+      detail: `${metrics.ruleDraftWritebackDraftCount} 个规则候选已经生成规则草稿，但还没有完成写回。`,
+      emphasis: `待写回 ${metrics.ruleDraftWritebackDraftCount} 个`,
+      actionLabel: "查看写回进度",
+      targetView: "rule-ledger",
+      targetMode: "learning",
+    });
+  }
+
   if (metrics.extractionAwaitingConfirmationCount > 0) {
     items.push({
       id: "pending-extraction-candidates",
       title: "回流候选待确认",
-      detail: `${metrics.extractionAwaitingConfirmationCount} 条候选等待转成规则或驳回。`,
-      emphasis: `待处理 ${metrics.extractionAwaitingConfirmationCount} 条`,
-      actionLabel: "处理候选",
+      detail: `${metrics.extractionAwaitingConfirmationCount} 条原稿/编辑稿提取结果仍需人工确认后才能进入规则沉淀。`,
+      emphasis: `待确认 ${metrics.extractionAwaitingConfirmationCount} 条`,
+      actionLabel: "打开原稿/编辑稿提取",
       targetView: "extraction-ledger",
-    });
-  }
-
-  if (metrics.pendingKnowledgeCount > 0) {
-    items.push({
-      id: "pending-knowledge-items",
-      title: "知识规则待整理",
-      detail: `${metrics.pendingKnowledgeCount} 条知识规则仍停留在草稿或待审核。`,
-      emphasis: `待整理 ${metrics.pendingKnowledgeCount} 条`,
-      actionLabel: "打开规则台账",
-      targetView: "rule-ledger",
     });
   }
 
@@ -211,18 +265,59 @@ export function buildTemplateGovernanceOverviewFallbackUpdates(
 ): TemplateGovernanceOverviewRecentUpdate[] {
   return [
     {
-      id: "update-template-family-count",
-      title: "大模板治理",
-      detail: `当前共管理 ${metrics.templateCount} 个模板族入口。`,
-      statusLabel: metrics.templateCount > 0 ? "持续维护" : "待补齐",
+      id: "update-template-ledger",
+      title: "临床研究大模板族",
+      detail: `当前共有 ${metrics.templateCount} 个大模板版本处于治理视图中。`,
+      statusLabel: "大模板台账",
       targetView: "large-template-ledger",
     },
     {
-      id: "update-package-count",
-      title: "规则包与模块模板",
-      detail: `当前共沉淀 ${metrics.moduleCount} 个模块模板或规则包入口。`,
-      statusLabel: metrics.moduleCount > 0 ? "已有沉淀" : "待建立",
+      id: "update-journal-ledger",
+      title: "期刊模板台账",
+      detail: "继续维护期刊差异化规则与模板绑定。",
+      statusLabel: "期刊模板台账",
+      targetView: "journal-template-ledger",
+    },
+    {
+      id: "update-general-package-ledger",
+      title: "通用包台账",
+      detail: `当前共有 ${metrics.moduleCount} 个规则或包资产可复用。`,
+      statusLabel: "通用包台账",
       targetView: "general-package-ledger",
     },
+    {
+      id: "update-medical-package-ledger",
+      title: "医学专用包台账",
+      detail: "检查医学专用治理包的最新修订与证据补齐情况。",
+      statusLabel: "医学专用包台账",
+      targetView: "medical-package-ledger",
+    },
+    {
+      id: "update-extraction-ledger",
+      title: "原稿/编辑稿提取",
+      detail: "继续把人工确认后的候选改动沉淀成规则资产。",
+      statusLabel: "原稿/编辑稿提取",
+      targetView: "extraction-ledger",
+    },
   ];
+}
+
+function shouldShowReleaseMetric(
+  metrics: TemplateGovernanceOverviewMetrics,
+  label: string,
+): boolean {
+  switch (label) {
+    case "候选规则集":
+      return metrics.candidateRuleSetCount !== undefined;
+    case "Canary 规则集":
+      return metrics.canaryRuleSetCount !== undefined;
+    case "已生效规则集":
+      return metrics.activeRuleSetCount !== undefined;
+    case "已回滚规则集":
+      return metrics.rolledBackRuleSetCount !== undefined;
+    case "发布阻塞项":
+      return metrics.blockedReleaseCount !== undefined;
+    default:
+      return true;
+  }
 }

@@ -11,7 +11,12 @@ const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
 const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 const AFTER_HEADING_WITH_COLON = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
 
-function createPreviewHarness() {
+function createPreviewHarness(ids = [
+  "rule-set-1",
+  "rule-1",
+  "rule-set-2",
+  "rule-2",
+]) {
   const repository = new InMemoryEditorialRuleRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const resolutionService = new EditorialRuleResolutionService({
@@ -25,14 +30,9 @@ function createPreviewHarness() {
     repository,
     templateFamilyRepository,
     createId: (() => {
-      const ids = [
-        "rule-set-1",
-        "rule-1",
-        "rule-set-2",
-        "rule-2",
-      ];
+      const remainingIds = [...ids];
       return () => {
-        const value = ids.shift();
+        const value = remainingIds.shift();
         assert.ok(value, "Expected a preview harness id.");
         return value;
       };
@@ -251,6 +251,22 @@ test("previewing resolved table rules reports the matched semantic target and jo
   assert.deepEqual(preview.body.overridden_rule_ids, ["rule-1"]);
   assert.equal(preview.body.execution_posture, "inspect_only");
   assert.equal(preview.body.inspect_only, true);
+  assert.deepEqual(preview.body.conflicts, [
+    {
+      kind: "override",
+      rule_ids: ["rule-2", "rule-1"],
+      winning_rule_id: "rule-2",
+      overridden_rule_ids: ["rule-1"],
+      coverage_keys: [
+        'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+      ],
+      reason:
+        'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}".',
+      requires_manual_review: true,
+    },
+  ]);
+  assert.equal(preview.body.manual_review_required, true);
+  assert.match(preview.body.manual_review_reason ?? "", /inspect-only/i);
   assert.match(preview.body.reasons.join(" "), /journal template override/i);
   assert.match(preview.body.reasons.join(" "), /semantic target "header_cell"/i);
   assert.deepEqual(preview.body.matched_rules, [
@@ -260,7 +276,14 @@ test("previewing resolved table rules reports the matched semantic target and jo
       coverage_key: 'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
       execution_posture: "inspect_only",
       overridden_rule_ids: ["rule-1"],
+      conflict_kind: "override",
       reason: 'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}".',
+      hit_reason:
+        'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}". Journal Beta overrides the generic table header rule. Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+      override_reason:
+        'Journal template override matched coverage key "table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}".',
+      manual_review_reason:
+        "Human confirmation is required because table rules in inspect-only posture never auto-apply changes.",
       semantic_target: "header_cell",
       semantic_coordinate: {
         table_id: "table-1",
@@ -270,6 +293,119 @@ test("previewing resolved table rules reports the matched semantic target and jo
       },
     },
   ]);
+});
+
+test("previewing resolved rules surfaces exclusive conflicts and withholds the final output when incompatible actions hit the same target", async () => {
+  const { api, templateFamilyRepository } = createPreviewHarness([
+    "rule-set-1",
+    "rule-1",
+    "rule-2",
+  ]);
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+  await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: ruleSet.body.id,
+      orderNo: 10,
+      priority: 120,
+      ruleObject: "abstract",
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      scope: {
+        sections: ["abstract"],
+      },
+      selector: {
+        section_selector: "abstract",
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING,
+      },
+      confidencePolicy: "always_auto",
+      severity: "error",
+    },
+  });
+  await api.createRule({
+    actorRole: "admin",
+    input: {
+      ruleSetId: ruleSet.body.id,
+      orderNo: 20,
+      priority: 110,
+      ruleObject: "abstract",
+      ruleType: "format",
+      executionMode: "apply_and_inspect",
+      scope: {
+        sections: ["abstract"],
+      },
+      selector: {
+        section_selector: "abstract",
+        block_selector: "leading_heading",
+      },
+      trigger: {
+        kind: "exact_text",
+        text: BEFORE_HEADING,
+      },
+      action: {
+        kind: "replace_heading",
+        to: AFTER_HEADING_WITH_COLON,
+      },
+      confidencePolicy: "always_auto",
+      severity: "error",
+    },
+  });
+  await api.publishRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+  });
+
+  const preview = await api.previewResolvedRules({
+    templateFamilyId: "family-1",
+    module: "editing",
+    ruleObject: "abstract",
+    sampleText: `\n${BEFORE_HEADING}\n`,
+  });
+
+  assert.deepEqual(preview.body.matched_rule_ids, ["rule-1", "rule-2"]);
+  assert.equal("output" in preview.body, false);
+  assert.equal(preview.body.execution_posture, "guarded");
+  assert.equal(preview.body.manual_review_required, true);
+  assert.match(preview.body.manual_review_reason ?? "", /incompatible actions/i);
+  assert.deepEqual(preview.body.conflicts, [
+    {
+      kind: "exclusive_conflict",
+      rule_ids: ["rule-1", "rule-2"],
+      coverage_keys: [
+        'abstract::{"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}',
+        'abstract::{"block_selector":"leading_heading","section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}',
+      ],
+      reason: 'Rules attempted incompatible actions on target "text::abstract::摘要 目的".',
+      requires_manual_review: true,
+    },
+  ]);
+  assert.equal(
+    preview.body.matched_rules.every(
+      (rule) => rule.conflict_kind === "exclusive_conflict",
+    ),
+    true,
+  );
 });
 
 test("previewing resolved rules reports journal overrides and uses the journal-specific output", async () => {
@@ -391,7 +527,14 @@ test("previewing resolved rules reports journal overrides and uses the journal-s
       coverage_key: 'abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}',
       execution_posture: "guarded",
       overridden_rule_ids: ["rule-1"],
+      conflict_kind: "override",
       reason: 'Journal template override matched coverage key "abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}".',
+      hit_reason:
+        'Journal template override matched coverage key "abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}". Journal Alpha adds a full-width colon after the normalized heading. Matched exact_text trigger "摘要 目的".',
+      override_reason:
+        'Journal template override matched coverage key "abstract::{"label_selector":{"text":"摘要 目的"},"section_selector":"abstract"}::{"kind":"exact_text","text":"摘要 目的"}".',
+      manual_review_reason:
+        "Human confirmation is required because guarded abstract changes cannot auto-apply without review.",
     },
   ]);
 });

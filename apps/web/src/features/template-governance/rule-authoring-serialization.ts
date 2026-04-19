@@ -23,12 +23,16 @@ import type {
 } from "./rule-authoring-types.ts";
 import { isRuleAuthoringDraft } from "./rule-authoring-types.ts";
 
+const DEFAULT_RULE_AUTHORING_PRIORITY = 100;
+
 export function createRuleAuthoringDraft<TObject extends RuleAuthoringObject>(
   object: TObject,
 ): Extract<RuleAuthoringDraft, { ruleObject: TObject }> {
-  return structuredClone(
-    getRuleAuthoringPreset(object).createDraft(),
-  ) as Extract<RuleAuthoringDraft, { ruleObject: TObject }>;
+  return applyRuleAuthoringPlatformDefaults(
+    structuredClone(
+      getRuleAuthoringPreset(object).createDraft(),
+    ) as Extract<RuleAuthoringDraft, { ruleObject: TObject }>,
+  );
 }
 
 export function serializeRuleAuthoringDraft(
@@ -69,7 +73,10 @@ export function serializeRuleAuthoringDraft(
     }
   })();
 
-  return mergeLinkedKnowledgePayload(serialized, draft.linkedKnowledgeItemIds);
+  return mergeRulePlatformScopeAndPriority(
+    mergeLinkedKnowledgePayload(serialized, draft.linkedKnowledgeItemIds),
+    draft,
+  );
 }
 
 export function hydrateRuleAuthoringDraft(
@@ -78,14 +85,21 @@ export function hydrateRuleAuthoringDraft(
   switch (rule.rule_object) {
     case "abstract": {
       const draft = createRuleAuthoringDraft("abstract");
-      return {
+      return applyRuleAuthoringPlatformDefaults({
         ...draft,
         orderNo: rule.order_no,
+        priority: rule.priority ?? draft.priority,
         executionMode: rule.execution_mode,
         confidencePolicy: rule.confidence_policy,
         severity: rule.severity,
         enabled: rule.enabled,
         evidenceLevel: rule.evidence_level ?? draft.evidenceLevel,
+        manuscriptTypes: extractRulePlatformScopeList(
+          rule.scope,
+          "manuscript_types",
+        ),
+        scopeSections: extractRulePlatformScopeList(rule.scope, "sections"),
+        objectGranularity: extractRulePlatformObjectGranularity(rule.scope),
         linkedKnowledgeItemIds: extractLinkedKnowledgeItemIds(rule),
         payload: {
           ...draft.payload,
@@ -100,7 +114,7 @@ export function hydrateRuleAuthoringDraft(
             rule.example_after ??
             draft.payload.normalizedLabelText,
         },
-      };
+      });
     }
     case "heading_hierarchy": {
       const draft = createRuleAuthoringDraft("heading_hierarchy");
@@ -381,6 +395,10 @@ export function buildRuleAuthoringPreview(
     semanticHitSummary: describeSemanticHit(draft),
     expectedEvidenceSummary: describeExpectedEvidence(draft),
     overrideSummary: describeOverrideSummary(draft),
+    hitReason: describeHitReason(draft, serialized),
+    missReason: describeMissReason(draft, serialized),
+    overrideReason: describeOverrideReason(draft),
+    manualReviewReason: describeManualReviewReason(draft),
   };
 }
 
@@ -1044,19 +1062,23 @@ function applyCommonHydration<TDraft extends RuleAuthoringDraft>(
   rule: EditorialRuleViewModel,
   payload: TDraft["payload"],
 ): TDraft {
-  return {
+  return applyRuleAuthoringPlatformDefaults({
     ...draft,
     orderNo: rule.order_no,
+    priority: rule.priority ?? draft.priority,
     executionMode: rule.execution_mode,
     confidencePolicy: rule.confidence_policy,
     severity: rule.severity,
     enabled: rule.enabled,
     evidenceLevel: rule.evidence_level ?? draft.evidenceLevel,
+    manuscriptTypes: extractRulePlatformScopeList(rule.scope, "manuscript_types"),
+    scopeSections: extractRulePlatformScopeList(rule.scope, "sections"),
+    objectGranularity: extractRulePlatformObjectGranularity(rule.scope),
     manualReviewReasonTemplate:
       rule.manual_review_reason_template ?? draft.manualReviewReasonTemplate,
     linkedKnowledgeItemIds: extractLinkedKnowledgeItemIds(rule),
     payload,
-  };
+  });
 }
 
 function mergeLinkedKnowledgePayload(
@@ -1083,12 +1105,118 @@ function extractLinkedKnowledgeItemIds(rule: EditorialRuleViewModel): string[] {
   );
 }
 
+function mergeRulePlatformScopeAndPriority(
+  serialized: SerializedRuleAuthoringDraft,
+  draft: RuleAuthoringDraft,
+): SerializedRuleAuthoringDraft {
+  const platformScope = buildRulePlatformScope(draft);
+
+  return {
+    ...serialized,
+    priority: normalizeRuleAuthoringPriority(draft.priority),
+    scope: mergeSerializedRuleScope(serialized.scope, platformScope),
+  };
+}
+
+function buildRulePlatformScope(draft: RuleAuthoringDraft): Record<string, unknown> {
+  const manuscriptTypes = normalizeStringList(draft.manuscriptTypes);
+  const sections = normalizeStringList(draft.scopeSections);
+  const objectGranularity = normalizeStringList(draft.objectGranularity);
+
+  return {
+    ...(manuscriptTypes.length > 0 ? { manuscript_types: manuscriptTypes } : {}),
+    ...(sections.length > 0 ? { sections } : {}),
+    ...(objectGranularity.length > 0
+      ? { object_granularity: objectGranularity }
+      : {}),
+  };
+}
+
+function mergeSerializedRuleScope(
+  scope: Record<string, unknown> | undefined,
+  platformScope: Record<string, unknown>,
+): Record<string, unknown> {
+  const baseScope = { ...(scope ?? {}) };
+  const nextScope: Record<string, unknown> = {
+    ...baseScope,
+    ...platformScope,
+  };
+
+  const mergedSections = mergeStringLists(
+    asStringArray(baseScope["sections"]),
+    asStringArray(platformScope["sections"]),
+  );
+  if (mergedSections.length > 0) {
+    nextScope["sections"] = mergedSections;
+  }
+
+  const mergedObjectGranularity = mergeStringLists(
+    asStringArray(baseScope["object_granularity"]),
+    asStringArray(platformScope["object_granularity"]),
+  );
+  if (mergedObjectGranularity.length > 0) {
+    nextScope["object_granularity"] = mergedObjectGranularity;
+  }
+
+  return nextScope;
+}
+
+function applyRuleAuthoringPlatformDefaults<TDraft extends RuleAuthoringDraft>(
+  draft: TDraft,
+): TDraft {
+  return {
+    ...draft,
+    priority: normalizeRuleAuthoringPriority(draft.priority),
+    manuscriptTypes: normalizeStringList(draft.manuscriptTypes),
+    scopeSections: normalizeStringList(draft.scopeSections),
+    objectGranularity: normalizeStringList(draft.objectGranularity),
+  };
+}
+
+function extractRulePlatformScopeList(
+  scope: Record<string, unknown>,
+  key: "manuscript_types" | "sections",
+): string[] {
+  return normalizeStringList(asStringArray(scope[key]));
+}
+
+function extractRulePlatformObjectGranularity(
+  scope: Record<string, unknown>,
+): string[] {
+  const explicit = normalizeStringList(asStringArray(scope["object_granularity"]));
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
+  const blockKind = asString(scope["block_kind"]);
+  return blockKind ? [blockKind] : [];
+}
+
 function normalizeLinkedKnowledgeItemIds(value: string[] | undefined): string[] {
   if (!value) {
     return [];
   }
 
   return [...new Set(value.map((item) => item.trim()).filter((item) => item.length > 0))];
+}
+
+function normalizeStringList(value: string[] | undefined): string[] {
+  return value?.map((item) => item.trim()).filter((item) => item.length > 0) ?? [];
+}
+
+function mergeStringLists(
+  base: string[] | undefined,
+  extension: string[] | undefined,
+): string[] {
+  return [...new Set([...(base ?? []), ...(extension ?? [])])];
+}
+
+function normalizeRuleAuthoringPriority(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_RULE_AUTHORING_PRIORITY;
+  }
+
+  return Math.max(0, Math.trunc(value ?? DEFAULT_RULE_AUTHORING_PRIORITY));
 }
 
 function describeSelector(selector: Record<string, unknown>): string {
@@ -1296,6 +1424,73 @@ function describeOverrideSummary(draft: RuleAuthoringDraft): string {
   }
 
   return "在期刊模板发布同一语义坐标的加层规则前，模板族基础规则会持续生效。";
+}
+
+function describeHitReason(
+  draft: RuleAuthoringDraft,
+  serialized: SerializedRuleAuthoringDraft,
+): string {
+  if (draft.ruleObject === "table") {
+    const evidence = [
+      `semantic_target=${draft.payload.semanticTarget}`,
+      ...(draft.payload.headerPathIncludes.length > 0
+        ? [`header_path=${draft.payload.headerPathIncludes.join(" > ")}`]
+        : []),
+      ...(draft.payload.rowKey.trim().length > 0
+        ? [`row_key=${draft.payload.rowKey.trim()}`]
+        : []),
+      ...(draft.payload.columnKey.trim().length > 0
+        ? [`column_key=${draft.payload.columnKey.trim()}`]
+        : []),
+    ];
+
+    return `命中会依赖 ${evidence.join(" | ")} 与 ${draft.payload.tableKind} 结构证据同时成立。`;
+  }
+
+  if (serialized.exampleBefore?.trim()) {
+    return `命中会优先检查示例文本 "${serialized.exampleBefore}"，并结合 ${describeSelector(serialized.selector ?? {})}。`;
+  }
+
+  return `命中会依赖 ${describeSelector(serialized.selector ?? {})} 与 trigger=${serialized.trigger.kind}。`;
+}
+
+function describeMissReason(
+  draft: RuleAuthoringDraft,
+  serialized: SerializedRuleAuthoringDraft,
+): string {
+  if (draft.ruleObject === "table") {
+    return `如果运行时没有捕获 ${draft.payload.tableKind} 的结构证据或目标语义坐标不匹配，这条规则就不会触发。`;
+  }
+
+  if (serialized.exampleBefore?.trim()) {
+    return `如果正文中没有出现 "${serialized.exampleBefore}"，这条规则会在本轮执行中保持未命中。`;
+  }
+
+  return `当 selector 或 trigger=${serialized.trigger.kind} 无法同时满足时，这条规则会保持未命中。`;
+}
+
+function describeOverrideReason(draft: RuleAuthoringDraft): string {
+  if (draft.journalTemplateId?.trim()) {
+    return `当前草稿属于期刊加层 ${draft.journalTemplateId}，若与基础规则覆盖同一 coverage key，会以期刊版本为准。`;
+  }
+
+  return "当前草稿属于模板族基础层，只有在后续新增期刊加层同 coverage key 时才会被覆盖。";
+}
+
+function describeManualReviewReason(draft: RuleAuthoringDraft): string {
+  if (draft.manualReviewReasonTemplate?.trim()) {
+    return draft.manualReviewReasonTemplate.trim();
+  }
+
+  if (draft.executionMode === "inspect" || draft.confidencePolicy === "manual_only") {
+    return "Inspect-only 或 manual-only 规则不会直接改稿，必须经过人工确认。";
+  }
+
+  if (draft.executionMode === "apply_and_inspect") {
+    return "Guarded 改动会先生成候选修改，再交给人工确认是否采纳。";
+  }
+
+  return "自动执行前仍建议结合样例与命中证据做一次人工抽检。";
 }
 
 function shouldResetToAbstractDraft(input: {

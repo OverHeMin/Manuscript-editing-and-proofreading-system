@@ -16,6 +16,12 @@ Add a first production-safe self-learning loop to proofreading so the system can
 
 Proofreading keeps its current governed execution path, adds one bounded residual-discovery pass after that governed pass, stores those findings as structured residual issues, validates reusable findings through Harness, and only then lets approved findings enter the existing governed learning and writeback path.
 
+The shipped operator integration remains inside the existing rule-center recovery surface rather than a new standalone desk:
+
+- rule-routed residual issues and rule learning candidates share one governed review queue
+- non-rule residual routes stay out of that queue
+- approved rule candidates write back through the governed target `editorial_rule_draft`
+
 ## 1. Locked Product Decisions
 
 ### 1.1 System self-learning, not model self-training

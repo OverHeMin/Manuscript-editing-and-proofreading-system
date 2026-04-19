@@ -177,3 +177,24 @@ test("workbench routing preserves selected learning candidate ids for rule cente
     learningCandidateId: "candidate-42",
   });
 });
+
+test("workbench routing preserves selected review item ids for unified review handoffs", () => {
+  const hash = formatWorkbenchHash("template-governance", {
+    manuscriptId: "manuscript-42",
+    templateGovernanceView: "rule-ledger",
+    ruleCenterMode: "learning",
+    reviewItemId: "review-item-42",
+  });
+
+  assert.equal(
+    hash,
+    "#template-governance?manuscriptId=manuscript-42&templateGovernanceView=rule-ledger&ruleCenterMode=learning&reviewItemId=review-item-42",
+  );
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "template-governance",
+    manuscriptId: "manuscript-42",
+    templateGovernanceView: "rule-ledger",
+    ruleCenterMode: "learning",
+    reviewItemId: "review-item-42",
+  });
+});

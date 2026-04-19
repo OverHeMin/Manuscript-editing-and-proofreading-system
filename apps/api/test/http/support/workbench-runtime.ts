@@ -24,6 +24,7 @@ import { AgentRuntimeService } from "../../../src/modules/agent-runtime/agent-ru
 import { InMemoryAgentRuntimeRepository } from "../../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
 import { AiGatewayService } from "../../../src/modules/ai-gateway/ai-gateway-service.ts";
 import { DocumentExportService } from "../../../src/modules/document-pipeline/document-export-service.ts";
+import { PythonDocxSourceBlockResolver } from "../../../src/modules/document-pipeline/python-docx-source-block-resolver.ts";
 import { createEditingApi } from "../../../src/modules/editing/editing-api.ts";
 import { EditingService } from "../../../src/modules/editing/editing-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
@@ -285,6 +286,12 @@ export function createWorkbenchRuntime(input: {
     createId: () => nextId("asset"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
+  const docxSourceBlockResolver = new PythonDocxSourceBlockResolver({
+    assetRepository,
+    rootDir:
+      input.uploadRootDir ??
+      path.resolve(process.cwd(), ".local-data", "uploads", "test"),
+  });
   const manuscriptApi = createManuscriptApi({
     manuscriptService: new ManuscriptLifecycleService({
       manuscriptRepository,
@@ -475,6 +482,7 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-screening"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -500,6 +508,7 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-editing"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -525,6 +534,7 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        proofreadingSourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),

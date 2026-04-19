@@ -16,6 +16,7 @@ import {
   resolveRuleAuthoringDraftForOverview,
   serializeRuleAuthoringDraft,
 } from "../src/features/template-governance/rule-authoring-serialization.ts";
+import type { RuleAuthoringObject } from "../src/features/template-governance/rule-authoring-types.ts";
 import {
   RuleAuthoringForm,
 } from "../src/features/template-governance/rule-authoring-form.tsx";
@@ -98,7 +99,7 @@ test("rule authoring catalog covers the medical rule objects needed by rule cent
     "figure",
     "manuscript_structure",
     "journal_column",
-  ]) {
+  ] as const satisfies readonly RuleAuthoringObject[]) {
     assert.equal(presetObjects.has(object), true, `missing preset for ${object}`);
   }
 });
@@ -131,6 +132,7 @@ test("table preset serializes semantic table selectors as inspect-first rules", 
     kind: "table_shape",
     layout: "three_line_table",
   });
+  assert.ok(serialized.authoringPayload);
   assert.equal(serialized.authoringPayload.table_kind, "three_line_table");
   assert.equal(serialized.authoringPayload.semantic_target, "header_cell");
   assert.deepEqual(serialized.authoringPayload.header_path_includes, [
@@ -218,6 +220,46 @@ test("table authoring form renders semantic selector fields", () => {
   assert.match(markup, /预期表格形态/);
 });
 
+test("rule authoring form renders platform scope and priority controls", () => {
+  const draft = createRuleAuthoringDraft("table") as ReturnType<
+    typeof createRuleAuthoringDraft<"table">
+  > & {
+    priority?: number;
+    manuscriptTypes?: string[];
+    scopeSections?: string[];
+    objectGranularity?: string[];
+  };
+  draft.priority = 180;
+  draft.manuscriptTypes = ["clinical_study"];
+  draft.scopeSections = ["results"];
+  draft.objectGranularity = ["table_cell"];
+
+  const markup = renderToStaticMarkup(
+    React.createElement(RuleAuthoringForm, {
+      selectedRuleSet: {
+        id: "rule-set-1",
+        template_family_id: "family-1",
+        journal_template_id: "journal-alpha",
+        module: "editing",
+        version_no: 1,
+        status: "draft",
+      },
+      draft,
+      isBusy: false,
+      onDraftChange: () => undefined,
+      onSubmit: () => undefined,
+    }),
+  );
+
+  assert.match(markup, /data-rule-platform-scope="field"/u);
+  assert.match(markup, /data-rule-priority-input="field"/u);
+  assert.match(markup, /data-rule-platform-manuscript-types="field"/u);
+  assert.match(markup, /data-rule-platform-sections="field"/u);
+  assert.match(markup, /data-rule-platform-object-granularity="field"/u);
+  assert.match(markup, /data-rule-platform-module="editing"/u);
+  assert.match(markup, /data-rule-platform-journal-scope="journal-alpha"/u);
+});
+
 test("table proofreading scenarios provide dedicated proofreading starters", async () => {
   const {
     applyTableProofreadingScenario,
@@ -291,9 +333,14 @@ test("rule authoring form renders an explicit linked knowledge field", () => {
         {
           id: "knowledge-1",
           title: "Table checklist",
+          canonical_text: "Proofreading table evidence",
           summary: "Proofreading table evidence",
           knowledge_kind: "reference",
           status: "approved",
+          routing: {
+            module_scope: "proofreading",
+            manuscript_types: "any",
+          },
         },
       ],
     }),
@@ -375,6 +422,34 @@ test("rule authoring serialization stores linked knowledge items in linkage payl
   });
 });
 
+test("rule authoring serialization merges platform scope and priority into the saved rule", () => {
+  const draft = createRuleAuthoringDraft("table") as ReturnType<
+    typeof createRuleAuthoringDraft<"table">
+  > & {
+    priority?: number;
+    manuscriptTypes?: string[];
+    scopeSections?: string[];
+    objectGranularity?: string[];
+  };
+  draft.priority = 180;
+  draft.manuscriptTypes = ["clinical_study", "meta_analysis"];
+  draft.scopeSections = ["results", "discussion"];
+  draft.objectGranularity = ["table", "table_cell"];
+
+  const serialized = serializeRuleAuthoringDraft(draft as never) as {
+    priority?: number;
+    scope: Record<string, unknown>;
+  };
+
+  assert.equal(serialized.priority, 180);
+  assert.deepEqual(serialized.scope, {
+    block_kind: "table",
+    manuscript_types: ["clinical_study", "meta_analysis"],
+    sections: ["results", "discussion"],
+    object_granularity: ["table", "table_cell"],
+  });
+});
+
 test("rule authoring hydration restores linked knowledge items from linkage payload", () => {
   const hydrated = hydrateRuleAuthoringDraft({
     id: "rule-1",
@@ -411,6 +486,50 @@ test("rule authoring hydration restores linked knowledge items from linkage payl
   assert.deepEqual(hydrated.linkedKnowledgeItemIds, ["knowledge-1", "knowledge-2"]);
 });
 
+test("rule authoring hydration restores platform scope and priority from persisted rules", () => {
+  const hydrated = hydrateRuleAuthoringDraft({
+    id: "rule-platform-1",
+    rule_set_id: "rule-set-1",
+    order_no: 35,
+    priority: 220,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+      object_granularity: ["table_cell"],
+    },
+    selector: {
+      semantic_target: "data_cell",
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "inspect_table_semantics",
+    },
+    authoring_payload: {
+      table_kind: "three_line_table",
+      semantic_target: "data_cell",
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never) as ReturnType<typeof hydrateRuleAuthoringDraft> & {
+    priority?: number;
+    manuscriptTypes?: string[];
+    scopeSections?: string[];
+    objectGranularity?: string[];
+  };
+
+  assert.equal(hydrated.priority, 220);
+  assert.deepEqual(hydrated.manuscriptTypes, ["clinical_study"]);
+  assert.deepEqual(hydrated.scopeSections, ["results"]);
+  assert.deepEqual(hydrated.objectGranularity, ["table_cell"]);
+});
+
 test("statement preset serializes required statement placement as an inspect-first rule", () => {
   const preset = getRuleAuthoringPreset("statement");
   const draft = createRuleAuthoringDraft("statement");
@@ -432,6 +551,7 @@ test("statement preset serializes required statement placement as an inspect-fir
   });
   assert.equal(serialized.trigger.kind, "required_statement");
   assert.equal(serialized.action.kind, "inspect_required_statement");
+  assert.ok(serialized.authoringPayload);
   assert.equal(
     serialized.authoringPayload.statement_kind,
     "ethics",
@@ -582,6 +702,7 @@ test("statistical expression authoring serializes governed medical-statistics me
   const serialized = serializeRuleAuthoringDraft(draft);
   const preview = buildRuleAuthoringPreview(draft);
 
+  assert.ok(serialized.authoringPayload);
   assert.equal(serialized.authoringPayload.metric_family, "inferential");
   assert.equal(
     serialized.authoringPayload.supported_metrics,

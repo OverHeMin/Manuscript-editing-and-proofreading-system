@@ -357,7 +357,14 @@ function EvaluationWorkbenchOperationsView(props: {
         )}
       </section>
 
-      <section className="evaluation-workbench-panel evaluation-workbench-comparison-panel">
+      <section
+        className="evaluation-workbench-panel evaluation-workbench-comparison-panel"
+        data-evaluation-comparison-state={
+          defaultComparison != null && defaultComparisonDetail != null
+            ? "ready"
+            : "unavailable"
+        }
+      >
         <div className="evaluation-workbench-panel-header">
           <h3>结果对照</h3>
           <span>最新结果与基线对照</span>
@@ -601,6 +608,8 @@ function EvaluationWorkbenchOperationsView(props: {
                     type="button"
                     className={`evaluation-workbench-select${suite.id === props.overview.selectedSuiteId ? " is-selected" : ""}`}
                     onClick={() => props.onSelectSuite(suite.id)}
+                    data-evaluation-suite-id={suite.id}
+                    data-evaluation-suite-type={suite.suite_type}
                   >
                     <strong>{suite.name}</strong>
                     <span>{formatSuiteTypeLabel(suite.suite_type)} | {formatLifecycleStatusLabel(suite.status)}</span>
@@ -1557,6 +1566,11 @@ function formatRunStatusLabel(status: string) {
 }
 
 function formatSuiteTypeLabel(suiteType: string) {
+  if (suiteType === "regression") return "回归验证";
+  if (suiteType === "release_gate") return "发布门禁";
+  if (suiteType === "module_regression_suite") return "模块回归";
+  if (suiteType === "scope_regression_suite") return "作用域回归";
+  if (suiteType === "rule_family_regression_suite") return "规则族回归";
   if (suiteType === "governed_evaluation") return "治理评测";
   if (suiteType === "manual_evaluation") return "人工评测";
   return suiteType;

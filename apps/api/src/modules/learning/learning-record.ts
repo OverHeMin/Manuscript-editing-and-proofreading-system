@@ -53,6 +53,7 @@ export interface LearningCandidateRecord {
   id: string;
   type: LearningCandidateType;
   status: LearningCandidateStatus;
+  manuscript_id?: string;
   module: ManuscriptModule;
   manuscript_type: ManuscriptType;
   governed_provenance_kind?: LearningCandidateProvenanceKind;

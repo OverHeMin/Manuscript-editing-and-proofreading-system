@@ -5,8 +5,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { getRepositoryMigrationFiles } from "../../src/database/migration-ledger.ts";
+import { resolveApiPackageRoot } from "../../src/database/package-root.ts";
 import { withTemporaryDatabase } from "./support/postgres.ts";
 import { getMigrationChecksum, runMigrateProcess } from "./support/migrate-process.ts";
+
+const packageRoot = resolveApiPackageRoot(import.meta.dirname);
+const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
 
 const expectedTableColumns: Record<string, string[]> = {
   roles: ["key", "description", "created_at"],
@@ -413,11 +417,18 @@ const expectedTableColumns: Record<string, string[]> = {
     "module",
     "version_no",
     "status",
+    "release_scope",
+    "candidate_validation_run_id",
+    "candidate_validation_evidence_pack_id",
+    "online_regression_run_id",
+    "online_regression_evidence_pack_id",
+    "rollback_rule_set_id",
   ],
   editorial_rules: [
     "id",
     "rule_set_id",
     "order_no",
+    "priority",
     "rule_object",
     "rule_type",
     "execution_mode",
@@ -436,6 +447,14 @@ const expectedTableColumns: Record<string, string[]> = {
     "example_before",
     "example_after",
     "manual_review_reason_template",
+  ],
+  editorial_rule_activation_metrics: [
+    "rule_id",
+    "rule_set_id",
+    "metric_key",
+    "metric_count",
+    "created_at",
+    "updated_at",
   ],
   rule_package_extraction_tasks: [
     "id",
@@ -756,6 +775,7 @@ const expectedIndexes = [
   "editorial_rule_sets_template_family_module_status_idx",
   "editorial_rule_sets_journal_template_module_status_idx",
   "editorial_rules_rule_set_order_idx",
+  "editorial_rule_activation_metrics_rule_set_metric_idx",
   "rule_package_extraction_tasks_status_created_at_idx",
   "rule_package_extraction_candidates_task_confirmed_idx",
   "governed_content_modules_class_status_updated_at_idx",
@@ -886,8 +906,33 @@ test("database schema exposes the editorial rule learning writeback target", { c
   });
 });
 
-  test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
-    await withMigratedSchemaClient(async (client) => {
+test("database schema exposes online execution regression suite types", { concurrency: false }, async () => {
+  await withMigratedSchemaClient(async (client) => {
+    const enumLabelsResult = await client.query<{ enumlabel: string }>(
+      `
+        select enumlabel
+        from pg_enum
+        where enumtypid = 'evaluation_suite_type'::regtype
+        order by enumsortorder
+      `,
+    );
+
+    assert.deepEqual(
+      enumLabelsResult.rows.map((row) => row.enumlabel),
+      [
+        "regression",
+        "release_gate",
+        "module_regression_suite",
+        "scope_regression_suite",
+        "rule_family_regression_suite",
+      ],
+      "Expected evaluation suite types to include online execution regression families.",
+    );
+  });
+});
+
+test("database schema creates the required lookup indexes", { concurrency: false }, async () => {
+  await withMigratedSchemaClient(async (client) => {
     const indexesResult = await client.query<{ indexname: string }>(
       `
         select indexname
@@ -899,13 +944,13 @@ test("database schema exposes the editorial rule learning writeback target", { c
     const actualIndexNames = new Set(indexesResult.rows.map((row) => row.indexname));
     const missingIndexes = expectedIndexes.filter((indexName) => !actualIndexNames.has(indexName));
 
-      assert.deepEqual(
-        missingIndexes,
-        [],
-        `Missing lookup indexes: ${missingIndexes.join(", ") || "none"}`,
-      );
-    });
+    assert.deepEqual(
+      missingIndexes,
+      [],
+      `Missing lookup indexes: ${missingIndexes.join(", ") || "none"}`,
+    );
   });
+});
 
 test(
   "database schema enforces ai provider relationships",
@@ -1095,6 +1140,12 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0043_learning_candidate_review_actions.sql",
       "0043_rule_wizard_knowledge_item_binding_kind.sql",
       "0044_proofreading_residual_learning_v1.sql",
+      "0045_governed_hit_review_items.sql",
+      "0046_governed_hit_review_items_feedback_nullable.sql",
+      "0047_rule_execution_hit_posture.sql",
+      "0048_rule_platform_scope_release_governance.sql",
+      "0049_rule_activation_metrics.sql",
+      "0050_online_execution_regression.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1925,11 +1976,7 @@ test("model routing governance schema enforces unique scope identity and only on
 });
 
 function getLineEndingNormalizedMigrationChecksum(fileName: string): string {
-  const migrationFilePath = path.join(
-    import.meta.dirname,
-    "../../src/database/migrations",
-    fileName,
-  );
+  const migrationFilePath = path.join(migrationsDirectory, fileName);
   const migrationSql = readFileSync(migrationFilePath, "utf8").replaceAll("\r\n", "\n");
   return createHash("sha256").update(migrationSql).digest("hex");
 }
@@ -1966,10 +2013,7 @@ async function applyRepositoryMigrationsThrough(client: Client, stopAtVersion: s
   `);
 
   for (const version of expectedMigrationFiles) {
-    const migrationSql = readFileSync(
-      path.join(import.meta.dirname, "../../src/database/migrations", version),
-      "utf8",
-    );
+    const migrationSql = readFileSync(path.join(migrationsDirectory, version), "utf8");
     const checksum = getMigrationChecksum(version);
 
     await client.query("begin");
@@ -1999,10 +2043,7 @@ async function applyRepositoryMigrationsThrough(client: Client, stopAtVersion: s
 
 function createLegacyRuleLibraryV2MigrationSql(): string {
   return readFileSync(
-    path.join(
-      import.meta.dirname,
-      "../../src/database/migrations/0028_medical_rule_library_v2_foundations.sql",
-    ),
+    path.join(migrationsDirectory, "0028_medical_rule_library_v2_foundations.sql"),
     "utf8",
   )
     .replaceAll("\r\n", "\n")

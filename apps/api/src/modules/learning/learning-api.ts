@@ -136,3 +136,5 @@ export function createLearningApi(options: CreateLearningApiOptions) {
     },
   };
 }
+
+export type LearningApi = ReturnType<typeof createLearningApi>;

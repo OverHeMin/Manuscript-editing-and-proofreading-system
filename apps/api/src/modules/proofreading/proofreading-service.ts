@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type {
+  ManuscriptQualityIssue,
+  ModuleExecutionMode,
+} from "@medical/contracts";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -22,6 +25,8 @@ import {
 } from "../editorial-execution/proofreading-rule-checker.ts";
 import type {
   EditorialTextBlock,
+  ManualReviewItem,
+  ProofreadingCheckResult,
   ProofreadingInspectionResult,
   ProofreadingSourceBlockResolver,
 } from "../editorial-execution/types.ts";
@@ -39,6 +44,10 @@ import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/pro
 import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
+import type {
+  RecordExecutionGovernedHitInput,
+  ReviewItemsService,
+} from "../review-items/review-items-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
   resolveBareModuleContext,
@@ -128,6 +137,7 @@ export interface ProofreadingServiceOptions {
   >;
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
+  reviewItemsService?: Pick<ReviewItemsService, "recordExecutionGovernedHits">;
   residualLearningService?: Pick<
     ResidualLearningService,
     "observeProofreadingResiduals"
@@ -216,6 +226,10 @@ export class ProofreadingService {
     "runChecks"
   >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
+  private readonly reviewItemsService?: Pick<
+    ReviewItemsService,
+    "recordExecutionGovernedHits"
+  >;
   private readonly residualLearningService?: Pick<
     ResidualLearningService,
     "observeProofreadingResiduals"
@@ -258,6 +272,7 @@ export class ProofreadingService {
       };
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
+    this.reviewItemsService = options.reviewItemsService;
     this.residualLearningService = options.residualLearningService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -613,12 +628,50 @@ export class ProofreadingService {
           executionSnapshotId: snapshot.id,
         });
       }
+      const recordedExecutionGovernedHits =
+        this.reviewItemsService && proofreadingFindings
+          ? await this.reviewItemsService.recordExecutionGovernedHits({
+              manuscriptId: input.manuscriptId,
+              manuscriptType: manuscript!.manuscript_type,
+              module: "proofreading",
+              snapshotId: snapshot.id,
+              sourceAssetId: input.parentAssetId,
+              createdBy: input.requestedBy,
+              items: buildProofreadingExecutionGovernedHitInputs({
+                failedChecks: proofreadingFindings.failedChecks,
+                manualReviewItems: proofreadingFindings.manualReviewItems,
+                qualityFindings: proofreadingFindings.qualityFindings ?? [],
+              }),
+            })
+          : [];
+      const reviewItemIdBySourceKey = new Map(
+        recordedExecutionGovernedHits.map((entry) => [
+          entry.sourceKey,
+          entry.item.id,
+        ]),
+      );
+      const completedProofreadingFindings = proofreadingFindings
+        ? annotateProofreadingInspectionResult(
+            proofreadingFindings,
+            reviewItemIdBySourceKey,
+          )
+        : undefined;
 
       const completedJob: JobRecord = {
         ...queuedJob,
         status: "completed",
         payload: {
           ...queuedJob.payload,
+          ...(completedProofreadingFindings
+            ? {
+                proofreadingFindings: completedProofreadingFindings,
+                manualReviewItems: completedProofreadingFindings.manualReviewItems.map(
+                  (item) => ({
+                    ...item,
+                  }),
+                ),
+              }
+            : {}),
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: input.assetType,
@@ -662,7 +715,7 @@ export class ProofreadingService {
                 knownKnowledgeItemIds: resolvedContext.knowledgeHits.map(
                   (hit) => hit.knowledgeItemId,
                 ),
-                qualityIssues: proofreadingFindings?.qualityFindings,
+                qualityIssues: completedProofreadingFindings?.qualityFindings,
                 sourceBlocks: proofreadingArtifacts!.sourceBlocks,
               }
             : undefined,
@@ -1010,6 +1063,326 @@ export class ProofreadingService {
       sourceBlocks,
     };
   }
+}
+
+function buildProofreadingExecutionGovernedHitInputs(input: {
+  failedChecks: readonly ProofreadingCheckResult[];
+  manualReviewItems: readonly ManualReviewItem[];
+  qualityFindings: readonly ManuscriptQualityIssue[];
+}): RecordExecutionGovernedHitInput[] {
+  return [
+    ...input.failedChecks.map((item, index) => ({
+      sourceKey: buildProofreadingFailedCheckSourceKey(item, index),
+      title: buildProofreadingRuleReviewTitle(item.ruleId),
+      summary:
+        "The governed proofreading check should be reviewed before governance routing.",
+      excerpt: item.actual,
+      suggestion: item.expected,
+      location: buildProofreadingFailedCheckLocation(item),
+      rationale: item.actual,
+      candidate_posture: item.candidate_posture ?? "inspect_only",
+      evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+        ...(buildProofreadingFailedCheckLocation(item)
+          ? {
+              location: buildProofreadingFailedCheckLocation(item),
+            }
+          : {}),
+        excerpt: item.actual,
+        suggestion: item.expected,
+        rationale: item.actual,
+      },
+      riskLevel: mapProofreadingSeverityToReviewRisk(item.severity),
+      relatedRuleIds: [item.ruleId],
+      originPayload: {
+        source: "failed_check",
+        ruleId: item.ruleId,
+      },
+    })),
+    ...input.manualReviewItems.map((item, index) => ({
+      sourceKey: buildProofreadingManualReviewSourceKey(item, index),
+      title: buildProofreadingRuleReviewTitle(item.ruleId),
+      summary: item.reason,
+      rationale: item.reason,
+      candidate_posture: item.candidate_posture ?? "candidate_change",
+      evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+        rationale: item.reason,
+      },
+      riskLevel: "high" as const,
+      relatedRuleIds: [item.ruleId],
+      originPayload: {
+        source: "manual_review_item",
+        ruleId: item.ruleId,
+        reason: item.reason,
+      },
+    })),
+    ...input.qualityFindings
+      .filter(isProofreadingHighRiskQualityIssue)
+      .map((issue, index) => ({
+        sourceKey: buildProofreadingQualityFindingSourceKey(issue, index),
+        title: `Proofreading quality issue ${issue.issue_type} requires review`,
+        summary: issue.explanation,
+        excerpt: issue.text_excerpt,
+        suggestion: issue.suggested_replacement,
+        location: buildQualityFindingLocation(issue),
+        rationale: issue.explanation,
+        candidate_posture: "candidate_change" as const,
+        evidence_pack: {
+          ...(buildQualityFindingLocation(issue)
+            ? {
+                location: buildQualityFindingLocation(issue),
+              }
+            : {}),
+          ...(issue.text_excerpt ? { excerpt: issue.text_excerpt } : {}),
+          ...(issue.suggested_replacement
+            ? { suggestion: issue.suggested_replacement }
+            : {}),
+          ...(issue.explanation ? { rationale: issue.explanation } : {}),
+        },
+        riskLevel: issue.severity,
+        originPayload: {
+          source: "quality_finding",
+          issueId: issue.issue_id,
+          issueType: issue.issue_type,
+          action: issue.action,
+        },
+      })),
+  ];
+}
+
+function annotateProofreadingInspectionResult(
+  findings: ProofreadingInspectionResult,
+  reviewItemIdBySourceKey: ReadonlyMap<string, string>,
+): ProofreadingInspectionResult {
+  return {
+    ...findings,
+    failedChecks: findings.failedChecks.map((item, index) => ({
+      ...ensureProofreadingFailedCheckGovernedHit(item),
+      ...item,
+      ...(reviewItemIdBySourceKey.get(
+        buildProofreadingFailedCheckSourceKey(item, index),
+      )
+        ? {
+            reviewItemId: reviewItemIdBySourceKey.get(
+              buildProofreadingFailedCheckSourceKey(item, index),
+            ),
+          }
+        : {}),
+    })),
+    manualReviewItems: findings.manualReviewItems.map((item, index) => ({
+      ...ensureProofreadingManualReviewGovernedHit(item),
+      ...item,
+      ...(reviewItemIdBySourceKey.get(
+        buildProofreadingManualReviewSourceKey(item, index),
+      )
+        ? {
+            reviewItemId: reviewItemIdBySourceKey.get(
+              buildProofreadingManualReviewSourceKey(item, index),
+            ),
+          }
+        : {}),
+    })),
+    ...(findings.qualityFindings
+      ? {
+          qualityFindings: findings.qualityFindings.map((item, index) => ({
+            ...item,
+            candidate_posture: "candidate_change" as const,
+            evidence_pack: {
+              ...(buildQualityFindingLocation(item)
+                ? {
+                    location: buildQualityFindingLocation(item),
+                  }
+                : {}),
+              ...(item.text_excerpt ? { excerpt: item.text_excerpt } : {}),
+              ...(item.suggested_replacement
+                ? { suggestion: item.suggested_replacement }
+                : {}),
+              ...(item.explanation ? { rationale: item.explanation } : {}),
+            },
+            ...(reviewItemIdBySourceKey.get(
+              buildProofreadingQualityFindingSourceKey(item, index),
+            )
+              ? {
+                  reviewItemId: reviewItemIdBySourceKey.get(
+                    buildProofreadingQualityFindingSourceKey(item, index),
+                  ),
+                }
+              : {}),
+          })),
+        }
+      : {}),
+  };
+}
+
+function ensureProofreadingFailedCheckGovernedHit(
+  item: ProofreadingCheckResult,
+): Pick<ProofreadingCheckResult, "candidate_posture" | "evidence_pack"> {
+  return {
+    candidate_posture: item.candidate_posture ?? "inspect_only",
+    evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+      ...(buildProofreadingFailedCheckLocation(item)
+        ? {
+            location: buildProofreadingFailedCheckLocation(item),
+          }
+        : {}),
+      excerpt: item.actual,
+      suggestion: item.expected,
+      rationale: item.actual,
+    },
+  };
+}
+
+function ensureProofreadingManualReviewGovernedHit(
+  item: ManualReviewItem,
+): Pick<ManualReviewItem, "candidate_posture" | "evidence_pack"> {
+  return {
+    candidate_posture: item.candidate_posture ?? "candidate_change",
+    evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+      rationale: item.reason,
+    },
+  };
+}
+
+function buildProofreadingRuleReviewTitle(ruleId: string): string {
+  return ruleId.trim()
+    ? `Rule ${ruleId.trim()} requires manual review`
+    : "Proofreading governed hit requires manual review";
+}
+
+function buildProofreadingFailedCheckSourceKey(
+  item: ProofreadingCheckResult,
+  index: number,
+): string {
+  return [
+    "proofreading",
+    "failed-check",
+    item.ruleId,
+    item.actual,
+    item.expected,
+    item.blockIndex ?? "",
+    item.semantic_hit?.table_id ?? "",
+    item.semantic_hit?.column_key ?? "",
+    item.semantic_hit?.header_path?.join(">") ?? "",
+    String(index),
+  ].join(":");
+}
+
+function buildProofreadingManualReviewSourceKey(
+  item: ManualReviewItem,
+  index: number,
+): string {
+  return `proofreading:manual:${item.ruleId}:${item.reason}:${index}`;
+}
+
+function buildProofreadingQualityFindingSourceKey(
+  issue: ManuscriptQualityIssue,
+  index: number,
+): string {
+  return [
+    "proofreading",
+    "quality",
+    issue.issue_id,
+    issue.issue_type,
+    issue.paragraph_index ?? "",
+    issue.sentence_index ?? "",
+    String(index),
+  ].join(":");
+}
+
+function buildProofreadingFailedCheckLocation(
+  item: ProofreadingCheckResult,
+): Record<string, unknown> | undefined {
+  const location: Record<string, unknown> = item.evidence_pack?.location
+    ? structuredClone(item.evidence_pack.location)
+    : {};
+  if (item.semantic_hit) {
+    Object.assign(location, {
+      ...item.semantic_hit,
+      ...(item.semantic_hit.header_path
+        ? { header_path: [...item.semantic_hit.header_path] }
+        : {}),
+    });
+  }
+  if (typeof item.blockIndex === "number") {
+    location.block_index = item.blockIndex;
+    location.paragraph_index = item.blockIndex + 1;
+  }
+  return Object.keys(location).length > 0 ? location : undefined;
+}
+
+function mapProofreadingSeverityToReviewRisk(
+  severity: string,
+): "low" | "medium" | "high" | "critical" {
+  if (severity === "critical") {
+    return "critical";
+  }
+  if (severity === "error" || severity === "high") {
+    return "high";
+  }
+  if (severity === "warning" || severity === "medium") {
+    return "medium";
+  }
+  return "low";
+}
+
+function isProofreadingHighRiskQualityIssue(
+  issue: ManuscriptQualityIssue,
+): boolean {
+  return (
+    issue.action === "manual_review" ||
+    issue.action === "block" ||
+    issue.severity === "high" ||
+    issue.severity === "critical"
+  );
+}
+
+function buildQualityFindingLocation(
+  issue: ManuscriptQualityIssue,
+): Record<string, unknown> | undefined {
+  const location: Record<string, unknown> = {};
+  if (typeof issue.paragraph_index === "number") {
+    location.paragraph_index = issue.paragraph_index + 1;
+  }
+  if (typeof issue.sentence_index === "number") {
+    location.sentence_index = issue.sentence_index + 1;
+  }
+  return Object.keys(location).length > 0 ? location : undefined;
+}
+
+function cloneEvidencePack(
+  evidencePack:
+    | {
+        location?: Record<string, unknown>;
+        excerpt?: string;
+        suggestion?: string;
+        rationale?: string;
+      }
+    | undefined,
+): {
+  location?: Record<string, unknown>;
+  excerpt?: string;
+  suggestion?: string;
+  rationale?: string;
+} | undefined {
+  if (!evidencePack) {
+    return undefined;
+  }
+
+  return {
+    ...(evidencePack.location
+      ? {
+          location: structuredClone(evidencePack.location),
+        }
+      : {}),
+    ...(typeof evidencePack.excerpt === "string"
+      ? { excerpt: evidencePack.excerpt }
+      : {}),
+    ...(typeof evidencePack.suggestion === "string"
+      ? { suggestion: evidencePack.suggestion }
+      : {}),
+    ...(typeof evidencePack.rationale === "string"
+      ? { rationale: evidencePack.rationale }
+      : {}),
+  };
 }
 
 interface ProofreadingRunArtifacts {

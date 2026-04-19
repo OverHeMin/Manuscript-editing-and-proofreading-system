@@ -23,6 +23,15 @@ export interface EditorialTextBlock {
   block_kind?: string;
 }
 
+export type GovernedExecutionHitPosture = "candidate_change" | "inspect_only";
+
+export interface GovernedExecutionEvidencePack {
+  location?: Record<string, unknown>;
+  excerpt?: string;
+  suggestion?: string;
+  rationale?: string;
+}
+
 export interface AppliedDeterministicRuleChange {
   ruleId: string;
   before: string;
@@ -69,6 +78,9 @@ export interface GovernedKnowledgeSelectionInput {
 export interface ManualReviewItem {
   ruleId: string;
   reason: string;
+  reviewItemId?: string;
+  candidate_posture?: GovernedExecutionHitPosture;
+  evidence_pack?: GovernedExecutionEvidencePack;
 }
 
 export interface ContentRuleCandidate {
@@ -76,6 +88,9 @@ export interface ContentRuleCandidate {
   reason: string;
   severity: EditorialRuleSeverity;
   actionKind: string;
+  reviewItemId?: string;
+  candidate_posture?: GovernedExecutionHitPosture;
+  evidence_pack?: GovernedExecutionEvidencePack;
 }
 
 export interface InstructionTemplatePayload {
@@ -108,6 +123,9 @@ export interface ProofreadingCheckResult {
   actual: string;
   severity: EditorialRuleSeverity;
   blockIndex?: number;
+  reviewItemId?: string;
+  candidate_posture?: GovernedExecutionHitPosture;
+  evidence_pack?: GovernedExecutionEvidencePack;
   semantic_hit?: TableSemanticHitEvidence;
 }
 
@@ -142,6 +160,9 @@ export interface TableSemanticHitEvidence {
 export interface TableRuleInspectionFinding {
   ruleId: string;
   reason: string;
+  reviewItemId?: string;
+  candidate_posture?: GovernedExecutionHitPosture;
+  evidence_pack?: GovernedExecutionEvidencePack;
   semantic_hit: TableSemanticHitEvidence;
 }
 

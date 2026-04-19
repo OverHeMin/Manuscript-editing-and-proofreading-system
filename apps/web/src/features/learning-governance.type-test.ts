@@ -9,14 +9,14 @@ import {
 } from "./learning-governance/index.ts";
 import type { LearningCandidateViewModel } from "./learning-review/types.ts";
 
-const writebackTargetCheck: LearningWritebackTarget = "prompt_template";
+const writebackTargetCheck: LearningWritebackTarget = "editorial_rule_draft";
 
 const writebackViewModelCheck: LearningWritebackViewModel = {
   id: "writeback-1",
   learning_candidate_id: "candidate-1",
   target_type: writebackTargetCheck,
   status: "applied",
-  created_draft_asset_id: "prompt-1",
+  created_draft_asset_id: "rule-1",
   created_by: "admin-1",
   created_at: "2026-03-28T08:05:00.000Z",
   applied_by: "admin-1",
@@ -40,19 +40,15 @@ const candidateViewModelCheck: LearningCandidateViewModel = {
 const createWritebackInputCheck: CreateLearningWritebackInput = {
   actorRole: "admin",
   learningCandidateId: "candidate-1",
-  targetType: "prompt_template",
+  targetType: "editorial_rule_draft",
   createdBy: "admin-1",
 };
 
 const applyWritebackInputCheck: ApplyLearningWritebackInput = {
   actorRole: "admin",
   writebackId: "writeback-1",
-  targetType: "prompt_template",
+  targetType: "editorial_rule_draft",
   appliedBy: "admin-1",
-  name: "proofreading_mainline",
-  version: "1.1.0",
-  module: "proofreading",
-  manuscriptTypes: ["review"],
 };
 
 const client = {

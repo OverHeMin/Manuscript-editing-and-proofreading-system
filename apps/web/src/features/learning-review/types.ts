@@ -52,6 +52,7 @@ export interface LearningCandidateViewModel {
   id: string;
   type: LearningCandidateType;
   status: LearningCandidateStatus;
+  manuscript_id?: string;
   module: string;
   manuscript_type: string;
   governed_provenance_kind?: LearningCandidateGovernedProvenanceKind;

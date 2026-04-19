@@ -9,7 +9,12 @@ export type VerificationCheckType =
   | "residual_issue_validation";
 export type RegistryAssetStatus = "draft" | "published" | "archived";
 export type EvaluationSuiteStatus = "draft" | "active" | "archived";
-export type EvaluationSuiteType = "regression" | "release_gate";
+export type EvaluationSuiteType =
+  | "regression"
+  | "release_gate"
+  | "module_regression_suite"
+  | "scope_regression_suite"
+  | "rule_family_regression_suite";
 export type VerificationEvidenceKind = "url" | "artifact";
 export type EvaluationRunStatus = "queued" | "running" | "passed" | "failed";
 export type EvaluationSampleSetSourceKind = "reviewed_case_snapshot";

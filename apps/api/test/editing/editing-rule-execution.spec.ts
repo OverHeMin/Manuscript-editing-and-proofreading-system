@@ -315,6 +315,7 @@ test("editing service resolves governed rules and persists deterministic changes
 
   const transformCalls: Array<Record<string, unknown>> = [];
   const createdAssets: Array<Record<string, unknown>> = [];
+  const autoRecordedGovernedHits: Array<Record<string, unknown>> = [];
   const editingService = new EditingService({
     manuscriptRepository,
     assetRepository,
@@ -376,6 +377,23 @@ test("editing service resolves governed rules and persists deterministic changes
         return undefined;
       },
     } as never,
+    reviewItemsService: {
+      async recordExecutionGovernedHits(input: Record<string, unknown>) {
+        autoRecordedGovernedHits.push(input);
+        const items = Array.isArray(input.items)
+          ? input.items
+          : [];
+        return items.map((item, index) => ({
+          sourceKey:
+            typeof (item as { sourceKey?: unknown }).sourceKey === "string"
+              ? (item as { sourceKey: string }).sourceKey
+              : `source-${index + 1}`,
+          item: {
+            id: `review-item-${index + 1}`,
+          },
+        }));
+      },
+    } as never,
     documentStructureService: {
       async extract() {
         return {
@@ -434,7 +452,7 @@ test("editing service resolves governed rules and persists deterministic changes
             {
               ruleId: "rule-table-treatment-group",
               reason:
-                'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+                'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
               semantic_hit: {
                 table_id: "table-1",
                 semantic_target: "header_cell",
@@ -582,7 +600,22 @@ test("editing service resolves governed rules and persists deterministic changes
     {
       ruleId: "rule-table-treatment-group",
       reason:
-        'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+        'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+      reviewItemId: "review-item-3",
+      candidate_posture: "inspect_only",
+      evidence_pack: {
+        location: {
+          table_id: "table-1",
+          semantic_target: "header_cell",
+          header_path: ["Treatment group", "n (%)"],
+          column_key: "Treatment group > n (%)",
+          override_source: "base",
+        },
+        excerpt:
+          'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+        rationale:
+          'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+      },
       semantic_hit: {
         table_id: "table-1",
         semantic_target: "header_cell",
@@ -592,6 +625,63 @@ test("editing service resolves governed rules and persists deterministic changes
       },
     },
   ]);
+  assert.deepEqual(result.job.payload?.manualReviewItems, [
+    {
+      ruleId: "rule-discussion-reshape",
+      reason: "medical_meaning_risk",
+      reviewItemId: "review-item-1",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.contentRuleCandidates, [
+    {
+      ruleId: "rule-discussion-reshape",
+      reason: "medical_meaning_risk",
+      severity: "warning",
+      actionKind: "rewrite_content",
+      reviewItemId: "review-item-2",
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
+    },
+  ]);
+  assert.equal(autoRecordedGovernedHits.length, 1);
+  assert.equal(autoRecordedGovernedHits[0]?.module, "editing");
+  assert.equal(autoRecordedGovernedHits[0]?.snapshotId, "snapshot-1");
+  assert.equal(autoRecordedGovernedHits[0]?.sourceAssetId, "asset-original-1");
+  assert.equal(
+    Array.isArray(autoRecordedGovernedHits[0]?.items)
+      ? autoRecordedGovernedHits[0]?.items.length
+      : 0,
+    3,
+  );
+  assert.deepEqual(
+    ((autoRecordedGovernedHits[0]?.items as Array<Record<string, unknown>>) ?? []).map(
+      (item) => ({
+        candidate_posture: item.candidate_posture,
+        hasEvidencePack:
+          typeof item.evidence_pack === "object" && item.evidence_pack !== null,
+      }),
+    ),
+    [
+      {
+        candidate_posture: "candidate_change",
+        hasEvidencePack: true,
+      },
+      {
+        candidate_posture: "candidate_change",
+        hasEvidencePack: true,
+      },
+      {
+        candidate_posture: "inspect_only",
+        hasEvidencePack: true,
+      },
+    ],
+  );
   assert.equal(createdAssets[0]?.storage_key, "edited/manuscript-1/output.docx");
   assert.equal(result.asset.id, "asset-edited-1");
 });

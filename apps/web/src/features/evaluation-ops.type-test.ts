@@ -12,12 +12,18 @@ import {
   type EvaluationRunItemFailureKind,
   type EvaluationRunItemViewModel,
   type EvaluationSampleSetViewModel,
+  type EvaluationSuiteType,
   type FrozenExperimentBindingViewModel,
 } from "./verification-ops/index.ts";
 
 const evaluationDecisionStatusCheck: EvaluationDecisionStatus = "needs_review";
 const evaluationRunItemFailureKindCheck: EvaluationRunItemFailureKind =
   "regression_failed";
+const evaluationSuiteTypeChecks: EvaluationSuiteType[] = [
+  "module_regression_suite",
+  "scope_regression_suite",
+  "rule_family_regression_suite",
+];
 
 const frozenBindingCheck: FrozenExperimentBindingViewModel = {
   lane: "candidate",
@@ -161,6 +167,7 @@ export {
   evaluationRunItemCheck,
   evaluationRunItemFailureKindCheck,
   evaluationSampleSetCheck,
+  evaluationSuiteTypeChecks,
   evidencePackCheck,
   frozenBindingCheck,
   recommendationCheck,

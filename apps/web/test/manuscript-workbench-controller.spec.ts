@@ -2312,7 +2312,7 @@ test("manuscript workbench controller hydrates referenced knowledge titles for m
   );
 });
 
-test("manuscript workbench controller submits operator feedback and creates a governed learning candidate handoff", async () => {
+test("manuscript workbench controller submits operator feedback into the unified review queue", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
@@ -2324,7 +2324,7 @@ test("manuscript workbench controller submits operator feedback and creates a go
 
       if (
         input.method === "POST" &&
-        input.url === "/api/v1/feedback-governance/manual-feedback-handoffs"
+        input.url === "/api/v1/review-items/governed-hits"
       ) {
         return {
           status: 201,
@@ -2339,22 +2339,34 @@ test("manuscript workbench controller submits operator feedback and creates a go
               created_by: "editor-1",
               created_at: "2026-04-18T10:00:00.000Z",
             },
-            learningCandidate: {
-              id: "candidate-1",
-              type: "rule_candidate",
-              status: "draft",
+            item: {
+              id: "review-item-1",
+              source_kind: "governed_hit",
+              source_status: "submitted",
+              review_status: "pending",
               module: "editing",
               manuscript_type: "clinical_study",
-              governed_provenance_kind: "human_feedback",
-              governed_feedback_record_id: "feedback-1",
-              snapshot_asset_id: "asset-edited-1",
-              title: "修正错误命中",
-              proposal_text:
+              manuscript_id: "manuscript-1",
+              snapshot_id: "snapshot-editing-1",
+              source_asset_id: "asset-edited-1",
+              title: "Submit incorrect governed hit for review",
+              summary:
                 "Terminology was matched to the wrong governed rule.",
+              feedback_category: "incorrect_hit",
+              feedback_record_id: "feedback-1",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "not_required",
+              available_actions: [
+                "accept_change_only",
+                "reject_as_false_positive",
+                "route_to_rule_candidate",
+                "route_to_knowledge_candidate",
+                "route_to_prompt_candidate",
+                "archive_as_evidence_only",
+              ],
               created_by: "editor-1",
               created_at: "2026-04-18T10:00:00.000Z",
               updated_at: "2026-04-18T10:00:00.000Z",
-              review_actions: [],
             },
           } as TResponse,
         };
@@ -2364,8 +2376,9 @@ test("manuscript workbench controller submits operator feedback and creates a go
     },
   });
 
-  const result = await controller.submitManualFeedbackAndCreateCandidate({
+  const result = await controller.submitManualFeedbackForReview({
     manuscriptId: "manuscript-1",
+    manuscriptType: "clinical_study",
     module: "editing",
     snapshotId: "snapshot-editing-1",
     sourceAssetId: "asset-edited-1",
@@ -2374,19 +2387,196 @@ test("manuscript workbench controller submits operator feedback and creates a go
   });
 
   assert.equal(result.feedback.id, "feedback-1");
-  assert.equal(result.learningCandidate.id, "candidate-1");
+  assert.equal(result.item.id, "review-item-1");
   assert.deepEqual(requests.map((request) => `${request.method} ${request.url}`), [
-    "POST /api/v1/feedback-governance/manual-feedback-handoffs",
+    "POST /api/v1/review-items/governed-hits",
   ]);
   assert.deepEqual(requests[0]?.body, {
-    input: {
-      manuscriptId: "manuscript-1",
-      module: "editing",
-      snapshotId: "snapshot-editing-1",
-      sourceAssetId: "asset-edited-1",
-      feedbackCategory: "incorrect_hit",
-      feedbackText: "Terminology was matched to the wrong governed rule.",
+    manuscriptId: "manuscript-1",
+    manuscriptType: "clinical_study",
+    module: "editing",
+    snapshotId: "snapshot-editing-1",
+    sourceAssetId: "asset-edited-1",
+    feedbackCategory: "incorrect_hit",
+    feedbackText: "Terminology was matched to the wrong governed rule.",
+  });
+});
+
+test("manuscript workbench controller forwards structured governed evidence and can mark the review item as manual-only", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/review-items/governed-hits"
+      ) {
+        return {
+          status: 201,
+          body: {
+            feedback: {
+              id: "feedback-structured-1",
+              manuscript_id: "manuscript-structured-1",
+              module: "proofreading",
+              snapshot_id: "snapshot-proofreading-1",
+              feedback_type: "manual_correction",
+              feedback_text: "表格单位格式需要人工确认。",
+              created_by: "proofreader-1",
+              created_at: "2026-04-18T11:00:00.000Z",
+            },
+            item: {
+              id: "review-item-structured-1",
+              source_kind: "governed_hit",
+              source_status: "submitted",
+              review_status: "pending",
+              module: "proofreading",
+              manuscript_type: "clinical_study",
+              manuscript_id: "manuscript-structured-1",
+              snapshot_id: "snapshot-proofreading-1",
+              source_asset_id: "asset-proofreading-1",
+              title: "表格单位格式需要人工确认",
+              summary: "表格单位格式需要人工确认。",
+              excerpt: "5 mg per dL",
+              suggestion: "5 mg/dL",
+              rationale: "表格标题和单位格式存在高风险偏差。",
+              location: {
+                table_id: "table-1",
+                semantic_target: "header_cell",
+                paragraph_index: 2,
+              },
+              risk_level: "high",
+              related_rule_ids: ["rule-table-unit-1"],
+              feedback_category: "incorrect_hit",
+              feedback_record_id: "feedback-structured-1",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "not_required",
+              available_actions: [
+                "accept_change_only",
+                "reject_as_false_positive",
+                "route_to_rule_candidate",
+                "route_to_knowledge_candidate",
+                "route_to_prompt_candidate",
+                "archive_as_evidence_only",
+              ],
+              created_by: "proofreader-1",
+              created_at: "2026-04-18T11:00:00.000Z",
+              updated_at: "2026-04-18T11:00:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/review-items/review-item-structured-1/decide"
+      ) {
+        return {
+          status: 200,
+          body: {
+            action: "accept_change_only",
+            item: {
+              id: "review-item-structured-1",
+              source_kind: "governed_hit",
+              source_status: "accepted_change_only",
+              review_status: "decided",
+              module: "proofreading",
+              manuscript_type: "clinical_study",
+              manuscript_id: "manuscript-structured-1",
+              snapshot_id: "snapshot-proofreading-1",
+              source_asset_id: "asset-proofreading-1",
+              title: "表格单位格式需要人工确认",
+              summary: "表格单位格式需要人工确认。",
+              feedback_category: "incorrect_hit",
+              feedback_record_id: "feedback-structured-1",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "not_required",
+              available_actions: [],
+              created_by: "proofreader-1",
+              created_at: "2026-04-18T11:00:00.000Z",
+              updated_at: "2026-04-18T11:01:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
+  });
+
+  const submitted = await controller.submitManualFeedbackForReview({
+    manuscriptId: "manuscript-structured-1",
+    manuscriptType: "clinical_study",
+    module: "proofreading",
+    snapshotId: "snapshot-proofreading-1",
+    sourceAssetId: "asset-proofreading-1",
+    feedbackCategory: "incorrect_hit",
+    feedbackText: "表格单位格式需要人工确认。",
+    title: "表格单位格式需要人工确认",
+    excerpt: "5 mg per dL",
+    location: {
+      table_id: "table-1",
+      semantic_target: "header_cell",
+      paragraph_index: 2,
+    },
+    riskLevel: "high",
+    suggestion: "5 mg/dL",
+    rationale: "表格标题和单位格式存在高风险偏差。",
+    relatedRuleIds: ["rule-table-unit-1"],
+    originPayload: {
+      source: "failed_check",
+      ruleId: "rule-table-unit-1",
+    },
+  } as never);
+  const resolved = await controller.decideReviewItem({
+    sourceKind: "governed_hit",
+    id: submitted.item.id,
+    action: "accept_change_only",
+  });
+
+  assert.equal(submitted.item.id, "review-item-structured-1");
+  assert.equal(resolved.action, "accept_change_only");
+  assert.equal(resolved.item?.source_status, "accepted_change_only");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/review-items/governed-hits",
+      "POST /api/v1/review-items/review-item-structured-1/decide",
+    ],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-structured-1",
+    manuscriptType: "clinical_study",
+    module: "proofreading",
+    snapshotId: "snapshot-proofreading-1",
+    sourceAssetId: "asset-proofreading-1",
+    feedbackCategory: "incorrect_hit",
+    feedbackText: "表格单位格式需要人工确认。",
+    title: "表格单位格式需要人工确认",
+    excerpt: "5 mg per dL",
+    location: {
+      table_id: "table-1",
+      semantic_target: "header_cell",
+      paragraph_index: 2,
+    },
+    riskLevel: "high",
+    suggestion: "5 mg/dL",
+    rationale: "表格标题和单位格式存在高风险偏差。",
+    relatedRuleIds: ["rule-table-unit-1"],
+    originPayload: {
+      source: "failed_check",
+      ruleId: "rule-table-unit-1",
+    },
+  });
+  assert.deepEqual(requests[1]?.body, {
+    sourceKind: "governed_hit",
+    action: "accept_change_only",
+    title: undefined,
+    proposalText: undefined,
   });
 });
 

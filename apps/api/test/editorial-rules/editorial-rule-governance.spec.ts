@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import { createEditorialRuleApi } from "../../src/modules/editorial-rules/editorial-rule-api.ts";
+import { EditorialRuleConflictService } from "../../src/modules/editorial-rules/editorial-rule-conflict-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import {
   EditorialRuleService,
   EditorialRuleSetNotEditableError,
 } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 
 const BEFORE_HEADING = "\u6458\u8981 \u76ee\u7684";
 const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
@@ -15,9 +17,11 @@ const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 function createEditorialRuleHarness() {
   const repository = new InMemoryEditorialRuleRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const service = new EditorialRuleService({
     repository,
     templateFamilyRepository,
+    verificationOpsRepository,
     createId: (() => {
       const ids = [
         "rule-set-1",
@@ -46,7 +50,10 @@ function createEditorialRuleHarness() {
 
   return {
     api,
+    service,
+    repository,
     templateFamilyRepository,
+    verificationOpsRepository,
   };
 }
 
@@ -514,3 +521,466 @@ test("creating a journal-scoped rule set rejects a journal template from a diffe
     /journal template/i,
   );
 });
+
+test("conflict service classifies compatible multi-rule outcomes as merge", () => {
+  const service = new EditorialRuleConflictService();
+
+  const conflicts = service.classifyPreviewConflicts([
+    {
+      rule_id: "rule-table-header",
+      coverage_key:
+        'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+      target_key: 'table::{"table_id":"table-1","target":"header_cell"}',
+      execution_posture: "inspect_only",
+      overridden_rule_ids: [],
+      reason: "Header semantics rule matched.",
+    },
+    {
+      rule_id: "rule-table-footnote",
+      coverage_key:
+        'table::{"note_kind":"statistical_significance","semantic_target":"footnote_item"}::{"kind":"table_shape","layout":"three_line_table"}',
+      target_key: 'table::{"table_id":"table-1","target":"footnote_item"}',
+      execution_posture: "inspect_only",
+      overridden_rule_ids: [],
+      reason: "Footnote semantics rule matched.",
+    },
+  ]);
+
+  assert.deepEqual(conflicts, [
+    {
+      kind: "merge",
+      rule_ids: ["rule-table-header", "rule-table-footnote"],
+      coverage_keys: [
+        'table::{"header_path_includes":["Treatment group","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_shape","layout":"three_line_table"}',
+        'table::{"note_kind":"statistical_significance","semantic_target":"footnote_item"}::{"kind":"table_shape","layout":"three_line_table"}',
+      ],
+      reason: "Rules can merge because they target different governed aspects.",
+      requires_manual_review: true,
+    },
+  ]);
+});
+
+test("rule sets move from draft to candidate while preserving the requested release scope", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+
+  const transitioned = await (
+    api as unknown as {
+      transitionRuleSet: (input: {
+        actorRole: "admin";
+        ruleSetId: string;
+        targetStatus: "candidate";
+        releaseScope: {
+          manuscript_types: string[];
+          sections: string[];
+          object_granularity: string[];
+        };
+      }) => Promise<{ body: Record<string, unknown> }>;
+    }
+  ).transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "candidate",
+    releaseScope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["abstract"],
+      object_granularity: ["heading"],
+    },
+  });
+
+  assert.deepEqual(transitioned.body, {
+    id: "rule-set-1",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "candidate",
+    release_scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["abstract"],
+      object_granularity: ["heading"],
+    },
+  });
+});
+
+test("candidate rule sets cannot enter canary without candidate validation evidence", async () => {
+  const { api, templateFamilyRepository } = createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+
+  const transitionRuleSet = (
+    api as unknown as {
+      transitionRuleSet: (input: {
+        actorRole: "admin";
+        ruleSetId: string;
+        targetStatus: "candidate" | "canary";
+      }) => Promise<{ body: Record<string, unknown> }>;
+    }
+  ).transitionRuleSet;
+
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "candidate",
+  });
+
+  await assert.rejects(
+    () =>
+      transitionRuleSet({
+        actorRole: "admin",
+        ruleSetId: ruleSet.body.id,
+        targetStatus: "canary",
+      }),
+    /candidate validation/i,
+  );
+});
+
+test("canary rule sets cannot promote to active without online execution regression evidence", async () => {
+  const { api, templateFamilyRepository, verificationOpsRepository } =
+    createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+
+  const transitionRuleSet = (
+    api as unknown as {
+      transitionRuleSet: (input: {
+        actorRole: "admin";
+        ruleSetId: string;
+        targetStatus: "candidate" | "canary" | "active";
+        candidateValidationRunId?: string;
+        candidateValidationEvidencePackId?: string;
+      }) => Promise<{ body: Record<string, unknown> }>;
+    }
+  ).transitionRuleSet;
+
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "candidate",
+  });
+  await seedEvaluationGateEvidence(verificationOpsRepository, {
+    runId: "candidate-validation-run-1",
+    evidencePackId: "candidate-validation-pack-1",
+    recommendationId: "candidate-validation-rec-1",
+  });
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "canary",
+    candidateValidationRunId: "candidate-validation-run-1",
+    candidateValidationEvidencePackId: "candidate-validation-pack-1",
+  });
+
+  await assert.rejects(
+    () =>
+      transitionRuleSet({
+        actorRole: "admin",
+        ruleSetId: ruleSet.body.id,
+        targetStatus: "active",
+      }),
+    /online execution regression/i,
+  );
+});
+
+test("canary rule sets cannot promote to active when release comparison is degraded", async () => {
+  const {
+    api,
+    service,
+    templateFamilyRepository,
+    verificationOpsRepository,
+  } = createEditorialRuleHarness();
+
+  (
+    service as unknown as {
+      activationMetricsService?: {
+        buildReleaseComparison: (ruleSetId: string) => Promise<{
+          status: "degraded";
+          recommendation: "hold";
+          compared_rule_set_id: string;
+          baseline_rule_set_id: string;
+          baseline_metrics: {
+            rule_set_id: string;
+            totals: Record<string, number>;
+            rates: Record<string, number>;
+          };
+          candidate_metrics: {
+            rule_set_id: string;
+            totals: Record<string, number>;
+            rates: Record<string, number>;
+          };
+          reasons: string[];
+        }>;
+      };
+    }
+  ).activationMetricsService = {
+    buildReleaseComparison: async (ruleSetId) => ({
+      status: "degraded",
+      recommendation: "hold",
+      compared_rule_set_id: ruleSetId,
+      baseline_rule_set_id: "rule-set-active-1",
+      baseline_metrics: {
+        rule_set_id: "rule-set-active-1",
+        totals: {
+          governed_hit_count: 18,
+          false_positive_count: 2,
+          human_confirmation_count: 11,
+          accept_change_only_count: 4,
+          evidence_only_archive_count: 0,
+          routed_rule_candidate_count: 3,
+          routed_knowledge_candidate_count: 1,
+          routed_prompt_candidate_count: 0,
+          writeback_created_count: 4,
+          writeback_applied_count: 4,
+        },
+        rates: {
+          false_positive_rate: 0.11,
+          human_confirmation_rate: 0.61,
+          evidence_only_archive_rate: 0,
+          writeback_success_rate: 1,
+        },
+      },
+      candidate_metrics: {
+        rule_set_id: ruleSetId,
+        totals: {
+          governed_hit_count: 20,
+          false_positive_count: 6,
+          human_confirmation_count: 9,
+          accept_change_only_count: 3,
+          evidence_only_archive_count: 1,
+          routed_rule_candidate_count: 4,
+          routed_knowledge_candidate_count: 1,
+          routed_prompt_candidate_count: 1,
+          writeback_created_count: 5,
+          writeback_applied_count: 3,
+        },
+        rates: {
+          false_positive_rate: 0.3,
+          human_confirmation_rate: 0.45,
+          evidence_only_archive_rate: 0.05,
+          writeback_success_rate: 0.6,
+        },
+      },
+      reasons: ["False-positive rate regressed versus baseline."],
+    }),
+  };
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+
+  const transitionRuleSet = (
+    api as unknown as {
+      transitionRuleSet: (input: {
+        actorRole: "admin";
+        ruleSetId: string;
+        targetStatus: "candidate" | "canary" | "active";
+        candidateValidationRunId?: string;
+        candidateValidationEvidencePackId?: string;
+        onlineRegressionRunId?: string;
+        onlineRegressionEvidencePackId?: string;
+      }) => Promise<{ body: Record<string, unknown> }>;
+    }
+  ).transitionRuleSet;
+
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "candidate",
+  });
+  await seedEvaluationGateEvidence(verificationOpsRepository, {
+    runId: "candidate-validation-run-3",
+    evidencePackId: "candidate-validation-pack-3",
+    recommendationId: "candidate-validation-rec-3",
+  });
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "canary",
+    candidateValidationRunId: "candidate-validation-run-3",
+    candidateValidationEvidencePackId: "candidate-validation-pack-3",
+  });
+  await seedEvaluationGateEvidence(verificationOpsRepository, {
+    runId: "online-regression-run-2",
+    evidencePackId: "online-regression-pack-2",
+    recommendationId: "online-regression-rec-2",
+  });
+
+  await assert.rejects(
+    () =>
+      transitionRuleSet({
+        actorRole: "admin",
+        ruleSetId: ruleSet.body.id,
+        targetStatus: "active",
+        onlineRegressionRunId: "online-regression-run-2",
+        onlineRegressionEvidencePackId: "online-regression-pack-2",
+      }),
+    /False-positive rate regressed versus baseline\./i,
+  );
+});
+
+test("rolling back an active rule set restores the previous same-scope baseline", async () => {
+  const { api, repository, templateFamilyRepository, verificationOpsRepository } =
+    createEditorialRuleHarness();
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical study family",
+    status: "active",
+  });
+
+  await repository.saveRuleSet({
+    id: "baseline-rule-set",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+
+  const ruleSet = await api.createRuleSet({
+    actorRole: "admin",
+    input: {
+      templateFamilyId: "family-1",
+      module: "editing",
+    },
+  });
+
+  const transitionRuleSet = (
+    api as unknown as {
+      transitionRuleSet: (input: {
+        actorRole: "admin";
+        ruleSetId: string;
+        targetStatus: "candidate" | "canary" | "active" | "rolled_back";
+        candidateValidationRunId?: string;
+        candidateValidationEvidencePackId?: string;
+        onlineRegressionRunId?: string;
+        onlineRegressionEvidencePackId?: string;
+      }) => Promise<{ body: Record<string, unknown> }>;
+    }
+  ).transitionRuleSet;
+
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "candidate",
+  });
+  await seedEvaluationGateEvidence(verificationOpsRepository, {
+    runId: "candidate-validation-run-2",
+    evidencePackId: "candidate-validation-pack-2",
+    recommendationId: "candidate-validation-rec-2",
+  });
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "canary",
+    candidateValidationRunId: "candidate-validation-run-2",
+    candidateValidationEvidencePackId: "candidate-validation-pack-2",
+  });
+  await seedEvaluationGateEvidence(verificationOpsRepository, {
+    runId: "online-regression-run-1",
+    evidencePackId: "online-regression-pack-1",
+    recommendationId: "online-regression-rec-1",
+  });
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "active",
+    onlineRegressionRunId: "online-regression-run-1",
+    onlineRegressionEvidencePackId: "online-regression-pack-1",
+  });
+  await transitionRuleSet({
+    actorRole: "admin",
+    ruleSetId: ruleSet.body.id,
+    targetStatus: "rolled_back",
+  });
+
+  const listedRuleSets = await api.listRuleSets();
+  const statusesById = new Map(
+    listedRuleSets.body.map((record) => [record.id, record.status]),
+  );
+
+  assert.equal(statusesById.get("baseline-rule-set"), "active");
+  assert.equal(statusesById.get(ruleSet.body.id), "rolled_back");
+});
+
+async function seedEvaluationGateEvidence(
+  repository: InMemoryVerificationOpsRepository,
+  input: {
+    runId: string;
+    evidencePackId: string;
+    recommendationId: string;
+  },
+): Promise<void> {
+  await repository.saveEvaluationRun({
+    id: input.runId,
+    suite_id: "suite-1",
+    run_item_count: 0,
+    status: "passed",
+    evidence_ids: [],
+    started_at: "2026-04-19T09:00:00.000Z",
+    finished_at: "2026-04-19T09:05:00.000Z",
+  });
+  await repository.saveEvaluationEvidencePack({
+    id: input.evidencePackId,
+    experiment_run_id: input.runId,
+    summary_status: "recommended",
+    created_at: "2026-04-19T09:06:00.000Z",
+  });
+  await repository.saveEvaluationPromotionRecommendation({
+    id: input.recommendationId,
+    experiment_run_id: input.runId,
+    evidence_pack_id: input.evidencePackId,
+    status: "recommended",
+    created_at: "2026-04-19T09:07:00.000Z",
+  });
+}

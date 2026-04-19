@@ -1,13 +1,11 @@
 import type { AuthRole } from "../auth/index.ts";
 import type { ModuleExecutionMode } from "@medical/contracts";
 import {
-  createManualFeedbackHandoff,
   type HumanFeedbackRecordViewModel,
   type ManualFeedbackCategory,
 } from "../feedback-governance/index.ts";
 import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import type { KnowledgeRevisionStatus } from "../knowledge-library/types.ts";
-import type { LearningCandidateViewModel } from "../learning-review/types.ts";
 import {
   exportCurrentAsset,
   getJob,
@@ -48,6 +46,13 @@ import {
   type ModuleJobViewModel,
   type ScreeningRunResultViewModel,
 } from "../screening/index.ts";
+import {
+  decideReviewItem,
+  submitGovernedHit,
+  type DecideReviewItemInput,
+  type GovernedHitReviewItemViewModel,
+  type ReviewItemDecisionResultViewModel,
+} from "../review-items/index.ts";
 
 export type ManuscriptWorkbenchMode =
   | "submission"
@@ -154,18 +159,36 @@ export interface RunModuleAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
-export interface SubmitManualFeedbackAndCreateCandidateInput {
+export interface SubmitManualFeedbackForReviewInput {
   manuscriptId: string;
+  manuscriptType: string;
   module: ManuscriptWorkbenchRunMode;
   snapshotId: string;
   sourceAssetId: string;
   feedbackCategory: ManualFeedbackCategory;
   feedbackText?: string;
+  title?: string;
+  excerpt?: string;
+  location?: Record<string, unknown>;
+  riskLevel?: "low" | "medium" | "high" | "critical";
+  suggestion?: string;
+  rationale?: string;
+  candidatePosture?: "candidate_change" | "inspect_only";
+  decisionSource?: "manual_feedback" | "execution_hit";
+  evidencePack?: {
+    location?: Record<string, unknown>;
+    excerpt?: string;
+    suggestion?: string;
+    rationale?: string;
+  };
+  relatedRuleIds?: string[];
+  relatedKnowledgeItemIds?: string[];
+  originPayload?: Record<string, unknown>;
 }
 
-export interface SubmitManualFeedbackAndCreateCandidateResult {
+export interface SubmitManualFeedbackForReviewResult {
   feedback: HumanFeedbackRecordViewModel;
-  learningCandidate: LearningCandidateViewModel;
+  item: GovernedHitReviewItemViewModel;
 }
 
 export interface PublishHumanFinalAndLoadResult {
@@ -200,9 +223,12 @@ export interface ManuscriptWorkbenchController {
   publishHumanFinalAndLoad(
     input: PublishHumanFinalAndLoadInput,
   ): Promise<PublishHumanFinalAndLoadResult>;
-  submitManualFeedbackAndCreateCandidate(
-    input: SubmitManualFeedbackAndCreateCandidateInput,
-  ): Promise<SubmitManualFeedbackAndCreateCandidateResult>;
+  submitManualFeedbackForReview(
+    input: SubmitManualFeedbackForReviewInput,
+  ): Promise<SubmitManualFeedbackForReviewResult>;
+  decideReviewItem(
+    input: DecideReviewItemInput,
+  ): Promise<ReviewItemDecisionResultViewModel>;
   loadJob(jobId: string): Promise<JobViewModel>;
   exportCurrentAsset(input: {
     manuscriptId: string;
@@ -335,8 +361,12 @@ export function createManuscriptWorkbenchController(
         workspace,
       };
     },
-    async submitManualFeedbackAndCreateCandidate(input) {
-      const response = await createManualFeedbackHandoff(client, input);
+    async submitManualFeedbackForReview(input) {
+      const response = await submitGovernedHit(client, input);
+      return response.body;
+    },
+    async decideReviewItem(input) {
+      const response = await decideReviewItem(client, input);
       return response.body;
     },
     async loadJob(jobId) {

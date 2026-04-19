@@ -166,6 +166,12 @@ export function RuleAuthoringForm({
               </select>
             </label>
 
+            <RuleAuthoringPlatformScopeFields
+              selectedRuleSet={selectedRuleSet}
+              draft={draft}
+              onDraftChange={onDraftChange}
+            />
+
             <RuleAuthoringParameterGuide />
 
             <RuleAuthoringLinkedKnowledgeField
@@ -210,6 +216,115 @@ function RuleAuthoringParameterGuide() {
         <span className="template-governance-chip">
           关联知识条目只挂支撑证据，不承载执行逻辑
         </span>
+      </div>
+    </section>
+  );
+}
+
+function RuleAuthoringPlatformScopeFields({
+  selectedRuleSet,
+  draft,
+  onDraftChange,
+}: {
+  selectedRuleSet: EditorialRuleSetViewModel;
+  draft: RuleAuthoringDraft;
+  onDraftChange(next: RuleAuthoringDraft): void;
+}) {
+  return (
+    <section
+      className="template-governance-card template-governance-field-full"
+      data-rule-platform-scope="field"
+    >
+      <strong>规则作用域与优先级</strong>
+      <div className="template-governance-chip-row">
+        <span
+          className="template-governance-chip"
+          data-rule-platform-module={selectedRuleSet.module}
+        >
+          模块：{formatTemplateGovernanceModuleLabel(selectedRuleSet.module)}
+        </span>
+        <span
+          className="template-governance-chip"
+          data-rule-platform-template-family={selectedRuleSet.template_family_id}
+        >
+          模板族：{selectedRuleSet.template_family_id}
+        </span>
+        <span
+          className="template-governance-chip"
+          data-rule-platform-journal-scope={
+            selectedRuleSet.journal_template_id ?? "__base__"
+          }
+        >
+          期刊层：{selectedRuleSet.journal_template_id ?? "base"}
+        </span>
+      </div>
+      <div className="template-governance-form-grid">
+        <label
+          className="template-governance-field"
+          data-rule-priority-input="field"
+        >
+          <span>优先级</span>
+          <input
+            type="number"
+            min={0}
+            value={String(draft.priority ?? 100)}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                priority:
+                  Number.parseInt(event.target.value || "100", 10) || 100,
+              })
+            }
+          />
+        </label>
+        <label
+          className="template-governance-field template-governance-field-full"
+          data-rule-platform-manuscript-types="field"
+        >
+          <span>稿件类型作用域</span>
+          <input
+            value={serializePlatformScopeList(draft.manuscriptTypes)}
+            placeholder="clinical_study, meta_analysis"
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                manuscriptTypes: parsePlatformScopeList(event.target.value),
+              })
+            }
+          />
+        </label>
+        <label
+          className="template-governance-field template-governance-field-full"
+          data-rule-platform-sections="field"
+        >
+          <span>章节作用域</span>
+          <input
+            value={serializePlatformScopeList(draft.scopeSections)}
+            placeholder="results, discussion"
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                scopeSections: parsePlatformScopeList(event.target.value),
+              })
+            }
+          />
+        </label>
+        <label
+          className="template-governance-field template-governance-field-full"
+          data-rule-platform-object-granularity="field"
+        >
+          <span>对象粒度</span>
+          <input
+            value={serializePlatformScopeList(draft.objectGranularity)}
+            placeholder="table, table_cell"
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                objectGranularity: parsePlatformScopeList(event.target.value),
+              })
+            }
+          />
+        </label>
       </div>
     </section>
   );
@@ -1065,4 +1180,15 @@ function TextField({
       <input value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
+}
+
+function serializePlatformScopeList(value: string[] | undefined): string {
+  return value?.join(", ") ?? "";
+}
+
+function parsePlatformScopeList(value: string): string[] {
+  return [...new Set(value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0))];
 }

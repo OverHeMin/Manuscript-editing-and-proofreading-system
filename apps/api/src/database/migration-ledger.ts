@@ -1,8 +1,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createMigrationChecksum } from "./migration-checksum.ts";
+import { resolveApiPackageRoot } from "./package-root.ts";
 
-const migrationsDirectory = path.join(import.meta.dirname, "migrations");
+const migrationsDirectory = path.join(
+  resolveApiPackageRoot(import.meta.dirname),
+  "src",
+  "database",
+  "migrations",
+);
 const migrationDescriptions = new Map<string, string>([
   [
     "0026_model_provider_domestic.sql",
@@ -71,6 +77,22 @@ const migrationDescriptions = new Map<string, string>([
   [
     "0044_proofreading_residual_learning_v1.sql",
     "Add residual issue persistence and governed learning enum support for proofreading self-learning.",
+  ],
+  [
+    "0047_rule_execution_hit_posture.sql",
+    "Persist governed execution hit posture and decision provenance for review intake.",
+  ],
+  [
+    "0048_rule_platform_scope_release_governance.sql",
+    "Persist rule priority plus rule-set release scope, promotion evidence, and rollback references for governed rollout.",
+  ],
+  [
+    "0049_rule_activation_metrics.sql",
+    "Persist per-rule governed activation, decision, and writeback metrics.",
+  ],
+  [
+    "0050_online_execution_regression.sql",
+    "Extend evaluation suite types for module, scope, and rule-family online regression.",
   ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([

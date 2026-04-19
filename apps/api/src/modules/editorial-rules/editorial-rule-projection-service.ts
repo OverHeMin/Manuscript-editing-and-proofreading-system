@@ -34,7 +34,7 @@ export class EditorialRuleProjectionRuleSetNotFoundError extends Error {
 
 export class EditorialRuleProjectionRuleSetNotPublishedError extends Error {
   constructor(ruleSetId: string) {
-    super(`Editorial rule set ${ruleSetId} must be published before projection.`);
+    super(`Editorial rule set ${ruleSetId} must be published or active before projection.`);
     this.name = "EditorialRuleProjectionRuleSetNotPublishedError";
   }
 }
@@ -77,7 +77,7 @@ export class EditorialRuleProjectionService {
       throw new EditorialRuleProjectionRuleSetNotFoundError(ruleSetId);
     }
 
-    if (ruleSet.status !== "published") {
+    if (ruleSet.status !== "published" && ruleSet.status !== "active") {
       throw new EditorialRuleProjectionRuleSetNotPublishedError(ruleSetId);
     }
 

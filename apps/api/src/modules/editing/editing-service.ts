@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type {
+  ManuscriptQualityIssue,
+  ModuleExecutionMode,
+} from "@medical/contracts";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -23,8 +26,11 @@ import {
   assembleInstructionTemplate,
 } from "../editorial-execution/instruction-template-assembler.ts";
 import type {
+  ContentRuleCandidate,
   EditorialSourceBlockResolver,
   DeterministicDocxTransformResult,
+  ManualReviewItem,
+  TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
@@ -39,6 +45,10 @@ import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/pro
 import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
+import type {
+  RecordExecutionGovernedHitInput,
+  ReviewItemsService,
+} from "../review-items/review-items-service.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
   resolveBareModuleContext,
@@ -108,6 +118,7 @@ export interface EditingServiceOptions {
   >;
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
+  reviewItemsService?: Pick<ReviewItemsService, "recordExecutionGovernedHits">;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -166,6 +177,10 @@ export class EditingService {
     "runChecks"
   >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
+  private readonly reviewItemsService?: Pick<
+    ReviewItemsService,
+    "recordExecutionGovernedHits"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -208,6 +223,7 @@ export class EditingService {
       };
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
+    this.reviewItemsService = options.reviewItemsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -233,6 +249,12 @@ export class EditingService {
         manuscriptRepository: context.manuscriptRepository,
         assetRepository: context.assetRepository,
       });
+      const manuscript = await context.manuscriptRepository.findById(
+        input.manuscriptId,
+      );
+      if (!manuscript) {
+        throw new Error(`Manuscript ${input.manuscriptId} was not found.`);
+      }
 
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
@@ -558,6 +580,47 @@ export class EditingService {
           executionSnapshotId: snapshot.id,
         });
       }
+      const recordedExecutionGovernedHits = this.reviewItemsService
+        ? await this.reviewItemsService.recordExecutionGovernedHits({
+            manuscriptId: input.manuscriptId,
+            manuscriptType: manuscript.manuscript_type,
+            module: "editing",
+            snapshotId: snapshot.id,
+            sourceAssetId: input.parentAssetId,
+            createdBy: input.requestedBy,
+            items: buildEditingExecutionGovernedHitInputs({
+              manualReviewItems:
+                normalizedContext.instructionPayload?.manualReviewItems ?? [],
+              contentRuleCandidates:
+                normalizedContext.instructionPayload?.contentRuleCandidates ?? [],
+              tableInspectionFindings:
+                deterministicTransform.tableInspectionFindings ?? [],
+              qualityFindings: qualityRun?.issues ?? [],
+            }),
+          })
+        : [];
+      const reviewItemIdBySourceKey = new Map(
+        recordedExecutionGovernedHits.map((entry) => [
+          entry.sourceKey,
+          entry.item.id,
+        ]),
+      );
+      const annotatedManualReviewItems = annotateEditingManualReviewItems(
+        normalizedContext.instructionPayload?.manualReviewItems ?? [],
+        reviewItemIdBySourceKey,
+      );
+      const annotatedContentRuleCandidates = annotateEditingContentRuleCandidates(
+        normalizedContext.instructionPayload?.contentRuleCandidates ?? [],
+        reviewItemIdBySourceKey,
+      );
+      const annotatedQualityFindings = annotateEditingQualityFindings(
+        qualityRun?.issues ?? [],
+        reviewItemIdBySourceKey,
+      );
+      const annotatedTableInspectionFindings = annotateEditingTableInspectionFindings(
+        deterministicTransform.tableInspectionFindings ?? [],
+        reviewItemIdBySourceKey,
+      );
 
       const completedJob: JobRecord = {
         ...queuedJob,
@@ -567,6 +630,21 @@ export class EditingService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "edited_docx",
+          ...(annotatedManualReviewItems.length > 0
+            ? {
+                manualReviewItems: annotatedManualReviewItems,
+              }
+            : {}),
+          ...(annotatedContentRuleCandidates.length > 0
+            ? {
+                contentRuleCandidates: annotatedContentRuleCandidates,
+              }
+            : {}),
+          ...(annotatedQualityFindings.length > 0
+            ? {
+                qualityFindings: annotatedQualityFindings,
+              }
+            : {}),
           appliedRuleIds: [...deterministicTransform.appliedRuleIds],
           appliedChanges: deterministicTransform.appliedChanges.map((change) => ({
             ...change,
@@ -581,8 +659,7 @@ export class EditingService {
                 }
               : {}),
           })),
-          tableInspectionFindings:
-            (deterministicTransform.tableInspectionFindings ?? []).map((finding) => ({
+          tableInspectionFindings: annotatedTableInspectionFindings.map((finding) => ({
               ...finding,
               semantic_hit: {
                 ...finding.semantic_hit,
@@ -666,6 +743,369 @@ export class EditingService {
       qualityPackageVersionIds: input.qualityPackageVersionIds,
     });
   }
+}
+
+function buildEditingExecutionGovernedHitInputs(input: {
+  manualReviewItems: readonly ManualReviewItem[];
+  contentRuleCandidates: readonly ContentRuleCandidate[];
+  tableInspectionFindings: readonly TableRuleInspectionFinding[];
+  qualityFindings: readonly ManuscriptQualityIssue[];
+}): RecordExecutionGovernedHitInput[] {
+  return [
+    ...input.manualReviewItems.map((item, index) => ({
+      sourceKey: buildEditingManualReviewSourceKey(item, index),
+      title: buildRuleReviewTitle(item.ruleId, "Editing manual review"),
+      summary: item.reason,
+      rationale: item.reason,
+      candidate_posture: item.candidate_posture ?? "candidate_change",
+      evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+        rationale: item.reason,
+      },
+      riskLevel: "high" as const,
+      relatedRuleIds: [item.ruleId],
+      originPayload: {
+        source: "manual_review_item",
+        ruleId: item.ruleId,
+        reason: item.reason,
+      },
+    })),
+    ...input.contentRuleCandidates.map((item, index) => ({
+      sourceKey: buildEditingContentRuleCandidateSourceKey(item, index),
+      title: buildRuleReviewTitle(item.ruleId, "Editing content candidate"),
+      summary: item.reason,
+      rationale: item.reason,
+      candidate_posture: item.candidate_posture ?? "candidate_change",
+      evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+        rationale: item.reason,
+      },
+      riskLevel: mapEditorialSeverityToReviewRisk(item.severity),
+      relatedRuleIds: [item.ruleId],
+      originPayload: {
+        source: "content_rule_candidate",
+        ruleId: item.ruleId,
+        reason: item.reason,
+        actionKind: item.actionKind,
+      },
+    })),
+    ...input.tableInspectionFindings.map((item, index) => ({
+      sourceKey: buildEditingTableInspectionSourceKey(item, index),
+      title: buildRuleReviewTitle(item.ruleId, "Editing table inspection"),
+      summary:
+        "The matched table rule should be reviewed before governance routing.",
+      excerpt: item.reason,
+      location: cloneSemanticLocation(item.semantic_hit),
+      rationale: item.reason,
+      candidate_posture: item.candidate_posture ?? "inspect_only",
+      evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+        location: cloneSemanticLocation(item.semantic_hit),
+        excerpt: item.reason,
+        rationale: item.reason,
+      },
+      riskLevel: "high" as const,
+      relatedRuleIds: [item.ruleId],
+      originPayload: {
+        source: "table_inspection_finding",
+        ruleId: item.ruleId,
+        semantic_hit: cloneSemanticLocation(item.semantic_hit),
+      },
+    })),
+    ...input.qualityFindings
+      .filter(isHighRiskQualityIssue)
+      .map((issue, index) => ({
+        sourceKey: buildQualityFindingSourceKey("editing", issue, index),
+        title: `Editing quality issue ${issue.issue_type} requires review`,
+        summary: issue.explanation,
+        excerpt: issue.text_excerpt,
+        suggestion: issue.suggested_replacement,
+        location: buildQualityFindingLocation(issue),
+        rationale: issue.explanation,
+        candidate_posture: "candidate_change" as const,
+        evidence_pack: {
+          ...(buildQualityFindingLocation(issue)
+            ? {
+                location: buildQualityFindingLocation(issue),
+              }
+            : {}),
+          ...(issue.text_excerpt ? { excerpt: issue.text_excerpt } : {}),
+          ...(issue.suggested_replacement
+            ? { suggestion: issue.suggested_replacement }
+            : {}),
+          ...(issue.explanation ? { rationale: issue.explanation } : {}),
+        },
+        riskLevel: issue.severity,
+        originPayload: {
+          source: "quality_finding",
+          issueId: issue.issue_id,
+          issueType: issue.issue_type,
+          action: issue.action,
+        },
+      })),
+  ];
+}
+
+function annotateEditingManualReviewItems(
+  items: readonly ManualReviewItem[],
+  reviewItemIdBySourceKey: ReadonlyMap<string, string>,
+): Array<ManualReviewItem & { reviewItemId?: string }> {
+  return items.map((item, index) => ({
+    ...ensureEditingManualReviewGovernedHit(item),
+    ...item,
+    ...(reviewItemIdBySourceKey.get(buildEditingManualReviewSourceKey(item, index))
+      ? {
+          reviewItemId: reviewItemIdBySourceKey.get(
+            buildEditingManualReviewSourceKey(item, index),
+          ),
+        }
+      : {}),
+  }));
+}
+
+function annotateEditingContentRuleCandidates(
+  items: readonly ContentRuleCandidate[],
+  reviewItemIdBySourceKey: ReadonlyMap<string, string>,
+): Array<ContentRuleCandidate & { reviewItemId?: string }> {
+  return items.map((item, index) => ({
+    ...ensureEditingContentRuleGovernedHit(item),
+    ...item,
+    ...(reviewItemIdBySourceKey.get(
+      buildEditingContentRuleCandidateSourceKey(item, index),
+    )
+      ? {
+          reviewItemId: reviewItemIdBySourceKey.get(
+            buildEditingContentRuleCandidateSourceKey(item, index),
+          ),
+        }
+      : {}),
+  }));
+}
+
+function annotateEditingTableInspectionFindings(
+  items: readonly TableRuleInspectionFinding[],
+  reviewItemIdBySourceKey: ReadonlyMap<string, string>,
+): Array<TableRuleInspectionFinding & { reviewItemId?: string }> {
+  return items.map((item, index) => ({
+    ...ensureEditingTableInspectionGovernedHit(item),
+    ...item,
+    ...(reviewItemIdBySourceKey.get(buildEditingTableInspectionSourceKey(item, index))
+      ? {
+          reviewItemId: reviewItemIdBySourceKey.get(
+            buildEditingTableInspectionSourceKey(item, index),
+          ),
+        }
+      : {}),
+  }));
+}
+
+function annotateEditingQualityFindings(
+  items: readonly ManuscriptQualityIssue[],
+  reviewItemIdBySourceKey: ReadonlyMap<string, string>,
+): Array<
+  ManuscriptQualityIssue & {
+    reviewItemId?: string;
+    candidate_posture?: "candidate_change";
+    evidence_pack?: Record<string, unknown>;
+  }
+> {
+  return items.map((item, index) => ({
+    ...item,
+    candidate_posture: "candidate_change",
+    evidence_pack: {
+      ...(buildQualityFindingLocation(item)
+        ? {
+            location: buildQualityFindingLocation(item),
+          }
+        : {}),
+      ...(item.text_excerpt ? { excerpt: item.text_excerpt } : {}),
+      ...(item.suggested_replacement
+        ? { suggestion: item.suggested_replacement }
+        : {}),
+      ...(item.explanation ? { rationale: item.explanation } : {}),
+    },
+    ...(reviewItemIdBySourceKey.get(buildQualityFindingSourceKey("editing", item, index))
+      ? {
+          reviewItemId: reviewItemIdBySourceKey.get(
+            buildQualityFindingSourceKey("editing", item, index),
+          ),
+        }
+      : {}),
+  }));
+}
+
+function ensureEditingManualReviewGovernedHit(
+  item: ManualReviewItem,
+): Pick<ManualReviewItem, "candidate_posture" | "evidence_pack"> {
+  return {
+    candidate_posture: item.candidate_posture ?? "candidate_change",
+    evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+      rationale: item.reason,
+    },
+  };
+}
+
+function ensureEditingContentRuleGovernedHit(
+  item: ContentRuleCandidate,
+): Pick<ContentRuleCandidate, "candidate_posture" | "evidence_pack"> {
+  return {
+    candidate_posture: item.candidate_posture ?? "candidate_change",
+    evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+      rationale: item.reason,
+    },
+  };
+}
+
+function ensureEditingTableInspectionGovernedHit(
+  item: TableRuleInspectionFinding,
+): Pick<TableRuleInspectionFinding, "candidate_posture" | "evidence_pack"> {
+  return {
+    candidate_posture: item.candidate_posture ?? "inspect_only",
+    evidence_pack: cloneEvidencePack(item.evidence_pack) ?? {
+      location: cloneSemanticLocation(item.semantic_hit),
+      excerpt: item.reason,
+      rationale: item.reason,
+    },
+  };
+}
+
+function buildEditingManualReviewSourceKey(
+  item: ManualReviewItem,
+  index: number,
+): string {
+  return `editing:manual:${item.ruleId}:${item.reason}:${index}`;
+}
+
+function buildEditingContentRuleCandidateSourceKey(
+  item: ContentRuleCandidate,
+  index: number,
+): string {
+  return `editing:content:${item.ruleId}:${item.reason}:${item.actionKind}:${index}`;
+}
+
+function buildEditingTableInspectionSourceKey(
+  item: TableRuleInspectionFinding,
+  index: number,
+): string {
+  return [
+    "editing",
+    "table",
+    item.ruleId,
+    item.semantic_hit.table_id,
+    item.semantic_hit.semantic_target,
+    item.semantic_hit.column_key ?? "",
+    item.semantic_hit.header_path?.join(">") ?? "",
+    String(index),
+  ].join(":");
+}
+
+function buildRuleReviewTitle(ruleId: string, fallback: string): string {
+  const normalizedRuleId = ruleId.trim();
+  return normalizedRuleId
+    ? `Rule ${normalizedRuleId} requires manual review`
+    : fallback;
+}
+
+function mapEditorialSeverityToReviewRisk(
+  severity: string,
+): "low" | "medium" | "high" | "critical" {
+  if (severity === "critical") {
+    return "critical";
+  }
+  if (severity === "error" || severity === "high") {
+    return "high";
+  }
+  if (severity === "warning" || severity === "medium") {
+    return "medium";
+  }
+  return "low";
+}
+
+function isHighRiskQualityIssue(issue: ManuscriptQualityIssue): boolean {
+  return (
+    issue.action === "manual_review" ||
+    issue.action === "block" ||
+    issue.severity === "high" ||
+    issue.severity === "critical"
+  );
+}
+
+function buildQualityFindingSourceKey(
+  module: "editing" | "proofreading",
+  issue: ManuscriptQualityIssue,
+  index: number,
+): string {
+  return [
+    module,
+    "quality",
+    issue.issue_id,
+    issue.issue_type,
+    issue.paragraph_index ?? "",
+    issue.sentence_index ?? "",
+    String(index),
+  ].join(":");
+}
+
+function buildQualityFindingLocation(
+  issue: ManuscriptQualityIssue,
+): Record<string, unknown> | undefined {
+  const location: Record<string, unknown> = {};
+  if (typeof issue.paragraph_index === "number") {
+    location.paragraph_index = issue.paragraph_index + 1;
+  }
+  if (typeof issue.sentence_index === "number") {
+    location.sentence_index = issue.sentence_index + 1;
+  }
+  return Object.keys(location).length > 0 ? location : undefined;
+}
+
+function cloneEvidencePack(
+  evidencePack:
+    | {
+        location?: Record<string, unknown>;
+        excerpt?: string;
+        suggestion?: string;
+        rationale?: string;
+      }
+    | undefined,
+): {
+  location?: Record<string, unknown>;
+  excerpt?: string;
+  suggestion?: string;
+  rationale?: string;
+} | undefined {
+  if (!evidencePack) {
+    return undefined;
+  }
+
+  return {
+    ...(evidencePack.location
+      ? {
+          location: cloneLocationRecord(evidencePack.location),
+        }
+      : {}),
+    ...(typeof evidencePack.excerpt === "string"
+      ? { excerpt: evidencePack.excerpt }
+      : {}),
+    ...(typeof evidencePack.suggestion === "string"
+      ? { suggestion: evidencePack.suggestion }
+      : {}),
+    ...(typeof evidencePack.rationale === "string"
+      ? { rationale: evidencePack.rationale }
+      : {}),
+  };
+}
+
+function cloneLocationRecord(
+  location: Record<string, unknown>,
+): Record<string, unknown> {
+  return structuredClone(location);
+}
+
+function cloneSemanticLocation(
+  value: TableRuleInspectionFinding["semantic_hit"],
+): Record<string, unknown> {
+  return {
+    ...value,
+    ...(value.header_path ? { header_path: [...value.header_path] } : {}),
+  };
 }
 
 export type { DeterministicDocxTransformResult };

@@ -3,6 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildHighRiskReviewItemsFromJob,
   buildManualFeedbackActionResult,
   buildManualManuscriptTypeOptions,
   buildJournalTemplateOptions,
@@ -529,12 +530,13 @@ test("manual feedback helpers derive the governed snapshot context and build rul
     buildManualFeedbackActionResult({
       feedbackCategory: "missing_knowledge",
       feedbackRecordId: "feedback-1",
-      learningCandidateId: "candidate-1",
+      reviewItemId: "review-item-1",
+      recommendedRoute: "knowledge_candidate",
     }),
     {
       tone: "success",
-      actionLabel: "Submit Manual Feedback",
-      message: "Submitted manual feedback candidate candidate-1",
+      actionLabel: "Submit Review Item",
+      message: "Submitted review item review-item-1",
       details: [
         {
           label: "Feedback Type",
@@ -545,10 +547,323 @@ test("manual feedback helpers derive the governed snapshot context and build rul
           value: "feedback-1",
         },
         {
-          label: "Learning Candidate",
-          value: "candidate-1",
+          label: "Review Item",
+          value: "review-item-1",
+        },
+        {
+          label: "Recommended Route",
+          value: "knowledge_candidate",
         },
       ],
     },
   );
+});
+
+test.skip("editing table inspection findings become high-risk review cards with semantic location", () => {
+  const items = buildHighRiskReviewItemsFromJob({
+    id: "job-editing-table-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_type: "editing_run",
+    status: "completed",
+    requested_by: "editor-1",
+    attempt_count: 1,
+    payload: {
+      tableInspectionFindings: [
+        {
+          ruleId: "rule-table-treatment-group",
+          reason:
+            'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+          semantic_hit: {
+            table_id: "table-1",
+            semantic_target: "header_cell",
+            header_path: ["Treatment group", "n (%)"],
+            column_key: "Treatment group > n (%)",
+            override_source: "journal",
+          },
+        },
+      ],
+    },
+    created_at: "2026-04-18T10:00:00.000Z",
+    updated_at: "2026-04-18T10:01:00.000Z",
+  } as never);
+
+    assert.deepEqual(items, [
+      {
+        id: "rule-table-treatment-group",
+        title: "规则 rule-table-treatment-group 需要人工确认",
+        feedbackCategory: "incorrect_hit",
+        candidate_posture: "inspect_only",
+        riskLevel: "high",
+        summary: "命中的表格规则需要人工复核后再决定是否沉淀。",
+        excerpt:
+          'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+        location: {
+        table_id: "table-1",
+        semantic_target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+        override_source: "journal",
+        },
+        locationText: "表格 table-1 / header_cell",
+        suggestion: undefined,
+        rationale:
+          'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+        evidence_pack: {
+          location: {
+            table_id: "table-1",
+            semantic_target: "header_cell",
+            header_path: ["Treatment group", "n (%)"],
+            column_key: "Treatment group > n (%)",
+            override_source: "journal",
+          },
+          excerpt:
+            'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+          rationale:
+            'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+        },
+        relatedRuleIds: ["rule-table-treatment-group"],
+        relatedKnowledgeItemIds: undefined,
+        originPayload: {
+          source: "table_inspection_finding",
+          ruleId: "rule-table-treatment-group",
+        semantic_hit: {
+          table_id: "table-1",
+          semantic_target: "header_cell",
+          header_path: ["Treatment group", "n (%)"],
+          column_key: "Treatment group > n (%)",
+          override_source: "journal",
+        },
+      },
+    },
+  ]);
+});
+
+test.skip("proofreading nested quality findings become high-risk review cards", () => {
+  const items = buildHighRiskReviewItemsFromJob({
+    id: "job-proofreading-quality-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "proofreading_draft_run",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {
+      proofreadingFindings: {
+        qualityFindings: [
+          {
+            id: "quality-1",
+            title: "统计学表达需人工确认",
+            summary: "P 值表达与期刊规范不一致",
+            excerpt: "P < 0.05",
+            suggestion: "P=0.032",
+            rationale: "统计表达存在高风险误解空间",
+            candidate_posture: "candidate_change",
+            evidence_pack: {
+              location: {
+                paragraph_index: 6,
+              },
+              excerpt: "P < 0.05",
+              suggestion: "P=0.032",
+              rationale: "统计表达存在高风险误解空间",
+            },
+            severity: "error",
+            location: {
+              paragraph_index: 6,
+            },
+            relatedRuleIds: ["rule-statistics-1"],
+          },
+        ],
+      },
+    },
+    created_at: "2026-04-18T10:00:00.000Z",
+    updated_at: "2026-04-18T10:01:00.000Z",
+  } as never);
+
+  assert.deepEqual(items, [
+      {
+        id: "quality-1",
+        title: "统计学表达需人工确认",
+        feedbackCategory: "incorrect_hit",
+        candidate_posture: "candidate_change",
+        riskLevel: "high",
+        summary: "P 值表达与期刊规范不一致",
+        excerpt: "P < 0.05",
+        location: {
+          paragraph_index: 6,
+        },
+        locationText: "段落 6",
+        suggestion: "P=0.032",
+        rationale: "统计表达存在高风险误解空间",
+        evidence_pack: {
+          location: {
+            paragraph_index: 6,
+          },
+          excerpt: "P < 0.05",
+          suggestion: "P=0.032",
+          rationale: "统计表达存在高风险误解空间",
+        },
+        relatedRuleIds: ["rule-statistics-1"],
+        relatedKnowledgeItemIds: undefined,
+        originPayload: {
+          source: "generic_high_risk_item",
+        itemId: "quality-1",
+      },
+    },
+  ]);
+});
+
+test("proofreading nested quality findings expose rule routing metadata on the high-risk review card", () => {
+  const items = buildHighRiskReviewItemsFromJob({
+    id: "job-proofreading-quality-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "proofreading_draft_run",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {
+      proofreadingFindings: {
+        qualityFindings: [
+          {
+            id: "quality-1",
+            title: "ç»Ÿè®¡å­¦è¡¨è¾¾éœ€äººå·¥ç¡®è®¤",
+            summary: "P å€¼è¡¨è¾¾ä¸ŽæœŸåˆŠè§„èŒƒä¸ä¸€è‡´",
+            excerpt: "P < 0.05",
+            suggestion: "P=0.032",
+            rationale: "ç»Ÿè®¡è¡¨è¾¾å­˜åœ¨é«˜é£Žé™©è¯¯è§£ç©ºé—´",
+            candidate_posture: "candidate_change",
+            evidence_pack: {
+              location: {
+                paragraph_index: 6,
+              },
+              excerpt: "P < 0.05",
+              suggestion: "P=0.032",
+              rationale: "ç»Ÿè®¡è¡¨è¾¾å­˜åœ¨é«˜é£Žé™©è¯¯è§£ç©ºé—´",
+            },
+            severity: "error",
+            location: {
+              paragraph_index: 6,
+            },
+            relatedRuleIds: ["rule-statistics-1"],
+          },
+        ],
+      },
+    },
+    created_at: "2026-04-18T10:00:00.000Z",
+    updated_at: "2026-04-18T10:01:00.000Z",
+  } as never);
+
+  assert.equal(items.length, 1);
+
+  const [item] = items;
+  assert.equal(item?.id, "quality-1");
+  assert.equal(typeof item?.title, "string");
+  assert.ok((item?.title?.length ?? 0) > 0);
+  assert.equal(item?.feedbackCategory, "incorrect_hit");
+  assert.equal(item?.candidate_posture, "candidate_change");
+  assert.equal(item?.riskLevel, "high");
+  assert.equal(typeof item?.summary, "string");
+  assert.ok((item?.summary?.length ?? 0) > 0);
+  assert.equal(item?.excerpt, "P < 0.05");
+  assert.deepEqual(item?.location, {
+    paragraph_index: 6,
+  });
+  assert.equal(item?.locationText, "\u6bb5\u843d 6");
+  assert.equal(item?.suggestion, "P=0.032");
+  assert.equal(typeof item?.rationale, "string");
+  assert.ok((item?.rationale?.length ?? 0) > 0);
+  assert.deepEqual(item?.evidence_pack, {
+    location: {
+      paragraph_index: 6,
+    },
+    excerpt: "P < 0.05",
+    suggestion: "P=0.032",
+    rationale: item?.rationale,
+  });
+  assert.deepEqual(item?.relatedRuleIds, ["rule-statistics-1"]);
+  assert.deepEqual(item?.relatedKnowledgeItemIds, []);
+  assert.equal(item?.recommendedRoute, "rule_candidate");
+  assert.deepEqual(item?.originPayload, {
+    source: "generic_high_risk_item",
+    itemId: "quality-1",
+  });
+});
+
+test("editing table inspection findings expose semantic evidence and rule routing metadata", () => {
+  const items = buildHighRiskReviewItemsFromJob({
+    id: "job-editing-table-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_type: "editing_run",
+    status: "completed",
+    requested_by: "editor-1",
+    attempt_count: 1,
+    payload: {
+      tableInspectionFindings: [
+        {
+          ruleId: "rule-table-treatment-group",
+          reason:
+            'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+          semantic_hit: {
+            table_id: "table-1",
+            semantic_target: "header_cell",
+            header_path: ["Treatment group", "n (%)"],
+            column_key: "Treatment group > n (%)",
+            override_source: "journal",
+          },
+        },
+      ],
+    },
+    created_at: "2026-04-18T10:00:00.000Z",
+    updated_at: "2026-04-18T10:01:00.000Z",
+  } as never);
+
+  assert.equal(items.length, 1);
+
+  const [item] = items;
+  assert.equal(item?.id, "rule-table-treatment-group");
+  assert.equal(
+    item?.title,
+    "\u89c4\u5219 rule-table-treatment-group \u9700\u8981\u4eba\u5de5\u786e\u8ba4",
+  );
+  assert.equal(item?.feedbackCategory, "incorrect_hit");
+  assert.equal(item?.candidate_posture, "inspect_only");
+  assert.equal(item?.riskLevel, "high");
+  assert.equal(
+    item?.summary,
+    "\u547d\u4e2d\u7684\u8868\u683c\u89c4\u5219\u9700\u8981\u4eba\u5de5\u590d\u6838\u540e\u518d\u51b3\u5b9a\u662f\u5426\u6c89\u6dc0\u3002",
+  );
+  assert.equal(
+    item?.excerpt,
+    'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+  );
+  assert.deepEqual(item?.location, {
+    table_id: "table-1",
+    semantic_target: "header_cell",
+    header_path: ["Treatment group", "n (%)"],
+    column_key: "Treatment group > n (%)",
+    override_source: "journal",
+  });
+  assert.equal(item?.locationText, "\u8868\u683c table-1 / header_cell");
+  assert.equal(item?.suggestion, undefined);
+  assert.equal(
+    item?.rationale,
+    'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+  );
+  assert.deepEqual(item?.evidence_pack, {
+    location: item?.location,
+    excerpt:
+      'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+    rationale:
+      'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+  });
+  assert.deepEqual(item?.relatedRuleIds, ["rule-table-treatment-group"]);
+  assert.equal(item?.relatedKnowledgeItemIds, undefined);
+  assert.equal(item?.recommendedRoute, "rule_candidate");
+  assert.deepEqual(item?.originPayload, {
+    source: "table_inspection_finding",
+    ruleId: "rule-table-treatment-group",
+    semantic_hit: item?.location,
+  });
 });

@@ -250,6 +250,320 @@ test("resolution uses table semantic selectors as coverage keys for journal over
   );
 });
 
+test("resolution prefers the higher-priority same-layer rule when duplicate coverage keys collide", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-table-priority-low",
+    rule_set_id: "base-rule-set",
+    order_no: 40,
+    priority: 50,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+      object_granularity: ["table_cell"],
+    },
+    selector: {
+      semantic_target: "data_cell",
+      row_key: "Age",
+      column_key: "Treatment",
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "age-treatment",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Lower-priority table rule should lose.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+  await repository.saveRule({
+    id: "base-rule-table-priority-high",
+    rule_set_id: "base-rule-set",
+    order_no: 41,
+    priority: 200,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+      object_granularity: ["table_cell"],
+    },
+    selector: {
+      semantic_target: "data_cell",
+      row_key: "Age",
+      column_key: "Treatment",
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "age-treatment",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Higher-priority table rule should win.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+
+  assert.ok(
+    resolved.rules.some((rule) => rule.id === "base-rule-table-priority-high"),
+  );
+  assert.deepEqual(
+    resolved.overrides.find(
+      (entry) => entry.overridden_rule_id === "base-rule-table-priority-low",
+    ),
+    {
+      active_rule_id: "base-rule-table-priority-high",
+      overridden_rule_id: "base-rule-table-priority-low",
+      reason:
+        'Same-layer conflict retained the higher-priority rule for coverage key "table::{"column_key":"Treatment","row_key":"Age","semantic_target":"data_cell"}::{"kind":"table_semantic_match","slot":"age-treatment"}".',
+    },
+  );
+});
+
+test("resolution prefers the narrower same-layer scope when priorities tie", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-table-scope-broad",
+    rule_set_id: "base-rule-set",
+    order_no: 50,
+    priority: 100,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+      object_granularity: ["table"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Visit 1", "n (%)"],
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "visit-1-header",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Broad table header rule.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+  await repository.saveRule({
+    id: "base-rule-table-scope-narrow",
+    rule_set_id: "base-rule-set",
+    order_no: 51,
+    priority: 100,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+      object_granularity: ["table_header"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Visit 1", "n (%)"],
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "visit-1-header",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Narrow table header rule.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+
+  assert.ok(
+    resolved.rules.some((rule) => rule.id === "base-rule-table-scope-narrow"),
+  );
+  assert.deepEqual(
+    resolved.overrides.find(
+      (entry) => entry.overridden_rule_id === "base-rule-table-scope-broad",
+    ),
+    {
+      active_rule_id: "base-rule-table-scope-narrow",
+      overridden_rule_id: "base-rule-table-scope-broad",
+      reason:
+        'Same-layer conflict retained the narrower-scope rule for coverage key "table::{"header_path_includes":["Visit 1","n (%)"],"semantic_target":"header_cell"}::{"kind":"table_semantic_match","slot":"visit-1-header"}".',
+    },
+  );
+});
+
+test("resolution filters rules by manuscript type, section, and object granularity when runtime scope is provided", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-table-runtime-scope-match",
+    rule_set_id: "base-rule-set",
+    order_no: 60,
+    priority: 120,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+      object_granularity: ["table_cell"],
+    },
+    selector: {
+      semantic_target: "data_cell",
+      row_key: "Responder rate",
+      column_key: "Week 12",
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "responder-rate-week-12",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Matched runtime-scoped rule.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+  await repository.saveRule({
+    id: "base-rule-table-runtime-scope-miss",
+    rule_set_id: "base-rule-set",
+    order_no: 61,
+    priority: 120,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      manuscript_types: ["review"],
+      sections: ["discussion"],
+      object_granularity: ["paragraph"],
+    },
+    selector: {
+      semantic_target: "data_cell",
+      row_key: "Responder rate",
+      column_key: "Week 12",
+    },
+    trigger: {
+      kind: "table_semantic_match",
+      slot: "responder-rate-week-12-review",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Mismatched runtime-scoped rule.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+    manuscriptType: "clinical_study",
+    section: "results",
+    objectGranularity: "table_cell",
+  } as never);
+
+  assert.deepEqual(
+    resolved.rules.map((rule) => rule.id),
+    ["base-rule-table-runtime-scope-match"],
+  );
+});
+
+test("resolution prefers active rule sets over legacy published rule sets in the same scope", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRuleSet({
+    id: "base-rule-set-active",
+    template_family_id: "family-1",
+    module: "editing",
+    version_no: 2,
+    status: "active",
+  });
+  await repository.saveRule({
+    id: "base-rule-abstract-active",
+    rule_set_id: "base-rule-set-active",
+    order_no: 10,
+    rule_object: "abstract",
+    rule_type: "format",
+    execution_mode: "apply_and_inspect",
+    scope: {
+      sections: ["abstract"],
+      block_kind: "heading",
+    },
+    selector: {
+      section_selector: "abstract",
+      label_selector: { text: BEFORE_HEADING },
+    },
+    trigger: {
+      kind: "exact_text",
+      text: BEFORE_HEADING,
+    },
+    action: {
+      kind: "replace_heading",
+      to: `${BASE_AFTER_HEADING} ACTIVE`,
+    },
+    authoring_payload: {},
+    confidence_policy: "always_auto",
+    severity: "error",
+    enabled: true,
+  });
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+
+  assert.equal(resolved.baseRuleSet?.id, "base-rule-set-active");
+  assert.equal(resolved.rules[0]?.id, "base-rule-abstract-active");
+});
+
 async function seedPublishedRuleScopes(
   repository: InMemoryEditorialRuleRepository,
 ): Promise<void> {

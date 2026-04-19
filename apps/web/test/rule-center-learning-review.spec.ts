@@ -94,7 +94,10 @@ test("rule center learning mode renders a recovery workspace inside the rule cen
 
   assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.match(markup, /\u8f6c\u89c4\u5219\u7ad9/u);
-  assert.match(markup, /\u5148\u5b8c\u6210\u5ba1\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
+  assert.match(
+    markup,
+    /\u53ea\u5904\u7406\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879\u3002\u5148\u5b8c\u6210\u590d\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f\u3002/u,
+  );
   assert.match(markup, /data-mode="rule-center-recovery"/);
   assert.match(markup, /manuscript-42/);
   assert.match(markup, /snapshot-42/);
@@ -200,13 +203,17 @@ test("rule center recovery workspace shows evidence, destination context, and go
   );
 
   assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u4e2d\u5fc3/u);
   assert.match(markup, /\u8bc1\u636e\u6458\u8981/u);
   assert.match(markup, /\u5efa\u8bae\u6a21\u677f\u65cf/u);
   assert.match(markup, /\u5efa\u8bae\u671f\u520a\u6a21\u677f/u);
   assert.match(markup, /\u5ba1\u6838\u901a\u8fc7/u);
   assert.match(markup, /\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /\u9a73\u56de\u5019\u9009/u);
-  assert.match(markup, /\u5148\u5b8c\u6210\u5ba1\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
+  assert.match(
+    markup,
+    /\u53ea\u4fdd\u7559\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879/u,
+  );
   assert.match(markup, /Human-reviewed abstract heading normalization\./);
   assert.match(markup, /Abstract heading normalization/);
   assert.match(markup, /\u7f16\u8f91/u);
@@ -387,6 +394,335 @@ test("rule center recovery workspace renders residual issue provenance truthfull
   assert.doesNotMatch(markup, /\u672a\u6807\u6ce8/u);
 });
 
+test("approved rule candidates surface governed editorial rule draft writeback status", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "admin",
+      initialMode: "learning",
+      controller: {
+        loadRuleLedger: async () => ({
+          category: "recycled_candidate",
+          rows: [],
+        }),
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      },
+      initialLearningCandidates: [
+        {
+          id: "candidate-rule-writeback-1",
+          type: "rule_candidate",
+          status: "approved",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          governed_provenance_kind: "residual_issue",
+          snapshot_asset_id: "snapshot-asset-writeback-1",
+          title: "Abstract heading normalization",
+          proposal_text: "Normalize abstract objective headings to the governed journal style.",
+          created_by: "editor-1",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+          writeback_summaries: [
+            {
+              id: "writeback-rule-applied-1",
+              learning_candidate_id: "candidate-rule-writeback-1",
+              target_type: "editorial_rule_draft",
+              status: "applied",
+              created_draft_asset_id: "editorial-rule-1",
+              created_by: "admin-1",
+              created_at: "2026-04-18T08:20:00.000Z",
+              applied_by: "admin-1",
+              applied_at: "2026-04-18T08:21:00.000Z",
+            },
+          ],
+        },
+      ],
+      initialSelectedLearningCandidateId: "candidate-rule-writeback-1",
+      initialOverview: {
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+        retrievalInsights: {
+          status: "idle",
+          latestRun: null,
+          latestSnapshot: null,
+          signals: [],
+          message: "idle",
+        },
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5199\u56de/u);
+  assert.match(markup, /\u5df2\u5199\u56de/u);
+  assert.match(markup, /editorial-rule-1/);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5df2\u751f\u6210/u);
+});
+
+test("rule center recovery workspace can render governed-hit review items inside the unified review queue", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "admin",
+      initialMode: "learning",
+      controller: {
+        loadRuleLedger: async () => ({
+          category: "recycled_candidate",
+          rows: [],
+        }),
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      },
+      initialReviewItems: [
+        {
+          id: "review-item-governed-1",
+          source_kind: "governed_hit",
+          source_status: "submitted",
+          review_status: "pending",
+          module: "editing",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-42",
+          source_asset_id: "asset-42",
+          title: "Missed governed table rule",
+          summary: "A governed formatting hit was missed in the editing output.",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+          available_actions: [
+            "accept_change_only",
+            "reject_as_false_positive",
+            "route_to_rule_candidate",
+            "route_to_knowledge_candidate",
+            "route_to_prompt_candidate",
+            "archive_as_evidence_only",
+          ],
+          feedback_category: "missed_hit",
+          feedback_record_id: "feedback-42",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "not_required",
+          created_by: "editor-1",
+        },
+      ],
+      initialSelectedReviewItemId: "review-item-governed-1",
+      initialOverview: {
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+        retrievalInsights: {
+          status: "idle",
+          latestRun: null,
+          latestSnapshot: null,
+          signals: [],
+          message: "idle",
+        },
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u4e2d\u5fc3/u);
+  assert.match(markup, /\u6765\u6e90/u);
+  assert.match(markup, /\u6a21\u5757/u);
+  assert.match(markup, /\u98ce\u9669/u);
+  assert.match(markup, /\u5f53\u524d\u72b6\u6001/u);
+  assert.match(markup, /\u64cd\u4f5c/u);
+  assert.match(markup, /review-item-governed-1/);
+  assert.match(markup, /\u4eba\u5de5\u53cd\u9988\u547d\u4e2d/u);
+  assert.match(markup, /\u8f6c\u89c4\u5219\u5019\u9009/u);
+  assert.match(markup, /\u4ec5\u4eba\u5de5\u5904\u7406/u);
+  assert.match(markup, /\u8bef\u62a5\u9a73\u56de/u);
+  assert.match(markup, /\u53ea\u4fdd\u7559\u8bc1\u636e/u);
+  assert.match(markup, /snapshot-42/);
+});
+
+test("rule center recovery workspace excludes non-rule residual issues and non-rule learning candidates", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "admin",
+      initialMode: "learning",
+      controller: {
+        loadRuleLedger: async () => ({
+          category: "recycled_candidate",
+          rows: [],
+        }),
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      },
+      initialReviewItems: [
+        {
+          id: "review-item-residual-knowledge-1",
+          source_kind: "residual_issue",
+          source_status: "candidate_ready",
+          review_status: "pending",
+          module: "editing",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-42",
+          title: "Knowledge-only residual",
+          summary: "This issue should go to knowledge review, not rule center.",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+          available_actions: [
+            "route_to_rule_candidate",
+            "route_to_knowledge_candidate",
+            "route_to_prompt_candidate",
+          ],
+          issue_type: "knowledge_gap",
+          execution_snapshot_id: "execution-42",
+          recommended_route: "knowledge_candidate",
+          harness_validation_status: "passed",
+        },
+        {
+          id: "candidate-knowledge-1",
+          source_kind: "learning_candidate",
+          source_status: "pending_review",
+          review_status: "pending",
+          status: "pending_review",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          title: "Knowledge remediation candidate",
+          summary: "This candidate belongs to knowledge review.",
+          created_at: "2026-04-18T08:06:00.000Z",
+          updated_at: "2026-04-18T08:07:00.000Z",
+          available_actions: ["approve", "reject"],
+          candidate_type: "knowledge_candidate",
+          type: "knowledge_candidate",
+          created_by: "reviewer-1",
+        },
+      ],
+      initialSelectedReviewItemId: "review-item-residual-knowledge-1",
+      initialOverview: {
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+        retrievalInsights: {
+          status: "idle",
+          latestRun: null,
+          latestSnapshot: null,
+          signals: [],
+          message: "idle",
+        },
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+      },
+    }),
+  );
+
+  assert.match(
+    markup,
+    /\u53ea\u4fdd\u7559\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879/u,
+  );
+  assert.match(
+    markup,
+    /\u5f53\u524d\u6ca1\u6709\u5f85\u5904\u7406\u7684\u89c4\u5219\u6cbb\u7406\u590d\u6838\u9879/u,
+  );
+  assert.doesNotMatch(markup, /review-item-residual-knowledge-1/);
+  assert.doesNotMatch(markup, /candidate-knowledge-1/);
+  assert.doesNotMatch(markup, /Knowledge-only residual/);
+  assert.doesNotMatch(markup, /Knowledge remediation candidate/);
+});
+
+test("rule center authoring wizard does not bootstrap from non-rule learning candidates", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "admin",
+      initialView: "authoring",
+      initialLearningCandidates: [
+        {
+          id: "candidate-knowledge-1",
+          type: "knowledge_candidate",
+          status: "approved",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          governed_provenance_kind: "human_feedback",
+          snapshot_asset_id: "snapshot-asset-knowledge-1",
+          title: "Knowledge remediation candidate",
+          proposal_text: "This should continue in knowledge review instead of rule authoring.",
+          created_by: "reviewer-1",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+        },
+      ],
+      initialSelectedLearningCandidateId: "candidate-knowledge-1",
+    }),
+  );
+
+  assert.doesNotMatch(markup, /data-rule-wizard-handoff="candidate"/);
+  assert.doesNotMatch(markup, /candidate-knowledge-1/);
+  assert.doesNotMatch(markup, /Knowledge remediation candidate/);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5411\u5bfc/u);
+});
+
 test("rule candidate handoff builds an authoring prefill with family journal module and provenance context", () => {
   const prefill = buildRuleAuthoringPrefillFromLearningCandidate(
     {
@@ -453,4 +789,64 @@ test("rule candidate handoff builds an authoring prefill with family journal mod
     standard_example: ABSTRACT_OBJECTIVE_NORMALIZED,
     incorrect_example: ABSTRACT_OBJECTIVE_SOURCE,
   });
+});
+
+test("rule center authoring wizard keeps candidate handoff details visible after routing", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Page, {
+      actorRole: "admin",
+      initialView: "authoring",
+      prefilledManuscriptId: "manuscript-42",
+      prefilledReviewedCaseSnapshotId: "snapshot-42",
+      initialLearningCandidates: [
+        {
+          id: "candidate-abstract-1",
+          type: "rule_candidate",
+          status: "approved",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          governed_provenance_kind: "reviewed_case_snapshot",
+          snapshot_asset_id: "snapshot-asset-1",
+          title: "Abstract heading normalization",
+          proposal_text:
+            "Normalize abstract objective headings to the governed journal style.",
+          candidate_payload: {
+            extraction_kind: "reviewed_fragment_diff",
+            before_fragment: ABSTRACT_OBJECTIVE_SOURCE,
+            after_fragment: ABSTRACT_OBJECTIVE_NORMALIZED,
+            evidence_summary: "Human-reviewed abstract heading normalization.",
+          },
+          suggested_rule_object: "abstract",
+          suggested_template_family_id: "family-1",
+          suggested_journal_template_id: "journal-alpha",
+          created_by: "editor-1",
+          created_at: "2026-04-08T08:00:00.000Z",
+          updated_at: "2026-04-08T08:05:00.000Z",
+        },
+      ],
+      initialSelectedLearningCandidateId: "candidate-abstract-1",
+    }),
+  );
+
+  assert.match(markup, /data-rule-wizard-handoff="candidate"/);
+  assert.match(markup, /\u6765\u6e90\u4ea4\u63a5\u4fe1\u606f/u);
+  assert.match(markup, /\u5b66\u4e60\u5019\u9009/u);
+  assert.match(markup, /candidate-abstract-1/);
+  assert.match(markup, /\u6765\u6e90\u7a3f\u4ef6/u);
+  assert.match(markup, /manuscript-42/);
+  assert.match(markup, /\u590d\u6838\u5feb\u7167/u);
+  assert.match(markup, /snapshot-42/);
+  assert.match(markup, /\u5feb\u7167\u8d44\u4ea7/u);
+  assert.match(markup, /snapshot-asset-1/);
+  assert.match(markup, /\u8bc1\u636e\u6458\u8981/u);
+  assert.match(markup, /Human-reviewed abstract heading normalization\./);
+  assert.match(markup, /\u5019\u9009\u5efa\u8bae/u);
+  assert.match(markup, /Normalize abstract objective headings to the governed journal style\./);
+  assert.match(markup, /\u539f\u59cb\u7247\u6bb5/u);
+  assert.match(markup, new RegExp(ABSTRACT_OBJECTIVE_SOURCE));
+  assert.match(markup, /\u5efa\u8bae\u6539\u5199/u);
+  assert.match(markup, new RegExp(ABSTRACT_OBJECTIVE_NORMALIZED));
 });

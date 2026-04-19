@@ -1,9 +1,13 @@
-import type { TemplateGovernanceWorkbenchOverview } from "./template-governance-controller.ts";
+import type { EditorialRuleViewModel } from "../editorial-rules/types.ts";
 import { buildRuleAuthoringPreview } from "./rule-authoring-serialization.ts";
 import type { RuleAuthoringDraft } from "./rule-authoring-types.ts";
 
+export interface RuleAuthoringPreviewOverview {
+  rules: readonly EditorialRuleViewModel[];
+}
+
 export interface RuleAuthoringPreviewPanelProps {
-  overview: TemplateGovernanceWorkbenchOverview | null;
+  overview: RuleAuthoringPreviewOverview | null;
   draft: RuleAuthoringDraft;
 }
 
@@ -50,6 +54,17 @@ export function RuleAuthoringPreviewPanel({
         <div className="template-governance-field-full">
           <span>覆盖关系</span>
           <p>{preview.overrideSummary}</p>
+        </div>
+        <div className="template-governance-field-full" data-rule-hit-reason="field">
+          <span>命中原因</span>
+          <p>{preview.hitReason}</p>
+        </div>
+        <div
+          className="template-governance-field-full"
+          data-rule-manual-review-reason="field"
+        >
+          <span>人工复核原因</span>
+          <p>{preview.manualReviewReason}</p>
         </div>
       </div>
 

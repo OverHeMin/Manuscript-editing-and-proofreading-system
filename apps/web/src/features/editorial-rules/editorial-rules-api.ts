@@ -18,6 +18,7 @@ import type {
   RulePackagePreviewViewModel,
   RulePackageWorkspaceSourceInputViewModel,
   RulePackageWorkspaceViewModel,
+  TransitionEditorialRuleSetInput,
   UpdateExtractionTaskCandidateInputViewModel,
 } from "./types.ts";
 
@@ -60,6 +61,18 @@ export function publishEditorialRuleSet(
   return client.request<EditorialRuleSetViewModel>({
     method: "POST",
     url: `/api/v1/editorial-rules/rule-sets/${ruleSetId}/publish`,
+    body: input,
+  });
+}
+
+export function transitionEditorialRuleSet(
+  client: EditorialRulesHttpClient,
+  ruleSetId: string,
+  input: TransitionEditorialRuleSetInput,
+) {
+  return client.request<EditorialRuleSetViewModel>({
+    method: "POST",
+    url: `/api/v1/editorial-rules/rule-sets/${ruleSetId}/transitions`,
     body: input,
   });
 }

@@ -557,6 +557,434 @@ test("template governance overview keeps rule ledger as the daily-driver entry",
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
 });
 
+test("template governance overview surfaces unified review, Harness, and writeback operations", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadExtractionLedger: async () => ({
+          summary: {
+            awaitingConfirmationCount: 1,
+          },
+        }),
+      }}
+      initialView="overview"
+      initialOverview={{
+        templateFamilies: [],
+        selectedTemplateFamilyId: null,
+        selectedTemplateFamily: null,
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        retrievalInsights: null,
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+      }}
+      initialReviewItems={[
+        {
+          id: "review-governed-hit-1",
+          source_kind: "governed_hit",
+          source_status: "submitted",
+          review_status: "pending",
+          module: "editing",
+          manuscript_id: "manuscript-1",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-1",
+          title: "摘要标题规范化命中",
+          source_asset_id: "asset-1",
+          feedback_category: "incorrect_hit",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "not_required",
+          created_by: "editor-1",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+          available_actions: ["route_to_rule_candidate"],
+        },
+        {
+          id: "review-residual-queued-1",
+          source_kind: "residual_issue",
+          source_status: "validation_pending",
+          review_status: "pending",
+          module: "proofreading",
+          manuscript_id: "manuscript-2",
+          manuscript_type: "clinical_study",
+          title: "表格表注缺失",
+          issue_type: "table_note",
+          execution_snapshot_id: "execution-snapshot-1",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "queued",
+          created_at: "2026-04-18T08:10:00.000Z",
+          updated_at: "2026-04-18T08:12:00.000Z",
+          available_actions: ["validate"],
+        },
+        {
+          id: "review-residual-failed-1",
+          source_kind: "residual_issue",
+          source_status: "validation_failed",
+          review_status: "pending",
+          module: "proofreading",
+          manuscript_id: "manuscript-3",
+          manuscript_type: "clinical_study",
+          title: "统计表达写回失败",
+          issue_type: "statistical_expression",
+          execution_snapshot_id: "execution-snapshot-2",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "failed",
+          created_at: "2026-04-18T08:20:00.000Z",
+          updated_at: "2026-04-18T08:25:00.000Z",
+          available_actions: ["validate", "route_to_rule_candidate"],
+        },
+      ]}
+      initialLearningCandidates={[
+        {
+          id: "candidate-rule-draft-1",
+          type: "rule_candidate",
+          status: "pending_review",
+          module: "proofreading",
+          manuscript_type: "clinical_study",
+          title: "表格表注规则候选",
+          proposal_text: "补充表注与统计符号的校对规则。",
+          created_by: "editor-1",
+          created_at: "2026-04-18T09:00:00.000Z",
+          updated_at: "2026-04-18T09:05:00.000Z",
+          writeback_summaries: [
+            {
+              id: "writeback-draft-1",
+              learning_candidate_id: "candidate-rule-draft-1",
+              target_type: "editorial_rule_draft",
+              status: "draft",
+              created_by: "admin-1",
+              created_at: "2026-04-18T09:06:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "candidate-rule-applied-1",
+          type: "rule_candidate",
+          status: "approved",
+          module: "editing",
+          manuscript_type: "clinical_study",
+          title: "摘要标题规则候选",
+          proposal_text: "把摘要标题统一写回规则中心。",
+          created_by: "editor-2",
+          created_at: "2026-04-18T09:10:00.000Z",
+          updated_at: "2026-04-18T09:15:00.000Z",
+          writeback_summaries: [
+            {
+              id: "writeback-applied-1",
+              learning_candidate_id: "candidate-rule-applied-1",
+              target_type: "editorial_rule_draft",
+              status: "applied",
+              created_by: "admin-1",
+              created_at: "2026-04-18T09:16:00.000Z",
+              applied_by: "admin-2",
+              applied_at: "2026-04-18T09:18:00.000Z",
+            },
+          ],
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u5f85\u5904\u7406/u);
+  assert.match(markup, /Harness \u5f85\u9a8c\u8bc1/u);
+  assert.match(markup, /Harness \u672a\u901a\u8fc7/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5f85\u5199\u56de/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5df2\u5199\u56de/u);
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217\u5f85\u5904\u7406/u);
+  assert.match(markup, /3 \u6761\u9ad8\u98ce\u9669\u547d\u4e2d\u6216\u6b8b\u5dee\u95ee\u9898\u4ecd\u505c\u7559\u5728\u5f85\u590d\u6838\u961f\u5217/u);
+  assert.match(markup, /\u8fdb\u5165\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
+  assert.match(markup, /1 \u6761\u89c4\u5219\u5019\u9009\u6b63\u5728\u7b49\u5f85 Harness \u9a8c\u8bc1/u);
+  assert.match(markup, /1 \u4e2a\u89c4\u5219\u5019\u9009\u5df2\u751f\u6210\u89c4\u5219\u8349\u7a3f\u5199\u56de/u);
+  assert.match(markup, /\u67e5\u770b\u5199\u56de\u8fdb\u5ea6/u);
+  assert.match(markup, /Harness \u8fd0\u884c\u56de\u4f20/u);
+  assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5199\u56de/u);
+});
+
+test("template governance workbench renders release lifecycle controls and blocked Harness gate reasons for the selected rule set", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={{
+        templateFamilies: [
+          {
+            id: "family-1",
+            manuscript_type: "clinical_study",
+            name: "Clinical Study Family",
+            status: "active",
+          },
+        ],
+        selectedTemplateFamilyId: "family-1",
+        selectedTemplateFamily: {
+          id: "family-1",
+          manuscript_type: "clinical_study",
+          name: "Clinical Study Family",
+          status: "active",
+        },
+        journalTemplateProfiles: [],
+        selectedJournalTemplateId: null,
+        selectedJournalTemplateProfile: null,
+        moduleTemplates: [],
+        retrievalInsights: null,
+        knowledgeItems: [],
+        visibleKnowledgeItems: [],
+        boundKnowledgeItems: [],
+        selectedKnowledgeItemId: null,
+        selectedKnowledgeItem: null,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+        ruleSets: [
+          {
+            id: "rule-set-candidate-1",
+            template_family_id: "family-1",
+            module: "editing",
+            version_no: 2,
+            status: "candidate",
+            release_scope: {
+              manuscript_types: ["clinical_study"],
+              sections: ["abstract"],
+              object_granularity: ["heading"],
+            },
+            metrics_summary: {
+              rule_set_id: "rule-set-candidate-1",
+              totals: {
+                governed_hit_count: 20,
+                false_positive_count: 6,
+                human_confirmation_count: 9,
+                accept_change_only_count: 3,
+                evidence_only_archive_count: 1,
+                routed_rule_candidate_count: 4,
+                routed_knowledge_candidate_count: 1,
+                routed_prompt_candidate_count: 1,
+                writeback_created_count: 5,
+                writeback_applied_count: 3,
+              },
+              rates: {
+                false_positive_rate: 0.3,
+                human_confirmation_rate: 0.45,
+                evidence_only_archive_rate: 0.05,
+                writeback_success_rate: 0.6,
+              },
+            },
+            release_comparison: {
+              status: "degraded",
+              recommendation: "hold",
+              baseline_rule_set_id: "rule-set-active-1",
+              compared_rule_set_id: "rule-set-candidate-1",
+              baseline_metrics: {
+                rule_set_id: "rule-set-active-1",
+                totals: {
+                  governed_hit_count: 18,
+                  false_positive_count: 2,
+                  human_confirmation_count: 11,
+                  accept_change_only_count: 4,
+                  evidence_only_archive_count: 0,
+                  routed_rule_candidate_count: 3,
+                  routed_knowledge_candidate_count: 1,
+                  routed_prompt_candidate_count: 0,
+                  writeback_created_count: 4,
+                  writeback_applied_count: 4,
+                },
+                rates: {
+                  false_positive_rate: 0.11,
+                  human_confirmation_rate: 0.61,
+                  evidence_only_archive_rate: 0,
+                  writeback_success_rate: 1,
+                },
+              },
+              candidate_metrics: {
+                rule_set_id: "rule-set-candidate-1",
+                totals: {
+                  governed_hit_count: 20,
+                  false_positive_count: 6,
+                  human_confirmation_count: 9,
+                  accept_change_only_count: 3,
+                  evidence_only_archive_count: 1,
+                  routed_rule_candidate_count: 4,
+                  routed_knowledge_candidate_count: 1,
+                  routed_prompt_candidate_count: 1,
+                  writeback_created_count: 5,
+                  writeback_applied_count: 3,
+                },
+                rates: {
+                  false_positive_rate: 0.3,
+                  human_confirmation_rate: 0.45,
+                  evidence_only_archive_rate: 0.05,
+                  writeback_success_rate: 0.6,
+                },
+              },
+              reasons: ["False-positive rate regressed versus baseline."],
+            },
+          },
+        ],
+        selectedRuleSetId: "rule-set-candidate-1",
+        selectedRuleSet: {
+          id: "rule-set-candidate-1",
+          template_family_id: "family-1",
+          module: "editing",
+          version_no: 2,
+          status: "candidate",
+          release_scope: {
+            manuscript_types: ["clinical_study"],
+            sections: ["abstract"],
+            object_granularity: ["heading"],
+          },
+          metrics_summary: {
+            rule_set_id: "rule-set-candidate-1",
+            totals: {
+              governed_hit_count: 20,
+              false_positive_count: 6,
+              human_confirmation_count: 9,
+              accept_change_only_count: 3,
+              evidence_only_archive_count: 1,
+              routed_rule_candidate_count: 4,
+              routed_knowledge_candidate_count: 1,
+              routed_prompt_candidate_count: 1,
+              writeback_created_count: 5,
+              writeback_applied_count: 3,
+            },
+            rates: {
+              false_positive_rate: 0.3,
+              human_confirmation_rate: 0.45,
+              evidence_only_archive_rate: 0.05,
+              writeback_success_rate: 0.6,
+            },
+          },
+          release_comparison: {
+            status: "degraded",
+            recommendation: "hold",
+            baseline_rule_set_id: "rule-set-active-1",
+            compared_rule_set_id: "rule-set-candidate-1",
+            baseline_metrics: {
+              rule_set_id: "rule-set-active-1",
+              totals: {
+                governed_hit_count: 18,
+                false_positive_count: 2,
+                human_confirmation_count: 11,
+                accept_change_only_count: 4,
+                evidence_only_archive_count: 0,
+                routed_rule_candidate_count: 3,
+                routed_knowledge_candidate_count: 1,
+                routed_prompt_candidate_count: 0,
+                writeback_created_count: 4,
+                writeback_applied_count: 4,
+              },
+              rates: {
+                false_positive_rate: 0.11,
+                human_confirmation_rate: 0.61,
+                evidence_only_archive_rate: 0,
+                writeback_success_rate: 1,
+              },
+            },
+            candidate_metrics: {
+              rule_set_id: "rule-set-candidate-1",
+              totals: {
+                governed_hit_count: 20,
+                false_positive_count: 6,
+                human_confirmation_count: 9,
+                accept_change_only_count: 3,
+                evidence_only_archive_count: 1,
+                routed_rule_candidate_count: 4,
+                routed_knowledge_candidate_count: 1,
+                routed_prompt_candidate_count: 1,
+                writeback_created_count: 5,
+                writeback_applied_count: 3,
+              },
+              rates: {
+                false_positive_rate: 0.3,
+                human_confirmation_rate: 0.45,
+                evidence_only_archive_rate: 0.05,
+                writeback_success_rate: 0.6,
+              },
+            },
+            reasons: ["False-positive rate regressed versus baseline."],
+          },
+        },
+        rules: [
+          {
+            id: "rule-top-1",
+            rule_set_id: "rule-set-candidate-1",
+            order_no: 10,
+            priority: 100,
+            rule_object: "abstract",
+            rule_type: "format",
+            execution_mode: "apply_and_inspect",
+            scope: { sections: ["abstract"] },
+            selector: {},
+            trigger: { kind: "exact_text", text: "摘要 目的" },
+            action: { kind: "replace_heading", to: "（摘要 目的）" },
+            authoring_payload: {},
+            confidence_policy: "always_auto",
+            severity: "error",
+            enabled: true,
+            metrics_summary: {
+              rule_id: "rule-top-1",
+              rule_set_id: "rule-set-candidate-1",
+              totals: {
+                governed_hit_count: 14,
+                false_positive_count: 4,
+                human_confirmation_count: 6,
+                accept_change_only_count: 2,
+                evidence_only_archive_count: 0,
+                routed_rule_candidate_count: 3,
+                routed_knowledge_candidate_count: 1,
+                routed_prompt_candidate_count: 0,
+                writeback_created_count: 4,
+                writeback_applied_count: 2,
+              },
+              rates: {
+                false_positive_rate: 0.29,
+                human_confirmation_rate: 0.43,
+                evidence_only_archive_rate: 0,
+                writeback_success_rate: 0.5,
+              },
+            },
+          },
+        ],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-rule-release-panel="field"/u);
+  assert.match(markup, /data-release-blocked="true"/u);
+  assert.match(markup, /candidate-validation-run-1/u);
+  assert.match(markup, /clinical_study/u);
+  assert.match(markup, /abstract/u);
+  assert.match(markup, /heading/u);
+  assert.match(markup, /data-rule-metrics-panel="field"/u);
+  assert.match(markup, /data-release-comparison-status="degraded"/u);
+  assert.match(markup, /data-rule-metric-row="rule-top-1"/u);
+});
+
 test("template governance workbench page opens the shared rule wizard when authoring is requested directly", () => {
   const Page = TemplateGovernanceWorkbenchPage as unknown as (
     props: Record<string, unknown>,
@@ -761,7 +1189,7 @@ test("template governance workbench page folds learning candidates into the rule
     />,
   );
 
-  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3 · \u8f6c\u89c4\u5219\u7ad9/u);
+  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3\s*·\s*\u7edf\u4e00\u590d\u6838\u4e2d\u5fc3/u);
   assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.match(markup, /\u56de\u6d41\u5019\u9009/u);
   assert.match(markup, /Abstract heading normalization/);

@@ -36,6 +36,7 @@ export interface RuleAuthoringDraftBase<
 > {
   ruleObject: TObject;
   orderNo: number;
+  priority?: number;
   ruleType: EditorialRuleType;
   executionMode: EditorialRuleExecutionMode;
   confidencePolicy: EditorialRuleConfidencePolicy;
@@ -43,6 +44,9 @@ export interface RuleAuthoringDraftBase<
   enabled: boolean;
   evidenceLevel: EditorialRuleEvidenceLevel;
   journalTemplateId?: string | null;
+  manuscriptTypes?: string[];
+  scopeSections?: string[];
+  objectGranularity?: string[];
   manualReviewReasonTemplate?: string;
   linkedKnowledgeItemIds?: string[];
   payload: TPayload;
@@ -293,6 +297,10 @@ export interface RuleAuthoringPreview {
   semanticHitSummary: string;
   expectedEvidenceSummary: string;
   overrideSummary: string;
+  hitReason: string;
+  missReason: string;
+  overrideReason: string;
+  manualReviewReason: string;
 }
 
 export interface RuleAuthoringPreset<

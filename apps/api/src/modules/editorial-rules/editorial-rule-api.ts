@@ -3,6 +3,7 @@ import { EditorialRuleService } from "./editorial-rule-service.ts";
 import type {
   CreateEditorialRuleInput,
   CreateEditorialRuleSetInput,
+  TransitionEditorialRuleSetInput,
 } from "./editorial-rule-service.ts";
 import type {
   EditorialRulePreviewService,
@@ -22,6 +23,7 @@ import type {
   PreviewRulePackageDraftInput,
 } from "./editorial-rule-package-types.ts";
 import type { EditorialRulePackageService } from "./editorial-rule-package-service.ts";
+import type { EditorialRuleActivationMetricsService } from "./editorial-rule-activation-metrics-service.ts";
 import type {
   ExtractionTaskDetailRecord,
   ExtractionTaskRecord,
@@ -44,8 +46,21 @@ interface RouteResponse<T> {
   body: T;
 }
 
+type TransitionEditorialRuleSetRouteInput =
+  | {
+      actorRole: RoleKey;
+      input: TransitionEditorialRuleSetInput;
+    }
+  | ({
+      actorRole: RoleKey;
+    } & TransitionEditorialRuleSetInput);
+
 export interface CreateEditorialRuleApiOptions {
   editorialRuleService: EditorialRuleService;
+  activationMetricsService?: Pick<
+    EditorialRuleActivationMetricsService,
+    "buildReleaseComparison" | "getRuleSetMetrics" | "listRuleMetrics"
+  >;
   editorialRulePreviewService?: EditorialRulePreviewService;
   editorialRulePackageService?: Pick<
     EditorialRulePackageService,
@@ -68,6 +83,7 @@ export interface CreateEditorialRuleApiOptions {
 export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
   const {
     editorialRuleService,
+    activationMetricsService,
     editorialRulePreviewService,
     editorialRulePackageService,
     extractionTaskService,
@@ -89,9 +105,29 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
     },
 
     async listRuleSets(): Promise<RouteResponse<EditorialRuleSetRecord[]>> {
+      const ruleSets = await editorialRuleService.listRuleSets();
+      if (!activationMetricsService) {
+        return {
+          status: 200,
+          body: ruleSets,
+        };
+      }
+
       return {
         status: 200,
-        body: await editorialRuleService.listRuleSets(),
+        body: await Promise.all(
+          ruleSets.map(async (ruleSet) => ({
+            ...ruleSet,
+            metrics_summary: await activationMetricsService.getRuleSetMetrics(ruleSet.id),
+            release_comparison:
+              ruleSet.status === "candidate" ||
+              ruleSet.status === "canary" ||
+              ruleSet.status === "active" ||
+              ruleSet.status === "published"
+                ? await activationMetricsService.buildReleaseComparison(ruleSet.id)
+                : undefined,
+          })),
+        ),
       };
     },
 
@@ -105,6 +141,17 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
       return {
         status: 200,
         body: await editorialRuleService.publishRuleSet(actorRole, ruleSetId),
+      };
+    },
+
+    async transitionRuleSet({
+      actorRole,
+      ...rest
+    }: TransitionEditorialRuleSetRouteInput): Promise<RouteResponse<EditorialRuleSetRecord>> {
+      const input = "input" in rest ? rest.input : rest;
+      return {
+        status: 200,
+        body: await editorialRuleService.transitionRuleSet(actorRole, input),
       };
     },
 
@@ -126,9 +173,23 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
     }: {
       ruleSetId: string;
     }): Promise<RouteResponse<EditorialRuleRecord[]>> {
+      const rules = await editorialRuleService.listRules(ruleSetId);
+      if (!activationMetricsService) {
+        return {
+          status: 200,
+          body: rules,
+        };
+      }
+
+      const metricsByRuleId = await activationMetricsService.listRuleMetrics(
+        rules.map((rule) => rule.id),
+      );
       return {
         status: 200,
-        body: await editorialRuleService.listRules(ruleSetId),
+        body: rules.map((rule) => ({
+          ...rule,
+          metrics_summary: metricsByRuleId.get(rule.id),
+        })),
       };
     },
 

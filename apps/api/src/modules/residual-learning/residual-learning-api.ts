@@ -92,6 +92,7 @@ export function createResidualLearningApi(
       requestedByRole?: RoleKey;
       title?: string;
       proposalText?: string;
+      route?: "rule_candidate" | "knowledge_candidate" | "prompt_template_candidate";
     }): Promise<RouteResponse<LearningCandidateRecord>> {
       return {
         status: 201,
@@ -100,8 +101,20 @@ export function createResidualLearningApi(
         ),
       };
     },
+
+    async resolveIssueDecision(input: {
+      issueId: string;
+      resolution: "manual_only" | "evidence_only" | "archived";
+    }): Promise<RouteResponse<ResidualIssueRecord>> {
+      return {
+        status: 200,
+        body: await residualLearningService.resolveIssueDecision(input),
+      };
+    },
   };
 }
+
+export type ResidualLearningApi = ReturnType<typeof createResidualLearningApi>;
 
 function buildGovernedSourceForResidualValidation(
   issue: ResidualIssueRecord,

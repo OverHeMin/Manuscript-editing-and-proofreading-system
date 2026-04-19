@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { createMigrationChecksum } from "../../src/database/migration-checksum.ts";
+import { resolveApiPackageRoot } from "../../src/database/package-root.ts";
 import {
   getMigrationChecksum,
   runMigrateProcess,
@@ -11,12 +12,28 @@ import {
 } from "./support/migrate-process.ts";
 import { withTemporaryDatabase } from "./support/postgres.ts";
 
-const migrationsDirectory = path.join(import.meta.dirname, "../../src/database/migrations");
+const packageRoot = resolveApiPackageRoot(import.meta.dirname);
+const migrationsDirectory = path.join(packageRoot, "src", "database", "migrations");
 const repositoryMigrationFiles = readdirSync(migrationsDirectory)
   .filter((entry) => entry.endsWith(".sql"))
   .sort((left, right) => left.localeCompare(right));
 const legacyAgentToolingChecksum =
   "f177959ca7039fb15a05b667277235d9fe95ad04bb90d8c9af6783109ab535cd";
+
+test("migration doctor surfaces worker-side cli errors instead of hanging", () => {
+  const doctor = runMigrationDoctorProcess({
+    args: ["--bogus"],
+    databaseUrl: "postgresql://user:pass@127.0.0.1:1/nonexistent",
+  });
+
+  assert.notEqual(doctor.status, 0, "Expected invalid migration doctor options to fail.");
+  assert.equal(doctor.stdout, "", "Expected invalid migration doctor options to avoid stdout.");
+  assert.match(
+    doctor.stderr,
+    /Unknown migration doctor option: --bogus/,
+    "Expected worker-side CLI errors to be returned through stderr.",
+  );
+});
 
 test("migration doctor reports clean migrated databases with no drift", { concurrency: false }, async () => {
   await withTemporaryDatabase(async (databaseUrl) => {

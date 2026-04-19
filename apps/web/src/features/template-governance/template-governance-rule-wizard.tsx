@@ -41,6 +41,7 @@ export interface TemplateGovernanceRuleWizardProps {
   state: RuleWizardState;
   title?: string;
   entryFormState?: RuleWizardEntryFormState;
+  candidateHandoff?: RuleWizardCandidateHandoffViewModel;
   bindingDetail?: Pick<KnowledgeAssetDetailViewModel, "selected_revision">;
   bindingOptions?: RuleWizardBindingOptions;
   bindingFormState?: RuleWizardBindingFormState;
@@ -52,10 +53,29 @@ export interface TemplateGovernanceRuleWizardProps {
   onComplete?: (input?: { releaseAction?: RuleWizardReleaseAction }) => void;
 }
 
+export interface RuleWizardCandidateHandoffViewModel {
+  learningCandidateId: string;
+  sourceLabel: string;
+  moduleLabel: string;
+  manuscriptTypeLabel: string;
+  statusLabel: string;
+  manuscriptId: string | null;
+  reviewedCaseSnapshotId: string | null;
+  sourceAssetLabel: string;
+  sourceAssetId: string | null;
+  suggestedTemplateFamilyId: string | null;
+  suggestedJournalTemplateId: string | null;
+  proposalText: string | null;
+  evidenceSummary: string | null;
+  beforeFragment: string | null;
+  afterFragment: string | null;
+}
+
 export function TemplateGovernanceRuleWizard({
   state,
   title,
   entryFormState = createRuleWizardEntryFormState(),
+  candidateHandoff,
   bindingDetail,
   bindingOptions: providedBindingOptions,
   bindingFormState: providedBindingFormState,
@@ -464,6 +484,94 @@ export function TemplateGovernanceRuleWizard({
           ))}
         </ol>
       </article>
+
+      {state.mode === "candidate" && candidateHandoff ? (
+        <article
+          className="template-governance-card template-governance-ledger-section"
+          data-rule-wizard-handoff="candidate"
+        >
+          <header className="template-governance-ledger-section-header">
+            <h2>来源交接信息</h2>
+            <p>
+              规则草稿已经进入规则中心，但继续保留统一复核中心的来源、定位和证据，避免下游录入时丢失上下文。
+            </p>
+          </header>
+
+          <div className="template-governance-chip-row">
+            <span className="template-governance-chip">{candidateHandoff.sourceLabel}</span>
+            <span className="template-governance-chip template-governance-chip-secondary">
+              {candidateHandoff.moduleLabel}
+            </span>
+            <span className="template-governance-chip template-governance-chip-secondary">
+              {candidateHandoff.manuscriptTypeLabel}
+            </span>
+            <span className="template-governance-chip template-governance-chip-secondary">
+              {candidateHandoff.statusLabel}
+            </span>
+          </div>
+
+          <div className="template-governance-detail-grid">
+            <div>
+              <span>学习候选</span>
+              <p>{candidateHandoff.learningCandidateId}</p>
+            </div>
+            {candidateHandoff.manuscriptId ? (
+              <div>
+                <span>来源稿件</span>
+                <p>{candidateHandoff.manuscriptId}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.reviewedCaseSnapshotId ? (
+              <div>
+                <span>复核快照</span>
+                <p>{candidateHandoff.reviewedCaseSnapshotId}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.sourceAssetId ? (
+              <div>
+                <span>{candidateHandoff.sourceAssetLabel}</span>
+                <p>{candidateHandoff.sourceAssetId}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.suggestedTemplateFamilyId ? (
+              <div>
+                <span>建议模板族</span>
+                <p>{candidateHandoff.suggestedTemplateFamilyId}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.suggestedJournalTemplateId ? (
+              <div>
+                <span>建议期刊模板</span>
+                <p>{candidateHandoff.suggestedJournalTemplateId}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.proposalText ? (
+              <div className="template-governance-field-full">
+                <span>候选建议</span>
+                <p>{candidateHandoff.proposalText}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.evidenceSummary ? (
+              <div className="template-governance-field-full">
+                <span>证据摘要</span>
+                <p>{candidateHandoff.evidenceSummary}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.beforeFragment ? (
+              <div>
+                <span>原始片段</span>
+                <p>{candidateHandoff.beforeFragment}</p>
+              </div>
+            ) : null}
+            {candidateHandoff.afterFragment ? (
+              <div>
+                <span>建议改写</span>
+                <p>{candidateHandoff.afterFragment}</p>
+              </div>
+            ) : null}
+          </div>
+        </article>
+      ) : null}
 
       {renderWizardBody({
         state,

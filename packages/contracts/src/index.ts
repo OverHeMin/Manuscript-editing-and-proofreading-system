@@ -7,6 +7,7 @@ export * from "./templates.js";
 export * from "./knowledge.js";
 export * from "./learning.js";
 export * from "./residual-learning.js";
+export * from "./review-items.js";
 export * from "./learning-governance.js";
 export * from "./editorial-rules.js";
 export * from "./editorial-rule-packages.js";

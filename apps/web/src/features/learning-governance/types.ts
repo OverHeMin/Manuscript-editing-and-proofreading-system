@@ -6,7 +6,8 @@ export type LearningWritebackTarget =
   | "knowledge_item"
   | "module_template"
   | "prompt_template"
-  | "skill_package";
+  | "skill_package"
+  | "editorial_rule_draft";
 
 export type LearningWritebackStatus = "draft" | "applied" | "archived";
 
@@ -85,8 +86,14 @@ export interface ApplySkillPackageWritebackInput
   dependencyTools?: string[];
 }
 
+export interface ApplyEditorialRuleDraftWritebackInput
+  extends ApplyLearningWritebackBaseInput {
+  targetType: "editorial_rule_draft";
+}
+
 export type ApplyLearningWritebackInput =
   | ApplyKnowledgeWritebackInput
   | ApplyModuleTemplateWritebackInput
   | ApplyPromptTemplateWritebackInput
-  | ApplySkillPackageWritebackInput;
+  | ApplySkillPackageWritebackInput
+  | ApplyEditorialRuleDraftWritebackInput;
