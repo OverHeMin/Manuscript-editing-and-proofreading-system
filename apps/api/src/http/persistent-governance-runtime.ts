@@ -213,6 +213,10 @@ import {
   ToolPermissionPolicyService,
 } from "../modules/tool-permission-policies/index.ts";
 import {
+  OpenAiMainlineAiRuntimeExecutor,
+  type MainlineAiRuntimeExecutor,
+} from "../modules/shared/mainline-ai-runtime-executor.ts";
+import {
   createUserAdminApi,
   PostgresUserAdminRepository,
   UserAdminService,
@@ -237,6 +241,7 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
   aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
   aiProviderRuntimeCutoverEnabled?: boolean;
+  mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
 }
 
 export function createPersistentGovernanceRuntime(
@@ -769,6 +774,12 @@ export function createPersistentGovernanceRuntime(
       aiProviderRuntimeService,
     }),
   });
+  const mainlineAiRuntimeExecutor =
+    options.mainlineAiRuntimeExecutor ??
+    new OpenAiMainlineAiRuntimeExecutor({
+      aiGatewayService,
+      aiProviderRuntimeService,
+    });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir: uploadRootDir,
   });
@@ -819,6 +830,8 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor,
+    textAssetRootDir: uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     transactionManager: workbenchTransactionManager,
@@ -846,6 +859,7 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     editorialDocxTransformService,
@@ -875,6 +889,9 @@ export function createPersistentGovernanceRuntime(
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor,
+    textAssetRootDir: uploadRootDir,
+    editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     reviewItemsService,

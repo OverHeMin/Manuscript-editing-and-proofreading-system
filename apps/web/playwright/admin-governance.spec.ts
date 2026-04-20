@@ -145,7 +145,7 @@ test("editing workbench saves a journal template context before running editing"
 
   await page.getByRole("button", { name: "执行编辑" }).click();
 
-  await expect(page.locator("body")).toContainText("已生成资产");
+  await expect(page.locator("body")).toContainText("已生成编辑稿件");
   await expect(page.locator("body")).toContainText(prepared.journalName);
 });
 

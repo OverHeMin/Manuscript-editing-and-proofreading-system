@@ -40,6 +40,12 @@ export interface AppliedDeterministicRuleChange {
   semantic_hit?: TableSemanticHitEvidence;
 }
 
+export interface EditorialTextReplacement {
+  targetText: string;
+  replacementText: string;
+  reason: string;
+}
+
 export interface DeterministicFormatExecutionResult {
   blocks: EditorialTextBlock[];
   appliedRuleIds: string[];
@@ -54,6 +60,7 @@ export interface ApplyDeterministicDocxRulesInput {
   rules: EditorialRuleRecord[];
   resolvedRules?: ResolvedEditorialRule[];
   tableSnapshots?: DocumentStructureTableSnapshot[];
+  aiReplacements?: EditorialTextReplacement[];
 }
 
 export interface DeterministicDocxTransformResult {

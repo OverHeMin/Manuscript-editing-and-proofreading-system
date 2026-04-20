@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-path", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--rules-json", required=True)
+    parser.add_argument("--ai-replacements-json", default="[]")
     return parser.parse_args()
 
 
@@ -52,7 +53,12 @@ def transform_heading(text: str, rule: dict) -> str:
     return replacement
 
 
-def apply_rules_to_docx(source_path: Path, output_path: Path, rules: list[dict]) -> dict:
+def apply_rules_to_docx(
+    source_path: Path,
+    output_path: Path,
+    rules: list[dict],
+    ai_replacements: list[dict],
+) -> dict:
     deterministic_rules = select_deterministic_format_rules(rules)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -69,7 +75,7 @@ def apply_rules_to_docx(source_path: Path, output_path: Path, rules: list[dict])
     applied_changes: list[dict] = []
     applied_rule_ids: list[str] = []
 
-    if not deterministic_rules:
+    if not deterministic_rules and not ai_replacements:
         shutil.copyfile(source_path, output_path)
         return {
             "applied_rule_ids": [],
@@ -106,6 +112,25 @@ def apply_rules_to_docx(source_path: Path, output_path: Path, rules: list[dict])
             )
             break
 
+        for replacement_index, replacement in enumerate(ai_replacements):
+            before_ai = next_text
+            transformed = apply_ai_replacement(next_text, replacement)
+            if transformed == next_text:
+                continue
+
+            replacement_id = f"ai-replacement-{replacement_index + 1}"
+            next_text = transformed
+            applied_rule_ids.append(replacement_id)
+            applied_changes.append(
+                {
+                    "ruleId": replacement_id,
+                    "before": before_ai,
+                    "after": next_text,
+                }
+            )
+            applied_rule_id = replacement_id
+            break
+
         if applied_rule_id is None:
             continue
 
@@ -124,6 +149,18 @@ def apply_rules_to_docx(source_path: Path, output_path: Path, rules: list[dict])
         "applied_changes": applied_changes,
         "inspection_findings": inspection_findings,
     }
+
+
+def apply_ai_replacement(text: str, replacement: dict) -> str:
+    target_text = replacement.get("targetText")
+    replacement_text = replacement.get("replacementText")
+    if not isinstance(target_text, str) or not target_text:
+        return text
+    if not isinstance(replacement_text, str) or not replacement_text:
+        return text
+    if target_text not in text:
+        return text
+    return text.replace(target_text, replacement_text, 1)
 
 
 def is_table_target_rule(rule: dict) -> bool:
@@ -270,6 +307,7 @@ def main() -> None:
         Path(args.source_path),
         Path(args.output_path),
         json.loads(args.rules_json),
+        json.loads(args.ai_replacements_json),
     )
     print(json.dumps(result, ensure_ascii=False))
 

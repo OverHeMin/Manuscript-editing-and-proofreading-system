@@ -6,6 +6,11 @@ import type {
   ManuscriptQualityWorkerResult,
 } from "./manuscript-quality-types.ts";
 import type { ManuscriptQualityIssue } from "@medical/contracts";
+import {
+  buildPythonCommandCandidates,
+  buildWorkspaceChildProcessEnv,
+  isCommandUnavailableError,
+} from "../shared/windows-command-runtime.ts";
 
 const MANUSCRIPT_QUALITY_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -73,7 +78,7 @@ export class PythonManuscriptQualityWorkerAdapter
         });
         return normalizeWorkerResult(raw);
       } catch (error) {
-        if (isCommandMissing(error)) {
+        if (isCommandUnavailableError(error)) {
           lastError = error;
           continue;
         }
@@ -126,7 +131,7 @@ export class PythonManuscriptQualityWorkerAdapter
         });
         return normalizeWorkerResult(raw);
       } catch (error) {
-        if (isCommandMissing(error)) {
+        if (isCommandUnavailableError(error)) {
           lastError = error;
           continue;
         }
@@ -145,10 +150,7 @@ export class PythonManuscriptQualityWorkerAdapter
 }
 
 function buildPythonCandidates(): string[] {
-  const configured = process.env.PYTHON_BIN?.trim();
-  return [configured, "python", "python3"].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  return buildPythonCommandCandidates();
 }
 
 function dedupeStrings(values: string[]): string[] {
@@ -163,6 +165,7 @@ function runPythonScript(input: {
   return new Promise((resolve, reject) => {
     const child = spawn(input.pythonBin, [input.scriptPath], {
       stdio: ["pipe", "pipe", "pipe"],
+      env: buildWorkspaceChildProcessEnv(),
     });
     let stdout = "";
     let stderr = "";
@@ -266,10 +269,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isCommandMissing(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
-}

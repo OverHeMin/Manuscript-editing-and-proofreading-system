@@ -10,6 +10,7 @@ import {
   createInMemoryApiRuntime,
   type ApiHttpServer,
 } from "../../src/http/api-http-server.ts";
+import { NoModelRouteConfiguredError } from "../../src/modules/ai-gateway/index.ts";
 import {
   createWorkbenchRuntime,
   loginAsDemoUser,
@@ -1302,6 +1303,50 @@ test("workbench http routes expose knowledge ai intake and semantic assist sugge
     assert.equal(assetResponse.status, 200);
     assert.equal(assetBody.selected_revision.title, "AI assist baseline draft");
     assert.equal(assetBody.selected_revision.summary, undefined);
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http knowledge ai intake returns service unavailable when no model route is configured", async () => {
+  const runtime = createWorkbenchRuntime();
+  runtime.knowledgeApi.createAiIntakeSuggestion = async () => {
+    throw new NoModelRouteConfiguredError("editing");
+  };
+
+  const server = createApiHttpServer({
+    appEnv: "local",
+    allowedOrigins: ["http://127.0.0.1:4173"],
+    runtime: runtime as never,
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string", "Expected a tcp server address.");
+  const baseUrl = `http://127.0.0.1:${(address as AddressInfo).port}`;
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const intakeResponse = await fetch(`${baseUrl}/api/v1/knowledge/library/ai-intake`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sourceText: "Clinical studies must disclose the primary endpoint.",
+      }),
+    });
+    const intakeBody = (await intakeResponse.json()) as {
+      error: string;
+      message: string;
+    };
+
+    assert.equal(intakeResponse.status, 503);
+    assert.equal(intakeBody.error, "service_unavailable");
+    assert.match(intakeBody.message, /model route/i);
   } finally {
     await stopServer(server);
   }

@@ -75,7 +75,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(runScreeningButton).toBeEnabled();
   await runScreeningButton.click();
   await expect(page.locator("body")).toContainText("操作已完成");
-  await expect(page.locator("body")).toContainText("已生成资产");
+  await expect(page.locator("body")).toContainText("已生成初筛报告");
   const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
   await expect(editingLink).toBeVisible();
 
@@ -90,7 +90,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   const runEditingButton = page.getByRole("button", { name: "执行编辑" });
   await expect(runEditingButton).toBeEnabled();
   await runEditingButton.click();
-  await expect(page.locator("body")).toContainText("已生成资产");
+  await expect(page.locator("body")).toContainText("已生成编辑稿件");
   const editedAsset = await waitForCurrentAsset(request, manuscriptId, "edited_docx");
   const editingJob = await waitForJob(
     request,
@@ -140,7 +140,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.getByRole("button", { name: "确认校对定稿" })).toBeEnabled();
 
   await page.getByRole("button", { name: "确认校对定稿" }).click();
-  await expect(page.locator("body")).toContainText("已完成终稿资产");
+  await expect(page.locator("body")).toContainText("已生成校对稿件");
   await expect(page.locator("body")).toContainText("当前校对终稿已激活，可继续下游交付。");
 
   await page.getByRole("button", { name: "发布人工终稿" }).click();

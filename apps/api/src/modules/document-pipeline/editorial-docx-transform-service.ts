@@ -17,6 +17,11 @@ import type {
   TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
 import { describeTableInspectionReason } from "../editorial-execution/editorial-rule-expectation.ts";
+import {
+  buildPythonCommandCandidates,
+  buildWorkspaceChildProcessEnv,
+  isCommandUnavailableError,
+} from "../shared/windows-command-runtime.ts";
 
 const APPLY_EDITORIAL_RULES_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -80,13 +85,14 @@ export class EditorialDocxTransformService {
       tableSnapshots: input.tableSnapshots ?? [],
       tableHitService: this.tableHitService,
     });
+    const aiReplacements = input.aiReplacements ?? [];
     const sourcePath = resolveStoragePath(this.rootDir, sourceAsset.storage_key);
     const outputPath = resolveStoragePath(this.rootDir, input.outputStorageKey);
 
     await this.ensureSourceDocxMaterialized(sourceAsset, sourcePath);
     await mkdir(path.dirname(outputPath), { recursive: true });
 
-    if (deterministicRules.length === 0) {
+    if (deterministicRules.length === 0 && aiReplacements.length === 0) {
       await copyFile(sourcePath, outputPath);
       return {
         appliedRuleIds: [],
@@ -99,6 +105,7 @@ export class EditorialDocxTransformService {
       sourcePath,
       outputPath,
       rules: deterministicRules,
+      aiReplacements,
     });
     return {
       ...workerResult,
@@ -164,26 +171,19 @@ export class EditorialDocxTransformService {
   }
 }
 
-function buildPythonCandidates(): string[] {
-  const configured = process.env.PYTHON_BIN?.trim();
-  const candidates = [configured, "python", "python3"].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
-  return [...new Set(candidates)];
-}
-
 async function runApplyRulesWorker(input: {
   sourcePath: string;
   outputPath: string;
   rules: unknown[];
+  aiReplacements?: unknown[];
 }): Promise<DeterministicDocxTransformResult> {
   let lastError: Error | undefined;
 
-  for (const pythonBin of buildPythonCandidates()) {
+  for (const pythonBin of buildPythonCommandCandidates()) {
     try {
       return await runPythonScript(pythonBin, input);
     } catch (error) {
-      if (isCommandMissing(error)) {
+      if (isCommandUnavailableError(error)) {
         lastError = error;
         continue;
       }
@@ -206,6 +206,7 @@ function runPythonScript(
     sourcePath: string;
     outputPath: string;
     rules: unknown[];
+    aiReplacements?: unknown[];
   },
 ): Promise<DeterministicDocxTransformResult> {
   return new Promise((resolve, reject) => {
@@ -217,10 +218,13 @@ function runPythonScript(
       input.outputPath,
       "--rules-json",
       JSON.stringify(input.rules),
+      "--ai-replacements-json",
+      JSON.stringify(input.aiReplacements ?? []),
     ];
 
     const child = spawn(pythonBin, args, {
       stdio: ["ignore", "pipe", "pipe"],
+      env: buildWorkspaceChildProcessEnv(),
     });
     let stdout = "";
     let stderr = "";
@@ -341,12 +345,12 @@ async function runDocxMaterializer(input: {
 }): Promise<void> {
   let lastError: Error | undefined;
 
-  for (const pythonBin of buildPythonCandidates()) {
+  for (const pythonBin of buildPythonCommandCandidates()) {
     try {
       await runMaterializerScript(pythonBin, input);
       return;
     } catch (error) {
-      if (isCommandMissing(error)) {
+      if (isCommandUnavailableError(error)) {
         lastError = error;
         continue;
       }
@@ -392,6 +396,7 @@ function runMaterializerScript(
 
     const child = spawn(pythonBin, args, {
       stdio: ["ignore", "ignore", "pipe"],
+      env: buildWorkspaceChildProcessEnv(),
     });
     let stderr = "";
 
@@ -431,14 +436,6 @@ function resolveStoragePath(rootDir: string, storageKey: string): string {
   }
 
   return absolutePath;
-}
-
-function isCommandMissing(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {

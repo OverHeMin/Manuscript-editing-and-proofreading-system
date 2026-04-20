@@ -29,6 +29,7 @@ import type {
   ContentRuleCandidate,
   EditorialSourceBlockResolver,
   DeterministicDocxTransformResult,
+  EditorialTextBlock,
   ManualReviewItem,
   TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
@@ -68,6 +69,11 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
+import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
+import {
+  EditingAiPlanService,
+  type EditingAiPlan,
+} from "./editing-ai-plan-service.ts";
 
 export interface RunEditingInput {
   manuscriptId: string;
@@ -108,6 +114,8 @@ export interface EditingServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
+  editingAiPlanService?: Pick<EditingAiPlanService, "createPlan">;
   editorialDocxTransformService?: Pick<
     EditorialDocxTransformService,
     "applyDeterministicRules"
@@ -164,6 +172,7 @@ export class EditingService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly editingAiPlanService: Pick<EditingAiPlanService, "createPlan">;
   private readonly editorialDocxTransformService: Pick<
     EditorialDocxTransformService,
     "applyDeterministicRules"
@@ -210,6 +219,11 @@ export class EditingService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.editingAiPlanService =
+      options.editingAiPlanService ??
+      new EditingAiPlanService({
+        mainlineAiRuntimeExecutor: options.mainlineAiRuntimeExecutor,
+      });
     this.editorialDocxTransformService =
       options.editorialDocxTransformService ??
       new EditorialDocxTransformService({
@@ -412,6 +426,10 @@ export class EditingService {
               releaseCheckProfileId: normalizedContext.releaseCheckProfileId,
             });
       const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
+      const sourceBlocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+        manuscriptId: input.manuscriptId,
+        assetId: input.parentAssetId,
+      });
       const documentStructureSnapshot = this.documentStructureService
         ? await this.documentStructureService.extract({
             manuscriptId: input.manuscriptId,
@@ -423,9 +441,19 @@ export class EditingService {
       const qualityRun = await this.runManuscriptQualityChecks({
         manuscriptId: input.manuscriptId,
         assetId: input.parentAssetId,
+        sourceBlocks,
         tableSnapshots: documentStructureSnapshot?.tables ?? [],
         qualityPackageVersionIds: normalizedContext.qualityPackageVersionIds,
       });
+      const editingPlan = structuredClone(
+        await this.editingAiPlanService.createPlan({
+          manuscriptId: input.manuscriptId,
+          sourceFileName:
+            sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+          sourceBlocks,
+          qualityIssues: qualityRun?.issues,
+        }),
+      ) as EditingAiPlan;
 
       const queuedJob: JobRecord = {
         id: jobId,
@@ -515,6 +543,7 @@ export class EditingService {
                 ),
               }
             : {}),
+          editingPlan,
         },
         attempt_count: 0,
         started_at: undefined,
@@ -534,6 +563,7 @@ export class EditingService {
           rules: normalizedContext.rules,
           resolvedRules: normalizedContext.resolvedRules,
           tableSnapshots: documentStructureSnapshot?.tables ?? [],
+          aiReplacements: editingPlan.replacements,
         });
 
       const asset = await documentAssetService.createAsset({
@@ -645,6 +675,7 @@ export class EditingService {
                 qualityFindings: annotatedQualityFindings,
               }
             : {}),
+          editingPlan,
           appliedRuleIds: [...deterministicTransform.appliedRuleIds],
           appliedChanges: deterministicTransform.appliedChanges.map((change) => ({
             ...change,
@@ -720,6 +751,7 @@ export class EditingService {
   private async runManuscriptQualityChecks(input: {
     manuscriptId: string;
     assetId: string;
+    sourceBlocks?: EditorialTextBlock[];
     tableSnapshots?: DocumentStructureTableSnapshot[];
     qualityPackageVersionIds?: string[];
   }) {
@@ -727,10 +759,12 @@ export class EditingService {
       return undefined;
     }
 
-    const blocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
-      manuscriptId: input.manuscriptId,
-      assetId: input.assetId,
-    });
+    const blocks =
+      input.sourceBlocks ??
+      (await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+        manuscriptId: input.manuscriptId,
+        assetId: input.assetId,
+      }));
 
     return this.manuscriptQualityService.runChecks({
       blocks: blocks.map((block) => ({

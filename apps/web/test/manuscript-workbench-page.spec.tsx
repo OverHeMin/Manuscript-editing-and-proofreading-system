@@ -4,10 +4,14 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildHighRiskReviewItemsFromJob,
+  buildModuleRunSuccessMessage,
   buildManualFeedbackActionResult,
   buildManualManuscriptTypeOptions,
   buildJournalTemplateOptions,
+  buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
+  resolveGovernedExecutionBlockMessage,
+  resolveResultMaterializationFailureMessage,
   resolveTemplateFamilyIdForManuscriptType,
   resolveManualFeedbackContext,
   buildTemplateFamilyOptions,
@@ -63,6 +67,64 @@ test("submission workbench keeps the upload intake as the default rendering path
   assert.match(markup, /type="file"/);
   assert.match(markup, /multiple/);
   assert.match(markup, /上传稿件/u);
+});
+
+test("governed execution preflight exposes explicit provider and runtime readiness failures", () => {
+  assert.equal(
+    resolveGovernedExecutionBlockMessage("editing", {
+      mode: "editing",
+      providerReadinessStatus: "warning",
+      runtimeBindingReadinessStatus: "ready",
+    }),
+    "编辑的 AI 提供商未就绪，请先检查模型连接后再执行。",
+  );
+  assert.equal(
+    resolveGovernedExecutionBlockMessage("screening", {
+      mode: "screening",
+      providerReadinessStatus: "ok",
+      runtimeBindingReadinessStatus: "missing",
+    }),
+    "初筛尚未绑定可用运行时，请先完成运行时绑定后再执行。",
+  );
+  assert.equal(
+    resolveGovernedExecutionBlockMessage("proofreading", {
+      mode: "proofreading",
+      providerReadinessStatus: "ok",
+      runtimeBindingReadinessStatus: "degraded",
+    }),
+    "校对的运行时绑定处于降级状态，请修复后再执行。",
+  );
+});
+
+test("module success messages mention the generated output type", () => {
+  assert.equal(
+    buildModuleRunSuccessMessage("screening", {
+      id: "asset-screening-1",
+      asset_type: "screening_report",
+    }),
+    "已生成初筛报告 asset-screening-1",
+  );
+  assert.equal(
+    buildModuleRunSuccessMessage("editing", {
+      id: "asset-editing-1",
+      asset_type: "edited_docx",
+    }),
+    "已生成编辑稿件 asset-editing-1",
+  );
+  assert.equal(
+    buildModuleRunSuccessMessage("proofreading", {
+      id: "asset-proofreading-1",
+      asset_type: "final_proof_annotated_docx",
+    }),
+    "已生成校对稿件 asset-proofreading-1",
+  );
+});
+
+test("result materialization failures name the affected module", () => {
+  assert.equal(
+    resolveResultMaterializationFailureMessage("proofreading"),
+    "校对已完成，但结果文件尚未生成可下载链接，请刷新后重试。",
+  );
 });
 
 test("screening editing and proofreading share the compact desk family without oversized internal intro blocks", () => {
@@ -280,6 +342,44 @@ test("workbench run helpers use stage-specific generated file names with correct
   );
 });
 
+test("AI recognition uses governed module input by default and only sends bare when explicitly requested", () => {
+  assert.deepEqual(
+    buildWorkbenchModuleRunInput({
+      mode: "editing",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-original-1",
+      actorRole: "admin",
+    }),
+    {
+      mode: "editing",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-original-1",
+      actorRole: "admin",
+      storageKey: "runs/manuscript-1/editing/output",
+      fileName: "editing-manuscript.docx",
+    },
+  );
+
+  assert.deepEqual(
+    buildWorkbenchModuleRunInput({
+      mode: "editing",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-original-1",
+      actorRole: "admin",
+      executionMode: "bare",
+    }),
+    {
+      mode: "editing",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-original-1",
+      actorRole: "admin",
+      storageKey: "runs/manuscript-1/editing/output",
+      fileName: "editing-manuscript.docx",
+      executionMode: "bare",
+    },
+  );
+});
+
 test("upload title helper defaults single-file titles to the uploaded file name without the extension", () => {
   assert.equal(
     deriveUploadTitleFromFileName("心内科-病例报告.docx", "submission sample manuscript"),
@@ -295,7 +395,7 @@ test("upload title helper defaults single-file titles to the uploaded file name 
   );
 });
 
-test("focus canvas shows the one-time bare AI action for governed module work while leaving proofreading finalize unchanged", () => {
+test("focus canvas shows the AI recognition action for governed module work while leaving proofreading finalize unchanged", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchFocusCanvas
       mode="editing"
@@ -404,7 +504,7 @@ test("focus canvas shows the one-time bare AI action for governed module work wh
           selectedAssetId: "asset-original-1",
           emptyLabel: "请选择资产",
           actionLabel: "Run Editing",
-          secondaryActionLabel: "Run Bare AI Once",
+          secondaryActionLabel: "Run AI Recognition",
           options: [
             {
               value: "asset-original-1",

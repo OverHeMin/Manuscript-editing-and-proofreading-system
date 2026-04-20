@@ -7,6 +7,11 @@ import type {
   EditorialTextBlock,
   ProofreadingSourceBlockResolver,
 } from "../editorial-execution/types.ts";
+import {
+  buildPythonCommandCandidates,
+  buildWorkspaceChildProcessEnv,
+  isCommandUnavailableError,
+} from "../shared/windows-command-runtime.ts";
 
 const EXTRACT_DOCX_STRUCTURE_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -239,22 +244,14 @@ function resolveStoragePath(rootDir: string, storageKey: string): string {
   return absolutePath;
 }
 
-function buildPythonCandidates(): string[] {
-  const configured = process.env.PYTHON_BIN?.trim();
-  const candidates = [configured, "python", "python3"].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
-  return [...new Set(candidates)];
-}
-
 async function runWorker(sourcePath: string): Promise<unknown> {
   let lastError: Error | undefined;
 
-  for (const pythonBin of buildPythonCandidates()) {
+  for (const pythonBin of buildPythonCommandCandidates()) {
     try {
       return await runPythonScript(pythonBin, sourcePath);
     } catch (error) {
-      if (isCommandMissing(error)) {
+      if (isCommandUnavailableError(error)) {
         lastError = error;
         continue;
       }
@@ -276,6 +273,7 @@ function runPythonScript(pythonBin: string, sourcePath: string): Promise<unknown
       [EXTRACT_DOCX_STRUCTURE_SCRIPT, "--source-path", sourcePath],
       {
         stdio: ["ignore", "pipe", "pipe"],
+        env: buildWorkspaceChildProcessEnv(),
       },
     );
     let stdout = "";
@@ -323,10 +321,6 @@ function readOptionalString(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isCommandMissing(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {

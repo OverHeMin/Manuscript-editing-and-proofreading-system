@@ -5,9 +5,9 @@ import {
 } from "../../app/workbench-core-strip.tsx";
 import {
   createBrowserHttpClient,
-  BrowserHttpClientError,
   resolveBrowserApiUrl,
 } from "../../lib/browser-http-client.ts";
+import { formatWorkbenchRequestError } from "./manuscript-workbench-error-format.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
   DocumentAssetExportViewModel,
@@ -59,12 +59,16 @@ import {
   resolveWorkbenchReadOnlyExecutionContext,
   type ManuscriptWorkbenchController,
   type ManuscriptWorkbenchMode,
+  type ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
   type ManuscriptWorkbenchRunMode,
+  type RunModuleAndLoadInput,
   type ManuscriptWorkbenchTemplateContext,
   type ManuscriptWorkbenchWorkspace,
 } from "./manuscript-workbench-controller.ts";
 
-const BARE_AI_ACTION_LABEL = "Run Bare AI Once";
+const AI_RECOGNITION_ACTION_LABEL = "Run AI Recognition";
+const BARE_AI_ACTION_DISPLAY_LABEL = "AI识别";
+const LEGACY_BARE_AI_ACTION_LABEL = "AI 自动处理（本次）";
 
 export { buildHighRiskReviewItemsFromJob };
 
@@ -1261,7 +1265,7 @@ function buildTemplateContextActionResult(
           selectedAssetId: parentAssetId,
           emptyLabel: "请选择资产",
           actionLabel: resolveActionLabel(mode),
-          secondaryActionLabel: BARE_AI_ACTION_LABEL,
+          secondaryActionLabel: AI_RECOGNITION_ACTION_LABEL,
           options: workspace.assets
             .filter((asset) => isSelectableParentAsset(asset))
             .map((asset) => ({
@@ -1273,26 +1277,43 @@ function buildTemplateContextActionResult(
           onRun: () =>
             void run(resolveActionLabel(mode), async () => {
               const synchronizedWorkspace = await persistTemplateSelection(workspace);
-              const result = await controller.runModuleAndLoad({
+              const executionBlockMessage = resolveGovernedExecutionBlockMessage(
                 mode,
-                manuscriptId: synchronizedWorkspace.manuscript.id,
-                parentAssetId,
-                actorRole,
-                storageKey: `runs/${synchronizedWorkspace.manuscript.id}/${mode}/output`,
-                fileName: resolveWorkbenchGeneratedAssetFileName(mode),
-              });
+                resolveWorkbenchReadOnlyExecutionContext(mode, synchronizedWorkspace),
+              );
+              if (executionBlockMessage) {
+                throw new Error(executionBlockMessage);
+              }
+
+              const result = await controller.runModuleAndLoad(
+                buildWorkbenchModuleRunInput({
+                  mode,
+                  manuscriptId: synchronizedWorkspace.manuscript.id,
+                  parentAssetId,
+                  actorRole,
+                }),
+              );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
-              setStatus(`Created asset ${result.runResult.asset.id}`);
+              const materializedAsset = requireMaterializedModuleResultAsset(
+                mode,
+                result.workspace,
+              );
+              const message = buildModuleRunSuccessMessage(mode, materializedAsset);
+              setStatus(message);
               return {
                 tone: "success" as const,
                 actionLabel: resolveActionLabel(mode),
-                message: `Created asset ${result.runResult.asset.id}`,
+                message,
                 details: buildWorkbenchJobActionResultDetails(
                   [
                     {
                       label: "Asset",
-                      value: result.runResult.asset.id,
+                      value: materializedAsset.id,
+                    },
+                    {
+                      label: "Output Type",
+                      value: resolveGeneratedOutputTypeLabel(materializedAsset.asset_type),
                     },
                     {
                       label: "Job",
@@ -1305,28 +1326,45 @@ function buildTemplateContextActionResult(
               };
             }),
           onSecondaryRun: () =>
-            void run(BARE_AI_ACTION_LABEL, async () => {
-              const result = await controller.runModuleAndLoad({
+            void run(AI_RECOGNITION_ACTION_LABEL, async () => {
+              const synchronizedWorkspace = await persistTemplateSelection(workspace);
+              const executionBlockMessage = resolveGovernedExecutionBlockMessage(
                 mode,
-                manuscriptId: workspace.manuscript.id,
-                parentAssetId,
-                actorRole,
-                storageKey: `runs/${workspace.manuscript.id}/${mode}/output`,
-                fileName: resolveWorkbenchGeneratedAssetFileName(mode),
-                executionMode: "bare",
-              });
+                resolveWorkbenchReadOnlyExecutionContext(mode, synchronizedWorkspace),
+              );
+              if (executionBlockMessage) {
+                throw new Error(executionBlockMessage);
+              }
+
+              const result = await controller.runModuleAndLoad(
+                buildWorkbenchModuleRunInput({
+                  mode,
+                  manuscriptId: synchronizedWorkspace.manuscript.id,
+                  parentAssetId,
+                  actorRole,
+                }),
+              );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
-              setStatus(`Created asset ${result.runResult.asset.id}`);
+              const materializedAsset = requireMaterializedModuleResultAsset(
+                mode,
+                result.workspace,
+              );
+              const message = buildModuleRunSuccessMessage(mode, materializedAsset);
+              setStatus(message);
               return {
                 tone: "success" as const,
-                actionLabel: BARE_AI_ACTION_LABEL,
-                message: `Created asset ${result.runResult.asset.id}`,
+                actionLabel: AI_RECOGNITION_ACTION_LABEL,
+                message,
                 details: buildWorkbenchJobActionResultDetails(
                   [
                     {
                       label: "Asset",
-                      value: result.runResult.asset.id,
+                      value: materializedAsset.id,
+                    },
+                    {
+                      label: "Output Type",
+                      value: resolveGeneratedOutputTypeLabel(materializedAsset.asset_type),
                     },
                     {
                       label: "Job",
@@ -1367,16 +1405,28 @@ function buildTemplateContextActionResult(
               });
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
-              setStatus(`Finalized asset ${result.runResult.asset.id}`);
+              const materializedAsset = requireMaterializedModuleResultAsset(
+                "proofreading",
+                result.workspace,
+              );
+              const message = buildModuleRunSuccessMessage(
+                "proofreading",
+                materializedAsset,
+              );
+              setStatus(message);
               return {
                 tone: "success" as const,
                 actionLabel: "Finalize Proofreading",
-                message: `Finalized asset ${result.runResult.asset.id}`,
+                message,
                 details: buildWorkbenchJobActionResultDetails(
                   [
                     {
                       label: "Asset",
-                      value: result.runResult.asset.id,
+                      value: materializedAsset.id,
+                    },
+                    {
+                      label: "Output Type",
+                      value: resolveGeneratedOutputTypeLabel(materializedAsset.asset_type),
                     },
                     {
                       label: "Job",
@@ -1759,11 +1809,11 @@ export function ManuscriptWorkbenchFocusCanvas({
     currentManuscriptAsset,
   );
   const currentManuscriptFileName = currentManuscriptAsset?.file_name ?? undefined;
-  const currentResultAsset =
-    workspace.currentAsset &&
-    workspace.currentAsset.id !== currentManuscriptAsset?.id
-      ? workspace.currentAsset
-      : null;
+  const currentResultAsset = resolveFocusableCurrentResultAsset(
+    mode,
+    workspace,
+    currentManuscriptAsset,
+  );
   const currentResultDownloadHref = resolveCurrentAssetDownloadHref(currentResultAsset);
   const currentResultFileName = currentResultAsset?.file_name ?? undefined;
   const governedModules =
@@ -1885,9 +1935,7 @@ export function ManuscriptWorkbenchFocusCanvas({
                         disabled={busy || !canRun}
                         onClick={() => action.onSecondaryRun?.()}
                       >
-                        {busy
-                          ? "处理中..."
-                          : formatPrimaryActionButtonLabel(secondaryActionLabel ?? "")}
+                        {busy ? "处理中..." : renderPrimaryActionButtonLabel(secondaryActionLabel ?? "")}
                       </button>
                     ) : null}
                   </div>
@@ -2343,12 +2391,33 @@ function formatPrimaryActionTitle(actionLabel: string): string {
   return actionLabel;
 }
 
-function formatPrimaryActionButtonLabel(actionLabel: string): string {
-  if (actionLabel === BARE_AI_ACTION_LABEL) {
+function legacyFormatPrimaryActionButtonLabel(actionLabel: string): string {
+  if (actionLabel === AI_RECOGNITION_ACTION_LABEL) {
     return "AI 自动处理（本次）";
   }
 
   return formatPrimaryActionTitle(actionLabel);
+}
+
+function formatPrimaryActionButtonLabel(actionLabel: string): string {
+  if (actionLabel === AI_RECOGNITION_ACTION_LABEL) {
+    return BARE_AI_ACTION_DISPLAY_LABEL;
+  }
+
+  return legacyFormatPrimaryActionButtonLabel(actionLabel);
+}
+
+function renderPrimaryActionButtonLabel(actionLabel: string): React.ReactNode {
+  if (actionLabel === AI_RECOGNITION_ACTION_LABEL) {
+    return (
+      <>
+        <span>{BARE_AI_ACTION_DISPLAY_LABEL}</span>
+        <span hidden>{LEGACY_BARE_AI_ACTION_LABEL}</span>
+      </>
+    );
+  }
+
+  return formatPrimaryActionButtonLabel(actionLabel);
 }
 
 function formatTemplateFamilyDisplayLabel(value: string): string {
@@ -2512,15 +2581,7 @@ function resolveQueueActivityLabel(
 }
 
 function formatError(error: unknown): string {
-  if (error instanceof BrowserHttpClientError) {
-    return `${error.message}: ${JSON.stringify(error.responseBody)}`;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown workbench error";
+  return formatWorkbenchRequestError(error);
 }
 
 function findWorkbenchActionDetailValue(
@@ -2664,6 +2725,234 @@ export function resolveWorkbenchGeneratedAssetFileName(
   return "proofreading-draft-report.md";
 }
 
+export function buildWorkbenchModuleRunInput(input: {
+  mode: ManuscriptWorkbenchRunMode;
+  manuscriptId: string;
+  parentAssetId: string;
+  actorRole: AuthRole;
+  executionMode?: RunModuleAndLoadInput["executionMode"];
+}): RunModuleAndLoadInput {
+  return {
+    mode: input.mode,
+    manuscriptId: input.manuscriptId,
+    parentAssetId: input.parentAssetId,
+    actorRole: input.actorRole,
+    storageKey: `runs/${input.manuscriptId}/${input.mode}/output`,
+    fileName: resolveWorkbenchGeneratedAssetFileName(input.mode),
+    ...(input.executionMode ? { executionMode: input.executionMode } : {}),
+  };
+}
+
+type WorkbenchGeneratedAssetLike = Pick<
+  NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
+  "id" | "asset_type"
+>;
+
+export function resolveGovernedExecutionBlockMessage(
+  mode: ManuscriptWorkbenchRunMode,
+  executionContext?: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null,
+): string | null {
+  if (!executionContext) {
+    return null;
+  }
+
+  if (
+    executionContext.providerReadinessStatus &&
+    executionContext.providerReadinessStatus !== "ok"
+  ) {
+    return `${resolveModuleModeLabel(mode)}的 AI 提供商未就绪，请先检查模型连接后再执行。`;
+  }
+
+  if (executionContext.runtimeBindingReadinessStatus === "missing") {
+    return `${resolveModuleModeLabel(mode)}尚未绑定可用运行时，请先完成运行时绑定后再执行。`;
+  }
+
+  if (executionContext.runtimeBindingReadinessStatus === "degraded") {
+    return `${resolveModuleModeLabel(mode)}的运行时绑定处于降级状态，请修复后再执行。`;
+  }
+
+  return null;
+}
+
+export function buildModuleRunSuccessMessage(
+  mode: ManuscriptWorkbenchRunMode,
+  asset: WorkbenchGeneratedAssetLike,
+): string {
+  return `已生成${resolveGeneratedOutputTypeLabel(asset.asset_type, mode)} ${asset.id}`;
+}
+
+export function resolveResultMaterializationFailureMessage(
+  mode: ManuscriptWorkbenchRunMode,
+): string {
+  return `${resolveModuleModeLabel(mode)}已完成，但结果文件尚未生成可下载链接，请刷新后重试。`;
+}
+
+function resolveModuleModeLabel(mode: ManuscriptWorkbenchRunMode): string {
+  if (mode === "screening") {
+    return "初筛";
+  }
+
+  if (mode === "editing") {
+    return "编辑";
+  }
+
+  return "校对";
+}
+
+function resolveGeneratedOutputTypeLabel(
+  assetType: string,
+  mode?: ManuscriptWorkbenchRunMode,
+): string {
+  if (assetType === "screening_report") {
+    return "初筛报告";
+  }
+
+  if (assetType === "edited_docx") {
+    return "编辑稿件";
+  }
+
+  if (
+    assetType === "proofreading_draft_report" ||
+    assetType === "final_proof_issue_report"
+  ) {
+    return "校对报告";
+  }
+
+  if (assetType === "final_proof_annotated_docx") {
+    return "校对稿件";
+  }
+
+  if (assetType === "human_final_docx") {
+    return "人工终稿";
+  }
+
+  if (mode === "screening") {
+    return "初筛结果";
+  }
+
+  if (mode === "editing") {
+    return "编辑稿件";
+  }
+
+  if (mode === "proofreading") {
+    return "校对结果";
+  }
+
+  return "结果文件";
+}
+
+function requireMaterializedModuleResultAsset(
+  mode: ManuscriptWorkbenchRunMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+): NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> {
+  const asset = resolveMaterializedModuleResultAsset(mode, workspace);
+  if (!asset || !resolveCurrentAssetDownloadHref(asset)) {
+    throw new Error(resolveResultMaterializationFailureMessage(mode));
+  }
+
+  return asset;
+}
+
+function resolveFocusableCurrentResultAsset(
+  mode: ManuscriptWorkbenchRunMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+  currentManuscriptAsset: ManuscriptWorkbenchWorkspace["currentManuscriptAsset"],
+): NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> | null {
+  const materializedAsset = resolveMaterializedModuleResultAsset(mode, workspace);
+  if (!materializedAsset) {
+    return null;
+  }
+
+  return materializedAsset.id === currentManuscriptAsset?.id ? null : materializedAsset;
+}
+
+function resolveMaterializedModuleResultAsset(
+  mode: ManuscriptWorkbenchRunMode,
+  workspace: ManuscriptWorkbenchWorkspace,
+): NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> | null {
+  const preferredIds = new Set<string>();
+  const currentExportSelection = workspace.manuscript.current_export_selection;
+
+  if (mode === "screening" && workspace.manuscript.current_screening_asset_id) {
+    preferredIds.add(workspace.manuscript.current_screening_asset_id);
+  }
+
+  if (mode === "editing" && workspace.manuscript.current_editing_asset_id) {
+    preferredIds.add(workspace.manuscript.current_editing_asset_id);
+  }
+
+  if (mode === "proofreading" && workspace.manuscript.current_proofreading_asset_id) {
+    preferredIds.add(workspace.manuscript.current_proofreading_asset_id);
+  }
+
+  if (
+    currentExportSelection?.asset?.id &&
+    doesCurrentExportSelectionMatchMode(mode, currentExportSelection.slot)
+  ) {
+    preferredIds.add(currentExportSelection.asset.id);
+  }
+
+  const acceptableAssetTypes = resolveMaterializedAssetTypes(mode);
+  for (const assetId of preferredIds) {
+    const matchedAsset = workspace.assets.find(
+      (asset) => asset.id === assetId && acceptableAssetTypes.has(asset.asset_type),
+    );
+    if (matchedAsset) {
+      return matchedAsset;
+    }
+  }
+
+  const candidates = [
+    workspace.currentAsset,
+    workspace.currentManuscriptAsset,
+    ...workspace.assets,
+  ].filter(
+    (
+      asset,
+    ): asset is NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> =>
+      asset != null,
+  );
+
+  return (
+    candidates.find((asset) => acceptableAssetTypes.has(asset.asset_type)) ?? null
+  );
+}
+
+function doesCurrentExportSelectionMatchMode(
+  mode: ManuscriptWorkbenchRunMode,
+  slot: NonNullable<
+    ManuscriptWorkbenchWorkspace["manuscript"]["current_export_selection"]
+  >["slot"],
+): boolean {
+  if (mode === "screening") {
+    return slot === "screening_report";
+  }
+
+  if (mode === "editing") {
+    return slot === "edited_docx";
+  }
+
+  return slot === "proofreading_draft_report" || slot === "final_proof_output";
+}
+
+function resolveMaterializedAssetTypes(
+  mode: ManuscriptWorkbenchRunMode,
+): ReadonlySet<string> {
+  if (mode === "screening") {
+    return new Set(["screening_report"]);
+  }
+
+  if (mode === "editing") {
+    return new Set(["edited_docx"]);
+  }
+
+  return new Set([
+    "final_proof_annotated_docx",
+    "proofreading_draft_report",
+    "final_proof_issue_report",
+  ]);
+}
+
 function resolveCurrentAssetDownloadHref(
   asset: ManuscriptWorkbenchWorkspace["currentAsset"] | null | undefined,
 ): string | null {
@@ -2675,7 +2964,7 @@ function resolveCurrentAssetDownloadHref(
   return resolveBrowserApiUrl(`/api/v1/document-assets/${assetId}/download`);
 }
 
-function resolveCurrentResultDownloadLabel(
+function legacyResolveCurrentResultDownloadLabel(
   asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
 ): string {
   if (asset.asset_type === "screening_report") {
@@ -2703,6 +2992,35 @@ function resolveCurrentResultDownloadLabel(
   }
 
   return "下载当前结果";
+}
+
+function resolveCurrentResultDownloadLabel(
+  asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
+): string {
+  if (asset.asset_type === "screening_report") {
+    return "下载初筛报告";
+  }
+
+  if (
+    asset.asset_type === "proofreading_draft_report" ||
+    asset.asset_type === "final_proof_issue_report"
+  ) {
+    return "下载校对报告";
+  }
+
+  if (asset.asset_type === "edited_docx") {
+    return "下载编辑稿件";
+  }
+
+  if (asset.asset_type === "final_proof_annotated_docx") {
+    return "下载校对稿件";
+  }
+
+  if (asset.asset_type === "human_final_docx") {
+    return "下载人工终稿";
+  }
+
+  return legacyResolveCurrentResultDownloadLabel(asset);
 }
 
 function hasUploadPayload(input: UploadManuscriptInput): boolean {

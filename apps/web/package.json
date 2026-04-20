@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:persistent": "vite build --mode persistent",
     "preview": "vite preview",
+    "preview:persistent": "vite preview --mode persistent",
     "lint": "pnpm run typecheck",
     "smoke:boot": "node ./scripts/smoke-boot.mjs",
     "test:browser": "pnpm exec playwright test -c playwright.config.ts",

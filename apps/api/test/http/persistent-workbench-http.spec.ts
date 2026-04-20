@@ -47,6 +47,10 @@ import {
   PostgresToolPermissionPolicyRepository,
 } from "../../src/modules/tool-permission-policies/index.ts";
 import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -88,6 +92,59 @@ const seededIds: PersistentWorkbenchSeededIds = {
   proofreadingModelId: "ffffffff-dddd-4ddd-8ddd-dddddddddddd",
 };
 const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
+const persistentWorkbenchAiExecutor: MainlineAiRuntimeExecutor = {
+  async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+    switch (input.module) {
+      case "screening":
+        return {
+          summary: "Persistent screening AI summary.",
+          majorFindings: ["Primary endpoint definition is incomplete."],
+          minorFindings: ["Table labels should be normalized."],
+          riskLevel: "medium",
+          recommendedDecision: "minor_revision",
+        } as T;
+      case "editing": {
+        const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+          ? input.userPayload.sourceBlocks
+          : [];
+        const targetText =
+          findFirstSourceText(sourceBlocks) ?? "Abstract Objective";
+        return {
+          summary: "Persistent editing AI plan.",
+          replacements: [
+            {
+              targetText,
+              replacementText: `${targetText}（编辑建议版）`,
+              reason: "Provide a deterministic replacement for persistent HTTP tests.",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      }
+      case "proofreading": {
+        const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+          ? input.userPayload.sourceBlocks
+          : [];
+        const targetText =
+          findFirstSourceText(sourceBlocks) ?? "Proofreading target";
+        return {
+          summary: "Persistent proofreading AI plan.",
+          corrections: [
+            {
+              targetText,
+              replacementText: `${targetText} [proofread]`,
+              category: "style",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      }
+    }
+  },
+  async executeMarkdown(): Promise<string> {
+    throw new Error("Persistent workbench HTTP tests expect structured AI output.");
+  },
+};
 
 test("persistent workbench upload routes keep manuscripts, assets, jobs, and exports across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
@@ -548,6 +605,135 @@ test("persistent workbench upload auto-binds a governed review baseline when onl
         }
       } finally {
         await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("persistent workbench upload auto-binds a governed review baseline when the persistent store has no review families", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(
+      path.join(os.tmpdir(), "medsys-persistent-review-baseline-empty-"),
+    );
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent review baseline database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const server = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          server.baseUrl,
+          "persistent.admin",
+        );
+        const uploadResponse = await fetch(
+          `${server.baseUrl}/api/v1/manuscripts/upload`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Review manuscript needing first-run governed baseline",
+              createdBy: "forged-admin",
+              fileName: "governed-review-upload-empty.docx",
+              mimeType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              fileContentBase64: "UmV2aWV3IG1hbnVzY3JpcHQgY29udGVudA==",
+            }),
+          },
+        );
+        const uploaded = (await uploadResponse.json()) as {
+          manuscript: {
+            manuscript_type: string;
+            manuscript_type_detection_summary?: {
+              final_type: string;
+            };
+            current_template_family_id?: string;
+            governed_execution_context_summary?: {
+              base_template_family_id?: string;
+              journal_template_selection_state: string;
+              modules: Array<{
+                module: string;
+                status: string;
+                execution_profile_id?: string;
+                runtime_binding_id?: string;
+                resolved_model_id?: string;
+              }>;
+            };
+          };
+        };
+
+        assert.equal(
+          uploadResponse.status,
+          201,
+          `Expected upload to succeed, received ${uploadResponse.status}: ${JSON.stringify(uploaded)}`,
+        );
+        assert.equal(uploaded.manuscript.manuscript_type, "review");
+        assert.equal(
+          uploaded.manuscript.manuscript_type_detection_summary?.final_type,
+          "review",
+        );
+        assert.ok(
+          uploaded.manuscript.current_template_family_id,
+          "Expected upload to auto-bind an active review template family on an empty persistent store.",
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.base_template_family_id,
+          uploaded.manuscript.current_template_family_id,
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.journal_template_selection_state,
+          "base_family_only",
+        );
+        assert.deepEqual(
+          uploaded.manuscript.governed_execution_context_summary?.modules.map(
+            (module) => ({
+              module: module.module,
+              status: module.status,
+              hasExecutionProfile: Boolean(module.execution_profile_id),
+              hasRuntimeBinding: Boolean(module.runtime_binding_id),
+              hasResolvedModel: Boolean(module.resolved_model_id),
+            }),
+          ),
+          [
+            {
+              module: "screening",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "editing",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "proofreading",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+          ],
+        );
+      } finally {
+        await stopServer(server.server);
       }
     } finally {
       await seedPool.end();
@@ -3582,6 +3768,7 @@ async function startPersistentWorkbenchServer(
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
         AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
       }),
+      mainlineAiRuntimeExecutor: persistentWorkbenchAiExecutor,
     }),
     uploadRootDir: input.uploadRootDir,
   });
@@ -3617,4 +3804,24 @@ async function writeDocxFixture(
   const absolutePath = path.join(rootDir, ...storageKey.split("/"));
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, Buffer.from(fileContentBase64, "base64"));
+}
+
+function findFirstSourceText(
+  sourceBlocks: unknown[],
+): string | undefined {
+  for (const block of sourceBlocks) {
+    if (
+      typeof block === "object" &&
+      block !== null &&
+      "text" in block &&
+      typeof (block as { text?: unknown }).text === "string"
+    ) {
+      const text = (block as { text: string }).text.trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+  }
+
+  return undefined;
 }
