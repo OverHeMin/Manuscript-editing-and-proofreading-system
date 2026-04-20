@@ -62,7 +62,32 @@
 - Python 3.12+
 - Docker Desktop（含 `docker compose`）
 
-### 本地启动
+### 持久化本地启动（推荐）
+
+如果你要跑真实登录、真实 PostgreSQL 持久化状态，而不是 demo 壳层，先补两份本地 `.env`：
+
+`apps/api/.env`
+
+```bash
+APP_ENV=development
+API_ALLOWED_ORIGINS=http://127.0.0.1:4173,http://localhost:4173
+```
+
+`apps/web/.env`
+
+```bash
+VITE_APP_ENV=dev
+VITE_API_BASE_URL=http://127.0.0.1:3001
+VITE_ONLYOFFICE_PUBLIC_URL=http://127.0.0.1:58080
+WEB_PORT=4173
+```
+
+说明：
+
+- `apps/api/.env.example` 与 `apps/web/.env.example` 已提供其余本地默认值；上面两份 `.env` 只覆盖持久化启动必须改掉的键。
+- `apps/web/.env` 中如果不把 `VITE_APP_ENV` 改成 `dev`，`pnpm --filter @medsys/web run dev` 仍会停在 demo bootstrap shell，而不是进入真实后端登录壳。
+- `API_ALLOWED_ORIGINS` 必须包含 Web 开发端口 `4173`，否则持久化登录会被跨域策略拦住。
+- 如需文档预览，再额外启动 ONLYOFFICE profile：`docker compose -f infra/docker-compose.yml --profile onlyoffice up -d`。
 
 ```bash
 pnpm install
@@ -70,12 +95,15 @@ docker compose -f infra/docker-compose.yml up -d
 pnpm --filter @medical/api run smoke:boot
 pnpm --filter @medsys/web run smoke:boot
 pnpm --filter @medical/worker-py run smoke:boot
+pnpm --filter @medical/api run db:migrate
 pnpm --filter @medical/api run preflight:persistent
 pnpm --filter @medical/api run serve
 pnpm --filter @medsys/web run dev
 ```
 
-如果只需要本地演示/联调，可以改用 demo runtime：
+### Demo 启动（只做演示或联调）
+
+如果只需要本地演示/联调，可以保持 `apps/web/.env` 不存在，或让 `VITE_APP_ENV=local`，然后改用 demo runtime：
 
 ```bash
 pnpm --filter @medical/api run serve:demo
@@ -85,6 +113,7 @@ pnpm --filter @medical/api run serve:demo
 
 - `APP_ENV=local` 只用于 demo runtime；`development|test|staging|production` 才走持久化 runtime。
 - `VITE_APP_ENV=local` 使用 demo bootstrap shell；`dev|staging|prod` 使用 persistent login shell。
+- 持久化本地登录的最小组合是：`APP_ENV=development`、`VITE_APP_ENV=dev`、`VITE_API_BASE_URL=http://127.0.0.1:3001`、`API_ALLOWED_ORIGINS=http://127.0.0.1:4173,http://localhost:4173`。
 - `DATABASE_URL` 是持久化 runtime 的必需项。
 - `UPLOAD_ROOT_DIR` 可把上传资产从默认的 `.local-data/uploads/<APP_ENV>` 迁到独立目录。
 - `AI_PROVIDER_MASTER_KEY` 用于系统托管的 AI Provider 密钥加密；启用 AI Access 时需要提供。
