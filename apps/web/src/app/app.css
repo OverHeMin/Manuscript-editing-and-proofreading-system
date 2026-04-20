@@ -787,15 +787,16 @@ a {
 
 .auth-shell-brand {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  max-width: 42rem;
 }
 
 .auth-shell-brand h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.2rem, 3vw, 3.5rem);
-  line-height: 1.16;
-  letter-spacing: 0.02em;
+  font-size: clamp(2.8rem, 4.4vw, 4.8rem);
+  line-height: 1.04;
+  letter-spacing: 0.04em;
   color: #fff6df;
 }
 
@@ -808,8 +809,7 @@ a {
 }
 
 .auth-card-header p,
-.auth-card p,
-.auth-shell-brand p {
+.auth-card p {
   margin: 10px 0 0;
   color: var(--color-text-secondary);
   line-height: 1.6;
@@ -824,9 +824,23 @@ a {
   color: var(--color-accent-gold-strong);
 }
 
-.auth-shell-brand .auth-shell-brand-eyebrow + h1 + p {
+.auth-shell-brand-subtitle,
+.auth-shell-brand-description {
+  margin: 0;
+}
+
+.auth-shell-brand-subtitle {
+  max-width: 30rem;
+  font-size: clamp(1.05rem, 1.4vw, 1.38rem);
+  line-height: 1.55;
+  font-weight: 600;
+  color: rgba(255, 246, 223, 0.88);
+}
+
+.auth-shell-brand-description {
+  max-width: 34rem;
   color: rgba(241, 224, 184, 0.72);
-  max-width: 720px;
+  line-height: 1.72;
 }
 
 .auth-shell-hero-summary {
@@ -1178,7 +1192,16 @@ a {
   }
 
   .auth-shell-brand h1 {
-    font-size: 1.9rem;
+    font-size: clamp(2.2rem, 9.6vw, 3rem);
+  }
+
+  .auth-shell-brand-subtitle {
+    font-size: 0.98rem;
+  }
+
+  .auth-shell-brand-description,
+  .auth-shell-hero-summary {
+    font-size: 0.96rem;
   }
 
   .auth-shell-card {

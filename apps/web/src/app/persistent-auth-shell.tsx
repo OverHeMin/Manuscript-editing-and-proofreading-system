@@ -375,7 +375,9 @@ function AuthShellHero() {
     <section className="auth-shell-hero" aria-label="系统介绍">
       <div className="auth-shell-hero-copy">
         <AuthShellBrand
-          title="为筛查、编辑、校对与知识入库提供稳定一致的工作入口"
+          eyebrow="专业稿件工作台"
+          title="医学稿件处理系统"
+          subtitle="初筛、编辑、校对与知识入库的一体化工作台"
           description="面向医学稿件处理场景打造的专业工作台，让高频流程更聚焦，协作与回收更顺畅。"
         />
         <p className="auth-shell-hero-summary">
@@ -419,16 +421,19 @@ function AuthShellHero() {
 }
 
 interface AuthShellBrandProps {
+  eyebrow?: string;
   title: string;
+  subtitle?: string;
   description?: string;
 }
 
-function AuthShellBrand({ title, description }: AuthShellBrandProps) {
+function AuthShellBrand({ eyebrow, title, subtitle, description }: AuthShellBrandProps) {
   return (
     <div className="auth-shell-brand">
-      <p className="auth-shell-brand-eyebrow">医学稿件处理系统</p>
+      {eyebrow ? <p className="auth-shell-brand-eyebrow">{eyebrow}</p> : null}
       <h1>{title}</h1>
-      {description ? <p>{description}</p> : null}
+      {subtitle ? <p className="auth-shell-brand-subtitle">{subtitle}</p> : null}
+      {description ? <p className="auth-shell-brand-description">{description}</p> : null}
     </div>
   );
 }
