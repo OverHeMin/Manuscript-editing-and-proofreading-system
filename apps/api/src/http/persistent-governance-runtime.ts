@@ -212,7 +212,10 @@ import {
   PostgresToolPermissionPolicyRepository,
   ToolPermissionPolicyService,
 } from "../modules/tool-permission-policies/index.ts";
-import { OpenAiMainlineAiRuntimeExecutor } from "../modules/shared/mainline-ai-runtime-executor.ts";
+import {
+  OpenAiMainlineAiRuntimeExecutor,
+  type MainlineAiRuntimeExecutor,
+} from "../modules/shared/mainline-ai-runtime-executor.ts";
 import {
   createUserAdminApi,
   PostgresUserAdminRepository,
@@ -238,6 +241,7 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
   aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
   aiProviderRuntimeCutoverEnabled?: boolean;
+  mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
 }
 
 export function createPersistentGovernanceRuntime(
@@ -770,10 +774,12 @@ export function createPersistentGovernanceRuntime(
       aiProviderRuntimeService,
     }),
   });
-  const mainlineAiRuntimeExecutor = new OpenAiMainlineAiRuntimeExecutor({
-    aiGatewayService,
-    aiProviderRuntimeService,
-  });
+  const mainlineAiRuntimeExecutor =
+    options.mainlineAiRuntimeExecutor ??
+    new OpenAiMainlineAiRuntimeExecutor({
+      aiGatewayService,
+      aiProviderRuntimeService,
+    });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir: uploadRootDir,
   });

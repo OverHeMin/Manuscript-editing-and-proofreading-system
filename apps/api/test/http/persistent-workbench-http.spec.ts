@@ -47,6 +47,10 @@ import {
   PostgresToolPermissionPolicyRepository,
 } from "../../src/modules/tool-permission-policies/index.ts";
 import { PostgresVerificationOpsRepository } from "../../src/modules/verification-ops/index.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { PostgresUserRepository } from "../../src/users/postgres-user-repository.ts";
 import { withTemporaryDatabase } from "../database/support/postgres.ts";
 import { runMigrateProcess } from "../database/support/migrate-process.ts";
@@ -88,6 +92,59 @@ const seededIds: PersistentWorkbenchSeededIds = {
   proofreadingModelId: "ffffffff-dddd-4ddd-8ddd-dddddddddddd",
 };
 const TEST_AI_PROVIDER_MASTER_KEY = Buffer.alloc(32, 0x41).toString("base64");
+const persistentWorkbenchAiExecutor: MainlineAiRuntimeExecutor = {
+  async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+    switch (input.module) {
+      case "screening":
+        return {
+          summary: "Persistent screening AI summary.",
+          majorFindings: ["Primary endpoint definition is incomplete."],
+          minorFindings: ["Table labels should be normalized."],
+          riskLevel: "medium",
+          recommendedDecision: "minor_revision",
+        } as T;
+      case "editing": {
+        const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+          ? input.userPayload.sourceBlocks
+          : [];
+        const targetText =
+          findFirstSourceText(sourceBlocks) ?? "Abstract Objective";
+        return {
+          summary: "Persistent editing AI plan.",
+          replacements: [
+            {
+              targetText,
+              replacementText: `${targetText}（编辑建议版）`,
+              reason: "Provide a deterministic replacement for persistent HTTP tests.",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      }
+      case "proofreading": {
+        const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+          ? input.userPayload.sourceBlocks
+          : [];
+        const targetText =
+          findFirstSourceText(sourceBlocks) ?? "Proofreading target";
+        return {
+          summary: "Persistent proofreading AI plan.",
+          corrections: [
+            {
+              targetText,
+              replacementText: `${targetText} [proofread]`,
+              category: "style",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      }
+    }
+  },
+  async executeMarkdown(): Promise<string> {
+    throw new Error("Persistent workbench HTTP tests expect structured AI output.");
+  },
+};
 
 test("persistent workbench upload routes keep manuscripts, assets, jobs, and exports across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
@@ -3711,6 +3768,7 @@ async function startPersistentWorkbenchServer(
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
         AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
       }),
+      mainlineAiRuntimeExecutor: persistentWorkbenchAiExecutor,
     }),
     uploadRootDir: input.uploadRootDir,
   });
@@ -3746,4 +3804,24 @@ async function writeDocxFixture(
   const absolutePath = path.join(rootDir, ...storageKey.split("/"));
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, Buffer.from(fileContentBase64, "base64"));
+}
+
+function findFirstSourceText(
+  sourceBlocks: unknown[],
+): string | undefined {
+  for (const block of sourceBlocks) {
+    if (
+      typeof block === "object" &&
+      block !== null &&
+      "text" in block &&
+      typeof (block as { text?: unknown }).text === "string"
+    ) {
+      const text = (block as { text: string }).text.trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+  }
+
+  return undefined;
 }

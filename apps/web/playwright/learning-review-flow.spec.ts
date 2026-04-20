@@ -117,7 +117,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   );
 
   await page.getByRole("button", { name: finalizeProofLabel }).click();
-  await expect(page.locator("body")).toContainText("已完成终稿资产");
+  await expect(page.locator("body")).toContainText("已生成校对稿件");
 
   await page.getByRole("button", { name: publishHumanFinalLabel }).click();
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");

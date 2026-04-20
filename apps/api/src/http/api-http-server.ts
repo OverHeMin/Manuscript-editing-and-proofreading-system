@@ -308,6 +308,10 @@ import {
   ProofreadingFinalAssetRequiredError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../modules/shared/mainline-ai-runtime-executor.ts";
 import {
   createResidualLearningApi,
   InMemoryResidualIssueRepository,
@@ -1735,6 +1739,69 @@ export function createInMemoryApiRuntime(input: {
       AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
     }),
   });
+  const screeningExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
+      return {
+        summary: "Seeded screening AI summary.",
+        majorFindings: ["Primary endpoint definition is incomplete."],
+        minorFindings: ["Table labels should be normalized."],
+        riskLevel: "medium",
+        recommendedDecision: "minor_revision",
+      } as T;
+    },
+    async executeMarkdown(): Promise<string> {
+      throw new Error("Seeded screening runtime expects structured JSON output.");
+    },
+  };
+  const editingExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+        ? input.userPayload.sourceBlocks
+        : [];
+      const targetText =
+        findFirstSourceText(sourceBlocks) ?? "Abstract Objective";
+      return {
+        summary: "Seeded editing AI plan.",
+        replacements: [
+          {
+            targetText,
+            replacementText: `${targetText}（编辑建议版）`,
+            reason:
+              "Provide a deterministic editing replacement in the seeded local runtime.",
+          },
+        ],
+        manualReviewItems: [],
+      } as T;
+    },
+    async executeMarkdown(): Promise<string> {
+      throw new Error("Seeded editing runtime expects structured JSON output.");
+    },
+  };
+  const proofreadingExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+        ? input.userPayload.sourceBlocks
+        : [];
+      const targetText =
+        findFirstSourceText(sourceBlocks) ?? "Proofreading target";
+      return {
+        summary: "Seeded proofreading AI plan.",
+        corrections: [
+          {
+            targetText,
+            replacementText: `${targetText} [proofread]`,
+            category: "style",
+          },
+        ],
+        manualReviewItems: [],
+      } as T;
+    },
+    async executeMarkdown(): Promise<string> {
+      throw new Error(
+        "Seeded proofreading runtime expects structured JSON output.",
+      );
+    },
+  };
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
@@ -1847,6 +1914,7 @@ export function createInMemoryApiRuntime(input: {
       modelRegistryRepository,
       modelRoutingPolicyRepository,
       modelRoutingGovernanceRepository,
+      aiProviderConnectionRepository,
     });
   }
 
@@ -1869,6 +1937,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor: screeningExecutor,
     textAssetRootDir: input.uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
@@ -1892,6 +1961,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor: editingExecutor,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     editorialDocxTransformService,
@@ -1916,6 +1986,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    mainlineAiRuntimeExecutor: proofreadingExecutor,
     textAssetRootDir: input.uploadRootDir,
     editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
@@ -2061,6 +2132,24 @@ export function createInMemoryApiRuntime(input: {
     }),
     permissionGuard,
   };
+}
+
+function findFirstSourceText(sourceBlocks: unknown[]): string | undefined {
+  for (const block of sourceBlocks) {
+    if (
+      typeof block === "object" &&
+      block !== null &&
+      "text" in block &&
+      typeof (block as { text?: unknown }).text === "string"
+    ) {
+      const text = (block as { text: string }).text.trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function seedDemoKnowledgeReviewData(input: {
@@ -2465,7 +2554,28 @@ function seedDemoWorkbenchData(input: {
   modelRegistryRepository: InMemoryModelRegistryRepository;
   modelRoutingPolicyRepository: InMemoryModelRoutingPolicyRepository;
   modelRoutingGovernanceRepository: InMemoryModelRoutingGovernanceRepository;
+  aiProviderConnectionRepository: InMemoryAiProviderConnectionRepository;
 }): void {
+  void input.aiProviderConnectionRepository.save({
+    id: "connection-demo-seeded-1",
+    name: "Seeded Demo Provider",
+    provider_kind: "openai",
+    compatibility_mode: "openai_chat_compatible",
+    base_url: "https://api.openai.com/v1",
+    enabled: true,
+    last_test_status: "passed",
+    last_test_at: new Date("2026-03-31T07:54:00.000Z"),
+    credential_summary: {
+      mask: "sk-demo-****",
+      version: 1,
+    },
+    readiness: {
+      status: "ready",
+      summary: "Seeded demo runtime uses a deterministic ready provider binding.",
+      credential_configured: true,
+      adapter_supported: true,
+    },
+  });
   void input.manuscriptRepository.save({
     id: "manuscript-seeded-1",
     title: "Seeded Workbench Manuscript",
@@ -3476,6 +3586,7 @@ function seedDemoWorkbenchData(input: {
     model_version: "2026-03-31",
     allowed_modules: ["screening"],
     is_prod_allowed: true,
+    connection_id: "connection-demo-seeded-1",
   });
   void input.modelRegistryRepository.save({
     id: "model-editing-1",
@@ -3484,6 +3595,7 @@ function seedDemoWorkbenchData(input: {
     model_version: "2026-03-31",
     allowed_modules: ["editing"],
     is_prod_allowed: true,
+    connection_id: "connection-demo-seeded-1",
   });
   void input.modelRegistryRepository.save({
     id: "model-proofreading-1",
@@ -3492,6 +3604,7 @@ function seedDemoWorkbenchData(input: {
     model_version: "2026-03-31",
     allowed_modules: ["proofreading"],
     is_prod_allowed: true,
+    connection_id: "connection-demo-seeded-1",
   });
   void input.modelRegistryRepository.save({
     id: "model-editing-preview-2",
@@ -3500,6 +3613,7 @@ function seedDemoWorkbenchData(input: {
     model_version: "2026-04-01",
     allowed_modules: ["editing"],
     is_prod_allowed: true,
+    connection_id: "connection-demo-seeded-1",
   });
   void input.modelRoutingPolicyRepository.save({
     system_default_model_id: undefined,
