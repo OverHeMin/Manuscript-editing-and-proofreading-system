@@ -179,7 +179,9 @@ function toStringArray(value: unknown): string[] {
 }
 
 function toNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 function toCategory(value: unknown): ProofreadingCorrectionCategory | undefined {

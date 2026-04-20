@@ -4,7 +4,10 @@ import { ProofreadingService } from "../../src/modules/proofreading/proofreading
 import { InMemoryResidualIssueRepository } from "../../src/modules/residual-learning/in-memory-residual-learning-repository.ts";
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
-import type { MainlineAiRuntimeExecutor } from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
 test("proofreading bare mode draft succeeds without a current template family while governed mode still fails", async () => {
@@ -24,7 +27,7 @@ test("proofreading bare mode draft succeeds without a current template family wh
 
   let nextJobId = 0;
   const proofreadingExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson() {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
         summary: "AI proofreading plan for bare mode.",
         corrections: [
@@ -37,7 +40,7 @@ test("proofreading bare mode draft succeeds without a current template family wh
         manualReviewItems: [
           "Verify the normalized unit against the source table before release.",
         ],
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Proofreading runs should request structured JSON.");

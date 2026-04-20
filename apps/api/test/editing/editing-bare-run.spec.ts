@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EditingService } from "../../src/modules/editing/editing-service.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
-import type { MainlineAiRuntimeExecutor } from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
 test("editing bare mode succeeds without a current template family while governed mode still fails", async () => {
@@ -14,7 +17,7 @@ test("editing bare mode succeeds without a current template family while governe
     current_template_family_id: undefined,
   });
   const editingExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson() {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
         summary: "AI editing plan for bare mode.",
         replacements: [
@@ -25,7 +28,7 @@ test("editing bare mode succeeds without a current template family while governe
           },
         ],
         manualReviewItems: ["Verify the rewritten heading against the journal template."],
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Editing runs should request structured JSON.");

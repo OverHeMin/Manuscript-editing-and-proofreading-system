@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type {
+  ResolvedModelSelection,
+  ResolveModelSelectionInput,
+} from "../../src/modules/ai-gateway/ai-gateway-service.ts";
 import {
   MainlineAiRuntimeExecutorError,
   OpenAiMainlineAiRuntimeExecutor,
 } from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 
-function createSelection() {
+function createSelection(): ResolvedModelSelection {
   return {
     layer: "legacy_module_default" as const,
     model: {
@@ -13,7 +17,7 @@ function createSelection() {
       provider: "openai" as const,
       model_name: "gpt-5.4-mini",
       model_version: "2026-04",
-      allowed_modules: ["screening", "editing", "proofreading"],
+      allowed_modules: ["screening", "editing", "proofreading"] as const,
       is_prod_allowed: true,
       connection_id: "connection-mainline-1",
     },
@@ -54,8 +58,10 @@ test("mainline executor resolves runtime, sends OpenAI-compatible messages, and 
 
   const executor = new OpenAiMainlineAiRuntimeExecutor({
     aiGatewayService: {
-      async resolveModelSelection(input) {
-        selectionInputs.push(input as Record<string, unknown>);
+      async resolveModelSelection(input: ResolveModelSelectionInput) {
+        selectionInputs.push({
+          module: input.module,
+        });
         return createSelection();
       },
     },

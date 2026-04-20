@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
-import type { MainlineAiRuntimeExecutor } from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
 test("screening bare mode succeeds without a current template family while governed mode still fails", async () => {
@@ -14,14 +17,14 @@ test("screening bare mode succeeds without a current template family while gover
     current_template_family_id: undefined,
   });
   const screeningExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson() {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
         summary: "AI screening summary for bare mode.",
         majorFindings: ["Primary endpoint definition is missing."],
         minorFindings: ["Terminology is mostly consistent."],
         riskLevel: "high",
         recommendedDecision: "major_revision",
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Screening runs should request structured JSON.");

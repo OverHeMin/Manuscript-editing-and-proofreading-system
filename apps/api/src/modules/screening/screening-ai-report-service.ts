@@ -1,3 +1,4 @@
+import type { ManuscriptQualityFindingSummary } from "@medical/contracts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 
 export type ScreeningRiskLevel = "low" | "medium" | "high" | "critical";
@@ -32,7 +33,7 @@ export interface CreateScreeningAiReportInput {
     severity?: string;
     explanation?: string;
   }>;
-  qualitySummary?: Record<string, unknown>;
+  qualitySummary?: ManuscriptQualityFindingSummary;
 }
 
 export interface ScreeningAiReportResult {

@@ -1869,7 +1869,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
-    textAssetRootDir: uploadRootDir,
+    textAssetRootDir: input.uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
   });
@@ -1916,7 +1916,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
-    textAssetRootDir: uploadRootDir,
+    textAssetRootDir: input.uploadRootDir,
     editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,

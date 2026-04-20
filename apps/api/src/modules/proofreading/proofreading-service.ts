@@ -892,11 +892,13 @@ export class ProofreadingService {
       rules: [],
       resolvedRules: [],
       tableSnapshots: [],
-      aiReplacements: input.proofreadingPlan.corrections.map((correction) => ({
+      aiReplacements: input.proofreadingPlan.corrections.map(
+        (correction: ProofreadingAiPlan["corrections"][number]) => ({
         targetText: correction.targetText,
         replacementText: correction.replacementText,
         reason: correction.category,
-      })),
+        }),
+      ),
     });
 
     return input.documentAssetService.createAsset({

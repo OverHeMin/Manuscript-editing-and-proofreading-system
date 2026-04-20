@@ -29,60 +29,60 @@ test("persistent review baseline seeds an active review family when no review fa
           status: "draft",
         },
       ],
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedTemplateFamilies.push(record as Record<string, unknown>);
       },
     },
     moduleTemplateRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedModuleTemplates.push(record as Record<string, unknown>);
       },
     },
     promptSkillRegistryRepository: {
-      savePromptTemplate: async (record) => {
+      savePromptTemplate: async (record: unknown) => {
         savedPromptTemplates.push(record as Record<string, unknown>);
       },
-      saveSkillPackage: async (record) => {
+      saveSkillPackage: async (record: unknown) => {
         savedSkillPackages.push(record as Record<string, unknown>);
       },
     },
     editorialRuleRepository: {
-      saveRuleSet: async (record) => {
+      saveRuleSet: async (record: unknown) => {
         savedRuleSets.push(record as Record<string, unknown>);
       },
     },
     executionGovernanceRepository: {
-      saveProfile: async (record) => {
+      saveProfile: async (record: unknown) => {
         savedProfiles.push(record as Record<string, unknown>);
       },
     },
     sandboxProfileRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedSandboxProfiles.push(record as Record<string, unknown>);
       },
     },
     agentRuntimeRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedAgentRuntimes.push(record as Record<string, unknown>);
       },
     },
     agentProfileRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedAgentProfiles.push(record as Record<string, unknown>);
       },
     },
     runtimeBindingRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedRuntimeBindings.push(record as Record<string, unknown>);
       },
     },
     toolPermissionPolicyRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedToolPolicies.push(record as Record<string, unknown>);
       },
     },
     modelRegistryRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedModels.push(record as Record<string, unknown>);
       },
     },
@@ -91,17 +91,17 @@ test("persistent review baseline seeds an active review family when no review fa
         module_defaults: {},
         template_overrides: {},
       }),
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedRoutingPolicy = record as Record<string, unknown>;
       },
     },
     retrievalPresetRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedRetrievalPresets.push(record as Record<string, unknown>);
       },
     },
     manualReviewPolicyRepository: {
-      save: async (record) => {
+      save: async (record: unknown) => {
         savedManualReviewPolicies.push(record as Record<string, unknown>);
       },
     },

@@ -14,7 +14,10 @@ import type {
   DocumentStructureService,
   DocumentStructureTableSnapshot,
 } from "../document-pipeline/document-structure-service.ts";
-import type { EditorialSourceBlockResolver } from "../editorial-execution/types.ts";
+import type {
+  EditorialSourceBlockResolver,
+  EditorialTextBlock,
+} from "../editorial-execution/types.ts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
 import type { ExecutionTrackingService } from "../execution-tracking/execution-tracking-service.ts";
 import type { RecordKnowledgeHitInput } from "../execution-tracking/execution-tracking-service.ts";
@@ -600,10 +603,7 @@ export class ScreeningService {
   private async runManuscriptQualityChecks(input: {
     manuscriptId: string;
     assetId: string;
-    sourceBlocks?: Array<{
-      text: string;
-      block_kind: string;
-    }>;
+    sourceBlocks?: EditorialTextBlock[];
     tableSnapshots?: DocumentStructureTableSnapshot[];
     qualityPackageVersionIds?: string[];
   }) {

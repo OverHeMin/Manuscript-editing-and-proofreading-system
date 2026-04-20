@@ -74,7 +74,10 @@ import { InMemoryRuntimeBindingRepository } from "../../../src/modules/runtime-b
 import { RuntimeBindingService } from "../../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
-import type { MainlineAiRuntimeExecutor } from "../../../src/modules/shared/mainline-ai-runtime-executor.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { createScreeningApi } from "../../../src/modules/screening/screening-api.ts";
 import { ScreeningService } from "../../../src/modules/screening/screening-service.ts";
 import { InMemoryModuleTemplateRepository } from "../../../src/modules/templates/in-memory-template-family-repository.ts";
@@ -402,21 +405,21 @@ export function createWorkbenchRuntime(input: {
     input.uploadRootDir ??
     path.resolve(process.cwd(), ".local-data", "uploads", "local");
   const screeningExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson() {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
         summary: "AI screening summary for HTTP closure.",
         majorFindings: ["Primary endpoint definition is incomplete."],
         minorFindings: ["Table labels should be normalized."],
         riskLevel: "medium",
         recommendedDecision: "minor_revision",
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Screening HTTP closure expects structured JSON output.");
     },
   };
   const editingExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson(input) {
+    async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
       const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
         ? input.userPayload.sourceBlocks
         : [];
@@ -439,7 +442,7 @@ export function createWorkbenchRuntime(input: {
           },
         ],
         manualReviewItems: [],
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Editing HTTP closure expects structured JSON output.");
@@ -476,7 +479,7 @@ export function createWorkbenchRuntime(input: {
     },
   };
   const proofreadingExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson(input) {
+    async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
       const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
         ? input.userPayload.sourceBlocks
         : [];
@@ -499,7 +502,7 @@ export function createWorkbenchRuntime(input: {
           },
         ],
         manualReviewItems: [],
-      };
+      } as T;
     },
     async executeMarkdown() {
       throw new Error("Proofreading HTTP closure expects structured JSON output.");
