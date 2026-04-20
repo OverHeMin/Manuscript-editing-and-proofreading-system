@@ -7,6 +7,11 @@ import type {
 } from "../modules/assets/index.ts";
 import type { ManuscriptRecord } from "../modules/manuscripts/index.ts";
 import type { ManuscriptRepository } from "../modules/manuscripts/manuscript-repository.ts";
+import {
+  buildPythonCommandCandidates,
+  buildWorkspaceChildProcessEnv,
+  isCommandUnavailableError,
+} from "../modules/shared/windows-command-runtime.ts";
 
 const DOCX_ASSET_TYPES = new Set<DocumentAssetRecord["asset_type"]>([
   "original",
@@ -230,14 +235,6 @@ function buildReportContent(
   ].join("\n");
 }
 
-function buildPythonCandidates(): string[] {
-  const configured = process.env.PYTHON_BIN?.trim();
-  const candidates = [configured, "python", "python3"].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
-  return [...new Set(candidates)];
-}
-
 async function runDocxMaterializer(input: {
   outputPath: string;
   title: string;
@@ -247,12 +244,12 @@ async function runDocxMaterializer(input: {
 }): Promise<void> {
   let lastError: Error | undefined;
 
-  for (const pythonBin of buildPythonCandidates()) {
+  for (const pythonBin of buildPythonCommandCandidates()) {
     try {
       await runPythonScript(pythonBin, input);
       return;
     } catch (error) {
-      if (isCommandMissing(error)) {
+      if (isCommandUnavailableError(error)) {
         lastError = error;
         continue;
       }
@@ -293,6 +290,7 @@ function runPythonScript(
 
     const child = spawn(pythonBin, args, {
       stdio: ["ignore", "ignore", "pipe"],
+      env: buildWorkspaceChildProcessEnv(),
     });
     let stderr = "";
 
@@ -317,14 +315,6 @@ function runPythonScript(
       );
     });
   });
-}
-
-function isCommandMissing(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {

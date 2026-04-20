@@ -47,6 +47,12 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
+import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
+import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
+import {
+  ScreeningAiReportService,
+  type ScreeningAiReport,
+} from "./screening-ai-report-service.ts";
 
 export interface RunScreeningInput {
   manuscriptId: string;
@@ -87,6 +93,10 @@ export interface ScreeningServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
+  screeningAiReportService?: Pick<ScreeningAiReportService, "createReport">;
+  textAssetRootDir?: string;
+  textAssetMaterializer?: typeof materializeTextAsset;
   manuscriptQualitySourceBlockResolver?: Pick<
     EditorialSourceBlockResolver,
     "resolveBlocks"
@@ -138,6 +148,12 @@ export class ScreeningService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly screeningAiReportService: Pick<
+    ScreeningAiReportService,
+    "createReport"
+  >;
+  private readonly textAssetRootDir?: string;
+  private readonly textAssetMaterializer: typeof materializeTextAsset;
   private readonly manuscriptQualitySourceBlockResolver: Pick<
     EditorialSourceBlockResolver,
     "resolveBlocks"
@@ -176,6 +192,14 @@ export class ScreeningService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.screeningAiReportService =
+      options.screeningAiReportService ??
+      new ScreeningAiReportService({
+        mainlineAiRuntimeExecutor: options.mainlineAiRuntimeExecutor,
+      });
+    this.textAssetRootDir = options.textAssetRootDir;
+    this.textAssetMaterializer =
+      options.textAssetMaterializer ?? materializeTextAsset;
     this.manuscriptQualitySourceBlockResolver =
       options.manuscriptQualitySourceBlockResolver ?? {
         async resolveBlocks() {
@@ -408,6 +432,10 @@ export class ScreeningService {
       };
       await jobRepository.save(queuedJob);
       const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
+      const sourceBlocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+        manuscriptId: input.manuscriptId,
+        assetId: input.parentAssetId,
+      });
       const documentStructureSnapshot = this.documentStructureService
         ? await this.documentStructureService.extract({
             manuscriptId: input.manuscriptId,
@@ -419,10 +447,35 @@ export class ScreeningService {
       const qualityRun = await this.runManuscriptQualityChecks({
         manuscriptId: input.manuscriptId,
         assetId: input.parentAssetId,
+        sourceBlocks,
         tableSnapshots: documentStructureSnapshot?.tables ?? [],
         qualityPackageVersionIds: normalizedContext.qualityPackageVersionIds,
       });
       const medicalReviewSignals = buildMedicalReviewSignals(qualityRun?.issues);
+      const screeningReportResult = await this.screeningAiReportService.createReport({
+        manuscriptId: input.manuscriptId,
+        sourceFileName:
+          sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+        sourceBlocks: sourceBlocks.map((block) => ({
+          text: block.text,
+          blockKind: block.block_kind,
+        })),
+        tableCount: documentStructureSnapshot?.tables.length ?? 0,
+        qualityIssues: qualityRun?.issues,
+        qualitySummary: qualityRun?.quality_findings_summary,
+      });
+      const screeningReport = structuredClone(
+        screeningReportResult.report,
+      ) as ScreeningAiReport;
+      const screeningReportMarkdown = screeningReportResult.markdown;
+
+      if (this.textAssetRootDir) {
+        await this.textAssetMaterializer({
+          rootDir: this.textAssetRootDir,
+          storageKey: input.storageKey,
+          content: screeningReportMarkdown,
+        });
+      }
 
       const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
@@ -477,6 +530,7 @@ export class ScreeningService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "screening_report",
+          screeningReport,
           ...(qualityRun
             ? {
                 qualityFindings: qualityRun.issues.map((issue) =>
@@ -546,6 +600,10 @@ export class ScreeningService {
   private async runManuscriptQualityChecks(input: {
     manuscriptId: string;
     assetId: string;
+    sourceBlocks?: Array<{
+      text: string;
+      block_kind: string;
+    }>;
     tableSnapshots?: DocumentStructureTableSnapshot[];
     qualityPackageVersionIds?: string[];
   }) {
@@ -553,10 +611,12 @@ export class ScreeningService {
       return undefined;
     }
 
-    const blocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
-      manuscriptId: input.manuscriptId,
-      assetId: input.assetId,
-    });
+    const blocks =
+      input.sourceBlocks ??
+      (await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+        manuscriptId: input.manuscriptId,
+        assetId: input.assetId,
+      }));
 
     return this.manuscriptQualityService.runChecks({
       blocks: blocks.map((block) => ({

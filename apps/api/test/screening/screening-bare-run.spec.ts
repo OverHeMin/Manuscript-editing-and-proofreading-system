@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
+import type { MainlineAiRuntimeExecutor } from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
 test("screening bare mode succeeds without a current template family while governed mode still fails", async () => {
@@ -12,6 +13,20 @@ test("screening bare mode succeeds without a current template family while gover
     ...manuscript,
     current_template_family_id: undefined,
   });
+  const screeningExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson() {
+      return {
+        summary: "AI screening summary for bare mode.",
+        majorFindings: ["Primary endpoint definition is missing."],
+        minorFindings: ["Terminology is mostly consistent."],
+        riskLevel: "high",
+        recommendedDecision: "major_revision",
+      };
+    },
+    async executeMarkdown() {
+      throw new Error("Screening runs should request structured JSON.");
+    },
+  };
 
   let nextJobId = 0;
   const screeningService = new ScreeningService({
@@ -36,6 +51,7 @@ test("screening bare mode succeeds without a current template family while gover
         return undefined;
       },
     } as never,
+    mainlineAiRuntimeExecutor: screeningExecutor,
     createId: () => `job-screening-bare-${++nextJobId}`,
     now: () => new Date("2026-04-16T10:30:00.000Z"),
   } as never);
@@ -67,4 +83,35 @@ test("screening bare mode succeeds without a current template family while gover
   assert.equal(result.template_id, "bare-screening-template");
   assert.equal(result.model_id, "model-1");
   assert.equal(result.job.payload?.executionMode, "bare");
+  const screeningPayload = result.job.payload as
+    | {
+        screeningReport?: {
+          summary?: string;
+          majorFindings?: string[];
+          minorFindings?: string[];
+          riskLevel?: string;
+          recommendedDecision?: string;
+        };
+      }
+    | undefined;
+
+  assert.ok(
+    screeningPayload?.screeningReport,
+    "Expected screening bare runs to persist a structured AI review report payload.",
+  );
+  assert.equal(
+    screeningPayload.screeningReport?.summary,
+    "AI screening summary for bare mode.",
+  );
+  assert.deepEqual(screeningPayload.screeningReport?.majorFindings, [
+    "Primary endpoint definition is missing.",
+  ]);
+  assert.deepEqual(screeningPayload.screeningReport?.minorFindings, [
+    "Terminology is mostly consistent.",
+  ]);
+  assert.equal(screeningPayload.screeningReport?.riskLevel, "high");
+  assert.equal(
+    screeningPayload.screeningReport?.recommendedDecision,
+    "major_revision",
+  );
 });

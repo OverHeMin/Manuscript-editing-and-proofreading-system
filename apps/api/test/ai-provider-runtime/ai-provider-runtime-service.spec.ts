@@ -229,6 +229,35 @@ test("runtime service fails closed when the bound connection is missing disabled
   );
 });
 
+test("runtime service treats non-ascii decrypted api keys as invalid credentials", async () => {
+  const harness = createRuntimeHarness();
+
+  await saveConnection({
+    repository: harness.repository,
+    credentialCrypto: harness.credentialCrypto,
+    id: "connection-non-ascii-key",
+    providerKind: "qwen",
+    apiKey: "测试-key",
+  });
+
+  await assert.rejects(
+    () =>
+      harness.service.resolveSelectionRuntime(
+        buildSelection({
+          model: {
+            connection_id: "connection-non-ascii-key",
+          },
+        }),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof AiProviderRuntimeConfigurationError);
+      assert.equal(error.code, "credential_invalid");
+      assert.match(error.message, /non-ASCII/u);
+      return true;
+    },
+  );
+});
+
 test("runtime service only plans one-hop fallback for transient provider failures and records primary fallback reason", () => {
   const harness = createRuntimeHarness();
   const selection = buildSelection({

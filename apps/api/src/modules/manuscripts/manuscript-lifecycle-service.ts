@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { ManuscriptTypeDetectionSummary } from "@medical/contracts";
-import { MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT } from "@medical/contracts";
 import { ManuscriptNotFoundError } from "../assets/document-asset-service.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
@@ -25,6 +24,8 @@ import {
   type ManuscriptTypeRecognitionService,
 } from "./manuscript-type-recognition-service.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
+
+const MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT = 10;
 
 export interface UploadManuscriptInput {
   title: string;

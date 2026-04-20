@@ -176,19 +176,11 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     (family) =>
       family.manuscript_type === "review" && family.status === "active",
   );
-  const hasDraftReviewFamily = templateFamilies.some(
-    (family) =>
-      family.manuscript_type === "review" && family.status === "draft",
-  );
 
   if (
     activeReviewFamily &&
     activeReviewFamily.id !== REVIEW_BASELINE_FAMILY.id
   ) {
-    return;
-  }
-
-  if (!activeReviewFamily && !hasDraftReviewFamily) {
     return;
   }
 

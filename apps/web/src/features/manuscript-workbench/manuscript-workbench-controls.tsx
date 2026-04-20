@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT,
   type UploadManuscriptInput,
@@ -7,6 +7,10 @@ import type {
   ManuscriptWorkbenchMode,
   ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
 } from "./manuscript-workbench-controller.ts";
+
+const AI_RECOGNITION_ACTION_LABEL = "Run AI Recognition";
+const BARE_AI_ACTION_DISPLAY_LABEL = "AI识别";
+const LEGACY_BARE_AI_ACTION_LABEL = "AI 自动处理（本次）";
 
 export interface WorkbenchSelectOption {
   value: string;
@@ -611,7 +615,7 @@ function ActionPanel({
             disabled={busy || !canRun}
             onClick={() => action.onRun()}
           >
-            {busy ? "处理中..." : formatWorkbenchActionLabel(action.actionLabel)}
+            {busy ? "处理中..." : renderWorkbenchActionLabel(action.actionLabel)}
           </button>
           {hasSecondaryAction ? (
             <button
@@ -620,7 +624,7 @@ function ActionPanel({
               disabled={busy || !canRun}
               onClick={() => action.onSecondaryRun?.()}
             >
-              {busy ? "处理中..." : formatWorkbenchActionLabel(secondaryActionLabel ?? "")}
+              {busy ? "处理中..." : renderWorkbenchActionLabel(secondaryActionLabel ?? "")}
             </button>
           ) : null}
         </div>
@@ -696,13 +700,28 @@ function formatWorkbenchPanelTitle(title: string): string {
   return title;
 }
 
-function formatWorkbenchActionLabel(label: string): string {
+function legacyFormatWorkbenchActionLabel(label: string): string {
   if (label === "Run Screening") return "执行初筛";
   if (label === "Run Editing") return "执行编辑";
   if (label === "Create Draft") return "生成草稿";
   if (label === "Finalize Proofreading") return "校对定稿";
   if (label === "Run Bare AI Once") return "AI 自动处理（本次）";
   return label;
+}
+
+function formatWorkbenchActionLabel(label: string): string {
+  if (label === "Create Draft") return "生成校对草稿";
+  if (label === "Finalize Proofreading") return "校对终稿";
+  if (label === AI_RECOGNITION_ACTION_LABEL) return BARE_AI_ACTION_DISPLAY_LABEL;
+  return legacyFormatWorkbenchActionLabel(label);
+}
+
+function renderWorkbenchActionLabel(label: string): React.ReactNode {
+  if (label === AI_RECOGNITION_ACTION_LABEL) {
+    return BARE_AI_ACTION_DISPLAY_LABEL;
+  }
+
+  return formatWorkbenchActionLabel(label);
 }
 
 function formatSelectionContextLabel(label: string | undefined): string {

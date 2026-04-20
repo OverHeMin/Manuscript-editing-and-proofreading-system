@@ -12,6 +12,9 @@ import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
 import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
+import {
+  EditorialDocxTransformService,
+} from "../document-pipeline/editorial-docx-transform-service.ts";
 import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
@@ -73,6 +76,12 @@ import type {
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import type { ManuscriptQualityService } from "../manuscript-quality/manuscript-quality-service.ts";
+import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
+import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
+import {
+  ProofreadingAiPlanService,
+  type ProofreadingAiPlan,
+} from "./proofreading-ai-plan-service.ts";
 
 export interface CreateProofreadingDraftInput {
   manuscriptId: string;
@@ -131,6 +140,14 @@ export interface ProofreadingServiceOptions {
   toolPermissionPolicyService: ToolPermissionPolicyService;
   agentExecutionService: AgentExecutionService;
   agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
+  textAssetRootDir?: string;
+  textAssetMaterializer?: typeof materializeTextAsset;
+  proofreadingAiPlanService?: Pick<ProofreadingAiPlanService, "createPlan">;
+  editorialDocxTransformService?: Pick<
+    EditorialDocxTransformService,
+    "applyDeterministicRules"
+  >;
   proofreadingSourceBlockResolver?: Pick<
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
@@ -217,6 +234,17 @@ export class ProofreadingService {
   private readonly toolPermissionPolicyService: ToolPermissionPolicyService;
   private readonly agentExecutionService: AgentExecutionService;
   private readonly agentExecutionOrchestrationService: GovernedExecutionOrchestrationDispatcher;
+  private readonly mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
+  private readonly textAssetRootDir?: string;
+  private readonly textAssetMaterializer: typeof materializeTextAsset;
+  private readonly proofreadingAiPlanService: Pick<
+    ProofreadingAiPlanService,
+    "createPlan"
+  >;
+  private readonly editorialDocxTransformService: Pick<
+    EditorialDocxTransformService,
+    "applyDeterministicRules"
+  >;
   private readonly proofreadingSourceBlockResolver: Pick<
     ProofreadingSourceBlockResolver,
     "resolveBlocks"
@@ -264,6 +292,21 @@ export class ProofreadingService {
     this.agentExecutionService = options.agentExecutionService;
     this.agentExecutionOrchestrationService =
       options.agentExecutionOrchestrationService;
+    this.mainlineAiRuntimeExecutor = options.mainlineAiRuntimeExecutor;
+    this.textAssetRootDir = options.textAssetRootDir;
+    this.textAssetMaterializer =
+      options.textAssetMaterializer ?? materializeTextAsset;
+    this.proofreadingAiPlanService =
+      options.proofreadingAiPlanService ??
+      new ProofreadingAiPlanService({
+        mainlineAiRuntimeExecutor: options.mainlineAiRuntimeExecutor,
+      });
+    this.editorialDocxTransformService =
+      options.editorialDocxTransformService ??
+      new EditorialDocxTransformService({
+        assetRepository: options.assetRepository,
+        rootDir: options.textAssetRootDir,
+      });
     this.proofreadingSourceBlockResolver =
       options.proofreadingSourceBlockResolver ?? {
         async resolveBlocks() {
@@ -461,6 +504,7 @@ export class ProofreadingService {
             jobId,
             executionMode: input.executionMode,
           });
+      const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
       const proofreadingArtifacts =
         input.jobType === "proofreading_draft_run"
           ? await this.buildProofreadingFindings({
@@ -470,10 +514,34 @@ export class ProofreadingService {
             })
           : undefined;
       const proofreadingFindings = proofreadingArtifacts?.inspectionResult;
+      const proofreadingPlan =
+        input.jobType === "proofreading_draft_run"
+          ? (structuredClone(
+              await this.proofreadingAiPlanService.createPlan({
+                manuscriptId: input.manuscriptId,
+                sourceFileName:
+                  sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+                sourceBlocks: proofreadingArtifacts?.sourceBlocks,
+                qualityIssues: proofreadingFindings?.qualityFindings,
+              }),
+            ) as ProofreadingAiPlan)
+          : undefined;
       const reportMarkdown =
         input.jobType === "proofreading_draft_run" && proofreadingFindings
-          ? renderProofreadingReport(proofreadingFindings)
+          ? renderProofreadingReport(proofreadingFindings, proofreadingPlan)
           : undefined;
+
+      if (
+        input.assetType === "proofreading_draft_report" &&
+        reportMarkdown &&
+        this.textAssetRootDir
+      ) {
+        await this.textAssetMaterializer({
+          rootDir: this.textAssetRootDir,
+          storageKey: input.storageKey,
+          content: reportMarkdown,
+        });
+      }
 
       const executionLog =
         resolvedContext.executionMode === "governed" &&
@@ -579,6 +647,11 @@ export class ProofreadingService {
                 reportMarkdown,
               }
             : {}),
+          ...(proofreadingPlan
+            ? {
+                proofreadingPlan,
+              }
+            : {}),
         },
         attempt_count: 0,
         started_at: undefined,
@@ -600,6 +673,20 @@ export class ProofreadingService {
         sourceModule: "proofreading",
         sourceJobId: jobId,
       });
+      const proofreadingManuscriptAsset =
+        input.jobType === "proofreading_draft_run" && proofreadingPlan
+          ? await this.createProofreadingManuscriptAsset({
+              manuscriptId: input.manuscriptId,
+              requestedBy: input.requestedBy,
+              sourceJobId: jobId,
+              sourceAssetId: input.parentAssetId,
+              reportAssetId: asset.id,
+              reportStorageKey: input.storageKey,
+              reportFileName: input.fileName,
+              proofreadingPlan,
+              documentAssetService,
+            })
+          : undefined;
       const snapshot = await this.executionTrackingService.recordSnapshot({
         manuscriptId: input.manuscriptId,
         module: "proofreading",
@@ -614,7 +701,10 @@ export class ProofreadingService {
         modelId: resolvedContext.modelId,
         modelVersion: resolvedContext.modelVersion,
         qualityPackages: proofreadingFindings?.resolvedQualityPackages,
-        createdAssetIds: [asset.id],
+        createdAssetIds: [
+          asset.id,
+          ...(proofreadingManuscriptAsset ? [proofreadingManuscriptAsset.id] : []),
+        ],
         agentExecutionLogId,
         draftSnapshotId: resolvedContext.draftSnapshotId,
         qualityFindingsSummary: proofreadingFindings?.qualityFindingSummary
@@ -675,6 +765,18 @@ export class ProofreadingService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: input.assetType,
+          ...(proofreadingPlan
+            ? {
+                proofreadingPlan,
+              }
+            : {}),
+          ...(proofreadingManuscriptAsset
+            ? {
+                proofreadingManuscriptAssetId: proofreadingManuscriptAsset.id,
+                proofreadingManuscriptAssetType:
+                  proofreadingManuscriptAsset.asset_type,
+              }
+            : {}),
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -705,7 +807,7 @@ export class ProofreadingService {
                 ...(agentExecutionLogId
                   ? { agentExecutionLogId }
                   : {}),
-                outputAssetId: asset.id,
+                outputAssetId: proofreadingManuscriptAsset?.id ?? asset.id,
                 executionProfileId: resolvedContext.executionProfileId,
                 ...(resolvedContext.runtimeBindingId
                   ? { runtimeBindingId: resolvedContext.runtimeBindingId }
@@ -764,6 +866,50 @@ export class ProofreadingService {
     }
 
     return committed.response;
+  }
+
+  private async createProofreadingManuscriptAsset(input: {
+    manuscriptId: string;
+    requestedBy: string;
+    sourceJobId: string;
+    sourceAssetId: string;
+    reportAssetId: string;
+    reportStorageKey: string;
+    reportFileName?: string;
+    proofreadingPlan: ProofreadingAiPlan;
+    documentAssetService: DocumentAssetService;
+  }): Promise<DocumentAssetRecord> {
+    const manuscriptTarget = deriveProofreadingManuscriptTarget({
+      reportStorageKey: input.reportStorageKey,
+      reportFileName: input.reportFileName,
+    });
+
+    await this.editorialDocxTransformService.applyDeterministicRules({
+      manuscriptId: input.manuscriptId,
+      sourceAssetId: input.sourceAssetId,
+      outputStorageKey: manuscriptTarget.storageKey,
+      outputFileName: manuscriptTarget.fileName,
+      rules: [],
+      resolvedRules: [],
+      tableSnapshots: [],
+      aiReplacements: input.proofreadingPlan.corrections.map((correction) => ({
+        targetText: correction.targetText,
+        replacementText: correction.replacementText,
+        reason: correction.category,
+      })),
+    });
+
+    return input.documentAssetService.createAsset({
+      manuscriptId: input.manuscriptId,
+      assetType: "final_proof_annotated_docx",
+      storageKey: manuscriptTarget.storageKey,
+      mimeType: DOCX_MIME,
+      createdBy: input.requestedBy,
+      fileName: manuscriptTarget.fileName,
+      parentAssetId: input.reportAssetId,
+      sourceModule: "proofreading",
+      sourceJobId: input.sourceJobId,
+    });
   }
 
   private async resolveDraftExecutionContext(input: {
@@ -1492,16 +1638,71 @@ function extractStringPayloadValue(
   return typeof value === "string" ? value : undefined;
 }
 
+function deriveProofreadingManuscriptTarget(input: {
+  reportStorageKey: string;
+  reportFileName?: string;
+}): {
+  storageKey: string;
+  fileName: string;
+} {
+  const normalizedStorageKey = input.reportStorageKey.replaceAll("\\", "/");
+  const directoryPrefix = normalizedStorageKey.includes("/")
+    ? normalizedStorageKey.slice(0, normalizedStorageKey.lastIndexOf("/") + 1)
+    : "";
+  const fileName = deriveProofreadingManuscriptFileName(input.reportFileName);
+
+  return {
+    storageKey: `${directoryPrefix}${fileName}`,
+    fileName,
+  };
+}
+
+function deriveProofreadingManuscriptFileName(
+  reportFileName: string | undefined,
+): string {
+  const normalizedFileName = (reportFileName ?? "proofreading-report.md")
+    .replaceAll("\\", "/")
+    .split("/")
+    .pop() ?? "proofreading-report.md";
+  const strippedExtension = normalizedFileName.replace(/\.[^.]+$/u, "");
+  const stem = strippedExtension.length > 0 ? strippedExtension : "proofreading-report";
+  const manuscriptStem = /report/iu.test(stem)
+    ? stem.replace(/report/giu, "manuscript")
+    : `${stem}-manuscript`;
+
+  return `${manuscriptStem}.docx`;
+}
+
 function renderProofreadingReport(
   findings: ProofreadingInspectionResult,
+  proofreadingPlan?: ProofreadingAiPlan,
 ): string {
   const lines = [
     "# Proofreading Rule Report",
     "",
     `Failed checks: ${findings.failedChecks.length}`,
     `Manual review items: ${findings.manualReviewItems.length}`,
+    `Corrections: ${proofreadingPlan?.corrections.length ?? 0}`,
     "",
   ];
+
+  if ((proofreadingPlan?.corrections.length ?? 0) > 0) {
+    lines.push("## Corrections", "");
+    for (const correction of proofreadingPlan?.corrections ?? []) {
+      lines.push(
+        `- [${correction.category}] ${correction.targetText} -> ${correction.replacementText}`,
+      );
+    }
+    lines.push("");
+  }
+
+  if ((proofreadingPlan?.manualReviewItems.length ?? 0) > 0) {
+    lines.push("## AI Manual Review", "");
+    for (const item of proofreadingPlan?.manualReviewItems ?? []) {
+      lines.push(`- ${item}`);
+    }
+    lines.push("");
+  }
 
   if (findings.failedChecks.length > 0) {
     lines.push("## Failed Checks", "");

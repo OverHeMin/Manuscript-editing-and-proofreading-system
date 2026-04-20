@@ -88,7 +88,14 @@ import {
   InMemoryExecutionTrackingRepository,
 } from "../modules/execution-tracking/index.ts";
 import { InMemoryAuditService } from "../audit/index.ts";
-import { AiGatewayService } from "../modules/ai-gateway/index.ts";
+import {
+  AiGatewayService,
+  ModelSelectionNotAllowedError,
+  NoModelRouteConfiguredError,
+} from "../modules/ai-gateway/index.ts";
+import {
+  AiProviderRuntimeConfigurationError,
+} from "../modules/ai-provider-runtime/index.ts";
 import {
   AiProviderCredentialCrypto,
   AiProviderConnectionNotFoundError,
@@ -345,6 +352,7 @@ import {
   createScreeningApi,
   ScreeningService,
 } from "../modules/screening/index.ts";
+import { ModuleTemplateFamilyNotConfiguredError } from "../modules/shared/module-run-support.ts";
 import {
   createTemplateApi,
   ExtractionCandidateIntakeStateError,
@@ -1861,6 +1869,7 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    textAssetRootDir: uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
   });
@@ -1907,6 +1916,8 @@ export function createInMemoryApiRuntime(input: {
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,
+    textAssetRootDir: uploadRootDir,
+    editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     reviewItemsService,
@@ -8442,7 +8453,7 @@ function createUnavailableAiProviderConnectionsResponse(): RouteResponse<{
   };
 }
 
-function mapErrorToHttpResponse(
+export function mapErrorToHttpResponse(
   error: unknown,
 ): [number, unknown, Record<string, string>?] {
   if (
@@ -8516,6 +8527,42 @@ function mapErrorToHttpResponse(
 
   if (error instanceof KnowledgeAiAssistUnavailableError) {
     return [503, { error: "service_unavailable", message: error.message }];
+  }
+
+  if (
+    error instanceof NoModelRouteConfiguredError ||
+    error instanceof ModelSelectionNotAllowedError
+  ) {
+    return [
+      503,
+      {
+        error: "service_unavailable",
+        message: formatAiGatewaySelectionErrorMessage(error),
+      },
+    ];
+  }
+
+  if (error instanceof AiProviderRuntimeConfigurationError) {
+    return [
+      503,
+      {
+        error: "ai_provider_configuration_error",
+        code: error.code,
+        message: formatAiProviderRuntimeConfigurationErrorMessage(error.code),
+      },
+    ];
+  }
+
+  if (error instanceof ModuleTemplateFamilyNotConfiguredError) {
+    return [
+      409,
+      {
+        error: "manuscript_template_not_configured",
+        code: "template_family_required",
+        message:
+          "Template family is not configured for this manuscript. Apply a template family before governed execution.",
+      },
+    ];
   }
 
   if (
@@ -8658,6 +8705,35 @@ function mapErrorToHttpResponse(
   }
 
   return [500, { error: "internal_error", message: "Unknown server error." }];
+}
+
+function formatAiProviderRuntimeConfigurationErrorMessage(
+  code: AiProviderRuntimeConfigurationError["code"],
+): string {
+  switch (code) {
+    case "credential_invalid":
+      return "AI provider credentials are invalid. Rotate the credential in system settings and try again.";
+    case "credential_missing":
+      return "AI provider credentials are missing. Configure the credential in system settings and try again.";
+    case "connection_disabled":
+      return "The resolved AI provider connection is disabled. Enable the connection in system settings and try again.";
+    case "connection_missing":
+      return "The resolved AI provider connection no longer exists. Rebind the model connection in system settings and try again.";
+    case "unsupported_adapter":
+      return "The resolved AI provider connection uses an unsupported compatibility mode.";
+    case "legacy_unbound":
+      return "The resolved model is missing an AI provider connection binding.";
+  }
+}
+
+function formatAiGatewaySelectionErrorMessage(
+  error: NoModelRouteConfiguredError | ModelSelectionNotAllowedError,
+): string {
+  if (error instanceof NoModelRouteConfiguredError) {
+    return "Knowledge AI assist does not have a model route configured. Configure System Settings -> AI Providers / Model Routing and try again.";
+  }
+
+  return "Knowledge AI assist model routing is blocked by current governance settings. Review System Settings -> AI Providers / Model Routing and try again.";
 }
 
 function readSingleHeader(value: string | string[] | undefined): string | undefined {

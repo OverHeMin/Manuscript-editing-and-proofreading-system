@@ -149,6 +149,10 @@ export class AiProviderRuntimeService {
         },
       );
     }
+    apiKey = normalizeRuntimeApiKey(apiKey, {
+      modelId: model.id,
+      connectionId: connection.id,
+    });
 
     if (connection.compatibility_mode !== "openai_chat_compatible") {
       throw new AiProviderRuntimeConfigurationError(
@@ -173,6 +177,33 @@ export function createAiProviderRuntimeService(
   options: AiProviderRuntimeServiceOptions,
 ): AiProviderRuntimeService {
   return new AiProviderRuntimeService(options);
+}
+
+function normalizeRuntimeApiKey(
+  apiKey: string,
+  input: {
+    modelId: string;
+    connectionId: string;
+  },
+): string {
+  const normalizedApiKey = apiKey.trim();
+  if (!normalizedApiKey) {
+    throw new AiProviderRuntimeConfigurationError(
+      "credential_invalid",
+      "AI provider credential is empty after decryption.",
+      input,
+    );
+  }
+
+  if (normalizedApiKey !== apiKey || /[^\x21-\x7e]/u.test(normalizedApiKey)) {
+    throw new AiProviderRuntimeConfigurationError(
+      "credential_invalid",
+      "AI provider credential contains unsupported non-ASCII characters.",
+      input,
+    );
+  }
+
+  return normalizedApiKey;
 }
 
 function classifyFailure(

@@ -556,6 +556,135 @@ test("persistent workbench upload auto-binds a governed review baseline when onl
   });
 });
 
+test("persistent workbench upload auto-binds a governed review baseline when the persistent store has no review families", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(
+      path.join(os.tmpdir(), "medsys-persistent-review-baseline-empty-"),
+    );
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent review baseline database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const server = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          server.baseUrl,
+          "persistent.admin",
+        );
+        const uploadResponse = await fetch(
+          `${server.baseUrl}/api/v1/manuscripts/upload`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Review manuscript needing first-run governed baseline",
+              createdBy: "forged-admin",
+              fileName: "governed-review-upload-empty.docx",
+              mimeType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              fileContentBase64: "UmV2aWV3IG1hbnVzY3JpcHQgY29udGVudA==",
+            }),
+          },
+        );
+        const uploaded = (await uploadResponse.json()) as {
+          manuscript: {
+            manuscript_type: string;
+            manuscript_type_detection_summary?: {
+              final_type: string;
+            };
+            current_template_family_id?: string;
+            governed_execution_context_summary?: {
+              base_template_family_id?: string;
+              journal_template_selection_state: string;
+              modules: Array<{
+                module: string;
+                status: string;
+                execution_profile_id?: string;
+                runtime_binding_id?: string;
+                resolved_model_id?: string;
+              }>;
+            };
+          };
+        };
+
+        assert.equal(
+          uploadResponse.status,
+          201,
+          `Expected upload to succeed, received ${uploadResponse.status}: ${JSON.stringify(uploaded)}`,
+        );
+        assert.equal(uploaded.manuscript.manuscript_type, "review");
+        assert.equal(
+          uploaded.manuscript.manuscript_type_detection_summary?.final_type,
+          "review",
+        );
+        assert.ok(
+          uploaded.manuscript.current_template_family_id,
+          "Expected upload to auto-bind an active review template family on an empty persistent store.",
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.base_template_family_id,
+          uploaded.manuscript.current_template_family_id,
+        );
+        assert.equal(
+          uploaded.manuscript.governed_execution_context_summary?.journal_template_selection_state,
+          "base_family_only",
+        );
+        assert.deepEqual(
+          uploaded.manuscript.governed_execution_context_summary?.modules.map(
+            (module) => ({
+              module: module.module,
+              status: module.status,
+              hasExecutionProfile: Boolean(module.execution_profile_id),
+              hasRuntimeBinding: Boolean(module.runtime_binding_id),
+              hasResolvedModel: Boolean(module.resolved_model_id),
+            }),
+          ),
+          [
+            {
+              module: "screening",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "editing",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+            {
+              module: "proofreading",
+              status: "resolved",
+              hasExecutionProfile: true,
+              hasRuntimeBinding: true,
+              hasResolvedModel: true,
+            },
+          ],
+        );
+      } finally {
+        await stopServer(server.server);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("persistent workbench screening routes keep governed execution evidence across server restarts", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migrate = runMigrateProcess(databaseUrl);

@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   createApiHttpServer,
@@ -73,6 +74,7 @@ import { InMemoryRuntimeBindingRepository } from "../../../src/modules/runtime-b
 import { RuntimeBindingService } from "../../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
+import type { MainlineAiRuntimeExecutor } from "../../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { createScreeningApi } from "../../../src/modules/screening/screening-api.ts";
 import { ScreeningService } from "../../../src/modules/screening/screening-service.ts";
 import { InMemoryModuleTemplateRepository } from "../../../src/modules/templates/in-memory-template-family-repository.ts";
@@ -81,6 +83,7 @@ import { ToolPermissionPolicyService } from "../../../src/modules/tool-permissio
 import { InMemoryVerificationOpsRepository } from "../../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 import { createVerificationOpsApi } from "../../../src/modules/verification-ops/verification-ops-api.ts";
 import { VerificationOpsService } from "../../../src/modules/verification-ops/verification-ops-service.ts";
+import { semanticTableResultsDocxBase64 } from "../../../../../test-support/semantic-table-docx.ts";
 
 export interface WorkbenchSeededIds {
   manuscriptId: string;
@@ -395,6 +398,145 @@ export function createWorkbenchRuntime(input: {
     createId: () => nextId("knowledge-upload"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
+  const runtimeUploadRootDir =
+    input.uploadRootDir ??
+    path.resolve(process.cwd(), ".local-data", "uploads", "local");
+  const screeningExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson() {
+      return {
+        summary: "AI screening summary for HTTP closure.",
+        majorFindings: ["Primary endpoint definition is incomplete."],
+        minorFindings: ["Table labels should be normalized."],
+        riskLevel: "medium",
+        recommendedDecision: "minor_revision",
+      };
+    },
+    async executeMarkdown() {
+      throw new Error("Screening HTTP closure expects structured JSON output.");
+    },
+  };
+  const editingExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson(input) {
+      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+        ? input.userPayload.sourceBlocks
+        : [];
+      const firstBlock = sourceBlocks.find(
+        (entry): entry is { text: string } =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "text" in entry &&
+          typeof (entry as { text?: unknown }).text === "string" &&
+          (entry as { text: string }).text.trim().length > 0,
+      );
+      const targetText = firstBlock?.text?.trim() ?? "Abstract Objective";
+      return {
+        summary: "AI editing plan for HTTP closure.",
+        replacements: [
+          {
+            targetText,
+            replacementText: `${targetText}（编辑建议版）`,
+            reason: "Create a deterministic editable replacement candidate for closure testing.",
+          },
+        ],
+        manualReviewItems: [],
+      };
+    },
+    async executeMarkdown() {
+      throw new Error("Editing HTTP closure expects structured JSON output.");
+    },
+  };
+  const editingTransformService = {
+    async applyDeterministicRules(input: {
+      outputStorageKey: string;
+      aiReplacements?: Array<{
+        targetText: string;
+        replacementText: string;
+      }>;
+    }) {
+      const outputPath = resolveRuntimeStoragePath(
+        runtimeUploadRootDir,
+        input.outputStorageKey,
+      );
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await writeFile(
+        outputPath,
+        Buffer.from(semanticTableResultsDocxBase64, "base64"),
+      );
+
+      return {
+        appliedRuleIds:
+          (input.aiReplacements ?? []).length > 0 ? ["ai-replacement-1"] : [],
+        appliedChanges: (input.aiReplacements ?? []).map((replacement, index) => ({
+          ruleId: `ai-replacement-${index + 1}`,
+          before: replacement.targetText,
+          after: replacement.replacementText,
+        })),
+        tableInspectionFindings: [],
+      };
+    },
+  };
+  const proofreadingExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson(input) {
+      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
+        ? input.userPayload.sourceBlocks
+        : [];
+      const firstBlock = sourceBlocks.find(
+        (entry): entry is { text: string } =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "text" in entry &&
+          typeof (entry as { text?: unknown }).text === "string" &&
+          (entry as { text: string }).text.trim().length > 0,
+      );
+      const targetText = firstBlock?.text?.trim() ?? "Proofreading target";
+      return {
+        summary: "AI proofreading plan for HTTP closure.",
+        corrections: [
+          {
+            targetText,
+            replacementText: `${targetText} [proofread]`,
+            category: "style",
+          },
+        ],
+        manualReviewItems: [],
+      };
+    },
+    async executeMarkdown() {
+      throw new Error("Proofreading HTTP closure expects structured JSON output.");
+    },
+  };
+  const proofreadingTransformService = {
+    async applyDeterministicRules(input: {
+      outputStorageKey: string;
+      aiReplacements?: Array<{
+        targetText: string;
+        replacementText: string;
+      }>;
+    }) {
+      const outputPath = resolveRuntimeStoragePath(
+        runtimeUploadRootDir,
+        input.outputStorageKey,
+      );
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await writeFile(
+        outputPath,
+        Buffer.from(semanticTableResultsDocxBase64, "base64"),
+      );
+
+      return {
+        appliedRuleIds:
+          (input.aiReplacements ?? []).length > 0
+            ? ["proofreading-replacement-1"]
+            : [],
+        appliedChanges: (input.aiReplacements ?? []).map((replacement, index) => ({
+          ruleId: `proofreading-replacement-${index + 1}`,
+          before: replacement.targetText,
+          after: replacement.replacementText,
+        })),
+        tableInspectionFindings: [],
+      };
+    },
+  };
 
   seedWorkbenchGovernance({
     manuscriptRepository,
@@ -482,6 +624,10 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        mainlineAiRuntimeExecutor: screeningExecutor,
+        textAssetRootDir:
+          input.uploadRootDir ??
+          path.resolve(process.cwd(), ".local-data", "uploads", "local"),
         manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-screening"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
@@ -508,6 +654,8 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        mainlineAiRuntimeExecutor: editingExecutor,
+        editorialDocxTransformService: editingTransformService,
         manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-editing"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
@@ -534,6 +682,11 @@ export function createWorkbenchRuntime(input: {
         toolPermissionPolicyService,
         agentExecutionService,
         agentExecutionOrchestrationService,
+        mainlineAiRuntimeExecutor: proofreadingExecutor,
+        textAssetRootDir:
+          input.uploadRootDir ??
+          path.resolve(process.cwd(), ".local-data", "uploads", "local"),
+        editorialDocxTransformService: proofreadingTransformService,
         proofreadingSourceBlockResolver: docxSourceBlockResolver,
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
@@ -1412,4 +1565,14 @@ function seedWorkbenchGovernance(input: {
     status: "draft",
     version: 2,
   });
+}
+
+function resolveRuntimeStoragePath(rootDir: string, storageKey: string): string {
+  const normalizedSegments = storageKey
+    .replaceAll("\\", "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  return path.resolve(rootDir, ...normalizedSegments);
 }
