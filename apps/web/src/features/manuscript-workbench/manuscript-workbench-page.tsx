@@ -3,20 +3,27 @@ import {
   WorkbenchCoreStrip,
   type WorkbenchCoreStripPillarId,
 } from "../../app/workbench-core-strip.tsx";
+import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import {
   createBrowserHttpClient,
   resolveBrowserApiUrl,
 } from "../../lib/browser-http-client.ts";
+import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
 import { formatWorkbenchRequestError } from "./manuscript-workbench-error-format.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
   DocumentAssetExportViewModel,
+  DocumentAssetViewModel,
   JobViewModel,
   ManuscriptType,
   UploadManuscriptInput,
 } from "../manuscripts/index.ts";
 import { MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
+import type {
+  ProofreadingConfirmationDecisionAction,
+  ProofreadingConfirmationDecisionInput,
+} from "../proofreading/index.ts";
 import {
   ManuscriptWorkbenchControls,
   type ManuscriptWorkbenchActionPanelProps,
@@ -54,6 +61,18 @@ import {
   type ManuscriptWorkbenchHighRiskReviewItemViewModel,
 } from "./manuscript-workbench-high-risk-review.ts";
 import {
+  buildAssetPreviewComments,
+  buildAssetReportPreviewBody,
+  buildEditingChangeLedgerEntries,
+  buildProofreadingConfirmationItems,
+  buildWorkbenchAssetCollectionHref,
+  buildWorkbenchAssetDetailHref,
+  ManuscriptWorkbenchAssetDetailPage,
+  resolveManuscriptAssetDetailKind,
+  type ProofreadingConfirmationDraftState,
+  type ProofreadingConfirmationItemViewModel,
+} from "./manuscript-workbench-detail.tsx";
+import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
   resolveWorkbenchReadOnlyExecutionContext,
@@ -89,6 +108,7 @@ export interface ManuscriptWorkbenchPageProps {
   actorRole?: AuthRole;
   controller?: ManuscriptWorkbenchController;
   prefilledManuscriptId?: string;
+  prefilledAssetId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   prefilledSampleSetItemId?: string;
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
@@ -398,11 +418,97 @@ export async function refreshLatestWorkbenchJobContext(
 const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
+export function pruneConfirmationState(
+  current: Readonly<Record<string, ProofreadingConfirmationDraftState>>,
+  items: readonly ProofreadingConfirmationItemViewModel[],
+): Record<string, ProofreadingConfirmationDraftState> {
+  const next: Record<string, ProofreadingConfirmationDraftState> = {};
+
+  for (const item of items) {
+    const draft = current[item.itemId];
+    if (!draft) {
+      continue;
+    }
+
+    const editedReplacementText = normalizeOptionalText(
+      draft.editedReplacementText ?? "",
+    );
+    const note = normalizeOptionalText(draft.note ?? "");
+
+    if (!draft.action && !editedReplacementText && !note) {
+      continue;
+    }
+
+    next[item.itemId] = {
+      ...(draft.action ? { action: draft.action } : {}),
+      ...(editedReplacementText ? { editedReplacementText } : {}),
+      ...(note ? { note } : {}),
+    };
+  }
+
+  return next;
+}
+
+export function buildProofreadingConfirmationDecisions(
+  items: readonly ProofreadingConfirmationItemViewModel[],
+  state: Readonly<Record<string, ProofreadingConfirmationDraftState>>,
+): ProofreadingConfirmationDecisionInput[] {
+  return items.flatMap((item) => {
+    const draft = state[item.itemId];
+    if (!draft?.action) {
+      return [];
+    }
+
+    const editedReplacementText = normalizeOptionalText(
+      draft.editedReplacementText ?? "",
+    );
+    const note = normalizeOptionalText(draft.note ?? "");
+
+    return [
+      {
+        itemId: item.itemId,
+        targetText: item.targetText,
+        replacementText: item.replacementText,
+        action: draft.action,
+        ...(editedReplacementText ? { editedReplacementText } : {}),
+        ...(note ? { note } : {}),
+      },
+    ];
+  });
+}
+
+export function resolveDetailJobSourceAsset(input: {
+  selectedAsset: DocumentAssetExportViewModel["asset"] | DocumentAssetViewModel;
+  assets: readonly DocumentAssetViewModel[];
+  mode: ManuscriptWorkbenchMode;
+}): DocumentAssetViewModel {
+  const detailKind = resolveManuscriptAssetDetailKind({
+    mode: input.mode,
+    assetType: input.selectedAsset.asset_type,
+  });
+  if (detailKind !== "proofreading_confirmation") {
+    return input.selectedAsset;
+  }
+
+  const parentAssetId = input.selectedAsset.parent_asset_id?.trim();
+  if (!parentAssetId) {
+    return input.selectedAsset;
+  }
+
+  const parentAsset = input.assets.find((asset) => asset.id === parentAssetId);
+  if (!parentAsset || parentAsset.asset_type !== "proofreading_draft_report") {
+    return input.selectedAsset;
+  }
+
+  return parentAsset;
+}
+
 export function ManuscriptWorkbenchPage({
   mode,
   actorRole = "user",
   controller = defaultController,
   prefilledManuscriptId,
+  prefilledAssetId,
   prefilledReviewedCaseSnapshotId,
   prefilledSampleSetItemId,
   accessibleHandoffModes,
@@ -411,6 +517,7 @@ export function ManuscriptWorkbenchPage({
 }: ManuscriptWorkbenchPageProps) {
   const canUpload = mode === "submission" || actorRole === "admin";
   const normalizedPrefilledManuscriptId = prefilledManuscriptId?.trim() ?? "";
+  const normalizedPrefilledAssetId = prefilledAssetId?.trim() ?? "";
   const normalizedPrefilledReviewedCaseSnapshotId =
     prefilledReviewedCaseSnapshotId?.trim() ?? "";
   const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
@@ -449,6 +556,16 @@ export function ManuscriptWorkbenchPage({
   >([]);
   const [parentAssetId, setParentAssetId] = useState("");
   const [draftAssetId, setDraftAssetId] = useState("");
+  const [selectedAssetId, setSelectedAssetId] = useState(normalizedPrefilledAssetId);
+  const [detailJob, setDetailJob] = useState<AnyWorkbenchJob | null>(null);
+  const [detailPreviewSession, setDetailPreviewSession] =
+    useState<DocumentPreviewSessionViewModel | null>(null);
+  const [detailError, setDetailError] = useState("");
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [confirmationState, setConfirmationState] = useState<
+    Record<string, ProofreadingConfirmationDraftState>
+  >({});
+  const [isHumanFinalPublishing, setIsHumanFinalPublishing] = useState(false);
   const [manualFeedbackCategory, setManualFeedbackCategory] =
     useState<ManualFeedbackCategory | "">("");
   const [manualFeedbackNote, setManualFeedbackNote] = useState("");
@@ -496,6 +613,16 @@ export function ManuscriptWorkbenchPage({
         ? current
         : workspace.latestProofreadingDraftAsset?.id ?? "",
     );
+    setSelectedAssetId((current) => {
+      if (
+        normalizedPrefilledAssetId.length > 0 &&
+        workspace.assets.some((asset) => asset.id === normalizedPrefilledAssetId)
+      ) {
+        return normalizedPrefilledAssetId;
+      }
+
+      return workspace.assets.some((asset) => asset.id === current) ? current : "";
+    });
     setSelectedTemplateFamilyId(
       workspace.manuscript.current_template_family_id ??
         workspace.manuscript.governed_execution_context_summary?.base_template_family_id ??
@@ -535,7 +662,22 @@ export function ManuscriptWorkbenchPage({
     setSelectedTemplateFamilyId("");
     setSelectedJournalTemplateId("");
     setSelectedTemplateContext(null);
+    setSelectedAssetId(normalizedPrefilledAssetId);
+    setDetailJob(null);
+    setDetailPreviewSession(null);
+    setDetailError("");
+    setIsDetailLoading(false);
+    setConfirmationState({});
+    setIsHumanFinalPublishing(false);
   }, [normalizedPrefilledManuscriptId]);
+
+  useEffect(() => {
+    setSelectedAssetId(normalizedPrefilledAssetId);
+    setDetailJob(null);
+    setDetailPreviewSession(null);
+    setDetailError("");
+    setConfirmationState({});
+  }, [normalizedPrefilledAssetId]);
 
   useEffect(() => {
     setManualFeedbackCategory("");
@@ -543,6 +685,104 @@ export function ManuscriptWorkbenchPage({
     setIsManualFeedbackSubmitting(false);
     setLastSubmittedManualFeedback(null);
   }, [workspace?.manuscript.id]);
+
+  useEffect(() => {
+    if (!workspace || selectedAssetId.trim().length === 0) {
+      setDetailJob(null);
+      setDetailPreviewSession(null);
+      setDetailError("");
+      setIsDetailLoading(false);
+      setConfirmationState({});
+      return;
+    }
+
+    const selectedAsset = workspace.assets.find((asset) => asset.id === selectedAssetId);
+    if (!selectedAsset) {
+      setDetailJob(null);
+      setDetailPreviewSession(null);
+      setDetailError(`Asset ${selectedAssetId} is no longer available in this workspace.`);
+      setIsDetailLoading(false);
+      setConfirmationState({});
+      return;
+    }
+
+    let cancelled = false;
+    setIsDetailLoading(true);
+    setDetailError("");
+
+    void (async () => {
+      const detailKind = resolveManuscriptAssetDetailKind({
+        mode,
+        assetType: selectedAsset.asset_type,
+      });
+      const detailJobAsset = resolveDetailJobSourceAsset({
+        selectedAsset,
+        assets: workspace.assets,
+        mode,
+      });
+      let sourceJob: AnyWorkbenchJob | null = null;
+      if (detailJobAsset.source_job_id) {
+        if (latestJob?.id === detailJobAsset.source_job_id) {
+          sourceJob = latestJob;
+        } else {
+          try {
+            sourceJob = await controller.loadJob(detailJobAsset.source_job_id);
+          } catch {
+            sourceJob = null;
+          }
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setDetailJob(sourceJob);
+      setConfirmationState((current) => pruneConfirmationState(
+        current,
+        buildProofreadingConfirmationItems(sourceJob),
+      ));
+
+      if (detailKind === "report_preview") {
+        setDetailPreviewSession(null);
+        setIsDetailLoading(false);
+        return;
+      }
+
+      try {
+        const previewSession = await controller.createPreviewSession({
+          manuscriptId: workspace.manuscript.id,
+          assetId: selectedAsset.id,
+          actorRole,
+          comments: buildAssetPreviewComments({
+            asset: selectedAsset,
+            job: sourceJob,
+          }),
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setDetailPreviewSession(previewSession);
+      } catch (previewError) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailPreviewSession(null);
+        setDetailError(formatWorkbenchRequestError(previewError));
+      } finally {
+        if (!cancelled) {
+          setIsDetailLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actorRole, controller, latestJob, mode, selectedAssetId, workspace]);
 
   useEffect(() => {
     if (!workspace) {
@@ -684,6 +924,94 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function publishHumanFinalFromConfirmation(input: {
+    workspace: ManuscriptWorkbenchWorkspace;
+    asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>;
+    decisions: ProofreadingConfirmationDecisionInput[];
+  }) {
+    setIsHumanFinalPublishing(true);
+    setError("");
+
+    try {
+      const result = await controller.publishHumanFinalAndLoad({
+        manuscriptId: input.workspace.manuscript.id,
+        finalAssetId: input.asset.id,
+        actorRole,
+        storageKey: `runs/${input.workspace.manuscript.id}/proofreading/human-final`,
+        fileName: "human-final.docx",
+        confirmationDecisions: input.decisions,
+      });
+      setWorkspace(result.workspace);
+      setLatestJob(result.runResult.job);
+      setLatestExport(null);
+      setConfirmationState({});
+
+      const publishedAsset =
+        result.workspace.assets.find((asset) => asset.id === result.runResult.asset.id) ??
+        result.workspace.currentAsset ??
+        result.runResult.asset;
+      const collectionHref = buildWorkbenchAssetCollectionHref({
+        mode,
+        manuscriptId: result.workspace.manuscript.id,
+        reviewedCaseSnapshotId:
+          normalizedPrefilledReviewedCaseSnapshotId.length > 0
+            ? normalizedPrefilledReviewedCaseSnapshotId
+            : undefined,
+        sampleSetItemId:
+          normalizedPrefilledSampleSetItemId.length > 0
+            ? normalizedPrefilledSampleSetItemId
+            : undefined,
+      });
+      setSelectedAssetId("");
+
+      const message = `Published human-final asset ${publishedAsset.id}`;
+      setStatus(message);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Publish Human Final",
+        message,
+        details: buildWorkbenchJobActionResultDetails(
+          [
+            {
+              label: "Asset",
+              value: publishedAsset.id,
+            },
+            {
+              label: "Output Type",
+              value: resolveGeneratedOutputTypeLabel(publishedAsset.asset_type, "proofreading"),
+            },
+            {
+              label: "Confirmed Decisions",
+              value: String(input.decisions.length),
+            },
+            {
+              label: "Job",
+              value: result.runResult.job.id,
+            },
+          ],
+          result.runResult.job,
+          result.workspace.manuscript.module_execution_overview,
+        ),
+      });
+
+      if (typeof window !== "undefined") {
+        window.location.hash = collectionHref;
+      }
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Publish Human Final",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsHumanFinalPublishing(false);
     }
   }
 
@@ -1441,6 +1769,17 @@ function buildTemplateContextActionResult(
         }
       : undefined;
 
+  const selectedAsset =
+    workspace && selectedAssetId.trim().length > 0
+      ? workspace.assets.find((asset) => asset.id === selectedAssetId) ?? null
+      : null;
+  const detailKind = selectedAsset
+    ? resolveManuscriptAssetDetailKind({
+        mode,
+        assetType: selectedAsset.asset_type,
+      })
+    : null;
+
   const utilitiesPanel = workspace
     ? {
         canExport: true,
@@ -1478,46 +1817,44 @@ function buildTemplateContextActionResult(
           }),
         canPublishHumanFinal:
           mode === "proofreading" &&
-          workspace.currentAsset?.asset_type === "final_proof_annotated_docx",
-        onPublishHumanFinal: () =>
-          void run("Publish Human Final", async () => {
-            if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
-              throw new Error(
-                "A finalized proofreading asset is required before publishing the human-final manuscript.",
-              );
-            }
+          workspace.currentAsset?.asset_type === "final_proof_annotated_docx" &&
+          detailKind !== "proofreading_confirmation",
+        onPublishHumanFinal: () => {
+          if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
+            return;
+          }
 
-            const result = await controller.publishHumanFinalAndLoad({
-              manuscriptId: workspace.manuscript.id,
-              finalAssetId: workspace.currentAsset.id,
-              actorRole,
-              storageKey: `runs/${workspace.manuscript.id}/proofreading/human-final`,
-              fileName: "human-final.docx",
-            });
-            setWorkspace(result.workspace);
-            setLatestJob(result.runResult.job);
-            setLatestExport(null);
-            setStatus(`Published human-final asset ${result.runResult.asset.id}`);
-            return {
-              tone: "success" as const,
-              actionLabel: "Publish Human Final",
-              message: `Published human-final asset ${result.runResult.asset.id}`,
-              details: buildWorkbenchJobActionResultDetails(
-                [
-                  {
-                    label: "Asset",
-                    value: result.runResult.asset.id,
-                  },
-                  {
-                    label: "Job",
-                    value: result.runResult.job.id,
-                  },
-                ],
-                result.runResult.job,
-                result.workspace.manuscript.module_execution_overview,
-              ),
-            };
-          }),
+          const detailHref = buildWorkbenchAssetDetailHref({
+            mode,
+            manuscriptId: workspace.manuscript.id,
+            assetId: workspace.currentAsset.id,
+            reviewedCaseSnapshotId:
+              normalizedPrefilledReviewedCaseSnapshotId.length > 0
+                ? normalizedPrefilledReviewedCaseSnapshotId
+                : undefined,
+            sampleSetItemId:
+              normalizedPrefilledSampleSetItemId.length > 0
+                ? normalizedPrefilledSampleSetItemId
+                : undefined,
+          });
+          setSelectedAssetId(workspace.currentAsset.id);
+          setStatus(`Opened proofreading confirmation ${workspace.currentAsset.id}`);
+          setLatestActionResult({
+            tone: "success",
+            actionLabel: "Publish Human Final",
+            message: `Opened proofreading confirmation ${workspace.currentAsset.id}`,
+            details: [
+              {
+                label: "Asset",
+                value: workspace.currentAsset.id,
+              },
+            ],
+          });
+
+          if (typeof window !== "undefined") {
+            window.location.hash = detailHref;
+          }
+        },
         onRefreshLatestJob: () => {
           if (!latestJob?.id) {
             return;
@@ -1600,6 +1937,103 @@ function buildTemplateContextActionResult(
       latestActionResult={latestActionResult}
     />
   ) : null;
+  const confirmationItems = buildProofreadingConfirmationItems(detailJob);
+  const confirmationReady =
+    confirmationItems.length > 0 &&
+    confirmationItems.every((item) => {
+      const draft = confirmationState[item.itemId];
+      if (!draft?.action) {
+        return false;
+      }
+
+      if (draft.action === "accept_and_edit") {
+        return (draft.editedReplacementText?.trim().length ?? 0) > 0;
+      }
+
+      return true;
+    });
+  const detailBackHref = workspace
+    ? buildWorkbenchAssetCollectionHref({
+        mode,
+        manuscriptId: workspace.manuscript.id,
+        reviewedCaseSnapshotId:
+          normalizedPrefilledReviewedCaseSnapshotId.length > 0
+            ? normalizedPrefilledReviewedCaseSnapshotId
+            : undefined,
+        sampleSetItemId:
+          normalizedPrefilledSampleSetItemId.length > 0
+            ? normalizedPrefilledSampleSetItemId
+            : undefined,
+      })
+    : formatWorkbenchHash(mode);
+  const detailElement =
+    workspace && selectedAsset && detailKind
+      ? (
+          <ManuscriptWorkbenchAssetDetailPage
+            mode={mode}
+            manuscriptTitle={workspace.manuscript.title}
+            asset={selectedAsset}
+            detailKind={detailKind}
+            backHref={detailBackHref}
+            downloadHref={resolveBrowserApiUrl(
+              `/api/v1/document-assets/${selectedAsset.id}/download`,
+            )}
+            previewSession={detailPreviewSession}
+            reportBody={buildAssetReportPreviewBody(detailJob)}
+            changeLedger={buildEditingChangeLedgerEntries(detailJob)}
+            confirmationItems={confirmationItems}
+            confirmationState={confirmationState}
+            isFinalizeEnabled={confirmationReady}
+            isFinalizing={isHumanFinalPublishing}
+            onConfirmationActionChange={(itemId, action) => {
+              setConfirmationState((current) => ({
+                ...current,
+                [itemId]: {
+                  ...current[itemId],
+                  action,
+                  ...(action !== "accept_and_edit"
+                    ? {
+                        editedReplacementText: undefined,
+                      }
+                    : {}),
+                },
+              }));
+            }}
+            onConfirmationEditedReplacementTextChange={(itemId, value) => {
+              setConfirmationState((current) => ({
+                ...current,
+                [itemId]: {
+                  ...current[itemId],
+                  editedReplacementText: value,
+                },
+              }));
+            }}
+            onConfirmationNoteChange={(itemId, value) => {
+              setConfirmationState((current) => ({
+                ...current,
+                [itemId]: {
+                  ...current[itemId],
+                  note: value,
+                },
+              }));
+            }}
+            onFinalize={() => {
+              if (!workspace || !selectedAsset || !confirmationReady) {
+                return;
+              }
+
+              void publishHumanFinalFromConfirmation({
+                workspace,
+                asset: selectedAsset,
+                decisions: buildProofreadingConfirmationDecisions(
+                  confirmationItems,
+                  confirmationState,
+                ),
+              });
+            }}
+          />
+        )
+      : null;
 
   return (
     <article
@@ -1726,15 +2160,17 @@ function buildTemplateContextActionResult(
                 className="manuscript-workbench-focus-panel-body"
                 data-focus-body="scrollable"
               >
-                <ManuscriptWorkbenchFocusCanvas
+              <ManuscriptWorkbenchFocusCanvas
               mode={mode}
               busy={workbenchBusy}
-              workspace={workspace}
+              workspace={detailElement ? null : workspace}
               detectedManuscriptTypeLabel={detectedManuscriptTypeLabel}
-              templateSelection={templateSelectionPanel}
-              primaryActions={focusPrimaryActions}
+              reviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
+              sampleSetItemId={normalizedPrefilledSampleSetItemId}
+              templateSelection={detailElement ? undefined : templateSelectionPanel}
+              primaryActions={detailElement ? [] : focusPrimaryActions}
             />
-                {summaryElement ?? (
+                {(detailElement ?? summaryElement) ?? (
               <section className="manuscript-workbench-focus-empty">
                 <h3>加载当前稿件后开始判断</h3>
                 <p>
@@ -1785,6 +2221,8 @@ export interface ManuscriptWorkbenchFocusCanvasProps {
   busy: boolean;
   workspace: ManuscriptWorkbenchWorkspace | null;
   detectedManuscriptTypeLabel: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
   templateSelection?: ManuscriptWorkbenchTemplateSelectionPanelProps;
   primaryActions?: ManuscriptWorkbenchActionPanelProps[];
   supportingSummary?: React.ReactNode;
@@ -1795,6 +2233,8 @@ export function ManuscriptWorkbenchFocusCanvas({
   busy,
   workspace,
   detectedManuscriptTypeLabel,
+  reviewedCaseSnapshotId,
+  sampleSetItemId,
   templateSelection,
   primaryActions = [],
   supportingSummary,
@@ -1805,6 +2245,15 @@ export function ManuscriptWorkbenchFocusCanvas({
 
   const currentManuscriptAsset =
     workspace.currentManuscriptAsset ?? workspace.currentAsset;
+  const currentManuscriptPreviewHref = currentManuscriptAsset
+    ? buildWorkbenchAssetDetailHref({
+        mode,
+        manuscriptId: workspace.manuscript.id,
+        assetId: currentManuscriptAsset.id,
+        reviewedCaseSnapshotId: normalizeOptionalText(reviewedCaseSnapshotId ?? ""),
+        sampleSetItemId: normalizeOptionalText(sampleSetItemId ?? ""),
+      })
+    : null;
   const currentManuscriptDownloadHref = resolveCurrentAssetDownloadHref(
     currentManuscriptAsset,
   );
@@ -1814,6 +2263,15 @@ export function ManuscriptWorkbenchFocusCanvas({
     workspace,
     currentManuscriptAsset,
   );
+  const currentResultPreviewHref = currentResultAsset
+    ? buildWorkbenchAssetDetailHref({
+        mode,
+        manuscriptId: workspace.manuscript.id,
+        assetId: currentResultAsset.id,
+        reviewedCaseSnapshotId: normalizeOptionalText(reviewedCaseSnapshotId ?? ""),
+        sampleSetItemId: normalizeOptionalText(sampleSetItemId ?? ""),
+      })
+    : null;
   const currentResultDownloadHref = resolveCurrentAssetDownloadHref(currentResultAsset);
   const currentResultFileName = currentResultAsset?.file_name ?? undefined;
   const governedModules =
@@ -1833,38 +2291,47 @@ export function ManuscriptWorkbenchFocusCanvas({
               <span>当前稿件</span>
               <strong>{workspace.manuscript.title}</strong>
               <p>{detectedManuscriptTypeLabel}</p>
-              {currentManuscriptDownloadHref ? (
+              {currentManuscriptPreviewHref || currentManuscriptDownloadHref ? (
                 <div className="manuscript-workbench-focus-shortcuts">
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentManuscriptDownloadHref}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={
+                      currentManuscriptPreviewHref ??
+                      currentManuscriptDownloadHref ??
+                      "#"
+                    }
+                    target={currentManuscriptPreviewHref ? undefined : "_blank"}
+                    rel={currentManuscriptPreviewHref ? undefined : "noreferrer"}
                   >
                     查看当前稿件
                   </a>
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentManuscriptDownloadHref}
+                    href={currentManuscriptDownloadHref ?? undefined}
                     download={currentManuscriptFileName}
                   >
                     下载当前稿件
                   </a>
                 </div>
               ) : null}
-              {currentResultAsset && currentResultDownloadHref ? (
+              {currentResultAsset &&
+              (currentResultPreviewHref || currentResultDownloadHref) ? (
                 <div className="manuscript-workbench-focus-shortcuts">
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentResultDownloadHref}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={
+                      currentResultPreviewHref ??
+                      currentResultDownloadHref ??
+                      "#"
+                    }
+                    target={currentResultPreviewHref ? undefined : "_blank"}
+                    rel={currentResultPreviewHref ? undefined : "noreferrer"}
                   >
                     查看当前结果
                   </a>
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentResultDownloadHref}
+                    href={currentResultDownloadHref ?? undefined}
                     download={currentResultFileName}
                   >
                     {resolveCurrentResultDownloadLabel(currentResultAsset)}

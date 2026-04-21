@@ -251,7 +251,7 @@ export class ReviewItemsService {
     this.feedbackGovernanceService = options.feedbackGovernanceService;
     this.residualReviewCoordinator = options.residualReviewCoordinator;
     this.activationMetricsService = options.activationMetricsService;
-    this.createId = options.createId ?? crypto.randomUUID;
+    this.createId = options.createId ?? (() => crypto.randomUUID());
     this.now = options.now ?? (() => new Date());
   }
 

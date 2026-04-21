@@ -25,6 +25,10 @@ import {
   type UploadManuscriptResult,
 } from "../manuscripts/index.ts";
 import {
+  createPreviewSession,
+  type DocumentPreviewSessionViewModel,
+} from "../document-preview/index.ts";
+import {
   listJournalTemplateProfilesByTemplateFamilyId,
   listTemplateFamilies,
   type JournalTemplateProfileViewModel,
@@ -40,6 +44,7 @@ import {
   publishProofreadingHumanFinal,
   type ProofreadingHumanFinalPublishResultViewModel,
   type ProofreadingRunResultViewModel,
+  type PublishProofreadingHumanFinalInput,
 } from "../proofreading/index.ts";
 import {
   runScreening,
@@ -152,6 +157,7 @@ export interface PublishHumanFinalAndLoadInput {
   actorRole: AuthRole;
   storageKey: string;
   fileName?: string;
+  confirmationDecisions?: PublishProofreadingHumanFinalInput["confirmationDecisions"];
 }
 
 export interface RunModuleAndLoadResult {
@@ -230,6 +236,19 @@ export interface ManuscriptWorkbenchController {
     input: DecideReviewItemInput,
   ): Promise<ReviewItemDecisionResultViewModel>;
   loadJob(jobId: string): Promise<JobViewModel>;
+  createPreviewSession(input: {
+    manuscriptId: string;
+    assetId: string;
+    actorRole: AuthRole;
+    previewStatus?: "ready" | "pending_normalization";
+    comments?: Array<{
+      id: string;
+      author?: string;
+      body: string;
+      anchor_text?: string;
+      created_at?: string;
+    }>;
+  }): Promise<DocumentPreviewSessionViewModel>;
   exportCurrentAsset(input: {
     manuscriptId: string;
     preferredAssetType?: DocumentAssetViewModel["asset_type"];
@@ -347,6 +366,7 @@ export function createManuscriptWorkbenchController(
         actorRole: input.actorRole,
         storageKey: input.storageKey,
         fileName: input.fileName,
+        confirmationDecisions: input.confirmationDecisions,
       });
       const [job, workspace] = await Promise.all([
         hydrateWorkbenchActionJob(client, response.body.job),
@@ -371,6 +391,16 @@ export function createManuscriptWorkbenchController(
     },
     async loadJob(jobId) {
       const response = await getJob(client, jobId);
+      return response.body;
+    },
+    async createPreviewSession(input) {
+      const response = await createPreviewSession(client, {
+        manuscriptId: input.manuscriptId,
+        assetId: input.assetId,
+        actorRole: input.actorRole,
+        ...(input.previewStatus ? { previewStatus: input.previewStatus } : {}),
+        ...(input.comments ? { comments: input.comments } : {}),
+      });
       return response.body;
     },
     async exportCurrentAsset(input) {

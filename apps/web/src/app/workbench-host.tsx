@@ -247,6 +247,7 @@ export function WorkbenchHost({
             actorRole={session.role}
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
             prefilledManuscriptId={routeState.manuscriptId}
+            prefilledAssetId={routeState.assetId}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
             prefilledSampleSetItemId={routeState.sampleSetItemId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}

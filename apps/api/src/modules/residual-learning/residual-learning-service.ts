@@ -112,7 +112,7 @@ export class ResidualLearningService {
   constructor(options: ResidualLearningServiceOptions) {
     this.residualIssueRepository = options.residualIssueRepository;
     this.learningService = options.learningService;
-    this.createId = options.createId ?? crypto.randomUUID;
+    this.createId = options.createId ?? (() => crypto.randomUUID());
     this.now = options.now ?? (() => new Date());
   }
 

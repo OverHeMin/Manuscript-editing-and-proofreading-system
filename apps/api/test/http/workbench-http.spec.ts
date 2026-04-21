@@ -235,6 +235,92 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http preview-session route creates a read-only preview session for manuscript assets", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-preview-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Preview Through HTTP",
+        manuscriptType: "review",
+        createdBy: "forged-user",
+        fileName: "preview-through-http.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "UHJldmlldyBtZSB0aHJvdWdoIEhUVFA=",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: {
+        id: string;
+      };
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(uploadResponse.status, 201);
+
+    const previewResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/preview-session`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: uploaded.manuscript.id,
+          assetId: uploaded.asset.id,
+          actorRole: "proofreader",
+          comments: [
+            {
+              id: "comment-preview-1",
+              body: "Confirm the manuscript preview opens in read-only mode.",
+            },
+          ],
+        }),
+      },
+    );
+    const preview = (await previewResponse.json()) as {
+      manuscript_id: string;
+      source_asset_id: string;
+      viewer: string;
+      mode: string;
+      status: string;
+      comment_source: string;
+      save_back_enabled: boolean;
+      comments: Array<{ id: string; body: string }>;
+    };
+
+    assert.equal(previewResponse.status, 200);
+    assert.equal(preview.manuscript_id, uploaded.manuscript.id);
+    assert.equal(preview.source_asset_id, uploaded.asset.id);
+    assert.equal(preview.viewer, "onlyoffice");
+    assert.equal(preview.mode, "view");
+    assert.equal(preview.status, "ready");
+    assert.equal(preview.comment_source, "onlyoffice");
+    assert.equal(preview.save_back_enabled, false);
+    assert.deepEqual(preview.comments, [
+      {
+        id: "comment-preview-1",
+        body: "Confirm the manuscript preview opens in read-only mode.",
+      },
+    ]);
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
 test("workbench http manuscript and export surfaces stay hidden from non-mainline public-beta roles", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-surface-"));
   const { server, baseUrl } = await startWorkbenchServer({

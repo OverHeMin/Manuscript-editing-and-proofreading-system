@@ -7,13 +7,16 @@ import {
   buildModuleRunSuccessMessage,
   buildManualFeedbackActionResult,
   buildManualManuscriptTypeOptions,
+  buildProofreadingConfirmationDecisions,
   buildJournalTemplateOptions,
   buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
   resolveGovernedExecutionBlockMessage,
+  resolveDetailJobSourceAsset,
   resolveResultMaterializationFailureMessage,
   resolveTemplateFamilyIdForManuscriptType,
   resolveManualFeedbackContext,
+  pruneConfirmationState,
   buildTemplateFamilyOptions,
   ManuscriptWorkbenchFocusCanvas,
   ManuscriptWorkbenchPage,
@@ -539,6 +542,162 @@ test("focus canvas shows the AI recognition action for governed module work whil
   assert.match(markup, /AI 自动处理（本次）/u);
   assert.match(markup, /确认校对定稿/u);
   assert.match(markup, /data-secondary-action="available"/);
+  assert.match(
+    markup,
+    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-original-1"/,
+  );
+  assert.match(
+    markup,
+    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
+  );
+  assert.match(
+    markup,
+    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-original-1\/download"/,
+  );
+  assert.match(
+    markup,
+    /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
+  );
+});
+
+test("proofreading confirmation helpers keep only active draft rows and serialize item decisions for publish", () => {
+  const pruned = pruneConfirmationState(
+    {
+      "correction-1": {
+        action: "accept",
+        note: "保留",
+      },
+      "correction-legacy": {
+        action: "reject",
+        note: "旧条目",
+      },
+    },
+    [
+      {
+        itemId: "correction-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        category: "style",
+      },
+      {
+        itemId: "correction-2",
+        targetText: "The hemoglobin were stable.",
+        replacementText: "The hemoglobin was stable.",
+        category: "grammar",
+      },
+    ],
+  );
+
+  assert.deepEqual(pruned, {
+    "correction-1": {
+      action: "accept",
+      note: "保留",
+    },
+  });
+
+  assert.deepEqual(
+    buildProofreadingConfirmationDecisions(
+      [
+        {
+          itemId: "correction-1",
+          targetText: "5 mg per dL",
+          replacementText: "5 mg/dL",
+          category: "style",
+        },
+        {
+          itemId: "correction-2",
+          targetText: "The hemoglobin were stable.",
+          replacementText: "The hemoglobin was stable.",
+          category: "grammar",
+        },
+      ],
+      {
+        "correction-1": {
+          action: "accept",
+          note: "量纲正确",
+        },
+        "correction-2": {
+          action: "accept_and_edit",
+          editedReplacementText: "The hemoglobin level was stable.",
+          note: "人工补足 level",
+        },
+      },
+    ),
+    [
+      {
+        itemId: "correction-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        action: "accept",
+        note: "量纲正确",
+      },
+      {
+        itemId: "correction-2",
+        targetText: "The hemoglobin were stable.",
+        replacementText: "The hemoglobin was stable.",
+        action: "accept_and_edit",
+        editedReplacementText: "The hemoglobin level was stable.",
+        note: "人工补足 level",
+      },
+    ],
+  );
+});
+
+test("proofreading confirmation detail follows the parent draft asset so the human-confirmation page keeps the AI correction list", () => {
+  const draftAsset = {
+    id: "asset-proof-draft-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "proofreading_draft_report",
+    status: "active",
+    storage_key: "runs/proofreading/draft.md",
+    mime_type: "text/markdown",
+    source_module: "proofreading",
+    source_job_id: "job-proof-draft-1",
+    created_by: "proofreader-1",
+    version_no: 3,
+    is_current: false,
+    file_name: "proofreading-draft.md",
+    created_at: "2026-04-21T09:00:00.000Z",
+    updated_at: "2026-04-21T09:00:00.000Z",
+  } as never;
+  const finalAsset = {
+    id: "asset-proof-final-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "final_proof_annotated_docx",
+    status: "active",
+    storage_key: "runs/proofreading/final.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-proof-draft-1",
+    source_module: "proofreading",
+    source_job_id: "job-proof-final-1",
+    created_by: "proofreader-1",
+    version_no: 4,
+    is_current: true,
+    file_name: "proofreading-final.docx",
+    created_at: "2026-04-21T09:05:00.000Z",
+    updated_at: "2026-04-21T09:05:00.000Z",
+  } as never;
+
+  assert.equal(
+    resolveDetailJobSourceAsset({
+      selectedAsset: finalAsset,
+      assets: [finalAsset, draftAsset],
+      mode: "proofreading",
+    })?.id,
+    "asset-proof-draft-1",
+  );
+
+  assert.equal(
+    resolveDetailJobSourceAsset({
+      selectedAsset: {
+        ...finalAsset,
+        asset_type: "edited_docx",
+      },
+      assets: [finalAsset, draftAsset],
+      mode: "editing",
+    })?.id,
+    "asset-proof-final-1",
+  );
 });
 
 test("manual feedback helpers derive the governed snapshot context and build rule-center-aware action results", () => {

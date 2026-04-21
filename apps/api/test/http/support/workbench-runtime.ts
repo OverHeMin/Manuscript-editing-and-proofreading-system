@@ -25,6 +25,8 @@ import { AgentRuntimeService } from "../../../src/modules/agent-runtime/agent-ru
 import { InMemoryAgentRuntimeRepository } from "../../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
 import { AiGatewayService } from "../../../src/modules/ai-gateway/ai-gateway-service.ts";
 import { DocumentExportService } from "../../../src/modules/document-pipeline/document-export-service.ts";
+import { DocumentPreviewService } from "../../../src/modules/document-pipeline/document-preview-service.ts";
+import { OnlyOfficeSessionService } from "../../../src/modules/document-pipeline/onlyoffice-session-service.ts";
 import { PythonDocxSourceBlockResolver } from "../../../src/modules/document-pipeline/python-docx-source-block-resolver.ts";
 import { createEditingApi } from "../../../src/modules/editing/editing-api.ts";
 import { EditingService } from "../../../src/modules/editing/editing-service.ts";
@@ -108,6 +110,31 @@ export interface WorkbenchRuntimeBundle {
   manuscriptRepository: InMemoryManuscriptRepository;
   manuscriptApi: ReturnType<typeof createManuscriptApi>;
   documentPipelineApi: {
+    createPreviewSession: (input: {
+      manuscriptId: string;
+      assetId: string;
+      actorRole: string;
+      previewStatus?: "ready" | "pending_normalization";
+      comments?: Array<{
+        id: string;
+        author?: string;
+        body: string;
+        anchor_text?: string;
+        created_at?: string;
+      }>;
+    }) => Promise<{
+      status: number;
+      body: {
+        manuscript_id: string;
+        source_asset_id: string;
+        viewer: string;
+        mode: string;
+        status: string;
+        comment_source: string;
+        comments: Array<{ id: string; body: string }>;
+        save_back_enabled: boolean;
+      };
+    }>;
     exportCurrentAsset: (input: {
       manuscriptId: string;
       preferredAssetType?: string;
@@ -311,6 +338,10 @@ export function createWorkbenchRuntime(input: {
   const exportService = new DocumentExportService({
     assetRepository,
     manuscriptRepository,
+  });
+  const previewService = new DocumentPreviewService({
+    assetRepository,
+    sessionService: new OnlyOfficeSessionService(),
   });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
@@ -576,6 +607,18 @@ export function createWorkbenchRuntime(input: {
     manuscriptRepository,
     manuscriptApi,
     documentPipelineApi: {
+      async createPreviewSession(input) {
+        return {
+          status: 200,
+          body: await previewService.createPreviewSession({
+            manuscriptId: input.manuscriptId,
+            assetId: input.assetId,
+            actorRole: input.actorRole as never,
+            previewStatus: input.previewStatus,
+            comments: input.comments,
+          }),
+        };
+      },
       async exportCurrentAsset(input) {
         return {
           status: 200,

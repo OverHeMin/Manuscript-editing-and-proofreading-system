@@ -27,6 +27,7 @@ import {
   formatHighRiskRecommendedRouteLabel,
   formatHighRiskReviewPostureLabel,
 } from "./manuscript-workbench-high-risk-review.ts";
+import { buildWorkbenchAssetDetailHref } from "./manuscript-workbench-detail.tsx";
 import type { ManuscriptWorkbenchHighRiskReviewItemViewModel } from "./manuscript-workbench-high-risk-review.ts";
 import type {
   ManuscriptWorkbenchKnowledgeReferenceViewModel,
@@ -977,7 +978,17 @@ export function ManuscriptWorkbenchSummary({
               />
               <SummaryMetric
                 label="快速操作"
-                value={renderCurrentAssetShortcuts(displayedCurrentAsset)}
+                value={renderCurrentAssetShortcuts({
+                  mode,
+                  manuscriptId: workspace.manuscript.id,
+                  asset: displayedCurrentAsset,
+                  reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
+                    ? normalizedPrefilledReviewedCaseSnapshotId
+                    : undefined,
+                  sampleSetItemId: shouldPreserveEvaluationSampleContextIds
+                    ? normalizedPrefilledSampleSetItemId
+                    : undefined,
+                })}
               />
               {currentResultAsset ? (
                 <SummaryMetric
@@ -988,7 +999,17 @@ export function ManuscriptWorkbenchSummary({
               {currentResultAsset ? (
                 <SummaryMetric
                   label="\u7ed3\u679c\u5feb\u901f\u64cd\u4f5c"
-                  value={renderCurrentResultShortcuts(currentResultAsset)}
+                  value={renderCurrentResultShortcuts({
+                    mode,
+                    manuscriptId: workspace.manuscript.id,
+                    asset: currentResultAsset,
+                    reviewedCaseSnapshotId: shouldPreserveEvaluationSampleContextIds
+                      ? normalizedPrefilledReviewedCaseSnapshotId
+                      : undefined,
+                    sampleSetItemId: shouldPreserveEvaluationSampleContextIds
+                      ? normalizedPrefilledSampleSetItemId
+                      : undefined,
+                  })}
                 />
               ) : null}
               <SummaryMetric
@@ -1319,20 +1340,28 @@ function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
   );
 }
 
-function renderCurrentAssetShortcuts(asset: DocumentAssetViewModel): ReactNode {
-  const assetUrl = resolveCurrentAssetDownloadUrl(asset);
+function renderCurrentAssetShortcuts(input: {
+  mode: ManuscriptWorkbenchMode;
+  manuscriptId: string;
+  asset: DocumentAssetViewModel;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+}): ReactNode {
+  const previewHref = buildWorkbenchAssetDetailHref({
+    mode: input.mode,
+    manuscriptId: input.manuscriptId,
+    assetId: input.asset.id,
+    reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+    sampleSetItemId: input.sampleSetItemId,
+  });
+  const assetUrl = resolveCurrentAssetDownloadUrl(input.asset);
 
   return (
     <span
       className="manuscript-workbench-shortcut-row"
       data-current-asset-actions="direct"
     >
-      <a
-        className="manuscript-workbench-shortcut"
-        href={assetUrl}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a className="manuscript-workbench-shortcut" href={previewHref}>
         查看当前稿件
       </a>
       <a className="manuscript-workbench-shortcut" href={assetUrl} download>
@@ -1342,24 +1371,32 @@ function renderCurrentAssetShortcuts(asset: DocumentAssetViewModel): ReactNode {
   );
 }
 
-function renderCurrentResultShortcuts(asset: DocumentAssetViewModel): ReactNode {
-  const assetUrl = resolveCurrentAssetDownloadUrl(asset);
+function renderCurrentResultShortcuts(input: {
+  mode: ManuscriptWorkbenchMode;
+  manuscriptId: string;
+  asset: DocumentAssetViewModel;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+}): ReactNode {
+  const previewHref = buildWorkbenchAssetDetailHref({
+    mode: input.mode,
+    manuscriptId: input.manuscriptId,
+    assetId: input.asset.id,
+    reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+    sampleSetItemId: input.sampleSetItemId,
+  });
+  const assetUrl = resolveCurrentAssetDownloadUrl(input.asset);
 
   return (
     <span
       className="manuscript-workbench-shortcut-row"
       data-current-asset-actions="result"
     >
-      <a
-        className="manuscript-workbench-shortcut"
-        href={assetUrl}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a className="manuscript-workbench-shortcut" href={previewHref}>
         {"\u67e5\u770b\u5f53\u524d\u7ed3\u679c"}
       </a>
       <a className="manuscript-workbench-shortcut" href={assetUrl} download>
-        {resolveCurrentResultDownloadLabel(asset)}
+        {resolveCurrentResultDownloadLabel(input.asset)}
       </a>
     </span>
   );
@@ -3404,6 +3441,12 @@ export function formatWorkbenchActionResultMessage(message: string): string {
   const preparedExportMatch = /^Prepared export (.+)$/u.exec(message);
   if (preparedExportMatch) {
     return `已准备导出 ${preparedExportMatch[1]}`;
+  }
+
+  const openedProofreadingConfirmationMatch =
+    /^Opened proofreading confirmation (.+)$/u.exec(message);
+  if (openedProofreadingConfirmationMatch) {
+    return `已打开校对确认页 ${openedProofreadingConfirmationMatch[1]}`;
   }
 
   const publishedHumanFinalMatch = /^Published human-final asset (.+)$/u.exec(message);

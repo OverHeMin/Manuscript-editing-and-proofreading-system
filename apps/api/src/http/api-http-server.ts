@@ -134,6 +134,14 @@ import {
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
+  DocumentPreviewAssetNotFoundError,
+  DocumentPreviewService,
+} from "../modules/document-pipeline/document-preview-service.ts";
+import {
+  OnlyOfficeSessionService,
+  type OnlyOfficeViewSession,
+} from "../modules/document-pipeline/onlyoffice-session-service.ts";
+import {
   createEditorialRuleApi,
   EditorialRuleActivationMetricsService,
   EditorialRulePackageService,
@@ -532,6 +540,9 @@ type HttpRouteMatch =
   | {
       route: "jobs-get";
       jobId: string;
+    }
+  | {
+      route: "document-pipeline-preview-session";
     }
   | {
       route: "document-pipeline-export-current-asset";
@@ -1299,6 +1310,19 @@ export interface ApiServerRuntime {
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
   screeningApi: ReturnType<typeof createScreeningApi>;
   documentPipelineApi: {
+    createPreviewSession: (input: {
+      manuscriptId: string;
+      assetId: string;
+      actorRole: RoleKey;
+      previewStatus?: "ready" | "pending_normalization";
+      comments?: Array<{
+        id: string;
+        author?: string;
+        body: string;
+        anchor_text?: string;
+        created_at?: string;
+      }>;
+    }) => Promise<RouteResponse<OnlyOfficeViewSession>>;
     exportCurrentAsset: (input: {
       manuscriptId: string;
       preferredAssetType?: DocumentAssetRecord["asset_type"];
@@ -1694,6 +1718,10 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     manuscriptRepository,
   });
+  const previewService = new DocumentPreviewService({
+    assetRepository,
+    sessionService: new OnlyOfficeSessionService(),
+  });
   const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
     repository: modelRoutingGovernanceRepository,
     modelRegistryRepository,
@@ -2033,6 +2061,12 @@ export function createInMemoryApiRuntime(input: {
       screeningService,
     }),
     documentPipelineApi: {
+      async createPreviewSession(input) {
+        return {
+          status: 200,
+          body: await previewService.createPreviewSession(input),
+        };
+      },
       async exportCurrentAsset(input) {
         return {
           status: 200,
@@ -4211,6 +4245,13 @@ async function handleRoute(
       return runtime.manuscriptApi.getJob({
         jobId: routeMatch.jobId,
       });
+    case "document-pipeline-preview-session": {
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript preview");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.documentPipelineApi.createPreviewSession
+      >[0];
+      return runtime.documentPipelineApi.createPreviewSession(body);
+    }
     case "document-pipeline-export-current-asset": {
       await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
       const body = (await readJsonBody(req)) as Parameters<
@@ -6613,6 +6654,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "manuscripts-upload-batch" };
   }
 
+  if (method === "POST" && path === "/api/v1/document-pipeline/preview-session") {
+    return { route: "document-pipeline-preview-session" };
+  }
+
   if (method === "POST" && path === "/api/v1/document-pipeline/export-current-asset") {
     return { route: "document-pipeline-export-current-asset" };
   }
@@ -8588,6 +8633,7 @@ export function mapErrorToHttpResponse(
     error instanceof ModuleExecutionSnapshotNotFoundError ||
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
+    error instanceof DocumentPreviewAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof JournalTemplateProfileNotFoundError ||
     error instanceof ManuscriptJournalTemplateNotFoundError ||

@@ -400,6 +400,119 @@ test("persistent workbench upload routes keep manuscripts, assets, jobs, and exp
   });
 });
 
+test("persistent workbench preview-session route stays available across server restarts", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-persistent-preview-"));
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+
+      const firstServer = await startPersistentWorkbenchServer(databaseUrl, {
+        uploadRootDir,
+      });
+      try {
+        const cookie = await loginAsPersistentUser(
+          firstServer.baseUrl,
+          "persistent.user",
+        );
+
+        const firstPreviewResponse = await fetch(
+          `${firstServer.baseUrl}/api/v1/document-pipeline/preview-session`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: cookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              manuscriptId: seededIds.manuscriptId,
+              assetId: seededIds.originalAssetId,
+              actorRole: "editor",
+              comments: [
+                {
+                  id: "persistent-preview-1",
+                  body: "Persistent runtime should expose the same read-only preview session.",
+                },
+              ],
+            }),
+          },
+        );
+        const firstPreview = (await firstPreviewResponse.json()) as {
+          manuscript_id: string;
+          source_asset_id: string;
+          mode: string;
+          status: string;
+          comments: Array<{ id: string; body: string }>;
+        };
+
+        assert.equal(firstPreviewResponse.status, 200);
+        assert.equal(firstPreview.manuscript_id, seededIds.manuscriptId);
+        assert.equal(firstPreview.source_asset_id, seededIds.originalAssetId);
+        assert.equal(firstPreview.mode, "view");
+        assert.equal(firstPreview.status, "ready");
+        assert.equal(firstPreview.comments[0]?.id, "persistent-preview-1");
+
+        await stopServer(firstServer.server);
+
+        const secondServer = await startPersistentWorkbenchServer(databaseUrl, {
+          uploadRootDir,
+        });
+        try {
+          const secondPreviewResponse = await fetch(
+            `${secondServer.baseUrl}/api/v1/document-pipeline/preview-session`,
+            {
+              method: "POST",
+              headers: {
+                Cookie: cookie,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                manuscriptId: seededIds.manuscriptId,
+                assetId: seededIds.originalAssetId,
+                actorRole: "editor",
+                comments: [
+                  {
+                    id: "persistent-preview-2",
+                    body: "Preview routing should still work after restart.",
+                  },
+                ],
+              }),
+            },
+          );
+          const secondPreview = (await secondPreviewResponse.json()) as {
+            manuscript_id: string;
+            source_asset_id: string;
+            mode: string;
+            status: string;
+            comments: Array<{ id: string; body: string }>;
+          };
+
+          assert.equal(secondPreviewResponse.status, 200);
+          assert.equal(secondPreview.manuscript_id, seededIds.manuscriptId);
+          assert.equal(secondPreview.source_asset_id, seededIds.originalAssetId);
+          assert.equal(secondPreview.mode, "view");
+          assert.equal(secondPreview.status, "ready");
+          assert.equal(secondPreview.comments[0]?.id, "persistent-preview-2");
+        } finally {
+          await stopServer(secondServer.server);
+        }
+      } finally {
+        await stopServer(firstServer.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+      await rm(uploadRootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("persistent workbench upload auto-binds a governed review baseline when only a draft review family exists", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-persistent-review-baseline-"));

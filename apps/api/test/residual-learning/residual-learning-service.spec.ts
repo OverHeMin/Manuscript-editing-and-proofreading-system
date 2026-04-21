@@ -119,3 +119,41 @@ test("observeProofreadingResiduals filters covered issues, boosts recurrence, an
   assert.equal(issues[2]?.recommended_route, "manual_only");
   assert.equal(issues[2]?.harness_validation_status, "not_required");
 });
+
+test("observeProofreadingResiduals uses a bound default createId when residuals are recorded", async () => {
+  const repository = new InMemoryResidualIssueRepository();
+  const service = new ResidualLearningService({
+    residualIssueRepository: repository,
+    now: () => new Date("2026-04-18T10:05:00.000Z"),
+  });
+
+  const issues = await service.observeProofreadingResiduals({
+    manuscriptId: "manuscript-default-id-1",
+    manuscriptType: "clinical_study",
+    executionSnapshotId: "snapshot-default-id-1",
+    knownRuleIds: [],
+    knownKnowledgeItemIds: [],
+    sourceBlocks: [
+      {
+        section: "discussion",
+        blockIndex: 0,
+        text: "HbA1c naming drift remained in the report.",
+        residualHints: [
+          {
+            issue_type: "terminology_gap",
+            excerpt: "HbA1c naming drift remained in the report.",
+            suggestion: "Normalize the governed terminology before reuse.",
+            rationale: "This needs a reusable knowledge-backed explanation.",
+            model_confidence: 0.81,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(issues.length, 1);
+  assert.match(
+    issues[0]?.id ?? "",
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+});
