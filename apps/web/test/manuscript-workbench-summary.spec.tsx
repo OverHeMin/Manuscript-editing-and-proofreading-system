@@ -264,9 +264,12 @@ test("summary still exposes current asset and export metadata after the top stri
   assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(
     markup,
+    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
+  );
+  assert.match(
+    markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
   );
-  assert.match(markup, /target="_blank"/);
   assert.match(markup, /exports\/manuscript-1\/current\.docx/);
 });
 
@@ -285,6 +288,14 @@ test("summary separates current manuscript shortcuts from report-style current r
   assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7ed3\u679c/u);
   assert.match(markup, /\u4e0b\u8f7d\u521d\u7b5b\u62a5\u544a/u);
+  assert.match(
+    markup,
+    /href="#screening\?manuscriptId=manuscript-2&amp;assetId=asset-original-2"/,
+  );
+  assert.match(
+    markup,
+    /href="#screening\?manuscriptId=manuscript-2&amp;assetId=asset-screening-report-1"/,
+  );
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-original-2\/download"/,

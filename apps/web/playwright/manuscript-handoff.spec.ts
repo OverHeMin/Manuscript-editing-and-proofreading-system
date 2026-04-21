@@ -144,6 +144,17 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText("当前校对终稿已激活，可继续下游交付。");
 
   await page.getByRole("button", { name: "发布人工终稿" }).click();
+  await expect(page.locator("body")).toContainText("人工确认已确认 0/1 项");
+  const confirmationCard = page.locator(
+    ".manuscript-workbench-detail-confirmation-card",
+  );
+  await confirmationCard
+    .getByRole("button", { name: "路由到规则候选" })
+    .click();
+  await expect(page.locator("body")).toContainText("人工确认已确认 1/1 项");
+  await confirmationCard
+    .getByRole("button", { name: "发布人工终稿" })
+    .click();
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
   await expect(page.locator("body")).toContainText(
     "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",

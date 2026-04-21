@@ -1036,6 +1036,82 @@ test("manuscript workbench controller exports the current asset through the docu
   ]);
 });
 
+test("manuscript workbench controller creates a document preview session through the document pipeline route", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/document-pipeline/preview-session"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-1",
+            source_asset_id: "asset-proof-final-1",
+            source_asset_type: "normalized_docx",
+            viewer: "onlyoffice",
+            mode: "view",
+            status: "ready",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            comment_source: "onlyoffice",
+            comments: [
+              {
+                id: "preview-comment-1",
+                body: "Open a truthful preview instead of a fake button.",
+              },
+            ],
+            save_back_enabled: false,
+            warnings: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const preview = await controller.createPreviewSession({
+    manuscriptId: "manuscript-1",
+    assetId: "asset-proof-final-1",
+    actorRole: "proofreader",
+    comments: [
+      {
+        id: "preview-comment-1",
+        body: "Open a truthful preview instead of a fake button.",
+      },
+    ],
+  });
+
+  assert.equal(preview.source_asset_id, "asset-proof-final-1");
+  assert.equal(preview.mode, "view");
+  assert.equal(preview.comments[0]?.id, "preview-comment-1");
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/document-pipeline/preview-session",
+      body: {
+        manuscriptId: "manuscript-1",
+        assetId: "asset-proof-final-1",
+        actorRole: "proofreader",
+        comments: [
+          {
+            id: "preview-comment-1",
+            body: "Open a truthful preview instead of a fake button.",
+          },
+        ],
+      },
+    },
+  ]);
+});
+
 test("manuscript workbench controller publishes a proofreading human-final asset and reloads the workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const hydratedPublishJob = {
@@ -1193,6 +1269,21 @@ test("manuscript workbench controller publishes a proofreading human-final asset
     actorRole: "proofreader",
     storageKey: "runs/manuscript-1/proofreading/human-final.docx",
     fileName: "human-final.docx",
+    confirmationDecisions: [
+      {
+        itemId: "correction-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        action: "route_to_rule_candidate",
+      },
+      {
+        itemId: "correction-2",
+        targetText: "The hemoglobin were stable.",
+        replacementText: "The hemoglobin was stable.",
+        action: "accept_and_edit",
+        editedReplacementText: "The hemoglobin levels were stable.",
+      },
+    ],
   });
 
   assert.deepEqual(result.runResult.job, hydratedPublishJob);
@@ -1214,6 +1305,21 @@ test("manuscript workbench controller publishes a proofreading human-final asset
     actorRole: "proofreader",
     storageKey: "runs/manuscript-1/proofreading/human-final.docx",
     fileName: "human-final.docx",
+    confirmationDecisions: [
+      {
+        itemId: "correction-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        action: "route_to_rule_candidate",
+      },
+      {
+        itemId: "correction-2",
+        targetText: "The hemoglobin were stable.",
+        replacementText: "The hemoglobin was stable.",
+        action: "accept_and_edit",
+        editedReplacementText: "The hemoglobin levels were stable.",
+      },
+    ],
   });
 });
 

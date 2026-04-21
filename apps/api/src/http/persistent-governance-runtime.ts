@@ -45,6 +45,12 @@ import {
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
+  DocumentPreviewService,
+} from "../modules/document-pipeline/document-preview-service.ts";
+import {
+  OnlyOfficeSessionService,
+} from "../modules/document-pipeline/onlyoffice-session-service.ts";
+import {
   createEditorialRuleApi,
   EditorialRuleActivationMetricsService,
   EditorialRulePackageService,
@@ -473,6 +479,10 @@ export function createPersistentGovernanceRuntime(
   const exportService = new DocumentExportService({
     assetRepository,
     manuscriptRepository,
+  });
+  const previewService = new DocumentPreviewService({
+    assetRepository,
+    sessionService: new OnlyOfficeSessionService(),
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -953,6 +963,12 @@ export function createPersistentGovernanceRuntime(
       screeningService,
     }),
     documentPipelineApi: {
+      async createPreviewSession(input) {
+        return {
+          status: 200,
+          body: await previewService.createPreviewSession(input),
+        };
+      },
       async exportCurrentAsset(input) {
         return {
           status: 200,

@@ -39,9 +39,27 @@ export interface PublishProofreadingHumanFinalInput {
   actorRole: AuthRole;
   storageKey: string;
   fileName?: string;
+  confirmationDecisions?: ProofreadingConfirmationDecisionInput[];
 }
 
 export interface ProofreadingHumanFinalPublishResultViewModel {
   job: ModuleJobViewModel;
   asset: DocumentAssetViewModel;
+}
+
+export type ProofreadingConfirmationDecisionAction =
+  | "accept"
+  | "accept_and_edit"
+  | "reject"
+  | "manual_only"
+  | "route_to_rule_candidate"
+  | "route_to_knowledge_candidate";
+
+export interface ProofreadingConfirmationDecisionInput {
+  itemId: string;
+  targetText: string;
+  replacementText: string;
+  action: ProofreadingConfirmationDecisionAction;
+  editedReplacementText?: string;
+  note?: string;
 }

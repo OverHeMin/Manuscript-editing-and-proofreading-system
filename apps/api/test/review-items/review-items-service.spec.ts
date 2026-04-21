@@ -570,6 +570,77 @@ test("review items service lazily creates a feedback record when routing an auto
   assert.equal(result.item?.id, "candidate-auto-1");
 });
 
+test("review items service uses a bound default createId when submitting governed hits", async () => {
+  let savedItem: GovernedHitReviewItemRecord | undefined;
+
+  const service = new ReviewItemsService({
+    reviewItemsRepository: {
+      async listGovernedHits() {
+        return savedItem ? [savedItem] : [];
+      },
+      async findGovernedHitById(id) {
+        return savedItem?.id === id ? savedItem : undefined;
+      },
+      async saveGovernedHit(record) {
+        savedItem = {
+          ...record,
+        };
+      },
+    },
+    residualLearningService: {
+      async listIssues() {
+        return [];
+      },
+    },
+    learningService: {
+      async listPendingReviewCandidates() {
+        return [];
+      },
+      async createHumanFeedbackGovernedLearningCandidate() {
+        throw new Error("not used");
+      },
+      async approveLearningCandidate() {
+        throw new Error("not used");
+      },
+      async rejectLearningCandidate() {
+        throw new Error("not used");
+      },
+    },
+    feedbackGovernanceService: {
+      async recordHumanFeedback(input) {
+        return {
+          id: "feedback-default-id-1",
+          manuscript_id: input.manuscriptId,
+          module: input.module,
+          snapshot_id: input.snapshotId,
+          feedback_type: input.feedbackType,
+          feedback_text: input.feedbackText,
+          created_by: input.createdBy,
+          created_at: "2026-04-18T08:50:00.000Z",
+        };
+      },
+    },
+    now: () => new Date("2026-04-18T08:50:00.000Z"),
+  });
+
+  const result = await service.submitGovernedHit({
+    manuscriptId: "manuscript-default-id-1",
+    manuscriptType: "clinical_study",
+    module: "proofreading",
+    snapshotId: "snapshot-default-id-1",
+    sourceAssetId: "asset-default-id-1",
+    feedbackCategory: "missing_knowledge",
+    feedbackText: "The proofreading run still needs a governed terminology basis.",
+    createdBy: "knowledge-reviewer-1",
+  });
+
+  assert.match(
+    result.item.id,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  assert.equal(savedItem?.id, result.item.id);
+});
+
 test("review items service records governed-hit activation outcomes for false positives and routed rule candidates", async () => {
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
   await editorialRuleRepository.saveRuleSet({
