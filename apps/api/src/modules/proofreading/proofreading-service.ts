@@ -1410,24 +1410,23 @@ function extractProofreadingPlan(value: unknown): {
   const payload = asObject(value);
   const corrections = Array.isArray(payload?.corrections)
     ? payload.corrections
-        .map((entry, index) => {
+        .flatMap((entry, index) => {
           const correction = asObject(entry);
           const targetText = readOptionalString(correction?.targetText);
           const replacementText = readOptionalString(correction?.replacementText);
           if (!targetText || !replacementText) {
-            return undefined;
+            return [];
           }
 
-          return {
-            itemId: `correction-${index + 1}`,
-            targetText,
-            replacementText,
-            category: readOptionalString(correction?.category),
-          } satisfies ProofreadingPlanCorrectionSeed;
+          return [
+            {
+              itemId: `correction-${index + 1}`,
+              targetText,
+              replacementText,
+              category: readOptionalString(correction?.category),
+            } satisfies ProofreadingPlanCorrectionSeed,
+          ];
         })
-        .filter(
-          (entry): entry is ProofreadingPlanCorrectionSeed => entry !== undefined,
-        )
     : [];
 
   return {

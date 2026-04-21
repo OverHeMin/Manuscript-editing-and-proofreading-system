@@ -124,27 +124,27 @@ export function buildEditingChangeLedgerEntries(
     return [];
   }
 
-  return payload.appliedChanges
-    .map((entry, index) => {
+  return payload.appliedChanges.flatMap((entry, index) => {
       const change = asRecord(entry);
       const before = readOptionalString(change?.before);
       const after = readOptionalString(change?.after);
       if (!before || !after) {
-        return undefined;
+        return [];
       }
 
-      return {
-        id: `change-${index + 1}`,
-        sourceLabel:
-          readOptionalString(change?.ruleId) ??
-          readOptionalString(change?.source) ??
-          `change-${index + 1}`,
-        before,
-        after,
-        locationText: formatLocationText(change?.semantic_hit),
-      } satisfies EditingChangeLedgerEntry;
-    })
-    .filter((entry): entry is EditingChangeLedgerEntry => entry !== undefined);
+      return [
+        {
+          id: `change-${index + 1}`,
+          sourceLabel:
+            readOptionalString(change?.ruleId) ??
+            readOptionalString(change?.source) ??
+            `change-${index + 1}`,
+          before,
+          after,
+          locationText: formatLocationText(change?.semantic_hit),
+        } satisfies EditingChangeLedgerEntry,
+      ];
+    });
 }
 
 export function buildProofreadingConfirmationItems(
@@ -156,25 +156,23 @@ export function buildProofreadingConfirmationItems(
     return [];
   }
 
-  return plan.corrections
-    .map((entry, index) => {
+  return plan.corrections.flatMap((entry, index) => {
       const correction = asRecord(entry);
       const targetText = readOptionalString(correction?.targetText);
       const replacementText = readOptionalString(correction?.replacementText);
       if (!targetText || !replacementText) {
-        return undefined;
+        return [];
       }
 
-      return {
-        itemId: `correction-${index + 1}`,
-        targetText,
-        replacementText,
-        category: readOptionalString(correction?.category),
-      } satisfies ProofreadingConfirmationItemViewModel;
-    })
-    .filter(
-      (entry): entry is ProofreadingConfirmationItemViewModel => entry !== undefined,
-    );
+      return [
+        {
+          itemId: `correction-${index + 1}`,
+          targetText,
+          replacementText,
+          category: readOptionalString(correction?.category),
+        } satisfies ProofreadingConfirmationItemViewModel,
+      ];
+    });
 }
 
 export function buildAssetPreviewComments(input: {
@@ -207,34 +205,23 @@ export function buildAssetPreviewComments(input: {
 
   const payload = asRecord(input.job?.payload);
   if (Array.isArray(payload?.confirmationDecisions)) {
-    return payload.confirmationDecisions
-      .map((entry, index) => {
+    return payload.confirmationDecisions.flatMap((entry, index) => {
         const decision = asRecord(entry);
         const targetText = readOptionalString(decision?.targetText);
         const replacementText =
           readOptionalString(decision?.finalReplacementText) ??
           readOptionalString(decision?.replacementText);
         if (!targetText || !replacementText) {
-          return undefined;
+          return [];
         }
 
-        return {
+        return [{
           id: readOptionalString(decision?.itemId) ?? `decision-${index + 1}`,
           author: "人工确认",
           body: `${targetText} → ${replacementText}`,
           anchor_text: targetText,
-        };
-      })
-      .filter(
-        (
-          entry,
-        ): entry is {
-          id: string;
-          author?: string;
-          body: string;
-          anchor_text?: string;
-        } => entry !== undefined,
-      );
+        }];
+      });
   }
 
   return [];

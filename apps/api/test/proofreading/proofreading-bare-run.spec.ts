@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { EditorialDocxTransformService } from "../../src/modules/document-pipeline/editorial-docx-transform-service.ts";
 import { ProofreadingService } from "../../src/modules/proofreading/proofreading-service.ts";
 import { InMemoryResidualIssueRepository } from "../../src/modules/residual-learning/in-memory-residual-learning-repository.ts";
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
+import type { ReviewItemsService } from "../../src/modules/review-items/review-items-service.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
 import type {
   ExecuteMainlineAiInput,
@@ -197,10 +199,16 @@ test("proofreading bare mode draft succeeds without a current template family wh
 
 test("publishHumanFinal applies human confirmation decisions, routes rule candidates, and records residual observations", async () => {
   const harness = await seedMedicalQualityFixture();
-  const transformCalls: Array<Record<string, unknown>> = [];
-  const governedHitSubmissions: Array<Record<string, unknown>> = [];
-  const reviewDecisions: Array<Record<string, unknown>> = [];
-  const residualObservations: Array<Record<string, unknown>> = [];
+  const transformCalls: Array<
+    Parameters<EditorialDocxTransformService["applyDeterministicRules"]>[0]
+  > = [];
+  const governedHitSubmissions: Array<
+    Parameters<ReviewItemsService["submitGovernedHit"]>[0]
+  > = [];
+  const reviewDecisions: Array<Parameters<ReviewItemsService["decideReviewItem"]>[0]> = [];
+  const residualObservations: Array<
+    Parameters<ResidualLearningService["observeProofreadingResiduals"]>[0]
+  > = [];
 
   await harness.jobRepository.save({
     id: "job-proof-draft-1",
@@ -314,8 +322,10 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       },
     } as never,
     editorialDocxTransformService: {
-      async applyDeterministicRules(input) {
-        transformCalls.push(input as Record<string, unknown>);
+      async applyDeterministicRules(
+        input: Parameters<EditorialDocxTransformService["applyDeterministicRules"]>[0],
+      ) {
+        transformCalls.push(input);
         return {
           appliedRuleIds: [],
           appliedChanges: [],
@@ -327,8 +337,10 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       async recordExecutionGovernedHits() {
         return [];
       },
-      async submitGovernedHit(input) {
-        governedHitSubmissions.push(input as Record<string, unknown>);
+      async submitGovernedHit(
+        input: Parameters<ReviewItemsService["submitGovernedHit"]>[0],
+      ) {
+        governedHitSubmissions.push(input);
         return {
           feedback: {
             id: "feedback-route-1",
@@ -338,8 +350,8 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           },
         } as never;
       },
-      async decideReviewItem(input) {
-        reviewDecisions.push(input as Record<string, unknown>);
+      async decideReviewItem(input: Parameters<ReviewItemsService["decideReviewItem"]>[0]) {
+        reviewDecisions.push(input);
         return {
           action: input.action,
           item: null,
@@ -347,8 +359,10 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       },
     } as never,
     residualLearningService: {
-      async observeProofreadingResiduals(input) {
-        residualObservations.push(input as Record<string, unknown>);
+      async observeProofreadingResiduals(
+        input: Parameters<ResidualLearningService["observeProofreadingResiduals"]>[0],
+      ) {
+        residualObservations.push(input);
         return [];
       },
     } as never,

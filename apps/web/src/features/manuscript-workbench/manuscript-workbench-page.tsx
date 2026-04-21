@@ -13,6 +13,7 @@ import { formatWorkbenchRequestError } from "./manuscript-workbench-error-format
 import type { AuthRole } from "../auth/index.ts";
 import type {
   DocumentAssetExportViewModel,
+  DocumentAssetViewModel,
   JobViewModel,
   ManuscriptType,
   UploadManuscriptInput,
@@ -2306,7 +2307,7 @@ export function ManuscriptWorkbenchFocusCanvas({
                   </a>
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentManuscriptDownloadHref}
+                    href={currentManuscriptDownloadHref ?? undefined}
                     download={currentManuscriptFileName}
                   >
                     下载当前稿件
@@ -2330,7 +2331,7 @@ export function ManuscriptWorkbenchFocusCanvas({
                   </a>
                   <a
                     className="manuscript-workbench-shortcut manuscript-workbench-shortcut--context"
-                    href={currentResultDownloadHref}
+                    href={currentResultDownloadHref ?? undefined}
                     download={currentResultFileName}
                   >
                     {resolveCurrentResultDownloadLabel(currentResultAsset)}
