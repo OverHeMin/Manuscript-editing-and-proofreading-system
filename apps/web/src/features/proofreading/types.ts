@@ -48,10 +48,14 @@ export interface ProofreadingHumanFinalPublishResultViewModel {
 }
 
 export type ProofreadingConfirmationDecisionAction =
+  | "accepted"
+  | "accepted_with_manual_edit"
+  | "rejected"
   | "accept"
   | "accept_and_edit"
   | "reject"
   | "manual_only"
+  | "escalated"
   | "route_to_rule_candidate"
   | "route_to_knowledge_candidate";
 

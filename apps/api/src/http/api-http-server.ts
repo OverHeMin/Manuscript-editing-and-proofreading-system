@@ -1816,12 +1816,25 @@ export function createInMemoryApiRuntime(input: {
       const targetText =
         findFirstSourceText(sourceBlocks) ?? "Proofreading target";
       return {
+        role: "医学稿件终校审校员",
         summary: "Seeded proofreading AI plan.",
-        corrections: [
+        issues: [
           {
-            targetText,
-            replacementText: `${targetText} [proofread]`,
-            category: "style",
+            itemId: "issue-1",
+            title: "Seeded proofreading issue",
+            description: "Seeded local runtime surfaces issue-first proofreading output.",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: targetText,
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: `${targetText} [proofread]`,
+            },
           },
         ],
         manualReviewItems: [],

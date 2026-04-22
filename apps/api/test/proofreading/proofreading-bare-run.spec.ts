@@ -31,12 +31,26 @@ test("proofreading bare mode draft succeeds without a current template family wh
   const proofreadingExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
+        role: "医学稿件终校审校员",
         summary: "AI proofreading plan for bare mode.",
-        corrections: [
+        issues: [
           {
-            targetText: "5 mg per dL",
-            replacementText: "5 mg/dL",
-            category: "style",
+            itemId: "issue-1",
+            title: "单位表达不规范",
+            description: "将单位表达统一为标准写法。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: "5 mg per dL",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "5 mg/dL",
+            },
           },
         ],
         manualReviewItems: [
@@ -141,8 +155,33 @@ test("proofreading bare mode draft succeeds without a current template family wh
   const proofreadingPayload = result.job.payload as
     | {
         reportMarkdown?: string;
+        proofreadingSourceBlocks?: Array<{
+          blockIndex?: number;
+          section?: string;
+          block_kind?: string;
+          text?: string;
+        }>;
         proofreadingPlan?: {
+          role?: string;
           summary?: string;
+          issues?: Array<{
+            itemId?: string;
+            title?: string;
+            description?: string;
+            severity?: string;
+            source?: string;
+            issueType?: string;
+            blocksFinal?: boolean;
+            anchor?: {
+              blockIndex?: number;
+              quote?: string;
+              sectionLabel?: string;
+            };
+            suggestion?: {
+              action?: string;
+              replacementText?: string;
+            };
+          }>;
           corrections?: Array<{
             targetText?: string;
             replacementText?: string;
@@ -159,9 +198,34 @@ test("proofreading bare mode draft succeeds without a current template family wh
     "Expected proofreading bare runs to persist an AI correction plan.",
   );
   assert.equal(
+    proofreadingPayload?.proofreadingPlan?.role,
+    "医学稿件终校审校员",
+  );
+  assert.equal(
     proofreadingPayload.proofreadingPlan?.summary,
     "AI proofreading plan for bare mode.",
   );
+  assert.deepEqual(proofreadingPayload.proofreadingPlan?.issues, [
+    {
+      itemId: "issue-1",
+      title: "单位表达不规范",
+      description: "将单位表达统一为标准写法。",
+      severity: "medium",
+      source: "residual_ai",
+      issueType: "style",
+      blocksFinal: false,
+      anchor: {
+        blockIndex: 0,
+        blockKind: "paragraph",
+        quote: "5 mg per dL",
+        sectionLabel: "results",
+      },
+      suggestion: {
+        action: "replace_text",
+        replacementText: "5 mg/dL",
+      },
+    },
+  ]);
   assert.deepEqual(proofreadingPayload.proofreadingPlan?.corrections, [
     {
       targetText: "5 mg per dL",
@@ -172,22 +236,39 @@ test("proofreading bare mode draft succeeds without a current template family wh
   assert.deepEqual(proofreadingPayload.proofreadingPlan?.manualReviewItems, [
     "Verify the normalized unit against the source table before release.",
   ]);
+  assert.deepEqual(
+    proofreadingPayload?.proofreadingSourceBlocks?.map((block) => ({
+      blockIndex: block.blockIndex,
+      section: block.section,
+      block_kind: block.block_kind,
+      text: block.text,
+    })),
+    [
+      {
+        blockIndex: 0,
+        section: "results",
+        block_kind: "paragraph",
+        text: "Dose was 5 mg per dL in the bare proofreading report.",
+      },
+    ],
+  );
   const proofreadingAssets = await harness.assetRepository.listByManuscriptId(
     "manuscript-1",
   );
   const generatedProofreadingDocx = proofreadingAssets.find(
     (asset) => asset.asset_type === "final_proof_annotated_docx",
   );
-  assert.ok(
+  assert.equal(
     generatedProofreadingDocx,
-    "Expected proofreading bare runs to also create a downloadable manuscript asset.",
+    undefined,
+    "Draft proofreading should only emit the issue workbench report until human confirmation.",
   );
   const updatedManuscript = await harness.manuscriptRepository.findById(
     "manuscript-1",
   );
   assert.equal(
     updatedManuscript?.current_proofreading_asset_id,
-    generatedProofreadingDocx?.id,
+    undefined,
   );
   assert.ok(result.snapshot_id);
   assert.equal(
@@ -219,38 +300,143 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
     requested_by: "proofreader-1",
     payload: {
       parentAssetId: harness.originalAssetId,
-      proofreadingManuscriptAssetId: "asset-proof-manuscript-1",
+      sourceManuscriptAssetId: harness.originalAssetId,
+      executionMode: "governed",
+      executionProfileId: "profile-proofreading-1",
+      runtimeBindingId: "binding-proofreading-1",
+      modelId: "model-1",
+      modelSource: "legacy_module_default",
+      snapshotId: "snapshot-proof-draft-1",
+      knowledgeItemIds: ["knowledge-proof-1"],
       proofreadingPlan: {
+        role: "医学稿件终校审校员",
         summary: "Proofreading draft plan.",
-        corrections: [
+        issues: [
           {
-            targetText: "5 mg per dL",
-            replacementText: "5 mg/dL",
-            category: "style",
+            itemId: "issue-1",
+            title: "单位表达不规范",
+            description: "单位写法需要统一。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: "5 mg per dL",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "5 mg/dL",
+            },
           },
           {
-            targetText: "The hemoglobin were stable.",
-            replacementText: "The hemoglobin was stable.",
-            category: "grammar",
+            itemId: "issue-2",
+            title: "主谓一致错误",
+            description: "需要修正语法一致性。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "grammar",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 1,
+              quote: "The hemoglobin were stable.",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "The hemoglobin was stable.",
+            },
           },
           {
-            targetText: "ALT remained stable.",
-            replacementText: "Alanine aminotransferase remained stable.",
-            category: "terminology",
+            itemId: "issue-3",
+            title: "术语应写全称",
+            description: "术语首次出现应补足全称。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "terminology",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 2,
+              quote: "ALT remained stable.",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "Alanine aminotransferase remained stable.",
+            },
           },
           {
-            targetText: "Patients improved, however the sample stayed small.",
-            replacementText: "Patients improved; however the sample stayed small.",
-            category: "punctuation",
+            itemId: "issue-4",
+            title: "标点连接不规范",
+            description: "连接副词前后标点需要统一。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "punctuation",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 3,
+              quote: "Patients improved, however the sample stayed small.",
+              sectionLabel: "discussion",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "Patients improved; however the sample stayed small.",
+            },
           },
           {
-            targetText: "No action should survive.",
-            replacementText: "This correction should be rejected.",
-            category: "style",
+            itemId: "issue-5",
+            title: "该建议应被驳回",
+            description: "保留原文，不应自动改写。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 4,
+              quote: "No action should survive.",
+              sectionLabel: "discussion",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "This correction should be rejected.",
+            },
           },
         ],
         manualReviewItems: [],
       },
+      proofreadingSourceBlocks: [
+        {
+          blockIndex: 0,
+          section: "results",
+          block_kind: "paragraph",
+          text: "5 mg per dL",
+        },
+        {
+          blockIndex: 1,
+          section: "results",
+          block_kind: "paragraph",
+          text: "The hemoglobin were stable.",
+        },
+        {
+          blockIndex: 2,
+          section: "results",
+          block_kind: "paragraph",
+          text: "ALT remained stable.",
+        },
+        {
+          blockIndex: 3,
+          section: "discussion",
+          block_kind: "paragraph",
+          text: "Patients improved, however the sample stayed small.",
+        },
+        {
+          blockIndex: 4,
+          section: "discussion",
+          block_kind: "paragraph",
+          text: "No action should survive.",
+        },
+      ],
     },
     attempt_count: 1,
     created_at: "2026-04-18T07:50:00.000Z",
@@ -272,45 +458,6 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
     file_name: "proofreading-draft.md",
     created_at: "2026-04-18T07:52:00.000Z",
     updated_at: "2026-04-18T07:52:00.000Z",
-  });
-  await harness.jobRepository.save({
-    id: "job-proof-final-1",
-    manuscript_id: "manuscript-1",
-    module: "proofreading",
-    job_type: "proofreading_confirm",
-    status: "completed",
-    requested_by: "proofreader-1",
-    payload: {
-      parentAssetId: "asset-proof-draft-1",
-      executionMode: "governed",
-      executionProfileId: "profile-proofreading-1",
-      runtimeBindingId: "binding-proofreading-1",
-      modelId: "model-1",
-      modelSource: "legacy_module_default",
-      snapshotId: "snapshot-proof-final-1",
-      knowledgeItemIds: ["knowledge-proof-1"],
-    },
-    attempt_count: 1,
-    created_at: "2026-04-18T08:00:00.000Z",
-    updated_at: "2026-04-18T08:02:00.000Z",
-  });
-  await harness.assetRepository.save({
-    id: "asset-proof-final-1",
-    manuscript_id: "manuscript-1",
-    asset_type: "final_proof_annotated_docx",
-    status: "active",
-    storage_key: "runs/manuscript-1/proofreading/final.docx",
-    mime_type:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    parent_asset_id: "asset-proof-draft-1",
-    source_module: "proofreading",
-    source_job_id: "job-proof-final-1",
-    created_by: "proofreader-1",
-    version_no: 3,
-    is_current: true,
-    file_name: "proofreading-final.docx",
-    created_at: "2026-04-18T08:02:00.000Z",
-    updated_at: "2026-04-18T08:02:00.000Z",
   });
 
   let nextId = 0;
@@ -387,44 +534,44 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
 
   const result = await proofreadingService.publishHumanFinal({
     manuscriptId: "manuscript-1",
-    finalAssetId: "asset-proof-final-1",
+    finalAssetId: "asset-proof-draft-1",
     requestedBy: "proofreader-1",
     actorRole: "proofreader",
     storageKey: "runs/manuscript-1/proofreading/human-final.docx",
     fileName: "human-final.docx",
     confirmationDecisions: [
       {
-        itemId: "correction-1",
+        itemId: "issue-1",
         targetText: "5 mg per dL",
         replacementText: "5 mg/dL",
         action: "route_to_rule_candidate",
       },
       {
-        itemId: "correction-2",
+        itemId: "issue-2",
         targetText: "The hemoglobin were stable.",
         replacementText: "The hemoglobin was stable.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "The hemoglobin levels were stable.",
       },
       {
-        itemId: "correction-3",
+        itemId: "issue-3",
         targetText: "ALT remained stable.",
         replacementText: "Alanine aminotransferase remained stable.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "Serum alanine aminotransferase (ALT) remained stable.",
       },
       {
-        itemId: "correction-4",
+        itemId: "issue-4",
         targetText: "Patients improved, however the sample stayed small.",
         replacementText: "Patients improved; however the sample stayed small.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "Patients improved; however, the sample stayed small.",
       },
       {
-        itemId: "correction-5",
+        itemId: "issue-5",
         targetText: "No action should survive.",
         replacementText: "This correction should be rejected.",
-        action: "reject",
+        action: "rejected",
       },
     ],
   });
@@ -481,43 +628,43 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
   assert.equal(payload?.confirmationSummary?.rejectedCount, 1);
   assert.equal(payload?.confirmationSummary?.routedRuleCandidateCount, 1);
   assert.equal(payload?.executionMode, "governed");
-  assert.equal(payload?.sourceSnapshotId, "snapshot-proof-final-1");
+  assert.equal(payload?.sourceSnapshotId, "snapshot-proof-draft-1");
   assert.equal(payload?.executionProfileId, "profile-proofreading-1");
   assert.equal(payload?.runtimeBindingId, "binding-proofreading-1");
   assert.equal(payload?.modelId, "model-1");
   assert.equal(payload?.modelSource, "legacy_module_default");
   assert.deepEqual(payload?.confirmationDecisions, [
     {
-      itemId: "correction-1",
+      itemId: "issue-1",
       action: "route_to_rule_candidate",
       targetText: "5 mg per dL",
       replacementText: "5 mg/dL",
       finalReplacementText: "5 mg/dL",
     },
     {
-      itemId: "correction-2",
-      action: "accept_and_edit",
+      itemId: "issue-2",
+      action: "accepted_with_manual_edit",
       targetText: "The hemoglobin were stable.",
       replacementText: "The hemoglobin was stable.",
       finalReplacementText: "The hemoglobin levels were stable.",
     },
     {
-      itemId: "correction-3",
-      action: "accept_and_edit",
+      itemId: "issue-3",
+      action: "accepted_with_manual_edit",
       targetText: "ALT remained stable.",
       replacementText: "Alanine aminotransferase remained stable.",
       finalReplacementText: "Serum alanine aminotransferase (ALT) remained stable.",
     },
     {
-      itemId: "correction-4",
-      action: "accept_and_edit",
+      itemId: "issue-4",
+      action: "accepted_with_manual_edit",
       targetText: "Patients improved, however the sample stayed small.",
       replacementText: "Patients improved; however the sample stayed small.",
       finalReplacementText: "Patients improved; however, the sample stayed small.",
     },
     {
-      itemId: "correction-5",
-      action: "reject",
+      itemId: "issue-5",
+      action: "rejected",
       targetText: "No action should survive.",
       replacementText: "This correction should be rejected.",
       finalReplacementText: undefined,
@@ -538,7 +685,7 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           excerpt: "The hemoglobin were stable.",
           suggestion: "The hemoglobin levels were stable.",
           rationale:
-            "Human adjusted the proofreading correction before final publication.",
+            "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
         },
       ],
@@ -552,7 +699,7 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           excerpt: "ALT remained stable.",
           suggestion: "Serum alanine aminotransferase (ALT) remained stable.",
           rationale:
-            "Human adjusted the proofreading correction before final publication.",
+            "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
         },
       ],
@@ -566,7 +713,7 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           excerpt: "Patients improved, however the sample stayed small.",
           suggestion: "Patients improved; however, the sample stayed small.",
           rationale:
-            "Human adjusted the proofreading correction before final publication.",
+            "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
         },
       ],
@@ -579,7 +726,7 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           issue_type: "unsupported_correction_proposal",
           excerpt: "No action should survive.",
           suggestion: "This correction should be rejected.",
-          rationale: "Human rejected the proofreading correction.",
+          rationale: "Human rejected the proofreading issue.",
           source_stage: "model_residual",
         },
       ],

@@ -101,7 +101,6 @@ test("governed proofreading draft stores residual issues with snapshot and asset
         modelId?: string;
         modelSource?: string;
         snapshotId?: string;
-        proofreadingManuscriptAssetId?: string;
       }
     | undefined;
 
@@ -112,13 +111,9 @@ test("governed proofreading draft stores residual issues with snapshot and asset
   assert.equal(payload?.modelId, "model-1");
   assert.equal(payload?.modelSource, "legacy_module_default");
   assert.equal(payload?.snapshotId, "snapshot-1");
-  assert.equal(payload?.proofreadingManuscriptAssetId, "asset-2");
   assert.equal(storedIssues.length, 1);
   assert.equal(storedIssues[0]?.execution_snapshot_id, "snapshot-1");
-  assert.equal(
-    storedIssues[0]?.output_asset_id,
-    payload?.proofreadingManuscriptAssetId,
-  );
+  assert.equal(storedIssues[0]?.output_asset_id, result.asset.id);
   assert.equal(storedIssues[0]?.module, "proofreading");
 });
 
@@ -145,27 +140,80 @@ test("human confirmation residuals preserve long-term routing truth for proofrea
       parentAssetId: harness.originalAssetId,
       sourceManuscriptAssetId: harness.originalAssetId,
       proofreadingPlan: {
+        role: "医学稿件终校审校员",
         summary: "Proofreading draft plan for residual routing.",
-        corrections: [
+        issues: [
           {
-            targetText: "The hemoglobin were stable.",
-            replacementText: "The hemoglobin was stable.",
-            category: "grammar",
+            itemId: "issue-1",
+            title: "主谓一致错误",
+            description: "需要修正文法一致性。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "grammar",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: "The hemoglobin were stable.",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "The hemoglobin was stable.",
+            },
           },
           {
-            targetText: "ALT remained stable.",
-            replacementText: "Alanine aminotransferase remained stable.",
-            category: "terminology",
+            itemId: "issue-2",
+            title: "术语需要写全",
+            description: "首次出现应补足全称。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "terminology",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 1,
+              quote: "ALT remained stable.",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "Alanine aminotransferase remained stable.",
+            },
           },
           {
-            targetText: "Patients improved, however the sample stayed small.",
-            replacementText: "Patients improved; however the sample stayed small.",
-            category: "punctuation",
+            itemId: "issue-3",
+            title: "标点不规范",
+            description: "连接副词前后的标点需要统一。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "punctuation",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 2,
+              quote: "Patients improved, however the sample stayed small.",
+              sectionLabel: "discussion",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "Patients improved; however the sample stayed small.",
+            },
           },
           {
-            targetText: "No action should survive.",
-            replacementText: "This correction should be rejected.",
-            category: "style",
+            itemId: "issue-4",
+            title: "该建议应被驳回",
+            description: "保留原文，不应自动改写。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 3,
+              quote: "No action should survive.",
+              sectionLabel: "discussion",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "This correction should be rejected.",
+            },
           },
         ],
         manualReviewItems: [],
@@ -280,31 +328,31 @@ test("human confirmation residuals preserve long-term routing truth for proofrea
     fileName: "human-routing-final.docx",
     confirmationDecisions: [
       {
-        itemId: "correction-1",
+        itemId: "issue-1",
         targetText: "The hemoglobin were stable.",
         replacementText: "The hemoglobin was stable.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "The hemoglobin levels were stable.",
       },
       {
-        itemId: "correction-2",
+        itemId: "issue-2",
         targetText: "ALT remained stable.",
         replacementText: "Alanine aminotransferase remained stable.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "Serum alanine aminotransferase (ALT) remained stable.",
       },
       {
-        itemId: "correction-3",
+        itemId: "issue-3",
         targetText: "Patients improved, however the sample stayed small.",
         replacementText: "Patients improved; however the sample stayed small.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "Patients improved; however, the sample stayed small.",
       },
       {
-        itemId: "correction-4",
+        itemId: "issue-4",
         targetText: "No action should survive.",
         replacementText: "This correction should be rejected.",
-        action: "reject",
+        action: "rejected",
       },
     ],
   });
