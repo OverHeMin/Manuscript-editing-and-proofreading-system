@@ -140,7 +140,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.getByRole("button", { name: "确认校对定稿" })).toBeEnabled();
 
   await page.getByRole("button", { name: "确认校对定稿" }).click();
-  await expect(page.locator("body")).toContainText("已生成校对稿件");
+  await expect(page.locator("body")).toContainText("已生成校对批注稿");
   await expect(page.locator("body")).toContainText("当前校对批注稿已激活");
   await expect(page.locator("body")).toContainText(
     "可继续人工确认、导出或下游交付。",
