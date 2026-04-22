@@ -960,6 +960,83 @@ test("manuscript workbench controller runs proofreading draft and finalize flows
   );
 });
 
+test("manuscript workbench controller prefers an editable manuscript asset over the latest proofreading output as the next parent asset", async () => {
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-proof-parent-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-proof-parent-1",
+            title: "Proofreading parent preference",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_proofreading_asset_id: "asset-proof-final-1",
+            created_at: "2026-04-22T08:00:00.000Z",
+            updated_at: "2026-04-22T08:10:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-proof-parent-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-proof-final-1",
+              manuscript_id: "manuscript-proof-parent-1",
+              asset_type: "final_proof_annotated_docx",
+              status: "active",
+              storage_key: "runs/proofreading/final.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-proof-draft-1",
+              source_module: "proofreading",
+              created_by: "proofreader-1",
+              version_no: 4,
+              is_current: true,
+              file_name: "proof-final.docx",
+              created_at: "2026-04-22T08:09:00.000Z",
+              updated_at: "2026-04-22T08:10:00.000Z",
+            },
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-proof-parent-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/original.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "original.docx",
+              created_at: "2026-04-22T08:00:00.000Z",
+              updated_at: "2026-04-22T08:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-proof-parent-1");
+
+  assert.equal(workspace.currentAsset?.id, "asset-proof-final-1");
+  assert.equal(workspace.suggestedParentAsset?.id, "asset-original-1");
+});
+
 test("manuscript workbench controller exports the current asset through the document pipeline route", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createManuscriptWorkbenchController({

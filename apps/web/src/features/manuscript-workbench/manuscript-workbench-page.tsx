@@ -673,6 +673,31 @@ export function buildProofreadingConfirmationDecisions(
   });
 }
 
+export function resolveProofreadingDraftSelection(input: {
+  assets: readonly Pick<DocumentAssetViewModel, "id">[];
+  currentDraftAssetId: string;
+  latestDraftAssetId?: string | null;
+  preferLatestDraft?: boolean;
+}): string {
+  const currentDraftAssetId = input.currentDraftAssetId.trim();
+  const latestDraftAssetId = input.latestDraftAssetId?.trim() ?? "";
+
+  if (input.preferLatestDraft && latestDraftAssetId) {
+    return latestDraftAssetId;
+  }
+
+  if (currentDraftAssetId.length > 0) {
+    const currentDraftStillExists = input.assets.some(
+      (asset) => asset.id === currentDraftAssetId,
+    );
+    if (currentDraftStillExists) {
+      return currentDraftAssetId;
+    }
+  }
+
+  return latestDraftAssetId;
+}
+
 export function resolveDetailJobSourceAsset(input: {
   selectedAsset: DocumentAssetExportViewModel["asset"] | DocumentAssetViewModel;
   assets: readonly DocumentAssetViewModel[];
@@ -809,9 +834,11 @@ export function ManuscriptWorkbenchPage({
         : workspace.suggestedParentAsset?.id ?? "",
     );
     setDraftAssetId((current) =>
-      workspace.assets.some((asset) => asset.id === current)
-        ? current
-        : workspace.latestProofreadingDraftAsset?.id ?? "",
+      resolveProofreadingDraftSelection({
+        assets: workspace.assets,
+        currentDraftAssetId: current,
+        latestDraftAssetId: workspace.latestProofreadingDraftAsset?.id,
+      }),
     );
     setSelectedAssetId((current) => {
       if (
@@ -1839,6 +1866,16 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              if (mode === "proofreading") {
+                setDraftAssetId(
+                  resolveProofreadingDraftSelection({
+                    assets: result.workspace.assets,
+                    currentDraftAssetId: draftAssetId,
+                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    preferLatestDraft: true,
+                  }),
+                );
+              }
               await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
@@ -1891,6 +1928,16 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              if (mode === "proofreading") {
+                setDraftAssetId(
+                  resolveProofreadingDraftSelection({
+                    assets: result.workspace.assets,
+                    currentDraftAssetId: draftAssetId,
+                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    preferLatestDraft: true,
+                  }),
+                );
+              }
               await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,

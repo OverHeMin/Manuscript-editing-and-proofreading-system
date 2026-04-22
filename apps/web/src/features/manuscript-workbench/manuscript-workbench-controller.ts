@@ -735,6 +735,14 @@ const MANUSCRIPT_DOCUMENT_ASSET_PRIORITY: readonly DocumentAssetViewModel["asset
   "original",
 ];
 
+const SUGGESTED_PARENT_ASSET_PRIORITY: readonly DocumentAssetViewModel["asset_type"][] = [
+  "edited_docx",
+  "normalized_docx",
+  "original",
+  "human_final_docx",
+  "final_proof_annotated_docx",
+];
+
 function resolveCurrentManuscriptAsset(
   assets: readonly DocumentAssetViewModel[],
 ): DocumentAssetViewModel | null {
@@ -776,6 +784,18 @@ function resolveSuggestedParentAsset(
   for (const assetId of preferredIds) {
     const matched = assets.find(
       (asset) => asset.id === assetId && isSelectableParentAsset(asset),
+    );
+    if (matched) {
+      return matched;
+    }
+  }
+
+  for (const assetType of SUGGESTED_PARENT_ASSET_PRIORITY) {
+    const matched = assets.find(
+      (asset) =>
+        asset.asset_type === assetType &&
+        asset.status !== "archived" &&
+        isSelectableParentAsset(asset),
     );
     if (matched) {
       return matched;

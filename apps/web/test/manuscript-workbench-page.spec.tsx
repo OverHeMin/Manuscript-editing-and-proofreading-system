@@ -12,6 +12,7 @@ import {
   buildJournalTemplateOptions,
   buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
+  resolveProofreadingDraftSelection,
   resolveGovernedExecutionBlockMessage,
   resolveDetailJobSourceAsset,
   resolveResultMaterializationFailureMessage,
@@ -932,6 +933,43 @@ test("proofreading confirmation helpers keep only active draft rows and serializ
         note: "人工补足 level",
       },
     ],
+  );
+});
+
+test("proofreading draft selection keeps the current draft unless a new draft run explicitly prefers the latest draft", () => {
+  const assets = [
+    {
+      id: "asset-proof-draft-2",
+    },
+    {
+      id: "asset-proof-draft-1",
+    },
+  ] as const;
+
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-1",
+      latestDraftAssetId: "asset-proof-draft-2",
+    }),
+    "asset-proof-draft-1",
+  );
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-1",
+      latestDraftAssetId: "asset-proof-draft-2",
+      preferLatestDraft: true,
+    }),
+    "asset-proof-draft-2",
+  );
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-missing",
+      latestDraftAssetId: "asset-proof-draft-2",
+    }),
+    "asset-proof-draft-2",
   );
 });
 

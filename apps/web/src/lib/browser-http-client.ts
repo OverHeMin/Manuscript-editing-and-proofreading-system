@@ -1,4 +1,5 @@
 import type { KnowledgeHttpClient } from "../features/knowledge/knowledge-api.ts";
+import { resolveRuntimeBackendBaseUrl } from "./backend-url.ts";
 
 export interface BrowserHttpClientOptions {
   apiBaseUrl?: string;
@@ -87,16 +88,21 @@ function resolveApiBaseUrl(apiBaseUrl?: string): string {
     apiBaseUrl ??
     (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
       ?.VITE_API_BASE_URL;
+  const windowLocation =
+    typeof window !== "undefined"
+      ? {
+          origin: window.location.origin,
+          hostname: window.location.hostname,
+        }
+      : undefined;
 
-  if (typeof configuredBaseUrl === "string" && configuredBaseUrl.trim().length > 0) {
-    return ensureTrailingSlash(configuredBaseUrl.trim());
-  }
-
-  if (typeof window !== "undefined" && window.location.origin.length > 0) {
-    return ensureTrailingSlash(window.location.origin);
-  }
-
-  return "http://localhost/";
+  return ensureTrailingSlash(
+    resolveRuntimeBackendBaseUrl({
+      configuredBaseUrl,
+      windowLocation,
+      fallbackBaseUrl: "http://localhost/",
+    }),
+  );
 }
 
 function ensureTrailingSlash(url: string): string {
