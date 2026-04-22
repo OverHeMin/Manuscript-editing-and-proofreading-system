@@ -23,7 +23,11 @@ import {
   formatEditorialSectionLabel,
   getKnowledgeEntryKindOptions,
 } from "../shared/editorial-taxonomy.ts";
-import type { KnowledgeContentBlockViewModel } from "./types.ts";
+import type {
+  KnowledgeContentBlockViewModel,
+  KnowledgeUploadInput,
+  KnowledgeUploadViewModel,
+} from "./types.ts";
 import type { KnowledgeLibraryLedgerComposer } from "./knowledge-library-ledger-composer.ts";
 import {
   KnowledgeLibraryAttachmentField,
@@ -64,6 +68,9 @@ export interface KnowledgeLibraryEntryFormProps {
   onAiIntakeSourceTextChange: (value: string) => void;
   onRunAiPrefill: () => void;
   onContentBlocksChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
+  onUploadImage?: (
+    input: KnowledgeUploadInput,
+  ) => Promise<KnowledgeUploadViewModel | void>;
   onSelectFiles: (files: readonly File[]) => void;
   onRemoveAttachment: (blockId: string) => void;
   onAttachmentCaptionChange: (blockId: string, value: string) => void;
@@ -117,6 +124,7 @@ export function KnowledgeLibraryEntryForm({
   onAiIntakeSourceTextChange,
   onRunAiPrefill,
   onContentBlocksChange,
+  onUploadImage,
   onSelectFiles,
   onRemoveAttachment,
   onAttachmentCaptionChange,
@@ -454,6 +462,7 @@ export function KnowledgeLibraryEntryForm({
           <KnowledgeLibraryRichContentEditor
             blocks={contentBlocks}
             onChange={onContentBlocksChange}
+            onUploadImage={onUploadImage}
           />
           <KnowledgeLibraryAttachmentField
             attachments={attachments}
@@ -514,6 +523,14 @@ export function KnowledgeLibraryEntryForm({
               disabled={isBusy}
             >
               取消
+            </button>
+            <button
+              type="button"
+              data-board-action="save-draft"
+              onClick={onSaveDraft}
+              disabled={isBusy}
+            >
+              保存草稿
             </button>
             <button
               type="button"

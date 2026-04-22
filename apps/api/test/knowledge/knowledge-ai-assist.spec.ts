@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
@@ -7,6 +10,7 @@ import {
 import {
   KnowledgeAiAssistService,
   KnowledgeAiAssistUnavailableError,
+  OpenAiKnowledgeAiAssistGenerator,
 } from "../../src/modules/knowledge/knowledge-ai-assist-service.ts";
 import { KnowledgeService } from "../../src/modules/knowledge/knowledge-service.ts";
 
@@ -140,4 +144,136 @@ test("knowledge ai assist fails with an explicit unavailable error when no gener
       return true;
     },
   );
+});
+
+test("openai knowledge ai assist inlines uploaded images into multimodal semantic requests", async () => {
+  const uploadRootDir = await mkdtemp(
+    path.join(os.tmpdir(), "knowledge-ai-assist-images-"),
+  );
+
+  try {
+    const storageKey = "uploads/2026/04/22/figure-1.png";
+    const absolutePath = path.join(
+      uploadRootDir,
+      "uploads",
+      "2026",
+      "04",
+      "22",
+      "figure-1.png",
+    );
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, Buffer.from("fake-image-payload"));
+
+    let capturedBody: Record<string, unknown> | null = null;
+    const generator = new OpenAiKnowledgeAiAssistGenerator({
+      aiGatewayService: {
+        async resolveModelSelection() {
+          return {} as never;
+        },
+      },
+      aiProviderRuntimeService: {
+        async resolveSelectionRuntime() {
+          return {
+            primary: {
+              request_url: "http://example.test/v1/chat/completions",
+              headers: {
+                Authorization: "Bearer test-key",
+                "Content-Type": "application/json",
+              },
+              model_name: "gpt-4o-mini",
+            },
+          } as never;
+        },
+      },
+      uploadRootDir,
+      fetch: async (_url, init) => {
+        capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    suggestedSemanticLayer: {
+                      pageSummary: "Operator-ready semantic summary",
+                      retrievalTerms: ["primary endpoint"],
+                      retrievalSnippets: ["Use when endpoint wording is vague."],
+                    },
+                    warnings: [],
+                  }),
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      },
+    });
+
+    const result = await generator.assistSemanticLayer({
+      revision: {
+        id: "revision-1",
+        asset_id: "knowledge-1",
+        revision_no: 1,
+        status: "draft",
+        title: "Primary endpoint rule",
+        canonical_text: "Clinical studies must define the primary endpoint.",
+        knowledge_kind: "reference",
+        routing: {
+          module_scope: "screening",
+          manuscript_types: ["clinical_study"],
+        },
+        created_at: "2026-04-13T09:00:00.000Z",
+        updated_at: "2026-04-13T09:00:00.000Z",
+      },
+      contentBlocks: [
+        {
+          id: "image-block-1",
+          revision_id: "revision-1",
+          block_type: "image_block",
+          order_no: 0,
+          status: "active",
+          content_payload: {
+            storage_key: storageKey,
+            file_name: "figure-1.png",
+            mime_type: "image/png",
+            caption: "Primary endpoint flowchart",
+          },
+          created_at: "2026-04-13T09:00:00.000Z",
+          updated_at: "2026-04-13T09:00:00.000Z",
+        },
+      ],
+      instructionText: "Analyze the image alongside the draft.",
+      targetScopes: ["semantic_layer"],
+    });
+
+    assert.equal(
+      result.suggestedSemanticLayer.pageSummary,
+      "Operator-ready semantic summary",
+    );
+    if (!capturedBody) {
+      throw new Error("Expected AI request payload to be captured.");
+    }
+    const requestPayload = capturedBody as {
+      messages: Array<Record<string, unknown>>;
+    };
+    const messages = requestPayload.messages;
+    assert.ok(Array.isArray(messages));
+    const userMessage = messages[1] as Record<string, unknown>;
+    assert.ok(Array.isArray(userMessage.content));
+    const content = userMessage.content as Array<Record<string, unknown>>;
+    const imagePart = content.find((part) => part.type === "image_url");
+    assert.ok(imagePart);
+    assert.match(
+      String((imagePart as { image_url?: { url?: string } }).image_url?.url ?? ""),
+      /^data:image\/png;base64,/u,
+    );
+  } finally {
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
 });

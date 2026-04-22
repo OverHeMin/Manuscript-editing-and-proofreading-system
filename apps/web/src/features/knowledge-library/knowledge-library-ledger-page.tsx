@@ -9,6 +9,11 @@ import {
   createEmptyLedgerComposer,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
+import {
+  applyKnowledgeLibrarySemanticSuggestion,
+  buildKnowledgeLibrarySemanticAnalysisNotes,
+  generateKnowledgeLibrarySemanticSuggestion,
+} from "./knowledge-library-semantic-generation.ts";
 import { buildTableProofreadingKnowledgeDraftPrefill } from "../template-governance/template-governance-table-proofreading-guidance.ts";
 import {
   createKnowledgeLibraryWorkbenchController,
@@ -33,7 +38,6 @@ import type {
   DuplicateKnowledgeCheckInput,
   DuplicateKnowledgeMatchViewModel,
   KnowledgeContentBlockViewModel,
-  KnowledgeLibraryAiIntakeSuggestionViewModel,
   KnowledgeLibraryFilterState,
   KnowledgeLibraryQueryMode,
   KnowledgeLibrarySummaryViewModel,
@@ -833,6 +837,7 @@ export function KnowledgeLibraryLedgerPage({
                   : current,
               )
             }
+            onUploadImage={(input) => handleUploadInlineImage(input)}
             onSelectFiles={(files) => void handleUploadFiles(files)}
             onRemoveAttachment={(blockId) =>
               setComposer((current) =>
@@ -1407,19 +1412,81 @@ export function KnowledgeLibraryLedgerPage({
     setErrorMessage(null);
 
     try {
-      const suggestion = await controller.createAiIntakeSuggestion({
+      const analysisTarget = await ensureComposerPersistedForSemanticAnalysis(composer);
+      const suggestion = await generateKnowledgeLibrarySemanticSuggestion({
+        controller,
+        composer: analysisTarget.composer,
         sourceText,
       });
-      setComposer((current) =>
-        current ? applySemanticSuggestion(current, suggestion) : current,
+      const nextComposer = applyKnowledgeLibrarySemanticSuggestion(
+        analysisTarget.composer,
+        suggestion,
       );
-      setSemanticNotes(suggestion.warnings);
-      setStatusMessage("AI 语义建议已生成，请核对后点击“应用建议”。");
+      setComposer(nextComposer);
+      setSemanticNotes([
+        ...buildKnowledgeLibrarySemanticAnalysisNotes({
+          composer: analysisTarget.composer,
+          autoPersistedDraft: analysisTarget.autoPersisted,
+        }),
+        ...suggestion.suggestion.warnings,
+      ]);
+      setStatusMessage(
+        analysisTarget.autoPersisted
+          ? "AI 语义建议已生成，系统已先保存当前草稿并纳入材料块分析。"
+          : "AI 语义建议已生成，请核对后点击“应用建议”。",
+      );
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "AI 语义生成失败。"));
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function ensureComposerPersistedForSemanticAnalysis(
+    currentComposer: KnowledgeLibraryLedgerComposer,
+  ): Promise<{
+    composer: KnowledgeLibraryLedgerComposer;
+    autoPersisted: boolean;
+  }> {
+    if (currentComposer.persistedRevisionId) {
+      return {
+        composer: currentComposer,
+        autoPersisted: false,
+      };
+    }
+
+    let nextViewModel = await controller.createDraftAndLoad({
+      ...buildCreateDraftInput(currentComposer),
+      filters: viewModel?.filters,
+    });
+    let revisionId = nextViewModel.detail?.selected_revision.id ?? null;
+    if (!revisionId) {
+      throw new Error("AI 语义分析前未找到已保存的知识草稿。");
+    }
+
+    if (currentComposer.contentBlocksDraft.length > 0) {
+      nextViewModel = await controller.replaceContentBlocksAndLoad({
+        revisionId,
+        blocks: hydrateBlocksForRevision(currentComposer.contentBlocksDraft, revisionId),
+        filters: nextViewModel.filters,
+      });
+      revisionId = nextViewModel.detail?.selected_revision.id ?? revisionId;
+    }
+
+    applyLoadedWorkbench(nextViewModel);
+    const persistedComposer = createEditableComposerFromViewModel(nextViewModel);
+    if (!persistedComposer) {
+      throw new Error("AI 语义分析前未能构建可编辑草稿。");
+    }
+
+    return {
+      composer: {
+        ...persistedComposer,
+        aiIntakeSourceText: currentComposer.aiIntakeSourceText,
+        warnings: currentComposer.warnings,
+      },
+      autoPersisted: true,
+    };
   }
 
   function handleApplySemantic() {
@@ -1531,6 +1598,26 @@ export function KnowledgeLibraryLedgerPage({
       }
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "知识保存失败。"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleUploadInlineImage(input: {
+    fileName: string;
+    mimeType: string;
+    fileContentBase64: string;
+  }) {
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const uploaded = await controller.uploadImage(input);
+      setStatusMessage("图片块上传成功，可直接用于 AI 语义分析。");
+      return uploaded;
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, "图片块上传失败。"));
+      return undefined;
     } finally {
       setIsBusy(false);
     }
@@ -2250,49 +2337,6 @@ function buildAiPrefillSourceText(
     .join("\n");
 
   return [composer.aiIntakeSourceText, attachmentEvidence].filter(Boolean).join("\n");
-}
-
-function applySemanticSuggestion(
-  composer: KnowledgeLibraryLedgerComposer,
-  suggestion: KnowledgeLibraryAiIntakeSuggestionViewModel,
-): KnowledgeLibraryLedgerComposer {
-  const nextSemanticDraft = suggestion.suggestedSemanticLayer
-    ? {
-        ...suggestion.suggestedSemanticLayer,
-        revision_id:
-          composer.persistedRevisionId ??
-          suggestion.suggestedSemanticLayer.revision_id ??
-          "local-draft",
-        status: "pending_confirmation" as const,
-      }
-    : {
-        revision_id: composer.persistedRevisionId ?? "local-draft",
-        status: "pending_confirmation" as const,
-        page_summary: composer.draft.summary ?? "",
-        retrieval_terms: composer.draft.aliases ?? [],
-        retrieval_snippets: [],
-      };
-
-  return {
-    ...composer,
-    draft: {
-      ...composer.draft,
-      summary:
-        composer.draft.summary && composer.draft.summary.trim().length > 0
-          ? composer.draft.summary
-          : suggestion.suggestedDraft.summary,
-      aliases:
-        normalizeStringArray(suggestion.suggestedDraft.aliases) ??
-        composer.draft.aliases ??
-        [],
-      riskTags:
-        normalizeStringArray(suggestion.suggestedDraft.riskTags) ??
-        composer.draft.riskTags ??
-        [],
-    },
-    semanticLayerDraft: nextSemanticDraft,
-    warnings: Array.from(new Set([...composer.warnings, ...suggestion.warnings])),
-  };
 }
 
 function extractAttachments(blocks: readonly KnowledgeContentBlockViewModel[]) {

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
@@ -70,8 +72,28 @@ export interface KnowledgeAiAssistServiceOptions {
 export interface OpenAiKnowledgeAiAssistGeneratorOptions {
   aiGatewayService: Pick<AiGatewayService, "resolveModelSelection">;
   aiProviderRuntimeService: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
+  uploadRootDir?: string;
+  maxInlineImageBytes?: number;
+  maxInlineImageCount?: number;
   fetch?: typeof fetch;
 }
+
+interface AssistRequestContent {
+  userContent: string | OpenAiChatMessageContentPart[];
+  warnings: string[];
+}
+
+type OpenAiChatMessageContentPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    };
 
 export class KnowledgeAiAssistUnavailableError extends Error {
   constructor(message = "Knowledge AI assist is unavailable.") {
@@ -132,6 +154,12 @@ export class KnowledgeAiAssistService {
 export class OpenAiKnowledgeAiAssistGenerator
   implements KnowledgeAiAssistGenerator
 {
+  private readonly uploadRootDir?: string;
+
+  private readonly maxInlineImageBytes: number;
+
+  private readonly maxInlineImageCount: number;
+
   private readonly aiGatewayService: Pick<AiGatewayService, "resolveModelSelection">;
 
   private readonly aiProviderRuntimeService: Pick<
@@ -144,6 +172,12 @@ export class OpenAiKnowledgeAiAssistGenerator
   constructor(options: OpenAiKnowledgeAiAssistGeneratorOptions) {
     this.aiGatewayService = options.aiGatewayService;
     this.aiProviderRuntimeService = options.aiProviderRuntimeService;
+    this.uploadRootDir = options.uploadRootDir
+      ? path.resolve(options.uploadRootDir)
+      : undefined;
+    this.maxInlineImageBytes =
+      options.maxInlineImageBytes ?? 5 * 1024 * 1024;
+    this.maxInlineImageCount = options.maxInlineImageCount ?? 3;
     this.fetchImpl = options.fetch ?? fetch;
   }
 
@@ -203,64 +237,76 @@ export class OpenAiKnowledgeAiAssistGenerator
     instructionText: string;
     targetScopes?: string[];
   }): Promise<KnowledgeSemanticAssistSuggestionRecord> {
+    const userPayload = {
+      task: "knowledge_semantic_assist",
+      contract: {
+        suggestedSemanticLayer: {
+          pageSummary: "string",
+          retrievalTerms: ["string"],
+          retrievalSnippets: ["string"],
+          tableSemantics: {},
+          imageUnderstanding: {},
+        },
+        suggestedFieldPatch: {
+          summary: "string?",
+          aliases: ["string"],
+          sections: ["string"],
+          riskTags: ["string"],
+          disciplineTags: ["string"],
+        },
+        warnings: ["string"],
+      },
+      instructionText: input.instructionText,
+      targetScopes: input.targetScopes,
+      revision: {
+        title: input.revision.title,
+        canonicalText: input.revision.canonical_text,
+        summary: input.revision.summary,
+        knowledgeKind: input.revision.knowledge_kind,
+        moduleScope: input.revision.routing.module_scope,
+        manuscriptTypes: input.revision.routing.manuscript_types,
+        sections: input.revision.routing.sections,
+        aliases: input.revision.aliases,
+      },
+      semanticLayer: input.semanticLayer
+        ? {
+            pageSummary: input.semanticLayer.page_summary,
+            retrievalTerms: input.semanticLayer.retrieval_terms,
+            retrievalSnippets: input.semanticLayer.retrieval_snippets,
+          }
+        : undefined,
+      contentBlocks: input.contentBlocks.map((block) => ({
+        blockType: block.block_type,
+        contentPayload: block.content_payload,
+        tableSemantics: block.table_semantics,
+        imageUnderstanding: block.image_understanding,
+      })),
+    };
+    const requestContent = await this.buildAssistRequestContent({
+      userPayload,
+      contentBlocks: input.contentBlocks,
+    });
     const payload = await this.requestJson({
       module: resolveKnowledgeAiModule(input.revision.routing.module_scope),
       systemPrompt:
         "You are a medical knowledge semantic assistant. Return JSON only and keep title ownership with the operator.",
-      userPayload: {
-        task: "knowledge_semantic_assist",
-        contract: {
-          suggestedSemanticLayer: {
-            pageSummary: "string",
-            retrievalTerms: ["string"],
-            retrievalSnippets: ["string"],
-            tableSemantics: {},
-            imageUnderstanding: {},
-          },
-          suggestedFieldPatch: {
-            summary: "string?",
-            aliases: ["string"],
-            sections: ["string"],
-            riskTags: ["string"],
-            disciplineTags: ["string"],
-          },
-          warnings: ["string"],
-        },
-        instructionText: input.instructionText,
-        targetScopes: input.targetScopes,
-        revision: {
-          title: input.revision.title,
-          canonicalText: input.revision.canonical_text,
-          summary: input.revision.summary,
-          knowledgeKind: input.revision.knowledge_kind,
-          moduleScope: input.revision.routing.module_scope,
-          manuscriptTypes: input.revision.routing.manuscript_types,
-          sections: input.revision.routing.sections,
-          aliases: input.revision.aliases,
-        },
-        semanticLayer: input.semanticLayer
-          ? {
-              pageSummary: input.semanticLayer.page_summary,
-              retrievalTerms: input.semanticLayer.retrieval_terms,
-              retrievalSnippets: input.semanticLayer.retrieval_snippets,
-            }
-          : undefined,
-        contentBlocks: input.contentBlocks.map((block) => ({
-          blockType: block.block_type,
-          contentPayload: block.content_payload,
-          tableSemantics: block.table_semantics,
-          imageUnderstanding: block.image_understanding,
-        })),
-      },
+      userPayload,
+      userContent: requestContent.userContent,
     });
-
-    return normalizeSemanticSuggestion(payload);
+    const normalized = normalizeSemanticSuggestion(payload);
+    return requestContent.warnings.length > 0
+      ? {
+          ...normalized,
+          warnings: [...requestContent.warnings, ...normalized.warnings],
+        }
+      : normalized;
   }
 
   private async requestJson(input: {
     module: TemplateModule;
     systemPrompt: string;
     userPayload: Record<string, unknown>;
+    userContent?: string | OpenAiChatMessageContentPart[];
   }): Promise<Record<string, unknown>> {
     const selection = await this.aiGatewayService.resolveModelSelection({
       module: input.module,
@@ -276,7 +322,10 @@ export class OpenAiKnowledgeAiAssistGenerator
         model: runtime.primary.model_name,
         messages: [
           { role: "system", content: input.systemPrompt },
-          { role: "user", content: JSON.stringify(input.userPayload) },
+          {
+            role: "user",
+            content: input.userContent ?? JSON.stringify(input.userPayload),
+          },
         ],
         temperature: 0.2,
         response_format: {
@@ -311,6 +360,148 @@ export class OpenAiKnowledgeAiAssistGenerator
       );
     }
   }
+
+  private async buildAssistRequestContent(input: {
+    userPayload: Record<string, unknown>;
+    contentBlocks: KnowledgeContentBlockRecord[];
+  }): Promise<AssistRequestContent> {
+    const imageBlocks = input.contentBlocks.filter(
+      (block) => block.block_type === "image_block",
+    );
+    if (imageBlocks.length === 0) {
+      return {
+        userContent: JSON.stringify(input.userPayload),
+        warnings: [],
+      };
+    }
+
+    if (!this.uploadRootDir) {
+      return {
+        userContent: JSON.stringify(input.userPayload),
+        warnings: ["存在图片附件，但当前运行时未配置图片物料目录，AI 仅参考了文件元数据与图注。"],
+      };
+    }
+
+    const parts: OpenAiChatMessageContentPart[] = [
+      {
+        type: "text",
+        text: JSON.stringify(input.userPayload),
+      },
+    ];
+    const warnings: string[] = [];
+    let inlinedImageCount = 0;
+
+    for (const [index, block] of imageBlocks.entries()) {
+      if (inlinedImageCount >= this.maxInlineImageCount) {
+        warnings.push(
+          `图片附件超过 ${this.maxInlineImageCount} 张时会截断，本次仅送审前 ${this.maxInlineImageCount} 张图片。`,
+        );
+        break;
+      }
+
+      const imageReference = await this.inlineImageBlock(block);
+      if (!imageReference) {
+        warnings.push(
+          `图片附件 ${formatImageAttachmentLabel(block, index)} 未能作为视觉输入送入 AI，本次仅参考了文件元数据与图注。`,
+        );
+        continue;
+      }
+
+      parts.push({
+        type: "text",
+        text: `Attachment image ${index + 1}: ${imageReference.label}`,
+      });
+      parts.push({
+        type: "image_url",
+        image_url: {
+          url: imageReference.dataUrl,
+        },
+      });
+      inlinedImageCount += 1;
+    }
+
+    return {
+      userContent: parts,
+      warnings,
+    };
+  }
+
+  private async inlineImageBlock(
+    block: KnowledgeContentBlockRecord,
+  ): Promise<{ dataUrl: string; label: string } | null> {
+    if (!this.uploadRootDir) {
+      return null;
+    }
+
+    const storageKey =
+      typeof block.content_payload.storage_key === "string"
+        ? block.content_payload.storage_key.trim()
+        : "";
+    const mimeType =
+      typeof block.content_payload.mime_type === "string"
+        ? block.content_payload.mime_type.trim()
+        : "";
+    if (!storageKey || !mimeType.startsWith("image/")) {
+      return null;
+    }
+
+    let absolutePath: string;
+    try {
+      absolutePath = resolveStoragePath(this.uploadRootDir, storageKey);
+    } catch {
+      return null;
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(absolutePath);
+    } catch {
+      return null;
+    }
+
+    if (bytes.byteLength > this.maxInlineImageBytes) {
+      return null;
+    }
+
+    return {
+      dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
+      label: formatImageAttachmentLabel(block),
+    };
+  }
+}
+
+function resolveStoragePath(rootDir: string, storageKey: string): string {
+  const normalizedSegments = storageKey
+    .replaceAll("\\", "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  const absolutePath = path.resolve(rootDir, ...normalizedSegments);
+  const relativePath = path.relative(rootDir, absolutePath);
+
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new KnowledgeAiAssistUnavailableError(
+      `Knowledge image attachment escaped the upload root: "${storageKey}".`,
+    );
+  }
+
+  return absolutePath;
+}
+
+function formatImageAttachmentLabel(
+  block: KnowledgeContentBlockRecord,
+  index?: number,
+): string {
+  const fileName =
+    typeof block.content_payload.file_name === "string"
+      ? block.content_payload.file_name.trim()
+      : "";
+  const caption =
+    typeof block.content_payload.caption === "string"
+      ? block.content_payload.caption.trim()
+      : "";
+  const fallbackLabel = `image-${(index ?? 0) + 1}`;
+
+  return [fileName || fallbackLabel, caption].filter(Boolean).join(" | ");
 }
 
 function normalizeIntakeSuggestion(
