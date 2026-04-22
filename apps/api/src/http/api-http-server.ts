@@ -599,6 +599,9 @@ type HttpRouteMatch =
       route: "modules-proofreading-publish-human-final";
     }
   | {
+      route: "modules-proofreading-governance-handoff";
+    }
+  | {
       route: "agent-runtime-create";
     }
   | {
@@ -2020,6 +2023,7 @@ export function createInMemoryApiRuntime(input: {
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     reviewItemsService,
+    learningService,
     residualLearningService,
   });
 
@@ -4411,6 +4415,16 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "modules-proofreading-governance-handoff": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      return runtime.proofreadingApi.getGovernanceHandoff({
+        manuscriptId:
+          coalesceOptionalString(
+            readRequestUrl(req).searchParams.get("manuscriptId") ?? undefined,
+          ) ?? "",
+        actorRole: session.user.role,
+      });
+    }
     case "agent-runtime-create": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -6722,6 +6736,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/modules/proofreading/publish-human-final") {
     return { route: "modules-proofreading-publish-human-final" };
+  }
+
+  if (method === "GET" && path === "/api/v1/modules/proofreading/governance-handoff") {
+    return { route: "modules-proofreading-governance-handoff" };
   }
 
   if (method === "POST" && path === "/api/v1/agent-runtime") {

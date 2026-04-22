@@ -16,6 +16,9 @@ register(new URL("./helpers/ignore-css-loader.mjs", import.meta.url), import.met
 const {
   TemplateGovernanceWorkbenchPage,
 } = await import("../src/features/template-governance/template-governance-workbench-page.tsx");
+const {
+  RuleLearningPane,
+} = await import("../src/features/template-governance/rule-learning-pane.tsx");
 
 const ABSTRACT_OBJECTIVE_SOURCE = "\u6458\u8981 \u76ee\u7684";
 const ABSTRACT_OBJECTIVE_NORMALIZED = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
@@ -392,6 +395,107 @@ test("rule center recovery workspace renders residual issue provenance truthfull
 
   assert.match(markup, /\u6821\u5bf9\u6b8b\u4f59\u95ee\u9898/u);
   assert.doesNotMatch(markup, /\u672a\u6807\u6ce8/u);
+});
+
+test("rule center recovery workspace keeps proofreading residual progression wording aligned with the workbench handoff", () => {
+  const Pane = RuleLearningPane as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    React.createElement(Pane, {
+      prefilledManuscriptId: "manuscript-42",
+      prefilledReviewedCaseSnapshotId: "snapshot-42",
+      initialReviewItems: [
+        {
+          id: "review-item-residual-observed-1",
+          source_kind: "residual_issue",
+          source_status: "observed",
+          review_status: "pending",
+          module: "proofreading",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-42",
+          title: "Residual observed",
+          summary: "Observed after proofreading confirmation.",
+          created_at: "2026-04-18T08:00:00.000Z",
+          updated_at: "2026-04-18T08:01:00.000Z",
+          available_actions: ["validate"],
+          issue_type: "statistical_expression",
+          execution_snapshot_id: "snapshot-42",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "not_required",
+        },
+        {
+          id: "review-item-residual-harness-1",
+          source_kind: "residual_issue",
+          source_status: "validation_pending",
+          review_status: "pending",
+          module: "proofreading",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-43",
+          title: "Residual queued for Harness",
+          summary: "Queued for Harness validation.",
+          created_at: "2026-04-18T08:02:00.000Z",
+          updated_at: "2026-04-18T08:03:00.000Z",
+          available_actions: ["validate"],
+          issue_type: "table_note",
+          execution_snapshot_id: "snapshot-43",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "queued",
+        },
+        {
+          id: "review-item-residual-ready-1",
+          source_kind: "residual_issue",
+          source_status: "candidate_ready",
+          review_status: "pending",
+          module: "proofreading",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-44",
+          title: "Residual candidate ready",
+          summary: "Ready to create a rule candidate.",
+          created_at: "2026-04-18T08:04:00.000Z",
+          updated_at: "2026-04-18T08:05:00.000Z",
+          available_actions: ["route_to_rule_candidate"],
+          issue_type: "unit_normalization",
+          execution_snapshot_id: "snapshot-44",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "passed",
+        },
+        {
+          id: "review-item-residual-created-1",
+          source_kind: "residual_issue",
+          source_status: "candidate_created",
+          review_status: "routed",
+          module: "proofreading",
+          manuscript_id: "manuscript-42",
+          manuscript_type: "clinical_study",
+          snapshot_id: "snapshot-45",
+          title: "Residual candidate created",
+          summary: "A rule candidate has already been created from this residual.",
+          created_at: "2026-04-18T08:06:00.000Z",
+          updated_at: "2026-04-18T08:07:00.000Z",
+          available_actions: [],
+          issue_type: "unit_normalization",
+          execution_snapshot_id: "snapshot-45",
+          recommended_route: "rule_candidate",
+          harness_validation_status: "passed",
+          learning_candidate_id: "candidate-rule-1",
+        },
+      ],
+      initialSelectedReviewItemId: "review-item-residual-observed-1",
+    }),
+  );
+
+  assert.match(
+    markup,
+    /\u5f53\u524d\u7edf\u4e00\u590d\u6838\u4f1a\u6cbf\u7528\u8fd9\u6761\u6cbb\u7406\u8bc1\u636e\u94fe\uff0c\u7ee7\u7eed\u5904\u7406\u5df2\u53d1\u73b0\u6b8b\u5dee\u3001Harness \u590d\u9a8c\u3001\u5019\u9009\u8def\u7531\u4e0e\u89c4\u5219\u5199\u56de\u3002/u,
+  );
+  assert.match(markup, /\u5df2\u53d1\u73b0\u6b8b\u5dee/u);
+  assert.match(markup, /Harness \u5f85\u590d\u9a8c/u);
+  assert.match(markup, /\u5019\u9009\u5df2\u5c31\u7eea/u);
+  assert.match(markup, /\u5df2\u751f\u6210\u5019\u9009/u);
 });
 
 test("approved rule candidates surface governed editorial rule draft writeback status", () => {

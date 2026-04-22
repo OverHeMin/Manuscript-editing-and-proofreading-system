@@ -2,6 +2,7 @@ import { ProofreadingService } from "./proofreading-service.ts";
 import type {
   ConfirmProofreadingFinalInput,
   CreateProofreadingDraftInput,
+  ProofreadingGovernanceHandoff,
   ProofreadingHumanFinalPublishResult,
   ProofreadingRunResult,
   PublishProofreadingHumanFinalInput,
@@ -44,6 +45,16 @@ export function createProofreadingApi(options: CreateProofreadingApiOptions) {
       return {
         status: 201,
         body: await proofreadingService.publishHumanFinal(input),
+      };
+    },
+
+    async getGovernanceHandoff(input: {
+      manuscriptId: string;
+      actorRole: CreateProofreadingDraftInput["actorRole"];
+    }): Promise<RouteResponse<ProofreadingGovernanceHandoff>> {
+      return {
+        status: 200,
+        body: await proofreadingService.getGovernanceHandoff(input),
       };
     },
   };

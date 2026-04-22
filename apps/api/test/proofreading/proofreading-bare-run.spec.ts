@@ -234,6 +234,16 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
             category: "grammar",
           },
           {
+            targetText: "ALT remained stable.",
+            replacementText: "Alanine aminotransferase remained stable.",
+            category: "terminology",
+          },
+          {
+            targetText: "Patients improved, however the sample stayed small.",
+            replacementText: "Patients improved; however the sample stayed small.",
+            category: "punctuation",
+          },
+          {
             targetText: "No action should survive.",
             replacementText: "This correction should be rejected.",
             category: "style",
@@ -272,6 +282,11 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
     requested_by: "proofreader-1",
     payload: {
       parentAssetId: "asset-proof-draft-1",
+      executionMode: "governed",
+      executionProfileId: "profile-proofreading-1",
+      runtimeBindingId: "binding-proofreading-1",
+      modelId: "model-1",
+      modelSource: "legacy_module_default",
       snapshotId: "snapshot-proof-final-1",
       knowledgeItemIds: ["knowledge-proof-1"],
     },
@@ -393,6 +408,20 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       },
       {
         itemId: "correction-3",
+        targetText: "ALT remained stable.",
+        replacementText: "Alanine aminotransferase remained stable.",
+        action: "accept_and_edit",
+        editedReplacementText: "Serum alanine aminotransferase (ALT) remained stable.",
+      },
+      {
+        itemId: "correction-4",
+        targetText: "Patients improved, however the sample stayed small.",
+        replacementText: "Patients improved; however the sample stayed small.",
+        action: "accept_and_edit",
+        editedReplacementText: "Patients improved; however, the sample stayed small.",
+      },
+      {
+        itemId: "correction-5",
         targetText: "No action should survive.",
         replacementText: "This correction should be rejected.",
         action: "reject",
@@ -414,6 +443,16 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       replacementText: "The hemoglobin levels were stable.",
       reason: "grammar",
     },
+    {
+      targetText: "ALT remained stable.",
+      replacementText: "Serum alanine aminotransferase (ALT) remained stable.",
+      reason: "terminology",
+    },
+    {
+      targetText: "Patients improved, however the sample stayed small.",
+      replacementText: "Patients improved; however, the sample stayed small.",
+      reason: "punctuation",
+    },
   ]);
 
   const payload = result.job.payload as
@@ -424,6 +463,12 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rejectedCount?: number;
           routedRuleCandidateCount?: number;
         };
+        executionMode?: string;
+        sourceSnapshotId?: string;
+        executionProfileId?: string;
+        runtimeBindingId?: string;
+        modelId?: string;
+        modelSource?: string;
         confirmationDecisions?: Array<{
           action?: string;
           targetText?: string;
@@ -431,10 +476,16 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
         }>;
       }
     | undefined;
-  assert.equal(payload?.confirmationSummary?.totalItems, 3);
-  assert.equal(payload?.confirmationSummary?.acceptedIntoManuscriptCount, 2);
+  assert.equal(payload?.confirmationSummary?.totalItems, 5);
+  assert.equal(payload?.confirmationSummary?.acceptedIntoManuscriptCount, 4);
   assert.equal(payload?.confirmationSummary?.rejectedCount, 1);
   assert.equal(payload?.confirmationSummary?.routedRuleCandidateCount, 1);
+  assert.equal(payload?.executionMode, "governed");
+  assert.equal(payload?.sourceSnapshotId, "snapshot-proof-final-1");
+  assert.equal(payload?.executionProfileId, "profile-proofreading-1");
+  assert.equal(payload?.runtimeBindingId, "binding-proofreading-1");
+  assert.equal(payload?.modelId, "model-1");
+  assert.equal(payload?.modelSource, "legacy_module_default");
   assert.deepEqual(payload?.confirmationDecisions, [
     {
       itemId: "correction-1",
@@ -452,6 +503,20 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
     },
     {
       itemId: "correction-3",
+      action: "accept_and_edit",
+      targetText: "ALT remained stable.",
+      replacementText: "Alanine aminotransferase remained stable.",
+      finalReplacementText: "Serum alanine aminotransferase (ALT) remained stable.",
+    },
+    {
+      itemId: "correction-4",
+      action: "accept_and_edit",
+      targetText: "Patients improved, however the sample stayed small.",
+      replacementText: "Patients improved; however the sample stayed small.",
+      finalReplacementText: "Patients improved; however, the sample stayed small.",
+    },
+    {
+      itemId: "correction-5",
       action: "reject",
       targetText: "No action should survive.",
       replacementText: "This correction should be rejected.",
@@ -463,4 +528,61 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
   assert.equal(reviewDecisions.length, 1);
   assert.equal(reviewDecisions[0]?.action, "route_to_rule_candidate");
   assert.equal(residualObservations.length, 1);
+  assert.deepEqual(residualObservations[0]?.sourceBlocks, [
+    {
+      blockIndex: 1,
+      text: "The hemoglobin were stable.",
+      residualHints: [
+        {
+          issue_type: "uncovered_local_language_issue",
+          excerpt: "The hemoglobin were stable.",
+          suggestion: "The hemoglobin levels were stable.",
+          rationale:
+            "Human adjusted the proofreading correction before final publication.",
+          source_stage: "model_residual",
+        },
+      ],
+    },
+    {
+      blockIndex: 2,
+      text: "ALT remained stable.",
+      residualHints: [
+        {
+          issue_type: "terminology_gap",
+          excerpt: "ALT remained stable.",
+          suggestion: "Serum alanine aminotransferase (ALT) remained stable.",
+          rationale:
+            "Human adjusted the proofreading correction before final publication.",
+          source_stage: "model_residual",
+        },
+      ],
+    },
+    {
+      blockIndex: 3,
+      text: "Patients improved, however the sample stayed small.",
+      residualHints: [
+        {
+          issue_type: "style_consistency_gap",
+          excerpt: "Patients improved, however the sample stayed small.",
+          suggestion: "Patients improved; however, the sample stayed small.",
+          rationale:
+            "Human adjusted the proofreading correction before final publication.",
+          source_stage: "model_residual",
+        },
+      ],
+    },
+    {
+      blockIndex: 4,
+      text: "No action should survive.",
+      residualHints: [
+        {
+          issue_type: "unsupported_correction_proposal",
+          excerpt: "No action should survive.",
+          suggestion: "This correction should be rejected.",
+          rationale: "Human rejected the proofreading correction.",
+          source_stage: "model_residual",
+        },
+      ],
+    },
+  ]);
 });

@@ -117,7 +117,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   );
 
   await page.getByRole("button", { name: finalizeProofLabel }).click();
-  await expect(page.locator("body")).toContainText("已生成校对稿件");
+  await expect(page.locator("body")).toContainText("已生成校对批注稿");
 
   const publishHumanFinalButton = page.getByRole("button", {
     name: publishHumanFinalLabel,
@@ -134,7 +134,10 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(
     "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
   );
-  const learningReviewLink = page.getByRole("link", { name: "前往规则中心" });
+  const learningReviewLink = page.getByRole("link", {
+    name: "前往规则中心",
+    exact: true,
+  });
   await expect(learningReviewLink).toBeVisible();
   await expect(learningReviewLink).toHaveAttribute(
     "href",

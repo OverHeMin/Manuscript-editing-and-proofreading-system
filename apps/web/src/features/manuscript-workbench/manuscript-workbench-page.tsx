@@ -73,6 +73,10 @@ import {
   type ProofreadingConfirmationItemViewModel,
 } from "./manuscript-workbench-detail.tsx";
 import {
+  formatWorkbenchGeneratedOutputTypeLabel,
+  resolveWorkbenchAssetDownloadLabel,
+} from "./manuscript-workbench-asset-labels.ts";
+import {
   createManuscriptWorkbenchController,
   isSelectableParentAsset,
   resolveWorkbenchReadOnlyExecutionContext,
@@ -80,10 +84,12 @@ import {
   type ManuscriptWorkbenchMode,
   type ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
   type ManuscriptWorkbenchRunMode,
+  type ManuscriptWorkbenchWorkspaceLoadOptions,
   type RunModuleAndLoadInput,
   type ManuscriptWorkbenchTemplateContext,
   type ManuscriptWorkbenchWorkspace,
 } from "./manuscript-workbench-controller.ts";
+import type { ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel } from "./manuscript-workbench-governance-handoff.ts";
 
 const AI_RECOGNITION_ACTION_LABEL = "Run AI Recognition";
 const BARE_AI_ACTION_DISPLAY_LABEL = "AI识别";
@@ -119,13 +125,14 @@ export interface ManuscriptWorkbenchPageProps {
 export async function loadPrefilledWorkbenchWorkspace(
   controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob">,
   manuscriptId: string,
+  options?: ManuscriptWorkbenchWorkspaceLoadOptions,
 ): Promise<{
   workspace: ManuscriptWorkbenchWorkspace;
   latestJob: JobViewModel | null;
   status: string;
   latestActionResult: WorkbenchActionResultViewModel;
 }> {
-  const workspace = await controller.loadWorkspace(manuscriptId);
+  const workspace = await controller.loadWorkspace(manuscriptId, options);
   const latestJob = await hydrateLatestWorkbenchJob(controller, workspace);
   const status = `Auto-loaded manuscript ${workspace.manuscript.id}`;
   const details = [
@@ -285,6 +292,190 @@ export function buildManualOnlyReviewActionResult(
   };
 }
 
+export async function loadPrefilledWorkbenchPageData(
+  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob"> &
+    Partial<
+      Pick<ManuscriptWorkbenchController, "loadProofreadingGovernanceHandoff">
+    >,
+  input: {
+    mode: ManuscriptWorkbenchMode;
+    manuscriptId: string;
+    actorRole?: AuthRole;
+  },
+): Promise<
+  Awaited<ReturnType<typeof loadPrefilledWorkbenchWorkspace>> & {
+    proofreadingGovernanceHandoff?:
+      | ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel
+      | undefined;
+  }
+> {
+  const workspaceResult = await loadPrefilledWorkbenchWorkspace(
+    controller,
+    input.manuscriptId,
+    {
+      actorRole: input.actorRole,
+      mode: input.mode,
+    },
+  );
+
+  if (
+    input.mode !== "proofreading" ||
+    typeof controller.loadProofreadingGovernanceHandoff !== "function"
+  ) {
+    return {
+      ...workspaceResult,
+      proofreadingGovernanceHandoff: undefined,
+    };
+  }
+
+  try {
+    return {
+      ...workspaceResult,
+      proofreadingGovernanceHandoff:
+        await controller.loadProofreadingGovernanceHandoff(input.manuscriptId),
+    };
+  } catch {
+    return {
+      ...workspaceResult,
+      proofreadingGovernanceHandoff: undefined,
+    };
+  }
+}
+
+function readProofreadingConfirmationSummary(
+  job: Pick<AnyWorkbenchJob, "payload">,
+): {
+  totalItems: number;
+  acceptedIntoManuscriptCount: number;
+  rejectedCount: number;
+  routedRuleCandidateCount: number;
+  routedKnowledgeCandidateCount: number;
+  manualOnlyCount: number;
+} | null {
+  const payload =
+    job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+      ? (job.payload as Record<string, unknown>)
+      : undefined;
+  const summary =
+    payload?.confirmationSummary &&
+    typeof payload.confirmationSummary === "object" &&
+    !Array.isArray(payload.confirmationSummary)
+      ? (payload.confirmationSummary as Record<string, unknown>)
+      : undefined;
+
+  const readCount = (value: unknown): number | undefined =>
+    typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+  if (summary) {
+    return {
+      totalItems: readCount(summary.totalItems) ?? 0,
+      acceptedIntoManuscriptCount:
+        readCount(summary.acceptedIntoManuscriptCount) ?? 0,
+      rejectedCount: readCount(summary.rejectedCount) ?? 0,
+      routedRuleCandidateCount: readCount(summary.routedRuleCandidateCount) ?? 0,
+      routedKnowledgeCandidateCount:
+        readCount(summary.routedKnowledgeCandidateCount) ?? 0,
+      manualOnlyCount: readCount(summary.manualOnlyCount) ?? 0,
+    };
+  }
+
+  const serializedDecisions = Array.isArray(payload?.confirmationDecisions)
+    ? payload.confirmationDecisions
+    : [];
+  if (serializedDecisions.length === 0) {
+    return null;
+  }
+
+  const actions = serializedDecisions.map((entry) =>
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? (entry as Record<string, unknown>).action
+      : undefined,
+  );
+
+  const countAction = (action: string) =>
+    actions.filter((value) => value === action).length;
+
+  return {
+    totalItems: serializedDecisions.length,
+    acceptedIntoManuscriptCount:
+      countAction("accept") +
+      countAction("accept_and_edit") +
+      countAction("manual_only") +
+      countAction("route_to_rule_candidate") +
+      countAction("route_to_knowledge_candidate"),
+    rejectedCount: countAction("reject"),
+    routedRuleCandidateCount: countAction("route_to_rule_candidate"),
+    routedKnowledgeCandidateCount: countAction("route_to_knowledge_candidate"),
+    manualOnlyCount: countAction("manual_only"),
+  };
+}
+
+export function buildPublishedHumanFinalActionResult(input: {
+  publishedAsset: {
+    id: string;
+    asset_type: string;
+  };
+  job: AnyWorkbenchJob;
+  overview?: ManuscriptWorkbenchWorkspace["manuscript"]["module_execution_overview"];
+}): WorkbenchActionResultViewModel {
+  const confirmationSummary = readProofreadingConfirmationSummary(input.job);
+
+  return {
+    tone: "success",
+    actionLabel: "Publish Human Final",
+    message: `Published human-final asset ${input.publishedAsset.id}`,
+    details: buildWorkbenchJobActionResultDetails(
+      [
+        {
+          label: "Asset",
+          value: input.publishedAsset.id,
+        },
+        {
+          label: "产出类型",
+          value: resolveGeneratedOutputTypeLabel(
+            input.publishedAsset.asset_type,
+            "proofreading",
+          ),
+        },
+        ...(confirmationSummary
+          ? [
+              {
+                label: "确认条目",
+                value: String(confirmationSummary.totalItems),
+              },
+              {
+                label: "写入终稿",
+                value: String(confirmationSummary.acceptedIntoManuscriptCount),
+              },
+              {
+                label: "拒绝",
+                value: String(confirmationSummary.rejectedCount),
+              },
+              {
+                label: "规则候选",
+                value: String(confirmationSummary.routedRuleCandidateCount),
+              },
+              {
+                label: "知识候选",
+                value: String(confirmationSummary.routedKnowledgeCandidateCount),
+              },
+              {
+                label: "仅人工处理",
+                value: String(confirmationSummary.manualOnlyCount),
+              },
+            ]
+          : []),
+        {
+          label: "Job",
+          value: input.job.id,
+        },
+      ],
+      input.job,
+      input.overview,
+    ),
+  };
+}
+
 function isManualFeedbackCategory(
   value: string,
 ): value is ManualFeedbackCategory {
@@ -360,6 +551,8 @@ export async function refreshLatestWorkbenchJobContext(
   input: {
     manuscriptId: string;
     latestJobId: string;
+    actorRole?: AuthRole;
+    mode?: ManuscriptWorkbenchMode;
   },
 ): Promise<{
   latestJob: JobViewModel;
@@ -371,7 +564,10 @@ export async function refreshLatestWorkbenchJobContext(
   let workspace: ManuscriptWorkbenchWorkspace | null = null;
 
   try {
-    workspace = await controller.loadWorkspace(input.manuscriptId);
+    workspace = await controller.loadWorkspace(input.manuscriptId, {
+      actorRole: input.actorRole,
+      mode: input.mode,
+    });
   } catch {
     workspace = null;
   }
@@ -576,6 +772,10 @@ export function ManuscriptWorkbenchPage({
     reviewItemId: string;
     recommendedRoute?: "rule_candidate" | "knowledge_candidate" | "prompt_template_candidate";
   } | null>(null);
+  const [proofreadingGovernanceHandoff, setProofreadingGovernanceHandoff] =
+    useState<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel | null>(
+      null,
+    );
   const [selectedTemplateFamilyId, setSelectedTemplateFamilyId] = useState("");
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
   const [selectedTemplateContext, setSelectedTemplateContext] =
@@ -669,6 +869,7 @@ export function ManuscriptWorkbenchPage({
     setIsDetailLoading(false);
     setConfirmationState({});
     setIsHumanFinalPublishing(false);
+    setProofreadingGovernanceHandoff(null);
   }, [normalizedPrefilledManuscriptId]);
 
   useEffect(() => {
@@ -862,7 +1063,11 @@ export function ManuscriptWorkbenchPage({
     setBusy(true);
     setError("");
 
-    void loadPrefilledWorkbenchWorkspace(controller, normalizedPrefilledManuscriptId)
+    void loadPrefilledWorkbenchPageData(controller, {
+      mode,
+      manuscriptId: normalizedPrefilledManuscriptId,
+      actorRole,
+    })
       .then((result) => {
         if (cancelled) {
           return;
@@ -873,6 +1078,9 @@ export function ManuscriptWorkbenchPage({
         setLatestExport(null);
         setStatus(result.status);
         setLatestActionResult(result.latestActionResult);
+        setProofreadingGovernanceHandoff(
+          result.proofreadingGovernanceHandoff ?? null,
+        );
       })
       .catch((nextError) => {
         if (cancelled) {
@@ -888,6 +1096,7 @@ export function ManuscriptWorkbenchPage({
           message,
           details: [],
         });
+        setProofreadingGovernanceHandoff(null);
       })
       .finally(() => {
         if (!cancelled) {
@@ -899,7 +1108,25 @@ export function ManuscriptWorkbenchPage({
     return () => {
       cancelled = true;
     };
-  }, [controller, normalizedPrefilledManuscriptId]);
+  }, [actorRole, controller, mode, normalizedPrefilledManuscriptId]);
+
+  async function syncProofreadingGovernanceHandoff(manuscriptId: string) {
+    if (
+      mode !== "proofreading" ||
+      typeof controller.loadProofreadingGovernanceHandoff !== "function"
+    ) {
+      setProofreadingGovernanceHandoff(null);
+      return;
+    }
+
+    try {
+      setProofreadingGovernanceHandoff(
+        await controller.loadProofreadingGovernanceHandoff(manuscriptId),
+      );
+    } catch {
+      setProofreadingGovernanceHandoff(null);
+    }
+  }
 
   async function run(
     actionLabel: string,
@@ -948,6 +1175,7 @@ export function ManuscriptWorkbenchPage({
       setLatestJob(result.runResult.job);
       setLatestExport(null);
       setConfirmationState({});
+      await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
 
       const publishedAsset =
         result.workspace.assets.find((asset) => asset.id === result.runResult.asset.id) ??
@@ -969,33 +1197,13 @@ export function ManuscriptWorkbenchPage({
 
       const message = `Published human-final asset ${publishedAsset.id}`;
       setStatus(message);
-      setLatestActionResult({
-        tone: "success",
-        actionLabel: "Publish Human Final",
-        message,
-        details: buildWorkbenchJobActionResultDetails(
-          [
-            {
-              label: "Asset",
-              value: publishedAsset.id,
-            },
-            {
-              label: "Output Type",
-              value: resolveGeneratedOutputTypeLabel(publishedAsset.asset_type, "proofreading"),
-            },
-            {
-              label: "Confirmed Decisions",
-              value: String(input.decisions.length),
-            },
-            {
-              label: "Job",
-              value: result.runResult.job.id,
-            },
-          ],
-          result.runResult.job,
-          result.workspace.manuscript.module_execution_overview,
-        ),
-      });
+      setLatestActionResult(
+        buildPublishedHumanFinalActionResult({
+          publishedAsset,
+          job: result.runResult.job,
+          overview: result.workspace.manuscript.module_execution_overview,
+        }),
+      );
 
       if (typeof window !== "undefined") {
         window.location.hash = collectionHref;
@@ -1311,15 +1519,21 @@ export function ManuscriptWorkbenchPage({
       journalTemplateId: nextJournalTemplateId,
     });
     setWorkspace(result.workspace);
+    await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
 
     return result.workspace;
   }
 
   async function loadWorkspaceIntoBench(manuscriptId: string) {
-    const result = await loadPrefilledWorkbenchWorkspace(controller, manuscriptId);
+    const result = await loadPrefilledWorkbenchPageData(controller, {
+      mode,
+      manuscriptId,
+      actorRole,
+    });
     setWorkspace(result.workspace);
     setLatestJob(result.latestJob);
     setLatestExport(null);
+    setProofreadingGovernanceHandoff(result.proofreadingGovernanceHandoff ?? null);
     setLookupId(result.workspace.manuscript.id);
     setStatus(`Loaded manuscript ${result.workspace.manuscript.id}`);
     return {
@@ -1410,6 +1624,7 @@ function buildTemplateContextActionResult(
               });
               setWorkspace(result.workspace);
               setLatestJob(result.upload.batch_job);
+              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               setQueueItems((current) =>
                 mergeQueueItems(
                   current,
@@ -1448,6 +1663,7 @@ function buildTemplateContextActionResult(
             const result = await controller.uploadManuscriptAndLoad(uploadForm);
             setWorkspace(result.workspace);
             setLatestJob(result.upload.job);
+            await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
             setQueueItems((current) =>
               mergeQueueItems(current, [
                 buildQueueItemFromManuscript(result.upload.manuscript, mode, "recent", true),
@@ -1623,6 +1839,7 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
                 result.workspace,
@@ -1674,6 +1891,7 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
                 result.workspace,
@@ -1733,6 +1951,7 @@ function buildTemplateContextActionResult(
               });
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 "proofreading",
                 result.workspace,
@@ -1864,10 +2083,13 @@ function buildTemplateContextActionResult(
             const result = await refreshLatestWorkbenchJobContext(controller, {
               manuscriptId: workspace.manuscript.id,
               latestJobId: latestJob.id,
+              actorRole,
+              mode,
             });
             setLatestJob(result.latestJob);
             if (result.workspace) {
               setWorkspace(result.workspace);
+              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
             }
             setStatus(result.status);
             return result.latestActionResult;
@@ -1927,7 +2149,9 @@ function buildTemplateContextActionResult(
       accessibleHandoffModes={accessibleHandoffModes}
       canOpenLearningReview={canOpenLearningReview}
       canOpenEvaluationWorkbench={canOpenEvaluationWorkbench}
+      executionContext={executionContext}
       manualFeedback={manualFeedback}
+      proofreadingGovernanceHandoff={proofreadingGovernanceHandoff ?? undefined}
       prefilledManuscriptId={normalizedPrefilledManuscriptId}
       prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
       prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
@@ -3270,42 +3494,7 @@ function resolveGeneratedOutputTypeLabel(
   assetType: string,
   mode?: ManuscriptWorkbenchRunMode,
 ): string {
-  if (assetType === "screening_report") {
-    return "初筛报告";
-  }
-
-  if (assetType === "edited_docx") {
-    return "编辑稿件";
-  }
-
-  if (
-    assetType === "proofreading_draft_report" ||
-    assetType === "final_proof_issue_report"
-  ) {
-    return "校对报告";
-  }
-
-  if (assetType === "final_proof_annotated_docx") {
-    return "校对稿件";
-  }
-
-  if (assetType === "human_final_docx") {
-    return "人工终稿";
-  }
-
-  if (mode === "screening") {
-    return "初筛结果";
-  }
-
-  if (mode === "editing") {
-    return "编辑稿件";
-  }
-
-  if (mode === "proofreading") {
-    return "校对结果";
-  }
-
-  return "结果文件";
+  return formatWorkbenchGeneratedOutputTypeLabel(assetType, mode);
 }
 
 function requireMaterializedModuleResultAsset(
@@ -3434,60 +3623,13 @@ function resolveCurrentAssetDownloadHref(
 function legacyResolveCurrentResultDownloadLabel(
   asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
 ): string {
-  if (asset.asset_type === "screening_report") {
-    return "下载初筛报告";
-  }
-
-  if (asset.asset_type === "proofreading_draft_report") {
-    return "下载校对草稿";
-  }
-
-  if (asset.asset_type === "final_proof_issue_report") {
-    return "下载校对问题报告";
-  }
-
-  if (asset.asset_type === "edited_docx") {
-    return "下载编辑稿";
-  }
-
-  if (asset.asset_type === "final_proof_annotated_docx") {
-    return "下载校对定稿";
-  }
-
-  if (asset.asset_type === "human_final_docx") {
-    return "下载人工终稿";
-  }
-
-  return "下载当前结果";
+  return resolveWorkbenchAssetDownloadLabel(asset.asset_type) ?? "下载当前结果";
 }
 
 function resolveCurrentResultDownloadLabel(
   asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
 ): string {
-  if (asset.asset_type === "screening_report") {
-    return "下载初筛报告";
-  }
-
-  if (
-    asset.asset_type === "proofreading_draft_report" ||
-    asset.asset_type === "final_proof_issue_report"
-  ) {
-    return "下载校对报告";
-  }
-
-  if (asset.asset_type === "edited_docx") {
-    return "下载编辑稿件";
-  }
-
-  if (asset.asset_type === "final_proof_annotated_docx") {
-    return "下载校对稿件";
-  }
-
-  if (asset.asset_type === "human_final_docx") {
-    return "下载人工终稿";
-  }
-
-  return legacyResolveCurrentResultDownloadLabel(asset);
+  return resolveWorkbenchAssetDownloadLabel(asset.asset_type) ?? "下载当前结果";
 }
 
 function hasUploadPayload(input: UploadManuscriptInput): boolean {

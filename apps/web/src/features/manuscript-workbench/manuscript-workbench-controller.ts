@@ -58,6 +58,7 @@ import {
   type GovernedHitReviewItemViewModel,
   type ReviewItemDecisionResultViewModel,
 } from "../review-items/index.ts";
+import type { ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel } from "./manuscript-workbench-governance-handoff.ts";
 
 export type ManuscriptWorkbenchMode =
   | "submission"
@@ -111,6 +112,8 @@ export interface ManuscriptWorkbenchTemplateContext {
 export interface ManuscriptWorkbenchReadOnlyExecutionContextViewModel {
   mode: ManuscriptWorkbenchRunMode;
   executionProfileId?: string;
+  retrievalPresetId?: string;
+  runtimeBindingId?: string;
   modelRoutingPolicyVersionId?: string;
   resolvedModelId?: string;
   modelSource?: string;
@@ -121,6 +124,13 @@ export interface ManuscriptWorkbenchReadOnlyExecutionContextViewModel {
 export interface UploadManuscriptAndLoadResult {
   upload: UploadManuscriptResult;
   workspace: ManuscriptWorkbenchWorkspace;
+}
+
+export interface ManuscriptWorkbenchWorkspaceLoadOptions {
+  actorRole?: AuthRole;
+  mode?: ManuscriptWorkbenchMode;
+  includeKnowledgeReferences?: boolean;
+  includeTemplateContext?: boolean;
 }
 
 export interface UploadManuscriptBatchAndLoadResult {
@@ -209,7 +219,13 @@ export interface UpdateTemplateSelectionAndLoadInput {
 }
 
 export interface ManuscriptWorkbenchController {
-  loadWorkspace(manuscriptId: string): Promise<ManuscriptWorkbenchWorkspace>;
+  loadWorkspace(
+    manuscriptId: string,
+    options?: ManuscriptWorkbenchWorkspaceLoadOptions,
+  ): Promise<ManuscriptWorkbenchWorkspace>;
+  loadProofreadingGovernanceHandoff?(
+    manuscriptId: string,
+  ): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>;
   loadTemplateContext?(
     templateFamilyId: string,
   ): Promise<ManuscriptWorkbenchTemplateContext>;
@@ -262,12 +278,17 @@ export function createManuscriptWorkbenchController(
     string,
     ManuscriptWorkbenchKnowledgeReferenceViewModel | null
   >();
-  const loadWorkspaceWithKnowledge = (manuscriptId: string) =>
-    loadWorkspace(client, manuscriptId, knowledgeReferenceCache);
+  const loadWorkspaceWithKnowledge = (
+    manuscriptId: string,
+    options?: ManuscriptWorkbenchWorkspaceLoadOptions,
+  ) => loadWorkspace(client, manuscriptId, knowledgeReferenceCache, options);
 
   return {
-    loadWorkspace(manuscriptId) {
-      return loadWorkspaceWithKnowledge(manuscriptId);
+    loadWorkspace(manuscriptId, options) {
+      return loadWorkspaceWithKnowledge(manuscriptId, options);
+    },
+    loadProofreadingGovernanceHandoff(manuscriptId) {
+      return loadProofreadingGovernanceHandoff(client, manuscriptId);
     },
     async loadTemplateContext(templateFamilyId) {
       const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =
@@ -325,7 +346,10 @@ export function createManuscriptWorkbenchController(
       const runResult = await runModule(client, input);
       const [job, workspace] = await Promise.all([
         hydrateWorkbenchActionJob(client, runResult.job),
-        loadWorkspaceWithKnowledge(input.manuscriptId),
+        loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: input.mode,
+        }),
       ]);
 
       return {
@@ -347,7 +371,10 @@ export function createManuscriptWorkbenchController(
       });
       const [job, workspace] = await Promise.all([
         hydrateWorkbenchActionJob(client, response.body.job),
-        loadWorkspaceWithKnowledge(input.manuscriptId),
+        loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: "proofreading",
+        }),
       ]);
 
       return {
@@ -370,7 +397,10 @@ export function createManuscriptWorkbenchController(
       });
       const [job, workspace] = await Promise.all([
         hydrateWorkbenchActionJob(client, response.body.job),
-        loadWorkspaceWithKnowledge(input.manuscriptId),
+        loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: "proofreading",
+        }),
       ]);
 
       return {
@@ -417,18 +447,18 @@ async function loadWorkspace(
     string,
     ManuscriptWorkbenchKnowledgeReferenceViewModel | null
   >,
+  options: ManuscriptWorkbenchWorkspaceLoadOptions = {},
 ): Promise<ManuscriptWorkbenchWorkspace> {
   const [manuscriptResponse, assetsResponse] = await Promise.all([
     getManuscript(client, manuscriptId),
     listManuscriptAssets(client, manuscriptId),
   ]);
   const assets = sortAssetsNewestFirst(assetsResponse.body);
-  const knowledgeReferences = await loadKnowledgeReferences(
-    client,
-    manuscriptResponse.body,
-    knowledgeReferenceCache,
-  );
+  const knowledgeReferences = shouldLoadKnowledgeReferences(options)
+    ? await loadKnowledgeReferences(client, manuscriptResponse.body, knowledgeReferenceCache)
+    : {};
   const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =
+    shouldLoadTemplateContext(options) &&
     (manuscriptResponse.body.current_template_family_id ??
       manuscriptResponse.body.governed_execution_context_summary
         ?.base_template_family_id) != null
@@ -484,6 +514,28 @@ async function loadTemplateContext(
   ).body;
 
   return [templateFamilies, templateFamily, journalTemplateProfiles];
+}
+
+async function loadProofreadingGovernanceHandoff(
+  client: ManuscriptWorkbenchHttpClient,
+  manuscriptId: string,
+): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel> {
+  const normalizedManuscriptId = manuscriptId.trim();
+  if (normalizedManuscriptId.length === 0) {
+    return {
+      residualReviewItems: [],
+      ruleCandidates: [],
+    };
+  }
+
+  return (
+    await client.request<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>({
+      method: "GET",
+      url:
+        "/api/v1/modules/proofreading/governance-handoff" +
+        `?manuscriptId=${encodeURIComponent(normalizedManuscriptId)}`,
+    })
+  ).body;
 }
 
 async function loadKnowledgeReferences(
@@ -561,6 +613,34 @@ function mapKnowledgeReference(detail: Awaited<ReturnType<typeof getKnowledgeAss
 
 function dedupeIds(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function shouldLoadKnowledgeReferences(
+  options: ManuscriptWorkbenchWorkspaceLoadOptions,
+): boolean {
+  if (typeof options.includeKnowledgeReferences === "boolean") {
+    return options.includeKnowledgeReferences;
+  }
+
+  return canLoadPrivilegedWorkbenchEnrichment(options.actorRole);
+}
+
+function shouldLoadTemplateContext(
+  options: ManuscriptWorkbenchWorkspaceLoadOptions,
+): boolean {
+  if (typeof options.includeTemplateContext === "boolean") {
+    return options.includeTemplateContext;
+  }
+
+  return canLoadPrivilegedWorkbenchEnrichment(options.actorRole);
+}
+
+function canLoadPrivilegedWorkbenchEnrichment(actorRole?: AuthRole): boolean {
+  if (actorRole == null) {
+    return true;
+  }
+
+  return actorRole === "admin" || actorRole === "knowledge_reviewer";
 }
 
 async function runModule(
@@ -770,11 +850,35 @@ export function resolveWorkbenchReadOnlyExecutionContext(
 
   return {
     mode,
-    executionProfileId: moduleSummary.execution_profile_id,
-    modelRoutingPolicyVersionId: moduleSummary.model_routing_policy_version_id,
-    resolvedModelId: moduleSummary.resolved_model_id,
-    modelSource: moduleSummary.model_source,
-    providerReadinessStatus: moduleSummary.provider_readiness_status,
-    runtimeBindingReadinessStatus: moduleSummary.runtime_binding_readiness_status,
+    ...(moduleSummary.execution_profile_id
+      ? { executionProfileId: moduleSummary.execution_profile_id }
+      : {}),
+    ...(moduleSummary.retrieval_preset_id
+      ? { retrievalPresetId: moduleSummary.retrieval_preset_id }
+      : {}),
+    ...(moduleSummary.runtime_binding_id
+      ? { runtimeBindingId: moduleSummary.runtime_binding_id }
+      : {}),
+    ...(moduleSummary.model_routing_policy_version_id
+      ? {
+          modelRoutingPolicyVersionId:
+            moduleSummary.model_routing_policy_version_id,
+        }
+      : {}),
+    ...(moduleSummary.resolved_model_id
+      ? { resolvedModelId: moduleSummary.resolved_model_id }
+      : {}),
+    ...(moduleSummary.model_source
+      ? { modelSource: moduleSummary.model_source }
+      : {}),
+    ...(moduleSummary.provider_readiness_status
+      ? { providerReadinessStatus: moduleSummary.provider_readiness_status }
+      : {}),
+    ...(moduleSummary.runtime_binding_readiness_status
+      ? {
+          runtimeBindingReadinessStatus:
+            moduleSummary.runtime_binding_readiness_status,
+        }
+      : {}),
   };
 }

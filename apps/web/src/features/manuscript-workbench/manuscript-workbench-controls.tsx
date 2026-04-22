@@ -7,6 +7,9 @@ import type {
   ManuscriptWorkbenchMode,
   ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
 } from "./manuscript-workbench-controller.ts";
+import {
+  formatWorkbenchExecutionTrustModeLabel,
+} from "./manuscript-workbench-execution-labels.ts";
 
 const AI_RECOGNITION_ACTION_LABEL = "Run AI Recognition";
 const BARE_AI_ACTION_DISPLAY_LABEL = "AI识别";
@@ -269,6 +272,10 @@ function ExecutionContextPanel({
           <strong>集中默认</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
+          <span>执行方式</span>
+          <strong>{formatWorkbenchExecutionTrustModeLabel("governed")}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
           <span>模型 ID</span>
           <strong>{executionContext.resolvedModelId ?? "未解析"}</strong>
         </div>
@@ -281,15 +288,23 @@ function ExecutionContextPanel({
           <strong>{executionContext.executionProfileId ?? "未解析"}</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
+          <span>检索预设</span>
+          <strong>{executionContext.retrievalPresetId ?? "未绑定"}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
           <span>模型来源</span>
           <strong>{formatExecutionModelSourceLabel(executionContext.modelSource)}</strong>
+        </div>
+        <div className="manuscript-workbench-selection-context">
+          <span>运行时绑定</span>
+          <strong>{executionContext.runtimeBindingId ?? "未绑定"}</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
           <span>服务商就绪</span>
           <strong>{formatProviderReadinessLabel(executionContext.providerReadinessStatus)}</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
-          <span>运行时绑定</span>
+          <span>运行时就绪</span>
           <strong>
             {formatExecutionRuntimeBindingReadinessLabel(
               executionContext.runtimeBindingReadinessStatus,

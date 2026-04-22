@@ -9,6 +9,9 @@ export interface TemplateGovernanceOverviewMetrics {
   moduleCount: number;
   pendingKnowledgeCount: number;
   extractionAwaitingConfirmationCount: number;
+  retrievalAnswerRelevancy?: number;
+  retrievalContextPrecision?: number;
+  retrievalContextRecall?: number;
   pendingReviewCount?: number;
   harnessQueuedCount?: number;
   harnessPassedCount?: number;
@@ -54,6 +57,10 @@ export function TemplateGovernanceOverviewPage({
   recentUpdates = buildTemplateGovernanceOverviewFallbackUpdates(metrics),
   onOpenView,
 }: TemplateGovernanceOverviewPageProps) {
+  const hasRetrievalGovernanceEvidence =
+    metrics.retrievalAnswerRelevancy != null ||
+    metrics.retrievalContextPrecision != null ||
+    metrics.retrievalContextRecall != null;
   const metricCards = [
     { label: "大模板台账", value: metrics.templateCount },
     { label: "规则台账", value: metrics.moduleCount },
@@ -143,6 +150,52 @@ export function TemplateGovernanceOverviewPage({
           </article>
 
           <div className="template-governance-overview-secondary">
+            <article className="template-governance-card template-governance-overview-entry">
+              <header className="template-governance-ledger-section-header">
+                <h2>检索治理证据</h2>
+                <p>
+                  这些指标用于判断受治理检索是否稳定支撑规则与知识沉淀，不代表通用 AI
+                  准确率。
+                </p>
+              </header>
+              {hasRetrievalGovernanceEvidence ? (
+                <div className="template-governance-chip-row">
+                  {metrics.retrievalAnswerRelevancy != null ? (
+                    <span className="template-governance-chip">
+                      答案相关性{" "}
+                      {formatTemplateGovernanceOverviewRetrievalMetric(
+                        metrics.retrievalAnswerRelevancy,
+                      )}
+                    </span>
+                  ) : null}
+                  {metrics.retrievalContextPrecision != null ? (
+                    <span className="template-governance-chip">
+                      上下文精确率{" "}
+                      {formatTemplateGovernanceOverviewRetrievalMetric(
+                        metrics.retrievalContextPrecision,
+                      )}
+                    </span>
+                  ) : null}
+                  {metrics.retrievalContextRecall != null ? (
+                    <span className="template-governance-chip">
+                      上下文召回率{" "}
+                      {formatTemplateGovernanceOverviewRetrievalMetric(
+                        metrics.retrievalContextRecall,
+                      )}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="template-governance-empty">
+                  当前还没有可汇总的检索治理指标。
+                </p>
+              )}
+              <p className="template-governance-context-note template-governance-context-note--compact">
+                稿件工作台里的规则命中、知识引用和检索异常，会在这里继续进入统一复核与
+                Harness 验证。{formatTemplateGovernanceOverviewHarnessSummary(metrics)}
+              </p>
+            </article>
+
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>待处理事项</h2>
@@ -320,4 +373,16 @@ function shouldShowReleaseMetric(
     default:
       return true;
   }
+}
+
+function formatTemplateGovernanceOverviewRetrievalMetric(value: number): string {
+  return value.toFixed(2);
+}
+
+function formatTemplateGovernanceOverviewHarnessSummary(
+  metrics: TemplateGovernanceOverviewMetrics,
+): string {
+  return `Harness 待验证 ${metrics.harnessQueuedCount ?? 0} 条，已通过 ${
+    metrics.harnessPassedCount ?? 0
+  } 条，未通过 ${metrics.harnessFailedCount ?? 0} 条。`;
 }

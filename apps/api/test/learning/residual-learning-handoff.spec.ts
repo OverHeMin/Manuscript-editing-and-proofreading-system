@@ -73,6 +73,7 @@ function createResidualLearningHarness() {
     candidateRepository,
     documentAssetService,
     executionTrackingRepository,
+    feedbackGovernanceService,
     learningService,
   };
 }
@@ -352,4 +353,61 @@ test("validated residual issues bridge into governed learning candidates with ro
 
   const storedCandidates = await candidateRepository.list();
   assert.equal(storedCandidates.length, 3);
+});
+
+test("human-feedback governed rule candidates persist manuscript scope and can be filtered for proofreading handoff", async () => {
+  const {
+    learningService,
+    documentAssetService,
+    executionTrackingRepository,
+    feedbackGovernanceService,
+    originalAsset,
+  } = await seedResidualLearningContext();
+
+  await seedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/proofreading/human-feedback-annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-feedback-annotated.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: "job-1",
+  });
+  const feedback = await feedbackGovernanceService.recordHumanFeedback({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    snapshotId: "execution-snapshot-1",
+    feedbackType: "manual_correction",
+    feedbackText: "Normalize the confirmation wording.",
+    createdBy: "editor-1",
+  });
+
+  const candidate = await learningService.createHumanFeedbackGovernedLearningCandidate({
+    snapshotId: "execution-snapshot-1",
+    feedbackRecordId: feedback.id,
+    sourceAssetId: sourceAsset.id,
+    type: "rule_candidate",
+    module: "proofreading",
+    manuscriptType: "clinical_study",
+    title: "Proofreading confirmation rule candidate",
+    requestedBy: "editor-1",
+  });
+
+  assert.equal(candidate.manuscript_id, "manuscript-1");
+  assert.equal(candidate.governed_provenance_kind, "human_feedback");
+
+  const filteredCandidates = await learningService.listLearningCandidates({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    type: "rule_candidate",
+    status: "pending_review",
+    governedProvenanceKinds: ["human_feedback"],
+  });
+
+  assert.deepEqual(filteredCandidates.map((entry) => entry.id), [candidate.id]);
 });

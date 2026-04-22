@@ -905,6 +905,7 @@ export function createPersistentGovernanceRuntime(
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     reviewItemsService,
+    learningService,
     residualLearningService,
     transactionManager: workbenchTransactionManager,
   });

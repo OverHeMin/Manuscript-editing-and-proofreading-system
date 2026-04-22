@@ -6,6 +6,10 @@ import type {
   JobViewModel,
 } from "../manuscripts/index.ts";
 import type { ProofreadingConfirmationDecisionAction } from "../proofreading/types.ts";
+import {
+  formatWorkbenchAssetTypeLabel,
+  resolveWorkbenchAssetDownloadLabel,
+} from "./manuscript-workbench-asset-labels.ts";
 import type { ManuscriptWorkbenchMode } from "./manuscript-workbench-controller.ts";
 
 export type ManuscriptAssetDetailKind =
@@ -304,6 +308,11 @@ export function ManuscriptWorkbenchAssetDetailPage({
   const decidedCount = confirmationItems.filter(
     (item) => confirmationState[item.itemId]?.action,
   ).length;
+  const assetRoleLabel = formatWorkbenchAssetTypeLabel(asset.asset_type);
+  const previewOperationalState = resolvePreviewOperationalState({
+    asset,
+    previewSession,
+  });
 
   return (
     <section
@@ -348,11 +357,16 @@ export function ManuscriptWorkbenchAssetDetailPage({
             <div>
               <h4>{resolvePreviewPanelTitle(detailKind)}</h4>
               <p>{asset.file_name ?? asset.id}</p>
+              <small>{assetRoleLabel}</small>
             </div>
             {previewSession ? (
               <div className="manuscript-workbench-detail-session-metrics">
                 <span>{previewSession.viewer}</span>
-                <strong>{formatPreviewStatusLabel(previewSession.status)}</strong>
+                <strong>
+                  {formatPreviewStatusLabel(
+                    previewOperationalState?.status ?? previewSession.status,
+                  )}
+                </strong>
               </div>
             ) : null}
           </div>
@@ -376,6 +390,14 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 <dd>{asset.asset_type}</dd>
               </div>
             </dl>
+          ) : null}
+
+          {previewOperationalState?.warnings.length ? (
+            <ul className="manuscript-workbench-detail-warning-list">
+              {previewOperationalState.warnings.map((warning, index) => (
+                <li key={`${warning}-${index}`}>{warning}</li>
+              ))}
+            </ul>
           ) : null}
 
           {reportBody ? (
@@ -573,30 +595,36 @@ function resolvePreviewPanelTitle(detailKind: ManuscriptAssetDetailKind): string
 }
 
 function resolveDetailDownloadLabel(asset: DocumentAssetViewModel): string {
-  if (asset.asset_type === "edited_docx") {
-    return "下载编辑稿件";
+  return resolveWorkbenchAssetDownloadLabel(asset.asset_type) ?? "下载当前稿件";
+}
+
+export function resolvePreviewOperationalState(input: {
+  asset: DocumentAssetViewModel;
+  previewSession?: DocumentPreviewSessionViewModel | null;
+}):
+  | {
+      status: DocumentPreviewSessionViewModel["status"];
+      warnings: string[];
+    }
+  | null {
+  if (!input.previewSession) {
+    return null;
   }
 
-  if (asset.asset_type === "final_proof_annotated_docx") {
-    return "下载校对稿件";
+  if (isLegacyDocAsset(input.asset)) {
+    return {
+      status: "pending_normalization",
+      warnings:
+        input.previewSession.warnings.length > 0
+          ? [...input.previewSession.warnings]
+          : ["Legacy .doc source is awaiting normalization to .docx."],
+    };
   }
 
-  if (asset.asset_type === "human_final_docx") {
-    return "下载人工终稿";
-  }
-
-  if (asset.asset_type === "screening_report") {
-    return "下载初筛报告";
-  }
-
-  if (
-    asset.asset_type === "proofreading_draft_report" ||
-    asset.asset_type === "final_proof_issue_report"
-  ) {
-    return "下载校对报告";
-  }
-
-  return "下载当前稿件";
+  return {
+    status: input.previewSession.status,
+    warnings: [...input.previewSession.warnings],
+  };
 }
 
 function formatPreviewStatusLabel(
@@ -611,6 +639,19 @@ function formatPreviewStatusLabel(
   }
 
   return status;
+}
+
+function isLegacyDocAsset(asset: DocumentAssetViewModel): boolean {
+  const normalizedFileName = asset.file_name?.trim().toLowerCase();
+  if (normalizedFileName?.endsWith(".docx")) {
+    return false;
+  }
+
+  if (normalizedFileName?.endsWith(".doc")) {
+    return true;
+  }
+
+  return asset.mime_type === "application/msword";
 }
 
 function renderStringArraySection(title: string, items: readonly string[]): string[] {

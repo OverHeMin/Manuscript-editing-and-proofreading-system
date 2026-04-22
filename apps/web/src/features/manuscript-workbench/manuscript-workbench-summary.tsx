@@ -21,19 +21,35 @@ import type {
   ModuleMainlineSettlementDerivedStatus,
   RuntimeBindingReadinessReportViewModel,
 } from "../manuscripts/index.ts";
+import {
+  formatResidualReviewSourceStatusLabel,
+} from "../review-items/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
 import {
+  buildHighRiskReviewItemsFromJob,
   collectHighRiskEvidenceFromJob,
   formatHighRiskRecommendedRouteLabel,
   formatHighRiskReviewPostureLabel,
 } from "./manuscript-workbench-high-risk-review.ts";
+import {
+  formatWorkbenchAssetTypeLabel,
+  resolveWorkbenchAssetDownloadLabel,
+} from "./manuscript-workbench-asset-labels.ts";
 import { buildWorkbenchAssetDetailHref } from "./manuscript-workbench-detail.tsx";
 import type { ManuscriptWorkbenchHighRiskReviewItemViewModel } from "./manuscript-workbench-high-risk-review.ts";
 import type {
   ManuscriptWorkbenchKnowledgeReferenceViewModel,
   ManuscriptWorkbenchMode,
+  ManuscriptWorkbenchReadOnlyExecutionContextViewModel,
   ManuscriptWorkbenchWorkspace,
 } from "./manuscript-workbench-controller.ts";
+import {
+  formatWorkbenchExecutionModelSourceLabel,
+  formatWorkbenchExecutionTrustModeLabel,
+  formatWorkbenchProviderReadinessLabel,
+  formatWorkbenchRuntimeBindingReadinessLabel,
+} from "./manuscript-workbench-execution-labels.ts";
+import type { ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel } from "./manuscript-workbench-governance-handoff.ts";
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
 
@@ -107,15 +123,25 @@ export function buildJobReviewEvidenceDetails(
     snapshot?.knowledge_item_ids ?? getPayloadStringArray(payload, "knowledgeItemIds");
   const modelId = snapshot?.model_id ?? getPayloadStringValue(payload, "modelId");
   const modelVersion = snapshot?.model_version;
+  const highRiskReviewItems = buildHighRiskReviewItemsFromJob(latestJob);
   const highRiskEvidence = collectHighRiskEvidenceFromJob(latestJob);
-  const reasonSummary =
-    highRiskEvidence.reasons.length > 0
-      ? uniqueValues(highRiskEvidence.reasons.map((item) => formatOperatorFacingReason(item)))
-      : uniqueValues(
-          executionTracking?.settlement?.reason
-            ? [formatOperatorFacingReason(executionTracking.settlement.reason)]
-            : [],
-        );
+  const highRiskEvidenceSummary = uniqueValues(
+    highRiskEvidence.reasons.map((item) => formatOperatorFacingReason(item)),
+  );
+  const settlementReasonSummary = uniqueValues(
+    executionTracking?.settlement?.reason
+      ? [formatOperatorFacingReason(executionTracking.settlement.reason)]
+      : [],
+  );
+  const reviewRoutingHints = uniqueValues(
+    highRiskReviewItems
+      .map((item) =>
+        item.recommendedRoute
+          ? formatHighRiskRecommendedRouteLabel(item.recommendedRoute)
+          : "",
+      )
+      .filter((value) => value.length > 0),
+  );
 
   const details: WorkbenchActionResultDetail[] = [];
 
@@ -147,14 +173,177 @@ export function buildJobReviewEvidenceDetails(
     });
   }
 
-  if (reasonSummary.length > 0) {
+  if (highRiskEvidenceSummary.length > 0) {
     details.push({
-      label: "原因摘要",
-      value: reasonSummary.join(" | "),
+      label: "\u9ad8\u98ce\u9669\u8bc1\u636e",
+      value: highRiskEvidenceSummary.join(" | "),
+    });
+  } else if (settlementReasonSummary.length > 0) {
+    details.push({
+      label: "\u7ed3\u679c\u8bf4\u660e",
+      value: settlementReasonSummary.join(" | "),
+    });
+  }
+
+  if (reviewRoutingHints.length > 0) {
+    details.push({
+      label: "\u5efa\u8bae\u6d41\u5411",
+      value: reviewRoutingHints.join("\uff1b"),
     });
   }
 
   return details;
+}
+
+interface WorkbenchLatestJobExecutionTruthViewModel {
+  executionMode?: "governed" | "bare";
+  snapshotId?: string;
+  executionProfileId?: string;
+  retrievalPresetId?: string;
+  runtimeBindingId?: string;
+  modelRoutingPolicyVersionId?: string;
+  resolvedModelId?: string;
+  modelSource?: string;
+  runtimeBindingReadinessStatus?: "ready" | "degraded" | "missing";
+}
+
+export function buildGovernedExecutionTrustDetails(input: {
+  executionContext?: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null;
+  latestJob?: JobViewModel | ModuleJobViewModel | null;
+}): WorkbenchActionResultDetail[] {
+  const latestJobTruth = resolveLatestJobExecutionTruth(input.latestJob ?? null);
+  const executionContext = input.executionContext ?? null;
+  const executionMode =
+    latestJobTruth.executionMode ??
+    resolveGovernedExecutionTrustMode(executionContext, input.latestJob ?? null);
+  const hasLatestJobTruth = Object.values(latestJobTruth).some((value) => value != null);
+  if (!executionMode && !executionContext && !hasLatestJobTruth) {
+    return [];
+  }
+
+  const showFallbacks = executionContext != null;
+  const details: WorkbenchActionResultDetail[] = [
+    {
+      label: "\u6267\u884c\u65b9\u5f0f",
+      value: formatWorkbenchExecutionTrustModeLabel(executionMode),
+    },
+  ];
+  const pushDetail = (
+    label: string,
+    value: string | undefined,
+    fallbackValue?: string,
+  ): void => {
+    if (value) {
+      details.push({ label, value });
+      return;
+    }
+
+    if (showFallbacks && fallbackValue) {
+      details.push({ label, value: fallbackValue });
+    }
+  };
+
+  if (latestJobTruth.snapshotId) {
+    details.push({
+      label: "\u5feb\u7167",
+      value: latestJobTruth.snapshotId,
+    });
+  }
+
+  pushDetail(
+    "\u89e3\u6790\u6a21\u578b",
+    latestJobTruth.resolvedModelId ?? executionContext?.resolvedModelId,
+    "\u672a\u89e3\u6790",
+  );
+  pushDetail(
+    "\u8def\u7531\u7b56\u7565",
+    latestJobTruth.modelRoutingPolicyVersionId ??
+      executionContext?.modelRoutingPolicyVersionId,
+    "\u672a\u7ed1\u5b9a",
+  );
+  pushDetail(
+    "\u6267\u884c\u753b\u50cf",
+    latestJobTruth.executionProfileId ?? executionContext?.executionProfileId,
+    "\u672a\u7ed1\u5b9a",
+  );
+  pushDetail(
+    "\u68c0\u7d22\u9884\u8bbe",
+    latestJobTruth.retrievalPresetId ?? executionContext?.retrievalPresetId,
+    "\u672a\u7ed1\u5b9a",
+  );
+  pushDetail(
+    "\u8fd0\u884c\u65f6\u7ed1\u5b9a",
+    latestJobTruth.runtimeBindingId ?? executionContext?.runtimeBindingId,
+    "\u672a\u7ed1\u5b9a",
+  );
+
+  const modelSource = latestJobTruth.modelSource ?? executionContext?.modelSource;
+  if (modelSource || showFallbacks) {
+    details.push({
+      label: "\u6a21\u578b\u6765\u6e90",
+      value: formatWorkbenchExecutionModelSourceLabel(modelSource),
+    });
+  }
+
+  const providerReadinessStatus = executionContext?.providerReadinessStatus;
+  if (providerReadinessStatus || showFallbacks) {
+    details.push({
+      label: "\u670d\u52a1\u5546\u5c31\u7eea",
+      value: formatWorkbenchProviderReadinessLabel(providerReadinessStatus),
+    });
+  }
+
+  const runtimeBindingReadinessStatus =
+    latestJobTruth.runtimeBindingReadinessStatus ??
+    executionContext?.runtimeBindingReadinessStatus;
+  if (runtimeBindingReadinessStatus || showFallbacks) {
+    details.push({
+      label: "\u8fd0\u884c\u65f6\u5c31\u7eea",
+      value: formatWorkbenchRuntimeBindingReadinessLabel(
+        runtimeBindingReadinessStatus,
+      ),
+    });
+  }
+
+  return details;
+}
+
+function resolveLatestJobExecutionTruth(
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+): WorkbenchLatestJobExecutionTruthViewModel {
+  const payload =
+    latestJob?.payload &&
+    typeof latestJob.payload === "object" &&
+    !Array.isArray(latestJob.payload)
+      ? (latestJob.payload as Record<string, unknown>)
+      : undefined;
+  const executionTracking = getJobExecutionTracking(latestJob);
+  const snapshot =
+    executionTracking?.observation_status === "reported"
+      ? executionTracking.snapshot
+      : undefined;
+
+  return {
+    executionMode: getPayloadExecutionMode(payload),
+    snapshotId:
+      snapshot?.id ??
+      getPayloadStringValue(payload, "sourceSnapshotId") ??
+      getPayloadStringValue(payload, "snapshotId"),
+    executionProfileId:
+      snapshot?.execution_profile_id ??
+      getPayloadStringValue(payload, "executionProfileId"),
+    retrievalPresetId: getPayloadStringValue(payload, "retrievalPresetId"),
+    runtimeBindingId: getPayloadStringValue(payload, "runtimeBindingId"),
+    modelRoutingPolicyVersionId: getPayloadStringValue(
+      payload,
+      "routingPolicyVersionId",
+    ),
+    resolvedModelId: snapshot?.model_id ?? getPayloadStringValue(payload, "modelId"),
+    modelSource: getPayloadStringValue(payload, "modelSource"),
+    runtimeBindingReadinessStatus:
+      resolveSnapshotRuntimeBindingReadinessStatus(snapshot) ??
+      getPayloadRuntimeBindingReadinessStatus(payload),
+  };
 }
 
 export function buildJobBatchProgressDetails(
@@ -195,6 +384,23 @@ export function buildJobBatchProgressDetails(
       value: formatOperatorFacingReason(batchProgress.restart_posture.reason),
     },
   ];
+}
+
+function resolveGovernedExecutionTrustMode(
+  executionContext: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null | undefined,
+  latestJob: JobViewModel | ModuleJobViewModel | null,
+): "governed" | "bare" | undefined {
+  if (executionContext) {
+    return "governed";
+  }
+
+  const payload =
+    latestJob?.payload &&
+    typeof latestJob.payload === "object" &&
+    !Array.isArray(latestJob.payload)
+      ? (latestJob.payload as Record<string, unknown>)
+      : undefined;
+  return payload?.executionMode === "bare" ? "bare" : undefined;
 }
 
 export function buildJobPostureDetails(
@@ -531,7 +737,9 @@ export interface ManuscriptWorkbenchSummaryProps {
   accessibleHandoffModes?: readonly ManuscriptWorkbenchMode[];
   canOpenLearningReview?: boolean;
   canOpenEvaluationWorkbench?: boolean;
+  executionContext?: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null;
   manualFeedback?: ManuscriptWorkbenchManualFeedbackViewModel;
+  proofreadingGovernanceHandoff?: ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel;
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   prefilledSampleSetItemId?: string;
@@ -546,7 +754,9 @@ export function ManuscriptWorkbenchSummary({
   accessibleHandoffModes = [],
   canOpenLearningReview = false,
   canOpenEvaluationWorkbench = false,
+  executionContext = null,
   manualFeedback,
+  proofreadingGovernanceHandoff,
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   prefilledSampleSetItemId,
@@ -610,6 +820,10 @@ export function ManuscriptWorkbenchSummary({
     latestJob,
     workspace.knowledgeReferences,
   );
+  const governedExecutionTrustDetails = buildGovernedExecutionTrustDetails({
+    executionContext,
+    latestJob,
+  });
   const resultAssetMatrix =
     latestExport?.matrix ?? workspace.manuscript.result_asset_matrix;
   const currentExportSelection = latestExport?.selection
@@ -622,6 +836,12 @@ export function ManuscriptWorkbenchSummary({
     resultAssetMatrix,
     currentExportSelection,
   );
+  const proofreadingGovernanceLoop = buildProofreadingGovernanceLoopSummary({
+    mode,
+    manuscriptId: workspace.manuscript.id,
+    handoff: proofreadingGovernanceHandoff,
+    canOpenLearningReview,
+  });
   const currentManuscriptAsset =
     workspace.currentManuscriptAsset ?? workspace.currentAsset;
   const currentResultAsset =
@@ -705,6 +925,18 @@ export function ManuscriptWorkbenchSummary({
             </a>
           ) : null}
         </SummaryCard>
+
+        {governedExecutionTrustDetails.length > 0 ? (
+          <SummaryCard title="治理执行">
+            {governedExecutionTrustDetails.map((detail) => (
+              <SummaryMetric
+                key={`${detail.label}:${detail.value}`}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
+          </SummaryCard>
+        ) : null}
 
         {manualFeedback ? (
           <>
@@ -844,6 +1076,42 @@ export function ManuscriptWorkbenchSummary({
               </div>
             </SummaryCard>
           </>
+        ) : null}
+
+        {proofreadingGovernanceLoop ? (
+          <SummaryCard title="校对回流进度">
+            <SummaryMetric
+              label="当前阶段"
+              value={proofreadingGovernanceLoop.currentStageLabel}
+            />
+            <SummaryMetric
+              label="已发现残差"
+              value={String(proofreadingGovernanceLoop.observedCount)}
+            />
+            <SummaryMetric
+              label="Harness 待复验"
+              value={String(proofreadingGovernanceLoop.harnessPendingCount)}
+            />
+            <SummaryMetric
+              label="候选已就绪"
+              value={String(proofreadingGovernanceLoop.candidateReadyCount)}
+            />
+            <SummaryMetric
+              label="已生成候选"
+              value={String(proofreadingGovernanceLoop.candidateCreatedCount)}
+            />
+            <p className="manuscript-workbench-manual-feedback-copy">
+              只显示校对主线需要关注的关键进度，具体复验、候选审核与规则写回仍在规则中心继续完成。
+            </p>
+            {proofreadingGovernanceLoop.targetHref ? (
+              <a
+                className="manuscript-workbench-shortcut"
+                href={proofreadingGovernanceLoop.targetHref}
+              >
+                前往规则中心继续复验与候选处理
+              </a>
+            ) : null}
+          </SummaryCard>
         ) : null}
 
         <SummaryCard title="稿件概览">
@@ -1246,6 +1514,15 @@ interface SummaryCardProps {
   children: ReactNode;
 }
 
+interface ProofreadingGovernanceLoopSummaryViewModel {
+  currentStageLabel: string;
+  observedCount: number;
+  harnessPendingCount: number;
+  candidateReadyCount: number;
+  candidateCreatedCount: number;
+  targetHref?: string;
+}
+
 function SummaryCard({ title, children }: SummaryCardProps) {
   return (
     <article className="manuscript-workbench-summary-card">
@@ -1335,6 +1612,7 @@ function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
   return (
     <span className="manuscript-workbench-asset-identity">
       <span>{asset.file_name ?? formatAssetTypeLabel(asset.asset_type)}</span>
+      <small>{formatAssetTypeLabel(asset.asset_type)}</small>
       <code>{asset.id}</code>
     </span>
   );
@@ -1407,31 +1685,10 @@ function resolveCurrentAssetDownloadUrl(asset: DocumentAssetViewModel): string {
 }
 
 function resolveCurrentResultDownloadLabel(asset: DocumentAssetViewModel): string {
-  if (asset.asset_type === "screening_report") {
-    return "\u4e0b\u8f7d\u521d\u7b5b\u62a5\u544a";
-  }
-
-  if (asset.asset_type === "proofreading_draft_report") {
-    return "\u4e0b\u8f7d\u6821\u5bf9\u8349\u7a3f";
-  }
-
-  if (asset.asset_type === "final_proof_issue_report") {
-    return "\u4e0b\u8f7d\u6821\u5bf9\u95ee\u9898\u62a5\u544a";
-  }
-
-  if (asset.asset_type === "edited_docx") {
-    return "\u4e0b\u8f7d\u7f16\u8f91\u7a3f";
-  }
-
-  if (asset.asset_type === "final_proof_annotated_docx") {
-    return "\u4e0b\u8f7d\u6821\u5bf9\u5b9a\u7a3f";
-  }
-
-  if (asset.asset_type === "human_final_docx") {
-    return "\u4e0b\u8f7d\u4eba\u5de5\u7ec8\u7a3f";
-  }
-
-  return "\u4e0b\u8f7d\u5f53\u524d\u7ed3\u679c";
+  return (
+    resolveWorkbenchAssetDownloadLabel(asset.asset_type) ??
+    "\u4e0b\u8f7d\u5f53\u524d\u7ed3\u679c"
+  );
 }
 
 function renderAssetMatrixValue(asset: DocumentAssetViewModel): string {
@@ -1996,6 +2253,78 @@ function buildMainlineReadinessRecommendedNextStep(
   return undefined;
 }
 
+function buildProofreadingGovernanceLoopSummary(input: {
+  mode: ManuscriptWorkbenchMode;
+  manuscriptId: string;
+  handoff?: ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel;
+  canOpenLearningReview: boolean;
+}): ProofreadingGovernanceLoopSummaryViewModel | undefined {
+  if (input.mode !== "proofreading" || !input.handoff) {
+    return undefined;
+  }
+
+  const residualReviewItems = input.handoff.residualReviewItems.filter(
+    (item) => item.manuscript_id === input.manuscriptId,
+  );
+  const ruleCandidates = input.handoff.ruleCandidates.filter(
+    (candidate) =>
+      candidate.type === "rule_candidate" &&
+      (candidate.governed_provenance_kind === "residual_issue" ||
+        candidate.governed_provenance_kind === "human_feedback") &&
+      candidate.module === "proofreading" &&
+      candidate.manuscript_id === input.manuscriptId,
+  );
+
+  const observedCount = residualReviewItems.filter(
+    (item) => item.source_status === "observed",
+  ).length;
+  const harnessPendingCount = residualReviewItems.filter(
+    (item) => item.source_status === "validation_pending",
+  ).length;
+  const candidateReadyCount = residualReviewItems.filter(
+    (item) => item.source_status === "candidate_ready",
+  ).length;
+  const candidateCreatedCount = ruleCandidates.length;
+
+  if (
+    observedCount === 0 &&
+    harnessPendingCount === 0 &&
+    candidateReadyCount === 0 &&
+    candidateCreatedCount === 0
+  ) {
+    return undefined;
+  }
+
+  const latestResidualItem = [...residualReviewItems].sort((left, right) =>
+    right.updated_at.localeCompare(left.updated_at),
+  )[0];
+
+  const currentStageLabel =
+    candidateCreatedCount > 0
+      ? formatResidualReviewSourceStatusLabel("candidate_created")
+      : candidateReadyCount > 0
+        ? formatResidualReviewSourceStatusLabel("candidate_ready")
+        : harnessPendingCount > 0
+          ? formatResidualReviewSourceStatusLabel("validation_pending")
+          : formatResidualReviewSourceStatusLabel("observed");
+
+  return {
+    currentStageLabel,
+    observedCount,
+    harnessPendingCount,
+    candidateReadyCount,
+    candidateCreatedCount,
+    targetHref: input.canOpenLearningReview
+      ? formatWorkbenchHash("template-governance", {
+          manuscriptId: input.manuscriptId,
+          templateGovernanceView: "rule-ledger",
+          ruleCenterMode: "learning",
+          reviewItemId: latestResidualItem?.id,
+        })
+      : undefined,
+  };
+}
+
 function buildRecommendedNextStep(
   mode: ManuscriptWorkbenchMode,
   workspace: ManuscriptWorkbenchWorkspace,
@@ -2186,15 +2515,16 @@ function buildRecommendedNextStep(
     };
   }
 
-  if (isFinalProofAsset(workspace.currentAsset)) {
+  const currentFinalProofAsset = workspace.currentAsset;
+  if (currentFinalProofAsset && isFinalProofAsset(currentFinalProofAsset)) {
     return {
       focus: "导出或移交已完成的校对结果",
-      guidance: "当前校对终稿已激活，可继续下游交付。",
-        details: [
-          {
-            label: "当前资产",
-            value: describeAsset(workspace.currentAsset),
-          },
+      guidance: `当前${formatAssetTypeLabel(currentFinalProofAsset.asset_type)}已激活，可继续人工确认、导出或下游交付。`,
+      details: [
+        {
+          label: "当前资产",
+          value: describeAsset(currentFinalProofAsset),
+        },
           {
             label: "导出",
             value: latestExport?.download.storage_key ?? "请先在工作台工具区准备导出",
@@ -3206,6 +3536,33 @@ function getPayloadStringValue(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function getPayloadExecutionMode(
+  payload: Record<string, unknown> | undefined,
+): "governed" | "bare" | undefined {
+  const executionMode = payload?.executionMode;
+  return executionMode === "governed" || executionMode === "bare"
+    ? executionMode
+    : undefined;
+}
+
+function getPayloadRuntimeBindingReadinessStatus(
+  payload: Record<string, unknown> | undefined,
+): "ready" | "degraded" | "missing" | undefined {
+  const status = payload?.runtimeBindingReadinessStatus;
+  return status === "ready" || status === "degraded" || status === "missing"
+    ? status
+    : undefined;
+}
+
+function resolveSnapshotRuntimeBindingReadinessStatus(
+  snapshot: JobExecutionTrackingObservationViewModel["snapshot"] | undefined,
+): "ready" | "degraded" | "missing" | undefined {
+  const status = snapshot?.runtime_binding_readiness.report?.status;
+  return status === "ready" || status === "degraded" || status === "missing"
+    ? status
+    : undefined;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -3620,24 +3977,7 @@ function formatActionResultDetailValue(label: string, value: string): string {
 }
 
 function formatAssetTypeLabel(assetType: string): string {
-  switch (assetType) {
-    case "original":
-      return "原稿";
-    case "edited_docx":
-      return "编辑稿";
-    case "screening_report":
-      return "初筛报告";
-    case "proofreading_draft_report":
-      return "校对草稿";
-    case "final_proof_annotated_docx":
-      return "校对终稿";
-    case "final_proof_issue_report":
-      return "校对问题报告";
-    case "human_final_docx":
-      return "人工终稿";
-    default:
-      return assetType;
-  }
+  return formatWorkbenchAssetTypeLabel(assetType);
 }
 
 function formatMimeTypeLabel(mimeType: string): string {

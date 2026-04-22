@@ -155,6 +155,98 @@ function createRecoveryWorkspace(): ManuscriptWorkbenchWorkspace {
   } as unknown as ManuscriptWorkbenchWorkspace;
 }
 
+function createProofreadingWorkspace(): ManuscriptWorkbenchWorkspace {
+  const editedAsset = {
+    id: "asset-edited-proof-1",
+    manuscript_id: "manuscript-proof-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited-proof.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-original-proof-1",
+    source_module: "editing",
+    source_job_id: "job-edit-proof-1",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "editing-proof.docx",
+    created_at: "2026-04-20T09:00:00.000Z",
+    updated_at: "2026-04-20T09:20:00.000Z",
+  };
+  const draftReportAsset = {
+    id: "asset-proof-draft-1",
+    manuscript_id: "manuscript-proof-1",
+    asset_type: "proofreading_draft_report",
+    status: "active",
+    storage_key: "runs/proofreading/draft-report.md",
+    mime_type: "text/markdown",
+    parent_asset_id: "asset-edited-proof-1",
+    source_module: "proofreading",
+    source_job_id: "job-proof-draft-1",
+    created_by: "proofreader-1",
+    version_no: 3,
+    is_current: false,
+    file_name: "proofreading-draft-report.md",
+    created_at: "2026-04-20T09:30:00.000Z",
+    updated_at: "2026-04-20T09:31:00.000Z",
+  };
+  const annotatedAsset = {
+    id: "asset-proof-annotated-1",
+    manuscript_id: "manuscript-proof-1",
+    asset_type: "final_proof_annotated_docx",
+    status: "active",
+    storage_key: "runs/proofreading/annotated.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-proof-draft-1",
+    source_module: "proofreading",
+    source_job_id: "job-proof-final-1",
+    created_by: "proofreader-1",
+    version_no: 4,
+    is_current: true,
+    file_name: "proofreading-annotated.docx",
+    created_at: "2026-04-20T09:35:00.000Z",
+    updated_at: "2026-04-20T09:40:00.000Z",
+  };
+  const originalAsset = {
+    id: "asset-original-proof-1",
+    manuscript_id: "manuscript-proof-1",
+    asset_type: "original",
+    status: "superseded",
+    storage_key: "uploads/proofreading/original.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "upload",
+    created_by: "editor-1",
+    version_no: 1,
+    is_current: false,
+    file_name: "proofreading-original.docx",
+    created_at: "2026-04-20T08:50:00.000Z",
+    updated_at: "2026-04-20T08:50:00.000Z",
+  };
+
+  return {
+    manuscript: {
+      id: "manuscript-proof-1",
+      title: "Proofreading candidate",
+      manuscript_type: "clinical_study",
+      status: "processing",
+      created_by: "proofreader-1",
+      current_proofreading_asset_id: "asset-proof-annotated-1",
+      created_at: "2026-04-20T08:50:00.000Z",
+      updated_at: "2026-04-20T09:40:00.000Z",
+      result_asset_matrix: {
+        edited_docx: editedAsset,
+        proofreading_draft_report: draftReportAsset,
+        final_proof_output: annotatedAsset,
+      },
+    },
+    assets: [annotatedAsset, draftReportAsset, editedAsset, originalAsset],
+    currentAsset: annotatedAsset,
+    currentManuscriptAsset: editedAsset,
+    suggestedParentAsset: editedAsset,
+    latestProofreadingDraftAsset: draftReportAsset,
+  } as unknown as ManuscriptWorkbenchWorkspace;
+}
+
 test("summary keeps compact cards and omits the oversized top summary strip", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
@@ -304,6 +396,131 @@ test("summary separates current manuscript shortcuts from report-style current r
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-screening-report-1\/download"/,
   );
+});
+
+test("summary makes proofreading draft reports and annotated confirmation manuscripts semantically distinct", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      workspace={createProofreadingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /查看当前结果/u);
+  assert.match(markup, /下载校对批注稿/u);
+  assert.match(markup, /校对批注稿/u);
+  assert.match(markup, /校对草稿报告/u);
+  assert.doesNotMatch(markup, /校对终稿/u);
+});
+
+test("summary consolidates governed execution evidence into a single current-module trust layer", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={createEditingWorkspace()}
+      latestJob={
+        {
+          id: "job-edit-2",
+          module: "editing",
+          job_type: "editing_run",
+          status: "completed",
+          requested_by: "editor-1",
+          attempt_count: 1,
+          payload: {
+            executionMode: "governed",
+          },
+          created_at: "2026-03-31T09:45:00.000Z",
+          updated_at: "2026-03-31T09:46:00.000Z",
+        } as never
+      }
+      latestExport={null}
+      latestActionResult={null}
+      executionContext={{
+        mode: "editing",
+        executionProfileId: "execution-profile-editing-1",
+        retrievalPresetId: "retrieval-preset-editing-1",
+        runtimeBindingId: "runtime-binding-editing-1",
+        modelRoutingPolicyVersionId: "routing-policy-editing-1",
+        resolvedModelId: "model-editing-1",
+        modelSource: "template_family_policy",
+        providerReadinessStatus: "ok",
+        runtimeBindingReadinessStatus: "ready",
+      }}
+    />,
+  );
+
+  assert.match(markup, /治理执行/u);
+  assert.match(markup, /执行方式/u);
+  assert.match(markup, /受治理执行/u);
+  assert.match(markup, /解析模型/u);
+  assert.match(markup, /model-editing-1/);
+  assert.match(markup, /路由策略/u);
+  assert.match(markup, /routing-policy-editing-1/);
+  assert.match(markup, /执行画像/u);
+  assert.match(markup, /execution-profile-editing-1/);
+  assert.match(markup, /检索预设/u);
+  assert.match(markup, /retrieval-preset-editing-1/);
+  assert.match(markup, /运行时绑定/u);
+  assert.match(markup, /runtime-binding-editing-1/);
+  assert.match(markup, /服务商就绪/u);
+});
+
+test("summary prefers actual latest-run governance identifiers over the current execution config", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      workspace={createProofreadingWorkspace()}
+      latestJob={
+        {
+          id: "job-human-final-actual-1",
+          module: "manual",
+          job_type: "publish_human_final",
+          status: "completed",
+          requested_by: "proofreader-1",
+          attempt_count: 1,
+          payload: {
+            executionMode: "governed",
+            sourceSnapshotId: "snapshot-proofreading-run-actual-1",
+            executionProfileId: "execution-profile-proofreading-run-actual-1",
+            retrievalPresetId: "retrieval-preset-proofreading-run-actual-1",
+            runtimeBindingId: "runtime-binding-proofreading-run-actual-1",
+            routingPolicyVersionId: "routing-policy-proofreading-run-actual-1",
+            modelId: "model-proofreading-run-actual-1",
+            modelSource: "module_policy",
+          },
+          created_at: "2026-04-20T10:00:00.000Z",
+          updated_at: "2026-04-20T10:01:00.000Z",
+        } as never
+      }
+      latestExport={null}
+      latestActionResult={null}
+      executionContext={{
+        mode: "proofreading",
+        executionProfileId: "execution-profile-proofreading-current-2",
+        retrievalPresetId: "retrieval-preset-proofreading-current-2",
+        runtimeBindingId: "runtime-binding-proofreading-current-2",
+        modelRoutingPolicyVersionId: "routing-policy-proofreading-current-2",
+        resolvedModelId: "model-proofreading-current-2",
+        modelSource: "template_family_policy",
+        providerReadinessStatus: "ok",
+        runtimeBindingReadinessStatus: "ready",
+      }}
+    />,
+  );
+
+  assert.match(markup, /execution-profile-proofreading-run-actual-1/);
+  assert.match(markup, /retrieval-preset-proofreading-run-actual-1/);
+  assert.match(markup, /runtime-binding-proofreading-run-actual-1/);
+  assert.match(markup, /routing-policy-proofreading-run-actual-1/);
+  assert.match(markup, /model-proofreading-run-actual-1/);
+  assert.doesNotMatch(markup, /execution-profile-proofreading-current-2/);
+  assert.doesNotMatch(markup, /retrieval-preset-proofreading-current-2/);
+  assert.doesNotMatch(markup, /runtime-binding-proofreading-current-2/);
+  assert.doesNotMatch(markup, /routing-policy-proofreading-current-2/);
+  assert.doesNotMatch(markup, /model-proofreading-current-2/);
 });
 
 test("summary helpers localize readiness reasons and batch detail labels for operator display", () => {
@@ -738,6 +955,126 @@ test("summary explains knowledge-candidate routing without sending operators to 
   assert.doesNotMatch(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
 });
 
+test("summary surfaces proofreading residual progression without duplicating the governance desk", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      workspace={createProofreadingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+      canOpenLearningReview
+      proofreadingGovernanceHandoff={{
+        residualReviewItems: [
+          {
+            id: "residual-observed-1",
+            source_kind: "residual_issue",
+            source_status: "observed",
+            review_status: "pending",
+            module: "proofreading",
+            manuscript_id: "manuscript-proof-1",
+            manuscript_type: "clinical_study",
+            snapshot_id: "snapshot-proofreading-1",
+            title: "Residual issue observed",
+            created_at: "2026-04-21T09:00:00.000Z",
+            updated_at: "2026-04-21T09:01:00.000Z",
+            available_actions: ["validate"],
+            issue_type: "statistical_expression",
+            execution_snapshot_id: "snapshot-proofreading-1",
+            recommended_route: "rule_candidate",
+            harness_validation_status: "not_required",
+          },
+          {
+            id: "residual-harness-1",
+            source_kind: "residual_issue",
+            source_status: "validation_pending",
+            review_status: "pending",
+            module: "proofreading",
+            manuscript_id: "manuscript-proof-1",
+            manuscript_type: "clinical_study",
+            snapshot_id: "snapshot-proofreading-2",
+            title: "Residual issue queued for Harness",
+            created_at: "2026-04-21T09:02:00.000Z",
+            updated_at: "2026-04-21T09:03:00.000Z",
+            available_actions: ["validate"],
+            issue_type: "table_note",
+            execution_snapshot_id: "snapshot-proofreading-2",
+            recommended_route: "rule_candidate",
+            harness_validation_status: "queued",
+          },
+          {
+            id: "residual-ready-1",
+            source_kind: "residual_issue",
+            source_status: "candidate_ready",
+            review_status: "pending",
+            module: "proofreading",
+            manuscript_id: "manuscript-proof-1",
+            manuscript_type: "clinical_study",
+            snapshot_id: "snapshot-proofreading-3",
+            title: "Residual issue ready for candidate creation",
+            created_at: "2026-04-21T09:04:00.000Z",
+            updated_at: "2026-04-21T09:05:00.000Z",
+            available_actions: [
+              "route_to_rule_candidate",
+              "route_to_knowledge_candidate",
+              "route_to_prompt_candidate",
+            ],
+            issue_type: "unit_normalization",
+            execution_snapshot_id: "snapshot-proofreading-3",
+            recommended_route: "rule_candidate",
+            harness_validation_status: "passed",
+          },
+        ],
+        ruleCandidates: [
+          {
+            id: "candidate-proofreading-1",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-proof-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "residual_issue",
+            title: "Rule candidate from proofreading residual",
+            created_by: "reviewer-1",
+            created_at: "2026-04-21T09:06:00.000Z",
+            updated_at: "2026-04-21T09:06:00.000Z",
+          },
+          {
+            id: "candidate-proofreading-human-1",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-proof-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "human_feedback",
+            title: "Rule candidate from proofreading human confirmation",
+            created_by: "reviewer-1",
+            created_at: "2026-04-21T09:07:00.000Z",
+            updated_at: "2026-04-21T09:07:00.000Z",
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u6821\u5bf9\u56de\u6d41\u8fdb\u5ea6/u);
+  assert.match(markup, /\u5df2\u53d1\u73b0\u6b8b\u5dee/u);
+  assert.match(markup, /Harness \u5f85\u590d\u9a8c/u);
+  assert.match(markup, /\u5019\u9009\u5df2\u5c31\u7eea/u);
+  assert.match(markup, /\u5df2\u751f\u6210\u5019\u9009/u);
+  assert.match(
+    markup,
+    /<span>\u5df2\u751f\u6210\u5019\u9009<\/span>\s*<strong>2<\/strong>/u,
+  );
+  assert.match(markup, /\u53ea\u663e\u793a\u6821\u5bf9\u4e3b\u7ebf\u9700\u8981\u5173\u6ce8\u7684\u5173\u952e\u8fdb\u5ea6/u);
+  assert.match(markup, /\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3\u7ee7\u7eed\u590d\u9a8c\u4e0e\u5019\u9009\u5904\u7406/u);
+  assert.match(
+    markup,
+    /href="#template-governance\?[^"]*manuscriptId=manuscript-proof-1[^"]*templateGovernanceView=rule-ledger[^"]*ruleCenterMode=learning/u,
+  );
+  assert.doesNotMatch(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
+});
+
 test("job review evidence details include editing table inspection hits and nested proofreading quality reasons", () => {
   const editingDetails = buildJobReviewEvidenceDetails({
     id: "job-editing-1",
@@ -773,6 +1110,7 @@ test("job review evidence details include editing table inspection hits and nest
           {
             explanation:
               "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
+            recommended_route: "knowledge_candidate",
           },
         ],
       },
@@ -787,15 +1125,23 @@ test("job review evidence details include editing table inspection hits and nest
       value: "rule-table-treatment-group",
     },
     {
-      label: "\u539f\u56e0\u6458\u8981",
+      label: "\u9ad8\u98ce\u9669\u8bc1\u636e",
       value:
         'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)". Check treatment group header formatting.',
+    },
+    {
+      label: "\u5efa\u8bae\u6d41\u5411",
+      value: "\u89c4\u5219\u5019\u9009",
     },
   ]);
   assert.deepEqual(proofreadingDetails, [
     {
-      label: "\u539f\u56e0\u6458\u8981",
+      label: "\u9ad8\u98ce\u9669\u8bc1\u636e",
       value: "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
+    },
+    {
+      label: "\u5efa\u8bae\u6d41\u5411",
+      value: "\u77e5\u8bc6\u5019\u9009",
     },
   ]);
 });

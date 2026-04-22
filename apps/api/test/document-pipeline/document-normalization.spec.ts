@@ -78,6 +78,10 @@ test("docx normalization materializes a normalized_docx asset and exposes a read
   });
 
   assert.equal(normalizationResult.preview.status, "ready");
+  assert.equal(
+    normalizationResult.preview.source_asset_id,
+    normalizationResult.normalized_asset?.id,
+  );
   assert.equal(normalizationResult.normalized_asset?.asset_type, "normalized_docx");
   assert.equal(
     normalizationResult.normalized_asset?.parent_asset_id,
@@ -144,6 +148,10 @@ test("doc normalization without libreoffice keeps preview pending and does not c
   });
 
   assert.equal(normalizationResult.preview.status, "pending_normalization");
+  assert.equal(normalizationResult.preview.source_asset_id, uploadResult.asset.id);
+  assert.deepEqual(normalizationResult.preview.warnings, [
+    "LibreOffice unavailable; doc to docx normalization deferred.",
+  ]);
   assert.equal(normalizationResult.normalized_asset, undefined);
 
   const allAssets = await assetRepository.listByManuscriptId(uploadResult.manuscript.id);
