@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildEditingChangeLedgerEntries,
   buildProofreadingConfirmationItems,
+  buildProofreadingDocumentBlocks,
   buildWorkbenchAssetDetailHref,
   ManuscriptWorkbenchAssetDetailPage,
   resolvePreviewOperationalState,
@@ -86,7 +87,14 @@ test("document preview detail keeps legacy doc manuscripts operationally pending
   assert.match(markup, /LibreOffice unavailable; doc to docx normalization deferred\./);
 });
 
-test("asset detail kind switches proofreading annotated manuscripts into the dedicated confirmation child page", () => {
+test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
+  assert.equal(
+    resolveManuscriptAssetDetailKind({
+      mode: "proofreading",
+      assetType: "proofreading_draft_report",
+    }),
+    "proofreading_workspace",
+  );
   assert.equal(
     resolveManuscriptAssetDetailKind({
       mode: "proofreading",
@@ -145,7 +153,7 @@ test("editing detail helpers surface a visible change ledger from appliedChanges
   ]);
 });
 
-test("proofreading detail helpers extract item-based human confirmation rows from proofreading plans", () => {
+test("proofreading detail helpers extract issue-based human confirmation rows from proofreading plans", () => {
   const items = buildProofreadingConfirmationItems({
     id: "job-proof-1",
     module: "proofreading",
@@ -155,16 +163,42 @@ test("proofreading detail helpers extract item-based human confirmation rows fro
     attempt_count: 1,
     payload: {
       proofreadingPlan: {
-        corrections: [
+        issues: [
           {
-            targetText: "5 mg per dL",
-            replacementText: "5 mg/dL",
-            category: "style",
+            itemId: "issue-1",
+            title: "单位表达不规范",
+            description: "将单位表达统一为标准写法。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "style",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: "5 mg per dL",
+              sectionLabel: "结果",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "5 mg/dL",
+            },
           },
           {
-            targetText: "The hemoglobin were stable.",
-            replacementText: "The hemoglobin was stable.",
-            category: "grammar",
+            itemId: "issue-2",
+            title: "主谓一致错误",
+            description: "需要修正文法一致性。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "grammar",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 1,
+              quote: "The hemoglobin were stable.",
+              sectionLabel: "讨论",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "The hemoglobin was stable.",
+            },
           },
         ],
       },
@@ -175,72 +209,163 @@ test("proofreading detail helpers extract item-based human confirmation rows fro
 
   assert.deepEqual(items, [
     {
-      itemId: "correction-1",
+      itemId: "issue-1",
+      title: "单位表达不规范",
+      description: "将单位表达统一为标准写法。",
+      severity: "medium",
+      source: "residual_ai",
+      issueType: "style",
+      blocksFinal: false,
       targetText: "5 mg per dL",
       replacementText: "5 mg/dL",
-      category: "style",
+      anchor: {
+        blockIndex: 0,
+        quote: "5 mg per dL",
+        sectionLabel: "结果",
+      },
+      suggestionAction: "replace_text",
     },
     {
-      itemId: "correction-2",
+      itemId: "issue-2",
+      title: "主谓一致错误",
+      description: "需要修正文法一致性。",
+      severity: "medium",
+      source: "residual_ai",
+      issueType: "grammar",
+      blocksFinal: false,
       targetText: "The hemoglobin were stable.",
       replacementText: "The hemoglobin was stable.",
-      category: "grammar",
+      anchor: {
+        blockIndex: 1,
+        quote: "The hemoglobin were stable.",
+        sectionLabel: "讨论",
+      },
+      suggestionAction: "replace_text",
     },
   ]);
 });
 
-test("proofreading detail page renders the dedicated child page with explicit confirmation actions", () => {
+test("proofreading detail helpers surface full-document blocks for the issue workbench", () => {
+  const blocks = buildProofreadingDocumentBlocks({
+    payload: {
+      proofreadingSourceBlocks: [
+        {
+          blockIndex: 0,
+          section: "结果",
+          block_kind: "paragraph",
+          text: "结果提示 5 mg per dL。",
+        },
+        {
+          blockIndex: 1,
+          section: "讨论",
+          block_kind: "paragraph",
+          text: "The hemoglobin were stable.",
+        },
+      ],
+    },
+  } as never);
+
+  assert.deepEqual(blocks, [
+    {
+      blockId: "proofreading-block-0",
+      blockIndex: 0,
+      sectionLabel: "结果",
+      blockKind: "paragraph",
+      text: "结果提示 5 mg per dL。",
+    },
+    {
+      blockId: "proofreading-block-1",
+      blockIndex: 1,
+      sectionLabel: "讨论",
+      blockKind: "paragraph",
+      text: "The hemoglobin were stable.",
+    },
+  ]);
+});
+
+test("proofreading detail page renders the dedicated issue workbench with explicit confirmation actions", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchAssetDetailPage
       mode="proofreading"
-      manuscriptTitle="校对确认稿件"
+      manuscriptTitle="校对问题工作台"
       asset={{
         id: "asset-proof-1",
         manuscript_id: "manuscript-1",
-        asset_type: "final_proof_annotated_docx",
+        asset_type: "proofreading_draft_report",
         status: "active",
-        storage_key: "runs/proofreading/final.docx",
-        mime_type:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storage_key: "runs/proofreading/draft.md",
+        mime_type: "text/markdown",
         source_module: "proofreading",
         created_by: "proofreader-1",
-        version_no: 3,
-        is_current: true,
-        file_name: "proofreading-final.docx",
+        version_no: 2,
+        is_current: false,
+        file_name: "proofreading-draft.md",
         created_at: "2026-04-21T09:00:00.000Z",
         updated_at: "2026-04-21T09:05:00.000Z",
       }}
-      detailKind="proofreading_confirmation"
+      detailKind="proofreading_workspace"
       backHref="#proofreading?manuscriptId=manuscript-1"
       downloadHref="http://localhost/api/v1/document-assets/asset-proof-1/download"
-      confirmationItems={[
+      proofreadingDocumentBlocks={[
         {
-          itemId: "correction-1",
-          targetText: "5 mg per dL",
-          replacementText: "5 mg/dL",
-          category: "style",
+          blockId: "proofreading-block-0",
+          blockIndex: 0,
+          sectionLabel: "结果",
+          blockKind: "paragraph",
+          text: "结果提示 5 mg per dL。",
+        },
+        {
+          blockId: "proofreading-block-1",
+          blockIndex: 1,
+          sectionLabel: "讨论",
+          blockKind: "paragraph",
+          text: "The hemoglobin were stable.",
         },
       ]}
+      confirmationItems={[
+        {
+          itemId: "issue-1",
+          title: "单位表达不规范",
+          description: "将单位表达统一为标准写法。",
+          severity: "medium",
+          source: "residual_ai",
+          issueType: "style",
+          blocksFinal: false,
+          targetText: "5 mg per dL",
+          replacementText: "5 mg/dL",
+          anchor: {
+            blockIndex: 0,
+            quote: "5 mg per dL",
+            sectionLabel: "结果",
+          },
+          suggestionAction: "replace_text",
+        },
+      ]}
+      activeProofreadingIssueId="issue-1"
       confirmationState={{
-        "correction-1": {
-          action: "accept_and_edit",
+        "issue-1": {
+          action: "accepted_with_manual_edit",
           editedReplacementText: "5 mg/dL（人工确认）",
-          note: "人工补充了单位表达。",
+          note: "人工确认后保留标准单位写法。",
         },
       }}
+      onProofreadingIssueSelect={() => {}}
     />,
   );
 
-  assert.match(markup, /data-detail-kind="proofreading_confirmation"/);
-  assert.match(markup, /人工确认/u);
-  assert.match(markup, /校对批注稿/u);
-  assert.match(markup, /接受并编辑/u);
-  assert.match(markup, /路由到规则候选/u);
-  assert.match(markup, /路由到知识候选/u);
+  assert.match(markup, /data-detail-kind="proofreading_workspace"/);
+  assert.match(markup, /校对问题工作台/u);
+  assert.match(markup, /问题队列/u);
+  assert.match(markup, /稿件原文/u);
+  assert.match(markup, /采纳并手改/u);
+  assert.match(markup, /仅人工处理/u);
+  assert.match(markup, /升级处理/u);
+  assert.match(markup, /结果提示 5 mg per dL/u);
+  assert.match(markup, /单位表达不规范/u);
   assert.match(markup, /5 mg per dL/);
   assert.match(markup, /5 mg\/dL（人工确认）/u);
   assert.match(markup, /发布人工终稿/u);
-  assert.match(markup, /下载校对批注稿/u);
+  assert.match(markup, /下载校对草稿报告/u);
 });
 
 test("proofreading report detail keeps draft reports labeled as reports instead of manuscript deliverables", () => {

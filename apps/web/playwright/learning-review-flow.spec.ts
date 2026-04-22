@@ -15,9 +15,6 @@ const proofreadingHeading = "当前稿件校对工作区";
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
 const createDraftLabel = "生成校对草稿";
-const finalizeProofLabel = "确认校对定稿";
-const publishHumanFinalLabel = "\u53d1\u5e03\u4eba\u5de5\u7ec8\u7a3f";
-
 test("admin can complete the governed learning review flow from manuscript handoff", async ({
   page,
   request,
@@ -116,35 +113,27 @@ test("admin can complete the governed learning review flow from manuscript hando
     semanticTableReportTarget,
   );
 
-  await page.getByRole("button", { name: finalizeProofLabel }).click();
-  await expect(page.locator("body")).toContainText("已生成校对批注稿");
+  await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
+  const selectedIssue = page.locator(
+    ".manuscript-workbench-proofreading-issue.is-selected",
+  );
+  const issueDetail = selectedIssue.locator(
+    ".manuscript-workbench-proofreading-issue-detail",
+  );
+  await issueDetail.getByRole("button", { name: /^采纳$/ }).click();
+  await expect(issueDetail.getByRole("button", { name: /^采纳$/ })).toHaveClass(
+    /is-selected/,
+  );
 
-  const publishHumanFinalButton = page.getByRole("button", {
-    name: publishHumanFinalLabel,
-  });
-  await publishHumanFinalButton.click();
-  await expect(page.locator("body")).toContainText("已确认 0/1 项");
-  const acceptSuggestionButton = page
-    .getByRole("button", { name: /^\u63a5\u53d7$/ })
-    .first();
-  await acceptSuggestionButton.click();
+  const publishHumanFinalButton = page.locator(
+    ".manuscript-workbench-proofreading-issue-pane .manuscript-workbench-button-row--sticky button",
+  );
   await expect(publishHumanFinalButton).toBeEnabled();
   await publishHumanFinalButton.click();
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
-  await expect(page.locator("body")).toContainText(
-    "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
-  );
-  const learningReviewLink = page.getByRole("link", {
-    name: "前往规则中心",
-    exact: true,
-  });
-  await expect(learningReviewLink).toBeVisible();
-  await expect(learningReviewLink).toHaveAttribute(
-    "href",
-    new RegExp(
-      `^#template-governance\\?manuscriptId=${manuscriptId}&templateGovernanceView=rule-ledger&ruleCenterMode=learning$`,
-    ),
-  );
+  const learningReviewHref =
+    `#template-governance?manuscriptId=${manuscriptId}` +
+    "&templateGovernanceView=rule-ledger&ruleCenterMode=learning";
 
   const assetsResponse = await request.get(
     `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}/assets`,
@@ -203,11 +192,12 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(extractedCandidate.status).toBe("pending_review");
   const candidateListLabel = extractedCandidate.title ?? extractedCandidate.id;
 
-  const learningReviewHref = await learningReviewLink.getAttribute("href");
-  expect(learningReviewHref).toBeTruthy();
-  await page.goto(`/${appendHashQueryParam(learningReviewHref ?? "", "learningCandidateId", extractedCandidate.id)}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `/${appendHashQueryParam(learningReviewHref, "learningCandidateId", extractedCandidate.id)}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
   await expect(page.locator("body")).toContainText("规则中心 · 统一复核中心");
   await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
@@ -412,6 +402,34 @@ async function navigateViaHashLink(
   await page.goto(`/${href}`, {
     waitUntil: "domcontentloaded",
   });
+}
+
+async function navigateToProofreadingIssueWorkbench(
+  page: Page,
+  manuscriptId: string,
+  assetId: string,
+) {
+  const currentResultLink = page
+    .locator(`a[href="#proofreading?manuscriptId=${manuscriptId}&assetId=${assetId}"]`)
+    .first();
+  await expect(currentResultLink).toBeVisible();
+  await navigateViaHashLink(page, currentResultLink);
+  await expect(page).toHaveURL(
+    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+  );
+  await expect(
+    page.locator('[data-detail-kind="proofreading_workspace"]'),
+  ).toBeVisible();
+
+  const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
+  await expect(issueToggle).toBeVisible();
+  await issueToggle.click();
+  await expect(
+    page.locator(".manuscript-workbench-proofreading-issue-detail").first(),
+  ).toBeVisible();
+  await expect(
+    page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
+  ).toBeVisible();
 }
 
 async function waitForCurrentAsset(

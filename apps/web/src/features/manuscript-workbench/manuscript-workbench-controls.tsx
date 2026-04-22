@@ -121,6 +121,12 @@ export function ManuscriptWorkbenchControls({
       ? "manuscript-workbench-controls-grid manuscript-workbench-controls-grid--drawer"
       : "manuscript-workbench-controls-grid";
   const showScaffoldHeader = layout !== "drawer";
+  const utilitiesDescription =
+    mode === "proofreading"
+      ? "导出当前资产、刷新最新任务，或在需要时打开校对工作台。"
+      : "导出当前资产、刷新最新任务，或在需要时发布人工终稿。";
+  const utilitiesPrimaryActionLabel =
+    mode === "proofreading" ? "打开校对工作台" : "发布人工终稿";
 
   return (
     <section
@@ -207,7 +213,7 @@ export function ManuscriptWorkbenchControls({
             <div className="manuscript-workbench-panel-heading">
               <div>
                 <h3>工作区工具</h3>
-                <p>导出当前资产、刷新最新任务，或在需要时发布人工终稿。</p>
+                <p>{utilitiesDescription}</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
@@ -223,7 +229,7 @@ export function ManuscriptWorkbenchControls({
                     disabled={busy}
                     onClick={() => utilities.onPublishHumanFinal?.()}
                   >
-                    发布人工终稿
+                    {utilitiesPrimaryActionLabel}
                   </button>
                 ) : null}
                 <button

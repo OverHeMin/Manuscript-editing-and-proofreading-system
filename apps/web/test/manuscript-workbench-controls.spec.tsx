@@ -171,3 +171,29 @@ test("module action panels expose a one-time bare AI secondary action without ch
   assert.match(markup, /AI 自动处理（本次）/u);
   assert.match(markup, /data-secondary-action="available"/);
 });
+
+test("proofreading utilities open the proofreading workbench instead of implying direct publication", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="proofreading"
+      busy={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      utilities={{
+        canExport: true,
+        canRefreshLatestJob: true,
+        canPublishHumanFinal: true,
+        onExport: () => {},
+        onRefreshLatestJob: () => {},
+        onPublishHumanFinal: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /打开校对工作台/u);
+  assert.match(markup, /在需要时打开校对工作台/u);
+  assert.doesNotMatch(markup, /发布人工终稿/u);
+});

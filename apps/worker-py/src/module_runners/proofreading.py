@@ -13,5 +13,5 @@ def build_proofreading_final_plan() -> ModuleRunPlan:
     return ModuleRunPlan(
         module="proofreading",
         output_asset_type="final_proof_annotated_docx",
-        requires_human_confirmation=False,
+        requires_human_confirmation=True,
     )
