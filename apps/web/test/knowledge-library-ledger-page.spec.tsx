@@ -223,8 +223,8 @@ test("knowledge library ledger page renders the temporary three-tab board for ne
   assert.match(markup, /knowledge-library-attachment-field/u);
   assert.match(markup, /knowledge-library-entry-form__footer/u);
   assert.match(markup, /data-board-action="cancel-create"/u);
+  assert.match(markup, /data-board-action="save-draft"/u);
   assert.match(markup, /data-board-action="confirm-entry"/u);
-  assert.doesNotMatch(markup, /data-board-action="save-draft"/u);
   assert.doesNotMatch(markup, /data-board-action="submit-review"/u);
 });
 
@@ -489,6 +489,7 @@ test("knowledge library ledger page reuses the same board for AI-assisted pre-en
     markup,
     /<button[^>]*data-board-action="confirm-entry"[^>]*disabled/u,
   );
+  assert.match(markup, /data-board-action="save-draft"/u);
   assert.doesNotMatch(markup, /data-board-action="submit-review"/u);
 });
 

@@ -782,6 +782,7 @@ export function createPersistentGovernanceRuntime(
     generator: new OpenAiKnowledgeAiAssistGenerator({
       aiGatewayService,
       aiProviderRuntimeService,
+      uploadRootDir,
     }),
   });
   const mainlineAiRuntimeExecutor =
