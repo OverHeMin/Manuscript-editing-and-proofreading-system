@@ -24,6 +24,7 @@ import {
 } from "./in-memory-learning-repository.ts";
 import type {
   LearningCandidateRecord,
+  LearningCandidateProvenanceKind,
   LearningCandidateType,
   ReviewedCaseSnapshotRecord,
 } from "./learning-record.ts";
@@ -180,6 +181,14 @@ export interface CreateResidualGovernedLearningCandidateInput {
     AttachResidualIssueGovernedSourceInput,
     "candidateId" | "actorRole"
   >;
+}
+
+export interface ListLearningCandidatesInput {
+  manuscriptId?: string;
+  module?: LearningCandidateRecord["module"];
+  type?: LearningCandidateType;
+  status?: LearningCandidateRecord["status"];
+  governedProvenanceKinds?: readonly LearningCandidateProvenanceKind[];
 }
 
 export interface LearningFeedbackGovernanceService {
@@ -405,6 +414,7 @@ export class LearningService {
       id: this.createId(),
       type: input.type,
       status: "draft",
+      manuscript_id: snapshot.manuscript_id,
       module: snapshot.module,
       manuscript_type: snapshot.manuscript_type,
       human_final_asset_id: snapshot.human_final_asset_id,
@@ -550,8 +560,12 @@ export class LearningService {
             created_at: this.now().toISOString(),
           })
         : candidate.review_actions;
+    const resolvedManuscriptId =
+      candidate.manuscript_id ??
+      (await this.resolveLearningCandidateManuscriptId(candidate));
     await this.candidateRepository.save({
       ...candidate,
+      ...(resolvedManuscriptId ? { manuscript_id: resolvedManuscriptId } : {}),
       status: nextStatus,
       governed_provenance_kind: sourceLink.source_kind,
       governed_feedback_record_id: sourceLink.feedback_record_id,
@@ -748,12 +762,70 @@ export class LearningService {
     return candidate;
   }
 
-  listLearningCandidates(): Promise<LearningCandidateRecord[]> {
-    return this.candidateRepository.list();
+  async listLearningCandidates(
+    input: ListLearningCandidatesInput = {},
+  ): Promise<LearningCandidateRecord[]> {
+    const filteredCandidates = (await this.candidateRepository.list()).filter((candidate) =>
+      matchesLearningCandidateFilters(candidate, input),
+    );
+
+    if (!input.manuscriptId) {
+      return filteredCandidates;
+    }
+
+    const candidatesWithResolvedScope = await Promise.all(
+      filteredCandidates.map(async (candidate) => {
+        const manuscriptId = await this.resolveLearningCandidateManuscriptId(candidate);
+        return manuscriptId && manuscriptId !== candidate.manuscript_id
+          ? {
+              ...candidate,
+              manuscript_id: manuscriptId,
+            }
+          : candidate;
+      }),
+    );
+
+    return candidatesWithResolvedScope.filter(
+      (candidate) => candidate.manuscript_id === input.manuscriptId,
+    );
   }
 
   listPendingReviewCandidates(): Promise<LearningCandidateRecord[]> {
     return this.candidateRepository.listByStatus("pending_review");
+  }
+
+  private async resolveLearningCandidateManuscriptId(
+    candidate: LearningCandidateRecord,
+  ): Promise<string | undefined> {
+    if (candidate.manuscript_id) {
+      return candidate.manuscript_id;
+    }
+
+    const candidateAssetIds = [
+      candidate.human_final_asset_id,
+      candidate.annotated_asset_id,
+      candidate.snapshot_asset_id,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+
+    for (const assetId of candidateAssetIds) {
+      const asset = await this.assetRepository.findById(assetId);
+      if (asset?.manuscript_id) {
+        return asset.manuscript_id;
+      }
+    }
+
+    const sourceLinks =
+      await this.feedbackGovernanceService.listLearningCandidateSourceLinksByCandidateId(
+        candidate.id,
+      );
+    for (const sourceLink of sourceLinks) {
+      const asset = await this.assetRepository.findById(sourceLink.source_asset_id);
+      if (asset?.manuscript_id) {
+        return asset.manuscript_id;
+      }
+    }
+
+    return undefined;
   }
 
   private async resolveAnnotatedAssetId(
@@ -846,6 +918,34 @@ function createLearningReviewAction({
 function normalizeReviewNote(reviewNote: string | undefined): string | undefined {
   const normalized = reviewNote?.trim();
   return normalized ? normalized : undefined;
+}
+
+function matchesLearningCandidateFilters(
+  candidate: LearningCandidateRecord,
+  input: ListLearningCandidatesInput,
+): boolean {
+  if (input.module && candidate.module !== input.module) {
+    return false;
+  }
+
+  if (input.type && candidate.type !== input.type) {
+    return false;
+  }
+
+  if (input.status && candidate.status !== input.status) {
+    return false;
+  }
+
+  if (
+    input.governedProvenanceKinds &&
+    input.governedProvenanceKinds.length > 0 &&
+    (!candidate.governed_provenance_kind ||
+      !input.governedProvenanceKinds.includes(candidate.governed_provenance_kind))
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function isSnapshotCapableRepository<T extends object>(

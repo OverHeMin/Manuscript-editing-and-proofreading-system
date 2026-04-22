@@ -4803,6 +4803,12 @@ function buildTemplateGovernanceOverviewMetrics(
         (item) => item.status === "draft" || item.status === "pending_review",
       ).length ?? 0,
     extractionAwaitingConfirmationCount,
+    retrievalAnswerRelevancy:
+      overview?.retrievalInsights?.latestRun?.metric_summary.answer_relevancy,
+    retrievalContextPrecision:
+      overview?.retrievalInsights?.latestRun?.metric_summary.context_precision,
+    retrievalContextRecall:
+      overview?.retrievalInsights?.latestRun?.metric_summary.context_recall,
     pendingReviewCount: relevantReviewItems.filter((item) => item.review_status === "pending")
       .length,
     harnessQueuedCount: relevantReviewItems.filter(

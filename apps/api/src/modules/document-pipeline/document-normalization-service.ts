@@ -223,7 +223,7 @@ export class DocumentNormalizationWorkflowService {
         viewer: "onlyoffice",
         status: normalizedAsset ? "ready" : "pending_normalization",
         source_asset_type: "normalized_docx",
-        source_asset_id: normalizedAsset?.id,
+        source_asset_id: normalizedAsset?.id ?? input.sourceAssetId,
         mime_type: plan.preview.mime_type,
         warnings: [...plan.warnings],
       },

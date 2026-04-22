@@ -130,6 +130,29 @@ export interface ReviewItemDecisionResultViewModel {
   item: ReviewItemViewModel | null;
 }
 
+export function formatResidualReviewSourceStatusLabel(
+  status: ResidualReviewItemViewModel["source_status"],
+): string {
+  switch (status) {
+    case "observed":
+      return "已发现残差";
+    case "validation_pending":
+      return "Harness 待复验";
+    case "candidate_ready":
+      return "候选已就绪";
+    case "validation_failed":
+      return "Harness 未通过";
+    case "manual_only":
+      return "仅人工处理";
+    case "evidence_only":
+      return "只保留证据";
+    case "candidate_created":
+      return "已生成候选";
+    case "archived":
+      return "已归档";
+  }
+}
+
 export function isLearningCandidateReviewItem(
   item: ReviewItemViewModel | null | undefined,
 ): item is LearningCandidateReviewItemViewModel {

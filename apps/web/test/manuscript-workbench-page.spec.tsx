@@ -3,6 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildPublishedHumanFinalActionResult,
   buildHighRiskReviewItemsFromJob,
   buildModuleRunSuccessMessage,
   buildManualFeedbackActionResult,
@@ -18,6 +19,7 @@ import {
   resolveManualFeedbackContext,
   pruneConfirmationState,
   buildTemplateFamilyOptions,
+  loadPrefilledWorkbenchPageData,
   ManuscriptWorkbenchFocusCanvas,
   ManuscriptWorkbenchPage,
   resolveWorkbenchGeneratedAssetFileName,
@@ -72,6 +74,150 @@ test("submission workbench keeps the upload intake as the default rendering path
   assert.match(markup, /上传稿件/u);
 });
 
+test("prefilled proofreading page data includes governance handoff when the controller can load it", async () => {
+  const calls: string[] = [];
+  const result = await loadPrefilledWorkbenchPageData(
+    {
+      loadWorkspace: async () => {
+        calls.push("loadWorkspace");
+        return {
+          manuscript: {
+            id: "manuscript-proof-1",
+            title: "Proofreading manuscript",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "proofreader-1",
+            created_at: "2026-04-21T09:00:00.000Z",
+            updated_at: "2026-04-21T09:10:00.000Z",
+          },
+          assets: [
+            {
+              id: "asset-edited-1",
+              manuscript_id: "manuscript-proof-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "editing",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "editing-output.docx",
+              created_at: "2026-04-21T09:05:00.000Z",
+              updated_at: "2026-04-21T09:05:00.000Z",
+            },
+          ],
+          currentAsset: null,
+          currentManuscriptAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        } as never;
+      },
+      loadJob: async () => {
+        throw new Error("not used");
+      },
+      loadProofreadingGovernanceHandoff: async () => {
+        calls.push("loadProofreadingGovernanceHandoff");
+        return {
+          residualReviewItems: [
+            {
+              id: "residual-proof-1",
+              source_kind: "residual_issue",
+              source_status: "validation_pending",
+              review_status: "pending",
+              module: "proofreading",
+              manuscript_id: "manuscript-proof-1",
+              manuscript_type: "clinical_study",
+              execution_snapshot_id: "snapshot-proof-1",
+              title: "Proofreading residual issue",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "queued",
+              available_actions: ["validate"],
+              created_at: "2026-04-21T09:20:00.000Z",
+              updated_at: "2026-04-21T09:25:00.000Z",
+              issue_type: "citation",
+            },
+          ],
+          ruleCandidates: [],
+        };
+      },
+    },
+    {
+      mode: "proofreading",
+      manuscriptId: "manuscript-proof-1",
+    },
+  );
+
+  assert.equal(result.workspace.manuscript.id, "manuscript-proof-1");
+  assert.equal(result.proofreadingGovernanceHandoff?.residualReviewItems.length, 1);
+  assert.equal(
+    result.proofreadingGovernanceHandoff?.residualReviewItems[0]?.source_status,
+    "validation_pending",
+  );
+  assert.deepEqual(calls, [
+    "loadWorkspace",
+    "loadProofreadingGovernanceHandoff",
+  ]);
+});
+
+test("prefilled proofreading page data requests a proofreader-safe workspace load", async () => {
+  const loadWorkspaceCalls: Array<{
+    manuscriptId: string;
+    options: unknown;
+  }> = [];
+
+  await loadPrefilledWorkbenchPageData(
+    {
+      loadWorkspace: async (manuscriptId, options) => {
+        loadWorkspaceCalls.push({
+          manuscriptId,
+          options,
+        });
+
+        return {
+          manuscript: {
+            id: "manuscript-proof-safe-1",
+            title: "Proofreading manuscript",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "proofreader-1",
+            created_at: "2026-04-21T09:00:00.000Z",
+            updated_at: "2026-04-21T09:10:00.000Z",
+          },
+          assets: [],
+          currentAsset: null,
+          currentManuscriptAsset: null,
+          suggestedParentAsset: null,
+          latestProofreadingDraftAsset: null,
+        } as never;
+      },
+      loadJob: async () => {
+        throw new Error("not used");
+      },
+      loadProofreadingGovernanceHandoff: async () => ({
+        residualReviewItems: [],
+        ruleCandidates: [],
+      }),
+    },
+    {
+      mode: "proofreading",
+      manuscriptId: "manuscript-proof-safe-1",
+      actorRole: "proofreader",
+    },
+  );
+
+  assert.deepEqual(loadWorkspaceCalls, [
+    {
+      manuscriptId: "manuscript-proof-safe-1",
+      options: {
+        actorRole: "proofreader",
+        mode: "proofreading",
+      },
+    },
+  ]);
+});
+
 test("governed execution preflight exposes explicit provider and runtime readiness failures", () => {
   assert.equal(
     resolveGovernedExecutionBlockMessage("editing", {
@@ -119,7 +265,7 @@ test("module success messages mention the generated output type", () => {
       id: "asset-proofreading-1",
       asset_type: "final_proof_annotated_docx",
     }),
-    "已生成校对稿件 asset-proofreading-1",
+    "已生成校对批注稿 asset-proofreading-1",
   );
 });
 
@@ -560,6 +706,152 @@ test("focus canvas shows the AI recognition action for governed module work whil
   );
 });
 
+test("proofreading focus canvas labels the annotated result as a confirmation manuscript instead of a final deliverable", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchFocusCanvas
+      mode="proofreading"
+      busy={false}
+      detectedManuscriptTypeLabel="临床研究（高置信度）"
+      workspace={{
+        manuscript: {
+          id: "manuscript-proof-1",
+          title: "Proofreading candidate",
+          manuscript_type: "clinical_study",
+          status: "processing",
+          created_by: "proofreader-1",
+          created_at: "2026-04-20T09:00:00.000Z",
+          updated_at: "2026-04-20T09:40:00.000Z",
+          result_asset_matrix: {},
+        },
+        assets: [
+          {
+            id: "asset-proof-annotated-1",
+            manuscript_id: "manuscript-proof-1",
+            asset_type: "final_proof_annotated_docx",
+            status: "active",
+            storage_key: "runs/proofreading/annotated.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-edited-1",
+            source_module: "proofreading",
+            created_by: "proofreader-1",
+            version_no: 4,
+            is_current: true,
+            file_name: "proofreading-annotated.docx",
+            created_at: "2026-04-20T09:35:00.000Z",
+            updated_at: "2026-04-20T09:40:00.000Z",
+          },
+          {
+            id: "asset-edited-1",
+            manuscript_id: "manuscript-proof-1",
+            asset_type: "edited_docx",
+            status: "active",
+            storage_key: "runs/editing/edited.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: "asset-original-1",
+            source_module: "editing",
+            created_by: "editor-1",
+            version_no: 3,
+            is_current: false,
+            file_name: "editing-output.docx",
+            created_at: "2026-04-20T09:20:00.000Z",
+            updated_at: "2026-04-20T09:20:00.000Z",
+          },
+        ],
+        currentAsset: {
+          id: "asset-proof-annotated-1",
+          manuscript_id: "manuscript-proof-1",
+          asset_type: "final_proof_annotated_docx",
+          status: "active",
+          storage_key: "runs/proofreading/annotated.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-edited-1",
+          source_module: "proofreading",
+          created_by: "proofreader-1",
+          version_no: 4,
+          is_current: true,
+          file_name: "proofreading-annotated.docx",
+          created_at: "2026-04-20T09:35:00.000Z",
+          updated_at: "2026-04-20T09:40:00.000Z",
+        },
+        currentManuscriptAsset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-proof-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/edited.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          created_by: "editor-1",
+          version_no: 3,
+          is_current: false,
+          file_name: "editing-output.docx",
+          created_at: "2026-04-20T09:20:00.000Z",
+          updated_at: "2026-04-20T09:20:00.000Z",
+        },
+        suggestedParentAsset: {
+          id: "asset-edited-1",
+          manuscript_id: "manuscript-proof-1",
+          asset_type: "edited_docx",
+          status: "active",
+          storage_key: "runs/editing/edited.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          parent_asset_id: "asset-original-1",
+          source_module: "editing",
+          created_by: "editor-1",
+          version_no: 3,
+          is_current: false,
+          file_name: "editing-output.docx",
+          created_at: "2026-04-20T09:20:00.000Z",
+          updated_at: "2026-04-20T09:20:00.000Z",
+        },
+        latestProofreadingDraftAsset: {
+          id: "asset-proof-draft-1",
+          manuscript_id: "manuscript-proof-1",
+          asset_type: "proofreading_draft_report",
+          status: "active",
+          storage_key: "runs/proofreading/draft.md",
+          mime_type: "text/markdown",
+          parent_asset_id: "asset-edited-1",
+          source_module: "proofreading",
+          created_by: "proofreader-1",
+          version_no: 3,
+          is_current: false,
+          file_name: "proofreading-draft.md",
+          created_at: "2026-04-20T09:30:00.000Z",
+          updated_at: "2026-04-20T09:31:00.000Z",
+        },
+      }}
+      primaryActions={[
+        {
+          title: "Proofreading Final",
+          selectedAssetId: "asset-proof-draft-1",
+          emptyLabel: "请选择校对草稿",
+          actionLabel: "Finalize Proofreading",
+          options: [
+            {
+              value: "asset-proof-draft-1",
+              label: "proofreading-draft.md · proofreading_draft_report · asset-proof-draft-1",
+            },
+          ],
+          selectedContextLabel: "Selected Draft Asset",
+          onSelect: () => {},
+          onRun: () => {},
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /查看当前结果/u);
+  assert.match(markup, /下载校对批注稿/u);
+  assert.doesNotMatch(markup, /下载校对定稿/u);
+});
+
 test("proofreading confirmation helpers keep only active draft rows and serialize item decisions for publish", () => {
   const pruned = pruneConfirmationState(
     {
@@ -697,6 +989,88 @@ test("proofreading confirmation detail follows the parent draft asset so the hum
       mode: "editing",
     })?.id,
     "asset-proof-final-1",
+  );
+});
+
+test("publish human final action results use the server confirmation summary as the authoritative settlement record", () => {
+  const result = buildPublishedHumanFinalActionResult({
+    publishedAsset: {
+      id: "asset-human-final-1",
+      manuscript_id: "manuscript-1",
+      asset_type: "human_final_docx",
+      status: "active",
+      storage_key: "runs/proofreading/human-final.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "manual",
+      created_by: "proofreader-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "human-final.docx",
+      created_at: "2026-04-20T10:00:00.000Z",
+      updated_at: "2026-04-20T10:00:00.000Z",
+    } as never,
+    job: {
+      id: "job-human-final-1",
+      manuscript_id: "manuscript-1",
+      module: "proofreading",
+      job_type: "publish_human_final",
+      status: "completed",
+      requested_by: "proofreader-1",
+      attempt_count: 1,
+      payload: {
+        confirmationSummary: {
+          totalItems: 4,
+          acceptedIntoManuscriptCount: 3,
+          rejectedCount: 1,
+          routedRuleCandidateCount: 1,
+          routedKnowledgeCandidateCount: 1,
+          manualOnlyCount: 1,
+        },
+      },
+      created_at: "2026-04-20T10:00:00.000Z",
+      updated_at: "2026-04-20T10:01:00.000Z",
+    } as never,
+  });
+
+  assert.equal(result.actionLabel, "Publish Human Final");
+  assert.equal(result.message, "Published human-final asset asset-human-final-1");
+  assert.deepEqual(
+    result.details.slice(0, 8),
+    [
+      {
+        label: "Asset",
+        value: "asset-human-final-1",
+      },
+      {
+        label: "产出类型",
+        value: "人工终稿",
+      },
+      {
+        label: "确认条目",
+        value: "4",
+      },
+      {
+        label: "写入终稿",
+        value: "3",
+      },
+      {
+        label: "拒绝",
+        value: "1",
+      },
+      {
+        label: "规则候选",
+        value: "1",
+      },
+      {
+        label: "知识候选",
+        value: "1",
+      },
+      {
+        label: "仅人工处理",
+        value: "1",
+      },
+    ],
   );
 });
 

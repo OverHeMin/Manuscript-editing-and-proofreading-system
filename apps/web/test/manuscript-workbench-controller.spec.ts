@@ -2418,6 +2418,149 @@ test("manuscript workbench controller hydrates referenced knowledge titles for m
   );
 });
 
+test("manuscript workbench controller skips privileged enrichment when a proofreader loads a proofreading workspace", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-proof-403") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-proof-403",
+            title: "Proofreader safe workspace",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "proofreader-1",
+            current_template_family_id: "family-proof-1",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "not_started",
+              },
+              editing: {
+                module: "editing",
+                observation_status: "not_started",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "reported",
+                latest_snapshot: {
+                  id: "snapshot-proof-403",
+                  manuscript_id: "manuscript-proof-403",
+                  module: "proofreading",
+                  job_id: "job-proof-403",
+                  execution_profile_id: "execution-profile-proof-403",
+                  module_template_id: "template-proof-403",
+                  module_template_version_no: 2,
+                  prompt_template_id: "prompt-proof-403",
+                  prompt_template_version: "2026-04-01",
+                  skill_package_ids: ["pkg-proofreading"],
+                  skill_package_versions: ["2026.04"],
+                  model_id: "model-proof-403",
+                  knowledge_item_ids: ["knowledge-proof-1"],
+                  created_asset_ids: ["asset-proof-draft-403"],
+                  created_at: "2026-04-22T09:05:00.000Z",
+                  agent_execution: {
+                    observation_status: "not_linked",
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "reported",
+                    report: {
+                      status: "ready",
+                      checked_at: "2026-04-22T09:05:00.000Z",
+                      issues: [],
+                    },
+                  },
+                },
+              },
+            },
+            governed_execution_context_summary: {
+              observation_status: "reported",
+              base_template_family_id: "family-proof-1",
+              journal_template_id: "journal-template-proof-1",
+              module_execution_contexts: [],
+            },
+            created_at: "2026-04-22T09:00:00.000Z",
+            updated_at: "2026-04-22T09:06:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-proof-403/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-edited-403",
+              manuscript_id: "manuscript-proof-403",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              parent_asset_id: "asset-original-403",
+              source_module: "editing",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "edited-output.docx",
+              created_at: "2026-04-22T09:04:00.000Z",
+              updated_at: "2026-04-22T09:04:00.000Z",
+            },
+            {
+              id: "asset-original-403",
+              manuscript_id: "manuscript-proof-403",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/proofreader-safe.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "editor-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "proofreader-safe.docx",
+              created_at: "2026-04-22T09:00:00.000Z",
+              updated_at: "2026-04-22T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-proof-403", {
+    actorRole: "proofreader",
+    mode: "proofreading",
+  });
+
+  assert.equal(workspace.manuscript.id, "manuscript-proof-403");
+  assert.equal(workspace.suggestedParentAsset?.id, "asset-edited-403");
+  assert.equal(workspace.knowledgeReferences, undefined);
+  assert.deepEqual(workspace.availableTemplateFamilies, []);
+  assert.equal(workspace.templateFamily, null);
+  assert.deepEqual(workspace.journalTemplateProfiles, []);
+  assert.equal(workspace.selectedJournalTemplateProfile, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-proof-403",
+      "GET /api/v1/manuscripts/manuscript-proof-403/assets",
+    ],
+  );
+});
+
 test("manuscript workbench controller submits operator feedback into the unified review queue", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createManuscriptWorkbenchController({
@@ -2684,5 +2827,202 @@ test("manuscript workbench controller forwards structured governed evidence and 
     title: undefined,
     proposalText: undefined,
   });
+});
+
+test("manuscript workbench controller loads proofreading governance handoff with manuscript-scoped residual items and rule candidates", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/review-items?sourceKind=residual_issue&module=proofreading&manuscriptId=manuscript-proof-1"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "residual-proof-1",
+              source_kind: "residual_issue",
+              source_status: "observed",
+              review_status: "pending",
+              module: "proofreading",
+              manuscript_id: "manuscript-proof-1",
+              manuscript_type: "clinical_study",
+              execution_snapshot_id: "snapshot-proof-1",
+              title: "Observed residual issue",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "queued",
+              available_actions: ["validate", "route_to_rule_candidate"],
+              created_at: "2026-04-21T09:00:00.000Z",
+              updated_at: "2026-04-21T09:10:00.000Z",
+              issue_type: "statistical_expression",
+            },
+            {
+              id: "residual-editing-1",
+              source_kind: "residual_issue",
+              source_status: "candidate_ready",
+              review_status: "routed",
+              module: "editing",
+              manuscript_id: "manuscript-proof-1",
+              manuscript_type: "clinical_study",
+              execution_snapshot_id: "snapshot-editing-1",
+              title: "Editing residual issue should be ignored",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "passed",
+              available_actions: ["route_to_rule_candidate"],
+              created_at: "2026-04-21T08:00:00.000Z",
+              updated_at: "2026-04-21T08:10:00.000Z",
+              issue_type: "wording",
+            },
+            {
+              id: "residual-other-manuscript-1",
+              source_kind: "residual_issue",
+              source_status: "validation_pending",
+              review_status: "pending",
+              module: "proofreading",
+              manuscript_id: "manuscript-proof-2",
+              manuscript_type: "clinical_study",
+              execution_snapshot_id: "snapshot-proof-2",
+              title: "Other manuscript residual issue should be ignored",
+              recommended_route: "rule_candidate",
+              harness_validation_status: "queued",
+              available_actions: ["validate"],
+              created_at: "2026-04-21T07:00:00.000Z",
+              updated_at: "2026-04-21T07:10:00.000Z",
+              issue_type: "citation",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1"
+      ) {
+        return {
+          status: 200,
+          body: {
+            residualReviewItems: [
+              {
+                id: "residual-proof-1",
+                source_kind: "residual_issue",
+                source_status: "observed",
+                review_status: "pending",
+                module: "proofreading",
+                manuscript_id: "manuscript-proof-1",
+                manuscript_type: "clinical_study",
+                execution_snapshot_id: "snapshot-proof-1",
+                title: "Observed residual issue",
+                recommended_route: "rule_candidate",
+                harness_validation_status: "queued",
+                available_actions: ["validate", "route_to_rule_candidate"],
+                created_at: "2026-04-21T09:00:00.000Z",
+                updated_at: "2026-04-21T09:10:00.000Z",
+                issue_type: "statistical_expression",
+              },
+            ],
+            ruleCandidates: [
+              {
+                id: "candidate-proof-rule-1",
+                type: "rule_candidate",
+                status: "pending_review",
+                manuscript_id: "manuscript-proof-1",
+                module: "proofreading",
+                manuscript_type: "clinical_study",
+                governed_provenance_kind: "residual_issue",
+                title: "Proofreading residual rule candidate",
+                created_by: "proofreader-1",
+                created_at: "2026-04-21T09:20:00.000Z",
+                updated_at: "2026-04-21T09:20:00.000Z",
+              },
+              {
+                id: "candidate-proof-human-1",
+                type: "rule_candidate",
+                status: "pending_review",
+                manuscript_id: "manuscript-proof-1",
+                module: "proofreading",
+                manuscript_type: "clinical_study",
+                governed_provenance_kind: "human_feedback",
+                title: "Proofreading human confirmation rule candidate",
+                created_by: "proofreader-1",
+                created_at: "2026-04-21T09:21:00.000Z",
+                updated_at: "2026-04-21T09:21:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.loadProofreadingGovernanceHandoff?.(
+    "manuscript-proof-1",
+  );
+
+  assert.deepEqual(result, {
+    residualReviewItems: [
+      {
+        id: "residual-proof-1",
+        source_kind: "residual_issue",
+        source_status: "observed",
+        review_status: "pending",
+        module: "proofreading",
+        manuscript_id: "manuscript-proof-1",
+        manuscript_type: "clinical_study",
+        execution_snapshot_id: "snapshot-proof-1",
+        title: "Observed residual issue",
+        recommended_route: "rule_candidate",
+        harness_validation_status: "queued",
+        available_actions: ["validate", "route_to_rule_candidate"],
+        created_at: "2026-04-21T09:00:00.000Z",
+        updated_at: "2026-04-21T09:10:00.000Z",
+        issue_type: "statistical_expression",
+      },
+    ],
+    ruleCandidates: [
+      {
+        id: "candidate-proof-rule-1",
+        type: "rule_candidate",
+        status: "pending_review",
+        manuscript_id: "manuscript-proof-1",
+        module: "proofreading",
+        manuscript_type: "clinical_study",
+        governed_provenance_kind: "residual_issue",
+        title: "Proofreading residual rule candidate",
+        created_by: "proofreader-1",
+        created_at: "2026-04-21T09:20:00.000Z",
+        updated_at: "2026-04-21T09:20:00.000Z",
+      },
+      {
+        id: "candidate-proof-human-1",
+        type: "rule_candidate",
+        status: "pending_review",
+        manuscript_id: "manuscript-proof-1",
+        module: "proofreading",
+        manuscript_type: "clinical_study",
+        governed_provenance_kind: "human_feedback",
+        title: "Proofreading human confirmation rule candidate",
+        created_by: "proofreader-1",
+        created_at: "2026-04-21T09:21:00.000Z",
+        updated_at: "2026-04-21T09:21:00.000Z",
+      },
+    ],
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1",
+    ],
+  );
 });
 

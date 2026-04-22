@@ -41,6 +41,8 @@ import type {
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
+import type { LearningCandidateRecord } from "../learning/learning-record.ts";
+import type { LearningService } from "../learning/learning-service.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
 import type { PromptSkillRegistryRepository } from "../prompt-skill-registry/prompt-skill-repository.ts";
@@ -51,6 +53,7 @@ import type {
   RecordExecutionGovernedHitInput,
   ReviewItemsService,
 } from "../review-items/review-items-service.ts";
+import type { ResidualReviewItemRecord } from "../review-items/review-item-record.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
   resolveBareModuleContext,
@@ -174,8 +177,9 @@ export interface ProofreadingServiceOptions {
   documentStructureService?: Pick<DocumentStructureService, "extract">;
   reviewItemsService?: Pick<
     ReviewItemsService,
-    "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
+    "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
   >;
+  learningService?: Pick<LearningService, "listLearningCandidates">;
   residualLearningService?: Pick<
     ResidualLearningService,
     "observeProofreadingResiduals"
@@ -194,6 +198,11 @@ export type ProofreadingRunResult = ModuleExecutionResult<
 export interface ProofreadingHumanFinalPublishResult {
   job: JobRecord;
   asset: DocumentAssetRecord;
+}
+
+export interface ProofreadingGovernanceHandoff {
+  residualReviewItems: ResidualReviewItemRecord[];
+  ruleCandidates: LearningCandidateRecord[];
 }
 
 const DOCX_MIME =
@@ -217,6 +226,13 @@ export class ProofreadingFinalAssetRequiredError extends Error {
   constructor(assetId: string) {
     super(`Asset ${assetId} is not a proofreading final asset.`);
     this.name = "ProofreadingFinalAssetRequiredError";
+  }
+}
+
+export class ProofreadingServiceDependencyRequiredError extends Error {
+  constructor(dependency: string) {
+    super(`Proofreading service requires the ${dependency} dependency.`);
+    this.name = "ProofreadingServiceDependencyRequiredError";
   }
 }
 
@@ -277,8 +293,9 @@ export class ProofreadingService {
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
   private readonly reviewItemsService?: Pick<
     ReviewItemsService,
-    "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
+    "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
   >;
+  private readonly learningService?: Pick<LearningService, "listLearningCandidates">;
   private readonly residualLearningService?: Pick<
     ResidualLearningService,
     "observeProofreadingResiduals"
@@ -337,6 +354,7 @@ export class ProofreadingService {
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
     this.reviewItemsService = options.reviewItemsService;
+    this.learningService = options.learningService;
     this.residualLearningService = options.residualLearningService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
@@ -463,6 +481,34 @@ export class ProofreadingService {
       const sourceSnapshotId =
         readOptionalString(finalJobPayload?.snapshotId) ??
         readOptionalString(parentDraftJobPayload?.snapshotId);
+      const sourceExecutionMode =
+        extractModuleExecutionMode(finalJob) ??
+        extractModuleExecutionMode(parentDraftJob);
+      const sourceExecutionProfileId =
+        readOptionalString(finalJobPayload?.executionProfileId) ??
+        readOptionalString(parentDraftJobPayload?.executionProfileId);
+      const sourceRetrievalPresetId =
+        readOptionalString(finalJobPayload?.retrievalPresetId) ??
+        readOptionalString(parentDraftJobPayload?.retrievalPresetId);
+      const sourceRuntimeBindingId =
+        readOptionalString(finalJobPayload?.runtimeBindingId) ??
+        readOptionalString(parentDraftJobPayload?.runtimeBindingId);
+      const sourceRoutingPolicyVersionId =
+        readOptionalString(finalJobPayload?.routingPolicyVersionId) ??
+        readOptionalString(parentDraftJobPayload?.routingPolicyVersionId);
+      const sourceModelId =
+        readOptionalString(finalJobPayload?.modelId) ??
+        readOptionalString(parentDraftJobPayload?.modelId);
+      const sourceModelSource =
+        readOptionalString(finalJobPayload?.modelSource) ??
+        readOptionalString(parentDraftJobPayload?.modelSource);
+      const sourceRuntimeBindingReadinessStatus =
+        readRuntimeBindingReadinessStatus(
+          finalJobPayload?.runtimeBindingReadinessStatus,
+        ) ??
+        readRuntimeBindingReadinessStatus(
+          parentDraftJobPayload?.runtimeBindingReadinessStatus,
+        );
       const knownKnowledgeItemIds = [
         ...new Set([
           ...readStringArray(finalJobPayload?.knowledgeItemIds),
@@ -495,6 +541,18 @@ export class ProofreadingService {
           sourceAssetId: input.finalAssetId,
           ...(finalJob?.id ? { sourceProofreadingJobId: finalJob.id } : {}),
           sourceManuscriptAssetId,
+          ...buildProofreadingExecutionTruthPayload({
+            executionMode: sourceExecutionMode,
+            executionProfileId: sourceExecutionProfileId,
+            retrievalPresetId: sourceRetrievalPresetId,
+            runtimeBindingId: sourceRuntimeBindingId,
+            routingPolicyVersionId: sourceRoutingPolicyVersionId,
+            modelId: sourceModelId,
+            modelSource: sourceModelSource,
+            runtimeBindingReadinessStatus:
+              sourceRuntimeBindingReadinessStatus,
+          }),
+          ...(sourceSnapshotId ? { sourceSnapshotId } : {}),
           confirmationSummary,
           confirmationDecisions: serializeProofreadingConfirmationDecisions(
             normalizedDecisions,
@@ -635,6 +693,49 @@ export class ProofreadingService {
     });
   }
 
+  async getGovernanceHandoff(input: {
+    manuscriptId: string;
+    actorRole: RoleKey;
+  }): Promise<ProofreadingGovernanceHandoff> {
+    this.permissionGuard.assert(input.actorRole, "workbench.proofreading");
+
+    const manuscriptId = input.manuscriptId.trim();
+    if (manuscriptId.length === 0) {
+      return {
+        residualReviewItems: [],
+        ruleCandidates: [],
+      };
+    }
+
+    if (!this.reviewItemsService) {
+      throw new ProofreadingServiceDependencyRequiredError("reviewItemsService");
+    }
+
+    if (!this.learningService) {
+      throw new ProofreadingServiceDependencyRequiredError("learningService");
+    }
+
+    const [reviewItems, ruleCandidates] = await Promise.all([
+      this.reviewItemsService.listReviewItems({
+        sourceKind: "residual_issue",
+        module: "proofreading",
+        manuscriptId,
+      }),
+      this.learningService.listLearningCandidates({
+        manuscriptId,
+        module: "proofreading",
+        type: "rule_candidate",
+        status: "pending_review",
+        governedProvenanceKinds: ["residual_issue", "human_feedback"],
+      }),
+    ]);
+
+    return {
+      residualReviewItems: reviewItems.filter(isResidualReviewItemRecord),
+      ruleCandidates,
+    };
+  }
+
   private async runProofreadingJob(input: {
     manuscriptId: string;
     requestedBy: string;
@@ -749,19 +850,23 @@ export class ProofreadingService {
         status: "queued",
         requested_by: input.requestedBy,
         payload: {
-          ...(resolvedContext.executionMode === "bare"
-            ? {
-                executionMode: resolvedContext.executionMode,
-              }
-            : {}),
+          ...buildProofreadingExecutionTruthPayload({
+            executionMode: resolvedContext.executionMode,
+            executionProfileId: resolvedContext.executionProfileId,
+            retrievalPresetId: resolvedContext.retrievalPresetId,
+            runtimeBindingId: resolvedContext.runtimeBindingId,
+            routingPolicyVersionId: resolvedContext.routingPolicyVersionId,
+            modelId: resolvedContext.modelId,
+            modelSource: resolvedContext.modelSource,
+            runtimeBindingReadinessStatus:
+              resolvedContext.runtimeBindingReadinessStatus,
+          }),
           templateId: resolvedContext.templateId,
-          executionProfileId: resolvedContext.executionProfileId,
           promptTemplateId: resolvedContext.promptTemplateId,
           skillPackageIds: resolvedContext.skillPackageIds,
           knowledgeItemIds: resolvedContext.knowledgeHits.map(
             (hit) => hit.knowledgeItemId,
           ),
-          modelId: resolvedContext.modelId,
           ...(resolvedContext.agentRuntimeId
             ? {
                 agentRuntimeId: resolvedContext.agentRuntimeId,
@@ -1117,7 +1222,12 @@ export class ProofreadingService {
         skillPackageVersions: bareContext.skillPackageVersions,
         knowledgeHits: bareContext.knowledgeHits,
         modelId: bareContext.modelSelection.model.id,
+        fallbackModelId: bareContext.modelSelection.fallback_chain[0]?.id,
         modelVersion: bareContext.modelSelection.model.model_version,
+        modelSource: bareContext.modelSelection.layer,
+        routingPolicyVersionId: bareContext.modelSelection.policy_version_id,
+        routingPolicyScopeKind: bareContext.modelSelection.policy_scope_kind,
+        routingPolicyScopeValue: bareContext.modelSelection.policy_scope_value,
         verificationCheckProfileIds: bareContext.verificationCheckProfileIds,
         evaluationSuiteIds: bareContext.evaluationSuiteIds,
         qualityPackageVersionIds: bareContext.qualityPackageVersionIds,
@@ -1185,9 +1295,11 @@ export class ProofreadingService {
         matchSource: selection.matchSource,
         matchReasons: selection.matchReasons,
       })),
+      retrievalPresetId: moduleContext.retrievalPreset?.id,
       modelId: moduleContext.modelSelection.model.id,
       fallbackModelId: moduleContext.modelSelection.fallback_chain[0]?.id,
       modelVersion: moduleContext.modelSelection.model.model_version,
+      modelSource: moduleContext.modelSelection.layer,
       routingPolicyVersionId: moduleContext.modelSelection.policy_version_id,
       routingPolicyScopeKind: moduleContext.modelSelection.policy_scope_kind,
       routingPolicyScopeValue: moduleContext.modelSelection.policy_scope_value,
@@ -1195,6 +1307,10 @@ export class ProofreadingService {
       sandboxProfileId: governedContext.sandboxProfile.id,
       agentProfileId: governedContext.agentProfile.id,
       runtimeBindingId: governedContext.runtimeBinding.id,
+      runtimeBindingReadinessStatus:
+        governedContext.runtimeBindingReadiness.observation_status === "reported"
+          ? governedContext.runtimeBindingReadiness.report?.status
+          : undefined,
       toolPermissionPolicyId: governedContext.toolPolicy.id,
       verificationCheckProfileIds:
         governedContext.verificationExpectations.verification_check_profile_ids,
@@ -1224,7 +1340,15 @@ export class ProofreadingService {
     const hitLogs =
       await this.executionTrackingService.listKnowledgeHitLogsBySnapshotId(snapshotId);
     const draftExecutionMode = extractModuleExecutionMode(draftJob);
+    const draftJobPayload = asObject(draftJob?.payload);
     const draftExecutionLog = await this.loadDraftExecutionLog(draftJob);
+    const draftRetrievalPresetId = readOptionalString(
+      draftJobPayload?.retrievalPresetId,
+    );
+    const draftModelSource = readOptionalString(draftJobPayload?.modelSource);
+    const draftRuntimeBindingReadinessStatus = readRuntimeBindingReadinessStatus(
+      draftJobPayload?.runtimeBindingReadinessStatus,
+    );
 
     if (!draftExecutionLog) {
       if (draftExecutionMode !== "bare") {
@@ -1249,9 +1373,12 @@ export class ProofreadingService {
         })),
         modelId: snapshot.model_id,
         modelVersion: snapshot.model_version,
+        retrievalPresetId: draftRetrievalPresetId,
+        modelSource: draftModelSource,
         draftSnapshotId: snapshot.id,
         verificationCheckProfileIds: [],
         evaluationSuiteIds: [],
+        runtimeBindingReadinessStatus: draftRuntimeBindingReadinessStatus,
         qualityPackageVersionIds:
           snapshot.quality_packages?.map((entry) => entry.package_id) ?? [],
       };
@@ -1277,6 +1404,8 @@ export class ProofreadingService {
       modelId: snapshot.model_id,
       fallbackModelId: draftExecutionLog.fallback_model_id,
       modelVersion: snapshot.model_version,
+      retrievalPresetId: draftRetrievalPresetId,
+      modelSource: draftModelSource,
       routingPolicyVersionId: draftExecutionLog.routing_policy_version_id,
       routingPolicyScopeKind: draftExecutionLog.routing_policy_scope_kind,
       routingPolicyScopeValue: draftExecutionLog.routing_policy_scope_value,
@@ -1285,6 +1414,7 @@ export class ProofreadingService {
       sandboxProfileId: draftExecutionLog.sandbox_profile_id,
       agentProfileId: draftExecutionLog.agent_profile_id,
       runtimeBindingId: draftExecutionLog.runtime_binding_id,
+      runtimeBindingReadinessStatus: draftRuntimeBindingReadinessStatus,
       toolPermissionPolicyId: draftExecutionLog.tool_permission_policy_id,
       verificationCheckProfileIds: [
         ...draftExecutionLog.verification_check_profile_ids,
@@ -1573,7 +1703,7 @@ function buildHumanConfirmationResidualHint(
 ): NonNullable<ProofreadingResidualSourceBlock["residualHints"]>[number] | undefined {
   if (decision.action === "reject") {
     return {
-      issue_type: "ambiguous_reviewer_escalation",
+      issue_type: "unsupported_correction_proposal",
       excerpt: decision.targetText,
       suggestion: decision.replacementText,
       rationale: decision.note ?? "Human rejected the proofreading correction.",
@@ -1596,15 +1726,25 @@ function buildHumanConfirmationResidualHint(
   return undefined;
 }
 
+function isResidualReviewItemRecord(
+  item: Awaited<ReturnType<ReviewItemsService["listReviewItems"]>>[number],
+): item is ResidualReviewItemRecord {
+  return item.source_kind === "residual_issue";
+}
+
 function mapConfirmationDecisionToResidualIssueType(
   decision: NormalizedProofreadingConfirmationDecision,
 ): string {
-  if (decision.action === "route_to_knowledge_candidate" || decision.category === "terminology") {
+  if (decision.category === "terminology") {
     return "terminology_gap";
   }
 
-  if (decision.category === "punctuation") {
+  if (decision.category === "grammar") {
     return "uncovered_local_language_issue";
+  }
+
+  if (decision.category === "punctuation") {
+    return "style_consistency_gap";
   }
 
   return "style_consistency_gap";
@@ -1622,6 +1762,44 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readRuntimeBindingReadinessStatus(
+  value: unknown,
+): "ready" | "degraded" | "missing" | undefined {
+  return value === "ready" || value === "degraded" || value === "missing"
+    ? value
+    : undefined;
+}
+
+function buildProofreadingExecutionTruthPayload(input: {
+  executionMode?: ModuleExecutionMode;
+  executionProfileId?: string;
+  retrievalPresetId?: string;
+  runtimeBindingId?: string;
+  routingPolicyVersionId?: string;
+  modelId?: string;
+  modelSource?: string;
+  runtimeBindingReadinessStatus?: "ready" | "degraded" | "missing";
+}): Record<string, unknown> {
+  return {
+    ...(input.executionMode ? { executionMode: input.executionMode } : {}),
+    ...(input.executionProfileId
+      ? { executionProfileId: input.executionProfileId }
+      : {}),
+    ...(input.retrievalPresetId ? { retrievalPresetId: input.retrievalPresetId } : {}),
+    ...(input.runtimeBindingId ? { runtimeBindingId: input.runtimeBindingId } : {}),
+    ...(input.routingPolicyVersionId
+      ? { routingPolicyVersionId: input.routingPolicyVersionId }
+      : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
+    ...(input.modelSource ? { modelSource: input.modelSource } : {}),
+    ...(input.runtimeBindingReadinessStatus
+      ? {
+          runtimeBindingReadinessStatus: input.runtimeBindingReadinessStatus,
+        }
+      : {}),
+  };
 }
 
 function readStringArray(value: unknown): string[] {
@@ -1972,9 +2150,11 @@ interface ResolvedProofreadingExecutionContext {
   skillPackageVersions: string[];
   knowledgeHits: RecordKnowledgeHitInput[];
   manualReviewPolicy?: Parameters<typeof inspectProofreadingRules>[0]["manualReviewPolicy"];
+  retrievalPresetId?: string;
   modelId: string;
   fallbackModelId?: string;
   modelVersion?: string;
+  modelSource?: string;
   routingPolicyVersionId?: string;
   routingPolicyScopeKind?: AgentExecutionLogRecord["routing_policy_scope_kind"];
   routingPolicyScopeValue?: string;
@@ -1983,6 +2163,7 @@ interface ResolvedProofreadingExecutionContext {
   sandboxProfileId?: string;
   agentProfileId?: string;
   runtimeBindingId?: string;
+  runtimeBindingReadinessStatus?: "ready" | "degraded" | "missing";
   toolPermissionPolicyId?: string;
   verificationCheckProfileIds: string[];
   evaluationSuiteIds: string[];

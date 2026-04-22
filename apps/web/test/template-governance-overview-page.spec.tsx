@@ -139,3 +139,38 @@ test("rule center overview surfaces release posture and blocked promotion metric
     15,
   );
 });
+
+test("rule center overview bridges retrieval quality into governed evidence wording", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceOverviewPage
+      metrics={{
+        templateCount: 4,
+        moduleCount: 9,
+        pendingKnowledgeCount: 3,
+        extractionAwaitingConfirmationCount: 6,
+        pendingReviewCount: 5,
+        harnessQueuedCount: 2,
+        harnessPassedCount: 4,
+        harnessFailedCount: 1,
+        ruleDraftWritebackDraftCount: 2,
+        ruleDraftWritebackAppliedCount: 7,
+        retrievalAnswerRelevancy: 0.71,
+        retrievalContextPrecision: 0.68,
+        retrievalContextRecall: 0.62,
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u68c0\u7d22\u6cbb\u7406\u8bc1\u636e/u);
+  assert.match(
+    markup,
+    /\u8fd9\u4e9b\u6307\u6807\u7528\u4e8e\u5224\u65ad\u53d7\u6cbb\u7406\u68c0\u7d22\u662f\u5426\u7a33\u5b9a\u652f\u6491\u89c4\u5219\u4e0e\u77e5\u8bc6\u6c89\u6dc0\uff0c\u4e0d\u4ee3\u8868\u901a\u7528 AI \u51c6\u786e\u7387\u3002/u,
+  );
+  assert.match(markup, /\u7b54\u6848\u76f8\u5173\u6027 0\.71/u);
+  assert.match(markup, /\u4e0a\u4e0b\u6587\u7cbe\u786e\u7387 0\.68/u);
+  assert.match(markup, /\u4e0a\u4e0b\u6587\u53ec\u56de\u7387 0\.62/u);
+  assert.match(
+    markup,
+    /Harness \u5f85\u9a8c\u8bc1 2 \u6761\uff0c\u5df2\u901a\u8fc7 4 \u6761\uff0c\u672a\u901a\u8fc7 1 \u6761\u3002/u,
+  );
+});

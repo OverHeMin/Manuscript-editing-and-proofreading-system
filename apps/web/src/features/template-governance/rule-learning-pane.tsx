@@ -15,6 +15,7 @@ import {
 import {
   createReviewItemsWorkbenchState,
   decideReviewItem,
+  formatResidualReviewSourceStatusLabel,
   isGovernedHitReviewItem,
   isLearningCandidateReviewItem,
   isResidualReviewItem,
@@ -418,6 +419,7 @@ export function RuleLearningPane({
           {prefilledReviewedCaseSnapshotId
             ? ` · 复核快照：${prefilledReviewedCaseSnapshotId}`
             : ""}
+          。当前统一复核会沿用这条治理证据链，继续处理已发现残差、Harness 复验、候选路由与规则写回。
         </p>
       ) : null}
 
@@ -931,24 +933,7 @@ function formatSourceStatus(item: ReviewItemViewModel): string {
   }
 
   if (item.source_kind === "residual_issue") {
-    switch (item.source_status) {
-      case "validation_pending":
-        return "待 Harness 复验";
-      case "candidate_ready":
-        return "可转候选";
-      case "validation_failed":
-        return "复验未通过";
-      case "manual_only":
-        return "仅人工处理";
-      case "evidence_only":
-        return "只保留证据";
-      case "candidate_created":
-        return "已生成候选";
-      case "archived":
-        return "已归档";
-      default:
-        return item.source_status;
-    }
+    return formatResidualReviewSourceStatusLabel(item.source_status);
   }
 
   switch (item.source_status) {
