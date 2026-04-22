@@ -162,7 +162,10 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText(
     "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
   );
-  const learningReviewLink = page.getByRole("link", { name: "前往规则中心" });
+  const learningReviewLink = page.getByRole("link", {
+    name: "前往规则中心",
+    exact: true,
+  });
   await expect(learningReviewLink).toBeVisible();
   await expect(learningReviewLink).toHaveAttribute(
     "href",
