@@ -51,10 +51,13 @@ export function TemplateGovernanceExtractionTaskForm({
       <article className="template-governance-card template-governance-extraction-task-form">
         <header className="template-governance-form-header">
           <h2>新建提取任务</h2>
-          <p>在同页弹出表单，录入原稿与编辑稿后进入 AI 语义确认环节。</p>
+          <p>录入原稿与编辑稿后进入候选语义复核环节，再决定是否真实入库。</p>
         </header>
         {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
         {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
+        <p className="template-governance-context-note template-governance-context-note--compact">
+          当前 DOCX 提取只解析文本与表格；如需让图片、图表或截图进入 AI 分析，请在规则向导里补充证据材料。
+        </p>
         <div className="template-governance-form-grid">
           <label className="template-governance-field">
             <span>任务名称</span>

@@ -1,4 +1,6 @@
 import type { EditorialTextBlock } from "../editorial-execution/types.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
+import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 import type {
   ProofreadingAiPlan,
@@ -34,6 +36,7 @@ export interface CreateProofreadingAiPlanInput {
     explanation?: string;
     issue_type?: string;
   }>;
+  governanceContext?: AiGovernanceContext;
 }
 
 export class ProofreadingAiPlanService {
@@ -86,6 +89,7 @@ function buildProofreadingSystemPrompt(): string {
     "必须保持保守：证据不足时宁可少报，不要臆造问题。",
     "只返回 JSON，不要返回 Markdown，不要返回修改后的全文。",
     "把已由规则、知识库、质量检查覆盖的内容视为已治理层覆盖，重点补充 residual AI 问题。",
+    "如果提供 governance，则其中的 hardRuleSummary、forbiddenOperations、manualReviewItems、knowledgeHits 都是硬约束，不得给出与其冲突的建议。",
     "issue.source 固定使用 residual_ai，除非输入已经明确给出其他来源。",
     "anchor.blockIndex 必须对应输入 fullDocumentBlocks 里的 blockIndex。",
     "只有在能给出安全建议时才填写 suggestion；否则给 explain_only 或 verify_fact。",
@@ -134,7 +138,13 @@ function buildProofreadingUserPayload(input: {
     explanation?: string;
     issue_type?: string;
   }>;
+  governanceContext?: AiGovernanceContext;
 }) {
+  const governance =
+    input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
+      ? input.governanceContext
+      : undefined;
+
   return {
     task: "proofreading_issue_plan",
     manuscriptId: input.manuscriptId,
@@ -148,6 +158,11 @@ function buildProofreadingUserPayload(input: {
         explanation: issue.explanation ?? "",
       })),
     },
+    ...(governance
+      ? {
+          governance,
+        }
+      : {}),
     contract: {
       role: "医学稿件终校审校员",
       summary: "string",

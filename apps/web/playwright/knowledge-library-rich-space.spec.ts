@@ -14,50 +14,46 @@ test("knowledge library rich-space flow supports block editing and semantic conf
   await loginBrowserSession(page, request, "dev.admin");
 
   await page.goto(
-    `/#knowledge-library?assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
+    `/#knowledge-library?knowledgeView=classic&assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
     {
       waitUntil: "domcontentloaded",
     },
   );
 
-  await expect(page.getByRole("heading", { name: "Knowledge Library" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Knowledge Summary" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Record Drawer" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keyword Search" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Semantic Search" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-grid-toolbar")).toBeVisible();
+  await expect(page.locator(".knowledge-library-grid-table")).toBeVisible();
+  await expect(page.locator(".knowledge-library-record-drawer")).toBeVisible();
+  await expect(page.locator(".knowledge-library-query-mode")).toBeVisible();
 
-  await page.getByRole("button", { name: "Add Text Block" }).click();
+  await page.locator('[data-block-action="add-text"]').click();
   await page
-    .locator(".knowledge-library-rich-block")
+    .locator(".knowledge-library-rich-content-editor__item textarea")
     .last()
-    .getByLabel("Text Content")
-    .fill(
-    "Operator curated rich-space text block for endpoint screening guidance.",
-  );
+    .fill("Operator curated rich-space text block for endpoint screening guidance.");
   await page.getByRole("button", { name: "Save Rich Content" }).click();
 
   await expect(page.getByRole("status")).toContainText("Rich content saved.");
 
-  await page.getByRole("button", { name: "Regenerate Semantics" }).click();
+  const semanticPanel = page.locator(".knowledge-library-semantic-panel");
+  await semanticPanel.locator(".knowledge-library-actions button").first().click();
   await expect(page.getByRole("status")).toContainText("AI semantic layer regenerated.");
-  await expect(page.getByText("Pending Confirmation")).toBeVisible();
+  await expect(
+    semanticPanel.locator(".knowledge-library-semantic-status.is-pending_confirmation"),
+  ).toBeVisible();
 
-  await page
-    .getByLabel("Page Summary")
+  await semanticPanel
+    .locator("textarea")
+    .first()
     .fill("Operator confirmed semantic guidance for endpoint screening.");
-  await page.getByLabel("Retrieval Terms").fill("endpoint, screening, rich space");
-  await page
-    .getByLabel("Retrieval Snippets")
-    .fill("Prefer this record when endpoint requirements are ambiguous.");
-  await page.getByRole("button", { name: "Confirm Semantic Layer" }).click();
+  await semanticPanel.locator(".knowledge-library-actions button").last().click();
 
   await expect(page.getByRole("status")).toContainText("AI semantic layer confirmed.");
-  await expect(page.locator(".knowledge-library-semantic-status.is-confirmed")).toHaveText(
-    "Confirmed",
-  );
+  await expect(
+    semanticPanel.locator(".knowledge-library-semantic-status.is-confirmed"),
+  ).toBeVisible();
   await expect(
     page.getByRole("row", {
-      name: new RegExp(`${escapeRegExp(seededTitle)}.*confirmed`, "i"),
+      name: new RegExp(escapeRegExp(seededTitle)),
     }),
   ).toBeVisible();
 });

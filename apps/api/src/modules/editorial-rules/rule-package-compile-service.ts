@@ -826,6 +826,10 @@ function buildTableSeed(
   packageDraft: RulePackageDraft,
   source: RulePackageWorkspaceSourceInput,
 ): CompiledEditorialRuleSeed {
+  const semanticTarget = "header_cell";
+  const headerPathIncludes = ["Treatment group", "n (%)"];
+  const captionRequirement = "表题置于表上";
+  const layoutRequirement = "禁用竖线";
   const seed: CompiledRuleSeedDraft = {
     package_id: packageDraft.package_id,
     rule_object: "table",
@@ -838,8 +842,8 @@ function buildTableSeed(
       block_kind: "table",
     },
     selector: {
-      semantic_target: "header_cell",
-      header_path_includes: ["Treatment group", "n (%)"],
+      semantic_target: semanticTarget,
+      header_path_includes: headerPathIncludes,
     },
     trigger: {
       kind: "table_shape",
@@ -847,10 +851,20 @@ function buildTableSeed(
     },
     action: {
       kind: "inspect_table_rule",
-      caption_requirement: "表题置于表上",
-      layout_requirement: "禁用竖线",
+      caption_requirement: captionRequirement,
+      layout_requirement: layoutRequirement,
     },
-    authoring_payload: buildCompileTracePayload(packageDraft, source),
+    authoring_payload: buildCompiledAuthoringPayload(packageDraft, source, {
+      table_kind: "three_line_table",
+      semantic_target: semanticTarget,
+      header_path_includes: headerPathIncludes,
+      caption_requirement: captionRequirement,
+      layout_requirement: layoutRequirement,
+      grade: "C",
+      patch_type: "inspect_only",
+      apply_scope: "inspect_only",
+      required_snapshot_capabilities: [],
+    }),
     manual_review_reason_template: firstReviewReason(packageDraft),
   };
 

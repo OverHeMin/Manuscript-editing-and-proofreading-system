@@ -10,6 +10,10 @@ import type {
 } from "../editorial-rules/editorial-rule-record.ts";
 import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
+import type {
+  TableDocxPatchPlan,
+  TableDocxPatchResult,
+} from "../document-pipeline/table-docx-patch-plan.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type { ManualReviewPolicyRecord } from "../manual-review-policies/manual-review-policy-record.ts";
 import type {
@@ -22,6 +26,11 @@ export interface EditorialTextBlock {
   section?: string;
   block_kind?: string;
 }
+
+export type TableAutoApplyMode =
+  | "disabled"
+  | "inspect_only"
+  | "editing_safe_apply";
 
 export type GovernedExecutionHitPosture = "candidate_change" | "inspect_only";
 
@@ -57,6 +66,7 @@ export interface ApplyDeterministicDocxRulesInput {
   sourceAssetId: string;
   outputStorageKey: string;
   outputFileName?: string;
+  tableAutoApplyMode: TableAutoApplyMode;
   rules: EditorialRuleRecord[];
   resolvedRules?: ResolvedEditorialRule[];
   tableSnapshots?: DocumentStructureTableSnapshot[];
@@ -67,6 +77,8 @@ export interface DeterministicDocxTransformResult {
   appliedRuleIds: string[];
   appliedChanges: AppliedDeterministicRuleChange[];
   tableInspectionFindings: TableRuleInspectionFinding[];
+  tablePatchPlans: TableDocxPatchPlan[];
+  tablePatchResults: TableDocxPatchResult[];
 }
 
 export interface GovernedKnowledgeSelectionInput {

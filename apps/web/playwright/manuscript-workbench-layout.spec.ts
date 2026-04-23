@@ -167,7 +167,7 @@ test("screening focus card exposes direct current asset shortcuts without requir
   await expect(downloadShortcut).toBeVisible();
   await expect(viewShortcut).toHaveAttribute(
     "href",
-    `${apiBaseUrl}/api/v1/document-assets/${uploadPayload.asset.id}/download`,
+    `#screening?manuscriptId=${uploadPayload.manuscript.id}&assetId=${uploadPayload.asset.id}`,
   );
   await expect(downloadShortcut).toHaveAttribute(
     "href",

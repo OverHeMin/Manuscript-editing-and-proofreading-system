@@ -82,7 +82,7 @@ function buildExtractionLedgerFixture() {
               decision: {
                 automation_posture: "guarded_auto" as const,
                 needs_human_review: true,
-                reason: "需人工确认。",
+                reason: "需要人工确认。",
               },
             },
             semantic_draft: {
@@ -119,23 +119,25 @@ function buildExtractionLedgerFixture() {
   };
 }
 
-test("extraction ledger renders task table with new-task action", () => {
+test("extraction ledger renders task table with honest semantic disclosure", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceExtractionLedgerPage viewModel={buildExtractionLedgerFixture()} />,
   );
 
   assert.match(markup, /template-governance-extraction-ledger-page/u);
-  assert.match(markup, /总览/u);
-  assert.match(markup, /大模板台账/u);
   assert.match(markup, /template-governance-ledger-kpi-strip/u);
   assert.match(markup, /新建提取任务/u);
   assert.match(markup, /待确认数/u);
   assert.match(markup, /任务名称/u);
   assert.match(markup, /候选名称/u);
-  assert.doesNotMatch(markup, /规则录入/u);
+  assert.match(markup, /候选语义摘要/u);
+  assert.match(
+    markup,
+    /提取台账里的候选语义摘要来自文本与表格差异提取；DOCX 图片、图表和截图不会在这里被 AI 理解。/u,
+  );
 });
 
-test("candidate confirmation opens AI semantic form before intake", () => {
+test("candidate confirmation opens candidate semantic review before intake", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceExtractionLedgerPage
       viewModel={buildExtractionLedgerFixture()}
@@ -144,7 +146,11 @@ test("candidate confirmation opens AI semantic form before intake", () => {
   );
 
   assert.match(markup, /template-governance-candidate-confirmation-form/u);
-  assert.match(markup, /AI 一句话理解/u);
+  assert.match(markup, /候选语义复核/u);
   assert.match(markup, /确认入库/u);
+  assert.match(
+    markup,
+    /这里复核的是提取候选语义，不是规则向导里的多模态 AI 识别结果。/u,
+  );
   assert.match(markup, /通用包台账|医学专用包台账|大模板台账/u);
 });

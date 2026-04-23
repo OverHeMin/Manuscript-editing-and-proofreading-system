@@ -12,6 +12,12 @@ def test_build_table_semantic_snapshot_identifies_header_stub_units_and_footnote
         table_index=1,
         caption="\u88681 \u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83",
         notes=["*P<0.05 vs control"],
+        border_hints={
+            "top": True,
+            "bottom": True,
+            "inside_horizontal": False,
+            "inside_vertical": False,
+        },
         rows=[
             [
                 {"text": "\u9879\u76ee", "column_span": 1, "row_span": 1},
@@ -19,11 +25,36 @@ def test_build_table_semantic_snapshot_identifies_header_stub_units_and_footnote
                 {"text": "\u5bf9\u7167\u7ec4", "column_span": 2, "row_span": 1},
             ],
             [
-                {"text": "\u5e74\u9f84", "column_span": 1, "row_span": 1},
-                {"text": "n (%)", "column_span": 1, "row_span": 1},
-                {"text": "\u5747\u503c\u00b1SD", "column_span": 1, "row_span": 1},
-                {"text": "n (%)", "column_span": 1, "row_span": 1},
-                {"text": "\u5747\u503c\u00b1SD", "column_span": 1, "row_span": 1},
+                {
+                    "text": "\u5e74\u9f84",
+                    "column_span": 1,
+                    "row_span": 1,
+                    "borders": {"bottom": True},
+                },
+                {
+                    "text": "n (%)",
+                    "column_span": 1,
+                    "row_span": 1,
+                    "borders": {"bottom": True},
+                },
+                {
+                    "text": "\u5747\u503c\u00b1SD",
+                    "column_span": 1,
+                    "row_span": 1,
+                    "borders": {"bottom": True},
+                },
+                {
+                    "text": "n (%)",
+                    "column_span": 1,
+                    "row_span": 1,
+                    "borders": {"bottom": True},
+                },
+                {
+                    "text": "\u5747\u503c\u00b1SD",
+                    "column_span": 1,
+                    "row_span": 1,
+                    "borders": {"bottom": True},
+                },
             ],
             [
                 {"text": "\u7537\u6027", "column_span": 1, "row_span": 1},
@@ -41,6 +72,16 @@ def test_build_table_semantic_snapshot_identifies_header_stub_units_and_footnote
     assert snapshot["profile"]["has_stub_column"] is True
     assert snapshot["profile"]["has_unit_markers"] is True
     assert snapshot["profile"]["has_statistical_footnotes"] is True
+    assert snapshot["table_label"]["text"] == "\u88681"
+    assert snapshot["table_label"]["coordinate"]["target"] == "table_label"
+    assert snapshot["table_title"]["text"] == "\u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83"
+    assert snapshot["table_title"]["coordinate"]["target"] == "table_title"
+    assert snapshot["caption_fields"]["text"] == "\u88681 \u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83"
+    assert snapshot["caption_fields"]["label_text"] == "\u88681"
+    assert (
+        snapshot["caption_fields"]["title_text"]
+        == "\u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83"
+    )
     assert snapshot["header_cells"][1]["header_path"] == [
         "\u6cbb\u7597\u7ec4",
         "n (%)",
@@ -49,3 +90,12 @@ def test_build_table_semantic_snapshot_identifies_header_stub_units_and_footnote
     assert snapshot["data_cells"][0]["column_key"] == "\u6cbb\u7597\u7ec4 > n (%)"
     assert snapshot["unit_markers"][0]["text"] == "%"
     assert snapshot["footnote_items"][0]["note_kind"] == "statistical_significance"
+    assert snapshot["note_zone"]["text"] == "*P<0.05 vs control"
+    assert snapshot["note_zone"]["line_texts"] == ["*P<0.05 vs control"]
+    assert snapshot["note_zone"]["footnote_ids"] == ["table-1-footnote-0"]
+    assert snapshot["note_zone"]["coordinate"]["target"] == "note_zone"
+    assert snapshot["style_profile"]["has_top_rule"] is True
+    assert snapshot["style_profile"]["has_header_rule"] is True
+    assert snapshot["style_profile"]["has_bottom_rule"] is True
+    assert snapshot["style_profile"]["has_vertical_rules"] is False
+    assert snapshot["style_profile"]["coordinate"]["target"] == "style_profile"

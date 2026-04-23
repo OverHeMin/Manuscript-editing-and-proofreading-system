@@ -875,6 +875,7 @@ export function createPersistentGovernanceRuntime(
     documentStructureService,
     editorialDocxTransformService,
     reviewItemsService,
+    activationMetricsService: editorialRuleActivationMetricsService,
     transactionManager: workbenchTransactionManager,
   });
   const proofreadingService = new ProofreadingService({

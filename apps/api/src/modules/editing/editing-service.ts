@@ -14,6 +14,7 @@ import type { AgentExecutionService } from "../agent-execution/agent-execution-s
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
 import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
+import type { EditorialRuleActivationMetricsService } from "../editorial-rules/editorial-rule-activation-metrics-service.ts";
 import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import {
   EditorialDocxTransformService,
@@ -70,6 +71,7 @@ import {
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 import {
   EditingAiPlanService,
   type EditingAiPlan,
@@ -127,6 +129,10 @@ export interface EditingServiceOptions {
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
   reviewItemsService?: Pick<ReviewItemsService, "recordExecutionGovernedHits">;
+  activationMetricsService?: Pick<
+    EditorialRuleActivationMetricsService,
+    "recordTablePatchResults"
+  >;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -190,6 +196,10 @@ export class EditingService {
     ReviewItemsService,
     "recordExecutionGovernedHits"
   >;
+  private readonly activationMetricsService?: Pick<
+    EditorialRuleActivationMetricsService,
+    "recordTablePatchResults"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -238,6 +248,7 @@ export class EditingService {
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
     this.reviewItemsService = options.reviewItemsService;
+    this.activationMetricsService = options.activationMetricsService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -452,6 +463,26 @@ export class EditingService {
             sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
           sourceBlocks,
           qualityIssues: qualityRun?.issues,
+          governanceContext: buildAiGovernanceContext({
+            hardRuleSummary: normalizedContext.instructionPayload?.hardRuleSummary,
+            allowedContentOperations:
+              normalizedContext.instructionPayload?.allowedContentOperations,
+            forbiddenOperations:
+              normalizedContext.instructionPayload?.forbiddenOperations,
+            manualReviewPolicy:
+              normalizedContext.instructionPayload?.manualReviewPolicy,
+            promptSnippets: normalizedContext.instructionPayload?.promptSnippets,
+            manualReviewItems:
+              normalizedContext.instructionPayload?.manualReviewItems.map(
+                (item) => `${item.ruleId}: ${item.reason}`,
+              ),
+            contentRuleCandidates:
+              normalizedContext.instructionPayload?.contentRuleCandidates.map(
+                (item) => `${item.ruleId}: ${item.actionKind}`,
+              ),
+            resolvedRules: normalizedContext.resolvedRules,
+            knowledgeHits: normalizedContext.knowledgeHits,
+          }),
         }),
       ) as EditingAiPlan;
 
@@ -560,11 +591,19 @@ export class EditingService {
           sourceAssetId: input.parentAssetId,
           outputStorageKey: input.storageKey,
           outputFileName: input.fileName,
+          tableAutoApplyMode: "editing_safe_apply",
           rules: normalizedContext.rules,
           resolvedRules: normalizedContext.resolvedRules,
           tableSnapshots: documentStructureSnapshot?.tables ?? [],
           aiReplacements: editingPlan.replacements,
         });
+      const tableInspectionFindings =
+        deterministicTransform.tableInspectionFindings ?? [];
+      const tablePatchPlans = deterministicTransform.tablePatchPlans ?? [];
+      const tablePatchResults = deterministicTransform.tablePatchResults ?? [];
+      await this.activationMetricsService?.recordTablePatchResults(
+        tablePatchResults,
+      );
 
       const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
@@ -624,7 +663,7 @@ export class EditingService {
               contentRuleCandidates:
                 normalizedContext.instructionPayload?.contentRuleCandidates ?? [],
               tableInspectionFindings:
-                deterministicTransform.tableInspectionFindings ?? [],
+                tableInspectionFindings,
               qualityFindings: qualityRun?.issues ?? [],
             }),
           })
@@ -648,7 +687,7 @@ export class EditingService {
         reviewItemIdBySourceKey,
       );
       const annotatedTableInspectionFindings = annotateEditingTableInspectionFindings(
-        deterministicTransform.tableInspectionFindings ?? [],
+        tableInspectionFindings,
         reviewItemIdBySourceKey,
       );
 
@@ -699,6 +738,10 @@ export class EditingService {
                   : {}),
               },
             })),
+          tablePatchPlans: tablePatchPlans.map((plan) => structuredClone(plan)),
+          tablePatchResults: tablePatchResults.map((result) =>
+            structuredClone(result),
+          ),
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -777,6 +820,89 @@ export class EditingService {
       qualityPackageVersionIds: input.qualityPackageVersionIds,
     });
   }
+}
+
+function buildAiGovernanceContext(input: {
+  hardRuleSummary?: string;
+  allowedContentOperations?: string[];
+  forbiddenOperations?: string[];
+  manualReviewPolicy?: string;
+  promptSnippets?: string[];
+  manualReviewItems?: string[];
+  contentRuleCandidates?: string[];
+  resolvedRules?: ResolvedEditorialRule[];
+  knowledgeHits?: RecordKnowledgeHitInput[];
+}): AiGovernanceContext | undefined {
+  const resolvedRules = (input.resolvedRules ?? []).map((entry) => ({
+    ruleId: entry.rule.id,
+    actionKind: entry.rule.action.kind,
+    ruleType: entry.rule.rule_type,
+    severity: entry.rule.severity,
+    confidencePolicy: entry.rule.confidence_policy,
+    executionMode: entry.rule.execution_mode,
+    sections: Array.isArray(entry.rule.scope.sections)
+      ? entry.rule.scope.sections.filter(
+          (section): section is string => typeof section === "string",
+        )
+      : [],
+    sourceLayer: entry.source_layer,
+  }));
+  const knowledgeHits = (input.knowledgeHits ?? []).map((entry) => ({
+    knowledgeItemId: entry.knowledgeItemId,
+    matchSource: entry.matchSource,
+    bindingRuleId: entry.bindingRuleId,
+    matchSourceId: entry.matchSourceId,
+    matchReasons: [...entry.matchReasons],
+  }));
+  const context: AiGovernanceContext = {
+    ...(input.hardRuleSummary
+      ? {
+          hardRuleSummary: input.hardRuleSummary,
+        }
+      : {}),
+    ...(input.allowedContentOperations && input.allowedContentOperations.length > 0
+      ? {
+          allowedContentOperations: [...input.allowedContentOperations],
+        }
+      : {}),
+    ...(input.forbiddenOperations && input.forbiddenOperations.length > 0
+      ? {
+          forbiddenOperations: [...input.forbiddenOperations],
+        }
+      : {}),
+    ...(input.manualReviewPolicy
+      ? {
+          manualReviewPolicy: input.manualReviewPolicy,
+        }
+      : {}),
+    ...(input.promptSnippets && input.promptSnippets.length > 0
+      ? {
+          promptSnippets: [...input.promptSnippets],
+        }
+      : {}),
+    ...(input.manualReviewItems && input.manualReviewItems.length > 0
+      ? {
+          manualReviewItems: [...input.manualReviewItems],
+        }
+      : {}),
+    ...(input.contentRuleCandidates && input.contentRuleCandidates.length > 0
+      ? {
+          contentRuleCandidates: [...input.contentRuleCandidates],
+        }
+      : {}),
+    ...(resolvedRules.length > 0
+      ? {
+          resolvedRules,
+        }
+      : {}),
+    ...(knowledgeHits.length > 0
+      ? {
+          knowledgeHits,
+        }
+      : {}),
+  };
+
+  return Object.keys(context).length > 0 ? context : undefined;
 }
 
 function buildEditingExecutionGovernedHitInputs(input: {

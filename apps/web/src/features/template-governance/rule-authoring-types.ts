@@ -88,12 +88,36 @@ export interface StatisticalExpressionRuleAuthoringPayload {
   recalculationPolicy: string;
 }
 
+export type TableRuleAuthoringGrade = "A" | "B" | "C";
+
+export type TableRuleAuthoringPatchType =
+  | "inspect_only"
+  | "replace_header_cell_text"
+  | "replace_footnote_text"
+  | "normalize_unit_text";
+
+export type TableRuleAuthoringApplyScope = "inspect_only" | "editing_only";
+
+export type TableRuleAuthoringSnapshotCapability =
+  | "header_cell"
+  | "footnote_item"
+  | "unit_marker"
+  | "table_label"
+  | "table_title"
+  | "caption_fields"
+  | "note_zone"
+  | "style_profile";
+
 export interface TableRuleAuthoringPayload {
   tableKind:
     | "three_line_table"
     | "general_data_table"
     | "baseline_characteristics_table"
     | "outcome_indicator_table";
+  grade: TableRuleAuthoringGrade;
+  patchType: TableRuleAuthoringPatchType;
+  applyScope: TableRuleAuthoringApplyScope;
+  requiredSnapshotCapabilities: TableRuleAuthoringSnapshotCapability[];
   semanticTarget: EditorialRuleTableSemanticTarget;
   headerPathIncludes: string[];
   rowKey: string;
