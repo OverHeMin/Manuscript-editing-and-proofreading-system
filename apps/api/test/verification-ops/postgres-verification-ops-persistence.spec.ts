@@ -117,37 +117,43 @@ test("postgres verification ops repository persists governed evaluation run sour
         execution_snapshot_id: "snapshot-1",
         output_asset_id: "asset-1",
       });
-      assert.deepEqual(loadedGoverned?.baseline_binding, {
-        lane: "baseline",
-        execution_profile_id: "profile-active-1",
-        runtime_binding_id: "binding-active-1",
-        model_routing_policy_version_id: "routing-version-active-1",
-        retrieval_preset_id: "retrieval-active-1",
+      assert.deepEqual(
+        withoutQualityPackageVersionIds(loadedGoverned?.baseline_binding),
+        {
+          lane: "baseline",
+          execution_profile_id: "profile-active-1",
+          runtime_binding_id: "binding-active-1",
+          model_routing_policy_version_id: "routing-version-active-1",
+          retrieval_preset_id: "retrieval-active-1",
         manual_review_policy_id: "manual-review-active-1",
         model_id: "model-active-1",
-        runtime_id: "runtime-active-1",
-        prompt_template_id: "prompt-active-1",
-        skill_package_ids: ["skill-active-1"],
-        module_template_id: "template-active-1",
-      });
-      assert.deepEqual(loadedGoverned?.candidate_binding, {
-        lane: "candidate",
-        execution_profile_id: "profile-draft-2",
-        runtime_binding_id: "binding-draft-2",
-        model_routing_policy_version_id: "routing-version-draft-2",
-        retrieval_preset_id: "retrieval-draft-2",
+          runtime_id: "runtime-active-1",
+          prompt_template_id: "prompt-active-1",
+          skill_package_ids: ["skill-active-1"],
+          module_template_id: "template-active-1",
+        },
+      );
+      assert.deepEqual(
+        withoutQualityPackageVersionIds(loadedGoverned?.candidate_binding),
+        {
+          lane: "candidate",
+          execution_profile_id: "profile-draft-2",
+          runtime_binding_id: "binding-draft-2",
+          model_routing_policy_version_id: "routing-version-draft-2",
+          retrieval_preset_id: "retrieval-draft-2",
         manual_review_policy_id: "manual-review-draft-2",
         model_id: "model-draft-2",
-        runtime_id: "runtime-draft-2",
-        prompt_template_id: "prompt-draft-2",
-        skill_package_ids: ["skill-draft-2"],
-        module_template_id: "template-draft-2",
-      });
+          runtime_id: "runtime-draft-2",
+          prompt_template_id: "prompt-draft-2",
+          skill_package_ids: ["skill-draft-2"],
+          module_template_id: "template-draft-2",
+        },
+      );
       assert.equal(loadedLegacy?.governed_source, undefined);
       assert.deepEqual(
         listedRuns.map((record) => ({
-          baseline_binding: record.baseline_binding,
-          candidate_binding: record.candidate_binding,
+          baseline_binding: withoutQualityPackageVersionIds(record.baseline_binding),
+          candidate_binding: withoutQualityPackageVersionIds(record.candidate_binding),
           governed_source: record.governed_source,
         })),
         [
@@ -199,3 +205,15 @@ test("postgres verification ops repository persists governed evaluation run sour
     }
   });
 });
+
+function withoutQualityPackageVersionIds(
+  binding: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!binding) {
+    return undefined;
+  }
+
+  const { quality_package_version_ids: _qualityPackageVersionIds, ...rest } =
+    binding;
+  return rest;
+}

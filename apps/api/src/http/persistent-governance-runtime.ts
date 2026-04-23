@@ -192,6 +192,10 @@ import {
   ScreeningService,
 } from "../modules/screening/index.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  resolveModuleExecutionConcurrencyLimitsFromEnv,
+} from "../modules/shared/module-execution-concurrency-controller.ts";
+import {
   createSandboxProfileApi,
   PostgresSandboxProfileRepository,
   SandboxProfileService,
@@ -247,6 +251,7 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
   aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
   aiProviderRuntimeCutoverEnabled?: boolean;
+  seedPersistentWorkbenchReviewBaseline?: boolean;
   mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
 }
 
@@ -373,22 +378,24 @@ export function createPersistentGovernanceRuntime(
     new PostgresPromptSkillRegistryRepository({
       client: options.client,
     });
-  const runtimeBootstrap = ensurePersistentWorkbenchReviewBaseline({
-    templateFamilyRepository,
-    moduleTemplateRepository,
-    promptSkillRegistryRepository,
-    editorialRuleRepository,
-    executionGovernanceRepository,
-    sandboxProfileRepository,
-    agentRuntimeRepository,
-    agentProfileRepository,
-    runtimeBindingRepository,
-    toolPermissionPolicyRepository,
-    modelRegistryRepository,
-    modelRoutingPolicyRepository,
-    retrievalPresetRepository,
-    manualReviewPolicyRepository,
-  });
+  const runtimeBootstrap = options.seedPersistentWorkbenchReviewBaseline
+    ? ensurePersistentWorkbenchReviewBaseline({
+        templateFamilyRepository,
+        moduleTemplateRepository,
+        promptSkillRegistryRepository,
+        editorialRuleRepository,
+        executionGovernanceRepository,
+        sandboxProfileRepository,
+        agentRuntimeRepository,
+        agentProfileRepository,
+        runtimeBindingRepository,
+        toolPermissionPolicyRepository,
+        modelRegistryRepository,
+        modelRoutingPolicyRepository,
+        retrievalPresetRepository,
+        manualReviewPolicyRepository,
+      })
+    : Promise.resolve();
   const manuscriptQualityPackageRepository =
     new PostgresManuscriptQualityPackageRepository({
       client: options.client,
@@ -818,6 +825,12 @@ export function createPersistentGovernanceRuntime(
     templateFamilyRepository,
     transactionManager: workbenchTransactionManager,
   });
+  const moduleExecutionConcurrencyLimits =
+    resolveModuleExecutionConcurrencyLimitsFromEnv(process.env);
+  const moduleExecutionConcurrencyController =
+    new ModuleExecutionConcurrencyController({
+      limits: moduleExecutionConcurrencyLimits,
+    });
   const screeningService = new ScreeningService({
     manuscriptRepository,
     assetRepository,
@@ -846,6 +859,7 @@ export function createPersistentGovernanceRuntime(
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     transactionManager: workbenchTransactionManager,
+    moduleExecutionConcurrencyController,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -876,6 +890,7 @@ export function createPersistentGovernanceRuntime(
     editorialDocxTransformService,
     reviewItemsService,
     transactionManager: workbenchTransactionManager,
+    moduleExecutionConcurrencyController,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -909,6 +924,7 @@ export function createPersistentGovernanceRuntime(
     learningService,
     residualLearningService,
     transactionManager: workbenchTransactionManager,
+    moduleExecutionConcurrencyController,
   });
   const userAdminService = new UserAdminService({
     repository: userAdminRepository,
@@ -957,6 +973,7 @@ export function createPersistentGovernanceRuntime(
       executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
+      moduleExecutionConcurrencyController,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,

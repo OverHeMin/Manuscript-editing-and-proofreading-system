@@ -179,7 +179,7 @@ test("editing upload -> bare run -> export current asset returns a changed docx"
   }
 });
 
-test("proofreading upload -> bare run creates both a review report and a downloadable manuscript", async () => {
+test("proofreading upload -> bare draft -> finalize creates a review report and a downloadable manuscript", async () => {
   const uploadRootDir = await mkdtemp(
     path.join(os.tmpdir(), "medsys-mainline-proofreading-"),
   );
@@ -244,9 +244,10 @@ test("proofreading upload -> bare run creates both a review report and a downloa
     );
 
     assert.ok(reportAsset, "Expected a proofreading report asset.");
-    assert.ok(
+    assert.equal(
       manuscriptAsset,
-      "Expected proofreading to create a downloadable manuscript asset in one run.",
+      undefined,
+      "Expected proofreading draft to stay in report-only mode until finalize.",
     );
 
     const reportDownloadResponse = await fetch(
@@ -262,10 +263,34 @@ test("proofreading upload -> bare run creates both a review report and a downloa
     ).toString("utf8");
 
     assert.equal(reportDownloadResponse.status, 200);
-    assert.match(reportMarkdown, /Corrections:/u);
+    assert.match(reportMarkdown, /Proofreading Issue Report/u);
+    assert.match(reportMarkdown, /Failed checks: 0/u);
+
+    const finalizeResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/finalize`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: proofreaderCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: uploaded.manuscript.id,
+          draftAssetId: runResult.asset.id,
+          storageKey: `runs/${uploaded.manuscript.id}/proofreading/proofreading-final.docx`,
+          fileName: "proofreading-final.docx",
+          executionMode: "bare",
+        }),
+      },
+    );
+    const finalized = (await finalizeResponse.json()) as ModuleRunRecord;
+
+    assert.equal(finalizeResponse.status, 201);
+    assert.equal(finalized.job.status, "completed");
+    assert.equal(finalized.asset.asset_type, "final_proof_annotated_docx");
 
     const manuscriptDownloadResponse = await fetch(
-      `${baseUrl}/api/v1/document-assets/${manuscriptAsset.id}/download`,
+      `${baseUrl}/api/v1/document-assets/${finalized.asset.id}/download`,
       {
         headers: {
           Cookie: proofreaderCookie,

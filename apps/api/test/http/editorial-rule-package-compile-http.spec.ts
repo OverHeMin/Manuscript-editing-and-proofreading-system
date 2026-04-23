@@ -114,7 +114,10 @@ test("editorial rule package compile routes preview and compile package drafts o
       }>;
     };
     assert.equal(preview.packages[0]?.readiness.status, "ready");
-    assert.equal(preview.packages[0]?.draft_rule_seeds[0]?.rule_object, "author_line");
+    assert.deepEqual(
+      preview.packages[0]?.draft_rule_seeds.map((seed) => seed.rule_object),
+      ["title", "author_line"],
+    );
 
     const compileResponse = await fetch(
       `${baseUrl}/api/v1/editorial-rules/rule-packages/compile-to-draft`,
@@ -146,7 +149,7 @@ test("editorial rule package compile routes preview and compile package drafts o
       skipped_packages: Array<{ package_id: string }>;
     };
     assert.ok(compileResult.rule_set_id.length > 0);
-    assert.equal(compileResult.created_rule_ids.length, 1);
+    assert.equal(compileResult.created_rule_ids.length, 2);
     assert.equal(compileResult.skipped_packages.length, 0);
   } finally {
     await stopServer(server);
