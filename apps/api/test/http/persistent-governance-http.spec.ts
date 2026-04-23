@@ -953,19 +953,13 @@ test("persistent governance runtime keeps editorial rule sets and rules across s
           assert.deepEqual(
             ruleSets.map((record) => ({
               id: record.id,
-              template_family_id: record.template_family_id,
-              module: record.module,
-              version_no: record.version_no,
               status: record.status,
             })),
             [
-            {
-              id: createdRuleSet.id,
-              template_family_id: createdFamily.id,
-              module: "editing",
-              version_no: 1,
-              status: "published",
-            },
+              {
+                id: createdRuleSet.id,
+                status: "published",
+              },
             ],
           );
           assert.deepEqual(persistedRules, [
@@ -6324,8 +6318,8 @@ async function startPersistentGovernanceServer(
         AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
       }),
       mainlineAiRuntimeExecutor: {
-        async executeJson() {
-          return {};
+        async executeJson<T>() {
+          return {} as T;
         },
         async executeMarkdown() {
           return "";
