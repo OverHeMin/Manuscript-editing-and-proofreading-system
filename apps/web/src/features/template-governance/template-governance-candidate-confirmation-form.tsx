@@ -4,6 +4,7 @@ import {
   formatTemplateGovernanceExtractionCandidateStatusLabel,
   formatTemplateGovernanceExtractionDestinationLabel,
 } from "./template-governance-display.ts";
+import { readExtractionCandidateIntakeRecord } from "./template-governance-extraction-intake.ts";
 
 export interface TemplateGovernanceCandidateConfirmationFormValues {
   semanticSummary: string;
@@ -52,18 +53,29 @@ export function TemplateGovernanceCandidateConfirmationForm({
     confirmationStatus:
       values?.confirmationStatus ?? candidate.confirmation_status,
   };
+  const intakeRecord = readExtractionCandidateIntakeRecord(candidate);
 
   return (
     <section className="template-governance-form-layer">
       <article className="template-governance-card template-governance-candidate-confirmation-form">
         <header className="template-governance-form-header">
-          <h2>AI 语义确认</h2>
+          <h2>候选语义复核</h2>
           <p>
             当前候选：{candidate.title} / {formatRulePackageKindLabel(candidate.package_kind)}
           </p>
         </header>
         {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
         {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
+        <p className="template-governance-context-note template-governance-context-note--compact">
+          这里复核的是提取候选语义，不是规则向导里的多模态 AI 识别结果。
+        </p>
+        {intakeRecord ? (
+          <p className="template-governance-status">
+            已关联
+            {formatTemplateGovernanceExtractionDestinationLabel(intakeRecord.target_kind)}
+            草稿：{intakeRecord.target_name}
+          </p>
+        ) : null}
         <div className="template-governance-form-grid">
           <label className="template-governance-field template-governance-field-full">
             <span>AI 一句话理解</span>
@@ -101,7 +113,8 @@ export function TemplateGovernanceCandidateConfirmationForm({
               onChange={(event) =>
                 onChange?.((current) => ({
                   ...current,
-                  suggestedDestination: event.target.value as ExtractionTaskCandidateViewModel["suggested_destination"],
+                  suggestedDestination:
+                    event.target.value as ExtractionTaskCandidateViewModel["suggested_destination"],
                 }))
               }
             >
@@ -124,7 +137,8 @@ export function TemplateGovernanceCandidateConfirmationForm({
               onChange={(event) =>
                 onChange?.((current) => ({
                   ...current,
-                  confirmationStatus: event.target.value as ExtractionTaskCandidateViewModel["confirmation_status"],
+                  confirmationStatus:
+                    event.target.value as ExtractionTaskCandidateViewModel["confirmation_status"],
                 }))
               }
             >

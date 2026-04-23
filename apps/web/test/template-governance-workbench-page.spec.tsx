@@ -19,6 +19,7 @@ const {
   createKnowledgeDraftFormState,
   createKnowledgeDraftInput,
   createRuleWizardEntryFormStateFromRuleLedgerRow,
+  executeExtractionCandidateAction,
   resolveRuleLedgerCategoryAfterWizardCompletion,
   toKnowledgeDraftFormState,
 } = templateGovernanceWorkbenchModule;
@@ -114,6 +115,124 @@ function buildRulePackageWorkspaceFixture() {
         supporting_signals: [],
       },
     ],
+  };
+}
+
+function buildExtractionCandidateFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "candidate-demo-1",
+    task_id: "task-demo-1",
+    package_id: "package-front-matter",
+    package_kind: "front_matter" as const,
+    title: "前置信息包",
+    confirmation_status: "ai_semantic_ready" as const,
+    suggested_destination: "template" as const,
+    candidate_payload: {
+      package_id: "package-front-matter",
+      package_kind: "front_matter" as const,
+      title: "前置信息包",
+      rule_object: "front_matter",
+      suggested_layer: "journal_template" as const,
+      automation_posture: "guarded_auto" as const,
+      status: "draft" as const,
+      cards: {
+        rule_what: {
+          title: "前置信息包",
+          object: "front_matter",
+          publish_layer: "journal_template" as const,
+        },
+        ai_understanding: {
+          summary: "统一作者、单位与通讯作者块。",
+          hit_objects: ["author_line"],
+          hit_locations: ["front_matter"],
+        },
+        applicability: {
+          manuscript_types: ["clinical_study"],
+          modules: ["editing"],
+          sections: ["front_matter"],
+          table_targets: [],
+        },
+        evidence: { examples: [] },
+        exclusions: {
+          not_applicable_when: [],
+          human_review_required_when: [],
+          risk_posture: "guarded_auto" as const,
+        },
+      },
+      preview: {
+        hit_summary: "命中前置信息块。",
+        hits: [],
+        misses: [],
+        decision: {
+          automation_posture: "guarded_auto" as const,
+          needs_human_review: true,
+          reason: "需要人工确认。",
+        },
+      },
+      semantic_draft: {
+        semantic_summary: "统一作者、单位与通讯作者块。",
+        hit_scope: ["author_line"],
+        applicability: ["front_matter"],
+        evidence_examples: [],
+        failure_boundaries: [],
+        normalization_recipe: ["统一作者标签"],
+        review_policy: ["人工确认后入库"],
+        confirmed_fields: [],
+      },
+    },
+    semantic_draft_payload: {
+      semantic_summary: "统一作者、单位与通讯作者块。",
+      hit_scope: ["author_line"],
+      applicability: ["front_matter"],
+      evidence_examples: [],
+      failure_boundaries: [],
+      normalization_recipe: ["统一作者标签"],
+      review_policy: ["人工确认后入库"],
+      confirmed_fields: [],
+    },
+    created_at: "2026-04-13T09:30:00.000Z",
+    updated_at: "2026-04-13T09:30:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildExtractionLedgerFixture(candidate = buildExtractionCandidateFixture()) {
+  return {
+    tasks: [
+      {
+        id: "task-demo-1",
+        task_name: "原稿/编辑稿提取",
+        manuscript_type: "clinical_study" as const,
+        original_file_name: "original.docx",
+        edited_file_name: "edited.docx",
+        source_session_id: "session-demo-1",
+        status: "awaiting_confirmation" as const,
+        candidate_count: 1,
+        pending_confirmation_count: 1,
+        created_at: "2026-04-13T09:30:00.000Z",
+        updated_at: "2026-04-13T09:30:00.000Z",
+      },
+    ],
+    selectedTaskId: "task-demo-1",
+    selectedTask: {
+      id: "task-demo-1",
+      task_name: "原稿/编辑稿提取",
+      manuscript_type: "clinical_study" as const,
+      original_file_name: "original.docx",
+      edited_file_name: "edited.docx",
+      source_session_id: "session-demo-1",
+      status: "awaiting_confirmation" as const,
+      candidate_count: 1,
+      pending_confirmation_count: 1,
+      created_at: "2026-04-13T09:30:00.000Z",
+      updated_at: "2026-04-13T09:30:00.000Z",
+      candidates: [candidate],
+    },
+    summary: {
+      totalTaskCount: 1,
+      candidateCount: 1,
+      awaitingConfirmationCount: 1,
+    },
   };
 }
 
@@ -447,6 +566,183 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /规则集/);
   assert.match(markup, /\u6458\u8981 \u76ee\u7684/);
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
+});
+
+test("extraction candidate confirmation creates a governed module draft and writes the intake link back", async () => {
+  const candidate = buildExtractionCandidateFixture();
+  const confirmedCandidate = buildExtractionCandidateFixture({
+    confirmation_status: "confirmed",
+    suggested_destination: "general_module",
+  });
+  const confirmedLedger = buildExtractionLedgerFixture(confirmedCandidate);
+  const finalCandidate = buildExtractionCandidateFixture({
+    confirmation_status: "confirmed",
+    suggested_destination: "general_module",
+    intake_payload: {
+      target_kind: "general_module",
+      target_id: "module-general-1",
+      target_name: "作者信息统一包",
+      target_status: "draft",
+    },
+  });
+  const finalLedger = buildExtractionLedgerFixture(finalCandidate);
+  const calls: string[] = [];
+
+  const result = await executeExtractionCandidateAction({
+    controller: {
+      async updateExtractionTaskCandidateAndReload(input) {
+        calls.push(
+          Object.prototype.hasOwnProperty.call(input.input, "intakePayload")
+            ? "update-intake"
+            : "update-confirm",
+        );
+
+        return {
+          task: (Object.prototype.hasOwnProperty.call(input.input, "intakePayload")
+            ? finalLedger.selectedTask
+            : confirmedLedger.selectedTask)!,
+          ledger: Object.prototype.hasOwnProperty.call(input.input, "intakePayload")
+            ? finalLedger
+            : confirmedLedger,
+        };
+      },
+      async createContentModuleDraftFromCandidateAndReload(input) {
+        calls.push(`create-module:${input.moduleClass}`);
+        return {
+          contentModule: {
+            id: "module-general-1",
+            module_class: "general",
+            name: "作者信息统一包",
+            status: "draft",
+          },
+          ledger: {} as never,
+        };
+      },
+      async createTemplateCompositionDraftFromCandidateAndReload() {
+        throw new Error("not expected");
+      },
+    } as never,
+    taskId: "task-demo-1",
+    candidate,
+    values: {
+      semanticSummary: "统一作者、单位与通讯作者块。",
+      applicability: "front_matter",
+      suggestedDestination: "general_module",
+      confirmationStatus: "confirmed",
+    },
+    confirmationStatus: "confirmed",
+    successMessage: "候选已确认入库。",
+  });
+
+  assert.deepEqual(calls, [
+    "update-confirm",
+    "create-module:general",
+    "update-intake",
+  ]);
+  assert.equal(
+    result.statusMessage,
+    "候选已确认，并已入库到通用包草稿：作者信息统一包。",
+  );
+  assert.equal(result.errorMessage, undefined);
+  assert.deepEqual(
+    result.ledger.selectedTask?.candidates[0]?.intake_payload,
+    finalCandidate.intake_payload,
+  );
+});
+
+test("extraction candidate confirmation does not duplicate an already ingested draft", async () => {
+  const candidate = buildExtractionCandidateFixture({
+    confirmation_status: "confirmed",
+    suggested_destination: "template",
+    intake_payload: {
+      target_kind: "template",
+      target_id: "template-1",
+      target_name: "临床研究大模板",
+      target_status: "draft",
+    },
+  });
+  const confirmedLedger = buildExtractionLedgerFixture(candidate);
+  const calls: string[] = [];
+
+  const result = await executeExtractionCandidateAction({
+    controller: {
+      async updateExtractionTaskCandidateAndReload() {
+        calls.push("update-confirm");
+        return {
+          task: confirmedLedger.selectedTask!,
+          ledger: confirmedLedger,
+        };
+      },
+      async createContentModuleDraftFromCandidateAndReload() {
+        calls.push("create-module");
+        throw new Error("not expected");
+      },
+      async createTemplateCompositionDraftFromCandidateAndReload() {
+        calls.push("create-template");
+        throw new Error("not expected");
+      },
+    } as never,
+    taskId: "task-demo-1",
+    candidate,
+    values: {
+      semanticSummary: "统一作者、单位与通讯作者块。",
+      applicability: "front_matter",
+      suggestedDestination: "template",
+      confirmationStatus: "confirmed",
+    },
+    confirmationStatus: "confirmed",
+    successMessage: "候选已确认入库。",
+  });
+
+  assert.deepEqual(calls, ["update-confirm"]);
+  assert.equal(
+    result.statusMessage,
+    "候选语义已更新，当前已关联大模板草稿：临床研究大模板。",
+  );
+  assert.equal(result.errorMessage, undefined);
+});
+
+test("holding an extraction candidate only updates confirmation state without creating drafts", async () => {
+  const candidate = buildExtractionCandidateFixture();
+  const heldCandidate = buildExtractionCandidateFixture({
+    confirmation_status: "held",
+  });
+  const heldLedger = buildExtractionLedgerFixture(heldCandidate);
+  const calls: string[] = [];
+
+  const result = await executeExtractionCandidateAction({
+    controller: {
+      async updateExtractionTaskCandidateAndReload() {
+        calls.push("update-held");
+        return {
+          task: heldLedger.selectedTask!,
+          ledger: heldLedger,
+        };
+      },
+      async createContentModuleDraftFromCandidateAndReload() {
+        calls.push("create-module");
+        throw new Error("not expected");
+      },
+      async createTemplateCompositionDraftFromCandidateAndReload() {
+        calls.push("create-template");
+        throw new Error("not expected");
+      },
+    } as never,
+    taskId: "task-demo-1",
+    candidate,
+    values: {
+      semanticSummary: "统一作者、单位与通讯作者块。",
+      applicability: "front_matter",
+      suggestedDestination: "template",
+      confirmationStatus: "held",
+    },
+    confirmationStatus: "held",
+    successMessage: "候选已暂存。",
+  });
+
+  assert.deepEqual(calls, ["update-held"]);
+  assert.equal(result.statusMessage, "候选已暂存。");
+  assert.equal(result.errorMessage, undefined);
 });
 
 test("table proofreading guidance defines reusable knowledge templates and hit-validation checks", async () => {

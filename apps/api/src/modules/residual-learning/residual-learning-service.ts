@@ -200,6 +200,9 @@ export class ResidualLearningService {
         ...(hint.model_confidence != null
           ? { model_confidence: hint.model_confidence }
           : {}),
+        ...(hint.signal_breakdown
+          ? { signal_breakdown: hint.signal_breakdown }
+          : {}),
         ...(hint.related_rule_ids
           ? { related_rule_ids: hint.related_rule_ids }
           : {}),

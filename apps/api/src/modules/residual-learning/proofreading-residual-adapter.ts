@@ -3,6 +3,7 @@ import type {
   ResidualIssueRiskLevel,
   ResidualIssueSourceStage,
 } from "@medical/contracts";
+import type { ResidualIssueSignalBreakdown } from "./residual-learning-record.ts";
 
 export interface ProofreadingResidualHint {
   issue_type: string;
@@ -16,6 +17,7 @@ export interface ProofreadingResidualHint {
   related_rule_ids?: string[];
   related_knowledge_item_ids?: string[];
   related_quality_issue_ids?: string[];
+  signal_breakdown?: ResidualIssueSignalBreakdown;
 }
 
 export interface ProofreadingResidualSourceBlock {
@@ -38,6 +40,7 @@ export interface NormalizedProofreadingResidualHint {
   related_rule_ids?: string[];
   related_knowledge_item_ids?: string[];
   related_quality_issue_ids?: string[];
+  signal_breakdown?: ResidualIssueSignalBreakdown;
 }
 
 export interface ProofreadingResidualAdapterInput {
@@ -104,6 +107,13 @@ export function buildProofreadingResidualHints(
           ...(hint.related_quality_issue_ids &&
           hint.related_quality_issue_ids.length > 0
             ? { related_quality_issue_ids: hint.related_quality_issue_ids }
+            : {}),
+          ...(hint.signal_breakdown
+            ? {
+                signal_breakdown: JSON.parse(
+                  JSON.stringify(hint.signal_breakdown),
+                ) as ResidualIssueSignalBreakdown,
+              }
             : {}),
         };
       }),

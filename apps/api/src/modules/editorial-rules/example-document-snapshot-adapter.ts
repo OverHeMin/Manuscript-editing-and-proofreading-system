@@ -3,9 +3,13 @@ import type {
   ExampleDocumentSnapshot,
   ExampleDocumentSource,
   ExampleDocumentTableSnapshot,
+  TableSemanticCoordinate,
 } from "@medical/contracts";
 import type {
   DocumentStructureSnapshot,
+  DocumentStructureTableDataCell,
+  DocumentStructureTableFootnoteItem,
+  DocumentStructureTableHeaderCell,
   DocumentStructureTableSnapshot,
 } from "../document-pipeline/document-structure-service.ts";
 
@@ -80,31 +84,32 @@ function cloneDocumentStructureTableSnapshot(
     header_cells: table.header_cells.map((cell) => ({
       ...cell,
       header_path: [...cell.header_path],
-      coordinate: {
-        ...cell.coordinate,
-        header_path: cell.coordinate.header_path
-          ? [...cell.coordinate.header_path]
-          : undefined,
-      },
+      coordinate: cloneSemanticCoordinate(cell, "header_cell"),
     })),
     data_cells: table.data_cells.map((cell) => ({
       ...cell,
-      coordinate: {
-        ...cell.coordinate,
-        header_path: cell.coordinate.header_path
-          ? [...cell.coordinate.header_path]
-          : undefined,
-      },
+      coordinate: cloneSemanticCoordinate(cell, "data_cell"),
     })),
     footnote_items: table.footnote_items.map((item) => ({
       ...item,
-      coordinate: {
-        ...item.coordinate,
-        header_path: item.coordinate.header_path
-          ? [...item.coordinate.header_path]
-          : undefined,
-      },
+      coordinate: cloneSemanticCoordinate(item, "footnote_item"),
     })),
+  };
+}
+
+function cloneSemanticCoordinate(
+  entry:
+    | Pick<DocumentStructureTableHeaderCell, "coordinate">
+    | Pick<DocumentStructureTableDataCell, "coordinate">
+    | Pick<DocumentStructureTableFootnoteItem, "coordinate">,
+  target: TableSemanticCoordinate["target"],
+): TableSemanticCoordinate {
+  return {
+    ...entry.coordinate,
+    target,
+    header_path: entry.coordinate.header_path
+      ? [...entry.coordinate.header_path]
+      : undefined,
   };
 }
 

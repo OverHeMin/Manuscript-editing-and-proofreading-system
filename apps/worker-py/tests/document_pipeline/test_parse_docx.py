@@ -54,6 +54,13 @@ def test_document_xml_extracts_table_semantics_snapshot():
           <w:r><w:t>\u88681 \u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83</w:t></w:r>
         </w:p>
         <w:tbl>
+          <w:tblPr>
+            <w:tblBorders>
+              <w:top w:val="single"/>
+              <w:bottom w:val="single"/>
+              <w:insideV w:val="nil"/>
+            </w:tblBorders>
+          </w:tblPr>
           <w:tr>
             <w:tc>
               <w:p><w:r><w:t>\u9879\u76ee</w:t></w:r></w:p>
@@ -69,18 +76,23 @@ def test_document_xml_extracts_table_semantics_snapshot():
           </w:tr>
           <w:tr>
             <w:tc>
+              <w:tcPr><w:tcBorders><w:bottom w:val="single"/></w:tcBorders></w:tcPr>
               <w:p><w:r><w:t>\u5e74\u9f84</w:t></w:r></w:p>
             </w:tc>
             <w:tc>
+              <w:tcPr><w:tcBorders><w:bottom w:val="single"/></w:tcBorders></w:tcPr>
               <w:p><w:r><w:t>n (%)</w:t></w:r></w:p>
             </w:tc>
             <w:tc>
+              <w:tcPr><w:tcBorders><w:bottom w:val="single"/></w:tcBorders></w:tcPr>
               <w:p><w:r><w:t>\u5747\u503c\u00b1SD</w:t></w:r></w:p>
             </w:tc>
             <w:tc>
+              <w:tcPr><w:tcBorders><w:bottom w:val="single"/></w:tcBorders></w:tcPr>
               <w:p><w:r><w:t>n (%)</w:t></w:r></w:p>
             </w:tc>
             <w:tc>
+              <w:tcPr><w:tcBorders><w:bottom w:val="single"/></w:tcBorders></w:tcPr>
               <w:p><w:r><w:t>\u5747\u503c\u00b1SD</w:t></w:r></w:p>
             </w:tc>
           </w:tr>
@@ -118,6 +130,16 @@ def test_document_xml_extracts_table_semantics_snapshot():
     assert semantic["profile"]["header_depth"] == 2
     assert semantic["profile"]["has_stub_column"] is True
     assert semantic["profile"]["has_statistical_footnotes"] is True
+    assert semantic["table_label"]["text"] == "\u88681"
+    assert semantic["table_title"]["text"] == "\u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83"
+    assert semantic["caption_fields"]["text"] == "\u88681 \u4e0d\u540c\u6cbb\u7597\u7ec4\u57fa\u7ebf\u7279\u5f81\u6bd4\u8f83"
+    assert semantic["note_zone"]["text"] == "*P<0.05 vs control"
+    assert semantic["note_zone"]["coordinate"]["target"] == "note_zone"
+    assert semantic["style_profile"]["has_top_rule"] is True
+    assert semantic["style_profile"]["has_header_rule"] is True
+    assert semantic["style_profile"]["has_bottom_rule"] is True
+    assert semantic["style_profile"]["has_vertical_rules"] is False
+    assert semantic["style_profile"]["coordinate"]["target"] == "style_profile"
     assert semantic["header_cells"][1]["header_path"] == [
         "\u6cbb\u7597\u7ec4",
         "n (%)",

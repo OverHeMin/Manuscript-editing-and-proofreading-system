@@ -62,7 +62,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText("当前账号");
   await expect(page.locator("body")).toContainText("管理员");
   await expect(page.getByRole("heading", { name: /当前稿件初筛判断|初筛工作区/ })).toBeVisible();
-  await expect(page.locator("body")).toContainText("正在加载稿件...");
+  await expect(page.locator("body")).toContainText("正在加载稿件");
   await expect(page.locator("body")).toContainText(
     "正在拉取工作区资产与最新治理状态，完成后即可继续操作。",
   );
@@ -71,9 +71,9 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    manuscriptTitle,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(manuscriptTitle);
 
   const runScreeningButton = page.getByRole("button", { name: "执行初筛" });
   await expect(runScreeningButton).toBeEnabled();
@@ -86,14 +86,14 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
 
   await navigateViaHashLink(page, editingLink);
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
-  await expect(page.locator("body")).toContainText("正在加载稿件...");
+  await expect(page.locator("body")).toContainText("正在加载稿件");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    manuscriptTitle,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(manuscriptTitle);
 
   const runEditingButton = page.getByRole("button", { name: "执行编辑" });
   await expect(runEditingButton).toBeEnabled();
@@ -114,14 +114,14 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
 
   await navigateViaHashLink(page, proofreadingLink);
   await expect(page.getByRole("heading", { name: /校对工作区/ })).toBeVisible();
-  await expect(page.locator("body")).toContainText("正在加载稿件...");
+  await expect(page.locator("body")).toContainText("正在加载稿件");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    manuscriptTitle,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(manuscriptTitle);
 
   const createDraftButton = page.getByRole("button", { name: "生成校对草稿" });
   await expect(createDraftButton).toBeEnabled();

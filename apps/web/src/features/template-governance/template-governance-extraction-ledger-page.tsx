@@ -115,7 +115,7 @@ export function TemplateGovernanceExtractionLedgerPage({
     <section className="template-governance-extraction-ledger-page">
       <TemplateGovernanceLedgerToolbar
         title="原稿/编辑稿提取台账"
-        subtitle="通过任务表查看原稿与编辑稿提取结果，再在候选表里确认 AI 语义和最终去向。"
+        subtitle="通过任务表查看原稿与编辑稿提取结果，再在候选表里确认候选语义摘要和最终去向。"
         navigationItems={
           navigationItems ??
           createTemplateGovernanceNavigationItems("extraction-ledger")
@@ -140,6 +140,9 @@ export function TemplateGovernanceExtractionLedgerPage({
       />
       {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
+      <p className="template-governance-context-note">
+        提取台账里的候选语义摘要来自文本与表格差异提取；DOCX 图片、图表和截图不会在这里被 AI 理解。
+      </p>
 
       <div className="template-governance-ledger-kpi-strip">
         <article className="template-governance-ledger-kpi">
@@ -218,7 +221,7 @@ export function TemplateGovernanceExtractionLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>候选台账</h2>
-            <p>每个候选都要先过 AI 语义确认，再决定是否入库。</p>
+            <p>每个候选都要先做语义复核，再决定是否真实入库。</p>
           </header>
           <div className="template-governance-ledger-table-shell">
             <table className="template-governance-ledger-table">
@@ -226,7 +229,7 @@ export function TemplateGovernanceExtractionLedgerPage({
                 <tr>
                   <th>候选名称</th>
                   <th>包类型</th>
-                  <th>AI 语义</th>
+                  <th>候选语义摘要</th>
                   <th>建议去向</th>
                   <th>确认状态</th>
                 </tr>

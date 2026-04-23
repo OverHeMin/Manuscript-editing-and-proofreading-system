@@ -730,6 +730,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           suggestion: "This correction should be rejected.",
           rationale: "Human rejected the proofreading issue.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "reject",
+              correction_category: "style",
+            },
+          },
         },
       ],
     },

@@ -5,6 +5,10 @@ import re
 
 STATISTICAL_NOTE_RE = re.compile(r"\bP\s*[<=>]\s*0?\.\d+", re.IGNORECASE)
 UNIT_TOKEN_RE = re.compile(r"\(([^()]*)\)")
+TABLE_CAPTION_RE = re.compile(
+    r"^(?P<label>(?:表|Table)\s*\d+[A-Za-z0-9-]*)[\s:：、.\-]*(?P<title>.*)$",
+    re.IGNORECASE,
+)
 
 
 def build_table_semantic_snapshot(
@@ -13,14 +17,17 @@ def build_table_semantic_snapshot(
     rows: list[list[dict]],
     caption: str | None = None,
     notes: list[str] | None = None,
+    border_hints: dict | None = None,
 ) -> dict:
     notes = notes or []
+    border_hints = border_hints or {}
     expanded_rows = _expand_rows(rows)
     header_depth = infer_header_depth(expanded_rows)
     header_rows = expanded_rows[:header_depth]
     data_rows = expanded_rows[header_depth:]
     column_paths = build_column_paths(header_rows)
     table_id = f"table-{table_index}"
+    caption_fields = build_caption_fields(caption)
 
     header_cells: list[dict] = []
     for column_index, header_path in enumerate(column_paths):
@@ -126,8 +133,9 @@ def build_table_semantic_snapshot(
         )
 
     merged_relations = build_merged_relations(table_id, rows)
+    note_zone = build_note_zone(table_id, notes, footnote_items)
 
-    return {
+    snapshot = {
         "table_id": table_id,
         "caption": caption,
         "profile": {
@@ -147,7 +155,41 @@ def build_table_semantic_snapshot(
         "unit_markers": unit_markers,
         "footnote_items": footnote_items,
         "merged_relations": merged_relations,
+        "style_profile": build_style_profile(
+            table_id=table_id,
+            rows=rows,
+            header_depth=header_depth,
+            border_hints=border_hints,
+        ),
     }
+
+    if caption_fields is not None:
+        snapshot["caption_fields"] = caption_fields
+
+        if caption_fields.get("label_text"):
+            snapshot["table_label"] = {
+                "id": f"{table_id}-label",
+                "text": caption_fields["label_text"],
+                "coordinate": {
+                    "table_id": table_id,
+                    "target": "table_label",
+                },
+            }
+
+        if caption_fields.get("title_text"):
+            snapshot["table_title"] = {
+                "id": f"{table_id}-title",
+                "text": caption_fields["title_text"],
+                "coordinate": {
+                    "table_id": table_id,
+                    "target": "table_title",
+                },
+            }
+
+    if note_zone is not None:
+        snapshot["note_zone"] = note_zone
+
+    return snapshot
 
 
 def infer_header_depth(expanded_rows: list[list[dict]]) -> int:
@@ -212,6 +254,74 @@ def build_merged_relations(table_id: str, rows: list[list[dict]]) -> list[dict]:
     return relations
 
 
+def build_caption_fields(caption: str | None) -> dict | None:
+    text = (caption or "").strip()
+    if not text:
+        return None
+
+    label_text, title_text = split_caption_parts(text)
+    fields = {"text": text}
+    if label_text:
+        fields["label_text"] = label_text
+    if title_text:
+        fields["title_text"] = title_text
+    return fields
+
+
+def split_caption_parts(text: str) -> tuple[str | None, str | None]:
+    match = TABLE_CAPTION_RE.match(text.strip())
+    if not match:
+        return None, None
+
+    label_text = (match.group("label") or "").strip() or None
+    title_text = (match.group("title") or "").strip() or None
+    return label_text, title_text
+
+
+def build_note_zone(
+    table_id: str,
+    notes: list[str],
+    footnote_items: list[dict],
+) -> dict | None:
+    line_texts = [note.strip() for note in notes if note and note.strip()]
+    if not line_texts:
+        return None
+
+    return {
+        "text": "\n".join(line_texts),
+        "line_texts": line_texts,
+        "footnote_ids": [item["id"] for item in footnote_items],
+        "coordinate": {
+            "table_id": table_id,
+            "target": "note_zone",
+        },
+    }
+
+
+def build_style_profile(
+    *,
+    table_id: str,
+    rows: list[list[dict]],
+    header_depth: int,
+    border_hints: dict,
+) -> dict:
+    header_rule_row = rows[header_depth - 1] if 0 < header_depth <= len(rows) else []
+    return {
+        "has_top_rule": bool(border_hints.get("top")) or _row_has_border(rows[:1], "top"),
+        "has_header_rule": bool(border_hints.get("inside_horizontal"))
+        or _row_has_border([header_rule_row], "bottom"),
+        "has_bottom_rule": bool(border_hints.get("bottom")) or _row_has_border(rows[-1:], "bottom"),
+        "has_vertical_rules": bool(border_hints.get("inside_vertical"))
+        or bool(border_hints.get("left"))
+        or bool(border_hints.get("right"))
+        or _rows_have_vertical_borders(rows),
+        "coordinate": {
+            "table_id": table_id,
+            "target": "style_profile",
+        },
+    }
+
+
 def classify_note_kind(note_text: str) -> str:
     if STATISTICAL_NOTE_RE.search(note_text):
         return "statistical_significance"
@@ -230,10 +340,42 @@ def _expand_rows(rows: list[list[dict]]) -> list[list[dict]]:
                 "text": (cell.get("text") or "").strip(),
                 "column_span": column_span,
                 "row_span": int(cell.get("row_span") or 1),
+                "borders": _copy_border_flags(cell.get("borders")),
             }
             expanded_row.extend(cell_payload.copy() for _ in range(column_span))
         expanded.append(expanded_row)
     return expanded
+
+
+def _copy_border_flags(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {}
+
+    return {
+        side: bool(value.get(side))
+        for side in ("top", "bottom", "left", "right")
+        if side in value
+    }
+
+
+def _row_has_border(rows: list[list[dict]], side: str) -> bool:
+    for row in rows:
+        for cell in row:
+            borders = cell.get("borders") or {}
+            if isinstance(borders, dict) and bool(borders.get(side)):
+                return True
+    return False
+
+
+def _rows_have_vertical_borders(rows: list[list[dict]]) -> bool:
+    for row in rows:
+        for cell in row:
+            borders = cell.get("borders") or {}
+            if isinstance(borders, dict) and (
+                bool(borders.get("left")) or bool(borders.get("right"))
+            ):
+                return True
+    return False
 
 
 def _extract_unit_tokens(text: str) -> list[str]:

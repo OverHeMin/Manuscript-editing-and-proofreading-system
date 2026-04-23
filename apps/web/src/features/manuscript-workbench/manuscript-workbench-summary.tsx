@@ -1250,13 +1250,13 @@ export function ManuscriptWorkbenchSummary({
               />
               {currentResultAsset ? (
                 <SummaryMetric
-                  label="\u5f53\u524d\u7ed3\u679c"
+                  label="当前结果"
                   value={renderAssetIdentity(manuscriptTitle, currentResultAsset)}
                 />
               ) : null}
               {currentResultAsset ? (
                 <SummaryMetric
-                  label="\u7ed3\u679c\u5feb\u901f\u64cd\u4f5c"
+                  label="结果快速操作"
                   value={renderCurrentResultShortcuts({
                     mode,
                     manuscriptId: workspace.manuscript.id,

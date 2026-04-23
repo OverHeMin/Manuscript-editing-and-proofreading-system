@@ -1,4 +1,6 @@
 import type { EditorialTextBlock } from "../editorial-execution/types.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
+import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 
 export interface EditingAiReplacement {
@@ -25,6 +27,7 @@ export interface CreateEditingAiPlanInput {
     severity?: string;
     explanation?: string;
   }>;
+  governanceContext?: AiGovernanceContext;
 }
 
 export class EditingAiPlanService {
@@ -57,6 +60,8 @@ function buildEditingSystemPrompt(): string {
     "Return JSON only.",
     "Propose exact text replacements only when the source text is present in the manuscript excerpts.",
     "Prefer zero replacements over speculative rewriting.",
+    "If a governance payload is provided, treat its hard rules, forbidden operations, manual-review items, and required knowledge as binding constraints.",
+    "Do not propose edits that violate governance.forbiddenOperations or bypass governance.manualReviewItems.",
     "Use this exact schema:",
     JSON.stringify({
       summary: "string",
@@ -73,6 +78,11 @@ function buildEditingSystemPrompt(): string {
 }
 
 function buildEditingUserPayload(input: CreateEditingAiPlanInput) {
+  const governance =
+    input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
+      ? input.governanceContext
+      : undefined;
+
   return {
     task: "editing_plan",
     manuscriptId: input.manuscriptId,
@@ -89,6 +99,11 @@ function buildEditingUserPayload(input: CreateEditingAiPlanInput) {
       severity: issue.severity ?? "info",
       explanation: issue.explanation ?? "",
     })),
+    ...(governance
+      ? {
+          governance,
+        }
+      : {}),
     contract: {
       summary: "string",
       replacements: [

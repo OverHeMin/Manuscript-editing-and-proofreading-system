@@ -4,6 +4,8 @@ import type {
   ManualReviewItem,
   ProofreadingCheckResult,
 } from "../editorial-execution/types.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
+import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 import type {
   ProofreadingAiPlan,
@@ -74,6 +76,7 @@ export interface CreateProofreadingAiPlanInput {
     forbiddenOperations?: string[];
     outputContract?: string;
   };
+  governanceContext?: AiGovernanceContext;
 }
 
 export class ProofreadingAiPlanService {
@@ -129,6 +132,7 @@ function buildProofreadingSystemPrompt(): string {
     "把已由规则、知识库、质量检查覆盖的内容视为已治理层覆盖，重点补充 residual AI 问题。",
     "不要重复报告 governedCoverage 里已经出现的同一段引文、同一规则失败、同一人工复核项或同一质量问题。",
     "严格遵循 qualityControlChecklist 里的重点核查方向与禁止行为。",
+    "如果提供 governance，则其中的 hardRuleSummary、forbiddenOperations、manualReviewItems、knowledgeHits 都是硬约束，不得给出与其冲突的建议。",
     "issue.source 固定使用 residual_ai，除非输入已经明确给出其他来源。",
     "anchor.blockIndex 必须对应输入 fullDocumentBlocks 里的 blockIndex。",
     "只有在能给出安全建议时才填写 suggestion；否则给 explain_only 或 verify_fact。",
@@ -172,7 +176,13 @@ function buildProofreadingUserPayload(input: {
   qualityIssues?: CreateProofreadingAiPlanInput["qualityIssues"];
   knowledgeHits?: CreateProofreadingAiPlanInput["knowledgeHits"];
   promptGuardrails?: CreateProofreadingAiPlanInput["promptGuardrails"];
+  governanceContext?: AiGovernanceContext;
 }) {
+  const governance =
+    input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
+      ? input.governanceContext
+      : undefined;
+
   return {
     task: "proofreading_issue_plan",
     manuscriptId: input.manuscriptId,
@@ -199,6 +209,11 @@ function buildProofreadingUserPayload(input: {
       promptGuardrails: buildPromptGuardrailPayload(input.promptGuardrails),
     },
     qualityControlChecklist: buildProofreadingQualityControlChecklist(),
+    ...(governance
+      ? {
+          governance,
+        }
+      : {}),
     contract: {
       role: "医学稿件终校审校员",
       summary: "string",

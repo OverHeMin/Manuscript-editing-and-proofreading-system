@@ -173,6 +173,19 @@ export function hydrateRuleAuthoringDraft(
       const draft = createRuleAuthoringDraft("table");
       const selector = asRecord(rule.selector);
       const legacyTableSelector = selector ? asRecord(selector["table_selector"]) : undefined;
+      const patchType =
+        asTablePatchType(rule.authoring_payload["patch_type"]) ??
+        inferLegacyTablePatchType();
+      const applyScope =
+        asTableApplyScope(rule.authoring_payload["apply_scope"]) ??
+        inferLegacyTableApplyScope();
+      const requiredSnapshotCapabilities =
+        asTableSnapshotCapabilities(
+          rule.authoring_payload["required_snapshot_capabilities"],
+        ) ?? deriveTableSnapshotCapabilities(patchType);
+      const grade =
+        asTableGrade(rule.authoring_payload["grade"]) ??
+        inferLegacyTableGrade();
       return applyCommonHydration(draft, rule, {
         ...draft.payload,
         tableKind:
@@ -180,6 +193,10 @@ export function hydrateRuleAuthoringDraft(
           asTableKind(legacyTableSelector?.["table_kind"]) ??
           asTableKind(rule.trigger["layout"]) ??
           draft.payload.tableKind,
+        grade,
+        patchType,
+        applyScope,
+        requiredSnapshotCapabilities,
         semanticTarget:
           asTableSemanticTarget(rule.authoring_payload["semantic_target"]) ??
           asTableSemanticTarget(selector?.["semantic_target"]) ??
@@ -382,6 +399,18 @@ export function resolveRuleAuthoringDraftForOverview(input: {
   };
 }
 
+function describeTableAwareAutomationRisk(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject !== "table") {
+    return describeAutomationRisk(draft);
+  }
+
+  const patchType = normalizeTablePatchType(draft.payload.patchType);
+  const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
+  return patchType === "inspect_only" || applyScope === "inspect_only"
+    ? "\u4ec5\u68c0\u67e5"
+    : "editing_only auto-apply";
+}
+
 export function buildRuleAuthoringPreview(
   draft: RuleAuthoringDraft,
 ): RuleAuthoringPreview {
@@ -389,7 +418,7 @@ export function buildRuleAuthoringPreview(
 
   return {
     selectorSummary: describeSelector(serialized.selector ?? {}),
-    automationRiskPosture: describeAutomationRisk(draft),
+    automationRiskPosture: describeTableAwareAutomationRisk(draft),
     templateScopeSummary: describeTemplateScope(draft),
     normalizedExample: describeNormalizedExample(draft, serialized),
     semanticHitSummary: describeSemanticHit(draft),
@@ -575,6 +604,13 @@ function serializeStatisticalExpressionRule(
 function serializeTableRule(
   draft: TableRuleAuthoringDraft,
 ): SerializedRuleAuthoringDraft {
+  const patchType = normalizeTablePatchType(draft.payload.patchType);
+  const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
+  const requiredSnapshotCapabilities = normalizeTableSnapshotCapabilities(
+    draft.payload.requiredSnapshotCapabilities,
+    patchType,
+  );
+  const grade = normalizeTableGrade(draft.payload.grade, patchType, applyScope);
   const selector = {
     semantic_target: draft.payload.semanticTarget,
     ...(draft.payload.headerPathIncludes.length > 0
@@ -624,6 +660,10 @@ function serializeTableRule(
     },
     authoringPayload: {
       table_kind: draft.payload.tableKind,
+      grade,
+      patch_type: patchType,
+      apply_scope: applyScope,
+      required_snapshot_capabilities: [...requiredSnapshotCapabilities],
       semantic_target: draft.payload.semanticTarget,
       ...(draft.payload.headerPathIncludes.length > 0
         ? {
@@ -1323,7 +1363,27 @@ function describeSelector(selector: Record<string, unknown>): string {
   return parts.length > 0 ? parts.join(" | ") : "通用选择器";
 }
 
+function describeRuleAuthoringAutomationRisk(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject === "table") {
+    const patchType = normalizeTablePatchType(draft.payload.patchType);
+    const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
+    return patchType === "inspect_only" || applyScope === "inspect_only"
+      ? "浠呮鏌?"
+      : "editing_only auto-apply";
+  }
+
+  return describeAutomationRisk(draft);
+}
+
 function describeAutomationRisk(draft: RuleAuthoringDraft): string {
+  if (draft.ruleObject === "table") {
+    const patchType = normalizeTablePatchType(draft.payload.patchType);
+    const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
+    return patchType === "inspect_only" || applyScope === "inspect_only"
+      ? "浠呮鏌?"
+      : "缂栬緫浜х墿鑷姩搴旂敤锛堝彈 guard 绾︽潫锛?";
+  }
+
   if (draft.executionMode === "inspect" || draft.confidencePolicy === "manual_only") {
     return "仅检查";
   }
@@ -1601,6 +1661,127 @@ function asTableUnitContext(
   return value === "header" || value === "stub" || value === "footnote"
     ? value
     : undefined;
+}
+
+function asTableGrade(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["grade"] | undefined {
+  return value === "A" || value === "B" || value === "C" ? value : undefined;
+}
+
+function asTablePatchType(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["patchType"] | undefined {
+  return value === "inspect_only" ||
+    value === "replace_header_cell_text" ||
+    value === "replace_footnote_text" ||
+    value === "normalize_unit_text"
+    ? value
+    : undefined;
+}
+
+function asTableApplyScope(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["applyScope"] | undefined {
+  return value === "inspect_only" || value === "editing_only"
+    ? value
+    : undefined;
+}
+
+function asTableSnapshotCapability(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"][number] | undefined {
+  return value === "header_cell" ||
+    value === "footnote_item" ||
+    value === "unit_marker" ||
+    value === "table_label" ||
+    value === "table_title" ||
+    value === "caption_fields" ||
+    value === "note_zone" ||
+    value === "style_profile"
+    ? value
+    : undefined;
+}
+
+function asTableSnapshotCapabilities(
+  value: unknown,
+): TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const capabilities = value
+    .map((entry) => asTableSnapshotCapability(entry))
+    .filter(
+      (
+        entry,
+      ): entry is TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"][number] =>
+        entry != null,
+    );
+
+  return capabilities.length === value.length ? capabilities : undefined;
+}
+
+function inferLegacyTableGrade(): TableRuleAuthoringDraft["payload"]["grade"] {
+  return "C";
+}
+
+function inferLegacyTablePatchType(): TableRuleAuthoringDraft["payload"]["patchType"] {
+  return "inspect_only";
+}
+
+function inferLegacyTableApplyScope(): TableRuleAuthoringDraft["payload"]["applyScope"] {
+  return "inspect_only";
+}
+
+function deriveTableSnapshotCapabilities(
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+): TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"] {
+  switch (patchType) {
+    case "replace_header_cell_text":
+      return ["header_cell"];
+    case "replace_footnote_text":
+      return ["footnote_item"];
+    case "normalize_unit_text":
+      return ["unit_marker"];
+    case "inspect_only":
+    default:
+      return [];
+  }
+}
+
+function normalizeTablePatchType(
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+): TableRuleAuthoringDraft["payload"]["patchType"] {
+  return patchType;
+}
+
+function normalizeTableApplyScope(
+  applyScope: TableRuleAuthoringDraft["payload"]["applyScope"],
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+): TableRuleAuthoringDraft["payload"]["applyScope"] {
+  return patchType === "inspect_only" ? "inspect_only" : applyScope;
+}
+
+function normalizeTableSnapshotCapabilities(
+  capabilities: TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"],
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+): TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"] {
+  return capabilities.length > 0
+    ? [...capabilities]
+    : deriveTableSnapshotCapabilities(patchType);
+}
+
+function normalizeTableGrade(
+  grade: TableRuleAuthoringDraft["payload"]["grade"],
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+  applyScope: TableRuleAuthoringDraft["payload"]["applyScope"],
+): TableRuleAuthoringDraft["payload"]["grade"] {
+  if (patchType === "inspect_only" || applyScope === "inspect_only") {
+    return grade === "A" ? "B" : grade;
+  }
+
+  return grade;
 }
 
 function asDeclarationKind(

@@ -110,9 +110,9 @@ test("editing workbench saves a journal template context before running editing"
   });
 
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    prepared.manuscriptTitle,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(prepared.manuscriptTitle);
   await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 

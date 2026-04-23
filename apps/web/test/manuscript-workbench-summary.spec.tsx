@@ -300,6 +300,9 @@ test("summary keeps compact cards and omits the oversized top summary strip", ()
   assert.match(markup, /\u8d44\u4ea7\u94fe\u8def/u);
   assert.match(markup, /Cardiology review/);
   assert.match(markup, /href="#proofreading\?manuscriptId=manuscript-1"/);
+  assert.match(markup, /\u6807\u9898/u);
+  assert.match(markup, /\u53d1\u8d77\u7f16\u8f91\u6267\u884c/u);
+  assert.match(markup, /\u5df2\u751f\u6210\u5904\u7406\u7ed3\u679c/u);
   assert.doesNotMatch(markup, /\u7a3f\u4ef6\u7f16\u53f7/u);
   assert.doesNotMatch(markup, /\u8c03\u8bd5\u5feb\u7167/u);
 });
@@ -325,7 +328,6 @@ test("summary keeps the quality recovery handoff operator-facing while linking t
   assert.match(markup, /#template-governance\?[^"]*templateGovernanceView=rule-ledger/u);
   assert.match(markup, /ruleCenterMode=learning/u);
   assert.match(markup, /manuscriptId=manuscript-recovery-1/u);
-  assert.doesNotMatch(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.doesNotMatch(markup, /\u524d\u5f80\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.doesNotMatch(markup, /#learning-review/u);
 });
@@ -357,6 +359,7 @@ test("summary still exposes current asset and export metadata after the top stri
   assert.match(markup, /Cardiology review - \u7f16\u8f91\u7a3f/u);
   assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
+  assert.match(markup, /\u4e0b\u8f7d\u6700\u8fd1\u5bfc\u51fa/u);
   assert.match(
     markup,
     /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
@@ -421,7 +424,7 @@ test("summary makes proofreading draft reports and annotated confirmation manusc
   assert.doesNotMatch(markup, /校对终稿/u);
 });
 
-test("summary consolidates governed execution evidence into a single current-module trust layer", () => {
+test("summary exposes operator-facing AI readiness details for the current module", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="editing"
@@ -457,23 +460,17 @@ test("summary consolidates governed execution evidence into a single current-mod
     />,
   );
 
-  assert.match(markup, /AI 处理准备/u);
-  assert.match(markup, /当前方式/u);
-  assert.match(markup, /受控处理/u);
-  assert.match(markup, /当前模板/u);
-  assert.match(markup, /已按当前模板装载/u);
-  assert.match(markup, /AI 状态/u);
-  assert.match(markup, /已就绪/u);
-  assert.doesNotMatch(markup, /治理执行/u);
-  assert.doesNotMatch(markup, /受治理执行/u);
-  assert.doesNotMatch(markup, /解析模型|路由策略|执行画像|检索预设|运行时绑定|服务商就绪/u);
-  assert.doesNotMatch(
-    markup,
-    /model-editing-1|routing-policy-editing-1|execution-profile-editing-1|retrieval-preset-editing-1|runtime-binding-editing-1/u,
-  );
+  assert.match(markup, /AI \u5904\u7406\u51c6\u5907/u);
+  assert.match(markup, /\u5f53\u524d\u65b9\u5f0f/u);
+  assert.match(markup, /\u53d7\u63a7\u5904\u7406/u);
+  assert.match(markup, /\u5f53\u524d\u6a21\u677f/u);
+  assert.match(markup, /\u5df2\u6309\u5f53\u524d\u6a21\u677f\u88c5\u8f7d/u);
+  assert.match(markup, /AI \u72b6\u6001/u);
+  assert.match(markup, /\u5df2\u5c31\u7eea/u);
+  assert.doesNotMatch(markup, /model-editing-1|routing-policy-editing-1|execution-profile-editing-1|retrieval-preset-editing-1|runtime-binding-editing-1/u);
 });
 
-test("summary keeps execution preparation operator-facing even when the latest run had different internal identifiers", () => {
+test("summary keeps AI readiness cards operator-facing when the latest run differs from the current context", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="proofreading"
@@ -516,13 +513,14 @@ test("summary keeps execution preparation operator-facing even when the latest r
     />,
   );
 
-  assert.match(markup, /AI 处理准备/u);
-  assert.match(markup, /当前方式/u);
-  assert.match(markup, /受控处理/u);
-  assert.match(markup, /当前模板/u);
-  assert.match(markup, /已按当前模板装载/u);
-  assert.match(markup, /AI 状态/u);
-  assert.match(markup, /已就绪/u);
+  assert.match(markup, /AI \u5904\u7406\u51c6\u5907/u);
+  assert.match(markup, /\u5f53\u524d\u65b9\u5f0f/u);
+  assert.match(markup, /\u53d7\u63a7\u5904\u7406/u);
+  assert.match(markup, /\u5f53\u524d\u6a21\u677f/u);
+  assert.match(markup, /\u5df2\u6309\u5f53\u524d\u6a21\u677f\u88c5\u8f7d/u);
+  assert.match(markup, /AI \u72b6\u6001/u);
+  assert.match(markup, /\u5df2\u5c31\u7eea/u);
+  assert.doesNotMatch(markup, /snapshot-proofreading-run-actual-1/);
   assert.doesNotMatch(markup, /execution-profile-proofreading-run-actual-1/);
   assert.doesNotMatch(markup, /retrieval-preset-proofreading-run-actual-1/);
   assert.doesNotMatch(markup, /runtime-binding-proofreading-run-actual-1/);
@@ -619,12 +617,15 @@ test("summary renders localized latest action details instead of mixed English l
   );
 
   assert.match(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6/u);
-  assert.doesNotMatch(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6 manuscript-1/u);
+  assert.match(markup, /\u4e0a\u4f20\u7a3f\u4ef6/u);
+  assert.match(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6/u);
   assert.match(markup, /\u4efb\u52a1\u7ed3\u7b97/u);
   assert.match(markup, /\u6279\u6b21\u7ed3\u7b97/u);
   assert.match(markup, /\u90e8\u5206\u6210\u529f/u);
+  assert.match(markup, /\u4e1a\u52a1\u5df2\u5b8c\u6210\uff0c\u540e\u7eed\u5f85\u5904\u7406/u);
   assert.doesNotMatch(markup, /Job\u7ed3\u7b97/);
   assert.doesNotMatch(markup, /Batch Settlement/);
+  assert.doesNotMatch(markup, /Uploaded manuscript manuscript-1/);
 });
 
 test("summary formats hydrated knowledge references with titles before falling back to raw ids", () => {
@@ -919,9 +920,9 @@ test("summary renders operator feedback choices and explains rule-candidate rout
   assert.match(markup, /\u5c06\u4fee\u6b63\u4e3a\u89c4\u5219\u5019\u9009/u);
   assert.match(markup, /\u7f3a\u5c11\u77e5\u8bc6/u);
   assert.match(markup, /\u5c06\u8865\u5145\u4e3a\u77e5\u8bc6\u5019\u9009/u);
-  assert.match(markup, /\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
-  assert.match(markup, /\u63d0\u4ea4\u590d\u6838\u9879/u);
   assert.match(markup, /\u5df2\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
+  assert.match(markup, /\u63d0\u4ea4\u590d\u6838\u9879/u);
+  assert.match(markup, /\u5efa\u8bae\u53bb\u5411\uff1a\u89c4\u5219\u5019\u9009/u);
   assert.match(markup, /\u89c4\u5219\u5019\u9009/u);
   assert.match(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
   assert.match(
@@ -929,7 +930,6 @@ test("summary renders operator feedback choices and explains rule-candidate rout
       /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*reviewItemId=review-item-manual-1"/u,
   );
   assert.doesNotMatch(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-manual-1/u);
-  assert.doesNotMatch(markup, /\u6cbb\u7406\u4e2d\u5fc3/u);
 });
 
 test("summary explains knowledge-candidate routing without sending operators to the rule center", () => {
@@ -959,17 +959,18 @@ test("summary explains knowledge-candidate routing without sending operators to 
   );
 
   assert.match(markup, /\u5df2\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
+  assert.match(markup, /\u5efa\u8bae\u53bb\u5411\uff1a\u77e5\u8bc6\u5019\u9009/u);
   assert.match(markup, /\u77e5\u8bc6\u5019\u9009/u);
   assert.match(
     markup,
-    /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5ba1\u6838\u961f\u5217/u,
+    /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5ba1\u6838\u961f\u5217\uff0c\u8bf7\u5728\u77e5\u8bc6\u5ba1\u6838\u4e0e\u8d28\u91cf\u56de\u6536\u4e2d\u7ee7\u7eed\u5904\u7406\u3002/u,
   );
-  assert.doesNotMatch(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-knowledge-1/u);
   assert.doesNotMatch(
     markup,
     /href="#template-governance\?[^"]*reviewItemId=review-item-knowledge-1/u,
   );
   assert.doesNotMatch(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
+  assert.doesNotMatch(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-knowledge-1/u);
 });
 
 test("summary surfaces proofreading residual progression without duplicating the governance desk", () => {
@@ -1088,9 +1089,8 @@ test("summary surfaces proofreading residual progression without duplicating the
   assert.match(markup, /\u524d\u5f80\u540e\u7eed\u5ba1\u6838/u);
   assert.match(
     markup,
-    /href="#template-governance\?[^"]*manuscriptId=manuscript-proof-1[^"]*templateGovernanceView=rule-ledger[^"]*ruleCenterMode=learning/u,
+    /href="#template-governance\?[^"]*manuscriptId=manuscript-proof-1[^"]*templateGovernanceView=rule-ledger[^"]*ruleCenterMode=learning[^"]*reviewItemId=residual-ready-1/u,
   );
-  assert.doesNotMatch(markup, /\u89c4\u5219\u4e2d\u5fc3\u7ee7\u7eed\u590d\u9a8c\u4e0e\u5019\u9009\u5904\u7406/u);
   assert.doesNotMatch(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
 });
 

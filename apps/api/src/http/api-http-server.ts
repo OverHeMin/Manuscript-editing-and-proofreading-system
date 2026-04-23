@@ -24,6 +24,14 @@ import {
   type HttpServiceHealthProvider,
 } from "./service-health.ts";
 import {
+  SEEDED_CLINICAL_STUDY_GENERAL_MODULES,
+  SEEDED_CLINICAL_STUDY_KNOWLEDGE_ASSETS,
+  SEEDED_CLINICAL_STUDY_MEDICAL_MODULES,
+  SEEDED_CLINICAL_STUDY_RULE_SETS,
+  SEEDED_CLINICAL_STUDY_RULES,
+  SEEDED_CLINICAL_STUDY_TEMPLATE_COMPOSITIONS,
+} from "./seeded-clinical-study-governance.ts";
+import {
   InlineUploadPayloadInvalidError,
   InlineUploadPayloadTooLargeError,
   InlineUploadStorageReferenceRequiredError,
@@ -2025,6 +2033,7 @@ export function createInMemoryApiRuntime(input: {
     documentStructureService,
     editorialDocxTransformService,
     reviewItemsService,
+    activationMetricsService: editorialRuleActivationMetricsService,
     moduleExecutionConcurrencyController,
   });
   const proofreadingService = new ProofreadingService({
@@ -3130,6 +3139,27 @@ function seedDemoWorkbenchData(input: {
   });
   seedGovernedKnowledgeAsset({
     repository: input.knowledgeRepository,
+    assetId: "knowledge-general-structure-1",
+    title: "临床研究章节结构主线规则",
+    canonicalText:
+      "临床研究稿件应至少能定位目标、方法、结果、结论与伦理信息，并保持章节顺序稳定。",
+    summary: "默认绑定到通用包“标题层级与章节顺序”，用于筛查和后续结构统一。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["body"],
+    riskTags: ["structure"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-5",
+        bindingTargetLabel: "标题层级与章节顺序",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:50.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
     assetId: "knowledge-medical-ethics-1",
     title: "伦理声明完整性核查",
     canonicalText: "涉及人体研究时，伦理审批号、伦理委员会名称与知情同意说明必须齐全。",
@@ -3167,6 +3197,27 @@ function seedDemoWorkbenchData(input: {
       },
     ],
     createdAt: "2026-03-31T07:58:05.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-study-design-1",
+    title: "研究设计与纳排标准规则",
+    canonicalText:
+      "临床研究需明确研究类型、纳入排除标准、分组方法、样本来源与随访窗口。",
+    summary: "默认绑定到医学专用包“研究设计与纳排标准核查”，用于筛查阶段的主线判断。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["methods"],
+    riskTags: ["study-design"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-3",
+        bindingTargetLabel: "研究设计与纳排标准核查",
+      },
+    ],
+    createdAt: "2026-03-31T07:58:50.000Z",
   });
   void input.editorialRuleRepository.saveRuleSet({
     id: "rule-set-screening-1",
@@ -3243,6 +3294,36 @@ function seedDemoWorkbenchData(input: {
     severity: "warning",
     enabled: true,
   });
+
+  for (const moduleRecord of SEEDED_CLINICAL_STUDY_GENERAL_MODULES) {
+    void input.templateFamilyRepository.saveContentModule(
+      structuredClone(moduleRecord),
+    );
+  }
+  for (const moduleRecord of SEEDED_CLINICAL_STUDY_MEDICAL_MODULES) {
+    void input.templateFamilyRepository.saveContentModule(
+      structuredClone(moduleRecord),
+    );
+  }
+  for (const compositionRecord of SEEDED_CLINICAL_STUDY_TEMPLATE_COMPOSITIONS) {
+    void input.templateFamilyRepository.saveTemplateComposition(
+      structuredClone(compositionRecord),
+    );
+  }
+  for (const assetDefinition of SEEDED_CLINICAL_STUDY_KNOWLEDGE_ASSETS) {
+    seedGovernedKnowledgeAsset({
+      repository: input.knowledgeRepository,
+      ...structuredClone(assetDefinition),
+    });
+  }
+  for (const ruleSetRecord of SEEDED_CLINICAL_STUDY_RULE_SETS) {
+    void input.editorialRuleRepository.saveRuleSet(
+      structuredClone(ruleSetRecord),
+    );
+  }
+  for (const ruleRecord of SEEDED_CLINICAL_STUDY_RULES) {
+    void input.editorialRuleRepository.saveRule(structuredClone(ruleRecord));
+  }
 
   void input.executionGovernanceRepository.saveProfile({
     id: "profile-screening-1",

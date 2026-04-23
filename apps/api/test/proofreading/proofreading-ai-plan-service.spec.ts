@@ -157,6 +157,126 @@ test("proofreading AI planning sends governed coverage and whole-document guardr
   });
 });
 
+test("proofreading AI planning forwards governance context without losing whole-document planning controls", async () => {
+  let recordedInput: ExecuteMainlineAiInput | undefined;
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+        recordedInput = structuredClone(input);
+        return {
+          role: "医学稿件终校审校员",
+          summary: "Governed proofreading plan.",
+          issues: [],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  await service.createPlan({
+    manuscriptId: "manuscript-1",
+    sourceFileName: "proofreading.docx",
+    sourceBlocks: [
+      {
+        section: "results",
+        block_kind: "paragraph",
+        text: "P < 0.05",
+      },
+    ],
+    qualityIssues: [
+      {
+        severity: "error",
+        explanation: "Statistical expression requires governed review.",
+      },
+    ],
+    governanceContext: {
+      hardRuleSummary:
+        "Rule set v2:\n- results: inspect_statistical_expression requires manual review",
+      forbiddenOperations: ["meaning_shift"],
+      manualReviewPolicy: "Escalate any unresolved statistical-expression finding.",
+      promptSnippets: ["Use the governed statistical notation rules."],
+      manualReviewItems: ["rule-statistics-1: manual_only_rule"],
+      resolvedRules: [
+        {
+          ruleId: "rule-statistics-1",
+          actionKind: "inspect_statistical_expression",
+          ruleType: "format",
+          severity: "error",
+          confidencePolicy: "manual_only",
+          executionMode: "inspect",
+          sections: ["results"],
+          sourceLayer: "base",
+        },
+      ],
+      knowledgeHits: [
+        {
+          knowledgeItemId: "knowledge-statistics-1",
+          matchSource: "binding_rule",
+          matchReasons: ["Matched the statistical proofreading package."],
+        },
+      ],
+    },
+  } as never);
+
+  const payload = recordedInput?.userPayload as
+    | {
+        contextMode?: string;
+        fullDocumentText?: string;
+        governedCoverage?: {
+          qualityIssues?: unknown[];
+        };
+        governance?: Record<string, unknown>;
+        qualityControlChecklist?: {
+          reviewMode?: string;
+        };
+      }
+    | undefined;
+
+  assert.equal(payload?.contextMode, "full_text");
+  assert.equal(payload?.fullDocumentText, "P < 0.05");
+  assert.deepEqual(payload?.governedCoverage?.qualityIssues, [
+    {
+      severity: "error",
+      issueType: "",
+      explanation: "Statistical expression requires governed review.",
+    },
+  ]);
+  assert.deepEqual(payload?.governance, {
+    hardRuleSummary:
+      "Rule set v2:\n- results: inspect_statistical_expression requires manual review",
+    forbiddenOperations: ["meaning_shift"],
+    manualReviewPolicy: "Escalate any unresolved statistical-expression finding.",
+    promptSnippets: ["Use the governed statistical notation rules."],
+    manualReviewItems: ["rule-statistics-1: manual_only_rule"],
+    resolvedRules: [
+      {
+        ruleId: "rule-statistics-1",
+        actionKind: "inspect_statistical_expression",
+        ruleType: "format",
+        severity: "error",
+        confidencePolicy: "manual_only",
+        executionMode: "inspect",
+        sections: ["results"],
+        sourceLayer: "base",
+      },
+    ],
+    knowledgeHits: [
+      {
+        knowledgeItemId: "knowledge-statistics-1",
+        matchSource: "binding_rule",
+        matchReasons: ["Matched the statistical proofreading package."],
+      },
+    ],
+  });
+  assert.equal(
+    payload?.qualityControlChecklist?.reviewMode,
+    "whole_document_single_pass",
+  );
+});
+
 test("proofreading AI planning removes governed duplicates before keeping residual issues", async () => {
   const service = new ProofreadingAiPlanService({
     mainlineAiRuntimeExecutor: {

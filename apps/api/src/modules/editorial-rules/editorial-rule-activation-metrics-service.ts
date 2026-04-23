@@ -7,6 +7,7 @@ import type {
   EditorialRuleReleaseComparisonSummary,
   EditorialRuleSetRecord,
 } from "./editorial-rule-record.ts";
+import type { TableDocxPatchResult } from "../document-pipeline/table-docx-patch-plan.ts";
 import {
   EDITORIAL_RULE_ACTIVATION_METRIC_KEYS,
 } from "./editorial-rule-record.ts";
@@ -80,6 +81,19 @@ export class EditorialRuleActivationMetricsService {
 
   recordWritebackApplied(ruleIds: readonly string[] | undefined): Promise<void> {
     return this.recordMetricForRuleIds(ruleIds, "writeback_applied_count");
+  }
+
+  async recordTablePatchResults(
+    results: readonly Pick<TableDocxPatchResult, "rule_id" | "status">[],
+  ): Promise<void> {
+    for (const result of results) {
+      const metricKey = mapTablePatchStatusToMetricKey(result.status);
+      if (!metricKey) {
+        continue;
+      }
+
+      await this.recordMetricForRuleIds([result.rule_id], metricKey);
+    }
   }
 
   async getRuleMetrics(ruleId: string): Promise<EditorialRuleActivationMetricsSummary> {
@@ -343,6 +357,23 @@ function divideSafely(numerator: number, denominator: number): number {
   }
 
   return numerator / denominator;
+}
+
+function mapTablePatchStatusToMetricKey(
+  status: TableDocxPatchResult["status"],
+): EditorialRuleActivationMetricKey | undefined {
+  switch (status) {
+    case "applied":
+      return "table_patch_applied_count";
+    case "skipped_no_anchor":
+      return "table_patch_skipped_no_anchor_count";
+    case "skipped_conflict":
+      return "table_patch_skipped_conflict_count";
+    case "skipped_unsafe":
+      return "table_patch_skipped_unsafe_count";
+    default:
+      return undefined;
+  }
 }
 
 function normalizeStringArray(values: readonly string[] | undefined): string[] {

@@ -1,4 +1,6 @@
 import type { ManuscriptQualityFindingSummary } from "@medical/contracts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
+import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 
 export type ScreeningRiskLevel = "low" | "medium" | "high" | "critical";
@@ -34,6 +36,7 @@ export interface CreateScreeningAiReportInput {
     explanation?: string;
   }>;
   qualitySummary?: ManuscriptQualityFindingSummary;
+  governanceContext?: AiGovernanceContext;
 }
 
 export interface ScreeningAiReportResult {
@@ -76,6 +79,8 @@ function buildScreeningSystemPrompt(): string {
     "Return JSON only.",
     "Ground every finding in the provided manuscript excerpts and quality signals.",
     "Keep findings concise, concrete, and operator-facing.",
+    "If a governance payload is provided, treat its hard rules, required checks, manual-review items, and knowledge hits as binding screening context.",
+    "Surface any blocking governance checks as major findings before softer editorial observations.",
     "Use this exact schema:",
     JSON.stringify({
       summary: "string",
@@ -88,6 +93,11 @@ function buildScreeningSystemPrompt(): string {
 }
 
 function buildScreeningUserPayload(input: CreateScreeningAiReportInput) {
+  const governance =
+    input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
+      ? input.governanceContext
+      : undefined;
+
   return {
     task: "screening_report",
     manuscriptId: input.manuscriptId,
@@ -105,6 +115,11 @@ function buildScreeningUserPayload(input: CreateScreeningAiReportInput) {
       severity: issue.severity ?? "info",
       explanation: issue.explanation ?? "",
     })),
+    ...(governance
+      ? {
+          governance,
+        }
+      : {}),
     contract: {
       summary: "string",
       majorFindings: ["string"],

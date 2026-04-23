@@ -181,6 +181,11 @@ import {
   formatTemplateGovernanceRuleTypeLabel,
   formatTemplateGovernanceSeverityLabel,
 } from "./template-governance-display.ts";
+import {
+  createContentModuleIntakePayload,
+  createTemplateIntakePayload,
+  readExtractionCandidateIntakeRecord,
+} from "./template-governance-extraction-intake.ts";
 
 if (typeof document !== "undefined") {
   void import("./template-governance-workbench.css");
@@ -3540,19 +3545,21 @@ function TemplateGovernanceExtractionLedgerRoute({
     resetFeedback();
 
     try {
-      const { ledger: nextLedger } =
-        await controller.updateExtractionTaskCandidateAndReload({
-          taskId: ledger.selectedTask.id,
-          candidateId: selectedCandidate.id,
-          input: toCandidateUpdateInput(
-            selectedCandidate,
-            candidateFormValues,
-            confirmationStatus,
-          ),
-        });
-      setLedger(nextLedger);
+      const result = await executeExtractionCandidateAction({
+        controller,
+        taskId: ledger.selectedTask.id,
+        candidate: selectedCandidate,
+        values: candidateFormValues,
+        confirmationStatus,
+        successMessage,
+      });
+      setLedger(result.ledger);
+      if (result.errorMessage) {
+        setErrorMessage(result.errorMessage);
+        return;
+      }
       setCandidateFormOpen(false);
-      setStatusMessage(successMessage);
+      setStatusMessage(result.statusMessage ?? successMessage);
     } catch (error) {
       setErrorMessage(toErrorMessage(error, "候选语义确认失败"));
     } finally {
@@ -3610,6 +3617,109 @@ function TemplateGovernanceExtractionLedgerRoute({
       }}
     />
   );
+}
+
+export async function executeExtractionCandidateAction(input: {
+  controller: Pick<
+    TemplateGovernanceWorkbenchController,
+    | "updateExtractionTaskCandidateAndReload"
+    | "createContentModuleDraftFromCandidateAndReload"
+    | "createTemplateCompositionDraftFromCandidateAndReload"
+  >;
+  taskId: string;
+  candidate: ExtractionTaskCandidateViewModel;
+  values: TemplateGovernanceCandidateConfirmationFormValues;
+  confirmationStatus: TemplateGovernanceCandidateConfirmationFormValues["confirmationStatus"];
+  successMessage: string;
+}): Promise<{
+  ledger: TemplateGovernanceExtractionLedgerViewModel;
+  statusMessage?: string;
+  errorMessage?: string;
+}> {
+  const confirmed = await input.controller.updateExtractionTaskCandidateAndReload({
+    taskId: input.taskId,
+    candidateId: input.candidate.id,
+    input: toCandidateUpdateInput(
+      input.candidate,
+      input.values,
+      input.confirmationStatus,
+    ),
+  });
+
+  if (input.confirmationStatus !== "confirmed") {
+    return {
+      ledger: confirmed.ledger,
+      statusMessage: input.successMessage,
+    };
+  }
+
+  const confirmedCandidate =
+    selectExtractionCandidate(confirmed.ledger, input.candidate.id) ?? input.candidate;
+  const existingIntake = readExtractionCandidateIntakeRecord(confirmedCandidate);
+  if (existingIntake) {
+    return {
+      ledger: confirmed.ledger,
+      statusMessage: `候选语义已更新，当前已关联${formatExtractionIntakeDraftLabel(existingIntake.target_kind)}草稿：${existingIntake.target_name}。`,
+    };
+  }
+
+  if (input.values.suggestedDestination === "template") {
+    const { templateComposition } =
+      await input.controller.createTemplateCompositionDraftFromCandidateAndReload({
+        taskId: input.taskId,
+        candidateId: input.candidate.id,
+      });
+    const { ledger } = await input.controller.updateExtractionTaskCandidateAndReload({
+      taskId: input.taskId,
+      candidateId: input.candidate.id,
+      input: {
+        intakePayload: createTemplateIntakePayload(templateComposition),
+      },
+    });
+    return {
+      ledger,
+      statusMessage: `候选已确认，并已入库到大模板草稿：${templateComposition.name}。`,
+    };
+  }
+
+  const moduleClass: GovernedContentModuleClass =
+    input.values.suggestedDestination === "medical_module"
+      ? "medical_specialized"
+      : "general";
+  const { contentModule } =
+    await input.controller.createContentModuleDraftFromCandidateAndReload({
+      taskId: input.taskId,
+      candidateId: input.candidate.id,
+      moduleClass,
+    });
+  const { ledger } = await input.controller.updateExtractionTaskCandidateAndReload({
+    taskId: input.taskId,
+    candidateId: input.candidate.id,
+    input: {
+      intakePayload: createContentModuleIntakePayload(contentModule),
+    },
+  });
+  return {
+    ledger,
+    statusMessage: `候选已确认，并已入库到${formatExtractionIntakeDraftLabel(
+      input.values.suggestedDestination,
+    )}草稿：${contentModule.name}。`,
+  };
+}
+
+function formatExtractionIntakeDraftLabel(
+  value: "general_module" | "medical_module" | "template",
+): string {
+  switch (value) {
+    case "general_module":
+      return "通用包";
+    case "medical_module":
+      return "医学专用包";
+    case "template":
+      return "大模板";
+    default:
+      return formatTemplateGovernanceExtractionDestinationLabel(value);
+  }
 }
 
 function mergeRuleLedgerWithLearningCandidates(

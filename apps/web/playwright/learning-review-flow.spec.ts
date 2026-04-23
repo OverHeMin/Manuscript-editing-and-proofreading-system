@@ -61,9 +61,9 @@ test("admin can complete the governed learning review flow from manuscript hando
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    manuscriptTitle,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(manuscriptTitle);
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
   await expect(page.locator("body")).toContainText("操作已完成");

@@ -94,6 +94,75 @@ export function RuleAuthoringTableSemanticFields({
         </select>
       </label>
 
+      <label
+        className="template-governance-field"
+        data-table-auto-apply-grade="field"
+      >
+        <span>鑷姩搴旂敤绛夌骇</span>
+        <select
+          value={payload.grade}
+          onChange={(event) =>
+            updatePayload(draft, onDraftChange, {
+              grade: event.target.value as typeof payload.grade,
+            })
+          }
+        >
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
+      </label>
+
+      <label
+        className="template-governance-field template-governance-field-full"
+        data-table-auto-apply-patch-type="field"
+      >
+        <span>PATCH 绫诲瀷</span>
+        <select
+          value={payload.patchType}
+          onChange={(event) =>
+            updatePayload(draft, onDraftChange, {
+              patchType: event.target.value as typeof payload.patchType,
+            })
+          }
+        >
+          <option value="inspect_only">inspect_only</option>
+          <option value="replace_header_cell_text">replace_header_cell_text</option>
+          <option value="replace_footnote_text">replace_footnote_text</option>
+          <option value="normalize_unit_text">normalize_unit_text</option>
+        </select>
+      </label>
+
+      <label
+        className="template-governance-field"
+        data-table-auto-apply-scope="field"
+      >
+        <span>搴旂敤鑼冨洿</span>
+        <select
+          value={payload.applyScope}
+          onChange={(event) =>
+            updatePayload(draft, onDraftChange, {
+              applyScope: event.target.value as typeof payload.applyScope,
+            })
+          }
+        >
+          <option value="inspect_only">inspect_only</option>
+          <option value="editing_only">editing_only</option>
+        </select>
+      </label>
+
+      <div
+        className="template-governance-field template-governance-field-full"
+        data-table-auto-apply-capabilities="field"
+      >
+        <span>蹇呴渶 snapshot 鑳藉姏</span>
+        <small>
+          {payload.requiredSnapshotCapabilities.length > 0
+            ? payload.requiredSnapshotCapabilities.join(", ")
+            : "none"}
+        </small>
+      </div>
+
       {showHeaderPath ? (
         <TextField
           label="表头路径"
@@ -212,13 +281,57 @@ function updatePayload(
   onDraftChange: (next: TableRuleAuthoringDraft) => void,
   payloadPatch: Partial<TableRuleAuthoringDraft["payload"]>,
 ) {
+  const nextPayload = normalizeTablePayload({
+    ...draft.payload,
+    ...payloadPatch,
+  });
+
   onDraftChange({
     ...draft,
-    payload: {
-      ...draft.payload,
-      ...payloadPatch,
-    },
+    payload: nextPayload,
   });
+}
+
+function normalizeTablePayload(
+  payload: TableRuleAuthoringDraft["payload"],
+): TableRuleAuthoringDraft["payload"] {
+  const patchType = payload.patchType;
+  return {
+    ...payload,
+    applyScope: patchType === "inspect_only" ? "inspect_only" : payload.applyScope,
+    requiredSnapshotCapabilities: deriveRequiredSnapshotCapabilities(patchType),
+    ...(patchType === "replace_header_cell_text"
+      ? {
+          semanticTarget: "header_cell",
+        }
+      : {}),
+    ...(patchType === "replace_footnote_text"
+      ? {
+          semanticTarget: "footnote_item",
+        }
+      : {}),
+    ...(patchType === "normalize_unit_text"
+      ? {
+          semanticTarget: "data_cell",
+        }
+      : {}),
+  };
+}
+
+function deriveRequiredSnapshotCapabilities(
+  patchType: TableRuleAuthoringDraft["payload"]["patchType"],
+): TableRuleAuthoringDraft["payload"]["requiredSnapshotCapabilities"] {
+  switch (patchType) {
+    case "replace_header_cell_text":
+      return ["header_cell"];
+    case "replace_footnote_text":
+      return ["footnote_item"];
+    case "normalize_unit_text":
+      return ["unit_marker"];
+    case "inspect_only":
+    default:
+      return [];
+  }
 }
 
 function isScenarioActive(

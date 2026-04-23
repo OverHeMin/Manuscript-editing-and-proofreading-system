@@ -342,6 +342,67 @@ function buildManuscriptStructurePackageDraft(): RulePackageDraft {
   };
 }
 
+function buildThreeLineTablePackageDraft(
+  automationPosture: RulePackageDraft["automation_posture"] = "safe_auto",
+): RulePackageDraft {
+  return {
+    package_id: "package-three-line-table",
+    package_kind: "three_line_table",
+    title: "Three-line table package",
+    rule_object: "table",
+    suggested_layer: "template_family",
+    automation_posture: automationPosture,
+    status: "draft",
+    cards: {
+      rule_what: {
+        title: "Three-line table package",
+        object: "table",
+        publish_layer: "template_family",
+      },
+      ai_understanding: {
+        summary: "Inspect semantic table headers and notes before any promotion.",
+        hit_objects: ["table"],
+        hit_locations: ["results"],
+      },
+      applicability: {
+        manuscript_types: ["clinical_study"],
+        modules: ["editing"],
+        sections: ["results"],
+        table_targets: ["header_cell"],
+      },
+      evidence: {
+        examples: [
+          {
+            before: "Treatment group | n (%)",
+            after: "Treatment Group | n (%)",
+          },
+        ],
+      },
+      exclusions: {
+        not_applicable_when: ["Table semantics are not anchored yet."],
+        human_review_required_when: ["Review header wording before release."],
+        risk_posture: "guarded_auto",
+      },
+    },
+    semantic_draft: {
+      semantic_summary: "Inspect semantic table headers and notes before any promotion.",
+      hit_scope: ["table:header_cell"],
+      applicability: ["results"],
+      evidence_examples: [
+        {
+          before: "Treatment group | n (%)",
+          after: "Treatment Group | n (%)",
+        },
+      ],
+      failure_boundaries: ["Table semantics are not anchored yet."],
+      normalization_recipe: ["Lock semantic target before auto-apply promotion."],
+      review_policy: ["Review header wording before release."],
+      confirmed_fields: ["summary", "applicability", "evidence", "boundaries"],
+    },
+    supporting_signals: [],
+  };
+}
+
 async function seedCompileContext(
   harness: ReturnType<typeof createRulePackageCompileHarness>,
 ) {
@@ -432,6 +493,32 @@ test("ready front-matter packages compile into title and author-line seeds with 
   );
   assert.equal(preview.packages[0]?.overrides_published_coverage_keys.length, 1);
   assert.match(preview.packages[0]?.warnings.join(" ") ?? "", /guarded|review/i);
+});
+
+test("table package compile preview keeps inspect-only auto-apply metadata by default", async () => {
+  const harness = createRulePackageCompileHarness();
+
+  await seedCompileContext(harness);
+
+  const preview = await harness.service.previewCompile({
+    source: {
+      sourceKind: "reviewed_case",
+      reviewedCaseSnapshotId: "reviewed-case-1",
+    },
+    packageDrafts: [buildThreeLineTablePackageDraft("safe_auto")],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  const seed = preview.packages[0]?.draft_rule_seeds[0];
+  assert.ok(seed);
+  assert.equal(seed.execution_mode, "inspect");
+  assert.equal(seed.confidence_policy, "manual_only");
+  assert.equal(seed.authoring_payload.grade, "C");
+  assert.equal(seed.authoring_payload.patch_type, "inspect_only");
+  assert.equal(seed.authoring_payload.apply_scope, "inspect_only");
+  assert.deepEqual(seed.authoring_payload.required_snapshot_capabilities, []);
 });
 
 test("compile-to-draft writes compiled rules into a draft rule set without mutating published rule sets", async () => {

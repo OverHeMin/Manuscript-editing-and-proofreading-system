@@ -143,6 +143,10 @@ const TABLE_PRESET: RuleAuthoringPreset<"table"> = {
         "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
       payload: {
         tableKind: "three_line_table",
+        grade: "C",
+        patchType: "inspect_only",
+        applyScope: "inspect_only",
+        requiredSnapshotCapabilities: [],
         semanticTarget: "header_cell",
         headerPathIncludes: ["Treatment group", "n (%)"],
         rowKey: "",
