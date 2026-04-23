@@ -3881,6 +3881,7 @@ async function startPersistentWorkbenchServer(
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
         AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
       }),
+      seedPersistentWorkbenchReviewBaseline: true,
       mainlineAiRuntimeExecutor: persistentWorkbenchAiExecutor,
     }),
     uploadRootDir: input.uploadRootDir,

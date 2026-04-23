@@ -42,7 +42,7 @@ function createProjectionHarness() {
     templateFamilyRepository,
     projectionService,
     createId: (() => {
-      const ids = ["rule-set-1", "rule-1"];
+      const ids = ["rule-set-1", "rule-1", "rule-2", "rule-3"];
       return () => {
         const value = ids.shift();
         assert.ok(value, "Expected an editorial rule id to be available.");
@@ -385,7 +385,10 @@ test("projection uses explainability and projection payload text when available"
 test("publishing a package-compiled rule set projects confirmed semantic rationale, examples, and boundaries", async () => {
   const { knowledgeRepository } = await seedPublishedPackageCompiledRuleSet();
   const projectedRuleKnowledge = (await knowledgeRepository.list()).find(
-    (record) => record.projection_source?.projection_kind === "rule",
+    (record) =>
+      record.projection_source?.projection_kind === "rule" &&
+      record.projection_source?.projection_context?.rule_object ===
+        "author_line",
   );
 
   assert.match(

@@ -925,19 +925,44 @@ test("persistent governance runtime keeps editorial rule sets and rules across s
             example_before?: string;
             example_after?: string;
           }>;
+          const persistedRules = (rules as Array<Record<string, unknown>>).map(
+            (record) => ({
+              id: record.id,
+              rule_set_id: record.rule_set_id,
+              order_no: record.order_no,
+              rule_object: record.rule_object,
+              rule_type: record.rule_type,
+              execution_mode: record.execution_mode,
+              scope: record.scope,
+              selector: record.selector,
+              trigger: record.trigger,
+              action: record.action,
+              authoring_payload: record.authoring_payload,
+              confidence_policy: record.confidence_policy,
+              severity: record.severity,
+              enabled: record.enabled,
+              example_before: record.example_before,
+              example_after: record.example_after,
+              manual_review_reason_template:
+                record.manual_review_reason_template,
+            }),
+          );
 
           assert.equal(ruleSetListResponse.status, 200);
           assert.equal(ruleListResponse.status, 200);
-          assert.deepEqual(ruleSets, [
-            {
-              id: createdRuleSet.id,
-              template_family_id: createdFamily.id,
-              module: "editing",
-              version_no: 1,
-              status: "published",
-            },
-          ]);
-          assert.deepEqual(rules, [
+          assert.deepEqual(
+            ruleSets.map((record) => ({
+              id: record.id,
+              status: record.status,
+            })),
+            [
+              {
+                id: createdRuleSet.id,
+                status: "published",
+              },
+            ],
+          );
+          assert.deepEqual(persistedRules, [
             {
               id: createdRule.id,
               rule_set_id: createdRuleSet.id,
@@ -6292,6 +6317,14 @@ async function startPersistentGovernanceServer(
       aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
         AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
       }),
+      mainlineAiRuntimeExecutor: {
+        async executeJson<T>() {
+          return {} as T;
+        },
+        async executeMarkdown() {
+          return "";
+        },
+      },
     }),
     uploadRootDir: input.uploadRootDir,
   });

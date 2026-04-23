@@ -152,6 +152,7 @@ export async function startPersistentServer<
         uploadRootDir: config.uploadRootDir,
         aiProviderRuntimeCutoverEnabled:
           config.aiProviderRuntimeCutoverEnabled,
+        seedPersistentWorkbenchReviewBaseline: true,
       });
 
     const serviceHealth = createPersistentServiceHealthProvider({

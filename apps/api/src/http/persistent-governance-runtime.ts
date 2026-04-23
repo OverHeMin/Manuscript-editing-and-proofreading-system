@@ -247,6 +247,7 @@ export interface CreatePersistentGovernanceRuntimeOptions {
   aiProviderConnectivityProbe?: AiProviderConnectivityProbe;
   aiProviderCredentialCrypto?: AiProviderCredentialCrypto;
   aiProviderRuntimeCutoverEnabled?: boolean;
+  seedPersistentWorkbenchReviewBaseline?: boolean;
   mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
 }
 
@@ -373,22 +374,24 @@ export function createPersistentGovernanceRuntime(
     new PostgresPromptSkillRegistryRepository({
       client: options.client,
     });
-  const runtimeBootstrap = ensurePersistentWorkbenchReviewBaseline({
-    templateFamilyRepository,
-    moduleTemplateRepository,
-    promptSkillRegistryRepository,
-    editorialRuleRepository,
-    executionGovernanceRepository,
-    sandboxProfileRepository,
-    agentRuntimeRepository,
-    agentProfileRepository,
-    runtimeBindingRepository,
-    toolPermissionPolicyRepository,
-    modelRegistryRepository,
-    modelRoutingPolicyRepository,
-    retrievalPresetRepository,
-    manualReviewPolicyRepository,
-  });
+  const runtimeBootstrap = options.seedPersistentWorkbenchReviewBaseline
+    ? ensurePersistentWorkbenchReviewBaseline({
+        templateFamilyRepository,
+        moduleTemplateRepository,
+        promptSkillRegistryRepository,
+        editorialRuleRepository,
+        executionGovernanceRepository,
+        sandboxProfileRepository,
+        agentRuntimeRepository,
+        agentProfileRepository,
+        runtimeBindingRepository,
+        toolPermissionPolicyRepository,
+        modelRegistryRepository,
+        modelRoutingPolicyRepository,
+        retrievalPresetRepository,
+        manualReviewPolicyRepository,
+      })
+    : Promise.resolve();
   const manuscriptQualityPackageRepository =
     new PostgresManuscriptQualityPackageRepository({
       client: options.client,
