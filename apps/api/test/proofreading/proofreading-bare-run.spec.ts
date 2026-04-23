@@ -5,6 +5,7 @@ import { ProofreadingService } from "../../src/modules/proofreading/proofreading
 import { InMemoryResidualIssueRepository } from "../../src/modules/residual-learning/in-memory-residual-learning-repository.ts";
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
 import type { ReviewItemsService } from "../../src/modules/review-items/review-items-service.ts";
+import { getBareModulePromptSkeleton } from "../../src/modules/shared/bare-module-prompt-skeletons.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
 import type {
   ExecuteMainlineAiInput,
@@ -148,8 +149,9 @@ test("proofreading bare mode draft succeeds without a current template family wh
     executionMode: "bare",
   });
 
+  const bareSkeleton = getBareModulePromptSkeleton("proofreading");
   assert.equal(result.asset.asset_type, "proofreading_draft_report");
-  assert.equal(result.template_id, "bare-proofreading-template");
+  assert.equal(result.template_id, bareSkeleton.templateId);
   assert.equal(result.model_id, "model-1");
   assert.equal(result.job.payload?.executionMode, "bare");
   const proofreadingPayload = result.job.payload as

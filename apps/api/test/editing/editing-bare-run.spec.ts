@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EditingService } from "../../src/modules/editing/editing-service.ts";
+import { getBareModulePromptSkeleton } from "../../src/modules/shared/bare-module-prompt-skeletons.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
 import type {
   ExecuteMainlineAiInput,
@@ -95,8 +96,9 @@ test("editing bare mode succeeds without a current template family while governe
     executionMode: "bare",
   });
 
+  const bareSkeleton = getBareModulePromptSkeleton("editing");
   assert.equal(result.asset.asset_type, "edited_docx");
-  assert.equal(result.template_id, "bare-editing-template");
+  assert.equal(result.template_id, bareSkeleton.templateId);
   assert.equal(result.model_id, "model-1");
   assert.equal(result.job.payload?.executionMode, "bare");
   assert.deepEqual(result.job.payload?.appliedRuleIds, []);

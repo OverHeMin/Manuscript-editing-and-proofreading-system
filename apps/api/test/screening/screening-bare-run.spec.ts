@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ScreeningService } from "../../src/modules/screening/screening-service.ts";
+import { getBareModulePromptSkeleton } from "../../src/modules/shared/bare-module-prompt-skeletons.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
 import type {
   ExecuteMainlineAiInput,
@@ -82,8 +83,9 @@ test("screening bare mode succeeds without a current template family while gover
     executionMode: "bare",
   });
 
+  const bareSkeleton = getBareModulePromptSkeleton("screening");
   assert.equal(result.asset.asset_type, "screening_report");
-  assert.equal(result.template_id, "bare-screening-template");
+  assert.equal(result.template_id, bareSkeleton.templateId);
   assert.equal(result.model_id, "model-1");
   assert.equal(result.job.payload?.executionMode, "bare");
   const screeningPayload = result.job.payload as
