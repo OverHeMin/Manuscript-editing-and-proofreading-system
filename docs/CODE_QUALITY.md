@@ -162,14 +162,22 @@
 
 后续开发默认采用以下做法：
 
+- 进入实现前先阅读仓库级行为基线：`AGENTS.md`
 - 复杂业务逻辑写清楚“为什么”
 - 关键模块改动优先补测试
 - 完成前必须重新验证，不凭印象判断
 - 重要规则同步写进文档，不只留在对话里
 - 发现会影响长期维护成本的问题，优先现在修正，不留到后期集中返工
 
+如需判断这套行为基线如何与 `superpowers`、`gstack`、`subagent` 协作，参见：`docs/agent-collaboration-baseline.md`。
+
+如需在本仓库内显式调用对应的行为约束 skill，参见：`.agents/skills/karpathy-governed-delivery/SKILL.md`。
+
 ## 10. 相关文档
 
+- 仓库级 agent 行为基线：`AGENTS.md`
 - 可执行的开发与 review 清单：`docs/REVIEW_CHECKLIST.md`
+- Agent 协作分层基线：`docs/agent-collaboration-baseline.md`
 - 运维、迁移、远程维护基线：`docs/OPERATIONS.md`
 - 产品与系统设计规格：`docs/superpowers/specs/README.md`
+- 仓库本地行为约束 skill：`.agents/skills/karpathy-governed-delivery/SKILL.md`
