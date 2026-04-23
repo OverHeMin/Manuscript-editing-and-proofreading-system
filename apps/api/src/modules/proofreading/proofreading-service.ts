@@ -90,8 +90,13 @@ import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-ex
 import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
 import {
   ProofreadingAiPlanService,
-  type ProofreadingAiPlan,
 } from "./proofreading-ai-plan-service.ts";
+import type {
+  ProofreadingAiPlan,
+  ProofreadingIssue,
+  ProofreadingIssueAnchor,
+  ProofreadingSuggestionAction,
+} from "./proofreading-issue-contract.ts";
 
 export interface CreateProofreadingDraftInput {
   manuscriptId: string;
@@ -123,10 +128,14 @@ export interface PublishProofreadingHumanFinalInput {
 }
 
 export type ProofreadingConfirmationDecisionAction =
+  | "accepted"
+  | "accepted_with_manual_edit"
+  | "rejected"
   | "accept"
   | "accept_and_edit"
   | "reject"
   | "manual_only"
+  | "escalated"
   | "route_to_rule_candidate"
   | "route_to_knowledge_candidate";
 
@@ -451,22 +460,29 @@ export class ProofreadingService {
       }
 
       const manuscript = await manuscriptRepository.findById(input.manuscriptId);
-      const finalAsset = await assetRepository.findById(input.finalAssetId);
+      const proofreadingAsset = await assetRepository.findById(input.finalAssetId);
       if (
-        !finalAsset ||
-        finalAsset.manuscript_id !== input.manuscriptId ||
-        finalAsset.asset_type !== "final_proof_annotated_docx"
+        !proofreadingAsset ||
+        proofreadingAsset.manuscript_id !== input.manuscriptId ||
+        (
+          proofreadingAsset.asset_type !== "final_proof_annotated_docx" &&
+          proofreadingAsset.asset_type !== "proofreading_draft_report"
+        )
       ) {
         throw new ProofreadingFinalAssetRequiredError(input.finalAssetId);
       }
       const finalJob =
-        finalAsset.source_job_id != null
-          ? await jobRepository.findById(finalAsset.source_job_id)
+        proofreadingAsset.source_job_id != null
+          ? await jobRepository.findById(proofreadingAsset.source_job_id)
           : undefined;
       const finalJobPayload = asObject(finalJob?.payload);
       const parentDraftAssetId =
-        readOptionalString(finalJobPayload?.parentAssetId) ??
-        finalAsset.parent_asset_id;
+        proofreadingAsset.asset_type === "proofreading_draft_report"
+          ? proofreadingAsset.id
+          : (
+              readOptionalString(finalJobPayload?.parentAssetId) ??
+              proofreadingAsset.parent_asset_id
+            );
       const parentDraftAsset =
         parentDraftAssetId != null
           ? await assetRepository.findById(parentDraftAssetId)
@@ -531,9 +547,11 @@ export class ProofreadingService {
         ]),
       ];
       const normalizedDecisions = normalizeProofreadingConfirmationDecisions({
+        issues: sourceProofreadingPlan.issues,
         corrections: sourceProofreadingPlan.corrections,
         decisions: input.confirmationDecisions,
       });
+      assertPublishableProofreadingDecisions(normalizedDecisions);
       const confirmationSummary = summarizeProofreadingConfirmationDecisions(
         normalizedDecisions,
       );
@@ -572,6 +590,7 @@ export class ProofreadingService {
           confirmationDecisions: serializeProofreadingConfirmationDecisions(
             normalizedDecisions,
           ),
+          writebackLedger: buildProofreadingWritebackLedger(normalizedDecisions),
         },
         attempt_count: 0,
         started_at: undefined,
@@ -601,7 +620,7 @@ export class ProofreadingService {
         mimeType: DOCX_MIME,
         createdBy: input.requestedBy,
         fileName: input.fileName,
-        parentAssetId: input.finalAssetId,
+        parentAssetId: proofreadingAsset.id,
         sourceModule: "manual",
         sourceJobId: jobId,
       });
@@ -636,18 +655,18 @@ export class ProofreadingService {
                 : "missed_hit",
             feedbackText:
               decision.note ??
-              `Human confirmed proofreading correction for ${decision.targetText}.`,
+              `Human confirmed proofreading issue for ${decision.targetText}.`,
             title: `Proofreading confirmation ${decision.itemId}`,
             excerpt: decision.targetText,
             suggestion: decision.finalReplacementText,
-            rationale: `Confirmed from proofreading asset ${input.finalAssetId}.`,
+            rationale: `Confirmed from proofreading asset ${proofreadingAsset.id}.`,
             candidatePosture: "candidate_change",
             decisionSource: "manual_feedback",
             relatedKnowledgeItemIds: knownKnowledgeItemIds,
             originPayload: {
               source: "proofreading_confirmation",
               proofreadingJobId: finalJob?.id,
-              finalAssetId: input.finalAssetId,
+              finalAssetId: proofreadingAsset.id,
               action: decision.action,
               itemId: decision.itemId,
             },
@@ -834,9 +853,12 @@ export class ProofreadingService {
               }),
             ) as ProofreadingAiPlan)
           : undefined;
+      const storedProofreadingPlan = proofreadingPlan
+        ? buildStoredProofreadingPlan(proofreadingPlan)
+        : undefined;
       const reportMarkdown =
         input.jobType === "proofreading_draft_run" && proofreadingFindings
-          ? renderProofreadingReport(proofreadingFindings, proofreadingPlan)
+          ? renderProofreadingReport(proofreadingFindings, storedProofreadingPlan)
           : undefined;
 
       if (
@@ -939,6 +961,8 @@ export class ProofreadingService {
             ? { draftSnapshotId: resolvedContext.draftSnapshotId }
             : {}),
           parentAssetId: input.parentAssetId,
+          sourceManuscriptAssetId:
+            input.sourceManuscriptAssetId ?? input.parentAssetId,
           ...(resolvedContext.ruleSetId
             ? {
                 ruleSetId: resolvedContext.ruleSetId,
@@ -987,9 +1011,12 @@ export class ProofreadingService {
                 reportMarkdown,
               }
             : {}),
-          ...(proofreadingPlan
+          ...(storedProofreadingPlan
             ? {
-                proofreadingPlan,
+                proofreadingPlan: storedProofreadingPlan,
+                proofreadingSourceBlocks: proofreadingArtifacts?.sourceBlocks.map(
+                  (block) => structuredClone(block),
+                ),
               }
             : {}),
         },
@@ -1013,23 +1040,6 @@ export class ProofreadingService {
         sourceModule: "proofreading",
         sourceJobId: jobId,
       });
-      const proofreadingManuscriptAsset =
-        input.jobType === "proofreading_draft_run" && proofreadingPlan
-          ? await this.createProofreadingManuscriptAsset({
-              manuscriptId: input.manuscriptId,
-              requestedBy: input.requestedBy,
-              sourceJobId: jobId,
-              sourceAssetId: input.parentAssetId,
-              reportAssetId: asset.id,
-              reportStorageKey: input.storageKey,
-              reportFileName: input.fileName,
-              proofreadingPlan,
-              rules: resolvedContext.rules,
-              resolvedRules: resolvedContext.resolvedRules,
-              tableSnapshots: proofreadingArtifacts?.tableSnapshots ?? [],
-              documentAssetService,
-            })
-          : undefined;
       const snapshot = await this.executionTrackingService.recordSnapshot({
         manuscriptId: input.manuscriptId,
         module: "proofreading",
@@ -1044,10 +1054,7 @@ export class ProofreadingService {
         modelId: resolvedContext.modelId,
         modelVersion: resolvedContext.modelVersion,
         qualityPackages: proofreadingFindings?.resolvedQualityPackages,
-        createdAssetIds: [
-          asset.id,
-          ...(proofreadingManuscriptAsset ? [proofreadingManuscriptAsset.id] : []),
-        ],
+        createdAssetIds: [asset.id],
         agentExecutionLogId,
         draftSnapshotId: resolvedContext.draftSnapshotId,
         qualityFindingsSummary: proofreadingFindings?.qualityFindingSummary
@@ -1108,23 +1115,16 @@ export class ProofreadingService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: input.assetType,
-          ...(proofreadingPlan
+          ...(storedProofreadingPlan
             ? {
-                proofreadingPlan,
+                proofreadingPlan: storedProofreadingPlan,
+                proofreadingSourceBlocks: proofreadingArtifacts?.sourceBlocks.map(
+                  (block) => structuredClone(block),
+                ),
               }
             : {}),
-          ...(proofreadingManuscriptAsset
-            ? {
-                proofreadingManuscriptAssetId: proofreadingManuscriptAsset.id,
-                proofreadingManuscriptAssetType:
-                  proofreadingManuscriptAsset.asset_type,
-              }
-            : {}),
-          ...(input.sourceManuscriptAssetId
-            ? {
-                sourceManuscriptAssetId: input.sourceManuscriptAssetId,
-              }
-            : {}),
+          sourceManuscriptAssetId:
+            input.sourceManuscriptAssetId ?? input.parentAssetId,
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -1155,7 +1155,7 @@ export class ProofreadingService {
                 ...(agentExecutionLogId
                   ? { agentExecutionLogId }
                   : {}),
-                outputAssetId: proofreadingManuscriptAsset?.id ?? asset.id,
+                outputAssetId: asset.id,
                 executionProfileId: resolvedContext.executionProfileId,
                 ...(resolvedContext.runtimeBindingId
                   ? { runtimeBindingId: resolvedContext.runtimeBindingId }
@@ -1214,56 +1214,6 @@ export class ProofreadingService {
     }
 
     return committed.response;
-  }
-
-  private async createProofreadingManuscriptAsset(input: {
-    manuscriptId: string;
-    requestedBy: string;
-    sourceJobId: string;
-    sourceAssetId: string;
-    reportAssetId: string;
-    reportStorageKey: string;
-    reportFileName?: string;
-    proofreadingPlan: ProofreadingAiPlan;
-    rules?: EditorialRuleRecord[];
-    resolvedRules?: ResolvedEditorialRule[];
-    tableSnapshots: DocumentStructureTableSnapshot[];
-    documentAssetService: DocumentAssetService;
-  }): Promise<DocumentAssetRecord> {
-    const manuscriptTarget = deriveProofreadingManuscriptTarget({
-      reportStorageKey: input.reportStorageKey,
-      reportFileName: input.reportFileName,
-    });
-
-    await this.editorialDocxTransformService.applyDeterministicRules({
-      manuscriptId: input.manuscriptId,
-      sourceAssetId: input.sourceAssetId,
-      outputStorageKey: manuscriptTarget.storageKey,
-      outputFileName: manuscriptTarget.fileName,
-      tableAutoApplyMode: "inspect_only",
-      rules: input.rules ?? [],
-      resolvedRules: input.resolvedRules ?? [],
-      tableSnapshots: input.tableSnapshots,
-      aiReplacements: input.proofreadingPlan.corrections.map(
-        (correction: ProofreadingAiPlan["corrections"][number]) => ({
-        targetText: correction.targetText,
-        replacementText: correction.replacementText,
-        reason: correction.category,
-        }),
-      ),
-    });
-
-    return input.documentAssetService.createAsset({
-      manuscriptId: input.manuscriptId,
-      assetType: "final_proof_annotated_docx",
-      storageKey: manuscriptTarget.storageKey,
-      mimeType: DOCX_MIME,
-      createdBy: input.requestedBy,
-      fileName: manuscriptTarget.fileName,
-      parentAssetId: input.reportAssetId,
-      sourceModule: "proofreading",
-      sourceJobId: input.sourceJobId,
-    });
   }
 
   private async resolveDraftExecutionContext(input: {
@@ -1602,6 +1552,8 @@ export class ProofreadingService {
   }
 }
 
+interface ProofreadingPlanIssueSeed extends ProofreadingIssue {}
+
 interface ProofreadingPlanCorrectionSeed {
   itemId: string;
   targetText: string;
@@ -1614,15 +1566,44 @@ interface NormalizedProofreadingConfirmationDecision {
   targetText: string;
   replacementText: string;
   finalReplacementText?: string;
-  action: ProofreadingConfirmationDecisionAction;
+  action:
+    | "accepted"
+    | "accepted_with_manual_edit"
+    | "rejected"
+    | "manual_only"
+    | "escalated"
+    | "route_to_rule_candidate"
+    | "route_to_knowledge_candidate";
   category?: string;
   note?: string;
+  severity: "critical" | "high" | "medium" | "low";
+  issueType: string;
+  source: string;
+  blocksFinal: boolean;
+  anchor?: ProofreadingIssueAnchor;
+  suggestionAction?: ProofreadingSuggestionAction;
 }
 
 function extractProofreadingPlan(value: unknown): {
+  issues: ProofreadingPlanIssueSeed[];
   corrections: ProofreadingPlanCorrectionSeed[];
 } {
   const payload = asObject(value);
+  const issues = Array.isArray(payload?.issues)
+    ? payload.issues
+        .flatMap((entry, index) => {
+          const issue = normalizeSerializedProofreadingIssue(entry, index);
+          return issue ? [issue] : [];
+        })
+    : [];
+
+  if (issues.length > 0) {
+    return {
+      issues,
+      corrections: issuesToCorrectionSeeds(issues),
+    };
+  }
+
   const corrections = Array.isArray(payload?.corrections)
     ? payload.corrections
         .flatMap((entry, index) => {
@@ -1645,16 +1626,129 @@ function extractProofreadingPlan(value: unknown): {
     : [];
 
   return {
+    issues: corrections.map((correction, index) => ({
+      itemId: correction.itemId,
+      title: correction.category
+        ? `${correction.category} issue`
+        : `Legacy proofreading issue ${index + 1}`,
+      description: correction.targetText,
+      severity: "medium",
+      source: "legacy_correction",
+      issueType: correction.category ?? "legacy_proofreading_correction",
+      blocksFinal: false,
+      anchor: {
+        blockIndex: index,
+        quote: correction.targetText,
+      },
+      suggestion: {
+        action: "replace_text",
+        replacementText: correction.replacementText,
+      },
+    })),
     corrections,
   };
 }
 
+function normalizeSerializedProofreadingIssue(
+  value: unknown,
+  index: number,
+): ProofreadingPlanIssueSeed | undefined {
+  const issue = asObject(value);
+  if (!issue) {
+    return undefined;
+  }
+
+  const anchor = normalizeSerializedProofreadingAnchor(issue.anchor, index);
+  if (!anchor) {
+    return undefined;
+  }
+
+  const suggestionPayload = asObject(issue.suggestion);
+  const suggestionAction = normalizeSerializedSuggestionAction(
+    suggestionPayload?.action,
+  );
+
+  return {
+    itemId: readOptionalString(issue.itemId) ?? `issue-${index + 1}`,
+    title: readOptionalString(issue.title) ?? `Issue ${index + 1}`,
+    description: readOptionalString(issue.description) ?? anchor.quote,
+    severity: normalizeSeverity(issue.severity) ?? "medium",
+    source: normalizeIssueSource(issue.source) ?? "residual_ai",
+    issueType: readOptionalString(issue.issueType) ?? "style",
+    blocksFinal: Boolean(issue.blocksFinal),
+    anchor,
+    ...(suggestionAction
+      ? {
+          suggestion: {
+            action: suggestionAction,
+            ...(readOptionalString(suggestionPayload?.replacementText)
+              ? {
+                  replacementText: readOptionalString(
+                    suggestionPayload?.replacementText,
+                  ),
+                }
+              : {}),
+            ...(readOptionalString(suggestionPayload?.note)
+              ? {
+                  note: readOptionalString(suggestionPayload?.note),
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function normalizeSerializedProofreadingAnchor(
+  value: unknown,
+  fallbackIndex: number,
+): ProofreadingIssueAnchor | undefined {
+  const anchor = asObject(value);
+  if (!anchor) {
+    return undefined;
+  }
+
+  const blockIndex =
+    typeof anchor.blockIndex === "number" && Number.isInteger(anchor.blockIndex)
+      ? anchor.blockIndex
+      : fallbackIndex;
+  const quote = readOptionalString(anchor.quote);
+  if (!quote) {
+    return undefined;
+  }
+
+  return {
+    blockIndex,
+    quote,
+    ...(readOptionalString(anchor.sectionLabel)
+      ? {
+          sectionLabel: readOptionalString(anchor.sectionLabel),
+        }
+      : {}),
+    ...(readOptionalString(anchor.blockKind)
+      ? {
+          blockKind: readOptionalString(anchor.blockKind),
+        }
+      : {}),
+  };
+}
+
 function normalizeProofreadingConfirmationDecisions(input: {
+  issues: readonly ProofreadingPlanIssueSeed[];
   corrections: readonly ProofreadingPlanCorrectionSeed[];
   decisions?: readonly ProofreadingConfirmationDecisionInput[];
 }): NormalizedProofreadingConfirmationDecision[] {
   if (input.decisions && input.decisions.length > 0) {
     return input.decisions.map((decision, index) => {
+      const normalizedAction =
+        normalizeProofreadingDecisionAction(decision.action) ?? "manual_only";
+      const matchingIssue =
+        input.issues.find((issue) => issue.itemId === decision.itemId) ??
+        input.issues.find(
+          (issue) =>
+            issue.anchor.quote === decision.targetText &&
+            issue.suggestion?.replacementText === decision.replacementText,
+        );
       const matchingCorrection =
         input.corrections.find((correction) => correction.itemId === decision.itemId) ??
         input.corrections.find(
@@ -1663,37 +1757,99 @@ function normalizeProofreadingConfirmationDecisions(input: {
             correction.replacementText === decision.replacementText,
         );
       const finalReplacementText =
-        decision.action === "reject"
+        normalizedAction === "rejected" ||
+        normalizedAction === "manual_only" ||
+        normalizedAction === "escalated"
           ? undefined
           : normalizeOptionalDecisionText(decision.editedReplacementText) ??
-            normalizeOptionalDecisionText(decision.replacementText);
+            normalizeOptionalDecisionText(decision.replacementText) ??
+            matchingIssue?.suggestion?.replacementText ??
+            matchingCorrection?.replacementText;
 
       return {
         itemId: normalizeOptionalDecisionText(decision.itemId) ?? `decision-${index + 1}`,
         targetText:
           normalizeOptionalDecisionText(decision.targetText) ??
+          matchingIssue?.anchor.quote ??
           matchingCorrection?.targetText ??
           "",
         replacementText:
           normalizeOptionalDecisionText(decision.replacementText) ??
+          matchingIssue?.suggestion?.replacementText ??
           matchingCorrection?.replacementText ??
           "",
         finalReplacementText,
-        action: decision.action,
-        category: matchingCorrection?.category,
+        action: normalizedAction,
+        category: matchingIssue?.issueType ?? matchingCorrection?.category,
         note: normalizeOptionalDecisionText(decision.note),
+        severity: matchingIssue?.severity ?? "medium",
+        issueType:
+          matchingIssue?.issueType ??
+          matchingCorrection?.category ??
+          "legacy_proofreading_correction",
+        source: matchingIssue?.source ?? "legacy_correction",
+        blocksFinal: matchingIssue?.blocksFinal ?? false,
+        anchor: matchingIssue?.anchor,
+        suggestionAction: matchingIssue?.suggestion?.action,
       };
     });
   }
 
-  return input.corrections.map((correction) => ({
-    itemId: correction.itemId,
-    targetText: correction.targetText,
-    replacementText: correction.replacementText,
-    finalReplacementText: correction.replacementText,
-    action: "accept" as const,
-    category: correction.category,
+  return input.issues.map((issue) => ({
+    itemId: issue.itemId,
+    targetText: issue.anchor.quote,
+    replacementText: issue.suggestion?.replacementText ?? "",
+    finalReplacementText: issue.suggestion?.replacementText,
+    action:
+      issue.suggestion?.replacementText &&
+      isSupportedProofreadingAutoWriteback({
+        issueType: issue.issueType,
+        targetText: issue.anchor.quote,
+        replacementText: issue.suggestion.replacementText,
+        anchor: issue.anchor,
+        suggestionAction: issue.suggestion.action,
+      })
+        ? "accepted"
+        : "manual_only",
+    category: issue.issueType,
+    severity: issue.severity,
+    issueType: issue.issueType,
+    source: issue.source,
+    blocksFinal: issue.blocksFinal,
+    anchor: issue.anchor,
+    suggestionAction: issue.suggestion?.action,
   }));
+}
+
+function normalizeProofreadingDecisionAction(
+  value: ProofreadingConfirmationDecisionAction,
+):
+  | "accepted"
+  | "accepted_with_manual_edit"
+  | "rejected"
+  | "manual_only"
+  | "escalated"
+  | "route_to_rule_candidate"
+  | "route_to_knowledge_candidate"
+  | undefined {
+  switch (value) {
+    case "accept":
+      return "accepted";
+    case "accept_and_edit":
+      return "accepted_with_manual_edit";
+    case "reject":
+      return "rejected";
+    case "accepted":
+    case "accepted_with_manual_edit":
+    case "rejected":
+    case "manual_only":
+    case "escalated":
+    case "route_to_rule_candidate":
+    case "route_to_knowledge_candidate":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function summarizeProofreadingConfirmationDecisions(
@@ -1709,13 +1865,12 @@ function summarizeProofreadingConfirmationDecisions(
   return {
     totalItems: decisions.length,
     acceptedIntoManuscriptCount: decisions.filter((decision) =>
-      decision.action === "accept" ||
-      decision.action === "accept_and_edit" ||
-      decision.action === "manual_only" ||
+      decision.action === "accepted" ||
+      decision.action === "accepted_with_manual_edit" ||
       decision.action === "route_to_rule_candidate" ||
       decision.action === "route_to_knowledge_candidate"
     ).length,
-    rejectedCount: decisions.filter((decision) => decision.action === "reject").length,
+    rejectedCount: decisions.filter((decision) => decision.action === "rejected").length,
     routedRuleCandidateCount: decisions.filter(
       (decision) => decision.action === "route_to_rule_candidate",
     ).length,
@@ -1731,7 +1886,7 @@ function serializeProofreadingConfirmationDecisions(
   decisions: readonly NormalizedProofreadingConfirmationDecision[],
 ): Array<{
   itemId: string;
-  action: ProofreadingConfirmationDecisionAction;
+  action: string;
   targetText: string;
   replacementText: string;
   finalReplacementText?: string;
@@ -1745,6 +1900,50 @@ function serializeProofreadingConfirmationDecisions(
   }));
 }
 
+function assertPublishableProofreadingDecisions(
+  decisions: readonly NormalizedProofreadingConfirmationDecision[],
+): void {
+  const escalatedDecision = decisions.find((decision) => decision.action === "escalated");
+  if (escalatedDecision) {
+    throw new Error(
+      `Proofreading issue ${escalatedDecision.itemId} is escalated and must be resolved before publication.`,
+    );
+  }
+
+  const blockedManualDecision = decisions.find(
+    (decision) =>
+      decision.action === "manual_only" &&
+      (decision.blocksFinal ||
+        decision.severity === "high" ||
+        decision.severity === "critical"),
+  );
+  if (blockedManualDecision) {
+    throw new Error(
+      `Proofreading issue ${blockedManualDecision.itemId} still requires manual confirmation before publication.`,
+    );
+  }
+
+  const unsupportedAutoWriteback = decisions.find((decision) =>
+    (decision.action === "accepted" ||
+      decision.action === "accepted_with_manual_edit" ||
+      decision.action === "route_to_rule_candidate" ||
+      decision.action === "route_to_knowledge_candidate") &&
+    !isSupportedProofreadingAutoWriteback({
+      issueType: decision.issueType,
+      targetText: decision.targetText,
+      replacementText:
+        decision.finalReplacementText ?? decision.replacementText,
+      anchor: decision.anchor,
+      suggestionAction: decision.suggestionAction,
+    }),
+  );
+  if (unsupportedAutoWriteback) {
+    throw new Error(
+      `Proofreading issue ${unsupportedAutoWriteback.itemId} cannot be safely auto-written back to the manuscript.`,
+    );
+  }
+}
+
 function buildHumanFinalAiReplacements(
   decisions: readonly NormalizedProofreadingConfirmationDecision[],
 ): Array<{
@@ -1752,22 +1951,136 @@ function buildHumanFinalAiReplacements(
   replacementText: string;
   reason: string;
 }> {
-  return decisions
-    .filter((decision) =>
-      decision.action !== "reject" && decision.finalReplacementText,
-    )
-    .map((decision) => ({
-      targetText: decision.targetText,
-      replacementText: decision.finalReplacementText!,
-      reason: decision.category ?? "proofreading_confirmation",
-    }));
+  return decisions.flatMap((decision) => {
+    if (
+      decision.action !== "accepted" &&
+      decision.action !== "accepted_with_manual_edit" &&
+      decision.action !== "route_to_rule_candidate" &&
+      decision.action !== "route_to_knowledge_candidate"
+    ) {
+      return [];
+    }
+
+    if (!decision.finalReplacementText) {
+      return [];
+    }
+
+    if (
+      !isSupportedProofreadingAutoWriteback({
+        issueType: decision.issueType,
+        targetText: decision.targetText,
+        replacementText: decision.finalReplacementText,
+        anchor: decision.anchor,
+        suggestionAction: decision.suggestionAction,
+      })
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        targetText: decision.targetText,
+        replacementText: decision.finalReplacementText,
+        reason: decision.category ?? "proofreading_confirmation",
+      },
+    ];
+  });
+}
+
+function isSupportedProofreadingAutoWriteback(input: {
+  issueType: string;
+  targetText: string;
+  replacementText: string;
+  anchor?: ProofreadingIssueAnchor;
+  suggestionAction?: ProofreadingSuggestionAction;
+}): boolean {
+  if (
+    input.issueType === "legacy_proofreading_correction" &&
+    input.targetText.trim().length > 0 &&
+    input.replacementText.trim().length > 0
+  ) {
+    return true;
+  }
+
+  if (!input.anchor) {
+    return false;
+  }
+
+  if (input.targetText.trim().length === 0 || input.replacementText.trim().length === 0) {
+    return false;
+  }
+
+  return (
+    input.suggestionAction === "replace_text" ||
+    input.suggestionAction === "rewrite_manually"
+  );
+}
+
+function buildProofreadingWritebackLedger(
+  decisions: readonly NormalizedProofreadingConfirmationDecision[],
+): Array<{
+  itemId: string;
+  action: string;
+  applied: boolean;
+  disposition: string;
+  anchorBlockIndex?: number;
+}> {
+  return decisions.map((decision) => {
+    if (decision.action === "rejected") {
+      return {
+        itemId: decision.itemId,
+        action: decision.action,
+        applied: false,
+        disposition: "rejected",
+        anchorBlockIndex: decision.anchor?.blockIndex,
+      };
+    }
+
+    if (decision.action === "manual_only") {
+      return {
+        itemId: decision.itemId,
+        action: decision.action,
+        applied: false,
+        disposition: "manual_confirmation_required",
+        anchorBlockIndex: decision.anchor?.blockIndex,
+      };
+    }
+
+    if (decision.action === "escalated") {
+      return {
+        itemId: decision.itemId,
+        action: decision.action,
+        applied: false,
+        disposition: "escalated",
+        anchorBlockIndex: decision.anchor?.blockIndex,
+      };
+    }
+
+    const applied =
+      !!decision.finalReplacementText &&
+      isSupportedProofreadingAutoWriteback({
+        issueType: decision.issueType,
+        targetText: decision.targetText,
+        replacementText: decision.finalReplacementText,
+        anchor: decision.anchor,
+        suggestionAction: decision.suggestionAction,
+      });
+
+    return {
+      itemId: decision.itemId,
+      action: decision.action,
+      applied,
+      disposition: applied ? "auto_writeback" : "skipped_unsafe_writeback",
+      anchorBlockIndex: decision.anchor?.blockIndex,
+    };
+  });
 }
 
 function buildHumanConfirmationResidualSourceBlocks(
   decisions: readonly NormalizedProofreadingConfirmationDecision[],
 ): ProofreadingResidualSourceBlock[] {
   return decisions
-    .flatMap((decision, index) => {
+    .flatMap((decision) => {
       const hint = buildHumanConfirmationResidualHint(decision);
       if (!hint) {
         return [];
@@ -1775,7 +2088,7 @@ function buildHumanConfirmationResidualSourceBlocks(
 
       return [
         {
-          blockIndex: index,
+          blockIndex: decision.anchor?.blockIndex ?? 0,
           text: decision.targetText,
           residualHints: [hint],
         } satisfies ProofreadingResidualSourceBlock,
@@ -1786,12 +2099,12 @@ function buildHumanConfirmationResidualSourceBlocks(
 function buildHumanConfirmationResidualHint(
   decision: NormalizedProofreadingConfirmationDecision,
 ): NonNullable<ProofreadingResidualSourceBlock["residualHints"]>[number] | undefined {
-  if (decision.action === "reject") {
+  if (decision.action === "rejected") {
     return {
       issue_type: "unsupported_correction_proposal",
       excerpt: decision.targetText,
       suggestion: decision.replacementText,
-      rationale: decision.note ?? "Human rejected the proofreading correction.",
+      rationale: decision.note ?? "Human rejected the proofreading issue.",
       source_stage: "model_residual",
       signal_breakdown: {
         promotion_evidence: {
@@ -1804,14 +2117,25 @@ function buildHumanConfirmationResidualHint(
     };
   }
 
-  if (decision.action === "accept_and_edit") {
+  if (decision.action === "accepted_with_manual_edit") {
     return {
       issue_type: mapConfirmationDecisionToResidualIssueType(decision),
       excerpt: decision.targetText,
       suggestion: decision.finalReplacementText ?? decision.replacementText,
       rationale:
         decision.note ??
-        "Human adjusted the proofreading correction before final publication.",
+        "Human adjusted the proofreading issue before final publication.",
+      source_stage: "model_residual",
+    };
+  }
+
+  if (decision.action === "manual_only") {
+    return {
+      issue_type: "manual_confirmation_required",
+      excerpt: decision.targetText,
+      suggestion: decision.replacementText,
+      rationale:
+        decision.note ?? "The issue still requires manual confirmation.",
       source_stage: "model_residual",
       signal_breakdown: {
         promotion_evidence: {
@@ -1849,6 +2173,76 @@ function mapConfirmationDecisionToResidualIssueType(
   }
 
   return "style_consistency_gap";
+}
+
+function buildStoredProofreadingPlan(
+  plan: ProofreadingAiPlan,
+): ProofreadingAiPlan {
+  return {
+    role: plan.role,
+    summary: plan.summary,
+    issues: plan.issues.map((issue) => structuredClone(issue)),
+    corrections: issuesToCorrectionSeeds(plan.issues).map((correction) => ({
+      targetText: correction.targetText,
+      replacementText: correction.replacementText,
+      ...(correction.category ? { category: correction.category } : {}),
+    })),
+    manualReviewItems: [...plan.manualReviewItems],
+  };
+}
+
+function issuesToCorrectionSeeds(
+  issues: readonly ProofreadingIssue[],
+): ProofreadingPlanCorrectionSeed[] {
+  return issues.flatMap((issue) => {
+    const replacementText = readOptionalString(issue.suggestion?.replacementText);
+    if (!replacementText) {
+      return [];
+    }
+
+    return [
+      {
+        itemId: issue.itemId,
+        targetText: issue.anchor.quote,
+        replacementText,
+        category: issue.issueType,
+      },
+    ];
+  });
+}
+
+function normalizeSerializedSuggestionAction(
+  value: unknown,
+): ProofreadingSuggestionAction | undefined {
+  return value === "replace_text" ||
+    value === "rewrite_manually" ||
+    value === "verify_fact" ||
+    value === "explain_only"
+    ? value
+    : undefined;
+}
+
+function normalizeSeverity(
+  value: unknown,
+): "critical" | "high" | "medium" | "low" | undefined {
+  return value === "critical" ||
+    value === "high" ||
+    value === "medium" ||
+    value === "low"
+    ? value
+    : undefined;
+}
+
+function normalizeIssueSource(
+  value: unknown,
+): ProofreadingIssue["source"] | undefined {
+  return value === "governed_rule" ||
+    value === "knowledge_base" ||
+    value === "quality_check" ||
+    value === "residual_ai" ||
+    value === "legacy_correction"
+    ? value
+    : undefined;
 }
 
 function normalizeOptionalDecisionText(value: string | undefined): string | undefined {
@@ -2487,59 +2881,25 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function deriveProofreadingManuscriptTarget(input: {
-  reportStorageKey: string;
-  reportFileName?: string;
-}): {
-  storageKey: string;
-  fileName: string;
-} {
-  const normalizedStorageKey = input.reportStorageKey.replaceAll("\\", "/");
-  const directoryPrefix = normalizedStorageKey.includes("/")
-    ? normalizedStorageKey.slice(0, normalizedStorageKey.lastIndexOf("/") + 1)
-    : "";
-  const fileName = deriveProofreadingManuscriptFileName(input.reportFileName);
-
-  return {
-    storageKey: `${directoryPrefix}${fileName}`,
-    fileName,
-  };
-}
-
-function deriveProofreadingManuscriptFileName(
-  reportFileName: string | undefined,
-): string {
-  const normalizedFileName = (reportFileName ?? "proofreading-report.md")
-    .replaceAll("\\", "/")
-    .split("/")
-    .pop() ?? "proofreading-report.md";
-  const strippedExtension = normalizedFileName.replace(/\.[^.]+$/u, "");
-  const stem = strippedExtension.length > 0 ? strippedExtension : "proofreading-report";
-  const manuscriptStem = /report/iu.test(stem)
-    ? stem.replace(/report/giu, "manuscript")
-    : `${stem}-manuscript`;
-
-  return `${manuscriptStem}.docx`;
-}
-
 function renderProofreadingReport(
   findings: ProofreadingInspectionResult,
   proofreadingPlan?: ProofreadingAiPlan,
 ): string {
   const lines = [
-    "# Proofreading Rule Report",
+    "# Proofreading Issue Report",
     "",
+    `Role: ${proofreadingPlan?.role ?? "医学稿件终校审校员"}`,
     `Failed checks: ${findings.failedChecks.length}`,
     `Manual review items: ${findings.manualReviewItems.length}`,
-    `Corrections: ${proofreadingPlan?.corrections.length ?? 0}`,
+    `Residual issues: ${proofreadingPlan?.issues.length ?? 0}`,
     "",
   ];
 
-  if ((proofreadingPlan?.corrections.length ?? 0) > 0) {
-    lines.push("## Corrections", "");
-    for (const correction of proofreadingPlan?.corrections ?? []) {
+  if ((proofreadingPlan?.issues.length ?? 0) > 0) {
+    lines.push("## Issue Queue", "");
+    for (const issue of proofreadingPlan?.issues ?? []) {
       lines.push(
-        `- [${correction.category}] ${correction.targetText} -> ${correction.replacementText}`,
+        `- [${issue.severity}] (${issue.source}) ${issue.title}: ${issue.anchor.quote}`,
       );
     }
     lines.push("");

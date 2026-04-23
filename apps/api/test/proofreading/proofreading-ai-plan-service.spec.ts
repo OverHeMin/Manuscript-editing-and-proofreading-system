@@ -11,8 +11,9 @@ test("proofreading AI planner forwards governed proofreading context to the main
       async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
         capturedInput = input;
         return {
+          role: "医学稿件终校审校员",
           summary: "Governed proofreading plan.",
-          corrections: [],
+          issues: [],
           manualReviewItems: [],
         } as T;
       },
@@ -65,22 +66,27 @@ test("proofreading AI planner forwards governed proofreading context to the main
 
   assert.ok(capturedInput);
   assert.deepEqual(capturedInput.userPayload, {
-    task: "proofreading_plan",
+    task: "proofreading_issue_plan",
     manuscriptId: "manuscript-1",
     sourceFileName: "proofreading.docx",
-    sourceBlocks: [
+    fullDocumentBlocks: [
       {
-        section: "results",
+        blockIndex: 0,
         blockKind: "paragraph",
+        sectionLabel: "results",
         text: "P < 0.05",
       },
     ],
-    qualityIssues: [
-      {
-        severity: "error",
-        explanation: "Statistical expression requires governed review.",
-      },
-    ],
+    fullDocumentText: "P < 0.05",
+    governedCoverage: {
+      qualityIssues: [
+        {
+          severity: "error",
+          issueType: "",
+          explanation: "Statistical expression requires governed review.",
+        },
+      ],
+    },
     governance: {
       hardRuleSummary: "Rule set v2:\n- results: inspect_statistical_expression requires manual review",
       forbiddenOperations: ["meaning_shift"],
@@ -108,12 +114,28 @@ test("proofreading AI planner forwards governed proofreading context to the main
       ],
     },
     contract: {
+      role: "医学稿件终校审校员",
       summary: "string",
-      corrections: [
+      issues: [
         {
-          targetText: "string",
-          replacementText: "string",
-          category: "terminology|punctuation|grammar|style",
+          itemId: "string",
+          title: "string",
+          description: "string",
+          severity: "critical|high|medium|low",
+          source: "residual_ai",
+          issueType: "string",
+          blocksFinal: false,
+          anchor: {
+            blockIndex: 0,
+            quote: "string",
+            sectionLabel: "string",
+            blockKind: "string",
+          },
+          suggestion: {
+            action: "replace_text|rewrite_manually|verify_fact|explain_only",
+            replacementText: "string",
+            note: "string",
+          },
         },
       ],
       manualReviewItems: ["string"],

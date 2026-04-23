@@ -100,6 +100,7 @@ def test_apply_rules_to_docx_replaces_exact_abstract_heading(tmp_path: Path) -> 
                 },
             }
         ],
+        [],
     )
 
     assert result["applied_rule_ids"] == ["rule-abstract-1"]
@@ -208,6 +209,7 @@ def test_apply_rules_to_docx_reports_table_rules_for_manual_review(tmp_path: Pat
                 },
             },
         ],
+        [],
     )
 
     assert result["applied_rule_ids"] == []

@@ -65,6 +65,7 @@ import {
   buildAssetReportPreviewBody,
   buildEditingChangeLedgerEntries,
   buildProofreadingConfirmationItems,
+  buildProofreadingDocumentBlocks,
   buildWorkbenchAssetCollectionHref,
   buildWorkbenchAssetDetailHref,
   ManuscriptWorkbenchAssetDetailPage,
@@ -626,9 +627,11 @@ export function pruneConfirmationState(
       continue;
     }
 
-    const editedReplacementText = normalizeOptionalText(
-      draft.editedReplacementText ?? "",
-    );
+    const editedReplacementText =
+      draft.action === "accepted_with_manual_edit" ||
+      draft.action === "accept_and_edit"
+        ? normalizeOptionalText(draft.editedReplacementText ?? "")
+        : undefined;
     const note = normalizeOptionalText(draft.note ?? "");
 
     if (!draft.action && !editedReplacementText && !note) {
@@ -655,9 +658,11 @@ export function buildProofreadingConfirmationDecisions(
       return [];
     }
 
-    const editedReplacementText = normalizeOptionalText(
-      draft.editedReplacementText ?? "",
-    );
+    const editedReplacementText =
+      draft.action === "accepted_with_manual_edit" ||
+      draft.action === "accept_and_edit"
+        ? normalizeOptionalText(draft.editedReplacementText ?? "")
+        : undefined;
     const note = normalizeOptionalText(draft.note ?? "");
 
     return [
@@ -671,6 +676,31 @@ export function buildProofreadingConfirmationDecisions(
       },
     ];
   });
+}
+
+export function resolveProofreadingDraftSelection(input: {
+  assets: readonly Pick<DocumentAssetViewModel, "id">[];
+  currentDraftAssetId: string;
+  latestDraftAssetId?: string | null;
+  preferLatestDraft?: boolean;
+}): string {
+  const currentDraftAssetId = input.currentDraftAssetId.trim();
+  const latestDraftAssetId = input.latestDraftAssetId?.trim() ?? "";
+
+  if (input.preferLatestDraft && latestDraftAssetId) {
+    return latestDraftAssetId;
+  }
+
+  if (currentDraftAssetId.length > 0) {
+    const currentDraftStillExists = input.assets.some(
+      (asset) => asset.id === currentDraftAssetId,
+    );
+    if (currentDraftStillExists) {
+      return currentDraftAssetId;
+    }
+  }
+
+  return latestDraftAssetId;
 }
 
 export function resolveDetailJobSourceAsset(input: {
@@ -761,6 +791,7 @@ export function ManuscriptWorkbenchPage({
   const [confirmationState, setConfirmationState] = useState<
     Record<string, ProofreadingConfirmationDraftState>
   >({});
+  const [activeProofreadingIssueId, setActiveProofreadingIssueId] = useState("");
   const [isHumanFinalPublishing, setIsHumanFinalPublishing] = useState(false);
   const [manualFeedbackCategory, setManualFeedbackCategory] =
     useState<ManualFeedbackCategory | "">("");
@@ -809,9 +840,11 @@ export function ManuscriptWorkbenchPage({
         : workspace.suggestedParentAsset?.id ?? "",
     );
     setDraftAssetId((current) =>
-      workspace.assets.some((asset) => asset.id === current)
-        ? current
-        : workspace.latestProofreadingDraftAsset?.id ?? "",
+      resolveProofreadingDraftSelection({
+        assets: workspace.assets,
+        currentDraftAssetId: current,
+        latestDraftAssetId: workspace.latestProofreadingDraftAsset?.id,
+      }),
     );
     setSelectedAssetId((current) => {
       if (
@@ -904,6 +937,7 @@ export function ManuscriptWorkbenchPage({
       setDetailError(`Asset ${selectedAssetId} is no longer available in this workspace.`);
       setIsDetailLoading(false);
       setConfirmationState({});
+      setActiveProofreadingIssueId("");
       return;
     }
 
@@ -939,12 +973,21 @@ export function ManuscriptWorkbenchPage({
       }
 
       setDetailJob(sourceJob);
-      setConfirmationState((current) => pruneConfirmationState(
-        current,
-        buildProofreadingConfirmationItems(sourceJob),
-      ));
+      const nextConfirmationItems = buildProofreadingConfirmationItems(sourceJob);
+      setConfirmationState((current) =>
+        pruneConfirmationState(current, nextConfirmationItems)
+      );
+      setActiveProofreadingIssueId((current) =>
+        nextConfirmationItems.some((item) => item.itemId === current)
+          ? current
+          : (nextConfirmationItems[0]?.itemId ?? "")
+      );
 
-      if (detailKind === "report_preview") {
+      if (
+        detailKind === "report_preview" ||
+        detailKind === "proofreading_workspace" ||
+        detailKind === "proofreading_confirmation"
+      ) {
         setDetailPreviewSession(null);
         setIsDetailLoading(false);
         return;
@@ -1839,6 +1882,16 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              if (mode === "proofreading") {
+                setDraftAssetId(
+                  resolveProofreadingDraftSelection({
+                    assets: result.workspace.assets,
+                    currentDraftAssetId: draftAssetId,
+                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    preferLatestDraft: true,
+                  }),
+                );
+              }
               await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
@@ -1891,6 +1944,16 @@ function buildTemplateContextActionResult(
               );
               setWorkspace(result.workspace);
               setLatestJob(result.runResult.job);
+              if (mode === "proofreading") {
+                setDraftAssetId(
+                  resolveProofreadingDraftSelection({
+                    assets: result.workspace.assets,
+                    currentDraftAssetId: draftAssetId,
+                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    preferLatestDraft: true,
+                  }),
+                );
+              }
               await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
@@ -1987,6 +2050,8 @@ function buildTemplateContextActionResult(
             }),
         }
       : undefined;
+  const visibleFinalizeActionPanel: ManuscriptWorkbenchActionPanelProps | undefined =
+    undefined;
 
   const selectedAsset =
     workspace && selectedAssetId.trim().length > 0
@@ -1998,6 +2063,11 @@ function buildTemplateContextActionResult(
         assetType: selectedAsset.asset_type,
       })
     : null;
+  const currentProofreadingAsset =
+    mode === "proofreading" &&
+    isProofreadingWorkbenchAssetType(workspace?.currentAsset?.asset_type)
+      ? workspace?.currentAsset
+      : null;
 
   const utilitiesPanel = workspace
     ? {
@@ -2035,18 +2105,18 @@ function buildTemplateContextActionResult(
             };
           }),
         canPublishHumanFinal:
-          mode === "proofreading" &&
-          workspace.currentAsset?.asset_type === "final_proof_annotated_docx" &&
+          currentProofreadingAsset != null &&
+          detailKind !== "proofreading_workspace" &&
           detailKind !== "proofreading_confirmation",
         onPublishHumanFinal: () => {
-          if (workspace.currentAsset?.asset_type !== "final_proof_annotated_docx") {
+          if (!currentProofreadingAsset) {
             return;
           }
 
           const detailHref = buildWorkbenchAssetDetailHref({
             mode,
             manuscriptId: workspace.manuscript.id,
-            assetId: workspace.currentAsset.id,
+            assetId: currentProofreadingAsset.id,
             reviewedCaseSnapshotId:
               normalizedPrefilledReviewedCaseSnapshotId.length > 0
                 ? normalizedPrefilledReviewedCaseSnapshotId
@@ -2056,16 +2126,16 @@ function buildTemplateContextActionResult(
                 ? normalizedPrefilledSampleSetItemId
                 : undefined,
           });
-          setSelectedAssetId(workspace.currentAsset.id);
-          setStatus(`Opened proofreading confirmation ${workspace.currentAsset.id}`);
+          setSelectedAssetId(currentProofreadingAsset.id);
+          setStatus(`Opened proofreading workbench ${currentProofreadingAsset.id}`);
           setLatestActionResult({
             tone: "success",
-            actionLabel: "Publish Human Final",
-            message: `Opened proofreading confirmation ${workspace.currentAsset.id}`,
+            actionLabel: "Open Proofreading Workbench",
+            message: `Opened proofreading workbench ${currentProofreadingAsset.id}`,
             details: [
               {
                 label: "Asset",
-                value: workspace.currentAsset.id,
+                value: currentProofreadingAsset.id,
               },
             ],
           });
@@ -2116,8 +2186,8 @@ function buildTemplateContextActionResult(
   if (moduleActionPanel) {
     focusPrimaryActions.push(moduleActionPanel);
   }
-  if (finalizeActionPanel) {
-    focusPrimaryActions.push(finalizeActionPanel);
+  if (visibleFinalizeActionPanel) {
+    focusPrimaryActions.push(visibleFinalizeActionPanel);
   }
   const manualFeedbackContext = workspace
     ? resolveManualFeedbackContext(mode, workspace)
@@ -2162,6 +2232,7 @@ function buildTemplateContextActionResult(
     />
   ) : null;
   const confirmationItems = buildProofreadingConfirmationItems(detailJob);
+  const proofreadingDocumentBlocks = buildProofreadingDocumentBlocks(detailJob);
   const confirmationReady =
     confirmationItems.length > 0 &&
     confirmationItems.every((item) => {
@@ -2170,8 +2241,23 @@ function buildTemplateContextActionResult(
         return false;
       }
 
-      if (draft.action === "accept_and_edit") {
+      if (
+        draft.action === "accepted_with_manual_edit" ||
+        draft.action === "accept_and_edit"
+      ) {
         return (draft.editedReplacementText?.trim().length ?? 0) > 0;
+      }
+
+      if (draft.action === "escalated") {
+        return false;
+      }
+
+      if (draft.action === "manual_only") {
+        return !(
+          item.blocksFinal ||
+          item.severity === "high" ||
+          item.severity === "critical"
+        );
       }
 
       return true;
@@ -2207,15 +2293,19 @@ function buildTemplateContextActionResult(
             changeLedger={buildEditingChangeLedgerEntries(detailJob)}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
+            proofreadingDocumentBlocks={proofreadingDocumentBlocks}
+            activeProofreadingIssueId={activeProofreadingIssueId}
             isFinalizeEnabled={confirmationReady}
             isFinalizing={isHumanFinalPublishing}
+            onProofreadingIssueSelect={setActiveProofreadingIssueId}
             onConfirmationActionChange={(itemId, action) => {
               setConfirmationState((current) => ({
                 ...current,
                 [itemId]: {
                   ...current[itemId],
                   action,
-                  ...(action !== "accept_and_edit"
+                  ...(action !== "accepted_with_manual_edit" &&
+                    action !== "accept_and_edit"
                     ? {
                         editedReplacementText: undefined,
                       }
@@ -2430,7 +2520,7 @@ function buildTemplateContextActionResult(
             templateSelection={templateSelectionPanel}
             executionContext={executionContext ?? undefined}
             moduleAction={moduleActionPanel}
-            finalizeAction={finalizeActionPanel}
+            finalizeAction={visibleFinalizeActionPanel}
             utilities={utilitiesPanel}
           />
           {summaryElement}
@@ -3618,6 +3708,15 @@ function resolveCurrentAssetDownloadHref(
   }
 
   return resolveBrowserApiUrl(`/api/v1/document-assets/${assetId}/download`);
+}
+
+function isProofreadingWorkbenchAssetType(
+  assetType: string | null | undefined,
+): boolean {
+  return (
+    assetType === "proofreading_draft_report" ||
+    assetType === "final_proof_annotated_docx"
+  );
 }
 
 function legacyResolveCurrentResultDownloadLabel(

@@ -121,6 +121,13 @@ def apply_rules_to_docx(
             if transformed == next_text:
                 continue
 
+            if not replace_paragraph_text_in_single_node(
+                text_nodes,
+                expected_text=next_text,
+                replacement_text=transformed,
+            ):
+                continue
+
             applied_rule_id = str(rule.get("id"))
             next_text = transformed
             applied_rule_ids.append(applied_rule_id)
@@ -134,12 +141,12 @@ def apply_rules_to_docx(
             break
 
         for replacement_index, replacement in enumerate(resolved_ai_replacements):
-            before_ai = next_text
-            transformed = apply_ai_replacement(next_text, replacement)
-            if transformed == next_text:
+            replaced_text = apply_ai_replacement_to_text_nodes(text_nodes, replacement)
+            if replaced_text is None:
                 continue
 
             replacement_id = f"ai-replacement-{replacement_index + 1}"
+            before_ai, transformed = next_text, replaced_text
             next_text = transformed
             applied_rule_ids.append(replacement_id)
             applied_changes.append(
@@ -155,12 +162,17 @@ def apply_rules_to_docx(
         if applied_rule_id is None:
             continue
 
-        text_nodes[0].text = next_text
-        for node in text_nodes[1:]:
-            node.text = ""
-
     if resolved_table_patches:
         table_patch_results = apply_table_patches(root, resolved_table_patches)
+
+    if not applied_rule_ids and not table_patch_results:
+        shutil.copyfile(source_path, output_path)
+        return {
+            "applied_rule_ids": [],
+            "applied_changes": [],
+            "inspection_findings": inspection_findings,
+            "table_patch_results": [],
+        }
 
     entries["word/document.xml"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -201,9 +213,53 @@ def apply_ai_replacement(text: str, replacement: dict) -> str:
     return text.replace(target_text, replacement_text, 1)
 
 
+def replace_paragraph_text_in_single_node(
+    text_nodes: list[ET.Element],
+    *,
+    expected_text: str,
+    replacement_text: str,
+) -> bool:
+    non_empty_nodes = [node for node in text_nodes if node.text]
+    if len(non_empty_nodes) != 1:
+        return False
+
+    target_node = non_empty_nodes[0]
+    if target_node.text != expected_text:
+        return False
+
+    target_node.text = replacement_text
+    return True
+
+
+def apply_ai_replacement_to_text_nodes(
+    text_nodes: list[ET.Element],
+    replacement: dict,
+) -> str | None:
+    target_text = replacement.get("targetText")
+    replacement_text = replacement.get("replacementText")
+    if not isinstance(target_text, str) or not target_text:
+        return None
+    if not isinstance(replacement_text, str) or not replacement_text:
+        return None
+
+    for node in text_nodes:
+        node_text = node.text or ""
+        if target_text not in node_text:
+            continue
+
+        updated_text = node_text.replace(target_text, replacement_text, 1)
+        if updated_text == node_text:
+            continue
+
+        node.text = updated_text
+        return "".join(text_node.text or "" for text_node in text_nodes)
+
+    return None
+
+
 def is_table_target_rule(rule: dict) -> bool:
     if rule.get("rule_object") == "table":
-      return True
+        return True
 
     scope = rule.get("scope") or {}
     if scope.get("block_kind") == "table":

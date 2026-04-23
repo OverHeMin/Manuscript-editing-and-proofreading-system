@@ -12,6 +12,7 @@ import {
   buildJournalTemplateOptions,
   buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
+  resolveProofreadingDraftSelection,
   resolveGovernedExecutionBlockMessage,
   resolveDetailJobSourceAsset,
   resolveResultMaterializationFailureMessage,
@@ -855,34 +856,56 @@ test("proofreading focus canvas labels the annotated result as a confirmation ma
 test("proofreading confirmation helpers keep only active draft rows and serialize item decisions for publish", () => {
   const pruned = pruneConfirmationState(
     {
-      "correction-1": {
-        action: "accept",
+      "issue-1": {
+        action: "accepted",
         note: "保留",
       },
-      "correction-legacy": {
-        action: "reject",
+      "issue-legacy": {
+        action: "rejected",
         note: "旧条目",
       },
     },
     [
       {
-        itemId: "correction-1",
+        itemId: "issue-1",
+        title: "单位表达不规范",
+        description: "将单位表达统一为标准写法。",
+        severity: "medium",
+        source: "residual_ai",
+        issueType: "style",
+        blocksFinal: false,
         targetText: "5 mg per dL",
         replacementText: "5 mg/dL",
-        category: "style",
+        anchor: {
+          blockIndex: 0,
+          quote: "5 mg per dL",
+          sectionLabel: "结果",
+        },
+        suggestionAction: "replace_text",
       },
       {
-        itemId: "correction-2",
+        itemId: "issue-2",
+        title: "主谓一致错误",
+        description: "需要修正文法一致性。",
+        severity: "medium",
+        source: "residual_ai",
+        issueType: "grammar",
+        blocksFinal: false,
         targetText: "The hemoglobin were stable.",
         replacementText: "The hemoglobin was stable.",
-        category: "grammar",
+        anchor: {
+          blockIndex: 1,
+          quote: "The hemoglobin were stable.",
+          sectionLabel: "讨论",
+        },
+        suggestionAction: "replace_text",
       },
     ],
   );
 
   assert.deepEqual(pruned, {
-    "correction-1": {
-      action: "accept",
+    "issue-1": {
+      action: "accepted",
       note: "保留",
     },
   });
@@ -891,25 +914,47 @@ test("proofreading confirmation helpers keep only active draft rows and serializ
     buildProofreadingConfirmationDecisions(
       [
         {
-          itemId: "correction-1",
+          itemId: "issue-1",
+          title: "单位表达不规范",
+          description: "将单位表达统一为标准写法。",
+          severity: "medium",
+          source: "residual_ai",
+          issueType: "style",
+          blocksFinal: false,
           targetText: "5 mg per dL",
           replacementText: "5 mg/dL",
-          category: "style",
+          anchor: {
+            blockIndex: 0,
+            quote: "5 mg per dL",
+            sectionLabel: "结果",
+          },
+          suggestionAction: "replace_text",
         },
         {
-          itemId: "correction-2",
+          itemId: "issue-2",
+          title: "主谓一致错误",
+          description: "需要修正文法一致性。",
+          severity: "medium",
+          source: "residual_ai",
+          issueType: "grammar",
+          blocksFinal: false,
           targetText: "The hemoglobin were stable.",
           replacementText: "The hemoglobin was stable.",
-          category: "grammar",
+          anchor: {
+            blockIndex: 1,
+            quote: "The hemoglobin were stable.",
+            sectionLabel: "讨论",
+          },
+          suggestionAction: "replace_text",
         },
       ],
       {
-        "correction-1": {
-          action: "accept",
+        "issue-1": {
+          action: "accepted",
           note: "量纲正确",
         },
-        "correction-2": {
-          action: "accept_and_edit",
+        "issue-2": {
+          action: "accepted_with_manual_edit",
           editedReplacementText: "The hemoglobin level was stable.",
           note: "人工补足 level",
         },
@@ -917,21 +962,58 @@ test("proofreading confirmation helpers keep only active draft rows and serializ
     ),
     [
       {
-        itemId: "correction-1",
+        itemId: "issue-1",
         targetText: "5 mg per dL",
         replacementText: "5 mg/dL",
-        action: "accept",
+        action: "accepted",
         note: "量纲正确",
       },
       {
-        itemId: "correction-2",
+        itemId: "issue-2",
         targetText: "The hemoglobin were stable.",
         replacementText: "The hemoglobin was stable.",
-        action: "accept_and_edit",
+        action: "accepted_with_manual_edit",
         editedReplacementText: "The hemoglobin level was stable.",
         note: "人工补足 level",
       },
     ],
+  );
+});
+
+test("proofreading draft selection keeps the current draft unless a new draft run explicitly prefers the latest draft", () => {
+  const assets = [
+    {
+      id: "asset-proof-draft-2",
+    },
+    {
+      id: "asset-proof-draft-1",
+    },
+  ] as const;
+
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-1",
+      latestDraftAssetId: "asset-proof-draft-2",
+    }),
+    "asset-proof-draft-1",
+  );
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-1",
+      latestDraftAssetId: "asset-proof-draft-2",
+      preferLatestDraft: true,
+    }),
+    "asset-proof-draft-2",
+  );
+  assert.equal(
+    resolveProofreadingDraftSelection({
+      assets,
+      currentDraftAssetId: "asset-proof-draft-missing",
+      latestDraftAssetId: "asset-proof-draft-2",
+    }),
+    "asset-proof-draft-2",
   );
 });
 

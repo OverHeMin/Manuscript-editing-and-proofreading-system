@@ -15,6 +15,7 @@ import type { ManuscriptWorkbenchMode } from "./manuscript-workbench-controller.
 export type ManuscriptAssetDetailKind =
   | "document_preview"
   | "report_preview"
+  | "proofreading_workspace"
   | "proofreading_confirmation";
 
 export interface EditingChangeLedgerEntry {
@@ -25,11 +26,33 @@ export interface EditingChangeLedgerEntry {
   locationText?: string;
 }
 
+export interface ProofreadingIssueAnchorViewModel {
+  blockIndex: number;
+  quote: string;
+  sectionLabel?: string;
+}
+
+export interface ProofreadingDocumentBlockViewModel {
+  blockId: string;
+  blockIndex: number;
+  sectionLabel?: string;
+  blockKind?: string;
+  text: string;
+}
+
 export interface ProofreadingConfirmationItemViewModel {
   itemId: string;
+  title?: string;
+  description?: string;
+  severity?: string;
+  source?: string;
+  issueType?: string;
+  blocksFinal?: boolean;
   targetText: string;
   replacementText: string;
   category?: string;
+  anchor?: ProofreadingIssueAnchorViewModel;
+  suggestionAction?: string;
 }
 
 export interface ProofreadingConfirmationDraftState {
@@ -50,8 +73,11 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   changeLedger?: readonly EditingChangeLedgerEntry[];
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  proofreadingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
+  activeProofreadingIssueId?: string;
   isFinalizeEnabled?: boolean;
   isFinalizing?: boolean;
+  onProofreadingIssueSelect?(itemId: string): void;
   onConfirmationActionChange?(
     itemId: string,
     action: ProofreadingConfirmationDecisionAction,
@@ -93,16 +119,18 @@ export function resolveManuscriptAssetDetailKind(input: {
   mode: ManuscriptWorkbenchMode;
   assetType: DocumentAssetViewModel["asset_type"];
 }): ManuscriptAssetDetailKind {
-  if (
-    input.mode === "proofreading" &&
-    input.assetType === "final_proof_annotated_docx"
-  ) {
-    return "proofreading_confirmation";
+  if (input.mode === "proofreading") {
+    if (input.assetType === "proofreading_draft_report") {
+      return "proofreading_workspace";
+    }
+
+    if (input.assetType === "final_proof_annotated_docx") {
+      return "proofreading_confirmation";
+    }
   }
 
   if (
     input.assetType === "screening_report" ||
-    input.assetType === "proofreading_draft_report" ||
     input.assetType === "final_proof_issue_report"
   ) {
     return "report_preview";
@@ -117,7 +145,7 @@ export function isPreviewableDocumentAsset(
   return resolveManuscriptAssetDetailKind({
     mode: asset.source_module === "proofreading" ? "proofreading" : "editing",
     assetType: asset.asset_type,
-  }) !== "report_preview";
+  }) === "document_preview";
 }
 
 export function buildEditingChangeLedgerEntries(
@@ -129,26 +157,26 @@ export function buildEditingChangeLedgerEntries(
   }
 
   return payload.appliedChanges.flatMap((entry, index) => {
-      const change = asRecord(entry);
-      const before = readOptionalString(change?.before);
-      const after = readOptionalString(change?.after);
-      if (!before || !after) {
-        return [];
-      }
+    const change = asRecord(entry);
+    const before = readOptionalString(change?.before);
+    const after = readOptionalString(change?.after);
+    if (!before || !after) {
+      return [];
+    }
 
-      return [
-        {
-          id: `change-${index + 1}`,
-          sourceLabel:
-            readOptionalString(change?.ruleId) ??
-            readOptionalString(change?.source) ??
-            `change-${index + 1}`,
-          before,
-          after,
-          locationText: formatLocationText(change?.semantic_hit),
-        } satisfies EditingChangeLedgerEntry,
-      ];
-    });
+    return [
+      {
+        id: `change-${index + 1}`,
+        sourceLabel:
+          readOptionalString(change?.ruleId) ??
+          readOptionalString(change?.source) ??
+          `change-${index + 1}`,
+        before,
+        after,
+        locationText: formatLocationText(change?.semantic_hit),
+      },
+    ];
+  });
 }
 
 export function buildProofreadingConfirmationItems(
@@ -156,27 +184,100 @@ export function buildProofreadingConfirmationItems(
 ): ProofreadingConfirmationItemViewModel[] {
   const payload = asRecord(job?.payload);
   const plan = asRecord(payload?.proofreadingPlan);
-  if (!Array.isArray(plan?.corrections)) {
-    return [];
-  }
 
-  return plan.corrections.flatMap((entry, index) => {
-      const correction = asRecord(entry);
-      const targetText = readOptionalString(correction?.targetText);
-      const replacementText = readOptionalString(correction?.replacementText);
-      if (!targetText || !replacementText) {
+  if (Array.isArray(plan?.issues)) {
+    return plan.issues.flatMap((entry, index) => {
+      const issue = asRecord(entry);
+      const anchor = asRecord(issue?.anchor);
+      const suggestion = asRecord(issue?.suggestion);
+      const targetText =
+        readOptionalString(anchor?.quote) ??
+        readOptionalString(issue?.targetText);
+      const replacementText =
+        readOptionalString(suggestion?.replacementText) ??
+        readOptionalString(issue?.replacementText) ??
+        "";
+      if (!targetText) {
         return [];
       }
 
       return [
         {
-          itemId: `correction-${index + 1}`,
+          itemId: readOptionalString(issue?.itemId) ?? `issue-${index + 1}`,
+          title: readOptionalString(issue?.title),
+          description: readOptionalString(issue?.description),
+          severity: readOptionalString(issue?.severity),
+          source: readOptionalString(issue?.source),
+          issueType: readOptionalString(issue?.issueType),
+          blocksFinal: Boolean(issue?.blocksFinal),
           targetText,
           replacementText,
-          category: readOptionalString(correction?.category),
-        } satisfies ProofreadingConfirmationItemViewModel,
+          anchor: normalizeProofreadingAnchor(anchor, index, targetText),
+          suggestionAction: readOptionalString(suggestion?.action),
+        },
       ];
     });
+  }
+
+  if (!Array.isArray(plan?.corrections)) {
+    return [];
+  }
+
+  return plan.corrections.flatMap((entry, index) => {
+    const correction = asRecord(entry);
+    const targetText = readOptionalString(correction?.targetText);
+    const replacementText = readOptionalString(correction?.replacementText);
+    if (!targetText || !replacementText) {
+      return [];
+    }
+
+    return [
+      {
+        itemId: `correction-${index + 1}`,
+        issueType: readOptionalString(correction?.category),
+        category: readOptionalString(correction?.category),
+        targetText,
+        replacementText,
+        anchor: {
+          blockIndex: index,
+          quote: targetText,
+        },
+        suggestionAction: "replace_text",
+      },
+    ];
+  });
+}
+
+export function buildProofreadingDocumentBlocks(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): ProofreadingDocumentBlockViewModel[] {
+  const payload = asRecord(job?.payload);
+  if (!Array.isArray(payload?.proofreadingSourceBlocks)) {
+    return [];
+  }
+
+  return payload.proofreadingSourceBlocks.flatMap((entry, index) => {
+    const block = asRecord(entry);
+    const text = readOptionalString(block?.text);
+    if (!text) {
+      return [];
+    }
+
+    const blockIndex =
+      typeof block?.blockIndex === "number" && Number.isInteger(block.blockIndex)
+        ? block.blockIndex
+        : index;
+
+    return [
+      {
+        blockId: `proofreading-block-${blockIndex}`,
+        blockIndex,
+        sectionLabel: readOptionalString(block?.section),
+        blockKind: readOptionalString(block?.block_kind),
+        text,
+      },
+    ];
+  });
 }
 
 export function buildAssetPreviewComments(input: {
@@ -192,7 +293,7 @@ export function buildAssetPreviewComments(input: {
     return buildEditingChangeLedgerEntries(input.job).map((entry) => ({
       id: entry.id,
       author: "AI 编辑",
-      body: `${entry.before} → ${entry.after}`,
+      body: `${entry.before} -> ${entry.after}`,
       anchor_text: entry.before,
     }));
   }
@@ -202,7 +303,9 @@ export function buildAssetPreviewComments(input: {
     return confirmationItems.map((item) => ({
       id: item.itemId,
       author: "AI 校对",
-      body: `${item.targetText} → ${item.replacementText}`,
+      body: item.replacementText
+        ? `${item.targetText} -> ${item.replacementText}`
+        : item.description ?? item.targetText,
       anchor_text: item.targetText,
     }));
   }
@@ -210,22 +313,24 @@ export function buildAssetPreviewComments(input: {
   const payload = asRecord(input.job?.payload);
   if (Array.isArray(payload?.confirmationDecisions)) {
     return payload.confirmationDecisions.flatMap((entry, index) => {
-        const decision = asRecord(entry);
-        const targetText = readOptionalString(decision?.targetText);
-        const replacementText =
-          readOptionalString(decision?.finalReplacementText) ??
-          readOptionalString(decision?.replacementText);
-        if (!targetText || !replacementText) {
-          return [];
-        }
+      const decision = asRecord(entry);
+      const targetText = readOptionalString(decision?.targetText);
+      const replacementText =
+        readOptionalString(decision?.finalReplacementText) ??
+        readOptionalString(decision?.replacementText);
+      if (!targetText || !replacementText) {
+        return [];
+      }
 
-        return [{
+      return [
+        {
           id: readOptionalString(decision?.itemId) ?? `decision-${index + 1}`,
           author: "人工确认",
-          body: `${targetText} → ${replacementText}`,
+          body: `${targetText} -> ${replacementText}`,
           anchor_text: targetText,
-        }];
-      });
+        },
+      ];
+    });
   }
 
   return [];
@@ -273,9 +378,10 @@ export function buildAssetReportPreviewBody(
     const sections = [
       "# 校对报告",
       "",
-      ...renderCorrectionSection(buildProofreadingConfirmationItems(job)),
+      readOptionalString(plan.summary) ? `摘要：${readOptionalString(plan.summary)}` : "",
+      ...renderProofreadingIssueSection(buildProofreadingConfirmationItems(job)),
       ...renderStringArraySection(
-        "人工核查项",
+        "人工核验",
         readStringArray(plan.manualReviewItems),
       ),
     ].filter((line) => line.length > 0);
@@ -298,21 +404,243 @@ export function ManuscriptWorkbenchAssetDetailPage({
   changeLedger = [],
   confirmationItems = [],
   confirmationState = {},
+  proofreadingDocumentBlocks = [],
+  activeProofreadingIssueId,
   isFinalizeEnabled = false,
   isFinalizing = false,
+  onProofreadingIssueSelect,
   onConfirmationActionChange,
   onConfirmationEditedReplacementTextChange,
   onConfirmationNoteChange,
   onFinalize,
 }: ManuscriptWorkbenchAssetDetailPageProps) {
-  const decidedCount = confirmationItems.filter(
-    (item) => confirmationState[item.itemId]?.action,
-  ).length;
   const assetRoleLabel = formatWorkbenchAssetTypeLabel(asset.asset_type);
   const previewOperationalState = resolvePreviewOperationalState({
     asset,
     previewSession,
   });
+
+  if (
+    detailKind === "proofreading_workspace" ||
+    detailKind === "proofreading_confirmation"
+  ) {
+    const activeIssue =
+      confirmationItems.find((item) => item.itemId === activeProofreadingIssueId) ??
+      confirmationItems[0] ??
+      null;
+    const activeIssueDraft =
+      (activeIssue && confirmationState[activeIssue.itemId]) ?? {};
+    const activeBlockIndex = activeIssue?.anchor?.blockIndex;
+
+    return (
+      <section
+        className="manuscript-workbench-detail-page manuscript-workbench-proofreading-layout"
+        data-detail-kind={detailKind}
+        data-proofreading-layout="issue-workbench"
+      >
+        <header className="manuscript-workbench-detail-header">
+          <div className="manuscript-workbench-detail-copy">
+            <span className="manuscript-workbench-section-eyebrow">
+              {detailKind === "proofreading_workspace"
+                ? "校对问题工作台"
+                : "校对人工确认"}
+            </span>
+            <h3>
+              {detailKind === "proofreading_workspace"
+                ? "问题驱动工作台"
+                : "人工确认与发布"}
+            </h3>
+            <p>{manuscriptTitle}</p>
+          </div>
+          <div className="manuscript-workbench-detail-actions">
+            <a className="manuscript-workbench-shortcut" href={backHref}>
+              返回工作台
+            </a>
+            <a
+              className="manuscript-workbench-shortcut"
+              href={downloadHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开当前文件
+            </a>
+            <a className="manuscript-workbench-shortcut" href={downloadHref} download>
+              {resolveDetailDownloadLabel(asset)}
+            </a>
+          </div>
+        </header>
+
+        <div className="manuscript-workbench-proofreading-layout-grid">
+          <article className="manuscript-workbench-proofreading-manuscript-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>稿件原文</h4>
+                <p>{asset.file_name ?? asset.id}</p>
+                <small>{assetRoleLabel}</small>
+              </div>
+            </div>
+            {proofreadingDocumentBlocks.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-block-list">
+                {proofreadingDocumentBlocks.map((block) => (
+                  <article
+                    key={block.blockId}
+                    id={block.blockId}
+                    className={`manuscript-workbench-proofreading-block${
+                      activeBlockIndex === block.blockIndex ? " is-selected" : ""
+                    }`}
+                    data-selected={
+                      activeBlockIndex === block.blockIndex ? "true" : "false"
+                    }
+                  >
+                    <header>
+                      <strong>{block.sectionLabel ?? `段落 ${block.blockIndex + 1}`}</strong>
+                      <span>{block.blockKind ?? "paragraph"}</span>
+                    </header>
+                    <p>{block.text}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>暂无稿件正文块</strong>
+                <p>当前校对任务没有保存可定位的全文块，无法进入问题工作台定位模式。</p>
+              </div>
+            )}
+          </article>
+
+          <article className="manuscript-workbench-proofreading-issue-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>问题队列</h4>
+                <p>点击问题可定位到对应稿件位置，并在右侧展开人工确认。</p>
+              </div>
+            </div>
+            {confirmationItems.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-issue-list">
+                {confirmationItems.map((item) => {
+                  const draft = confirmationState[item.itemId] ?? {};
+                  const isSelected = activeIssue?.itemId === item.itemId;
+                  return (
+                    <article
+                      key={item.itemId}
+                      className={`manuscript-workbench-proofreading-issue${
+                        isSelected ? " is-selected" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="manuscript-workbench-proofreading-issue-toggle"
+                        onClick={() => onProofreadingIssueSelect?.(item.itemId)}
+                      >
+                        <div>
+                          <strong>{item.title ?? item.itemId}</strong>
+                          <p>{item.anchor?.sectionLabel ?? "未标注章节"}</p>
+                        </div>
+                        <span className={resolveSeverityClassName(item.severity)}>
+                          {formatSeverityLabel(item.severity)}
+                        </span>
+                      </button>
+
+                      {isSelected ? (
+                        <div className="manuscript-workbench-proofreading-issue-detail">
+                          {item.description ? <p>{item.description}</p> : null}
+                          <dl className="manuscript-workbench-detail-metadata">
+                            <div>
+                              <dt>来源</dt>
+                              <dd>{item.source ?? "residual_ai"}</dd>
+                            </div>
+                            <div>
+                              <dt>问题类型</dt>
+                              <dd>{item.issueType ?? item.category ?? "未标注"}</dd>
+                            </div>
+                            <div>
+                              <dt>定位</dt>
+                              <dd>{item.anchor?.sectionLabel ?? `段落 ${item.anchor?.blockIndex ?? 0}`}</dd>
+                            </div>
+                            <div>
+                              <dt>阻断终稿</dt>
+                              <dd>{item.blocksFinal ? "是" : "否"}</dd>
+                            </div>
+                          </dl>
+                          <dl className="manuscript-workbench-detail-proofreading-diff">
+                            <div>
+                              <dt>原文</dt>
+                              <dd>{item.targetText}</dd>
+                            </div>
+                            <div>
+                              <dt>建议</dt>
+                              <dd>{item.replacementText || "仅提示人工核验"}</dd>
+                            </div>
+                          </dl>
+                          <div className="manuscript-workbench-detail-decision-grid">
+                            {CONFIRMATION_ACTIONS.map((action) => (
+                              <button
+                                key={action.value}
+                                type="button"
+                                className={
+                                  draft.action === action.value ? "is-selected" : undefined
+                                }
+                                onClick={() =>
+                                  onConfirmationActionChange?.(item.itemId, action.value)
+                                }
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                          {draft.action === "accepted_with_manual_edit" ? (
+                            <label className="manuscript-workbench-field">
+                              <span>人工修订文本</span>
+                              <textarea
+                                value={draft.editedReplacementText ?? ""}
+                                onChange={(event) =>
+                                  onConfirmationEditedReplacementTextChange?.(
+                                    item.itemId,
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </label>
+                          ) : null}
+                          <label className="manuscript-workbench-field">
+                            <span>人工备注</span>
+                            <textarea
+                              value={draft.note ?? ""}
+                              onChange={(event) =>
+                                onConfirmationNoteChange?.(
+                                  item.itemId,
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>当前没有可确认的问题</strong>
+                <p>本次校对没有生成结构化问题队列，暂时无法进入人工核验工作台。</p>
+              </div>
+            )}
+
+            <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
+              <button
+                type="button"
+                disabled={!isFinalizeEnabled || isFinalizing}
+                onClick={() => onFinalize?.()}
+              >
+                {isFinalizing ? "发布中..." : "发布人工终稿"}
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -345,13 +673,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
         </div>
       </header>
 
-      <div
-        className={`manuscript-workbench-detail-layout${
-          detailKind === "proofreading_confirmation"
-            ? " is-proofreading-confirmation"
-            : ""
-        }`}
-      >
+      <div className="manuscript-workbench-detail-layout">
         <article className="manuscript-workbench-detail-preview-card">
           <div className="manuscript-workbench-detail-card-header">
             <div>
@@ -418,106 +740,17 @@ export function ManuscriptWorkbenchAssetDetailPage({
           ) : (
             <div className="manuscript-workbench-detail-empty">
               <strong>该资产已生成。</strong>
-              <p>当前页展示了真实文件入口，可直接打开或下载；如有批注与改动，也会同步显示在这里。</p>
+              <p>当前页面提供真实文件入口，可直接打开或下载。</p>
             </div>
           )}
         </article>
 
-        {detailKind === "proofreading_confirmation" ? (
-          <article className="manuscript-workbench-detail-confirmation-card">
-            <div className="manuscript-workbench-detail-card-header">
-              <div>
-                <h4>人工确认</h4>
-                <p>
-                  已确认 {decidedCount}/{confirmationItems.length} 项。只有这里明确确认过的内容，才会进入人工终稿并决定是否回流。
-                </p>
-              </div>
-            </div>
-
-            <div className="manuscript-workbench-detail-confirmation-list">
-              {confirmationItems.map((item) => {
-                const draft = confirmationState[item.itemId] ?? {};
-                return (
-                  <article
-                    key={item.itemId}
-                    className="manuscript-workbench-detail-confirmation-item"
-                  >
-                    <header>
-                      <strong>{item.category ? `${item.category} 修改项` : "校对修改项"}</strong>
-                      <span>{item.itemId}</span>
-                    </header>
-                    <dl>
-                      <div>
-                        <dt>原文</dt>
-                        <dd>{item.targetText}</dd>
-                      </div>
-                      <div>
-                        <dt>建议修改</dt>
-                        <dd>{item.replacementText}</dd>
-                      </div>
-                    </dl>
-                    <div className="manuscript-workbench-detail-decision-grid">
-                      {CONFIRMATION_ACTIONS.map((action) => (
-                        <button
-                          key={action.value}
-                          type="button"
-                          className={
-                            draft.action === action.value
-                              ? "is-selected"
-                              : undefined
-                          }
-                          onClick={() =>
-                            onConfirmationActionChange?.(item.itemId, action.value)
-                          }
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                    </div>
-                    {draft.action === "accept_and_edit" ? (
-                      <label className="manuscript-workbench-field">
-                        <span>人工修订文本</span>
-                        <textarea
-                          value={draft.editedReplacementText ?? ""}
-                          onChange={(event) =>
-                            onConfirmationEditedReplacementTextChange?.(
-                              item.itemId,
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </label>
-                    ) : null}
-                    <label className="manuscript-workbench-field">
-                      <span>批注说明</span>
-                      <textarea
-                        value={draft.note ?? ""}
-                        onChange={(event) =>
-                          onConfirmationNoteChange?.(item.itemId, event.target.value)
-                        }
-                      />
-                    </label>
-                  </article>
-                );
-              })}
-            </div>
-
-            <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
-              <button
-                type="button"
-                disabled={!isFinalizeEnabled || isFinalizing}
-                onClick={() => onFinalize?.()}
-              >
-                {isFinalizing ? "发布中..." : "发布人工终稿"}
-              </button>
-            </div>
-          </article>
-        ) : changeLedger.length > 0 ? (
+        {changeLedger.length > 0 ? (
           <article className="manuscript-workbench-detail-ledger-card">
             <div className="manuscript-workbench-detail-card-header">
               <div>
                 <h4>改动台账</h4>
-                <p>这一页展示 AI 编辑的真实改动条目，和预览批注一一对应。</p>
+                <p>这里展示 AI 编辑已落地的真实改动。</p>
               </div>
             </div>
             <ul className="manuscript-workbench-detail-ledger-list">
@@ -551,19 +784,16 @@ const CONFIRMATION_ACTIONS: ReadonlyArray<{
   value: ProofreadingConfirmationDecisionAction;
   label: string;
 }> = [
-  { value: "accept", label: "接受" },
-  { value: "accept_and_edit", label: "接受并编辑" },
-  { value: "reject", label: "拒绝" },
+  { value: "accepted", label: "采纳" },
+  { value: "accepted_with_manual_edit", label: "采纳并手改" },
+  { value: "rejected", label: "驳回" },
   { value: "manual_only", label: "仅人工处理" },
-  { value: "route_to_rule_candidate", label: "路由到规则候选" },
-  { value: "route_to_knowledge_candidate", label: "路由到知识候选" },
+  { value: "escalated", label: "升级处理" },
+  { value: "route_to_rule_candidate", label: "转规则候选" },
+  { value: "route_to_knowledge_candidate", label: "转知识候选" },
 ];
 
 function resolveDetailEyebrow(detailKind: ManuscriptAssetDetailKind): string {
-  if (detailKind === "proofreading_confirmation") {
-    return "人工确认子页";
-  }
-
   if (detailKind === "report_preview") {
     return "结果预览";
   }
@@ -575,10 +805,6 @@ function resolveDetailTitle(
   detailKind: ManuscriptAssetDetailKind,
   mode: ManuscriptWorkbenchMode,
 ): string {
-  if (detailKind === "proofreading_confirmation") {
-    return "校对确认与发布";
-  }
-
   if (detailKind === "report_preview") {
     return mode === "screening" ? "初筛报告预览" : "校对报告预览";
   }
@@ -587,11 +813,7 @@ function resolveDetailTitle(
 }
 
 function resolvePreviewPanelTitle(detailKind: ManuscriptAssetDetailKind): string {
-  if (detailKind === "report_preview") {
-    return "报告正文";
-  }
-
-  return "预览会话";
+  return detailKind === "report_preview" ? "报告正文" : "预览会话";
 }
 
 function resolveDetailDownloadLabel(asset: DocumentAssetViewModel): string {
@@ -662,7 +884,7 @@ function renderStringArraySection(title: string, items: readonly string[]): stri
   return [title, ...items.map((item) => `- ${item}`), ""];
 }
 
-function renderCorrectionSection(
+function renderProofreadingIssueSection(
   items: readonly ProofreadingConfirmationItemViewModel[],
 ): string[] {
   if (items.length === 0) {
@@ -670,61 +892,94 @@ function renderCorrectionSection(
   }
 
   return [
-    "校对建议",
+    "问题队列",
     ...items.map(
       (item) =>
-        `- [${item.category ?? "uncategorized"}] ${item.targetText} -> ${item.replacementText}`,
+        `- [${item.severity ?? "medium"}] ${item.title ?? item.itemId}: ${item.targetText}`,
     ),
     "",
   ];
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-}
-
-function readStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter(
-    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
-  );
-}
-
 function formatLocationText(value: unknown): string | undefined {
-  const location = asRecord(value);
-  if (!location) {
-    return undefined;
-  }
-
-  const paragraphIndex =
-    typeof location.paragraph_index === "number" ? location.paragraph_index : undefined;
-  if (paragraphIndex != null) {
-    return `段落 ${paragraphIndex}`;
-  }
-
-  const tableId = readOptionalString(location.table_id);
-  const semanticTarget = readOptionalString(location.semantic_target);
-  if (tableId && semanticTarget) {
-    return `表格 ${tableId} / ${semanticTarget}`;
-  }
-
-  const sectionHeading = readOptionalString(location.section_heading);
-  if (sectionHeading) {
-    return sectionHeading;
+  const semanticHit = asRecord(value);
+  if (
+    semanticHit &&
+    typeof semanticHit.paragraph_index === "number" &&
+    Number.isFinite(semanticHit.paragraph_index)
+  ) {
+    return `段落 ${semanticHit.paragraph_index}`;
   }
 
   return undefined;
+}
+
+function formatSeverityLabel(severity?: string): string {
+  switch (severity) {
+    case "critical":
+      return "严重";
+    case "high":
+      return "高";
+    case "low":
+      return "低";
+    default:
+      return "中";
+  }
+}
+
+function resolveSeverityClassName(severity?: string): string {
+  return `manuscript-workbench-status-pill ${
+    severity === "critical" || severity === "high"
+      ? "is-error"
+      : severity === "low"
+        ? "is-neutral"
+        : "is-success"
+  }`;
+}
+
+function normalizeProofreadingAnchor(
+  value: Record<string, unknown> | undefined,
+  index: number,
+  targetText: string,
+): ProofreadingIssueAnchorViewModel | undefined {
+  if (!value) {
+    return {
+      blockIndex: index,
+      quote: targetText,
+    };
+  }
+
+  const blockIndex =
+    typeof value.blockIndex === "number" && Number.isInteger(value.blockIndex)
+      ? value.blockIndex
+      : index;
+  const quote = readOptionalString(value.quote) ?? targetText;
+  if (!quote) {
+    return undefined;
+  }
+
+  return {
+    blockIndex,
+    quote,
+    sectionLabel: readOptionalString(value.sectionLabel),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    : [];
 }

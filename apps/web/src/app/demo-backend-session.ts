@@ -1,4 +1,5 @@
 import type { AuthSessionViewModel } from "../features/auth/index.ts";
+import { resolveRuntimeBackendBaseUrl } from "../lib/backend-url.ts";
 
 const DEFAULT_DEMO_PASSWORD = "demo-password";
 const DEMO_LOGIN_PATH = "/api/v1/auth/local/login";
@@ -58,16 +59,19 @@ export async function ensureDemoBackendSession(
 function resolveDemoBackendLoginUrl(
   env: Pick<ImportMetaEnv, "VITE_API_BASE_URL">,
 ): string {
-  const configuredBaseUrl = env.VITE_API_BASE_URL?.trim();
-  if (configuredBaseUrl) {
-    return new URL(DEMO_LOGIN_PATH, ensureTrailingSlash(configuredBaseUrl)).toString();
-  }
+  const configuredBaseUrl = resolveRuntimeBackendBaseUrl({
+    configuredBaseUrl: env.VITE_API_BASE_URL,
+    windowLocation:
+      typeof window !== "undefined"
+        ? {
+            origin: window.location.origin,
+            hostname: window.location.hostname,
+          }
+        : undefined,
+    fallbackBaseUrl: "http://127.0.0.1/",
+  });
 
-  if (typeof window !== "undefined" && window.location.origin.length > 0) {
-    return new URL(DEMO_LOGIN_PATH, ensureTrailingSlash(window.location.origin)).toString();
-  }
-
-  return new URL(DEMO_LOGIN_PATH, "http://127.0.0.1/").toString();
+  return new URL(DEMO_LOGIN_PATH, ensureTrailingSlash(configuredBaseUrl)).toString();
 }
 
 function ensureTrailingSlash(value: string): string {
