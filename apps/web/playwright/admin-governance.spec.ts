@@ -109,8 +109,10 @@ test("editing workbench saves a journal template context before running editing"
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "当前稿件编辑工作区" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(prepared.manuscriptId);
+  await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ })).toHaveValue(
+    prepared.manuscriptId,
+  );
   await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
@@ -130,7 +132,7 @@ test("editing workbench saves a journal template context before running editing"
   await expect(page.locator("body")).toContainText(prepared.journalName);
   await expect(page.locator("body")).toContainText("期刊覆写");
 
-  const inputAssetSelect = page.getByLabel("输入稿件资产");
+  const inputAssetSelect = page.getByLabel(/输入稿件资产|父资产/);
   await expect(inputAssetSelect).toBeVisible();
   await expect(inputAssetSelect).not.toHaveValue("");
 

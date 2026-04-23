@@ -192,10 +192,6 @@ import {
   ScreeningService,
 } from "../modules/screening/index.ts";
 import {
-  ModuleExecutionConcurrencyController,
-  resolveModuleExecutionConcurrencyLimitsFromEnv,
-} from "../modules/shared/module-execution-concurrency-controller.ts";
-import {
   createSandboxProfileApi,
   PostgresSandboxProfileRepository,
   SandboxProfileService,
@@ -825,12 +821,6 @@ export function createPersistentGovernanceRuntime(
     templateFamilyRepository,
     transactionManager: workbenchTransactionManager,
   });
-  const moduleExecutionConcurrencyLimits =
-    resolveModuleExecutionConcurrencyLimitsFromEnv(process.env);
-  const moduleExecutionConcurrencyController =
-    new ModuleExecutionConcurrencyController({
-      limits: moduleExecutionConcurrencyLimits,
-    });
   const screeningService = new ScreeningService({
     manuscriptRepository,
     assetRepository,
@@ -859,7 +849,6 @@ export function createPersistentGovernanceRuntime(
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
     transactionManager: workbenchTransactionManager,
-    moduleExecutionConcurrencyController,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -890,7 +879,6 @@ export function createPersistentGovernanceRuntime(
     editorialDocxTransformService,
     reviewItemsService,
     transactionManager: workbenchTransactionManager,
-    moduleExecutionConcurrencyController,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -924,7 +912,6 @@ export function createPersistentGovernanceRuntime(
     learningService,
     residualLearningService,
     transactionManager: workbenchTransactionManager,
-    moduleExecutionConcurrencyController,
   });
   const userAdminService = new UserAdminService({
     repository: userAdminRepository,
@@ -973,7 +960,6 @@ export function createPersistentGovernanceRuntime(
       executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
-      moduleExecutionConcurrencyController,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,

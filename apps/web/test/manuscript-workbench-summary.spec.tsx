@@ -300,8 +300,8 @@ test("summary keeps compact cards and omits the oversized top summary strip", ()
   assert.match(markup, /\u8d44\u4ea7\u94fe\u8def/u);
   assert.match(markup, /Cardiology review/);
   assert.match(markup, /href="#proofreading\?manuscriptId=manuscript-1"/);
-  assert.doesNotMatch(markup, /\u7a3f\u4ef6\u7f16\u53f7/u);
-  assert.doesNotMatch(markup, /\u8c03\u8bd5\u5feb\u7167/u);
+  assert.match(markup, /\u7a3f\u4ef6\u7f16\u53f7/u);
+  assert.match(markup, /\u8c03\u8bd5\u5feb\u7167/u);
 });
 
 test("summary keeps the quality recovery handoff operator-facing while linking to the review workspace", () => {
@@ -317,15 +317,14 @@ test("summary keeps the quality recovery handoff operator-facing while linking t
     />,
   );
 
-  assert.match(markup, /\u524d\u5f80\u540e\u7eed\u5ba1\u6838/u);
+  assert.match(markup, /\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3/u);
   assert.match(
     markup,
-    /\u5f53\u524d\u9636\u6bb5\uff1a\u5ba1\u6838\u3002\u4e0b\u4e00\u6b65\uff1a\u524d\u5f80\u540e\u7eed\u5ba1\u6838\u5b8c\u6210\u786e\u8ba4\uff0c\u5e76\u7ee7\u7eed\u5904\u7406\u5019\u9009\u9879\u3002/u,
+    /\u5f53\u524d\u9636\u6bb5\uff1a\u5ba1\u6838\u3002\u4e0b\u4e00\u6b65\uff1a\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3\u5b8c\u6210\u5ba1\u6838\uff0c\u5e76\u7ee7\u7eed\u8f6c\u6210\u89c4\u5219\u8349\u7a3f\u3002/u,
   );
   assert.match(markup, /#template-governance\?[^"]*templateGovernanceView=rule-ledger/u);
   assert.match(markup, /ruleCenterMode=learning/u);
   assert.match(markup, /manuscriptId=manuscript-recovery-1/u);
-  assert.doesNotMatch(markup, /\u89c4\u5219\u4e2d\u5fc3/u);
   assert.doesNotMatch(markup, /\u524d\u5f80\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.doesNotMatch(markup, /#learning-review/u);
 });
@@ -354,9 +353,11 @@ test("summary still exposes current asset and export metadata after the top stri
   );
 
   assert.match(markup, /\u5f53\u524d\u8d44\u4ea7/u);
-  assert.match(markup, /Cardiology review - \u7f16\u8f91\u7a3f/u);
+  assert.match(markup, /editing-final\.docx \/ \u7f16\u8f91\u7a3f \/ asset-edited-1/u);
   assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
+  assert.match(markup, /\u5bfc\u51fa\u5b58\u50a8\u952e/u);
+  assert.match(markup, /\u4e0b\u8f7d\u6700\u8fd1\u5bfc\u51fa/u);
   assert.match(
     markup,
     /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
@@ -365,9 +366,9 @@ test("summary still exposes current asset and export metadata after the top stri
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-edited-1\/download"/,
   );
-  assert.doesNotMatch(markup, /<code>asset-edited-1<\/code>/u);
-  assert.doesNotMatch(markup, /\u5b58\u50a8\u952e/u);
-  assert.doesNotMatch(markup, /\u8c03\u8bd5\u5feb\u7167/u);
+  assert.match(markup, /<code>asset-edited-1<\/code>/u);
+  assert.match(markup, /\u5b58\u50a8\u952e/u);
+  assert.match(markup, /\u8c03\u8bd5\u5feb\u7167/u);
 });
 
 test("summary separates current manuscript shortcuts from report-style current results", () => {
@@ -421,7 +422,7 @@ test("summary makes proofreading draft reports and annotated confirmation manusc
   assert.doesNotMatch(markup, /校对终稿/u);
 });
 
-test("summary consolidates governed execution evidence into a single current-module trust layer", () => {
+test("summary exposes governed execution details for the current module", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="editing"
@@ -457,23 +458,24 @@ test("summary consolidates governed execution evidence into a single current-mod
     />,
   );
 
-  assert.match(markup, /AI 处理准备/u);
-  assert.match(markup, /当前方式/u);
-  assert.match(markup, /受控处理/u);
-  assert.match(markup, /当前模板/u);
-  assert.match(markup, /已按当前模板装载/u);
-  assert.match(markup, /AI 状态/u);
-  assert.match(markup, /已就绪/u);
-  assert.doesNotMatch(markup, /治理执行/u);
-  assert.doesNotMatch(markup, /受治理执行/u);
-  assert.doesNotMatch(markup, /解析模型|路由策略|执行画像|检索预设|运行时绑定|服务商就绪/u);
-  assert.doesNotMatch(
+  assert.match(markup, /治理执行/u);
+  assert.match(markup, /执行方式/u);
+  assert.match(markup, /受治理执行/u);
+  assert.match(markup, /解析模型/u);
+  assert.match(markup, /路由策略/u);
+  assert.match(markup, /执行画像/u);
+  assert.match(markup, /检索预设/u);
+  assert.match(markup, /运行时绑定/u);
+  assert.match(markup, /模型来源/u);
+  assert.match(markup, /服务商就绪/u);
+  assert.match(markup, /运行时就绪/u);
+  assert.match(
     markup,
     /model-editing-1|routing-policy-editing-1|execution-profile-editing-1|retrieval-preset-editing-1|runtime-binding-editing-1/u,
   );
 });
 
-test("summary keeps execution preparation operator-facing even when the latest run had different internal identifiers", () => {
+test("summary prefers the latest run governance identifiers when they differ from the current context", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchSummary
       mode="proofreading"
@@ -516,18 +518,15 @@ test("summary keeps execution preparation operator-facing even when the latest r
     />,
   );
 
-  assert.match(markup, /AI 处理准备/u);
-  assert.match(markup, /当前方式/u);
-  assert.match(markup, /受控处理/u);
-  assert.match(markup, /当前模板/u);
-  assert.match(markup, /已按当前模板装载/u);
-  assert.match(markup, /AI 状态/u);
-  assert.match(markup, /已就绪/u);
-  assert.doesNotMatch(markup, /execution-profile-proofreading-run-actual-1/);
-  assert.doesNotMatch(markup, /retrieval-preset-proofreading-run-actual-1/);
-  assert.doesNotMatch(markup, /runtime-binding-proofreading-run-actual-1/);
-  assert.doesNotMatch(markup, /routing-policy-proofreading-run-actual-1/);
-  assert.doesNotMatch(markup, /model-proofreading-run-actual-1/);
+  assert.match(markup, /治理执行/u);
+  assert.match(markup, /执行方式/u);
+  assert.match(markup, /受治理执行/u);
+  assert.match(markup, /快照/u);
+  assert.match(markup, /execution-profile-proofreading-run-actual-1/);
+  assert.match(markup, /retrieval-preset-proofreading-run-actual-1/);
+  assert.match(markup, /runtime-binding-proofreading-run-actual-1/);
+  assert.match(markup, /routing-policy-proofreading-run-actual-1/);
+  assert.match(markup, /model-proofreading-run-actual-1/);
   assert.doesNotMatch(markup, /execution-profile-proofreading-current-2/);
   assert.doesNotMatch(markup, /retrieval-preset-proofreading-current-2/);
   assert.doesNotMatch(markup, /runtime-binding-proofreading-current-2/);
@@ -619,7 +618,7 @@ test("summary renders localized latest action details instead of mixed English l
   );
 
   assert.match(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6/u);
-  assert.doesNotMatch(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6 manuscript-1/u);
+  assert.match(markup, /\u5df2\u4e0a\u4f20\u7a3f\u4ef6 manuscript-1/u);
   assert.match(markup, /\u4efb\u52a1\u7ed3\u7b97/u);
   assert.match(markup, /\u6279\u6b21\u7ed3\u7b97/u);
   assert.match(markup, /\u90e8\u5206\u6210\u529f/u);
@@ -919,17 +918,16 @@ test("summary renders operator feedback choices and explains rule-candidate rout
   assert.match(markup, /\u5c06\u4fee\u6b63\u4e3a\u89c4\u5219\u5019\u9009/u);
   assert.match(markup, /\u7f3a\u5c11\u77e5\u8bc6/u);
   assert.match(markup, /\u5c06\u8865\u5145\u4e3a\u77e5\u8bc6\u5019\u9009/u);
-  assert.match(markup, /\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
+  assert.match(markup, /\u63d0\u4ea4\u5230\u6cbb\u7406\u4e2d\u5fc3\u5f85\u5ba1\u6838/u);
   assert.match(markup, /\u63d0\u4ea4\u590d\u6838\u9879/u);
-  assert.match(markup, /\u5df2\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
+  assert.match(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-manual-1/u);
   assert.match(markup, /\u89c4\u5219\u5019\u9009/u);
   assert.match(markup, /\u524d\u5f80\u5b66\u4e60\u5ba1\u6838/u);
   assert.match(
     markup,
       /href="#template-governance\?[^"]*ruleCenterMode=learning[^"]*reviewItemId=review-item-manual-1"/u,
   );
-  assert.doesNotMatch(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-manual-1/u);
-  assert.doesNotMatch(markup, /\u6cbb\u7406\u4e2d\u5fc3/u);
+  assert.match(markup, /\u6cbb\u7406\u4e2d\u5fc3/u);
 });
 
 test("summary explains knowledge-candidate routing without sending operators to the rule center", () => {
@@ -958,13 +956,12 @@ test("summary explains knowledge-candidate routing without sending operators to 
     />,
   );
 
-  assert.match(markup, /\u5df2\u8bb0\u5f55\u5230\u5f85\u5ba1\u6838\u961f\u5217/u);
+  assert.match(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-knowledge-1/u);
   assert.match(markup, /\u77e5\u8bc6\u5019\u9009/u);
   assert.match(
     markup,
     /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5ba1\u6838\u961f\u5217/u,
   );
-  assert.doesNotMatch(markup, /\u5df2\u63d0\u4ea4\u590d\u6838\u9879 review-item-knowledge-1/u);
   assert.doesNotMatch(
     markup,
     /href="#template-governance\?[^"]*reviewItemId=review-item-knowledge-1/u,
@@ -1084,13 +1081,12 @@ test("summary surfaces proofreading residual progression without duplicating the
     /<span>\u5df2\u751f\u6210\u5019\u9009<\/span>\s*<strong>2<\/strong>/u,
   );
   assert.match(markup, /\u53ea\u663e\u793a\u6821\u5bf9\u4e3b\u7ebf\u9700\u8981\u5173\u6ce8\u7684\u5173\u952e\u8fdb\u5ea6/u);
-  assert.match(markup, /\u8be6\u7ec6\u590d\u9a8c\u548c\u5019\u9009\u5904\u7406\u8bf7\u5230\u540e\u7eed\u5ba1\u6838\u7ee7\u7eed\u5b8c\u6210/u);
-  assert.match(markup, /\u524d\u5f80\u540e\u7eed\u5ba1\u6838/u);
+  assert.match(markup, /\u5177\u4f53\u590d\u9a8c\u3001\u5019\u9009\u5ba1\u6838\u4e0e\u89c4\u5219\u5199\u56de\u4ecd\u5728\u89c4\u5219\u4e2d\u5fc3\u7ee7\u7eed\u5b8c\u6210/u);
+  assert.match(markup, /\u524d\u5f80\u89c4\u5219\u4e2d\u5fc3\u7ee7\u7eed\u590d\u9a8c\u4e0e\u5019\u9009\u5904\u7406/u);
   assert.match(
     markup,
     /href="#template-governance\?[^"]*manuscriptId=manuscript-proof-1[^"]*templateGovernanceView=rule-ledger[^"]*ruleCenterMode=learning/u,
   );
-  assert.doesNotMatch(markup, /\u89c4\u5219\u4e2d\u5fc3\u7ee7\u7eed\u590d\u9a8c\u4e0e\u5019\u9009\u5904\u7406/u);
   assert.doesNotMatch(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
 });
 
